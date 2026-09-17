@@ -37,6 +37,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
+import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -194,13 +195,32 @@ const NIGHTLY_REBUILD_INDEX_PREVALIDATION_RUN = [
 const NIGHTLY_REBUILD_INDEX_PREVALIDATION_ENV = Object.freeze({
   NIGHTLY_REBUILD_INDEX: '${' + '{ inputs.rebuild_index }}',
 });
+/**
+ * The Android toolchain revisions, declared once.
+ *
+ * Both were written out per workflow, and that is not a style question here:
+ * three lanes build Android from three separate definitions (build-android.yml
+ * verifies main, nightly-native-stage.yml ships to Play, release.yml ships a
+ * tag), so a value restated per lane can be right in the lane you are reading
+ * and wrong in the lane that ships. That is not hypothetical — #1795 put a
+ * bare `aapt` in build-android.yml while nightly-native-stage.yml resolved it
+ * correctly, so `main` was red for a day while nightly builds kept shipping,
+ * and neither lane's state told you anything about the other's.
+ *
+ * Workflows cannot import these, so the guarantee is a contract test reading
+ * them from here rather than restating them. Change the value once; the test
+ * names every workflow that has not followed.
+ */
+export const ANDROID_NDK_VERSION = '27.0.12077973';
+export const ANDROID_BUILD_TOOLS_VERSION = '36.0.0';
+
 const NIGHTLY_JOB_ENV = Object.freeze({
   GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER:
     '${' + '{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}',
   GCP_PLAY_SERVICE_ACCOUNT: '${' + '{ vars.GCP_PLAY_SERVICE_ACCOUNT }}',
   ANDROID_UPLOAD_KEY_ALIAS: '${' + '{ vars.ANDROID_UPLOAD_KEY_ALIAS }}',
   ANDROID_UPLOAD_CERT_SHA256: '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
-  ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
+  ANDROID_BUILD_TOOLS_VERSION,
   STATION_MOBILE_DEFAULT_ENDPOINT:
     '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
 });
@@ -214,12 +234,39 @@ const NIGHTLY_JOB_ENV = Object.freeze({
  * Import this rather than writing the SHA down again. */
 export const REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA =
   '563effe7ec559c6f4fcc6c80b3532acb71d86373';
-const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
+/** The reviewed revision of the org's reusable capacity workflow.
+ *
+ * Exported so fixtures stop restating it. Until #1337's pin bump these tests
+ * spelled the value as a raw literal that happened to equal the secret-scan
+ * pin, and the two were indistinguishable in the fixture text: replacing what
+ * looked like a secret-scan string broke four capacity assertions. Different
+ * files, different reviews, and now different values. */
+export const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
   '02f40a67901a79ce4004c44d91e350b93782644c';
-const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
-  '02f40a67901a79ce4004c44d91e350b93782644c';
+/** A reusable-workflow reference pinned at the reviewed capacity revision.
+ * Exported for the fixtures above; the path is incidental, the pin is not. */
+export const REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA}`;
+/** The reviewed revision of the org's secret-scan reusable workflow.
+ *
+ * Exported for the reason stated above `REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA`:
+ * this value was restated in two test files, so the gate and the suite
+ * asserting it could disagree while both stayed green.
+ *
+ * Bumped to 28deabbf2 to pick up kontourai/.github#43, which adds
+ * `--retry-all-errors` to the gitleaks download. A single TLS reset from the
+ * release-asset CDN was failing the job before the fixture ran, turning a
+ * caller's `main` red from a network blip with nothing to attribute it to
+ * (#1337). `--retry` alone does not cover curl exit 35.
+ *
+ * Note this is deliberately NOT the same value as
+ * `REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA` any more. They pin different files
+ * in the same repository and shared a commit only because that was its HEAD
+ * when both were last reviewed; the capacity workflow is unchanged by #43 and
+ * stays at its own reviewed revision. */
+export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
+  '28deabbf24f0ab55911d311df5372d30bea0dba4';
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
-const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
+export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -316,6 +363,31 @@ export const CODEQL_ANALYZE_ACTION =
   'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
+  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+const WINDOWS_PR_WORKFLOW = '.github/workflows/windows-pr-verification.yml';
+const WINDOWS_PR_JOB = 'windows-pr-portable';
+const WINDOWS_PR_EVIDENCE_UPLOAD_NAME =
+  'Upload Windows portable verification evidence';
+const WINDOWS_PR_EVIDENCE_ARTIFACT_NAME =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  'windows-portable-verification-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}';
+const WINDOWS_PR_EVIDENCE_PATHS =
+  '.kontourai/verification-receipts/\n.kontourai/verification-output/\n';
+/**
+ * The pinned pnpm bootstrap for `pull_request_target` router jobs.
+ *
+ * This lived as a bare literal inside `isPinnedPnpmSetup`, where it acted as an
+ * allowlist key: a step whose `uses` did not match it exactly was reported as
+ * an unreviewed custom action. That is the correct security property — an
+ * unreviewed action in a `pull_request_target` job runs beside a write-scoped
+ * token — but it also means a Dependabot bump of `pnpm/setup` can never be
+ * green, because the bump changes the workflows and nothing updates the pin
+ * (#1042, #1725). Reviewing the new SHA is the point; hunting for where it is
+ * written down is not. Landing a bump is now one deliberate edit here.
+ */
+export const PNPM_SETUP_ACTION =
+  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
@@ -752,9 +824,38 @@ function reusableWorkflowPolicyFindings(file, jobId, job) {
   return findings;
 }
 
+/**
+ * station#1648: `playwright install --with-deps` apt-installs system
+ * libraries as root. The fleet's runner account has no passwordless sudo, so
+ * on a persistent self-hosted runner the flag cannot succeed — it failed
+ * three identical times in half a second each in ci-extended, and the job's
+ * real work never ran. GitHub-hosted images do have passwordless sudo, which
+ * is why this is scoped to persistent runners rather than banned outright.
+ *
+ * Asserted over the PARSED `run` string, so a block or folded scalar
+ * (`run: >-`) cannot hide the flag from it the way a whole-file text scan
+ * can. Whole-line shell comments are dropped first: a comment explaining why
+ * the flag is absent is inert and must not red a correct tree.
+ */
+export function refusesWithDepsOnPersistentRunner(run) {
+  if (typeof run !== 'string') return true;
+  const executable = run
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  return !/--with-deps/.test(executable);
+}
+
 function persistentStepPolicyFindings(file, jobId, steps) {
   const findings = [];
   for (const step of steps ?? []) {
+    if (!refusesWithDepsOnPersistentRunner(step?.run))
+      findings.push({
+        file,
+        jobId,
+        message:
+          'persistent self-hosted steps must not pass --with-deps to playwright install: the fleet runner account has no passwordless sudo, so it can only fail. Install the system libraries on the runner image, and use scripts/install-playwright-browsers.mjs here',
+      });
     if (
       typeof step?.uses === 'string' &&
       step.uses.startsWith('actions/checkout@') &&
@@ -896,6 +997,34 @@ function hasOnlyReadContentsPermission(permissions) {
     !Array.isArray(permissions) &&
     Object.keys(permissions).length === 1 &&
     permissions.contents === 'read'
+  );
+}
+
+function isExactWindowsPrEvidenceUpload(file, jobId, step) {
+  if (
+    file !== WINDOWS_PR_WORKFLOW ||
+    jobId !== WINDOWS_PR_JOB ||
+    step?.name !== WINDOWS_PR_EVIDENCE_UPLOAD_NAME ||
+    step?.if !== 'always()' ||
+    step?.uses !== WINDOWS_PR_EVIDENCE_UPLOAD_ACTION
+  )
+    return false;
+  const topLevelKeys = Object.keys(step).sort();
+  const withKeys = Object.keys(step.with ?? {}).sort();
+  return (
+    JSON.stringify(topLevelKeys) ===
+      JSON.stringify(['if', 'name', 'uses', 'with']) &&
+    JSON.stringify(withKeys) ===
+      JSON.stringify([
+        'if-no-files-found',
+        'include-hidden-files',
+        'name',
+        'path',
+      ]) &&
+    step.with.name === WINDOWS_PR_EVIDENCE_ARTIFACT_NAME &&
+    step.with.path === WINDOWS_PR_EVIDENCE_PATHS &&
+    step.with['include-hidden-files'] === true &&
+    step.with['if-no-files-found'] === 'warn'
   );
 }
 
@@ -1211,11 +1340,27 @@ function securityAnalysisTopologyFindings(file, jobs) {
   return findings;
 }
 
+// This bootstrap installs only the package manager pinned by package.json.
+// Keep install explicitly disabled: the action otherwise installs candidate dependencies
+// before the reviewed lifecycle entrypoint gets to apply its policy.
+function isPinnedPnpmSetup(step) {
+  return (
+    step?.uses === PNPM_SETUP_ACTION &&
+    step?.name === 'Setup pinned pnpm' &&
+    Object.keys(step).every(
+      (key) => key === 'name' || key === 'uses' || key === 'with',
+    ) &&
+    Object.keys(step.with ?? {}).join(',') === 'install' &&
+    step.with.install === false
+  );
+}
+
 function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
   return (job?.steps ?? [])
     .filter(
       (step) =>
         typeof step?.uses === 'string' &&
+        !isPinnedPnpmSetup(step) &&
         !allowedPrefixes.some((prefix) => step.uses.startsWith(prefix)),
     )
     .map(() => ({
@@ -1462,7 +1607,9 @@ function primaryCiRouterFindings(file, document) {
   }
   if (file !== '.github/workflows/ci.yml') return [];
 
-  const findings = [];
+  const findings = collectRequiredBrowserSmokeFindings(document).map(
+    (message) => ({ file, jobId: 'fast-checks', message }),
+  );
   const jobs = document?.jobs ?? {};
   if (!hasOnlyReadContentsPermission(document.permissions))
     findings.push({
@@ -1583,13 +1730,24 @@ function primaryCiRouterFindings(file, document) {
           run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
         },
         { name: 'Run fast CI lane', run: 'npm run ci:fast' },
+        // #1540: these exact commands run on the same isolated, read-only
+        // candidate runner as ci:fast. No new credentials or host authority.
+        {
+          name: 'Verify critical browser journeys before merge',
+          run: 'npm run test:e2e:pr-smoke',
+        },
+        {
+          name: 'Report contract-test changes for review',
+          run: 'node scripts/test-contract-review.mjs',
+        },
+
         {
           name: 'Run interactive workspace performance smoke',
           run: 'npm run performance:workspace:smoke',
         },
         {
           name: 'Enforce candidate UI bundle budget',
-          run: 'npm run build:connect && npm run build:ui',
+          run: 'npm run build:ui',
         },
       ]),
     );
@@ -1773,6 +1931,7 @@ function baseControlledPrWorkflowFindings(file, document) {
         });
       if (
         typeof step?.uses === 'string' &&
+        !isPinnedPnpmSetup(step) &&
         ![
           'actions/checkout@',
           'actions/setup-node@',
@@ -1782,6 +1941,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           file === '.github/workflows/build-ios.yml' &&
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
+        !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
           jobId === SECURITY_ANALYSIS_CODEQL_JOB &&

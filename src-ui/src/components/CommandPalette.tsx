@@ -1,7 +1,6 @@
 import {
   useAgentsQuery,
   useMessageSearchQuery,
-  usePluginsQuery,
   useProjectsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
@@ -18,18 +17,17 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
-import { useApiBase } from '../contexts/ApiBaseContext';
-import { activeChatsStore } from '../contexts/active-chats-store';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import {
   evaluateShortcutWhen,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
-import { navigationStore, useNavigation } from '../contexts/NavigationContext';
+import { useNavigation } from '../contexts/NavigationContext';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
 } from '../contexts/open-chats-store';
+import { useShowSurface } from '../contexts/useShowSurface';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -42,14 +40,22 @@ import {
   workspacePaneDirectRoute,
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
+import { Button } from './Button';
+import { Dialog } from './Dialog';
 import { requestFirstRunTour } from './first-run/first-run-store';
-import { Empty, SkeletonBlock } from './state';
+import { LazyBoundary } from './LazyBoundary';
+import { requestNewBoard } from './project-sidebar/new-board-events';
+import { Empty, ErrorState, SkeletonBlock } from './state';
 import './CommandPalette.css';
 import type {
   formatSettingsMessage,
   localizedSettingsTargetLabel,
   SettingsPaletteCommand,
 } from '../views/settings/settings-catalog';
+import {
+  SETTINGS_DEEP_LINK_PATH,
+  settingsDeepLinkParams,
+} from '../views/settings/settings-deep-link';
 import { commandFrecencyStorage } from './command-frecency-storage';
 import {
   groupRanked,
@@ -57,31 +63,63 @@ import {
   type PaletteCommand,
   rankCommands,
 } from './command-palette-utils';
-import { authorizePluginPaletteCommand } from './plugin-command-execution';
-import { beginPluginCommandExecution } from './plugin-command-execution-lifecycle';
-import {
-  pluginCommandUnavailableReason,
-  projectPluginPaletteCommands,
-} from './plugin-command-registry';
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
 const SESSION_SWITCH_SHORTCUT = /^dock\.session[1-9]$/;
-
-function activeSessionIdFor(activeChat: string | null): string | undefined {
-  return Object.entries(openChatsStore.getSnapshot()).find(
-    ([sessionId, chat]) =>
-      sessionId === activeChat || chat.conversationId === activeChat,
-  )?.[0];
+const loadWorkspaceSearch = () => import('./search/WorkspaceSearchPalette');
+export function WorkspaceSearchBoundary({
+  load = loadWorkspaceSearch,
+  ...props
+}: {
+  load?: typeof loadWorkspaceSearch;
+  query: string;
+  onQueryChange: (query: string) => void;
+  onClose: () => void;
+  onCommands: () => void;
+}) {
+  const frame = (children: ReactNode) => (
+    <Dialog
+      title="Workspace search (this Station)"
+      closeLabel="Close workspace search"
+      historyMode="none"
+      onClose={props.onClose}
+    >
+      {children}
+    </Dialog>
+  );
+  return (
+    <LazyBoundary
+      load={load}
+      componentProps={props}
+      pending={frame(
+        <SkeletonBlock count={1} label="Opening workspace search" />,
+      )}
+      unavailable={(retry) =>
+        frame(
+          <ErrorState
+            title="Workspace search unavailable"
+            description="The workspace search view could not be loaded."
+            action={<Button onClick={retry}>Retry workspace search</Button>}
+          />,
+        )
+      }
+    />
+  );
 }
-
-function taskIdForPath(pathname: string): string | undefined {
-  const encoded = pathname.match(/^\/tasks\/([^/]+)/)?.[1];
-  if (!encoded) return undefined;
-  try {
-    return decodeURIComponent(encoded);
-  } catch {
-    return undefined;
-  }
+type LegacySearchData = ReturnType<typeof useMessageSearchQuery>['data'];
+/** Unmounting the owning observer cancels its consumed AbortSignal on mode switch. */
+function LegacyMessageSearch({
+  query,
+  onData,
+}: {
+  query: string;
+  onData: (data: LegacySearchData) => void;
+}) {
+  const { data } = useMessageSearchQuery(query);
+  useEffect(() => {
+    onData(data);
+  }, [data, onData]);
+  return null;
 }
 
 function settingsScopeDetail(
@@ -134,17 +172,11 @@ const SearchIcon = (
   </svg>
 );
 
-const PLUGIN_COMMAND_ICONS = {
-  agent: 'A',
-  chat: '◌',
-  command: '›',
-  plugin: '◇',
-  project: '▱',
-  search: '⌕',
-} as const;
-
 export function CommandPalette() {
+  const showSurface = useShowSurface();
   const [open, setOpen] = useState(false);
+  const [workspaceSearch, setWorkspaceSearch] = useState(false);
+  const [messageSearch, setMessageSearch] = useState<LegacySearchData>();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [debouncedMessageQuery, setDebouncedMessageQuery] = useState('');
@@ -166,25 +198,19 @@ export function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement[]>([]);
-  const pluginCommandInFlight = useRef(new Set<string>());
-  // archive#3313: previewFlag-gated surfaces (Developer, enabled previews)
+  // archive#3313: previewFlag-gated destinations (Developer, enabled previews)
   // appear here iff their flag is on — same set the sidebar filters with.
   const surfaceVisibilityFlags = useSurfaceVisibilityFlags();
-  const surfaceVisibilityFlagsRef = useRef(surfaceVisibilityFlags);
-  surfaceVisibilityFlagsRef.current = surfaceVisibilityFlags;
 
   const {
     navigate,
     setProject,
     setDockState,
-    activeChat,
-    pathname,
     selectedProject,
     selectedProjectLayout,
   } = useNavigation();
   const { getAllShortcuts } = useShortcutRegistry();
-  const { apiBase } = useApiBase();
-  const { isMobile } = usePlatformProfile();
+  const { isMobile, isDesktop } = usePlatformProfile();
   const { locale } = useLocale();
 
   useEffect(() => {
@@ -222,8 +248,9 @@ export function CommandPalette() {
   }, [open, query, settingsCatalog]);
 
   const settingsCommands = useMemo(
-    () => settingsCatalog?.settingsPaletteCommands({ isMobile }) ?? [],
-    [isMobile, settingsCatalog],
+    () =>
+      settingsCatalog?.settingsPaletteCommands({ isMobile, isDesktop }) ?? [],
+    [isMobile, isDesktop, settingsCatalog],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =
     settingsCatalog
@@ -245,23 +272,6 @@ export function CommandPalette() {
   const { data: agents = [] } = useAgentsQuery();
   const { data: projects = [] } = useProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
-  const pluginsQuery = usePluginsQuery();
-  type CommandPlugin = Extract<
-    NonNullable<typeof pluginsQuery.data>[number],
-    { version: string }
-  >;
-  // Rejected inventory rows carry no executable plugin identity.
-  const plugins = useMemo(
-    () =>
-      pluginsQuery.isError
-        ? []
-        : (pluginsQuery.data ?? []).filter(
-            (plugin): plugin is CommandPlugin => !('status' in plugin),
-          ),
-    [pluginsQuery.isError, pluginsQuery.data],
-  );
-  const pluginsRef = useRef(plugins);
-  pluginsRef.current = plugins;
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
@@ -295,7 +305,6 @@ export function CommandPalette() {
     const timer = window.setTimeout(() => setDebouncedMessageQuery(query), 200);
     return () => window.clearTimeout(timer);
   }, [query]);
-  const { data: messageSearch } = useMessageSearchQuery(debouncedMessageQuery);
   const messageMatches = messageSearch?.matches ?? [];
   const remoteSearchStates =
     messageSearch?.instances.filter(
@@ -331,6 +340,7 @@ export function CommandPalette() {
 
   const close = useCallback(() => {
     setOpen(false);
+    setWorkspaceSearch(false);
     setQuery('');
     setActiveIndex(0);
     setPaneNotice(null);
@@ -398,6 +408,20 @@ export function CommandPalette() {
     // event `FirstRunFlow` listens on, so the resume rule
     // (`resolveResumePoint`) is shared with the automatic first run rather
     // than duplicated for the manual one.
+    // #2062 review MED-6: the Boards section is hidden when the viewer has
+    // none, and the only `+` lives inside it, so without this there is no way
+    // to make the FIRST Board. This does not create one itself — it asks the
+    // panel's Boards section, which owns the personal-layouts read, the slug
+    // derivation and the rename state, to run the same create its `+` runs.
+    // See `project-sidebar/new-board-events.ts` for why that indirection is
+    // the reuse rather than a detour.
+    list.push({
+      id: 'action:new-board',
+      label: 'New Board',
+      group: 'Actions',
+      keywords: ['board', 'new', 'create', 'personal', 'layout', 'page'],
+      run: () => requestNewBoard(),
+    });
     list.push({
       id: 'action:first-run-tour',
       label: 'Take the tour',
@@ -439,19 +463,23 @@ export function CommandPalette() {
     });
 
     // Navigation (static)
-    for (const surface of APP_SURFACE_REGISTRY.getPalette(
+    for (const destination of APP_DESTINATION_REGISTRY.getPalette(
       surfaceVisibilityFlags,
     )) {
-      const params = surface.palette?.params;
+      const params = destination.palette?.params;
       list.push({
-        id: `nav:${surface.id}`,
-        label: surface.label(),
+        id: `nav:${destination.id}`,
+        label: destination.label(),
         group: 'Navigation',
-        keywords: surface.keywords ? [...surface.keywords] : undefined,
-        run: () =>
-          params
-            ? navigate(surface.route, { ...params })
-            : navigate(surface.route),
+        keywords: destination.keywords ? [...destination.keywords] : undefined,
+        run: () => {
+          if (destination.regionSurface) {
+            showSurface(destination.regionSurface);
+            return;
+          }
+          if (params) navigate(destination.route, { ...params });
+          else navigate(destination.route);
+        },
       });
     }
 
@@ -475,7 +503,12 @@ export function CommandPalette() {
         keywords: [...setting.keywords],
         detail: settingsLocaleFormatter
           ? setting.unavailable
-            ? settingsLocaleFormatter.formatMessage('unavailableMobile', locale)
+            ? settingsLocaleFormatter.formatMessage(
+                setting.unavailableReason === 'desktop'
+                  ? 'unavailableDesktop'
+                  : 'unavailableMobile',
+                locale,
+              )
             : settingsScopeDetail(
                 setting.scope,
                 locale,
@@ -499,16 +532,21 @@ export function CommandPalette() {
                 ) ?? 'Unavailable',
               reasonLabel:
                 settingsLocaleFormatter?.formatMessage(
-                  'unavailableMobile',
+                  setting.unavailableReason === 'desktop'
+                    ? 'unavailableDesktop'
+                    : 'unavailableMobile',
                   locale,
                 ) ?? '',
             });
             return;
           }
-          navigate('/settings', {
-            view: setting.view,
-            highlight: setting.highlight,
-          });
+          navigate(
+            SETTINGS_DEEP_LINK_PATH,
+            settingsDeepLinkParams({
+              view: setting.view,
+              highlight: setting.highlight,
+            }),
+          );
         },
       });
     }
@@ -546,7 +584,11 @@ export function CommandPalette() {
     // all other commands. An unavailable pane reveals its resolver-backed
     // state and bounded action without trying to mount a renderer.
     for (const entry of paneCatalog.entries) {
-      const presentation = presentWorkspacePaneAvailability(entry.availability);
+      const presentation = presentWorkspacePaneAvailability(
+        entry.availability,
+        entry.rendererGate,
+        entry.rendererResolution,
+      );
       const route =
         entry.instance && selectedProject
           ? workspacePaneDirectRoute(
@@ -624,170 +666,6 @@ export function CommandPalette() {
       });
     }
 
-    const activeSessionId = activeSessionIdFor(activeChat);
-    const pluginCommands = projectPluginPaletteCommands(plugins, {
-      activeChatId: activeSessionId ?? null,
-      hasProject: Boolean(selectedProject),
-      hasSession: Boolean(activeSessionId),
-      hasTask: /^\/tasks\/[^/]+/.test(pathname),
-      surfaceIds: new Set(
-        APP_SURFACE_REGISTRY.getAdvertised(surfaceVisibilityFlags).map(
-          (surface) => surface.id,
-        ),
-      ),
-      occupiedCommandIds: new Set(list.map((command) => command.id)),
-    });
-    for (const projected of pluginCommands) {
-      const { contribution } = projected;
-      list.push({
-        id: projected.paletteId,
-        label: contribution.title,
-        group: 'Plugin commands',
-        keywords: [
-          'plugin',
-          projected.pluginName,
-          contribution.id,
-          ...(contribution.keywords ?? []),
-        ],
-        detail:
-          projected.unavailableReason ??
-          contribution.subtitle ??
-          `From ${projected.pluginName}`,
-        icon: contribution.icon ? (
-          <span aria-hidden="true">
-            {PLUGIN_COMMAND_ICONS[contribution.icon]}
-          </span>
-        ) : undefined,
-        disabled: projected.unavailableReason !== null,
-        closeOnRun: false,
-        run: () => {
-          if (projected.unavailableReason) {
-            setPaneNotice({
-              label: contribution.title,
-              stateLabel: 'Unavailable',
-              reasonLabel: projected.unavailableReason,
-            });
-            return;
-          }
-          if (!projected.commandGeneration) return;
-          if (pluginCommandInFlight.current.has(projected.paletteId)) return;
-          const target =
-            contribution.intent.kind === 'navigate'
-              ? {
-                  kind: 'surface' as const,
-                  surfaceId: contribution.intent.surfaceId,
-                }
-              : contribution.intent.kind === 'seed-composer' && activeSessionId
-                ? { kind: 'composer' as const, sessionId: activeSessionId }
-                : null;
-          if (!target) return;
-          const draft =
-            target.kind === 'composer'
-              ? activeChatsStore.captureComposerDraft(target.sessionId)
-              : null;
-          if (target.kind === 'composer' && !draft) return;
-          const context = {
-            ...(activeSessionId
-              ? {
-                  activeChatSessionId: activeSessionId,
-                  sessionId: activeSessionId,
-                }
-              : {}),
-            ...(selectedProject ? { projectSlug: selectedProject } : {}),
-            ...(taskIdForPath(pathname)
-              ? { taskId: taskIdForPath(pathname) }
-              : {}),
-          };
-          pluginCommandInFlight.current.add(projected.paletteId);
-          const execution = beginPluginCommandExecution();
-          void authorizePluginPaletteCommand(
-            apiBase,
-            {
-              pluginId: projected.pluginName,
-              pluginVersion: projected.pluginVersion,
-              commandGeneration: projected.commandGeneration,
-              commandId: contribution.id,
-              target,
-              context,
-            },
-            { signal: execution.signal },
-          )
-            .then(() => {
-              if (!execution.isCurrent()) return;
-              const liveNavigation = navigationStore.getSnapshot();
-              const liveActiveSessionId = activeSessionIdFor(
-                liveNavigation.activeChat,
-              );
-              const livePlugin = pluginsRef.current.find(
-                (plugin) =>
-                  plugin.name === projected.pluginName &&
-                  plugin.version === projected.pluginVersion &&
-                  plugin.commandGeneration === projected.commandGeneration,
-              );
-              if (!livePlugin) return;
-              const liveContext = {
-                activeChatId: liveActiveSessionId ?? null,
-                hasProject: Boolean(liveNavigation.selectedProject),
-                hasSession: Boolean(liveActiveSessionId),
-                hasTask: /^\/tasks\/[^/]+/.test(liveNavigation.pathname),
-                surfaceIds: new Set(
-                  APP_SURFACE_REGISTRY.getAdvertised(
-                    surfaceVisibilityFlagsRef.current,
-                  ).map((surface) => surface.id),
-                ),
-                occupiedCommandIds: new Set<string>(),
-              };
-              if (
-                pluginCommandUnavailableReason(
-                  livePlugin,
-                  contribution,
-                  liveContext,
-                )
-              ) {
-                return;
-              }
-              if (contribution.intent.kind === 'navigate') {
-                const surfaceId = contribution.intent.surfaceId;
-                const surface = APP_SURFACE_REGISTRY.getAdvertised(
-                  surfaceVisibilityFlagsRef.current,
-                ).find((candidate) => candidate.id === surfaceId);
-                if (!surface) return;
-                navigate(surface.route, surface.palette?.params);
-                close();
-                return;
-              }
-              if (
-                contribution.intent.kind === 'seed-composer' &&
-                liveActiveSessionId !== undefined &&
-                liveActiveSessionId === target.sessionId &&
-                activeChatsStore.getSnapshot()[liveActiveSessionId]
-              ) {
-                if (!draft?.replaceInputIfUnchanged(contribution.intent.text)) {
-                  return;
-                }
-                setDockState(true);
-                close();
-              }
-            })
-            .catch((error: unknown) => {
-              if (!execution.isCurrent()) return;
-              setPaneNotice({
-                label: contribution.title,
-                stateLabel: 'Unavailable',
-                reasonLabel:
-                  error instanceof Error
-                    ? error.message
-                    : 'Plugin command admission is unavailable.',
-              });
-            })
-            .finally(() => {
-              execution.release();
-              pluginCommandInFlight.current.delete(projected.paletteId);
-            });
-        },
-      });
-    }
-
     // Transcript content is deliberately its own result group. Excerpts are
     // plain React text children below; no HTML string or innerHTML path exists
     // for model output, including when it contains markup-looking characters.
@@ -826,17 +704,12 @@ export function CommandPalette() {
     agents,
     projects,
     skills,
-    plugins,
-    apiBase,
-    close,
     navigate,
     setProject,
     setDockState,
     getAllShortcuts,
     paneCatalog.entries,
     selectedProject,
-    activeChat,
-    pathname,
     selectedProjectLayout,
     messageMatches,
     openChats,
@@ -845,6 +718,7 @@ export function CommandPalette() {
     settingsCommands,
     settingsLocaleFormatter,
     locale,
+    showSurface,
   ]);
 
   const ranked = useMemo(
@@ -918,6 +792,15 @@ export function CommandPalette() {
   );
 
   if (!open) return null;
+  if (workspaceSearch)
+    return (
+      <WorkspaceSearchBoundary
+        query={query}
+        onQueryChange={setQuery}
+        onClose={close}
+        onCommands={() => setWorkspaceSearch(false)}
+      />
+    );
 
   // Flat index across groups for aria-selected / highlight tracking.
   let flatIndex = -1;
@@ -935,6 +818,10 @@ export function CommandPalette() {
         if (e.target === e.currentTarget) close();
       }}
     >
+      <LegacyMessageSearch
+        query={debouncedMessageQuery}
+        onData={setMessageSearch}
+      />
       <div
         className="command-palette"
         role="dialog"
@@ -943,6 +830,9 @@ export function CommandPalette() {
         onKeyDown={onKeyDown}
       >
         <div className="command-palette__input-row">
+          <Button variant="secondary" onClick={() => setWorkspaceSearch(true)}>
+            Workspace search (this Station)
+          </Button>
           {SearchIcon}
           <input
             ref={inputRef}

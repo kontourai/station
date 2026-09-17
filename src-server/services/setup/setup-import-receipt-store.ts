@@ -19,6 +19,9 @@ export class SetupImportReceiptStore {
   constructor(
     private readonly path: string,
     private readonly empty: () => unknown,
+    private readonly testHooks: {
+      afterOpenForTest?: () => void | Promise<void>;
+    } = {},
   ) {
     if (!isAbsolute(path))
       throw new Error('Setup receipt path must be absolute.');
@@ -30,6 +33,8 @@ export class SetupImportReceiptStore {
     const guarded = await readGuardedUtf8(this.path, MAX_STORE_BYTES, {
       parentDirectory: dirname(this.path),
       directories,
+      allowParentEntryChanges: true,
+      afterOpenForTest: this.testHooks.afterOpenForTest,
     });
     return {
       value: JSON.parse(guarded.content) as T,

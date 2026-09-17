@@ -26,6 +26,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveRef } from './lib/git-ref.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -44,6 +45,7 @@ export const PREPUSH_BUILD_DIR = 'dist-ui-prepush';
  * bytes have historically arrived unattributed.
  */
 export const UI_BUILD_INPUT_PREFIXES = Object.freeze([
+  'patches/',
   'src-ui/',
   'src-shared/',
   'packages/sdk/src/',
@@ -55,6 +57,8 @@ export const UI_BUILD_INPUT_FILES = Object.freeze([
   'vite.config.ts',
   'package.json',
   'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
   'scripts/ui-bundle-budget.mjs',
   'scripts/ui-bundle-budget.json',
 ]);
@@ -122,7 +126,8 @@ export function changedPathsSince(base, run = git) {
 }
 
 function runBuild() {
-  const result = spawnSync('npm', ['run', '--silent', 'build:ui'], {
+  const npm = npmInvocation(['run', '--silent', 'build:ui']);
+  const result = spawnSync(npm.command, npm.args, {
     stdio: 'inherit',
     env: { ...process.env, STATION_BUILD_UI_DIR: PREPUSH_BUILD_DIR },
     windowsHide: true,

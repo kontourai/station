@@ -2,22 +2,18 @@ import type {
   PluginCommandContribution,
   PluginCommandRequirement,
 } from '@kontourai/station-contracts/agent-plugin';
-import {
-  PLUGIN_COMMAND_VERSION_MAX_LENGTH,
-  PLUGIN_COMMAND_VERSION_PATTERN,
-} from '@kontourai/station-contracts/plugin';
 
+/**
+ * The inventory fields a palette row is projected from. `commands` and
+ * `installationGeneration` are present only for a ready installation; the
+ * grant list is a display hint — every effect is admitted by the server.
+ */
 export interface InstalledPluginCommandSource {
   name: string;
   version: string;
-  commandContributions?: readonly PluginCommandContribution[];
-  commandGeneration?: string;
-  commandCapabilities?: {
-    invokeDeclaredOperation: {
-      available: boolean;
-      reason?: string;
-    };
-  };
+  commands?: readonly PluginCommandContribution[];
+  installationGeneration?: string;
+  permissions?: { granted: readonly string[] };
 }
 
 export interface PluginCommandHostContext {
@@ -25,17 +21,15 @@ export interface PluginCommandHostContext {
   hasProject: boolean;
   hasSession: boolean;
   hasTask: boolean;
-  surfaceIds: ReadonlySet<string>;
+  destinationIds: ReadonlySet<string>;
   occupiedCommandIds: ReadonlySet<string>;
-  /** False until the audited host invocation adapter is composed. */
-  canInvokePluginOperation?: boolean;
 }
 
 export interface PluginPaletteCommand {
   paletteId: string;
   pluginName: string;
   pluginVersion: string;
-  commandGeneration: string | null;
+  installationGeneration: string | null;
   contribution: PluginCommandContribution;
   unavailableReason: string | null;
 }
@@ -56,11 +50,9 @@ function requirementUnavailableReason(
   context: PluginCommandHostContext,
 ): string | null {
   if (requirement === 'plugin-server') {
-    const capability = plugin.commandCapabilities?.invokeDeclaredOperation;
-    return capability?.available
+    return plugin.permissions?.granted.includes('plugin.server')
       ? null
-      : (capability?.reason ??
-          'Plugin operation availability could not be confirmed.');
+      : 'This command needs the plugin server permission.';
   }
   const available =
     requirement === 'active-chat'
@@ -78,15 +70,8 @@ export function pluginCommandUnavailableReason(
   command: PluginCommandContribution,
   context: PluginCommandHostContext,
 ): string | null {
-  if (!plugin.commandGeneration) {
+  if (!plugin.installationGeneration) {
     return 'The current plugin command installation could not be confirmed.';
-  }
-  if (
-    plugin.version.length > PLUGIN_COMMAND_VERSION_MAX_LENGTH ||
-    !plugin.version.trim() ||
-    !PLUGIN_COMMAND_VERSION_PATTERN.test(plugin.version)
-  ) {
-    return 'The plugin version is not supported for command requests.';
   }
   for (const requirement of command.requires ?? []) {
     const reason = requirementUnavailableReason(requirement, plugin, context);
@@ -99,32 +84,24 @@ export function pluginCommandUnavailableReason(
 
   switch (command.intent.kind) {
     case 'navigate':
-      return context.surfaceIds.has(command.intent.surfaceId)
+      // The published field is named `surfaceId`; its value is a destination id.
+      return context.destinationIds.has(command.intent.surfaceId)
         ? null
         : `Station does not expose the '${command.intent.surfaceId}' destination.`;
     case 'seed-composer':
       return context.activeChatId
         ? null
         : 'Open a chat before staging this command in the composer.';
-    case 'invoke-declared-plugin-operation': {
-      const capability = plugin.commandCapabilities?.invokeDeclaredOperation;
-      if (!capability?.available) {
-        return (
-          capability?.reason ??
-          'Plugin operation availability could not be confirmed.'
-        );
-      }
-      return context.canInvokePluginOperation
-        ? null
-        : 'Audited plugin operation invocation is not available in the command palette yet.';
-    }
+    case 'invoke-declared-plugin-operation':
+      return 'Plugin operation commands are not available in the command palette yet.';
   }
 }
 
 /**
  * Deterministic host-owned projection into the canonical palette namespace.
  * Existing host rows and plugin rows all reserve their final ID here; a later
- * duplicate remains visible but unavailable with an exact reason.
+ * duplicate remains visible but unavailable with an exact reason. A row is not
+ * authority: every effect still needs server admission.
  */
 export function projectPluginPaletteCommands(
   plugins: readonly InstalledPluginCommandSource[],
@@ -137,14 +114,14 @@ export function projectPluginPaletteCommands(
   );
 
   for (const plugin of ordered) {
-    for (const contribution of plugin.commandContributions ?? []) {
+    for (const contribution of plugin.commands ?? []) {
       const paletteId = `plugin:${contribution.id}`;
       const collision = occupied.has(paletteId);
       result.push({
         paletteId,
         pluginName: plugin.name,
         pluginVersion: plugin.version,
-        commandGeneration: plugin.commandGeneration ?? null,
+        installationGeneration: plugin.installationGeneration ?? null,
         contribution,
         unavailableReason: collision
           ? `Command id '${paletteId}' is already registered.`

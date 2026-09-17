@@ -2,6 +2,7 @@ import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-
 import type {
   LayoutConfig,
   LayoutMetadata,
+  LayoutOwner,
   LayoutTemplate,
 } from '@kontourai/station-contracts/layout';
 import type {
@@ -46,7 +47,15 @@ export interface DocumentRecord {
 }
 
 export interface LayoutAgentReference {
-  projectSlug: string;
+  /**
+   * Who owns the referencing Layout. Required: the sweep covers non-project
+   * roots too (#2060), and a reference that reports only a project slug
+   * cannot name a Board at all — which is how a Board's agent reference
+   * became invisible to `deleteAgent`.
+   */
+  owner: LayoutOwner;
+  /** Present for a project-owned reference only; mirrors `owner`. */
+  projectSlug?: string;
   layoutSlug: string;
 }
 
@@ -66,6 +75,11 @@ export interface IStorageAdapter {
   getProject(slug: string): ProjectConfig;
   projectRevision(slug: string): ProjectStoredFileRevision<ProjectConfig>;
   createProject(config: ProjectConfig): Promise<void>;
+  /** Must publish Project and portable identity together or refuse before visibility. */
+  createProjectWithIdentity?(
+    config: ProjectConfig,
+    identity: import('@kontourai/station-contracts/project-identity').ProjectPortableIdentity,
+  ): Promise<void>;
   deleteProject(slug: string): Promise<void>;
 
   // Layouts
@@ -78,6 +92,25 @@ export interface IStorageAdapter {
   createLayout(projectSlug: string, config: LayoutConfig): Promise<void>;
   deleteLayout(projectSlug: string, layoutSlug: string): Promise<void>;
   findLayoutsUsingAgent(agentSlug: string): LayoutAgentReference[];
+
+  // Owner-scoped layouts (#2060). A project owner routes to the four methods
+  // above; principal- and instance-owned records are stored outside
+  // `projects/`, so no project layout route can list or read one.
+  listOwnedLayouts?(owner: LayoutOwner): LayoutMetadata[];
+  getOwnedLayout?(owner: LayoutOwner, layoutSlug: string): LayoutConfig;
+  createOwnedLayout?(owner: LayoutOwner, config: LayoutConfig): Promise<void>;
+  deleteOwnedLayout?(owner: LayoutOwner, layoutSlug: string): Promise<void>;
+  /**
+   * Serialized read-modify-write for one non-project Layout (#2061). The
+   * updater sees `undefined` when no record exists, so create and update are
+   * the same transaction and neither needs an existence probe outside the
+   * lock.
+   */
+  mutateOwnedLayout?(
+    owner: LayoutOwner,
+    layoutSlug: string,
+    update: (current: LayoutConfig | undefined) => LayoutConfig,
+  ): Promise<LayoutConfig>;
 
   // Provider connections
   listProviderConnections(): ProviderConnectionConfig[];

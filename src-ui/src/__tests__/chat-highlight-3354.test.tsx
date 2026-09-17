@@ -10,16 +10,64 @@
  *      previously rendered plain once the turn settled).
  */
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
+
+// CodeBlockFrame measures itself with ResizeObserver (#1853); jsdom has no
+// implementation, so stub it like DiffPanel.test.tsx does.
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+});
+afterAll(() => {
+  delete (globalThis as Record<string, unknown>).ResizeObserver;
+});
 
 const highlightCode = vi.fn((code: string, lang: string) =>
   Promise.resolve(`<pre data-testid="hl" data-lang="${lang}">${code}</pre>`),
 );
 vi.mock('../highlight/highlight-client', () => ({ highlightCode }));
 
+// `MarkdownRenderer` renders chat anchors through `ChatMarkdownAnchor`
+// (#2049), whose region-model import reaches `DeviceSettingsContext`, which
+// calls `setHapticsUserEnabled` at module load. Both exports must exist on the
+// double or the renderer fails to import and every case below reds for a
+// reason unrelated to highlighting.
 vi.mock('../platform/native/haptics', () => ({
   triggerHaptic: () => {},
+  setHapticsUserEnabled: () => {},
 }));
+
+/**
+ * jsdom has no ResizeObserver at all, and #1853 gave `CodeBlockFrame` one to
+ * keep the copy affordance reachable past a long block. Every test here
+ * renders a code block, so without this the component throws on mount and all
+ * four cases fail for a reason unrelated to highlighting.
+ *
+ * A no-op is the right double: these cases assert what the highlighter
+ * produced, never what a resize did. `useScrollRestoration.test.tsx` installs
+ * a capturing fake for the opposite reason — it drives the callback — and the
+ * same local-stub shape is used here rather than a global one so a suite that
+ * genuinely depends on the absence is unaffected.
+ */
+class NoopResizeObserver implements ResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+vi.stubGlobal('ResizeObserver', NoopResizeObserver);
 
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMarkdown } from '../components/chat/StreamingMarkdown';

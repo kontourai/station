@@ -16,6 +16,7 @@ import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
+import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -25,6 +26,7 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import type { Logger } from '../../utils/logger.js';
@@ -50,7 +52,8 @@ type ToolNameMapping = Map<
   }
 >;
 
-export interface RuntimeInitializationContext {
+interface RuntimeInitializationContext {
+  attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
   logger: Logger;
@@ -58,7 +61,10 @@ export interface RuntimeInitializationContext {
   approvalRegistry: ApprovalRegistry;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'canSharePersonalConversation'
+    | 'personalConversationOwnerIds'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -89,6 +95,7 @@ export interface RuntimeInitializationContext {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
+  onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -101,6 +108,7 @@ export interface RuntimeInitializationContext {
   agentTools: Map<string, unknown>;
   agentSpecs: Map<string, AgentSpec>;
   mcpConfigs: Map<string, unknown>;
+  mcpCustody: import('@kontourai/station-shared/mcp').MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: RuntimeIntegrationMetadata;
   toolNameMapping: ToolNameMapping;
@@ -129,10 +137,13 @@ export interface RuntimeInitializationContext {
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   };
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   }) => void;
   guardDefaultAgentTools?: (tools: any[]) => any[];
   replaceTemplateVariables: (text: string, agentName?: string) => string;
@@ -156,6 +167,7 @@ export function createRuntimeInitializationDeps(
   context: RuntimeInitializationContext,
 ): InitializeRuntimeDeps {
   return {
+    attachedSessionSources: context.attachedSessionSources ?? [],
     port: context.port,
     host: context.host,
     logger: context.logger,
@@ -170,6 +182,7 @@ export function createRuntimeInitializationDeps(
     voiceService: context.voiceService,
     acpBridge: context.acpBridge,
     resolveBuiltinEngineBinding: context.resolveBuiltinEngineBinding,
+    onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     usageAggregator: context.usageAggregator,
@@ -181,6 +194,7 @@ export function createRuntimeInitializationDeps(
     agentTools: context.agentTools,
     agentSpecs: context.agentSpecs,
     mcpConfigs: context.mcpConfigs,
+    mcpCustody: context.mcpCustody,
     mcpConnectionStatus: context.mcpConnectionStatus,
     integrationMetadata: context.integrationMetadata,
     toolNameMapping: context.toolNameMapping,
@@ -202,6 +216,7 @@ export function createRuntimeInitializationDeps(
     reloadAgents: context.reloadAgents,
     captureAgentConfigurationRevisions:
       context.captureAgentConfigurationRevisions,
+    registryTrustPolicyAuthority: context.registryTrustPolicyAuthority,
     onAgentConfigurationReady: context.onAgentConfigurationReady,
     guardDefaultAgentTools: context.guardDefaultAgentTools,
     replaceTemplateVariables: context.replaceTemplateVariables,

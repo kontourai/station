@@ -1,4 +1,12 @@
-import { readFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { resolve } from 'node:path';
 import {
   parseWorkspacePaneDescriptor,
   parseWorkspacePaneInstance,
@@ -20,6 +28,42 @@ const inventory = () =>
   );
 
 describe('Coding workspace composition Stage 0 inventory', () => {
+  test('walks owned package tests without following installed dependencies or accepting their proofs', () => {
+    const directory = mkdtempSync('packages/.coding-inventory-');
+    const owned = `${directory}/owned.test.ts`.replaceAll('\\', '/');
+    const dependency =
+      `${directory}/node_modules/vendor/proof.test.ts`.replaceAll('\\', '/');
+    try {
+      mkdirSync(resolve(directory, 'node_modules/vendor'), { recursive: true });
+      writeFileSync(owned, "test('owned proof', () => {});");
+      writeFileSync(dependency, "test('dependency proof', () => {});");
+      symlinkSync(
+        resolve(directory, 'missing-target'),
+        resolve(directory, 'node_modules/broken'),
+        'junction',
+      );
+      const value = inventory();
+      value.mcpApps.displayMode.testProofs.push({
+        path: owned,
+        anchor: 'owned proof',
+      });
+      expect(
+        auditCodingCompositionInventory(process.cwd(), { inventory: value }),
+      ).toEqual([]);
+      value.mcpApps.displayMode.testProofs.push({
+        path: dependency,
+        anchor: 'dependency proof',
+      });
+      expect(
+        auditCodingCompositionInventory(process.cwd(), { inventory: value }),
+      ).toContain(
+        `MCP Apps display-mode mediation names missing test path ${dependency}`,
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test('the independently authored gate accepts current production dependencies', () => {
     expect(auditCodingCompositionInventory()).toEqual([]);
   });

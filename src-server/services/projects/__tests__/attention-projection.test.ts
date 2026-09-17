@@ -5,15 +5,18 @@ import {
   SESSION_LIFECYCLE_STATES,
   type SessionLifecycleState,
 } from '@kontourai/station-contracts/session-lifecycle';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { projectRequestAnswerability } from '../../orchestration/open-requests.js';
 import {
   AttentionProjectionService,
   buildSessionFailedItem,
+  type PausedGateReviewAggregate,
+  type PausedGateReviewSource,
 } from '../attention-projection.js';
 
 const now = '2026-07-23T12:00:00.000Z';
@@ -81,7 +84,10 @@ function makeService(opts: {
   unanswerable?: string[];
   /** archive#1914: the acknowledgement store, and the identity that scopes it. */
   acknowledgementStore?: {
-    get(userId: string, conversationId: string): string | undefined;
+    getMany(
+      userId: string,
+      conversationIds: readonly string[],
+    ): ReadonlyMap<string, string>;
     acknowledge(input: {
       userId: string;
       conversationId: string;
@@ -91,6 +97,25 @@ function makeService(opts: {
   getUserId?: () => string;
   /** #765 D5: the pairing service's current request list. */
   pairingRequests?: unknown[];
+  /**
+   * #1536 D8: what stands between Station's own Agent and running. A function
+   * lets a test change the requirement between reads (review M2).
+   */
+  stationSetupRequirement?:
+    | { agentSlug: string; agentName: string; reason: string }
+    | null
+    | (() => { agentSlug: string; agentName: string; reason: string } | null);
+  /**
+   * #2064 D4: the two sources the inbox widened onto. Both are the LIVE
+   * arrays/thunks the projection reads on every `list()`, not a snapshot, so
+   * a test can add or resolve a source item between reads and watch the
+   * projection follow — which is the only way to show the counts are derived
+   * rather than stamped.
+   */
+  proposedChanges?: unknown[];
+  gateReviews?:
+    | (() => Promise<PausedGateReviewAggregate>)
+    | readonly PausedGateReviewSource[];
 }) {
   const {
     notifications = [],
@@ -103,6 +128,9 @@ function makeService(opts: {
     acknowledgementStore,
     getUserId,
     pairingRequests,
+    stationSetupRequirement,
+    proposedChanges,
+    gateReviews,
   } = opts;
   // Production receives a complete registry dependency. Keep older fixtures
   // terse while supplying its harmless personal-mode default explicitly.
@@ -139,6 +167,27 @@ function makeService(opts: {
     pairingRequests
       ? () => ({ listRequests: () => pairingRequests as never })
       : undefined,
+    stationSetupRequirement === undefined
+      ? undefined
+      : async () =>
+          typeof stationSetupRequirement === 'function'
+            ? stationSetupRequirement()
+            : stationSetupRequirement,
+    proposedChanges
+      ? ({
+          list: (filters: { status?: string[] }) =>
+            proposedChanges.filter(
+              (change) =>
+                !filters.status ||
+                filters.status.includes((change as { status: string }).status),
+            ),
+        } as never)
+      : undefined,
+    gateReviews === undefined
+      ? undefined
+      : typeof gateReviews === 'function'
+        ? gateReviews
+        : async () => ({ items: gateReviews, unavailableProjects: [] }),
   );
 }
 
@@ -205,7 +254,7 @@ describe('AttentionProjectionService', () => {
       registry,
     );
     const acknowledgementStore = {
-      get: () => undefined,
+      getMany: () => new Map(),
       acknowledge: () => {},
     };
     const projection = new AttentionProjectionService(
@@ -288,11 +337,11 @@ describe('AttentionProjectionService', () => {
       items: expect.arrayContaining([
         expect.objectContaining({
           kind: 'approval',
-          openHref: '/activity?session=thread%2Fone',
+          openHref: activityDeepLink({ sessionId: 'thread/one' }),
         }),
         expect.objectContaining({
           kind: 'needs_input',
-          openHref: '/activity?session=thread%20two',
+          openHref: activityDeepLink({ sessionId: 'thread two' }),
         }),
       ]),
     });
@@ -829,7 +878,69 @@ describe('AttentionProjectionService', () => {
           requestType: 'approval',
         }),
       );
-      expect(result.items[0].body).toContain('args: {command}');
+      // #1545: the command itself, not a field-name list — `args: {command}`
+      // read the same for `ls -la` and `rm -rf /`.
+      expect(result.items[0].body).toContain('ls -la');
+    });
+
+    test('a Codex file-change approval names the files it will change (#1545 D4)', async () => {
+      // Codex publishes the app-server's raw request params, so there is no
+      // named argument bag at all — this row said only "Approve file changes".
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-files',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-files': [
+            requestOpened({
+              threadId: 'thread-codex-files',
+              requestType: 'approval',
+              title: 'Approve file changes',
+              payload: {
+                changes: [
+                  { path: 'src/index.ts', diff: '@@ -1 +1 @@' },
+                  { path: 'README.md', diff: 'x'.repeat(4_000) },
+                ],
+              },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('src/index.ts, README.md');
+      // The diff bodies must not be what the line gets spent on.
+      expect(result.items[0].body).not.toContain('@@');
+      expect(result.items[0].body).not.toContain('xxxx');
+    });
+
+    test('a Codex command approval names the command (#1545 D4)', async () => {
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-cmd',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-cmd': [
+            requestOpened({
+              threadId: 'thread-codex-cmd',
+              requestType: 'approval',
+              title: 'rm -rf tmp',
+              payload: { command: 'rm -rf tmp', reason: 'Needs approval' },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('rm -rf tmp');
     });
 
     test('a permission request produces a title naming the tool', async () => {
@@ -894,6 +1005,11 @@ describe('AttentionProjectionService', () => {
           title:
             'The agent asked a question: Which environment should I deploy to?',
           requestType: 'input',
+          inputReference: expect.objectContaining({
+            threadId: 'thread-input',
+            requestId: expect.any(String),
+            requestEventId: expect.any(String),
+          }),
         }),
       );
     });
@@ -989,16 +1105,19 @@ describe('AttentionProjectionService', () => {
       expect(item.body).not.toContain(secret);
       expect(item.body).not.toContain(hugeBlob);
       expect(item.title).not.toContain(secret);
-      // Field-name shape summary, not values — bounded length overall.
+      // #1545 renders values, so the bound and the secret redaction are now
+      // the ONLY things keeping this row safe: the field names still appear,
+      // their values do not, and the huge blob cannot fit.
       expect(item.body).toContain('apiKey');
       expect(item.body).toContain('authorization');
+      expect(item.body).toContain('[REDACTED]');
       expect((item.body ?? '').length).toBeLessThan(300);
       // Exact match, not just toContain: this is the secret-payload row of
       // the PR body's example table (title AND full body) — previously
       // only verified by code trace (review finding #5).
       expect(item.title).toBe('Tool call awaiting approval: http_request');
       expect(item.body).toBe(
-        'Allow http_request — args: {apiKey, authorization, body}',
+        `Allow http_request — {"apiKey":"[REDACTED]","authorization":"Bearer [REDACTED]","body":"${'x'.repeat(92)}…`,
       );
     });
 
@@ -1176,7 +1295,7 @@ describe('AttentionProjectionService', () => {
       // the one that fails against unconverged `projectApproval` (see the
       // red-output transcript in the PR).
       expect(item?.title).toBe('Tool call awaiting approval: bash');
-      expect(item?.body).toBe('Allow bash — args: {command}');
+      expect(item?.body).toBe('Allow bash — ls -la');
       // Convergence must not regress the existing approval-kind contract:
       // kind, actions, and the approval-notification source shape stay put.
       expect(item?.kind).toBe('approval');
@@ -1347,7 +1466,7 @@ describe('AttentionProjectionService', () => {
           title: 'Untitled session',
           body: 'Engine exited with code 1',
           sessionId: 'thread-boom',
-          openHref: '/activity?session=thread-boom',
+          openHref: activityDeepLink({ sessionId: 'thread-boom' }),
         }),
       );
     });
@@ -1506,8 +1625,8 @@ describe('AttentionProjectionService', () => {
        * chat dock, and the dock has no failure surface at all — `failureText`
        * is derived in `useMutableSessionDetailState` and rendered only by
        * `SessionDetailErrors`, inside the session detail pane. A failed
-       * session must therefore land on `/activity?session=`, EVEN WHEN it has
-       * a project slug that would otherwise route it to the dock.
+       * session must therefore land on the Activity surface, EVEN WHEN it
+       * has a project slug that would otherwise route it to the dock.
        */
       test('a project-scoped failure opens the session detail, not the chat dock', async () => {
         const service = makeService({
@@ -1532,7 +1651,7 @@ describe('AttentionProjectionService', () => {
         expect(
           result.items.find((item) => item.sessionId === 'thread-boom')
             ?.openHref,
-        ).toBe('/activity?session=thread-boom');
+        ).toBe(activityDeepLink({ sessionId: 'thread-boom' }));
         expect(
           result.items.find((item) => item.sessionId === 'thread-ask')
             ?.openHref,
@@ -1646,8 +1765,13 @@ describe('AttentionProjectionService', () => {
       function memoryAckStore() {
         const data = new Map<string, Map<string, string>>();
         return {
-          get(userId: string, conversationId: string) {
-            return data.get(userId)?.get(conversationId);
+          getMany(userId: string, conversationIds: readonly string[]) {
+            return new Map(
+              conversationIds.flatMap((id) => {
+                const version = data.get(userId)?.get(id);
+                return version ? [[id, version] as const] : [];
+              }),
+            );
           },
           acknowledge({
             userId,
@@ -1663,6 +1787,23 @@ describe('AttentionProjectionService', () => {
           },
         };
       }
+
+      test('reads acknowledgement versions once for the whole attention projection', async () => {
+        const store = memoryAckStore();
+        const getMany = vi.spyOn(store, 'getMany');
+        const service = makeService({
+          sessions: ['a', 'b', 'c'].map((threadId) =>
+            baseSession({ threadId, lifecycleState: 'failed' }),
+          ),
+          acknowledgementStore: store,
+        });
+        const result = await service.list();
+        expect(result.items).toHaveLength(3);
+        expect(getMany).toHaveBeenCalledTimes(1);
+        expect(new Set(getMany.mock.calls[0][1])).toEqual(
+          new Set(result.items.map((item) => item.id)),
+        );
+      });
 
       test('acknowledging drops the item from pendingCount but keeps it in items (history, never deleted)', async () => {
         const acknowledgementStore = memoryAckStore();
@@ -1988,7 +2129,8 @@ describe('AttentionProjectionService', () => {
     // AC4: "Open session" must actually open the dock. `dock=open` is what
     // navigation-store.ts's `isDockOpen` reads; without it the deep link
     // lands on the project layout with the dock still shut — defect 1 in
-    // the issue. `/activity` is not a dock target and must stay plain.
+    // the issue. The surface deep link carries its own reveal; it must not
+    // also stamp `dock=open`.
     test('sessionOpenHref stamps dock=open on the project-scoped href only', async () => {
       const service = makeService({
         sessions: [
@@ -2013,7 +2155,7 @@ describe('AttentionProjectionService', () => {
       expect(
         result.items.find((item) => item.sessionId === 'thread-no-project')
           ?.openHref,
-      ).toBe('/activity?session=thread-no-project');
+      ).toBe(activityDeepLink({ sessionId: 'thread-no-project' }));
     });
   });
 });
@@ -2045,7 +2187,7 @@ describe('buildSessionFailedItem (#3203)', () => {
       createdAt: now,
       updatedAt: now,
       sessionId: 'thread-boom',
-      openHref: '/activity?session=thread-boom',
+      openHref: activityDeepLink({ sessionId: 'thread-boom' }),
       source: { threadId: 'thread-boom' },
       engine: 'claude',
       agent: 'reviewer',
@@ -2112,7 +2254,7 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
           title: 'Session blocked',
           body: 'Waiting on a human decision about the deploy',
           sessionId: 'thread-stuck',
-          openHref: '/activity?session=thread-stuck',
+          openHref: activityDeepLink({ sessionId: 'thread-stuck' }),
         }),
       );
     });
@@ -2480,8 +2622,13 @@ describe('device pairing requests need attention (#765 D5)', () => {
     const projection = makeService({
       pairingRequests: [pairingRequest()],
       acknowledgementStore: {
-        get: (userId, conversationId) =>
-          acked.get(`${userId}:${conversationId}`),
+        getMany: (userId, ids) =>
+          new Map(
+            ids.flatMap((id) => {
+              const version = acked.get(`${userId}:${id}`);
+              return version ? [[id, version] as const] : [];
+            }),
+          ),
         acknowledge: ({ userId, conversationId, updatedAt }) => {
           acked.set(`${userId}:${conversationId}`, updatedAt);
         },
@@ -2499,5 +2646,478 @@ describe('device pairing requests need attention (#765 D5)', () => {
         acknowledgedAt: expect.any(String),
       }),
     ]);
+  });
+});
+
+/**
+ * #1536 D8. The inbox read "All caught up · Nothing needs you right now" on
+ * a fresh home whose New Chat picker, one surface away, marked the Station
+ * row "Needs: No enabled LLM provider connection is configured."
+ */
+describe('Station cannot run its own Agent (#1536 D8)', () => {
+  const requirement = {
+    agentSlug: 'station',
+    agentName: 'Station',
+    reason: 'No enabled LLM provider connection is configured.',
+  };
+
+  test("projects the requirement, in the picker's own sentence", async () => {
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list();
+
+    expect(result.pendingCount).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'setup-incomplete:model-connection:station',
+        kind: 'setup-incomplete',
+        title: 'Station cannot run yet',
+        body: 'No enabled LLM provider connection is configured.',
+        openHref: '/connections/models',
+        source: { requirement: 'model-connection', agentSlug: 'station' },
+      }),
+    ]);
+  });
+
+  test('projects nothing once the Agent resolves', async () => {
+    const service = makeService({ stationSetupRequirement: null });
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('is unavailable, not assumed, when no resolver is wired', async () => {
+    const service = makeService({});
+
+    await expect(service.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  /**
+   * Review M1: "Dismiss all" mapped every item to the acknowledge route, and
+   * the row only came back because its `updatedAt` moved on the next read — an
+   * accident, not a refusal.
+   */
+  test('cannot be acknowledged away, because it is still true afterwards', async () => {
+    const acked = new Map<string, string>();
+    const service = makeService({
+      stationSetupRequirement: requirement,
+      acknowledgementStore: {
+        getMany: (userId, conversationIds) =>
+          new Map(
+            conversationIds.flatMap((conversationId) => {
+              const version = acked.get(`${userId}:${conversationId}`);
+              return version === undefined
+                ? []
+                : [[conversationId, version] as const];
+            }),
+          ),
+        acknowledge: ({ userId, conversationId, updatedAt }) => {
+          acked.set(`${userId}:${conversationId}`, updatedAt);
+        },
+      },
+    });
+
+    expect(
+      await service.acknowledge('setup-incomplete:model-connection:station'),
+    ).toBe(false);
+    expect(acked.size).toBe(0);
+    const result = await service.list();
+    expect(result.pendingCount).toBe(1);
+    expect(result.items[0]?.acknowledgedAt).toBeUndefined();
+  });
+
+  /**
+   * Review M2: a read-time stamp made this row outrank every live approval on
+   * every read — an artefact of the timestamp, not a priority anyone chose —
+   * and made acknowledgement versioning meaningless.
+   */
+  test('says since when it has been true, not when the projection last looked', async () => {
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const first = (await service.list()).items[0];
+    await new Promise((settle) => setTimeout(settle, 3));
+    const second = (await service.list()).items[0];
+
+    expect(second?.updatedAt).toBe(first?.updatedAt);
+    expect(second?.createdAt).toBe(first?.createdAt);
+  });
+
+  test('a changed requirement is a new observation', async () => {
+    let current = requirement;
+    const service = makeService({
+      stationSetupRequirement: () => current,
+    });
+
+    const before = (await service.list()).items[0]?.updatedAt;
+    current = {
+      ...requirement,
+      reason:
+        'Multiple enabled LLM provider connections require an explicit default.',
+    };
+    await new Promise((settle) => setTimeout(settle, 3));
+    const after = (await service.list()).items[0];
+
+    expect(after?.body).toContain('explicit default');
+    expect(after?.updatedAt).not.toBe(before);
+  });
+
+  test('sorts below a live approval, whatever the clock says', async () => {
+    const older = new Date(Date.parse(now) - 3_600_000).toISOString();
+    const service = makeService({
+      stationSetupRequirement: requirement,
+      notifications: [registryApproval({ createdAt: older, updatedAt: older })],
+      sessions: [baseSession({ threadId: 'conversation-1' })],
+      approvalRegistry: { has: () => true },
+    });
+
+    const { items } = await service.list();
+
+    // A live approval an hour old still leads a standing notice observed now.
+    expect(items.map((item) => item.kind)).toEqual([
+      'approval',
+      'setup-incomplete',
+    ]);
+  });
+
+  test('host model configuration is not projected to a hosted tenant read', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+    });
+    const service = makeService({ stationSetupRequirement: requirement });
+
+    const result = await service.list(
+      sessionReadAuthorityFromRequest(
+        'alpha',
+        { tenantId: registry.tenants[0].id },
+        registry,
+      ),
+    );
+
+    expect(result.items).toEqual([]);
+  });
+});
+
+describe('exact attention request references', () => {
+  test('permission references capture their exact open event and Session', async () => {
+    const projection = makeService({
+      sessions: [
+        baseSession({
+          threadId: 'exact-session',
+          lifecycleState: 'review_pending',
+        }),
+      ],
+      sessionEvents: {
+        'exact-session': [
+          requestOpened({
+            threadId: 'exact-session',
+            requestId: 'exact-request',
+            eventId: 'exact-event',
+            requestType: 'permission',
+          }),
+        ],
+      },
+    });
+    const item = (await projection.list()).items[0];
+    expect(item).toMatchObject({
+      requestReference: {
+        threadId: 'exact-session',
+        requestId: 'exact-request',
+        requestEventId: 'exact-event',
+      },
+    });
+  });
+  test.each(['input', 'confirmation'])(
+    '%s requests retain the ordinary Session fallback',
+    async (requestType) => {
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'fallback-session',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'fallback-session': [
+            requestOpened({ threadId: 'fallback-session', requestType }),
+          ],
+        },
+      });
+      expect((await projection.list()).items[0]).not.toHaveProperty(
+        'requestReference',
+      );
+    },
+  );
+  test('a request payload cannot retarget the Session that owns its attention row', async () => {
+    const projection = makeService({
+      sessions: [
+        baseSession({
+          threadId: 'owner-session',
+          lifecycleState: 'review_pending',
+        }),
+      ],
+      sessionEvents: {
+        'owner-session': [requestOpened({ threadId: 'foreign-session' })],
+      },
+    });
+    expect((await projection.list()).items[0]).not.toHaveProperty(
+      'requestReference',
+    );
+  });
+});
+
+/**
+ * #2064 (D4): the inbox widened to carry every item meaning "a human must
+ * decide" — proposed-change decisions and paused gate reviews, which used to
+ * be reachable only from `/review-queue` and which neither the bell badge nor
+ * any project row could see.
+ */
+describe('AttentionProjectionService proposed changes and gate reviews', () => {
+  function pendingChange(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'change-1',
+      sessionId: 'thread-1',
+      projectId: 'campfit',
+      path: 'src/index.ts',
+      changeType: 'modify',
+      contentKind: 'code',
+      sourceRuntime: 'claude',
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      baseSnapshot: null,
+      proposedSnapshot: null,
+      decisions: [],
+      ...overrides,
+    };
+  }
+
+  function pausedReview(
+    overrides: Partial<PausedGateReviewSource> = {},
+  ): PausedGateReviewSource {
+    return {
+      reviewSessionRef: 'review-session-1',
+      projectSlug: 'campfit',
+      workflowSubjectRef: 'flow:build#7',
+      sessionName: 'Survey gate review',
+      updatedAt: now,
+      pendingDecisions: 2,
+      ...overrides,
+    };
+  }
+
+  test('a pending proposed change projects a decidable item scoped to its project', async () => {
+    const projection = makeService({ proposedChanges: [pendingChange()] });
+    const item = (await projection.list()).items.find(
+      (candidate) => candidate.kind === 'proposed-change',
+    );
+    expect(item).toMatchObject({
+      id: 'proposed-change:change-1',
+      title: 'src/index.ts',
+      projectSlug: 'campfit',
+      path: 'src/index.ts',
+      contentKind: 'code',
+      sourceRuntime: 'claude',
+      source: { proposedChangeId: 'change-1', projectSlug: 'campfit' },
+    });
+  });
+
+  test('an already-decided change projects nothing — the status filter is the whole adjudication', async () => {
+    const projection = makeService({
+      proposedChanges: [pendingChange({ status: 'approved' })],
+    });
+    expect(
+      (await projection.list()).items.filter(
+        (item) => item.kind === 'proposed-change',
+      ),
+    ).toEqual([]);
+  });
+
+  test('a paused gate review with unresolved items projects a gate-review item', async () => {
+    const projection = makeService({ gateReviews: [pausedReview()] });
+    const item = (await projection.list()).items.find(
+      (candidate) => candidate.kind === 'gate-review',
+    );
+    expect(item).toMatchObject({
+      id: 'gate-review:review-session-1',
+      kind: 'gate-review',
+      title: 'Survey gate review',
+      projectSlug: 'campfit',
+      pendingDecisions: 2,
+      openHref: '/projects/campfit/layouts/review?review=review-session-1',
+      source: {
+        reviewSessionRef: 'review-session-1',
+        projectSlug: 'campfit',
+        workflowSubjectRef: 'flow:build#7',
+      },
+    });
+  });
+
+  test('a review session with every item decided is finished work, not an ask', async () => {
+    const projection = makeService({
+      gateReviews: [pausedReview({ pendingDecisions: 0 })],
+    });
+    expect(
+      (await projection.list()).items.filter(
+        (item) => item.kind === 'gate-review',
+      ),
+    ).toEqual([]);
+  });
+
+  test('an unreadable gate-review source degrades to no gate items, never a blank inbox', async () => {
+    const projection = makeService({
+      proposedChanges: [pendingChange()],
+      gateReviews: async () => {
+        throw new Error('workspace unreadable');
+      },
+    });
+    const { items } = await projection.list();
+    expect(items.filter((item) => item.kind === 'gate-review')).toEqual([]);
+    expect(
+      items.filter((item) => item.kind === 'proposed-change'),
+    ).toHaveLength(1);
+  });
+
+  /**
+   * #2064 review MED-2 — the reviewer's executed case. Survey's
+   * `reviewSessionSummary` files an UNDECIDED item whose `candidateSetStatus`
+   * is `escalated` under `escalated`, not `unresolved`, while continuation
+   * still needs a recorded result for it. Reading `summary.unresolved` made
+   * the inbox silent for exactly the sessions most stuck.
+   */
+  test('a gate whose remaining items are all escalated still needs a person', async () => {
+    const projection = makeService({
+      // The shape the reviewer reproduced: nothing in `unresolved`, two items
+      // with no decision recorded, run still paused.
+      gateReviews: [pausedReview({ pendingDecisions: 2 })],
+    });
+    const item = (await projection.list()).items.find(
+      (candidate) => candidate.kind === 'gate-review',
+    );
+    expect(item).toMatchObject({ kind: 'gate-review', pendingDecisions: 2 });
+    expect(item?.body).toBe('2 awaiting a decision · flow:build#7');
+  });
+
+  /**
+   * #2064 review LOW-4. `/api/attention` polls every 10s per client and the
+   * aggregate walks every workspace and replays every review session, warning
+   * once per unreadable project as it goes.
+   */
+  test('repeated reads inside the cache window hit the review aggregate once', async () => {
+    let calls = 0;
+    const projection = makeService({
+      gateReviews: async () => {
+        calls += 1;
+        return { items: [pausedReview()], unavailableProjects: [] };
+      },
+    });
+    await projection.list();
+    await projection.list();
+    await projection.list();
+    expect(calls).toBe(1);
+    // Still projecting from the cached read, not silently emptied by it.
+    expect(
+      (await projection.list()).items.filter(
+        (item) => item.kind === 'gate-review',
+      ),
+    ).toHaveLength(1);
+  });
+
+  /**
+   * #2064 review (c): a project Station could not read contributes zero gate
+   * items, and zero items must never be reported as "nothing needs you".
+   */
+  test('a project the review aggregate could not read is reported, not silently empty', async () => {
+    const projection = makeService({
+      gateReviews: async () => ({
+        items: [],
+        unavailableProjects: [
+          { projectSlug: 'campfit', reason: 'workspace-unreadable' },
+        ],
+      }),
+    });
+    const { items, unavailableSources } = await projection.list();
+    expect(items.filter((item) => item.kind === 'gate-review')).toEqual([]);
+    expect(unavailableSources).toEqual([
+      {
+        source: 'gate-reviews',
+        projectSlug: 'campfit',
+        reason: 'workspace-unreadable',
+      },
+    ]);
+  });
+
+  test('a fully-covered read reports no gap at all, rather than an empty one', async () => {
+    const projection = makeService({ gateReviews: [pausedReview()] });
+    expect(await projection.list()).not.toHaveProperty('unavailableSources');
+  });
+
+  test('an aggregate that fails whole is reported as unreadable, not as no reviews', async () => {
+    const projection = makeService({
+      gateReviews: async () => {
+        throw new Error('workspace unreadable');
+      },
+    });
+    const { unavailableSources } = await projection.list();
+    expect(unavailableSources).toEqual([
+      { source: 'gate-reviews', reason: 'review sessions unreadable' },
+    ]);
+  });
+
+  /**
+   * #2064 product decision (a): these two kinds resolve by BEING DECIDED.
+   * Acking one would drop a live, blocking ask out of the bell and out of its
+   * project's count while the change stayed undecided, and nothing would bring
+   * it back — the item re-derives with the same `updatedAt` every read.
+   */
+  test('a pending decision cannot be acknowledged away', async () => {
+    const acknowledged = new Map<string, string>();
+    const projection = makeService({
+      proposedChanges: [pendingChange()],
+      gateReviews: [pausedReview()],
+      acknowledgementStore: {
+        getMany: () => acknowledged,
+        acknowledge: ({ conversationId, updatedAt }) =>
+          void acknowledged.set(conversationId, updatedAt),
+      },
+    });
+    expect(await projection.acknowledge('proposed-change:change-1')).toBe(
+      false,
+    );
+    expect(await projection.acknowledge('gate-review:review-session-1')).toBe(
+      false,
+    );
+    // Refused, not silently recorded: nothing reached the store, so the two
+    // items are still counted.
+    expect(acknowledged.size).toBe(0);
+    expect((await projection.list()).pendingCount).toBe(2);
+  });
+
+  test('hosted reads project neither: the host stores carry no tenancy predicate', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+    });
+    const projection = makeService({
+      proposedChanges: [pendingChange()],
+      gateReviews: [pausedReview()],
+    });
+    const hosted = sessionReadAuthorityFromRequest(
+      'alpha',
+      { tenantId: registry.tenants[0].id },
+      registry,
+    );
+    const { items } = await projection.list(hosted);
+    expect(
+      items.filter(
+        (item) =>
+          item.kind === 'proposed-change' || item.kind === 'gate-review',
+      ),
+    ).toEqual([]);
   });
 });

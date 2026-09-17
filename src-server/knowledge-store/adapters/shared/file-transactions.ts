@@ -17,6 +17,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import { knowledgeStoreTransactionOps } from '../../../telemetry/metrics.js';
 import { resolveHomeDir } from '../../../utils/paths.js';
 import {
@@ -25,6 +26,12 @@ import {
   KnowledgeStoreCorruptionError,
   KnowledgeStoreUnavailableError,
 } from '../../errors.js';
+import {
+  KnowledgeObservationRefusal,
+  observeDirectoryChain,
+  readObservationFile,
+  requireObservationArtifactAbsent,
+} from './observation-file.js';
 
 const JOURNAL_VERSION = 1;
 const JOURNAL_FILE = '.station-knowledge-transaction.json';
@@ -33,6 +40,85 @@ const COORDINATION_DIRECTORY = join(
   'coordination',
   'knowledge-file-transactions',
 );
+
+function knowledgeLockIdentity(
+  rootRealpath: string,
+  device: number,
+  inode: number,
+): string {
+  return createHash('sha256')
+    .update(`${rootRealpath}\0${device}\0${inode}`)
+    .digest('hex');
+}
+
+/** The writer owns this namespace. An observer may assert, never select, it. */
+function knowledgeCoordinationLocation(expectedHome?: string): {
+  home: string;
+  directory: string;
+} {
+  // The existing runtime resolver only checks path metadata/admission. It does
+  // not prepare a home, acquire a lease, read payloads or repair anything.
+  const home = resolve(resolveHomeDir());
+  if (expectedHome !== undefined && expectedHome !== home) {
+    throw new KnowledgeObservationRefusal('unavailable');
+  }
+  return { home, directory: join(home, COORDINATION_DIRECTORY) };
+}
+
+/**
+ * Separate, zero-write observation port of this owner. Does not construct the
+ * mutating coordinator or promise its locked-read atomic visibility. A vanished
+ * intervening journal/lock is not proof of committed state: consumers must retain
+ * non-atomic/unknown transaction semantics. IDs must be exact, never aliases.
+ */
+export function observeExactKnowledgeRecordFile(
+  root: string,
+  stationHome: string,
+  id: string,
+) {
+  if (
+    !isSafePathSegment(id) ||
+    id.length > 200 ||
+    typeof root !== 'string' ||
+    root.length > 4096 ||
+    typeof stationHome !== 'string' ||
+    stationHome.length > 4096
+  ) {
+    throw new KnowledgeObservationRefusal('unavailable');
+  }
+  const owner = knowledgeCoordinationLocation(stationHome);
+  const recheckRoot = observeDirectoryChain(root);
+  const recheckHome = observeDirectoryChain(owner.home);
+  const rootInfo = lstatSync(root);
+  const coordinationRoot = owner.directory;
+  const recheckCoordination = observeDirectoryChain(coordinationRoot, true);
+  const lockPath = join(
+    coordinationRoot,
+    `${knowledgeLockIdentity(root, rootInfo.dev, rootInfo.ino)}.lock`,
+  );
+  const check = () => {
+    // Re-check even after the final host authorization: runtime-home changes
+    // cannot silently move this observation away from the writer's namespace.
+    knowledgeCoordinationLocation(stationHome);
+    recheckRoot();
+    recheckHome();
+    recheckCoordination();
+    requireObservationArtifactAbsent(join(root, JOURNAL_FILE));
+    requireObservationArtifactAbsent(join(root, LEGACY_LOCK_FILE));
+    requireObservationArtifactAbsent(lockPath);
+  };
+  check();
+  const file = readObservationFile(
+    join(root, 'records', `${id}.md`),
+    256 * 1024,
+  );
+  const recheck = () => {
+    check();
+    file?.recheck();
+  };
+  recheck();
+  return { file, recheck };
+}
 
 type JournalEntry = {
   path: string;
@@ -129,10 +215,7 @@ export class KnowledgeFileTransactions {
       // root itself may be writable while its parent is intentionally read
       // only, and a stable root identity keeps distinct adjacent roots from
       // sharing a lock name.
-      const coordinationRoot = join(
-        resolve(resolveHomeDir()),
-        COORDINATION_DIRECTORY,
-      );
+      const coordinationRoot = knowledgeCoordinationLocation().directory;
       mkdirSync(coordinationRoot, { recursive: true, mode: 0o700 });
       const coordinationInfo = lstatSync(coordinationRoot);
       if (
@@ -146,9 +229,11 @@ export class KnowledgeFileTransactions {
           'Knowledge lock coordination root is not private to this user',
         );
       }
-      const lockIdentity = createHash('sha256')
-        .update(`${this.rootRealpath}\0${this.rootDevice}\0${this.rootInode}`)
-        .digest('hex');
+      const lockIdentity = knowledgeLockIdentity(
+        this.rootRealpath,
+        this.rootDevice,
+        this.rootInode,
+      );
       this.lockPath = join(coordinationRoot, `${lockIdentity}.lock`);
     } catch (error) {
       if (error instanceof KnowledgeStoreCorruptionError) throw error;

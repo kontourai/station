@@ -25,55 +25,15 @@
 // the one fact that actually matters: is there a real, installed package
 // under this name, anywhere between this file and the filesystem root.
 //
-// Import extraction is text-based (no AST), but anchored to avoid the
-// false-positive class a looser scan hits immediately: an unanchored
-// `from\s+['"]...['"]` matches inside ordinary prose strings passed to
-// `expect(...)`/`describe(...)`/comments (e.g. a comment reading "…derived
-// from a second, drifted copy" was mis-captured as an import spanning
-// several lines, because a stray apostrophe elsewhere let a
-// same-character-class `[^'"]+` capture run past its real closing quote).
-// Every pattern below requires either a real `import`/`export … from`
-// statement anchored at line-start, or a real `require(...)`/`import(...)`
-// call, with the open/close quote characters matched by backreference —
-// verified empirically against every test file in this repo (1758 files):
-// the anchored form finds 127 distinct real package specifiers with zero
-// prose false-positives, versus 213 "specifiers" (86 of them garbage) from
-// the naive unanchored version.
-//
-// Two known bounds of a text-based (non-AST) extractor, checked against
-// every tracked test file at review time (station#3423 review round) with
-// zero live instances of either — recorded here rather than fixed, because
-// closing them properly needs comment/string-literal-aware stripping before
-// the regex pass runs, which is a materially bigger change than this gate's
-// stated scope. That stripping is NOT a simple `//`/`/* */` find-and-cut: a
-// naive strip would eat a `//` sitting inside an ordinary string literal
-// (e.g. `'http://example.com'`), so a correct version needs a small
-// tokenizer that tracks string/comment context character-by-character —
-// short of full AST parsing, but real lexing all the same:
-// - A multi-line `import { ... } from 'pkg'` whose body contains a `//`
-//   comment with an apostrophe (e.g. `// don't`) is missed entirely: the
-//   `[^;'"]*?` gap between `import` and `from` cannot cross the
-//   apostrophe's quote character, so the whole statement fails to match
-//   and its specifier is silently unextracted (the opposite failure mode
-//   from the false-positive class above — false NEGATIVE, so a package
-//   this misses could still get flagged as unresolvable if it truly is
-//   uninstalled elsewhere in the file, but not proven resolvable by this
-//   import alone).
-// - A `require('pkg')` or `import('pkg')` sitting inside a `//` comment is
-//   still captured as a real import (a false POSITIVE for "this file uses
-//   this package") — REQUIRE_CALL/DYNAMIC_IMPORT_CALL match anywhere in
-//   the line, comment or not. Concretely: `qr-round-trip.test.ts`'s own
-//   former header comment style ("skip if node-canvas isn't installed")
-//   would have hit this if it had used `require('canvas')` prose instead
-//   of an import statement. This direction is safe for the gate's actual
-//   job (it can only make a resolvable package look required, never make
-//   an unresolvable one look resolved) but can produce a confusing
-//   FAIL/line pointing at a comment.
+// Parse syntax so generated module fixtures and comments are not mistaken for
+// imports by the test itself. The TypeScript parser also preserves real imports
+// across comments and visits executable expressions inside template literals.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 // `process.cwd()`, not a path relative to this script file — matches
 // `git ls-files`'s own working-directory semantics and lets the gate be
@@ -110,14 +70,6 @@ export const TEST_FILE_PATTERN =
 // either config gains a new alias prefix.
 const ALIAS_PREFIXES = ['@/', '@shared/'];
 
-const STATIC_IMPORT =
-  /^[ \t]*import\s+(type\s+)?[^;'"]*?from\s*(['"])([^'"]+)\2/gm;
-const EXPORT_FROM =
-  /^[ \t]*export\s+(type\s+)?[^;'"]*?from\s*(['"])([^'"]+)\2/gm;
-const SIDE_EFFECT_IMPORT = /^[ \t]*import\s*(['"])([^'"]+)\1/gm;
-const REQUIRE_CALL = /\brequire\s*\(\s*(['"])([^'"]+)\1\s*\)/g;
-const DYNAMIC_IMPORT_CALL = /\bimport\s*\(\s*(['"])([^'"]+)\1\s*\)/g;
-
 function lineNumberAt(content, index) {
   let line = 1;
   for (let i = 0; i < index; i++) {
@@ -127,25 +79,35 @@ function lineNumberAt(content, index) {
 }
 
 /** Extracts every VALUE-level bare import specifier from test file content. */
-export function extractValueSpecifiers(content) {
+export function extractValueSpecifiers(content, fileName = 'test.ts') {
+  const source = ts.createSourceFile(fileName, content, ts.ScriptTarget.Latest);
   const found = [];
-  for (const [pattern, typeGroup, specGroup] of [
-    [STATIC_IMPORT, 1, 3],
-    [EXPORT_FROM, 1, 3],
-    [SIDE_EFFECT_IMPORT, null, 2],
-    [REQUIRE_CALL, null, 2],
-    [DYNAMIC_IMPORT_CALL, null, 2],
-  ]) {
-    pattern.lastIndex = 0;
-    let match = pattern.exec(content);
-    while (match !== null) {
-      if (typeGroup === null || !match[typeGroup]) {
-        // `import type`/`export type` — erased, never runs — is skipped.
-        found.push({ specifier: match[specGroup], index: match.index });
-      }
-      match = pattern.exec(content);
+  const record = (specifier, owner) => {
+    if (specifier && ts.isStringLiteralLike(specifier))
+      found.push({ specifier: specifier.text, index: owner.getStart(source) });
+  };
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node)) {
+      if (!node.importClause?.isTypeOnly) record(node.moduleSpecifier, node);
+    } else if (ts.isExportDeclaration(node)) {
+      if (!node.isTypeOnly) record(node.moduleSpecifier, node);
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      if (
+        !node.isTypeOnly &&
+        ts.isExternalModuleReference(node.moduleReference)
+      )
+        record(node.moduleReference.expression, node);
+    } else if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (
+        callee.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(callee) && callee.text === 'require')
+      )
+        record(node.arguments[0], node);
     }
-  }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return found;
 }
 
@@ -253,7 +215,10 @@ function main() {
     const content = readFileSync(absFile, 'utf8');
     const fromDir = path.dirname(absFile);
     const seen = new Set();
-    for (const { specifier, index } of extractValueSpecifiers(content)) {
+    for (const { specifier, index } of extractValueSpecifiers(
+      content,
+      relFile,
+    )) {
       if (!isBareSpecifier(specifier)) continue;
       if (isNodeBuiltin(specifier)) continue;
       if (isKnownAlias(specifier)) continue;

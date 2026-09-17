@@ -137,15 +137,6 @@ export const BUILTIN_OPERATIONAL_EVENT_TYPES: readonly OperationalEventTypeDefin
       compatibility: 'exact',
       status: 'active',
     }),
-    immutableDefinition({
-      namespace: 'station',
-      name: 'plugin-command.execution',
-      version: 1,
-      owner: 'station',
-      payloadSchema: 'station.plugin-command.execution/v1',
-      compatibility: 'exact',
-      status: 'active',
-    }),
   ]);
 
 export const DEFAULT_OPERATIONAL_EVENT_TYPE_REGISTRY: OperationalEventTypeRegistry =

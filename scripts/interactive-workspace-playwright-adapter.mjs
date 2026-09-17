@@ -200,7 +200,11 @@ function controlCommand(socketPath, command) {
     socket.setTimeout(REFERENCE_CONTROL_SOCKET_RESPONSE_TIMEOUT_MS, () =>
       socket.destroy(new Error('control timed out')),
     );
-    socket.on('connect', () => socket.end(`${JSON.stringify(command)}\n`));
+    socket.on('connect', () =>
+      socket.write(
+        `${JSON.stringify({ protocol: 'station.task-room-control/v1', request: command })}\n`,
+      ),
+    );
     socket.on('data', (chunk) => {
       bytes += chunk.length;
       if (bytes > MAX_CONTROL_RECEIPT_BYTES)
@@ -430,16 +434,10 @@ export async function measure(
       source: bridgeSource ?? 'station-ui-production-bridge',
       observations,
     };
-    const rawOutput = env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT;
-    if (
-      typeof rawOutput === 'string' &&
-      isAbsolute(rawOutput) &&
-      Buffer.byteLength(rawOutput, 'utf8') <= 4096 &&
-      realpathSync(dirname(rawOutput)) === dirname(resolve(rawOutput))
-    )
-      writeFileSync(rawOutput, `${JSON.stringify(evidence)}\n`, {
-        mode: 0o600,
-      });
+    persistRawBridgeEvidence(
+      env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT,
+      evidence,
+    );
     const validated = validateProductionBridgeEvidence(config, evidence);
     return {
       adapter: ADAPTER,
@@ -617,6 +615,44 @@ async function measureIsolatedFixture({
       });
     }
     const evidence = await bridgeEvidence(page, config);
+    // This context owns the actual measurement page; the outer test's trace
+    // only sees provisioning. Retain its failed state before closing it.
+    if (
+      env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT &&
+      evidence?.observations?.some((entry) => entry.status === 'NOT_VERIFIED')
+    ) {
+      const diagnosticRoot = dirname(
+        resolve(env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT),
+      );
+      const failedClient = reconnectHarness?.diagnostics.failedClient;
+      const failurePage = failedClient?.page ?? page;
+      if (failedClient)
+        writeFileSync(
+          resolve(diagnosticRoot, `${fixture.id}-failure.json`),
+          JSON.stringify({
+            documentStatus: failedClient.documentStatus ?? null,
+            editorPresent: failedClient.editorPresent,
+            editorRevisionMatches: failedClient.editorRevisionMatches,
+            baselineMatchedAtStart: failedClient.baselineMatchedAtStart,
+            targetMatchedAtStart: failedClient.targetMatchedAtStart,
+          }),
+        );
+      await Promise.allSettled([
+        failurePage.screenshot({
+          path: resolve(diagnosticRoot, `${fixture.id}-failure.png`),
+        }),
+        failurePage
+          .locator('body')
+          .innerText({ timeout: 2_000 })
+          .then((body) =>
+            writeFileSync(
+              resolve(diagnosticRoot, `${fixture.id}-failure.txt`),
+              body.slice(0, 16_384),
+            ),
+          ),
+      ]);
+    }
+
     if (!evidence) {
       refreshedAuth = await refreshedStorageAuth(context, auth);
       refreshedPeerAuth = peerContext
@@ -783,6 +819,8 @@ async function createReconnectHarness({
   operationCount,
   totalIterations,
 }) {
+  /** @type {{ failedClient?: { page: import('playwright').Page, documentStatus: number | undefined, editorPresent: boolean, editorRevisionMatches: boolean, baselineMatchedAtStart: boolean, targetMatchedAtStart: boolean } }} */
+  const diagnostics = {};
   if (
     !Number.isSafeInteger(totalIterations) ||
     totalIterations < 1 ||
@@ -891,7 +929,19 @@ async function createReconnectHarness({
       },
       resume: async (strategy, expectedRevision, baseRevision) => {
         lastDocumentStatus = undefined;
-        const startedEpochMs = await epoch(page);
+        const sampleStart = await page.evaluate(() => {
+          const editor = document.querySelector(
+            'textarea[data-station-working-revision]',
+          );
+          return {
+            epochMs: performance.timeOrigin + performance.now(),
+            editorRevision:
+              editor instanceof HTMLTextAreaElement
+                ? editor.dataset.stationWorkingRevision
+                : null,
+          };
+        });
+        const startedEpochMs = sampleStart.epochMs;
         const observation = reconnectStage(
           `${strategy.toUpperCase()}_OBSERVE`,
           () =>
@@ -935,6 +985,15 @@ async function createReconnectHarness({
               : null;
           });
           const message = error instanceof Error ? error.message : 'unknown';
+          diagnostics.failedClient = {
+            page,
+            documentStatus: lastDocumentStatus,
+            editorPresent: editor !== null,
+            editorRevisionMatches: editor === expectedRevision,
+            baselineMatchedAtStart: sampleStart.editorRevision === baseRevision,
+            targetMatchedAtStart:
+              sampleStart.editorRevision === expectedRevision,
+          };
           throw new Error(
             `document status ${lastDocumentStatus ?? 'none'}; ${editor ? `editor revision ${editor.slice(-12)} expected ${expectedRevision.slice(-12)}` : 'editor missing after reconnect'}; ${message}`,
           );
@@ -1129,6 +1188,7 @@ async function createReconnectHarness({
     }));
   }
   return {
+    diagnostics,
     run: async (iteration) => {
       if (
         !Number.isSafeInteger(iteration) ||
@@ -1318,30 +1378,90 @@ async function clickWhenEnabled(page, name) {
   await button.click();
 }
 
-async function clickLiveCommand(page, name) {
-  const command = {
+class LiveCommandStepError extends Error {
+  constructor(command, phase, cause) {
+    const reason =
+      cause instanceof Error && cause.name === 'TimeoutError'
+        ? 'TIMEOUT'
+        : cause instanceof Error &&
+            /Target (?:page, context or browser|page|context|browser) has been closed/.test(
+              cause.message,
+            )
+          ? 'TARGET_CLOSED'
+          : 'FAILED';
+    super(`Live command ${command} ${phase} ${reason}`, { cause });
+  }
+}
+
+async function interactForLiveResponse(
+  page,
+  command,
+  interaction,
+  expectedCursor,
+) {
+  // Observe both outcomes immediately. Input can fail (or remain pending)
+  // before this waiter settles; page teardown must not create an unhandled
+  // rejection that replaces the primary input failure.
+  const response = page
+    .waitForResponse(
+      (candidate) =>
+        candidate.request().method() === 'POST' &&
+        new URL(candidate.url()).pathname.endsWith('/room/live') &&
+        liveCommandRequestMatches(candidate.request(), command, expectedCursor),
+    )
+    .then(
+      (value) => ({ kind: 'received', value }),
+      (error) => ({ kind: 'failed', error }),
+    );
+  try {
+    await interaction();
+  } catch (error) {
+    throw new LiveCommandStepError(command, 'input', error);
+  }
+  const outcome = await response;
+  if (outcome.kind === 'failed')
+    throw new LiveCommandStepError(command, 'response', outcome.error);
+  return outcome.value;
+}
+
+export async function clickLiveCommand(page, name) {
+  const commands = {
     'Leave room': 'depart',
     'Join room': 'join',
     'Announce work': 'announce',
-  }[name];
+  };
+  const command = Object.hasOwn(commands, name) ? commands[name] : undefined;
   if (!command) throw new Error('live command label is invalid');
-  const response = page.waitForResponse(
-    (candidate) =>
-      candidate.request().method() === 'POST' &&
-      new URL(candidate.url()).pathname.endsWith('/room/live') &&
-      liveCommandRequestMatches(candidate.request(), command),
+  const settled = await interactForLiveResponse(page, command, () =>
+    clickWhenEnabled(page, name),
   );
-  await clickWhenEnabled(page, name);
-  const settled = await response;
   const body = await settled.json();
+  const accepted = {
+    join: ['JOINED', 'REFRESHED'],
+    announce: ['UPDATED'],
+    depart: ['DEPARTED', 'UPDATED'],
+  };
   if (
     settled.status() !== 200 ||
     body?.success !== true ||
-    body?.data?.kind !== 'available'
+    body?.data?.kind !== 'available' ||
+    !accepted[command].includes(closedLiveOutcome(body?.data?.result?.outcome))
   )
-    throw new Error(
-      `Live command ${name} status ${settled.status()} outcome ${closedLiveOutcome(body?.data?.result?.outcome)}`,
+    throw new LiveCommandOutcomeError(
+      name,
+      settled.status(),
+      closedLiveOutcome(body?.data?.result?.outcome),
     );
+  // An available transport envelope is not proof that a join was admitted.
+  // Retain only its closed outcome for a later failure diagnostic.
+  return closedLiveOutcome(body?.data?.result?.outcome);
+}
+
+class LiveCommandOutcomeError extends Error {
+  constructor(name, status, outcome) {
+    super(`Live command ${name} status ${status} outcome ${outcome}`);
+    this.outcome = outcome;
+  }
 }
 
 function closedLiveOutcome(value) {
@@ -1354,58 +1474,232 @@ function closedLiveOutcome(value) {
     'DEGRADED',
     'REFUSED',
     'UNAVAILABLE',
+    'CLEARED',
+    'PAUSED',
+    'INVALID',
+    'FORBIDDEN',
+    'IDENTITY_CHANGED',
+    'CAPACITY_EXCEEDED',
+    'RATE_LIMITED',
   ].includes(outcome)
     ? outcome
     : 'UNKNOWN';
 }
 
-export function liveCommandRequestMatches(request, expectedCommand) {
+export function liveCommandRequestMatches(
+  request,
+  expectedCommand,
+  expectedCursor,
+) {
   try {
     const body = JSON.parse(request.postData() ?? '');
-    return body?.command === expectedCommand;
+    return (
+      body?.command === expectedCommand &&
+      (!expectedCursor ||
+        (body.workingRevision === expectedCursor.workingRevision &&
+          body.selection?.anchor === expectedCursor.selection.anchor &&
+          body.selection?.focus === expectedCursor.selection.focus))
+    );
   } catch {
     return false;
   }
 }
 
-async function publishPeerPresence(peer, owner, iteration, target, taskId) {
+const UNKNOWN_LIVE_FAILURE_STATE = Object.freeze({
+  stream: 'UNKNOWN',
+  join: 'UNKNOWN',
+  announce: 'UNKNOWN',
+  dialog: 'UNKNOWN',
+  telemetry: 'UNKNOWN',
+});
+
+/** Failure-only DOM observation, never capability or command admission authority. */
+export async function readLiveCommandFailureState(page) {
+  let timer;
+  try {
+    const read = page
+      .evaluate(() => {
+        const visible = (element) => {
+          if (
+            !element ||
+            element.closest('[hidden], [aria-hidden="true"], [inert]')
+          )
+            return false;
+          const style = getComputedStyle(element);
+          return (
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            element.getClientRects().length > 0
+          );
+        };
+        const buttonState = (name) => {
+          const matches = [...document.querySelectorAll('button')].filter(
+            (element) => element.textContent?.trim() === name,
+          );
+          const shown = matches.filter(visible);
+          if (shown.length > 1) return 'AMBIGUOUS';
+          if (!shown.length) return matches.length ? 'HIDDEN' : 'ABSENT';
+          return shown[0].disabled ? 'DISABLED' : 'ENABLED';
+        };
+        const surfaces = [
+          ...document.querySelectorAll(
+            '[data-station-performance-surface="task-room-presence"]',
+          ),
+        ].filter(visible);
+        const copy =
+          surfaces.length === 1
+            ? surfaces[0]
+                .querySelector('header [role="status"]')
+                ?.textContent?.trim()
+            : undefined;
+        const stream =
+          copy === 'Live room connected.'
+            ? 'LIVE'
+            : copy === 'Connecting to the live room.'
+              ? 'CONNECTING'
+              : copy ===
+                  'Live room authorization ended. The last published presence remains visible but cannot be changed.'
+                ? 'TERMINAL'
+                : 'UNKNOWN';
+        const dialogs = [
+          ...document.querySelectorAll('[role="dialog"], dialog[open]'),
+        ].filter(visible);
+        const telemetry = dialogs.some(
+          (element) =>
+            element.getAttribute('aria-label') === 'What Station sends' ||
+            (element.getAttribute('aria-labelledby') ?? '')
+              .split(/\s+/)
+              .some(
+                (id) =>
+                  document.getElementById(id)?.textContent?.trim() ===
+                  'What Station sends',
+              ),
+        );
+        return {
+          stream,
+          join: buttonState('Join room'),
+          announce: buttonState('Announce work'),
+          dialog: dialogs.length ? 'VISIBLE' : 'NONE',
+          telemetry: telemetry ? 'VISIBLE' : 'NONE',
+        };
+      })
+      .then(
+        (value) => {
+          const closed = (key, choices) =>
+            choices.includes(value?.[key]) ? value[key] : 'UNKNOWN';
+          return {
+            stream: closed('stream', ['LIVE', 'CONNECTING', 'TERMINAL']),
+            join: closed('join', [
+              'AMBIGUOUS',
+              'HIDDEN',
+              'ABSENT',
+              'DISABLED',
+              'ENABLED',
+            ]),
+            announce: closed('announce', [
+              'AMBIGUOUS',
+              'HIDDEN',
+              'ABSENT',
+              'DISABLED',
+              'ENABLED',
+            ]),
+            dialog: closed('dialog', ['VISIBLE', 'NONE']),
+            telemetry: closed('telemetry', ['VISIBLE', 'NONE']),
+          };
+        },
+        () => UNKNOWN_LIVE_FAILURE_STATE,
+      );
+    // Teardown or an unresponsive page cannot mask the original error. Both
+    // read outcomes are observed even if this diagnostic-only deadline wins.
+    return await Promise.race([
+      read,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(UNKNOWN_LIVE_FAILURE_STATE), 500);
+      }),
+    ]);
+  } catch {
+    return UNKNOWN_LIVE_FAILURE_STATE;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export function persistRawBridgeEvidence(rawOutput, evidence) {
+  if (
+    typeof rawOutput === 'string' &&
+    isAbsolute(rawOutput) &&
+    Buffer.byteLength(rawOutput, 'utf8') <= 4096 &&
+    realpathSync(dirname(rawOutput)) === dirname(resolve(rawOutput))
+  )
+    writeFileSync(rawOutput, `${JSON.stringify(evidence)}\n`, { mode: 0o600 });
+}
+
+export async function publishPeerPresence(
+  peer,
+  owner,
+  iteration,
+  target,
+  taskId,
+) {
+  let joinOutcome = 'NOT_OBSERVED';
   const stage = async (name, work) => {
     try {
       return await work();
     } catch (error) {
+      if (name === 'join' && error instanceof LiveCommandOutcomeError)
+        joinOutcome = error.outcome;
       const diagnostic = closedLiveCommandDiagnostic(error);
+      const state = await readLiveCommandFailureState(
+        name === 'owner-absence' ? owner : peer,
+      );
+      const index = validDriverIteration(iteration) ? iteration : 'UNKNOWN';
       throw new Error(
-        `Collaboration presence ${name} failed${diagnostic ? `: ${diagnostic}` : ''}`,
+        `Collaboration presence ${name} failed${diagnostic ? `: ${diagnostic}` : ''}; iteration=${index}; joinOutcome=${joinOutcome}; stream=${state.stream}; join=${state.join}; announce=${state.announce}; dialog=${state.dialog}; telemetry=${state.telemetry}`,
+        { cause: error },
       );
     }
   };
-  if (new URL(peer.url()).pathname !== `/tasks/${encodeURIComponent(taskId)}`) {
+  const requiresNavigation = await stage(
+    'navigation-context',
+    async () =>
+      new URL(peer.url()).pathname !== `/tasks/${encodeURIComponent(taskId)}`,
+  );
+  if (requiresNavigation) {
     await stage('navigation', () =>
       peer.goto(target, {
         waitUntil: 'domcontentloaded',
         timeout: 60_000,
       }),
     );
-    if (!(await authenticatedTaskAvailable(peer, taskId)))
-      throw new Error('peer Task context is unavailable');
+    await stage('task-context', async () => {
+      if (!(await authenticatedTaskAvailable(peer, taskId)))
+        throw new Error('peer Task context is unavailable');
+    });
   }
-  const peerActorId = await stage('identity', () => peerActorIdentity(peer));
-  if (!peerActorId) throw new Error('peer actor identity is unavailable');
-  const leave = peer.getByRole('button', { name: 'Leave room' });
-  if (await leave.isEnabled()) {
+  const peerActorId = await stage('identity', async () => {
+    const actor = await peerActorIdentity(peer);
+    if (!actor) throw new Error('peer actor identity is unavailable');
+    return actor;
+  });
+  const canLeave = await stage('leave-state', () =>
+    peer.getByRole('button', { name: 'Leave room' }).isEnabled(),
+  );
+  if (canLeave) {
     await stage('leave', () => clickLiveCommand(peer, 'Leave room'));
     await stage('owner-absence', () =>
       owner
-        .locator(`[data-actor-id="${peerActorId}"]`)
+        .locator(
+          `[data-station-performance-surface="task-room-presence"] [data-actor-id="${peerActorId}"]`,
+        )
         .waitFor({ state: 'detached', timeout: 15_000 }),
     );
   }
-  await stage('join', () => clickLiveCommand(peer, 'Join room'));
-  const ingressStartedEpochMs = await epoch(peer);
+  joinOutcome = await stage('join', () => clickLiveCommand(peer, 'Join room'));
+  const ingressStartedEpochMs = await stage('ingress-clock', () => epoch(peer));
   // Fence the authoritative peer publish before the command that can make the
   // owner's SSE/layout commit observable. Recording this after the awaited
   // command response races a legitimate faster owner commit.
-  const sentEpochMs = await epoch(peer);
+  const sentEpochMs = await stage('send-clock', () => epoch(peer));
   await stage('announce', () => clickLiveCommand(peer, 'Announce work'));
   return {
     kind: 'presence-published',
@@ -1447,14 +1741,20 @@ export async function peerActorIdentity(page) {
 
 export function closedLiveCommandDiagnostic(error) {
   const message = error instanceof Error ? error.message : '';
-  return /^Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)$/.test(
+  if (
+    /^Live command (depart|join|announce|cursor) (input|response) (TIMEOUT|TARGET_CLOSED|FAILED)$/.test(
+      message,
+    )
+  )
+    return message;
+  return /^Live command (Leave room|Join room|Announce work|Cursor) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)$/.test(
     message,
   )
     ? message
     : undefined;
 }
 
-async function publishPeerCursor(peer, owner, taskId, iteration) {
+export async function publishPeerCursor(peer, owner, taskId, iteration) {
   const editor = peer.getByRole('textbox', { name: 'Task document' });
   let workingRevision = await editor.getAttribute(
     'data-station-working-revision',
@@ -1512,23 +1812,28 @@ async function publishPeerCursor(peer, owner, taskId, iteration) {
     },
   );
   const startedEpochMs = await epoch(peer);
-  const response = peer.waitForResponse(
-    (candidate) =>
-      candidate.request().method() === 'POST' &&
-      new URL(candidate.url()).pathname.endsWith('/room/live') &&
-      liveCommandRequestMatches(candidate.request(), 'cursor'),
+  const settled = await interactForLiveResponse(
+    peer,
+    'cursor',
+    async () => {
+      await editor.focus();
+      await editor.press('ControlOrMeta+A');
+      if (iteration % 2 !== 0) await editor.press('ArrowRight');
+    },
+    { workingRevision, selection },
   );
-  await editor.click();
-  await editor.press('ControlOrMeta+A');
-  if (iteration % 2 !== 0) await editor.press('ArrowRight');
-  const settled = await response;
   const body = await settled.json();
   if (
     settled.status() !== 200 ||
     body?.success !== true ||
-    body?.data?.kind !== 'available'
+    body?.data?.kind !== 'available' ||
+    closedLiveOutcome(body?.data?.result?.outcome) !== 'UPDATED'
   )
-    throw new Error(`Cursor command status ${settled.status()}`);
+    throw new LiveCommandOutcomeError(
+      'Cursor',
+      settled.status(),
+      closedLiveOutcome(body?.data?.result?.outcome),
+    );
   return {
     kind: 'cursor-published',
     peerActorId,

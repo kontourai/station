@@ -1,4 +1,8 @@
 import type {
+  ConversationPullRequestLinkObservation,
+  PullRequestLinkIdentity,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
+import type {
   PullRequest,
   PullRequestMergeMethod,
   PullRequestMergeResult,
@@ -10,9 +14,19 @@ import {
   usePullRequestsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
+import { useNavigation } from '../../contexts/NavigationContext';
+import { Button } from '../Button';
+import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
-import { Empty, ErrorState, SkeletonList } from '../state';
+import { ConversationPullRequestLinks } from '../pull-requests/ConversationPullRequestLinks';
+import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { PullRequestDependencyStacks } from './PullRequestDependencyStacks';
 import './PullRequestsPanel.css';
+
+const loadReview = () =>
+  import('./PullRequestReviewPanel').then((module) => ({
+    default: module.PullRequestReviewPanel,
+  }));
 
 type StateFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'MERGED';
 
@@ -23,10 +37,32 @@ function normalizedState(state: string) {
 export function PullRequestsPanel({
   projectSlug,
   activeRepoRoot,
+  onOpenLinkedAsPane,
 }: {
   projectSlug: string;
   activeRepoRoot?: string | null;
+  /**
+   * Where a LINKED pull request opens when this panel is a dock pane's rather
+   * than a coding layout's (#2049): as its own dock tab, beside the
+   * conversation that linked it, instead of replacing this panel's list with
+   * a review that has a "Back to pull requests" button. Absent in a layout,
+   * where the list IS the place to go back to — which is why the caller
+   * decides and this panel does not read its own placement.
+   *
+   * Returns whether the pane actually opened. A region may refuse (the pane's
+   * Project is not resolved, a device fold leaves no region for it), and a
+   * refusal must not be a click that does nothing where the pre-#2049
+   * behaviour always opened the inline review — so a `false` falls back to
+   * that review, the same shape `ChatMarkdownAnchor` uses for its own refusal.
+   */
+  onOpenLinkedAsPane?: (
+    link: ConversationPullRequestLinkObservation,
+  ) => boolean;
 }) {
+  const activeChat = useNavigation((state) => state.activeChat);
+  const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
+    null,
+  );
   const [filter, setFilter] = useState<StateFilter>('OPEN');
   const resolvingContext = {
     project: projectSlug,
@@ -55,6 +91,20 @@ export function PullRequestsPanel({
     );
   }
   if (!context.data?.available) {
+    // #1536 G5: a checkout with no remote is the ordinary local repository —
+    // nothing is broken and nothing the operator asked for is missing. It read
+    // as a warning-triangle "Pull requests unavailable" card, the same
+    // presentation as a forge that refused. The cause comes from the server
+    // (`PullRequestUnavailableCause`), never from matching on the sentence.
+    if (context.data?.cause === 'no-remote') {
+      return (
+        <Empty
+          variant="compact"
+          label="Pull requests need a remote"
+          description="This checkout has no remote configured, so there is nothing to list. Add one on a supported forge to see pull requests here."
+        />
+      );
+    }
     return (
       <ErrorState
         variant="compact"
@@ -62,6 +112,33 @@ export function PullRequestsPanel({
         description={
           context.data?.reason ?? 'Repository context is unavailable'
         }
+      />
+    );
+  }
+  if (
+    selected &&
+    identity &&
+    selected.provider === identity.provider &&
+    selected.host === identity.host &&
+    selected.repository.owner === identity.repository.owner &&
+    selected.repository.name === identity.repository.name
+  ) {
+    return (
+      <LazyBoundary
+        load={loadReview}
+        componentProps={{
+          target: {
+            provider: selected.provider,
+            host: selected.host,
+            owner: selected.repository.owner,
+            repository: selected.repository.name,
+            ref: selected.ref,
+            project: projectSlug,
+            repositoryRootHint: activeRepoRoot ?? undefined,
+          },
+          onBack: () => setSelected(null),
+        }}
+        pending={<SkeletonBlock label="Opening pull request review" />}
       />
     );
   }
@@ -92,9 +169,51 @@ export function PullRequestsPanel({
     (pullRequest) =>
       filter === 'ALL' || normalizedState(pullRequest.state) === filter,
   );
+  const observedAt = new Date(
+    pullRequests.dataUpdatedAt || Date.now(),
+  ).toISOString();
 
   return (
     <section className="pull-requests-panel" aria-label="Pull requests">
+      {activeChat && identity && (
+        <ConversationPullRequestLinks
+          conversationId={activeChat}
+          suggested={{
+            provider: identity.provider,
+            host: identity.host,
+            repository: identity.repository,
+          }}
+          derived={(result.data ?? [])
+            .filter(
+              (pullRequest) => pullRequest.sourceBranch === identity.branch,
+            )
+            .map((pullRequest) => ({
+              provider: pullRequest.provider,
+              host: pullRequest.host,
+              repository: pullRequest.repository,
+              ref: pullRequest.ref,
+              source: 'branch-derived' as const,
+              observedAt,
+              status: {
+                state: 'current' as const,
+                title: pullRequest.title,
+                pullRequestState: pullRequest.state,
+                ...(pullRequest.headSha ? { head: pullRequest.headSha } : {}),
+              },
+            }))}
+          onOpen={(link) => {
+            if (onOpenLinkedAsPane?.(link) === true) return;
+            setSelected(link);
+          }}
+        />
+      )}
+      <PullRequestDependencyStacks
+        pullRequests={result.data ?? []}
+        observedAt={observedAt}
+        refreshing={pullRequests.isFetching}
+        onRefresh={() => void pullRequests.refetch()}
+        onOpen={setSelected}
+      />
       <header className="pull-requests-panel__header">
         <div>
           <h2>Pull requests</h2>
@@ -135,6 +254,7 @@ export function PullRequestsPanel({
               projectSlug={projectSlug}
               activeRepoRoot={activeRepoRoot}
               onMerged={() => void pullRequests.refetch()}
+              onOpen={() => setSelected(pullRequest)}
             />
           ))}
         </ul>
@@ -149,12 +269,14 @@ function PullRequestRow({
   projectSlug,
   activeRepoRoot,
   onMerged,
+  onOpen,
 }: {
   pullRequest: PullRequest;
   result: PullRequestResult<PullRequest[]>;
   projectSlug: string;
   activeRepoRoot?: string | null;
   onMerged: () => void;
+  onOpen: () => void;
 }) {
   const [method, setMethod] = useState<PullRequestMergeMethod>(
     result.effectiveMergeMethods[0] ?? 'merge',
@@ -227,9 +349,9 @@ function PullRequestRow({
   return (
     <li className="pull-request-card">
       <div className="pull-request-card__title-row">
-        <a href={pullRequest.url} target="_blank" rel="noreferrer">
+        <Button variant="link" onClick={onOpen}>
           {pullRequest.title}
-        </a>
+        </Button>
         <span className="pull-request-card__chip">
           {normalizedState(pullRequest.state)}
         </span>

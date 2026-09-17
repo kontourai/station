@@ -1,6 +1,7 @@
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type { Context, Next } from 'hono';
 import { z } from 'zod/v3';
+import { RouteError } from '../../utils/route-error.js';
 
 interface ValidationOptions {
   maxBodyBytes?: number;
@@ -101,10 +102,22 @@ export function getBody(c: Context): any {
   return (c.get as (key: string) => unknown)('body');
 }
 
-/** Get a required route param, throwing 400 if missing. */
+/**
+ * Get a required route param, refusing with 400 if it is missing.
+ *
+ * The thrown value is a {@link RouteError}, so the runtime HTTP boundary
+ * answers 400 with this message even when the route has no `try` around the
+ * call. The message text is unchanged from the plain `Error` this used to
+ * throw, so a route that still catches and formats it itself keeps answering
+ * exactly what it answered before.
+ */
 export function param(c: Context, name: string): string {
   const value = c.req.param(name);
-  if (!value) throw new Error(`Missing param: ${name}`);
+  if (!value) {
+    throw new RouteError(400, `Missing param: ${name}`, {
+      code: 'missing_param',
+    });
+  }
   return value;
 }
 

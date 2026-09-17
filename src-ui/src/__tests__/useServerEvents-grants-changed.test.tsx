@@ -31,19 +31,17 @@ beforeEach(() => {
 
 async function dispatch(event: string) {
   const invalidateQueries = vi.fn();
-  const setQueryData = vi.fn();
-  invalidateQueriesForServerEvent(event, { invalidateQueries, setQueryData });
+  invalidateQueriesForServerEvent(event, { invalidateQueries });
   // The reload is loaded lazily through a dynamic import.
   await new Promise((resolve) => setTimeout(resolve, 0));
-  return { invalidateQueries, setQueryData };
+  return invalidateQueries;
 }
 
 test('a grants change refreshes the plugin list AND the loaded registry', async () => {
-  const { invalidateQueries, setQueryData } = await dispatch(
+  const invalidateQueries = await dispatch(
     SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
   );
 
-  expect(setQueryData).toHaveBeenCalledWith(['plugins'], []);
   expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['plugins'] });
   // Without this, a frame that is already open keeps using a withdrawn
   // permission.
@@ -58,18 +56,23 @@ test('the events that already reloaded the registry still do', async () => {
   expect(reload).toHaveBeenCalledTimes(1);
 });
 
-test('plugin removal synchronously withdraws cached commands and reloads the registry', async () => {
-  const { invalidateQueries, setQueryData } = await dispatch(
-    SERVER_EVENTS.PLUGINS_REMOVED,
-  );
-
-  expect(setQueryData).toHaveBeenCalledWith(['plugins'], []);
-  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['plugins'] });
-  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['layouts'] });
-  expect(reload).toHaveBeenCalledTimes(1);
-});
-
 test('an unrelated plugin event does not reload the registry', async () => {
   await dispatch(SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE);
   expect(reload).not.toHaveBeenCalled();
+});
+
+test.each([
+  SERVER_EVENTS.PLUGINS_INSTALLED,
+  SERVER_EVENTS.PLUGINS_UPDATED,
+  SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
+])('refreshes Project Pane and host-action queries after %s', async (event) => {
+  const invalidations = await dispatch(event);
+  expect(invalidations).toHaveBeenCalledWith({ queryKey: ['projects'] });
+});
+
+test('plugin removal withdraws cached inventory, Project panes, layouts, Agents, and loaded frames', async () => {
+  const invalidations = await dispatch(SERVER_EVENTS.PLUGINS_REMOVED);
+  for (const key of ['plugins', 'projects', 'layouts', 'agents'])
+    expect(invalidations).toHaveBeenCalledWith({ queryKey: [key] });
+  expect(reload).toHaveBeenCalledOnce();
 });

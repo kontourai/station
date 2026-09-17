@@ -1,4 +1,7 @@
-import { ENGINE_SESSION_BINDING_DEAD_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
 import type {
@@ -289,6 +292,12 @@ describe('orchestration-session-state', () => {
       startSession: vi.fn(),
       hasSession: vi.fn().mockResolvedValue(false),
     } as unknown as ProviderAdapterShape;
+    // Deliberately still keyed on the `kind` (station#1707): this test's
+    // SUBJECT is the receipt, and it calls `recoverOrchestrationSessions`
+    // directly, so there is no runtime to bind to and no
+    // `whenSessionRecoveryCompleted()` to await. What stops a stale receipt
+    // from satisfying it vacuously is the payload assertion below, which
+    // pins `attemptedCount` and the exact `threadIds` this pass restored.
     const completed = waitForReceipt(
       (receipt) => receipt.kind === 'session.recovery.completed',
     );
@@ -697,6 +706,55 @@ describe('orchestration-session-state', () => {
       expect(eventStore.markSessionClosed).not.toHaveBeenCalled();
       expect(eventStore.upsertSession).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'dead', resumeCursor }),
+      );
+    });
+
+    test('a failed turn records error without closing or disproving its native cursor', () => {
+      const threadProviders = new Map<string, 'bedrock' | 'claude' | 'codex'>();
+      const sessionReadModel = new Map<string, ProviderSession>();
+      const eventStore = {
+        upsertSession: vi.fn(),
+        markSessionClosed: vi.fn(),
+      } as any;
+      trackOrchestrationSession({
+        threadProviders,
+        sessionReadModel,
+        session: {
+          provider: 'claude',
+          threadId: 'query-failed',
+          status: 'running',
+          resumeCursor: 'last-known-cursor',
+          createdAt: '2026-09-06T00:00:00Z',
+          updatedAt: '2026-09-06T00:00:00Z',
+        },
+      });
+      projectOrchestrationEventToReadModel({
+        event: {
+          eventId: 'query-error',
+          provider: 'claude',
+          threadId: 'query-failed',
+          turnId: 'failed-turn',
+          method: 'runtime.error',
+          severity: 'error',
+          code: ENGINE_TURN_FAILED_CODE,
+          retriable: false,
+          message: 'Provider refused the turn',
+          createdAt: '2026-09-06T00:00:01Z',
+        },
+        threadProviders,
+        sessionReadModel,
+        eventStore,
+      });
+      expect(sessionReadModel.get('query-failed')).toMatchObject({
+        status: 'error',
+        resumeCursor: 'last-known-cursor',
+      });
+      expect(eventStore.markSessionClosed).not.toHaveBeenCalled();
+      expect(eventStore.upsertSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'error',
+          resumeCursor: 'last-known-cursor',
+        }),
       );
     });
 

@@ -719,7 +719,7 @@ test('CLI requires exact mode-specific arguments and only asks each mode for the
 test('both macOS release paths retain the required signing-readiness topology and leave iOS untouched', () => {
   for (const { file, jobName, deadline, combinedStep } of [
     {
-      file: '.github/workflows/nightly-native-cohort.yml',
+      file: '.github/workflows/nightly-native-stage.yml',
       jobName: 'stage-macos',
       deadline: 'macos_cohort_deadline',
       combinedStep:
@@ -805,8 +805,10 @@ test('both macOS release paths retain the required signing-readiness topology an
     );
     expect(cleanup).toBeLessThan(attestation);
   }
+  // Signing lives in the staging phase only; the publishing cohort never
+  // touches a Developer ID keychain (#1453).
   const nightly = load(
-    readFileSync('.github/workflows/nightly-native-cohort.yml', 'utf8'),
+    readFileSync('.github/workflows/nightly-native-stage.yml', 'utf8'),
   );
   const nightlyHelperJobs = Object.entries(nightly.jobs)
     .filter(([, job]) =>
@@ -814,6 +816,14 @@ test('both macOS release paths retain the required signing-readiness topology an
     )
     .map(([name]) => name);
   expect(nightlyHelperJobs).toEqual(['stage-macos']);
+  const cohort = load(
+    readFileSync('.github/workflows/nightly-native-cohort.yml', 'utf8'),
+  );
+  expect(
+    Object.values(cohort.jobs).some((job) =>
+      JSON.stringify(job).includes('macos-signing-readiness.mjs'),
+    ),
+  ).toBe(false);
   const release = load(readFileSync('.github/workflows/release.yml', 'utf8'));
   const helperJobs = Object.entries(release.jobs)
     .filter(([, job]) =>

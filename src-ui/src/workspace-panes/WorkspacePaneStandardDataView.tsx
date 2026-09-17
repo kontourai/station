@@ -1,16 +1,9 @@
-import type { LayoutCatalogContribution } from '@kontourai/station-contracts/layout';
 import type {
   WorkspacePaneInstance,
   WorkspacePaneStandardDataRendererRef,
 } from '@kontourai/station-contracts/workspace-pane';
 import { Empty } from '../components/state';
-
-function sameContribution(
-  left: LayoutCatalogContribution,
-  right: LayoutCatalogContribution,
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
+import { sameLayoutContribution } from './layoutContributionIdentity';
 
 /**
  * Host-neutral standard-data presentation. It deliberately renders only the
@@ -27,7 +20,7 @@ export function WorkspacePaneStandardDataView({
   const contribution = instance.boundContext?.contribution;
   if (
     !contribution ||
-    !sameContribution(contribution, renderer.view.contribution)
+    !sameLayoutContribution(contribution, renderer.view.contribution)
   ) {
     return (
       <Empty

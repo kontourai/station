@@ -16,7 +16,8 @@ class CodedOrchestrationError extends Error {
 }
 
 const sendExecutionMessageMock = vi.fn();
-vi.mock('../hooks/useOrchestration', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage: (...args: unknown[]) =>
     sendExecutionMessageMock(...args),
 }));
@@ -54,6 +55,17 @@ vi.mock('../hooks/useStreamingMessage', () => ({
 }));
 
 const agentConnectionsMock = vi.fn(() => ({ data: [] as unknown[] }));
+// #2144 slice 6: the hook reads `AppConfig.defaultApprovalMode` through
+// ConfigContext, which reads this query.
+const stationAppConfig = vi.hoisted(
+  () => ({ current: undefined }) as { current: unknown },
+);
+const configQueryMock = vi.fn(() => ({
+  data: stationAppConfig.current,
+  error: null,
+  dataUpdatedAt: 0,
+  refetch: vi.fn(),
+}));
 const cooperativeStop = {
   outcome: 'cooperative' as const,
   threadId: 'server-thread-1',
@@ -62,6 +74,7 @@ const cooperativeStop = {
 const interruptOrchestrationTurnMock = vi
   .fn()
   .mockResolvedValue(cooperativeStop);
+const steerOrchestrationTurnMock = vi.fn();
 // archive#1146: stable across renders so a test can assert WHICH query keys
 // were invalidated. A fresh `vi.fn` per `useInvalidateQuery` call records
 // nothing an assertion can reach.
@@ -79,9 +92,15 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },
     useEngineConnectionsQuery: () => agentConnectionsMock(),
+    useConfigQuery: () => configQueryMock(),
+    // The Agent-record link of the engine-connection chain; this fixture's
+    // chats carry their own binding, so the catalog is empty here.
+    useAgentsQuery: () => ({ data: [], error: null }),
     useInvalidateQuery: () => invalidateMock,
     interruptOrchestrationTurn: (...args: unknown[]) =>
       interruptOrchestrationTurnMock(...args),
+    steerOrchestrationTurn: (...args: unknown[]) =>
+      steerOrchestrationTurnMock(...args),
     isProvablyNotSent: actual.isProvablyNotSent,
   };
 });
@@ -174,6 +193,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     vi.clearAllMocks();
     outboundQueueMode.useActual = false;
     sendExecutionMessageMock.mockResolvedValue(successReceipt());
+    steerOrchestrationTurnMock.mockReset();
     activeChatsStore.initChat(sessionId, {
       agentSlug: 'codex',
       agentName: 'Codex',
@@ -232,9 +252,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
-    const input = sendExecutionMessageMock.mock.calls[0][0];
+    const input = sendExecutionMessageMock.mock.calls[0][1];
     expect(input).toMatchObject({
-      apiBase: 'http://api.test',
       target: {
         agent: 'codex',
         model: {
@@ -258,7 +277,10 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
     expect(input.target).not.toHaveProperty('environment');
     expect(input.clientTurnId).toEqual(expect.any(String));
-    expect(input.signal).toBeInstanceOf(AbortSignal);
+    expect(sendExecutionMessageMock.mock.calls[0][0]).toBe('http://api.test');
+    expect(sendExecutionMessageMock.mock.calls[0][2].signal).toBeInstanceOf(
+      AbortSignal,
+    );
     expect(JSON.stringify(input.target)).not.toMatch(
       /provider|connection|engine|apiBase|transport|credential/i,
     );
@@ -280,9 +302,214 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       await result.current(sessionId, 'codex', undefined, 'use default');
     });
 
-    expect(sendExecutionMessageMock.mock.calls[0][0].target).not.toHaveProperty(
+    expect(sendExecutionMessageMock.mock.calls[0][1].target).not.toHaveProperty(
       'model',
     );
+  });
+
+  /**
+   * #2144 slice 6 fix round 1. This is the ENFORCEMENT seam: the chip's
+   * `resolveEffectiveApprovalMode` only ever decided a label, and both
+   * default layers under a session override reached nothing else. These
+   * assert the payload `sendExecutionMessage` is called with, not the
+   * resolver.
+   */
+  describe('approval-mode defaults reaching the wire', () => {
+    beforeEach(() => {
+      // A knob-supporting engine (claude/codex are the two adapters that
+      // read `modelOptions.approvalMode`), with nothing session-scoped.
+      activeChatsStore.updateChat(sessionId, {
+        agentConnectionId: 'claude',
+        // The composer renders an approval control only for `external`, and
+        // this turn starts the chat's session (no id, nothing started).
+        executionMode: 'external',
+        requestedProviderOptions: undefined,
+        providerOptions: {},
+      });
+      stationAppConfig.current = undefined;
+    });
+
+    afterEach(() => {
+      stationAppConfig.current = undefined;
+      // `vi.clearAllMocks` clears calls, not implementations — a
+      // `mockReturnValue` set below would otherwise leak into later files'
+      // expectations of an empty connection list.
+      agentConnectionsMock.mockReturnValue({ data: [] });
+    });
+
+    it("sends this Station's default when neither the chat nor its connection names one", async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).toMatchObject({ approvalMode: 'never' });
+    });
+
+    it('lets the session override win over the Station default', async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        requestedProviderOptions: { approvalMode: 'ask' },
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).toMatchObject({ approvalMode: 'ask' });
+    });
+
+    it("lets the connection's own default win over the Station default", async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      agentConnectionsMock.mockReturnValue({
+        data: [{ id: 'claude', config: { approvalMode: 'auto' } }],
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).toMatchObject({ approvalMode: 'auto' });
+    });
+
+    it('sends nothing to an engine whose adapter has no approval knob', async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        agentConnectionId: 'some-acp-runtime',
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).not.toHaveProperty('approvalMode');
+    });
+
+    it('sends nothing for a Station-mode chat, which shows no approval control', async () => {
+      // Round 2 M2: a provider-managed Station-mode chat keeps a
+      // knob-capable `agentConnectionId` (its model provider), and
+      // ChatInputArea renders no chip for it — a posture on the wire would
+      // be one no surface offered.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, { executionMode: 'station' });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).not.toHaveProperty('approvalMode');
+    });
+
+    async function optionsAfterSend() {
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+      return sendExecutionMessageMock.mock.calls[0][1].target.model.options;
+    }
+
+    it('sends nothing on a live session, which is not a chat starting', async () => {
+      // Round 2 M3: the setting is the posture a NEW chat starts in.
+      // Re-requesting it per turn reconfigures a running session, and
+      // Claude refuses a mid-session escalation to 'never' with a
+      // runtime.warning on every later turn.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: true,
+        orchestrationStatus: 'running',
+        currentSessionId: 'live-session-1',
+      });
+
+      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
+    });
+
+    /**
+     * Round 4 N1/N6. A stopped TURN is not a stopped session: the process is
+     * alive, the server continues it, and a posture sent now is the
+     * mid-life re-request this gate exists to prevent.
+     */
+    it.each([
+      ['aborted', 'the user stopped the previous turn'],
+      ['errored', 'the previous turn hit a runtime error'],
+      ['idle', 'the session is simply between turns'],
+    ])('sends nothing when the status is %s (%s)', async (status) => {
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: true,
+        orchestrationStatus: status,
+        currentSessionId: 'live-session-1',
+      });
+
+      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
+    });
+
+    /**
+     * Round 3 F1. The previous gate was
+     * `orchestrationSessionStarted || currentSessionId`, and each disjunct
+     * was true on a path where the SERVER starts a session — so the posture
+     * was withheld from the very spawn it is for. One test per disjunct.
+     */
+    it('sends the default after the session exited, whose id lingers', async () => {
+      // `session.exited` writes `orchestrationSessionStarted: false` and
+      // leaves `currentSessionId` in place; the id is not the session.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: false,
+        orchestrationStatus: 'exited',
+        currentSessionId: 'dead-session-1',
+      });
+
+      expect(await optionsAfterSend()).toMatchObject({
+        approvalMode: 'never',
+      });
+    });
+
+    it('sends the default for a reopened conversation that is merely continuable', async () => {
+      // `commitConversationOpen` marks every `status: 'resolved'` open as
+      // started and carries the child id; a stopped conversation resolves
+      // too, and the next send is the server's `startRequired` path. No
+      // `orchestrationStatus` accompanies a reopen, which is exactly the
+      // "unsure" case `chatSessionIsLive` answers as not-live.
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
+      activeChatsStore.updateChat(sessionId, {
+        orchestrationSessionStarted: true,
+        orchestrationStatus: undefined,
+        currentSessionId: 'reopened-child-1',
+      });
+
+      expect(await optionsAfterSend()).toMatchObject({
+        approvalMode: 'never',
+      });
+    });
+
+    it('sends nothing when this Station states no posture', async () => {
+      stationAppConfig.current = { defaultApprovalMode: 'connection-default' };
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'codex', undefined, 'go');
+      });
+
+      expect(
+        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
+      ).not.toHaveProperty('approvalMode');
+    });
   });
 
   it('uses the receipt conversation identity and preserves SSE-owned completion', async () => {
@@ -371,8 +598,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       await result.current(sessionId, 'codex', undefined, 'second global turn');
     });
 
-    const first = sendExecutionMessageMock.mock.calls[0]?.[0];
-    const followUp = sendExecutionMessageMock.mock.calls[1]?.[0];
+    const first = sendExecutionMessageMock.mock.calls[0]?.[1];
+    const followUp = sendExecutionMessageMock.mock.calls[1]?.[1];
     expect(first).toMatchObject({
       conversationId: sessionId,
       target: { environment: { kind: 'current' }, agent: 'codex' },
@@ -394,7 +621,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     await act(async () => {
       await result.current(sessionId, 'codex', undefined, 'retry me');
     });
-    const firstId = sendExecutionMessageMock.mock.calls[0][0].clientTurnId;
+    const firstId = sendExecutionMessageMock.mock.calls[0][1].clientTurnId;
     const retry = activeChatsStore
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
@@ -403,7 +630,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     await act(async () => {
       await retry?.();
     });
-    expect(sendExecutionMessageMock.mock.calls[1][0].clientTurnId).toBe(
+    expect(sendExecutionMessageMock.mock.calls[1][1].clientTurnId).toBe(
       firstId,
     );
   });
@@ -513,9 +740,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       );
     });
     expect(sendExecutionMessageMock).toHaveBeenLastCalledWith(
+      'http://api.test',
       expect.objectContaining({
         attachmentRefs: [stagedSnapshot.reference],
       }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
@@ -1093,17 +1322,165 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   it('queues a mid-turn message when the bound adapter cannot steer', async () => {
-    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'muse',
+    });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
     await act(async () => {
-      await result.current(sessionId, 'codex', sessionId, 'next');
+      await result.current(sessionId, 'muse', sessionId, 'next');
     });
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
       'next',
     ]);
+  });
+
+  it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'exec-claude-1',
+      turnId: 'turn-open',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      openTurnId: 'turn-open',
+      streamingMessage: {
+        role: 'assistant',
+        content: 'partial answer',
+        contentParts: [{ type: 'text', content: 'partial answer' }],
+      },
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'course correct');
+    });
+
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'exec-claude-1',
+      text: 'course correct',
+      turnId: 'turn-open',
+      apiBase: 'http://api.test',
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].streamingMessage?.content,
+    ).toBe('partial answer');
+  });
+
+  it('queues on a steering engine when queueOnBusy is requested', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        sessionId,
+        'wait for this turn',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true },
+      );
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'wait for this turn',
+    ]);
+  });
+
+  it('steers a mid-turn message on Codex instead of queueing a new turn', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'exec-codex-1',
+      turnId: 'turn-open',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'codex',
+      currentSessionId: 'exec-codex-1',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', sessionId, 'focus on fails');
+    });
+
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'exec-codex-1',
+      text: 'focus on fails',
+      turnId: 'turn-open',
+      apiBase: 'http://api.test',
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  it('queues a Claude follow-up that carries attachments (steer has no file channel)', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'with file', [
+        stagedAttachment,
+      ]);
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'with file',
+    ]);
+  });
+
+  it('restores the draft when a steer is refused', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'no-active-turn',
+      threadId: sessionId,
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'too late');
+    });
+
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      input: 'too late',
+      queuedMessages: [],
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].ephemeralMessages?.at(-1)
+        ?.content,
+    ).toBe('The turn ended before the steer could be sent.');
   });
 
   /**
@@ -1181,6 +1558,35 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  it('does not steer a durable replay into the open Claude turn', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        undefined,
+        'durable replay only',
+        undefined,
+        undefined,
+        'existing-turn-id',
+        { skipInMemoryQueueOnBusy: true },
+      );
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toEqual(
       [],
     );
@@ -1234,7 +1640,7 @@ describe('useCancelMessage', () => {
       abortController: undefined,
     });
     sendExecutionMessageMock.mockImplementationOnce(
-      ({ signal }: { signal: AbortSignal }) =>
+      (_base: string, _input: unknown, { signal }: { signal: AbortSignal }) =>
         new Promise((_resolve, reject) => {
           signal.addEventListener('abort', () => reject(signal.reason), {
             once: true,

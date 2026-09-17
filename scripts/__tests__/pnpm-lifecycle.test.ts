@@ -1,0 +1,475 @@
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  check,
+  pnpmInvocation,
+  preflightInstalledLifecycle,
+} from '../dependency-lifecycle.mjs';
+import {
+  evaluateLifecyclePolicy,
+  readLifecycleImporters,
+  readPnpmLifecycleNodes,
+} from '../lib/dependency-lifecycle-policy.mjs';
+import { readPnpmLockfile, readPnpmWorkspace } from '../lib/pnpm-lockfile.mjs';
+
+const temporary: string[] = [];
+afterEach(() => {
+  for (const directory of temporary.splice(0))
+    rmSync(directory, { recursive: true, force: true });
+});
+const policy = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      '../../config/dependency-lifecycle-allowlist.json',
+    ),
+    'utf8',
+  ),
+);
+
+function fixture() {
+  const root = realpathSync(
+    mkdtempSync(join(tmpdir(), 'station-pnpm-lifecycle-')),
+  );
+  temporary.push(root);
+  const entry = {
+    // Select the root-hoisted entry by PATH, not by version: this fixture
+    // writes a lock whose only importer is `.`, so it must model the hoisted
+    // copy. Selecting by version picked whichever entry happened to be first
+    // once #1719 split esbuild across workspace importers, which handed the
+    // fixture an `<importer>/node_modules/...` path its own lock cannot name.
+    ...policy.entries.find(
+      (entry: { path: string }) => entry.path === 'node_modules/esbuild',
+    ),
+    lock: 'pnpm-lock.yaml',
+  };
+  const allowlist = { schemaVersion: 1, entries: [entry] };
+  const lock = {
+    lockfileVersion: '9.0',
+    importers: { '.': {} },
+    packages: {
+      [`${entry.name}@${entry.version}`]: {
+        resolution: { integrity: entry.integrity },
+      },
+    },
+  };
+  mkdirSync(join(root, 'config'));
+  writeFileSync(
+    join(root, 'config/dependency-lifecycle-allowlist.json'),
+    JSON.stringify(allowlist),
+  );
+  writeFileSync(join(root, 'pnpm-lock.yaml'), JSON.stringify(lock));
+  const packageRoot = join(root, entry.path);
+  mkdirSync(packageRoot, { recursive: true });
+  writeFileSync(
+    join(packageRoot, 'package.json'),
+    JSON.stringify({
+      name: entry.name,
+      version: entry.version,
+      scripts: { postinstall: 'node install.js' },
+    }),
+  );
+  return { root, entry, allowlist, lock, packageRoot };
+}
+
+describe('pnpm lifecycle boundary', () => {
+  it('refuses a package-manager driver inside node_modules before probing its version', () => {
+    const { root } = fixture();
+    const manager = join(root, 'node_modules/pnpm/bin');
+    mkdirSync(manager, { recursive: true });
+    const cli = join(manager, 'pnpm.cjs');
+    writeFileSync(cli, 'throw new Error("must never execute");');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+    );
+    let probed = false;
+    expect(() =>
+      pnpmInvocation({
+        cwd: root,
+        env: { npm_execpath: cli },
+        exec: () => {
+          probed = true;
+          return '11.25.0';
+        },
+      }),
+    ).toThrow('outside root node_modules');
+    expect(probed).toBe(false);
+  });
+  it('bootstraps an uncached Corepack pin without allowing network access during discovery', () => {
+    const { root } = fixture();
+    const corepack = join(root, 'corepack');
+    mkdirSync(join(corepack, 'dist'), { recursive: true });
+    const cli = join(corepack, 'dist/pnpm.js');
+    writeFileSync(cli, '');
+    writeFileSync(
+      join(corepack, 'package.json'),
+      JSON.stringify({ name: 'corepack', version: '0.1.0' }),
+    );
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+    );
+    const invocation = pnpmInvocation({
+      cwd: root,
+      env: { npm_execpath: cli },
+      exec: () => {
+        throw new Error(
+          "Network access disabled by the environment; can't reach registry",
+        );
+      },
+    });
+    expect(invocation.args).toContain('--package=pnpm@11.25.0');
+    expect(() =>
+      pnpmInvocation({
+        cwd: root,
+        env: { npm_execpath: cli },
+        exec: () => '11.24.0',
+      }),
+    ).toThrow('does not match');
+  });
+  it('reuses an exact-version native executable on PATH without a Windows command shell', () => {
+    const { root } = fixture();
+    const bin = join(root, 'native bin');
+    mkdirSync(bin);
+    const executable = join(bin, 'pnpm.exe');
+    writeFileSync(executable, 'native executable fixture');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+    );
+    const probes: unknown[] = [];
+    expect(
+      pnpmInvocation({
+        cwd: root,
+        env: { PATH: bin },
+        platform: 'win32',
+        exec: (command, args, options) => {
+          probes.push({ command, args, options });
+          return '11.25.0\n';
+        },
+      }),
+    ).toEqual({ command: executable, args: [] });
+    expect(probes).toEqual([
+      {
+        command: executable,
+        args: ['--version'],
+        options: {
+          cwd: root,
+          env: { PATH: bin, COREPACK_ENABLE_NETWORK: '0' },
+          encoding: 'utf8',
+          timeout: 10_000,
+          windowsHide: true,
+        },
+      },
+    ]);
+    expect(() =>
+      pnpmInvocation({
+        cwd: root,
+        env: { PATH: bin },
+        platform: 'win32',
+        exec: () => '11.24.0\n',
+      }),
+    ).toThrow('does not match');
+  });
+  it('accepts a local-only pnpm lock without package snapshots but refuses absent registry metadata', () => {
+    const { root } = fixture();
+    const lock = {
+      lockfileVersion: '9.0',
+      importers: {
+        '.': {
+          dependencies: {
+            local: { specifier: 'workspace:*', version: 'link:packages/local' },
+          },
+        },
+      },
+    };
+    writeFileSync(join(root, 'pnpm-lock.yaml'), JSON.stringify(lock));
+    expect(readPnpmLockfile(root).packages).toEqual({});
+    lock.importers['.'].dependencies.local.version = '1.0.0';
+    writeFileSync(join(root, 'pnpm-lock.yaml'), JSON.stringify(lock));
+    expect(() => readPnpmLockfile(root)).toThrow('unsupported packages');
+  });
+  it('reuses an invoking pnpm only when its package identity matches the exact pin', () => {
+    const { root } = fixture();
+    const pnpmRoot = join(root, 'tooling/pnpm');
+    mkdirSync(join(pnpmRoot, 'bin'), { recursive: true });
+    const pnpmCli = join(pnpmRoot, 'bin/pnpm.cjs');
+    writeFileSync(pnpmCli, 'console.log("11.25.0");');
+    writeFileSync(
+      join(pnpmRoot, 'package.json'),
+      JSON.stringify({ name: 'pnpm', version: '11.25.0' }),
+    );
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+    );
+    expect(
+      pnpmInvocation({ cwd: root, env: { npm_execpath: pnpmCli } }),
+    ).toEqual({ command: process.execPath, args: [pnpmCli] });
+    writeFileSync(
+      join(pnpmRoot, 'package.json'),
+      JSON.stringify({ name: 'pnpm', version: '11.24.0' }),
+    );
+    expect(() =>
+      pnpmInvocation({ cwd: root, env: { npm_execpath: pnpmCli } }),
+    ).toThrow('does not match');
+  });
+  it('excludes Station-owned root lifecycle commands from dependency inventory', () => {
+    const { root } = fixture();
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({
+        name: 'station',
+        scripts: { install: 'node station-owned.js' },
+      }),
+    );
+    expect(readPnpmLifecycleNodes(root).map((entry) => entry.name)).toEqual([
+      'esbuild',
+    ]);
+  });
+  it('binds a physical installed lifecycle package to pnpm integrity and its exact reviewed hooks', () => {
+    const { root, allowlist } = fixture();
+    expect(
+      evaluateLifecyclePolicy({
+        allowlist,
+        nodes: readPnpmLifecycleNodes(root),
+      }),
+    ).toEqual([]);
+    expect(preflightInstalledLifecycle(allowlist, { cwd: root })).toHaveLength(
+      1,
+    );
+  });
+
+  // #1718: a script-bearing dependency that pnpm materializes under a
+  // workspace importer's own node_modules (root esbuild diverged from the
+  // example's exact pin) is inventoried as `<importer>/node_modules/<pkg>`;
+  // an allowlist entry naming that path must approve it end to end.
+  function importerFixture() {
+    const { root, entry, packageRoot } = fixture();
+    const importer = 'examples/viewer';
+    // The lock is one pnpm 11.25.0 actually wrote for a workspace with this
+    // importer (esbuild dependency), a dependency-less `packages/empty`, and
+    // a dependency-less root, so the cold-bootstrap importer reader and the
+    // parsed lock are exercised against the real writer's shape.
+    copyFileSync(
+      resolve(
+        import.meta.dirname,
+        'fixtures/pnpm-lock/workspace-importers.pnpm-lock.yaml',
+      ),
+      join(root, 'pnpm-lock.yaml'),
+    );
+    // That committed lock owns the esbuild identity for this fixture, so bind
+    // the entries and both installed manifests to what IT records rather than
+    // to whatever version the repository's own root entry currently carries.
+    const [key, meta] = Object.entries(
+      readPnpmLockfile(root).packages as Record<
+        string,
+        { resolution: { integrity: string } }
+      >,
+    ).find(([name]) => name.startsWith('esbuild@')) as [
+      string,
+      { resolution: { integrity: string } },
+    ];
+    const version = key.slice('esbuild@'.length);
+    const locked = {
+      ...entry,
+      version,
+      integrity: meta.resolution.integrity,
+      purl: `pkg:npm/esbuild@${version}`,
+    };
+    const nestedEntry = { ...locked, path: `${importer}/node_modules/esbuild` };
+    const allowlist = { schemaVersion: 1, entries: [locked, nestedEntry] };
+    writeFileSync(
+      join(root, 'config/dependency-lifecycle-allowlist.json'),
+      JSON.stringify(allowlist),
+    );
+    writeFileSync(
+      join(root, 'pnpm-workspace.yaml'),
+      `packages:\n  - ${importer}\nverifyDepsBeforeRun: false\nignoreScripts: true\n`,
+    );
+    const manifest = JSON.stringify({
+      name: locked.name,
+      version,
+      scripts: { postinstall: 'node install.js' },
+    });
+    writeFileSync(join(packageRoot, 'package.json'), manifest);
+    const nestedRoot = join(root, importer, 'node_modules/esbuild');
+    mkdirSync(nestedRoot, { recursive: true });
+    writeFileSync(join(nestedRoot, 'package.json'), manifest);
+    return { root, importer, allowlist };
+  }
+
+  it('approves an install-script package materialized under a workspace importer', () => {
+    const { root, importer, allowlist } = importerFixture();
+    const nodes = readPnpmLifecycleNodes(root);
+    expect(nodes.map((node) => node.path)).toEqual([
+      `${importer}/node_modules/esbuild`,
+      'node_modules/esbuild',
+    ]);
+    const importers = readLifecycleImporters(root);
+    expect(importers).toEqual(new Set(['.', importer, 'packages/empty']));
+    expect(evaluateLifecyclePolicy({ allowlist, nodes, importers })).toEqual(
+      [],
+    );
+    // Without the importer set the same entry is malformed: the acceptance
+    // above is earned by the lockfile, not by a looser path rule.
+    expect(evaluateLifecyclePolicy({ allowlist, nodes }).join('\n')).toContain(
+      'allowlist entries[1] has an invalid package path: expected node_modules/<package> or <workspace importer>/node_modules/<package>',
+    );
+    expect(
+      evaluateLifecyclePolicy({
+        allowlist,
+        nodes,
+        importers: new Set(['.', 'examples/other']),
+      }).join('\n'),
+    ).toContain('allowlist entries[1] has an invalid package path');
+    // The hook preflight resolves the nested package on disk and binds its
+    // exact reviewed hook, so the approval reaches execution.
+    expect(preflightInstalledLifecycle(allowlist, { cwd: root })).toHaveLength(
+      2,
+    );
+  });
+
+  it('threads the lockfile importers through both CLI check phases', () => {
+    const { root, allowlist } = importerFixture();
+    // Cold bootstrap (before any install) and the full post-install check
+    // both accept the importer-prefixed entry from the same lockfile keys.
+    expect(check({ cwd: root, bootstrap: true, allowlist })).toBe(allowlist);
+    expect(check({ cwd: root, allowlist })).toBe(allowlist);
+    // A prefix the lockfile does not list as an importer fails both phases.
+    const foreign = structuredClone(allowlist);
+    foreign.entries[1].path = 'examples/other/node_modules/esbuild';
+    expect(() =>
+      check({ cwd: root, bootstrap: true, allowlist: foreign }),
+    ).toThrow('invalid package path');
+    expect(() => check({ cwd: root, allowlist: foreign })).toThrow(
+      'invalid package path',
+    );
+  });
+
+  it('discovers a previously unapproved hook before any hook can run', () => {
+    const { root, allowlist, lock } = fixture();
+    const unexpected = join(root, 'node_modules/unexpected');
+    mkdirSync(unexpected);
+    writeFileSync(
+      join(unexpected, 'package.json'),
+      JSON.stringify({
+        name: 'unexpected',
+        version: '1.0.0',
+        scripts: { install: 'node malicious.js' },
+      }),
+    );
+    Object.assign(lock.packages, {
+      'unexpected@1.0.0': {
+        resolution: { integrity: allowlist.entries[0].integrity },
+      },
+    });
+    writeFileSync(join(root, 'pnpm-lock.yaml'), JSON.stringify(lock));
+    expect(
+      evaluateLifecyclePolicy({
+        allowlist,
+        nodes: readPnpmLifecycleNodes(root),
+      }),
+    ).toContain(
+      'unapproved install script: pnpm-lock.yaml:node_modules/unexpected',
+    );
+  });
+
+  it('rejects installed identities missing from the pnpm lock', () => {
+    const { root, packageRoot } = fixture();
+    writeFileSync(
+      join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: 'esbuild',
+        version: '99.0.0',
+        scripts: { install: 'node install.js' },
+      }),
+    );
+    expect(() => readPnpmLifecycleNodes(root)).toThrow('not integrity-locked');
+  });
+
+  it('rejects changed hooks even when package identity and integrity remain approved', () => {
+    const { root, allowlist, packageRoot, entry } = fixture();
+    writeFileSync(
+      join(packageRoot, 'package.json'),
+      JSON.stringify({
+        name: entry.name,
+        version: entry.version,
+        scripts: { postinstall: 'node replacement.js' },
+      }),
+    );
+    expect(() => preflightInstalledLifecycle(allowlist, { cwd: root })).toThrow(
+      'hook set drift',
+    );
+  });
+
+  it('refuses dependency links outside the worktree instead of scanning or mutating another tree', () => {
+    const { root } = fixture();
+    const outside = mkdtempSync(join(tmpdir(), 'station-pnpm-outside-'));
+    temporary.push(outside);
+    symlinkSync(
+      outside,
+      join(root, 'node_modules/escaped'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    expect(() => readPnpmLifecycleNodes(root)).toThrow(
+      'redirected by a symlink or junction',
+    );
+  });
+
+  it('rejects duplicate YAML keys and unsupported lock formats', () => {
+    const { root } = fixture();
+    writeFileSync(
+      join(root, 'pnpm-lock.yaml'),
+      "lockfileVersion: '9.0'\nlockfileVersion: '8.0'\nimporters: {}\npackages: {}\n",
+    );
+    expect(() => readPnpmLockfile(root)).toThrow('invalid');
+    writeFileSync(
+      join(root, 'pnpm-lock.yaml'),
+      "lockfileVersion: '8.0'\nimporters: {}\npackages: {}\n",
+    );
+    expect(() => readPnpmLockfile(root)).toThrow('unsupported');
+    writeFileSync(
+      join(root, 'pnpm-workspace.yaml'),
+      'packages: [packages/*]\n',
+    );
+    expect(readPnpmWorkspace(root).packages).toEqual(['packages/*']);
+  });
+
+  it('bootstraps only an exact pnpm 11 pin as inert argv through the Node-distributed npm CLI', () => {
+    const { root } = fixture();
+    const npmCli = join(root, 'npm-cli.js');
+    writeFileSync(npmCli, '');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+    );
+    expect(
+      pnpmInvocation({
+        cwd: root,
+        env: { npm_execpath: npmCli },
+        node: process.execPath,
+      }),
+    ).toEqual({
+      command: process.execPath,
+      args: [npmCli, 'exec', '--yes', '--package=pnpm@11.25.0', '--', 'pnpm'],
+    });
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@latest' }),
+    );
+    expect(() => pnpmInvocation({ cwd: root })).toThrow('exact pnpm 11');
+  });
+});

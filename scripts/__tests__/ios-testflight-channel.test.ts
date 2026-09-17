@@ -19,8 +19,10 @@ describe('iOS TestFlight channel config', () => {
     expect(workflow).toContain(
       'STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build',
     );
+    // The upload job reads the manifest from the staged artifact it
+    // downloaded, the same bytes the build job compared against the IPA.
     expect(workflow).toContain(
-      '--artifact-manifest src-desktop/station-client-build.json',
+      '--artifact-manifest staged/src-desktop/station-client-build.json',
     );
     expect(workflow).toContain('cmp "src-desktop/station-client-build.json"');
     expect(workflow).toContain('artifact_built_at=$(node -p');
@@ -70,6 +72,25 @@ describe('iOS TestFlight channel config', () => {
       expect(expected.appStoreName).toBe(
         `Station${channel === 'stable' ? '' : ` ${channel[0].toUpperCase()}${channel.slice(1)}`} by Kontour AI`,
       );
+    },
+  );
+
+  test.each(['stable', 'beta', 'nightly'] as const)(
+    'names the committed %s iOS asset-catalog set the delivery copies over gen/apple',
+    (channel) => {
+      const identity = IOS_TESTFLIGHT_CHANNELS[channel];
+      expect(identity.iosIconSet).toBe(`icons/${channel}/ios`);
+      expect(identity.iosIconSet).not.toBe(identity.icon);
+      expect(
+        readFileSync(
+          resolve(
+            import.meta.dirname,
+            '../../src-desktop',
+            identity.iosIconSet,
+            'AppIcon-512@2x.png',
+          ),
+        ).length,
+      ).toBeGreaterThan(0);
     },
   );
 

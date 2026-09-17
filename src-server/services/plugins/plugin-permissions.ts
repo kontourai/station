@@ -18,21 +18,29 @@
  * means, what an un-bound legacy grant does, and why.
  */
 
-import { join } from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash, randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type {
   PermissionTier,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
-import { permissionTier } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  permissionTier,
+} from '@kontourai/station-contracts/plugin';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger, type Logger } from '../../utils/logger.js';
 import {
   GrantsFileStore,
   GrantsStoreUnavailableError,
-  isPlainObject,
 } from './grants-file-store.js';
 import {
   pluginContentDigest,
   refreshPluginContentDigest,
+  withPluginContentLock,
 } from './plugin-content-integrity.js';
 
 export type { PermissionTier };
@@ -56,20 +64,56 @@ export function needsConsent(permission: string): boolean {
 // ── Grants Storage ─────────────────────────────────────
 
 /**
- * On-disk entry for one plugin. Two shapes are valid and they mean different
- * things — nothing is coerced between them:
+ * On-disk entry for one plugin. Legacy and revisioned shapes are valid and mean
+ * different things — nothing is coerced between them:
  *
  * - `string[]` — a grant recorded before grants were bound to content
  *   (archive#4288). The permissions are real; the tree they were granted
  *   against was never recorded, so it is UNKNOWN, not empty.
- * - `{ permissions, contentDigest }` — a grant bound to exactly the bytes
- *   {@link computePluginContentDigest} saw when consent was given.
+ * - `{ permissions, contentDigest, installAuthority? }` — a grant bound to
+ *   exactly the bytes {@link computePluginContentDigest} saw when consent was
+ *   given. The optional Station-authored install authority shares this
+ *   existing locked host record so dependency lifecycle does not create a
+ *   parallel ledger. It may keep an object with `permissions: []` alive until
+ *   uninstall finishes.
+ *
+ * - `mutationRevision` is a host-generated permission-decision identity.
+ *   A revisioned record may omit contentDigest to preserve an unbound legacy
+ *   decision or empty tombstone. An empty tombstone grants nothing but prevents
+ *   same-value revocation/regrant from being erased by an older rollback.
  *
  * Anything else is corruption and throws (decision 1 of the store's policy).
  */
+export interface PluginDependencyOwnershipEntry {
+  id: string;
+  contentDigest: string;
+  /** Managed cleanup custody belongs to this admission, not identical future bytes. */
+  generation?: string;
+}
+
+/**
+ * Station-authored install authority stored beside the existing per-plugin
+ * grant record. It deliberately does not live in the mutable plugin tree: a
+ * plugin may change its own manifest and bytes, but those inputs cannot mint
+ * deletion authority over another installed plugin.
+ */
+export interface PluginInstallAuthorityRecord {
+  version: 1;
+  installedDigest: string;
+  ownedDependencies: PluginDependencyOwnershipEntry[];
+  /** Host-only CAS identity; absent on pre-handoff records. */
+  ownershipRevision?: string;
+}
+
 type StoredGrantEntry =
   | string[]
-  | { permissions: string[]; contentDigest: string };
+  | {
+      permissions: string[];
+      contentDigest?: string;
+      /** Host mutation identity, also retained on permission tombstones. */
+      mutationRevision?: string;
+      installAuthority?: PluginInstallAuthorityRecord;
+    };
 
 interface GrantsFile {
   [pluginName: string]: StoredGrantEntry;
@@ -84,6 +128,7 @@ interface GrantsFile {
 export interface PluginGrantRecord {
   permissions: string[];
   contentDigest: string | null;
+  installAuthority?: PluginInstallAuthorityRecord;
 }
 
 /**
@@ -191,7 +236,7 @@ export function pluginsDirFor(projectHomeDir: string): string {
 
 /** Valid = plain object; every value a legacy array or a bound record. */
 function pluginGrantsShapeProblems(value: unknown): string[] {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     return ['must be a plain object keyed by plugin name'];
   }
   const problems: string[] = [];
@@ -211,22 +256,124 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
       permissionsProblem(pluginName, entry);
       continue;
     }
-    if (!isPlainObject(entry)) {
+    if (!isRecord(entry)) {
       problems.push(
         `${pluginName}: entry must be an array of permission strings or a { permissions, contentDigest } record`,
       );
       continue;
     }
     permissionsProblem(pluginName, entry.permissions);
-    if (typeof entry.contentDigest !== 'string') {
+    const revisioned =
+      typeof entry.mutationRevision === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+        entry.mutationRevision,
+      );
+    if (entry.mutationRevision !== undefined && !revisioned)
+      problems.push(
+        `${pluginName}: mutationRevision must be a host mutation identity`,
+      );
+    if (entry.contentDigest === undefined && revisioned) {
+      // An explicit revision preserves absence of content binding; never invent a digest.
+    } else if (typeof entry.contentDigest !== 'string') {
       problems.push(
         `${pluginName}: contentDigest must be the digest string the grant was given against`,
       );
     } else if (entry.contentDigest.length === 0) {
       problems.push(`${pluginName}: contentDigest must not be empty`);
     }
+    if (entry.installAuthority !== undefined) {
+      const authority = entry.installAuthority;
+      if (!isRecord(authority)) {
+        problems.push(`${pluginName}: installAuthority must be an object`);
+        continue;
+      }
+      const authorityKeys = Object.keys(authority).sort().join(',');
+      if (
+        authorityKeys !== 'installedDigest,ownedDependencies,version' &&
+        authorityKeys !==
+          'installedDigest,ownedDependencies,ownershipRevision,version'
+      ) {
+        problems.push(`${pluginName}: installAuthority has unexpected fields`);
+        continue;
+      }
+      if (authority.version !== 1) {
+        problems.push(`${pluginName}: installAuthority version must be 1`);
+      }
+      if (
+        authority.ownershipRevision !== undefined &&
+        (typeof authority.ownershipRevision !== 'string' ||
+          !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(
+            authority.ownershipRevision,
+          ))
+      ) {
+        problems.push(
+          `${pluginName}: installAuthority ownershipRevision must be a UUID`,
+        );
+      }
+      if (
+        typeof authority.installedDigest !== 'string' ||
+        !/^sha256:[0-9a-f]{64}$/.test(authority.installedDigest)
+      ) {
+        problems.push(
+          `${pluginName}: installAuthority installedDigest must be a SHA-256 digest`,
+        );
+      }
+      if (
+        !Array.isArray(authority.ownedDependencies) ||
+        authority.ownedDependencies.length > 256
+      ) {
+        problems.push(
+          `${pluginName}: installAuthority ownedDependencies must be a bounded array`,
+        );
+        continue;
+      }
+      const ids = new Set<string>();
+      for (const dependency of authority.ownedDependencies) {
+        if (
+          !isRecord(dependency) ||
+          !['contentDigest,id', 'contentDigest,generation,id'].includes(
+            Object.keys(dependency).sort().join(','),
+          ) ||
+          (dependency.generation !== undefined &&
+            (typeof dependency.generation !== 'string' ||
+              !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(
+                dependency.generation,
+              ))) ||
+          !isCanonicalPluginId(dependency.id) ||
+          typeof dependency.contentDigest !== 'string' ||
+          !/^sha256:[0-9a-f]{64}$/.test(dependency.contentDigest)
+        ) {
+          problems.push(
+            `${pluginName}: installAuthority contains a malformed dependency`,
+          );
+          continue;
+        }
+        if (ids.has(dependency.id)) {
+          problems.push(
+            `${pluginName}: installAuthority contains duplicate dependency ids`,
+          );
+        }
+        ids.add(dependency.id);
+      }
+    }
   }
   return problems;
+}
+
+/** Backup readers use the same authority schema as the live host store. */
+export function isPluginInstallAuthorityRecord(
+  value: unknown,
+): value is PluginInstallAuthorityRecord {
+  return (
+    value !== undefined &&
+    pluginGrantsShapeProblems({
+      validation: {
+        permissions: [],
+        contentDigest: 'validation',
+        installAuthority: value,
+      },
+    }).length === 0
+  );
 }
 
 /** Reads one entry into the normalized record. Never coerces a bad shape. */
@@ -237,16 +384,24 @@ function toGrantRecord(entry: StoredGrantEntry | undefined): PluginGrantRecord {
   }
   return {
     permissions: [...entry.permissions],
-    contentDigest: entry.contentDigest,
+    contentDigest: entry.contentDigest ?? null,
+    ...(entry.installAuthority
+      ? { installAuthority: structuredClone(entry.installAuthority) }
+      : {}),
   };
 }
 
 function toStoredEntry(record: PluginGrantRecord): StoredGrantEntry {
-  return record.contentDigest === null
+  return record.contentDigest === null && !record.installAuthority
     ? [...record.permissions]
     : {
         permissions: [...record.permissions],
-        contentDigest: record.contentDigest,
+        ...(record.contentDigest !== null
+          ? { contentDigest: record.contentDigest }
+          : {}),
+        ...(record.installAuthority
+          ? { installAuthority: structuredClone(record.installAuthority) }
+          : {}),
       };
 }
 
@@ -258,6 +413,333 @@ function grantsStore(projectHomeDir: string): GrantsFileStore<GrantsFile> {
     makeUnavailableError: (storePath, detail, cause) =>
       new PluginGrantsUnavailableError(storePath, detail, { cause }),
     emptyValue: {},
+  });
+}
+
+/** Opaque observation of the last permission decision; never permission itself. */
+export type PluginGrantRevision = string & {
+  readonly __pluginGrantRevision: unique symbol;
+};
+type PermissionState = Pick<PluginGrantRecord, 'permissions' | 'contentDigest'>;
+type GrantWriteReceipt = {
+  before: PermissionState;
+  beforeRevision: PluginGrantRevision;
+  afterRevision: PluginGrantRevision;
+  restoredRevision?: PluginGrantRevision;
+};
+export type PluginGrantRollbackResult = {
+  state: 'restored' | 'superseded' | 'unchanged' | 'unavailable';
+};
+export interface PluginGrantMutationScope {
+  /** Expected next owned write; observe again after the scope completes. */
+  readonly revision: PluginGrantRevision;
+  run<T>(operation: () => Promise<T>): Promise<T>;
+  commit(): void;
+  rollback(): Promise<PluginGrantRollbackResult>;
+}
+export interface PluginGrantRevisionSnapshot {
+  revisionFor(pluginName: string): PluginGrantRevision;
+}
+export class PluginGrantMutationSupersededError extends Error {
+  readonly code = 'plugin_grant_mutation_superseded';
+  constructor() {
+    super(
+      'Plugin permissions changed. Review them before retrying this operation.',
+    );
+  }
+}
+interface GrantMutationOwner {
+  home: string;
+  plugin: string;
+  expected: PluginGrantRevision;
+  receipts: GrantWriteReceipt[];
+  closed: boolean;
+  superseded: boolean;
+}
+const grantMutationContexts = new AsyncLocalStorage<
+  Array<{ owner: GrantMutationOwner; active: boolean }>
+>();
+
+function permissionState(entry: StoredGrantEntry | undefined): PermissionState {
+  const record = toGrantRecord(entry);
+  return {
+    permissions: record.permissions,
+    contentDigest: record.permissions.length ? record.contentDigest : null,
+  };
+}
+function grantRevision(
+  entry: StoredGrantEntry | undefined,
+): PluginGrantRevision {
+  if (entry && !Array.isArray(entry) && entry.mutationRevision)
+    return entry.mutationRevision as PluginGrantRevision;
+  return `legacy:${createHash('sha256')
+    .update(JSON.stringify(permissionState(entry)))
+    .digest('hex')}` as PluginGrantRevision;
+}
+function permissionTombstone(entry: StoredGrantEntry | undefined): boolean {
+  return (
+    !!entry &&
+    !Array.isArray(entry) &&
+    !!entry.mutationRevision &&
+    !entry.permissions.length &&
+    entry.contentDigest === undefined &&
+    !entry.installAuthority
+  );
+}
+function withGrantRevision(
+  entry: StoredGrantEntry | undefined,
+  revision: string,
+): StoredGrantEntry {
+  return Array.isArray(entry)
+    ? { permissions: [...entry], mutationRevision: revision }
+    : entry
+      ? { ...entry, mutationRevision: revision }
+      : { permissions: [], mutationRevision: revision };
+}
+
+function permissionHomeKey(home: string): string {
+  let ancestor = resolve(home);
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      return join(realpathSync.native(ancestor), ...suffix.reverse());
+    } catch (error) {
+      if (
+        (error as NodeJS.ErrnoException).code !== 'ENOENT' ||
+        dirname(ancestor) === ancestor
+      )
+        throw new PluginGrantsUnavailableError(
+          pluginGrantsPath(home),
+          'permission owner is unavailable',
+          { cause: error },
+        );
+      suffix.push(basename(ancestor));
+      ancestor = dirname(ancestor);
+    }
+  }
+}
+
+/** Request-entry observation, before acquisition reveals a package name. */
+export function observePluginGrantRevisions(
+  projectHomeDir: string,
+): PluginGrantRevisionSnapshot {
+  const grants = grantsStore(projectHomeDir).read();
+  const revisions = new Map(
+    Object.entries(grants).map(([key, entry]) => [key, grantRevision(entry)]),
+  );
+  const absent = grantRevision(undefined);
+  return Object.freeze({
+    revisionFor: (pluginName: string): PluginGrantRevision =>
+      revisions.get(pluginName) ?? absent,
+  });
+}
+
+export function readPluginGrantRevision(
+  projectHomeDir: string,
+  pluginName: string,
+): PluginGrantRevision {
+  return observePluginGrantRevisions(projectHomeDir).revisionFor(pluginName);
+}
+
+/** A receipt owner holds no store/content lock while installation or other work awaits. */
+export function createPluginGrantMutationScope(
+  projectHomeDir: string,
+  pluginName: string,
+  options?: { expectedRevision?: string },
+): PluginGrantMutationScope {
+  const initial = readPluginGrantRevision(projectHomeDir, pluginName);
+  if (
+    options?.expectedRevision !== undefined &&
+    options.expectedRevision !== initial
+  )
+    throw new PluginGrantMutationSupersededError();
+  const owner: GrantMutationOwner = {
+    home: permissionHomeKey(projectHomeDir),
+    plugin: pluginName,
+    expected: initial,
+    receipts: [],
+    closed: false,
+    superseded: false,
+  };
+  let running = false;
+  let failed = false;
+  return Object.freeze({
+    get revision() {
+      return owner.expected;
+    },
+    async run<T>(operation: () => Promise<T>): Promise<T> {
+      if (owner.superseded) throw new PluginGrantMutationSupersededError();
+      if (owner.closed || running || failed)
+        throw new Error('Plugin permission scope is not available.');
+      if (
+        (grantMutationContexts.getStore() ?? []).some(
+          (c) =>
+            c.active &&
+            c.owner.home === owner.home &&
+            c.owner.plugin === owner.plugin,
+        )
+      )
+        throw new Error(
+          'Plugin permission scopes cannot nest for the same plugin.',
+        );
+      running = true;
+      const context = { owner, active: true };
+      try {
+        return await grantMutationContexts.run(
+          [...(grantMutationContexts.getStore() ?? []), context],
+          operation,
+        );
+      } catch (error) {
+        failed = true;
+        throw error;
+      } finally {
+        context.active = false;
+        running = false;
+      }
+    },
+    commit() {
+      if (running || failed || owner.superseded)
+        throw new Error(
+          'Plugin permission scope cannot commit incomplete work.',
+        );
+      owner.closed = true;
+      owner.receipts.length = 0;
+    },
+    async rollback(): Promise<PluginGrantRollbackResult> {
+      if (running || owner.closed)
+        throw new Error('Plugin permission scope is not available.');
+      if (owner.superseded || !owner.receipts.length) {
+        owner.closed = true;
+        owner.receipts.length = 0;
+        return { state: owner.superseded ? 'superseded' : 'unchanged' };
+      }
+      let restored = false,
+        superseded = false;
+      try {
+        await grantsStore(projectHomeDir).mutate(
+          pluginName,
+          (grants) => {
+            for (const receipt of [...owner.receipts].reverse()) {
+              const current = grants[pluginName];
+              const revision = grantRevision(current);
+              if (revision !== receipt.afterRevision) {
+                if (
+                  (revision === receipt.beforeRevision ||
+                    revision === receipt.restoredRevision) &&
+                  isDeepStrictEqual(permissionState(current), receipt.before)
+                )
+                  continue;
+                superseded = true;
+                break;
+              }
+              // Custody belongs to its own owner. Never restore an old authority snapshot.
+              const authority = toGrantRecord(current).installAuthority;
+              const before = toStoredEntry({
+                ...receipt.before,
+                ...(authority ? { installAuthority: authority } : {}),
+              });
+              const restoredRevision =
+                receipt.restoredRevision ??
+                (receipt.beforeRevision.startsWith('legacy:')
+                  ? (randomUUID() as PluginGrantRevision)
+                  : receipt.beforeRevision);
+              receipt.restoredRevision = restoredRevision;
+              grants[pluginName] = withGrantRevision(before, restoredRevision);
+              restored = true;
+            }
+            return grants;
+          },
+          { skipUnchanged: true },
+        );
+      } catch (error) {
+        if (error instanceof PluginGrantsUnavailableError)
+          return { state: 'unavailable' };
+        throw error;
+      }
+      owner.closed = true;
+      owner.receipts.length = 0;
+      return {
+        state: superseded ? 'superseded' : restored ? 'restored' : 'unchanged',
+      };
+    },
+  });
+}
+
+/** Stamp permission decisions in the same file/lock, including same-value decisions.
+ * Authority-only mutations retain the current permission revision and cannot join a grant rollback. */
+async function mutatePluginGrants(
+  projectHomeDir: string,
+  mutatedKey: string,
+  update: (current: GrantsFile) => GrantsFile,
+  permissionDecision = false,
+): Promise<GrantsFile> {
+  return grantsStore(projectHomeDir).mutate(mutatedKey, (current) => {
+    const before = structuredClone(current);
+    const home = permissionHomeKey(projectHomeDir);
+    const active = (grantMutationContexts.getStore() ?? []).filter(
+      (c) => c.active && !c.owner.closed,
+    );
+    const targetOwner = [...active]
+      .reverse()
+      .find((c) => c.owner.plugin === mutatedKey);
+    if (targetOwner && targetOwner.owner.home !== home) {
+      targetOwner.owner.superseded = true;
+      throw new PluginGrantMutationSupersededError();
+    }
+    const contexts = active.filter((c) => c.owner.home === home);
+    const check = (key: string) => {
+      if (active.length && !contexts.some((c) => c.owner.plugin === key))
+        throw new Error(
+          'Permission mutation is outside its owned plugin scope.',
+        );
+      for (const { owner } of contexts.filter((c) => c.owner.plugin === key)) {
+        if (owner.receipts.length >= 1024)
+          throw new Error(
+            'Plugin permission mutation scope exceeded its bounded limit.',
+          );
+        if (owner.expected !== grantRevision(before[key])) {
+          owner.superseded = true;
+          throw new PluginGrantMutationSupersededError();
+        }
+      }
+    };
+    if (permissionDecision) check(mutatedKey);
+    const next = update(current);
+    for (const key of new Set([
+      ...Object.keys(before),
+      ...Object.keys(next),
+      mutatedKey,
+    ])) {
+      const changed = !isDeepStrictEqual(
+        permissionState(before[key]),
+        permissionState(next[key]),
+      );
+      const decision = changed || (permissionDecision && key === mutatedKey);
+      if (decision) {
+        check(key);
+        const revision = randomUUID() as PluginGrantRevision;
+        const receipt = {
+          before: permissionState(before[key]),
+          beforeRevision: grantRevision(before[key]),
+          afterRevision: revision,
+        };
+        next[key] = withGrantRevision(next[key], revision);
+        // Retain the attempt before the atomic writer: a write error can be indeterminate.
+        for (const { owner } of contexts.filter(
+          (c) => c.owner.plugin === key,
+        )) {
+          owner.receipts.push(receipt);
+          owner.expected = revision;
+        }
+      } else {
+        const revision =
+          before[key] && !Array.isArray(before[key])
+            ? before[key].mutationRevision
+            : undefined;
+        if (revision) next[key] = withGrantRevision(next[key], revision);
+      }
+    }
+    return next;
   });
 }
 
@@ -277,32 +759,14 @@ export function readPluginGrantRecord(
   return toGrantRecord(grantsStore(projectHomeDir).read()[pluginName]);
 }
 
-/**
- * Final command admission under the durable grant mutation authority.
- * The caller already holds the plugin content lease and has finished all
- * asynchronous context checks; admit must only append its exact receipt.
- */
-export async function withPluginCommandServerGrantAdmission<T>(
-  projectHomeDir: string,
-  pluginName: string,
-  admit: () => T | Promise<T>,
-): Promise<{ kind: 'admitted'; value: T } | { kind: 'denied' }> {
-  return grantsStore(projectHomeDir).withReadLease(async (grants) => {
-    const digest = refreshPluginContentDigest(
-      pluginsDirFor(projectHomeDir),
-      pluginName,
-    );
-    const record = toGrantRecord(grants[pluginName]);
-    if (
-      digest === null ||
-      !derivePluginGrantBinding(record, digest).granted.includes(
-        'plugin.server',
-      )
-    ) {
-      return { kind: 'denied' };
-    }
-    return { kind: 'admitted', value: await admit() };
-  });
+/** Server-owned artifact capture. Callers obtain it from installation authority,
+ * never from request JSON; currentness includes a fresh physical digest check. */
+export interface CapturedPluginPermissionArtifact {
+  readonly generation?: string;
+  readonly pluginId: string;
+  readonly digest: string;
+  isCurrent(): boolean;
+  isCurrentAsync?(): Promise<boolean>;
 }
 
 /**
@@ -381,6 +845,7 @@ export async function withPluginCommandServerGrantAdmission<T>(
 export function readPluginGrantState(
   projectHomeDir: string,
   pluginName: string,
+  artifact?: CapturedPluginPermissionArtifact,
 ): PluginGrantState {
   const record = readPluginGrantRecord(projectHomeDir, pluginName);
   // A plugin with no recorded grants has nothing to bind, so it never walks
@@ -388,7 +853,38 @@ export function readPluginGrantState(
   const currentDigest =
     record.permissions.length === 0
       ? null
-      : pluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+      : artifact
+        ? artifact.pluginId === pluginName && artifact.isCurrent()
+          ? artifact.digest
+          : null
+        : pluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+  return describePluginGrantState(record, currentDigest);
+}
+
+/** Reread grants after the yielding byte check so revocation during I/O wins. */
+export async function readPluginGrantStateAsync(
+  projectHomeDir: string,
+  pluginName: string,
+  artifact: CapturedPluginPermissionArtifact,
+): Promise<PluginGrantState> {
+  const initial = readPluginGrantRecord(projectHomeDir, pluginName);
+  if (initial.permissions.length === 0)
+    return describePluginGrantState(initial, null);
+  const current =
+    artifact.pluginId === pluginName &&
+    (await (artifact.isCurrentAsync?.() ?? artifact.isCurrent()));
+  const record = readPluginGrantRecord(projectHomeDir, pluginName);
+  return describePluginGrantState(
+    record,
+    current && record.permissions.length > 0 ? artifact.digest : null,
+  );
+}
+
+/** Inert presentation of a caller's observed bytes; invocation checks own fresh observation. */
+export function describePluginGrantState(
+  record: PluginGrantRecord,
+  currentDigest: string | null,
+): PluginGrantState {
   const { binding, granted, withheld } = derivePluginGrantBinding(
     record,
     currentDigest,
@@ -464,45 +960,55 @@ export async function grantPermissions(
   projectHomeDir: string,
   pluginName: string,
   permissions: string[],
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<{ granted: string[]; withdrawn: string[] }> {
   let outcome: { granted: string[]; withdrawn: string[] } = {
     granted: [],
     withdrawn: [],
   };
-  await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-    // Inside the updater on purpose: the store's own read has already
-    // succeeded and its lock is held, so an unreadable grants store reports
-    // itself as such rather than being masked by whatever the tree read says,
-    // and the digest is taken with the write serialized behind it.
-    const contentDigest = refreshPluginContentDigest(
-      pluginsDirFor(projectHomeDir),
-      pluginName,
-    );
-    if (contentDigest === null) {
-      throw new PluginContentUnavailableError(pluginName);
-    }
-    const record = toGrantRecord(grants[pluginName]);
-    // The EFFECTIVE set under the binding this write is about to replace —
-    // see the note above. On `changed` this is empty, so the withheld
-    // permissions are withdrawn here rather than re-blessed.
-    const { granted: carried } = derivePluginGrantBinding(
-      record,
-      contentDigest,
-    );
-    const next = new Set(carried);
-    for (const p of permissions) next.add(p);
-    outcome = {
-      granted: [...next],
-      withdrawn: record.permissions.filter(
-        (permission) => !next.has(permission),
-      ),
-    };
-    grants[pluginName] = toStoredEntry({
-      permissions: [...next],
-      contentDigest,
-    });
-    return grants;
-  });
+  await mutatePluginGrants(
+    projectHomeDir,
+    pluginName,
+    (grants) => {
+      // Inside the updater on purpose: the store's own read has already
+      // succeeded and its lock is held, so an unreadable grants store reports
+      // itself as such rather than being masked by whatever the tree read says,
+      // and the digest is taken with the write serialized behind it.
+      const contentDigest = artifact
+        ? artifact.pluginId === pluginName && artifact.isCurrent()
+          ? artifact.digest
+          : null
+        : refreshPluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+      if (contentDigest === null) {
+        throw new PluginContentUnavailableError(pluginName);
+      }
+      const record = toGrantRecord(grants[pluginName]);
+      // The EFFECTIVE set under the binding this write is about to replace —
+      // see the note above. On `changed` this is empty, so the withheld
+      // permissions are withdrawn here rather than re-blessed.
+      const { granted: carried } = derivePluginGrantBinding(
+        record,
+        contentDigest,
+      );
+      const next = new Set(carried);
+      for (const p of permissions) next.add(p);
+      outcome = {
+        granted: [...next],
+        withdrawn: record.permissions.filter(
+          (permission) => !next.has(permission),
+        ),
+      };
+      grants[pluginName] = toStoredEntry({
+        permissions: [...next],
+        contentDigest,
+        ...(record.installAuthority
+          ? { installAuthority: record.installAuthority }
+          : {}),
+      });
+      return grants;
+    },
+    true,
+  );
   // Read only after `mutate` resolved: the updater runs before the write, and
   // a write that threw must not report a grant that never landed.
   return outcome;
@@ -539,51 +1045,58 @@ export async function rebindGrantsAfterContentChange(
     | 'serverModule'
     | 'operationalEventSubscriptions'
   >,
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<{ retained: string[]; withdrawn: string[] }> {
-  const before = readPluginGrantRecord(projectHomeDir, pluginName);
-  if (before.permissions.length === 0) return { retained: [], withdrawn: [] };
-  // Read AFTER the store read succeeded, for the same reason
-  // `grantPermissions` takes it inside the updater: an unreadable grants
-  // store must report itself rather than be masked by the tree read.
-  const contentDigest = refreshPluginContentDigest(
-    pluginsDirFor(projectHomeDir),
+  let outcome: { retained: string[]; withdrawn: string[] } = {
+    retained: [],
+    withdrawn: [],
+  };
+  if (
+    readPluginGrantRecord(projectHomeDir, pluginName).permissions.length === 0
+  )
+    return outcome;
+  await mutatePluginGrants(
+    projectHomeDir,
     pluginName,
-  );
-  if (contentDigest === null) {
-    throw new PluginContentUnavailableError(pluginName);
-  }
-  const declared = new Set(requiredPermissionsForManifest(manifest));
-  const retained = before.permissions.filter(
-    (permission) => declared.has(permission) && !needsConsent(permission),
-  );
-  const keep = new Set(retained);
-  const withdrawn = before.permissions.filter(
-    (permission) => !keep.has(permission),
-  );
-  if (withdrawn.length === 0) {
-    // Nothing to withdraw, but the binding still has to move to the new
-    // bytes or the next read would report `changed` forever.
-    await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-      grants[pluginName] = toStoredEntry({
-        permissions: retained,
-        contentDigest,
-      });
+    (grants) => {
+      const before = toGrantRecord(grants[pluginName]);
+      if (
+        artifact &&
+        (artifact.pluginId !== pluginName || !artifact.isCurrent())
+      )
+        throw new PluginContentUnavailableError(pluginName);
+      if (before.permissions.length === 0) return grants;
+      const contentDigest =
+        artifact?.digest ??
+        refreshPluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+      if (contentDigest === null)
+        throw new PluginContentUnavailableError(pluginName);
+      const declared = new Set(requiredPermissionsForManifest(manifest));
+      const retained = before.permissions.filter(
+        (permission) => declared.has(permission) && !needsConsent(permission),
+      );
+      const keep = new Set(retained);
+      const withdrawn = before.permissions.filter(
+        (permission) => !keep.has(permission),
+      );
+      // Re-read and derive under the existing mutation owner so a concurrent
+      // revocation cannot be resurrected from an earlier snapshot.
+      if (retained.length === 0 && !before.installAuthority)
+        delete grants[pluginName];
+      else
+        grants[pluginName] = toStoredEntry({
+          permissions: retained,
+          contentDigest,
+          ...(before.installAuthority
+            ? { installAuthority: before.installAuthority }
+            : {}),
+        });
+      outcome = { retained, withdrawn };
       return grants;
-    });
-    return { retained, withdrawn };
-  }
-  await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-    // Matches `revokeGrants`: an empty remainder drops the key rather than
-    // persisting an entry that grants nothing.
-    if (retained.length === 0) delete grants[pluginName];
-    else
-      grants[pluginName] = toStoredEntry({
-        permissions: retained,
-        contentDigest,
-      });
-    return grants;
-  });
-  return { retained, withdrawn };
+    },
+    true,
+  );
+  return outcome;
 }
 
 export function requiredPermissionsForManifest(
@@ -647,32 +1160,24 @@ export function snapshotPluginGrantEntry(
   // The RECORD, digest included: a rollback that restored the permissions
   // but not the digest they were granted against would leave the entry
   // reading `unverified` forever, which is a state nobody chose.
-  return Object.hasOwn(grants, pluginName)
+  return Object.hasOwn(grants, pluginName) &&
+    !permissionTombstone(grants[pluginName])
     ? toGrantRecord(grants[pluginName])
     : null;
 }
 
-/**
- * Restores exactly one plugin's grants entry to a snapshot taken by
- * {@link snapshotPluginGrantEntry}, through the store's locked mutate — never
- * a raw file copy — so consent recorded for OTHER plugins between snapshot
- * and rollback survives the rollback. Throws the typed unavailable error when
- * the store cannot be read or written; callers must let that surface rather
- * than fall back to copying bytes.
- */
+/** @deprecated A snapshot is observation, not rollback authority. Use an owned mutation scope. */
 export async function restorePluginGrantEntry(
   projectHomeDir: string,
   pluginName: string,
   entry: PluginGrantRecord | null,
 ): Promise<void> {
-  await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-    if (entry === null) {
-      delete grants[pluginName];
-    } else {
-      grants[pluginName] = toStoredEntry(entry);
-    }
-    return grants;
-  });
+  void projectHomeDir;
+  void pluginName;
+  void entry;
+  throw new Error(
+    'Plugin permission restoration requires an owned mutation receipt.',
+  );
 }
 
 /**
@@ -698,23 +1203,130 @@ export async function revokeGrants(
 ): Promise<void> {
   const withdrawn = new Set(permissions);
   if (withdrawn.size === 0) return;
-  await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-    const record = toGrantRecord(grants[pluginName]);
-    const remaining = record.permissions.filter(
-      (permission) => !withdrawn.has(permission),
-    );
-    // An empty remainder drops the key rather than persisting `[]`, so the
-    // stored shape matches what `revokeAllGrants` leaves behind.
-    if (remaining.length === 0) delete grants[pluginName];
-    else
-      grants[pluginName] = toStoredEntry({
-        permissions: remaining,
-        // Narrowing never re-binds: withdrawing a permission says nothing
-        // about the bytes the surviving ones were granted against, so a
-        // legacy entry stays `unverified` and a bound one keeps its digest.
-        contentDigest: record.contentDigest,
-      });
-    return grants;
+  await mutatePluginGrants(
+    projectHomeDir,
+    pluginName,
+    (grants) => {
+      const record = toGrantRecord(grants[pluginName]);
+      const remaining = record.permissions.filter(
+        (permission) => !withdrawn.has(permission),
+      );
+      // An empty remainder drops a permission-only key. Host-owned install
+      // authority survives permission revocation until uninstall completes.
+      if (remaining.length === 0 && !record.installAuthority)
+        delete grants[pluginName];
+      else
+        grants[pluginName] = toStoredEntry({
+          permissions: remaining,
+          // Narrowing never re-binds: withdrawing a permission says nothing
+          // about the bytes the surviving ones were granted against, so a
+          // legacy entry stays `unverified` and a bound one keeps its digest.
+          contentDigest: record.contentDigest,
+          ...(record.installAuthority
+            ? { installAuthority: record.installAuthority }
+            : {}),
+        });
+      return grants;
+    },
+    true,
+  );
+}
+
+/**
+ * Final provider publication authority. Call inside the installed-content
+ * lease, after module preparation. Grant writes (including revoke, rebind,
+ * approval and rollback) use the same cross-process store lock, so none can
+ * commit between this fresh grant read and provider publication.
+ */
+export async function withPluginProviderGrantPublication<T>(
+  projectHomeDir: string,
+  pluginName: string,
+  publish: () => Promise<T>,
+  artifact?: CapturedPluginPermissionArtifact,
+): Promise<{ kind: 'applied'; value: T } | { kind: 'superseded' }> {
+  return withPluginProviderGrantsPublication(
+    projectHomeDir,
+    [pluginName],
+    async (granted) => {
+      if (!granted.has(pluginName)) return { kind: 'superseded' };
+      return { kind: 'applied', value: await publish() };
+    },
+    undefined,
+    artifact ? new Map([[pluginName, artifact]]) : undefined,
+  );
+}
+
+export type PluginProviderGrantSnapshot = string & {
+  readonly __pluginProviderGrantSnapshot: unique symbol;
+};
+
+function providerGrantSnapshot(
+  projectHomeDir: string,
+  grants: GrantsFile,
+): PluginProviderGrantSnapshot {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        projectHomeDir,
+        Object.fromEntries(
+          Object.entries(grants)
+            .filter(([, entry]) => !permissionTombstone(entry))
+            .map(([key, entry]) => [key, toStoredEntry(toGrantRecord(entry))]),
+        ),
+      ]),
+    )
+    .digest('hex') as PluginProviderGrantSnapshot;
+}
+
+/**
+ * Resolve candidates synchronously under the grant read lease, never import
+ * plugin code here. This captures state equivalence, not a monotonic revision
+ * or proof that no intermediate grant ABA transition occurred.
+ */
+export async function withPluginProviderGrantSnapshot<T>(
+  projectHomeDir: string,
+  resolve: () => T,
+): Promise<{ snapshot: PluginProviderGrantSnapshot; value: T }> {
+  return grantsStore(projectHomeDir).withReadLease(async (grants) => ({
+    snapshot: providerGrantSnapshot(projectHomeDir, grants),
+    value: resolve(),
+  }));
+}
+
+/** Same grant-store lease for an atomic multi-source reload publication. */
+export async function withPluginProviderGrantsPublication<T>(
+  projectHomeDir: string,
+  pluginNames: readonly string[],
+  publish: (granted: ReadonlySet<string>) => Promise<T>,
+  expectedSnapshot?: PluginProviderGrantSnapshot,
+  artifacts?: ReadonlyMap<string, CapturedPluginPermissionArtifact>,
+): Promise<T> {
+  return grantsStore(projectHomeDir).withReadLease(async (grants) => {
+    if (
+      expectedSnapshot !== undefined &&
+      providerGrantSnapshot(projectHomeDir, grants) !== expectedSnapshot
+    )
+      throw new Error(
+        'Plugin provider grant snapshot was superseded before publication.',
+      );
+    const granted = new Set<string>();
+    for (const name of new Set(pluginNames)) {
+      const artifact = artifacts?.get(name);
+      const digest = artifacts
+        ? artifact?.pluginId === name && artifact.isCurrent()
+          ? artifact.digest
+          : null
+        : refreshPluginContentDigest(pluginsDirFor(projectHomeDir), name);
+      if (
+        digest !== null &&
+        derivePluginGrantBinding(
+          toGrantRecord(grants[name]),
+          digest,
+        ).granted.includes('providers.register')
+      )
+        granted.add(name);
+    }
+    return publish(granted);
   });
 }
 
@@ -722,10 +1334,359 @@ export async function revokeAllGrants(
   projectHomeDir: string,
   pluginName: string,
 ): Promise<void> {
-  await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-    delete grants[pluginName];
+  await mutatePluginGrants(
+    projectHomeDir,
+    pluginName,
+    (grants) => {
+      const record = toGrantRecord(grants[pluginName]);
+      if (record.installAuthority) {
+        grants[pluginName] = toStoredEntry({
+          permissions: [],
+          contentDigest: record.contentDigest,
+          installAuthority: record.installAuthority,
+        });
+      } else {
+        delete grants[pluginName];
+      }
+      return grants;
+    },
+    true,
+  );
+}
+
+/**
+ * Reads the only authority that may decide which dependency trees uninstall
+ * can remove. The record is outside plugin-controlled bytes and was committed
+ * by Station after the parent installation reached its final content digest.
+ */
+export function readPluginDependencyOwnership(
+  projectHomeDir: string,
+  pluginName: string,
+): PluginDependencyOwnershipEntry[] {
+  return (
+    readPluginGrantRecord(projectHomeDir, pluginName).installAuthority
+      ?.ownedDependencies ?? []
+  ).map((dependency) => ({ ...dependency }));
+}
+
+/**
+ * Replaces one plugin installation's dependency-deletion authority within the
+ * existing locked host state. This is intentionally part of the established
+ * per-plugin grant/lifecycle record rather than a parallel install ledger.
+ */
+export async function recordPluginDependencyOwnership(
+  projectHomeDir: string,
+  pluginName: string,
+  ownedDependencies: readonly PluginDependencyOwnershipEntry[],
+  artifact?: CapturedPluginPermissionArtifact,
+): Promise<void> {
+  if (ownedDependencies.length > 256) {
+    throw new Error('Plugin dependency ownership exceeds the bounded limit');
+  }
+  const dependencyIds = new Set<string>();
+  for (const dependency of ownedDependencies) {
+    if (
+      !isCanonicalPluginId(dependency.id) ||
+      !/^sha256:[0-9a-f]{64}$/.test(dependency.contentDigest) ||
+      (dependency.generation !== undefined &&
+        !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(
+          dependency.generation,
+        ))
+    ) {
+      throw new Error('Plugin dependency ownership entry is malformed');
+    }
+    if (dependencyIds.has(dependency.id)) {
+      throw new Error('Plugin dependency ownership contains duplicate ids');
+    }
+    dependencyIds.add(dependency.id);
+  }
+  await mutatePluginGrants(projectHomeDir, pluginName, (grants) => {
+    if (artifact && (artifact.pluginId !== pluginName || !artifact.isCurrent()))
+      throw new PluginContentUnavailableError(pluginName);
+    const record = toGrantRecord(grants[pluginName]);
+    if (ownedDependencies.length === 0) {
+      if (record.permissions.length === 0) {
+        delete grants[pluginName];
+      } else {
+        grants[pluginName] = toStoredEntry({
+          permissions: record.permissions,
+          contentDigest: record.contentDigest,
+        });
+      }
+      return grants;
+    }
+    const installedDigest =
+      artifact?.digest ??
+      refreshPluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+    if (installedDigest === null) {
+      throw new PluginContentUnavailableError(pluginName);
+    }
+    grants[pluginName] = toStoredEntry({
+      permissions: record.permissions,
+      contentDigest:
+        record.permissions.length > 0 && record.contentDigest
+          ? record.contentDigest
+          : installedDigest,
+      installAuthority: {
+        version: 1,
+        installedDigest,
+        ownershipRevision: randomUUID(),
+        ownedDependencies: ownedDependencies.map((dependency) => ({
+          ...dependency,
+        })),
+      },
+    });
     return grants;
   });
+}
+
+export interface PluginDependencyOwnershipHandoff {
+  readonly recipientPlugin: string;
+  rollback(): Promise<void>;
+}
+
+interface PluginDependencyOwnershipHandoffData {
+  readonly sourcePlugin: string;
+  readonly recipientPlugin: string;
+  readonly dependency: PluginDependencyOwnershipEntry;
+  readonly previousAuthority?: PluginInstallAuthorityRecord;
+  readonly writtenRevision: string;
+  rolledBack?: boolean;
+}
+
+class IneligibleOwnershipRecipient extends Error {}
+
+/**
+ * Stage durable custody before the creator record disappears. The source claim
+ * remains until its enclosing publication transaction commits, so interruption
+ * can duplicate custody but cannot erase the only deletion authority.
+ */
+export async function copyPluginDependencyOwnership(
+  projectHomeDir: string,
+  sourcePlugin: string,
+  recipientPlugin: string,
+  dependency: PluginDependencyOwnershipEntry,
+  expectedRecipientDigest: string,
+  artifacts?: {
+    dependency?: CapturedPluginPermissionArtifact;
+    recipient?: CapturedPluginPermissionArtifact;
+  },
+): Promise<
+  | { kind: 'copied'; handoff: PluginDependencyOwnershipHandoff }
+  | { kind: 'already-owned' }
+  | { kind: 'ineligible' }
+> {
+  if (
+    ![sourcePlugin, recipientPlugin, dependency.id].every(
+      isCanonicalPluginId,
+    ) ||
+    new Set([sourcePlugin, recipientPlugin, dependency.id]).size !== 3
+  ) {
+    throw new Error('Invalid dependency ownership handoff identities');
+  }
+  const pluginsDir = pluginsDirFor(projectHomeDir);
+  return withPluginContentLock(pluginsDir, dependency.id, () =>
+    withPluginContentLock(pluginsDir, recipientPlugin, async () => {
+      let handoff: PluginDependencyOwnershipHandoffData | undefined;
+      try {
+        await mutatePluginGrants(projectHomeDir, recipientPlugin, (grants) => {
+          if (
+            (artifacts?.dependency &&
+              (artifacts.dependency.pluginId !== dependency.id ||
+                !artifacts.dependency.isCurrent())) ||
+            (artifacts?.recipient &&
+              (artifacts.recipient.pluginId !== recipientPlugin ||
+                !artifacts.recipient.isCurrent()))
+          )
+            throw new PluginContentUnavailableError(dependency.id);
+          if (
+            dependency.generation &&
+            artifacts?.dependency?.generation !== dependency.generation
+          )
+            throw new PluginContentUnavailableError(dependency.id);
+          const source = toGrantRecord(grants[sourcePlugin]);
+          if (
+            !source.installAuthority?.ownedDependencies.some(
+              (entry) =>
+                entry.id === dependency.id &&
+                entry.contentDigest === dependency.contentDigest &&
+                entry.generation === dependency.generation,
+            )
+          ) {
+            throw new Error(
+              'Dependency ownership handoff has no matching host-owned source claim',
+            );
+          }
+          if (
+            (artifacts?.dependency?.digest ??
+              refreshPluginContentDigest(pluginsDir, dependency.id)) !==
+            dependency.contentDigest
+          ) {
+            throw new Error('Dependency changed before ownership handoff');
+          }
+          const installedDigest =
+            artifacts?.recipient?.digest ??
+            refreshPluginContentDigest(pluginsDir, recipientPlugin);
+          if (!installedDigest || installedDigest !== expectedRecipientDigest)
+            throw new IneligibleOwnershipRecipient();
+          // A managed child may itself be removed by its owner. Transfer only
+          // to a surviving root, otherwise its deletion could discard custody.
+          if (
+            Object.values(grants).some((value) =>
+              toGrantRecord(value).installAuthority?.ownedDependencies.some(
+                (entry) =>
+                  entry.id === recipientPlugin &&
+                  entry.contentDigest === installedDigest &&
+                  (!entry.generation ||
+                    entry.generation === artifacts?.recipient?.generation),
+              ),
+            )
+          ) {
+            throw new IneligibleOwnershipRecipient();
+          }
+          const recipient = toGrantRecord(grants[recipientPlugin]);
+          if (
+            recipient.permissions.length > 0 &&
+            recipient.contentDigest === null
+          ) {
+            // Adding custody must never turn legacy/unverified grants into
+            // consent for the current bytes just to fit a bound host record.
+            throw new IneligibleOwnershipRecipient();
+          }
+          const owned = recipient.installAuthority?.ownedDependencies ?? [];
+          const existing = owned.find((entry) => entry.id === dependency.id);
+          if (existing) {
+            if (
+              existing.contentDigest !== dependency.contentDigest ||
+              existing.generation !== dependency.generation
+            )
+              throw new IneligibleOwnershipRecipient();
+            return grants;
+          }
+          if (owned.length >= 256) throw new IneligibleOwnershipRecipient();
+          const revision = randomUUID();
+          handoff = {
+            sourcePlugin,
+            recipientPlugin,
+            dependency: { ...dependency },
+            ...(recipient.installAuthority
+              ? {
+                  previousAuthority: structuredClone(
+                    recipient.installAuthority,
+                  ),
+                }
+              : {}),
+            writtenRevision: revision,
+          };
+          grants[recipientPlugin] = toStoredEntry({
+            permissions: recipient.permissions,
+            contentDigest: recipient.contentDigest ?? installedDigest,
+            installAuthority: {
+              version: 1,
+              installedDigest,
+              ownershipRevision: revision,
+              ownedDependencies: [...owned, { ...dependency }],
+            },
+          });
+          return grants;
+        });
+      } catch (error) {
+        if (error instanceof IneligibleOwnershipRecipient)
+          return { kind: 'ineligible' };
+        throw error;
+      }
+      if (!handoff) return { kind: 'already-owned' };
+      const ownedHandoff = handoff;
+      return {
+        kind: 'copied',
+        handoff: Object.freeze({
+          recipientPlugin,
+          rollback: () =>
+            rollbackPluginDependencyOwnershipHandoff(
+              projectHomeDir,
+              ownedHandoff,
+            ),
+        }),
+      };
+    }),
+  );
+}
+
+/** Undo only this transaction's custody write, never a later handoff or grants. */
+async function rollbackPluginDependencyOwnershipHandoff(
+  projectHomeDir: string,
+  handoff: PluginDependencyOwnershipHandoffData,
+): Promise<void> {
+  if (handoff.rolledBack) return;
+  await withPluginContentLock(
+    pluginsDirFor(projectHomeDir),
+    handoff.recipientPlugin,
+    async () => {
+      await mutatePluginGrants(
+        projectHomeDir,
+        handoff.recipientPlugin,
+        (grants) => {
+          const source = toGrantRecord(grants[handoff.sourcePlugin]);
+          if (
+            !source.installAuthority?.ownedDependencies.some(
+              (entry) =>
+                entry.id === handoff.dependency.id &&
+                entry.contentDigest === handoff.dependency.contentDigest &&
+                entry.generation === handoff.dependency.generation,
+            )
+          ) {
+            throw new Error(
+              'Original dependency custody must be restored before undoing its handoff',
+            );
+          }
+          const recipient = toGrantRecord(grants[handoff.recipientPlugin]);
+          if (
+            recipient.installAuthority?.ownershipRevision !==
+            handoff.writtenRevision
+          ) {
+            throw new Error(
+              'Dependency ownership changed after handoff; rollback refused',
+            );
+          }
+          if (handoff.previousAuthority) {
+            grants[handoff.recipientPlugin] = toStoredEntry({
+              permissions: recipient.permissions,
+              contentDigest: recipient.contentDigest,
+              // Restore the exact prior revision so an earlier handoff in this
+              // same transaction can unwind next. Any later committed transfer
+              // has a fresh revision and fails the CAS above instead.
+              installAuthority: structuredClone(handoff.previousAuthority),
+            });
+          } else if (recipient.permissions.length === 0) {
+            delete grants[handoff.recipientPlugin];
+          } else {
+            grants[handoff.recipientPlugin] = toStoredEntry({
+              permissions: recipient.permissions,
+              contentDigest: recipient.contentDigest,
+            });
+          }
+          return grants;
+        },
+      );
+      handoff.rolledBack = true;
+    },
+  );
+}
+
+/** Drops the complete per-plugin host record only after uninstall succeeds. */
+export async function removePluginHostRecord(
+  projectHomeDir: string,
+  pluginName: string,
+): Promise<void> {
+  await mutatePluginGrants(
+    projectHomeDir,
+    pluginName,
+    (grants) => {
+      delete grants[pluginName];
+      return grants;
+    },
+    true,
+  );
 }
 
 /**
@@ -743,6 +1704,32 @@ export function hasGrantOrThrow(
 }
 
 /**
+ * Short invocation admission, never a lease spanning provider settlement.
+ * The callback must return a boxed Promise when it begins asynchronous work.
+ * Use inside the installed-content lease and before Project/Agent locks.
+ */
+export async function withPluginPermissionInvocation<T>(
+  projectHomeDir: string,
+  pluginName: string,
+  permission: string,
+  invoke: () => Promise<T>,
+  artifact?: CapturedPluginPermissionArtifact,
+): Promise<T> {
+  return grantsStore(projectHomeDir).withReadLease(async () => {
+    if (
+      !readPluginGrantState(
+        projectHomeDir,
+        pluginName,
+        artifact,
+      ).granted.includes(permission)
+    ) {
+      throw new Error('The required plugin permission is unavailable.');
+    }
+    return invoke();
+  });
+}
+
+/**
  * Non-throwing enforcement predicate (e.g. the runtime plugin loader, where a
  * throw would abort provider loading for every plugin): when the store is
  * unavailable it DENIES, loudly — an error-level log naming the grants path —
@@ -753,9 +1740,14 @@ export function hasGrant(
   pluginName: string,
   permission: string,
   deniedLogger: Pick<Logger, 'error'> = logger,
+  artifact?: CapturedPluginPermissionArtifact,
 ): boolean {
   try {
-    return hasGrantOrThrow(projectHomeDir, pluginName, permission);
+    return readPluginGrantState(
+      projectHomeDir,
+      pluginName,
+      artifact,
+    ).granted.includes(permission);
   } catch (error) {
     if (error instanceof PluginGrantsUnavailableError) {
       deniedLogger.error(
@@ -816,7 +1808,10 @@ export async function processInstallPermissions(
   projectHomeDir: string,
   pluginName: string,
   declaredPermissions: string[],
-  options?: { consented?: readonly string[] },
+  options?: {
+    consented?: readonly string[];
+    artifact?: CapturedPluginPermissionArtifact;
+  },
 ): Promise<{
   autoGranted: string[];
   consentGranted: string[];
@@ -844,7 +1839,14 @@ export async function processInstallPermissions(
   const granting = [...autoGranted, ...consentGranted];
   const withdrawn =
     granting.length > 0
-      ? (await grantPermissions(projectHomeDir, pluginName, granting)).withdrawn
+      ? (
+          await grantPermissions(
+            projectHomeDir,
+            pluginName,
+            granting,
+            options?.artifact,
+          )
+        ).withdrawn
       : [];
 
   return { autoGranted, consentGranted, pendingConsent, withdrawn };

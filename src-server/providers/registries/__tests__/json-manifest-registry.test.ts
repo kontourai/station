@@ -65,6 +65,36 @@ function registryInstallRecord(manifestPath: string, pluginName: string) {
 }
 
 describe('JsonManifestRegistryProvider registry manifest proof', () => {
+  test('resolves source and untrusted claim from one fresh observation despite catalog cache', async () => {
+    const home = await makeProjectHome();
+    const path = join(home, 'catalog.json');
+    const write = (version: string) =>
+      writeFileSync(
+        path,
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            { id: 'fresh', source: `./${version}`, claim: { version } },
+          ],
+        }),
+      );
+    write('one');
+    const provider = new JsonManifestRegistryProvider(path, home);
+    expect((await provider.listAvailable())[0]?.source).toBe(join(home, 'one'));
+    write('two');
+    const resolved = await provider.resolvePackage('fresh');
+    expect(resolved).toEqual({
+      source: join(home, 'two'),
+      claim: { version: 'two' },
+    });
+    (resolved!.claim as { version: string }).version = 'caller-change';
+    expect(await provider.resolvePackage('fresh')).toEqual({
+      source: join(home, 'two'),
+      claim: { version: 'two' },
+    });
+    writeFileSync(path, JSON.stringify({ version: 1, plugins: [] }));
+    expect(await provider.resolvePackage('fresh')).toBeNull();
+  });
   test('recognizes the canonical shared lifecycle registry alias', async () => {
     const projectHome = await makeProjectHome();
     const registrySource = resolve(projectHome, 'registry-demo-source');
@@ -1360,4 +1390,75 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     );
     await expect(integrations.getToolDef('does-not-exist')).resolves.toBeNull();
   });
+
+  test('partitions the catalog between the agent and plugin browse surfaces by declared kind', async () => {
+    const projectHome = await makeProjectHome();
+    const manifestPath = join(projectHome, 'manifest.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'layout-plugin',
+            displayName: 'Layout Plugin',
+            description: 'Contributes a layout.',
+            version: '1.0.0',
+            source: './layout-plugin',
+          },
+          {
+            id: 'reviewer-agent',
+            displayName: 'Reviewer Agent',
+            description: 'An agent definition.',
+            version: '1.0.0',
+            source: './reviewer-agent',
+            type: 'agent',
+          },
+        ],
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(
+      manifestPath,
+      projectHome,
+    );
+
+    // Each surface lists only its own kind: the agent browse list used to be
+    // `manifest.plugins` whole (#1536 D2).
+    expect((await provider.listAvailable()).map((item) => item.id)).toEqual([
+      'layout-plugin',
+    ]);
+    expect(
+      (await provider.agentRegistry().listAvailable()).map((item) => item.id),
+    ).toEqual(['reviewer-agent']);
+  });
+
+  // Review L5: BOTH shipped catalogs. `default.json` is what a fresh install
+  // reads (`runtime-initialize.ts` picks the bundled default source), so a
+  // tripwire aimed only at `manifest.json` would miss an agent kind added to
+  // the one that actually ships.
+  test.each([
+    ['examples/registry/manifest.json'],
+    ['examples/registry/default.json'],
+  ])(
+    'browses no agents for %s, which declares only plugins',
+    async (relativePath) => {
+      const manifestPath = resolve(repoRoot, relativePath);
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+      const provider = new JsonManifestRegistryProvider(
+        manifestPath,
+        await makeProjectHome(),
+      );
+
+      // The shipped catalog's real bytes: every entry is a plugin, none declares
+      // an agent kind. An empty Agents tab is the honest reading of that.
+      expect(manifest.plugins.length).toBeGreaterThan(0);
+      expect(
+        manifest.plugins.some((entry: { type?: string }) => entry.type),
+      ).toBe(false);
+      expect(await provider.agentRegistry().listAvailable()).toEqual([]);
+      expect((await provider.listAvailable()).length).toBe(
+        manifest.plugins.length,
+      );
+    },
+  );
 });

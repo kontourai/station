@@ -37,10 +37,15 @@
  * cache, so its init is the fast one.
  *
  * What it does NOT guarantee: that only closed blocks arrive. The streaming
- * layer splits an unclosed trailing fence out of the markdown before it is
- * rendered (components/chat/open-fence.ts) so a growing block is not
- * tokenized flush by flush, but that scanner has documented blind spots
- * (fences inside blockquotes, or indented 4+ spaces). Correctness survives —
+ * layer marks an unclosed trailing fence `provisionalReason: 'open-fence'`
+ * (components/chat/markdown-blocks.ts) and `MarkdownRenderer` renders such a
+ * block as bare source, so a growing block is not tokenized flush by flush.
+ * That is a scanner, not a parser, so a fence shape it does not model still
+ * reaches this cache flush by flush. (A second, narrower scanner —
+ * `components/chat/open-fence.ts`, whose blind spots were fences inside
+ * blockquotes or indented 4+ spaces — is deleted: it never had a caller, and
+ * the live path above models blockquote and list containers itself.)
+ * Correctness survives —
  * the key is content-addressed, so a partial result is never served for
  * different code — but the cost is not one wasted entry: `cache` below is
  * module-global and holds 300 entries for the whole page, so a blind-spot
@@ -50,7 +55,18 @@
  */
 
 import { initShiki } from '../contexts/SyntaxHighlighterContext';
+import {
+  IncrementalHighlightStore,
+  sessionTokenizerFor,
+} from './incremental-session';
 import { escapeHtml, HighlightCache, highlightCacheKey, THEME } from './shared';
+
+/**
+ * #2093 — the fallback shares the worker's resume store (same module, same
+ * bound), so degraded mode and jsdom keep resume behavior instead of forking
+ * it. Module-level because the fallback itself is stateless per call.
+ */
+const fallbackSessions = new IncrementalHighlightStore(16);
 
 /**
  * archive#3354 — main-thread fallback used when `Worker` is unavailable
@@ -68,7 +84,11 @@ async function highlightOnMainThread(
     ? lang
     : 'text';
   try {
-    return highlighter.codeToHtml(code, { lang: resolvedLang, theme: THEME });
+    return fallbackSessions.highlight(
+      sessionTokenizerFor(highlighter, THEME),
+      code,
+      resolvedLang,
+    );
   } catch {
     return `<pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:6px;overflow-x:auto"><code>${escapeHtml(code)}</code></pre>`;
   }

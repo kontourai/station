@@ -33,6 +33,24 @@ const REPO_GOVERNANCE_RULE_IDS = Object.freeze([
   'ai-instruction-files-synced',
   'brownfield-gap-log-present',
 ]);
+// Exact per-rule-kind finding shapes for the pinned Veritas release. A
+// required-artifacts finding is `{ kind, artifact }`; Veritas 1.6.0 added
+// `diagnostic` and `remediation` to every governance-block finding. Any other
+// key set is an unknown shape and fails closed below.
+const REQUIRED_ARTIFACT_FINDING_KEYS = Object.freeze(['kind', 'artifact']);
+const GOVERNANCE_BLOCK_FINDING_KEYS = Object.freeze([
+  'kind',
+  'diagnostic',
+  'artifact',
+  'remediation',
+]);
+const GOVERNANCE_BLOCK_FINDING_DIAGNOSTICS = Object.freeze([
+  'missing-governance-file',
+  'missing-governance-markers',
+  'duplicate-governance-markers',
+  'malformed-governance-markers',
+  'stale-governance-content',
+]);
 const REPO_GOVERNANCE_RESULT_CONTRACT = Object.freeze({
   'required-station-governance-artifacts': Object.freeze({
     classification: 'hard-invariant',
@@ -40,6 +58,7 @@ const REPO_GOVERNANCE_RESULT_CONTRACT = Object.freeze({
     enforcement: 'deny',
     owner: 'repo-core',
     rollbackSwitch: null,
+    findingKeys: REQUIRED_ARTIFACT_FINDING_KEYS,
     findingKinds: Object.freeze(['missing-artifact']),
   }),
   'ai-instruction-files-synced': Object.freeze({
@@ -48,11 +67,13 @@ const REPO_GOVERNANCE_RESULT_CONTRACT = Object.freeze({
     enforcement: 'deny',
     owner: 'repo-maintainers',
     rollbackSwitch: null,
+    findingKeys: GOVERNANCE_BLOCK_FINDING_KEYS,
     findingKinds: Object.freeze([
       'missing-governance-file',
       'missing-governance-block',
       'stale-governance-block',
     ]),
+    findingDiagnostics: GOVERNANCE_BLOCK_FINDING_DIAGNOSTICS,
   }),
   'brownfield-gap-log-present': Object.freeze({
     classification: 'promotable-policy',
@@ -60,6 +81,7 @@ const REPO_GOVERNANCE_RESULT_CONTRACT = Object.freeze({
     enforcement: 'advisory',
     owner: 'repo-maintainers',
     rollbackSwitch: 'skip-brownfield-gap-log',
+    findingKeys: REQUIRED_ARTIFACT_FINDING_KEYS,
     findingKinds: Object.freeze(['missing-artifact']),
   }),
 });
@@ -81,7 +103,6 @@ const UNIMPLEMENTED_VERITAS_RESULT_KEYS = Object.freeze([
   ...IMPLEMENTED_VERITAS_RESULT_KEYS,
   'reason',
 ]);
-const VERITAS_FINDING_KEYS = Object.freeze(['kind', 'artifact']);
 const UNIMPLEMENTED_VERITAS_FINDING_KEYS = Object.freeze([
   'kind',
   'artifact',
@@ -214,12 +235,20 @@ function safeGovernanceBlock(ruleId, message) {
 }
 
 function isValidFinding(finding, contract) {
-  const descriptors = plainDataRecord(finding, VERITAS_FINDING_KEYS);
+  const descriptors = plainDataRecord(finding, contract.findingKeys);
   if (!descriptors) return false;
+  if (
+    !contract.findingKinds.includes(descriptors.kind.value) ||
+    typeof descriptors.artifact.value !== 'string' ||
+    descriptors.artifact.value.length === 0
+  ) {
+    return false;
+  }
+  if (!contract.findingDiagnostics) return true;
   return (
-    contract.findingKinds.includes(descriptors.kind.value) &&
-    typeof descriptors.artifact.value === 'string' &&
-    descriptors.artifact.value.length > 0
+    contract.findingDiagnostics.includes(descriptors.diagnostic.value) &&
+    typeof descriptors.remediation.value === 'string' &&
+    descriptors.remediation.value.length > 0
   );
 }
 
@@ -269,10 +298,11 @@ function hasExactUnimplementedResult(values, ruleId) {
 
 /**
  * Repo-governance is an outer proof lane: a reported policy finding blocks the
- * lane regardless of the policy's Veritas enforcement level. Veritas 1.5.3
- * exposes a fixed, plain-data result shape; it has no `stage` field. Inspect
- * descriptors rather than calling values so malformed or hostile policy data
- * cannot reach a sidecar or output stream.
+ * lane regardless of the policy's Veritas enforcement level. Veritas 1.6.0
+ * exposes a fixed, plain-data result shape; it has no `stage` field, and each
+ * rule kind's finding key set is pinned above. Inspect descriptors rather
+ * than calling values so malformed or hostile policy data (including the
+ * 1.6.0 `remediation` text) cannot reach a sidecar or output stream.
  */
 export function findingsForRepoGovernanceResult(ruleId, result) {
   const contract = isConfiguredGovernanceRuleId(ruleId)

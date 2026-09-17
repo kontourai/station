@@ -434,8 +434,11 @@ describe('FlowRunConsole', () => {
         sourceSurface: 'flow-console',
       }),
     );
+    // #1633: the notice renders from the mutation's success path, so waiting
+    // on the CALL having been made says nothing about the render. Wait on the
+    // notice itself.
     expect(
-      screen.getByText('Gate evaluation kept in Task “Task A”.'),
+      await screen.findByText('Gate evaluation kept in Task “Task A”.'),
     ).toBeTruthy();
 
     fireEvent.click(

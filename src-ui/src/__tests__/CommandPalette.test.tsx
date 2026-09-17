@@ -12,13 +12,7 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { commandFrecencyStorage } from '../components/command-frecency-storage';
 import {
@@ -39,20 +33,14 @@ import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 let agentsMock: any[] = [];
 let projectsMock: any[] = [];
 let skillsMock: any[] = [];
-let pluginsMock: any[] = [];
 let paneCatalogMock: any = {
   descriptors: [],
   instances: [],
   availability: [],
 };
 let selectedProjectLayoutMock: string | null = null;
-let activeChatMock: string | null = null;
-let pathnameMock = '/';
 let messageSearchMock: any = { matches: [], instances: [] };
 const registeredCommand = vi.fn();
-const authorizePluginPaletteCommand = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ receiptId: 'plugin-command-receipt' }),
-);
 let registeredShortcutAvailability: { disabled?: boolean; when?: unknown } = {};
 let registeredShortcutIdentity = {
   id: 'app.registered',
@@ -87,7 +75,6 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useAgentsQuery: () => ({ data: agentsMock }),
   useProjectsQuery: () => ({ data: projectsMock }),
   useSkillsQuery: () => ({ data: skillsMock }),
-  usePluginsQuery: () => ({ data: pluginsMock }),
   useMessageSearchQuery: () => ({ data: messageSearchMock }),
   // Pane availability consumes deployment facts through the public SDK; this
   // palette test deliberately keeps that independent query inert.
@@ -111,34 +98,22 @@ vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
 }));
 
 const navigateMock = vi.fn();
+const showSurfaceMock = vi.fn();
 const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => ({
-  navigationStore: {
-    getSnapshot: () => ({
-      activeChat: activeChatMock,
-      pathname: pathnameMock,
-      selectedProject: 'alpha',
-    }),
-  },
   useNavigation: () => ({
     navigate: navigateMock,
     setProject: setProjectMock,
     setDockState: setDockStateMock,
-    activeChat: activeChatMock,
-    pathname: pathnameMock,
     selectedProject: 'alpha',
     selectedProjectLayout: selectedProjectLayoutMock,
   }),
 }));
-
-vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://station.test' }),
-}));
-
-vi.mock('../components/plugin-command-execution', () => ({
-  authorizePluginPaletteCommand,
+vi.mock('../contexts/RegionModelContext', () => ({}));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceMock,
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
@@ -196,25 +171,21 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 }));
 
 import { CommandPalette } from '../components/CommandPalette';
-import { retirePluginCommandExecutions } from '../components/plugin-command-execution-lifecycle';
 
 afterEach(() => {
   indexRebuilds.count = 0;
   resetOpenChatIdentitiesCacheForTests();
   navigateMock.mockReset();
+  showSurfaceMock.mockReset();
   setProjectMock.mockReset();
   setDockStateMock.mockReset();
   registeredCommand.mockReset();
-  authorizePluginPaletteCommand.mockClear();
   openHandler = null;
   agentsMock = [];
   projectsMock = [];
   skillsMock = [];
-  pluginsMock = [];
   paneCatalogMock = { descriptors: [], instances: [], availability: [] };
   selectedProjectLayoutMock = null;
-  activeChatMock = null;
-  pathnameMock = '/';
   messageSearchMock = { matches: [], instances: [] };
   registeredShortcutAvailability = {};
   registeredShortcutIdentity = {
@@ -478,7 +449,7 @@ describe('CommandPalette', () => {
     fireEvent.click(command);
 
     expect(navigateMock).toHaveBeenCalledWith('/settings', {
-      view: 'station-config',
+      view: 'host-runtime',
       highlight: 'terminal-shell',
     });
   });
@@ -737,331 +708,22 @@ describe('CommandPalette', () => {
     ).toBeTruthy();
   });
 
-  test('stages a manifest-only plugin command visibly without sending it', async () => {
-    activeChatsStore.initChat('session-plugin-command', {
-      agentSlug: 'station',
-      agentName: 'Station',
-      title: 'Plugin command chat',
-    });
-    activeChatMock = 'session-plugin-command';
-    pluginsMock = [
-      {
-        name: 'demo-plugin',
-        version: '1.0.0',
-        commandGeneration: 'a'.repeat(64),
-        commandContributions: [
-          {
-            version: '1.0',
-            id: 'demo-plugin.review-work',
-            title: 'Review this work',
-            intent: {
-              kind: 'seed-composer',
-              text: 'Review the current work and list actionable findings.',
-            },
-          },
-        ],
-      },
-    ];
-    try {
-      await renderCommandPalette();
-      open();
-      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
-
-      await waitFor(() =>
-        expect(
-          activeChatsStore.getSnapshot()['session-plugin-command']?.input,
-        ).toBe('Review the current work and list actionable findings.'),
-      );
-      expect(authorizePluginPaletteCommand).toHaveBeenCalledWith(
-        'http://station.test',
-        {
-          pluginId: 'demo-plugin',
-          pluginVersion: '1.0.0',
-          commandGeneration: 'a'.repeat(64),
-          commandId: 'demo-plugin.review-work',
-          target: {
-            kind: 'composer',
-            sessionId: 'session-plugin-command',
-          },
-          context: {
-            activeChatSessionId: 'session-plugin-command',
-            projectSlug: 'alpha',
-            sessionId: 'session-plugin-command',
-          },
-        },
-        { signal: expect.objectContaining({ aborted: false }) },
-      );
-      expect(
-        JSON.stringify(authorizePluginPaletteCommand.mock.calls[0]?.[1]),
-      ).not.toContain('Review the current work');
-      expect(setDockStateMock).toHaveBeenCalledWith(true);
-      expect(screen.queryByRole('dialog')).toBeNull();
-    } finally {
-      activeChatsStore.removeChat('session-plugin-command');
-    }
-  });
-
-  test.each(['unchanged', 'edited', 'edited-back', 'recreated', 'removed'])(
-    'applies delayed plugin seed only to its unchanged draft: %s',
-    async (change) => {
-      const id = 'session-draft-fence';
-      activeChatsStore.initChat(id, {
-        agentSlug: 'station',
-        agentName: 'Station',
-        title: 'Draft fence chat',
-      });
-      activeChatsStore.updateChat(id, { input: 'Original draft' });
-      activeChatMock = id;
-      pluginsMock = [
-        {
-          name: 'demo-plugin',
-          version: '1.0.0',
-          commandGeneration: 'a'.repeat(64),
-          commandContributions: [
-            {
-              version: '1.0',
-              id: 'demo-plugin.seed',
-              title: 'Seed this draft',
-              intent: { kind: 'seed-composer', text: 'Plugin seed' },
-            },
-          ],
-        },
-      ];
-      let finish!: (receipt: { receiptId: string }) => void;
-      authorizePluginPaletteCommand.mockReturnValueOnce(
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-      );
-      try {
-        await renderCommandPalette();
-        open();
-        fireEvent.click(
-          screen.getByRole('option', { name: /Seed this draft/ }),
-        );
-        expect(authorizePluginPaletteCommand).toHaveBeenCalledOnce();
-        act(() => {
-          if (change === 'edited' || change === 'edited-back') {
-            activeChatsStore.updateChat(id, { input: 'New user draft' });
-            if (change === 'edited-back')
-              activeChatsStore.updateChat(id, { input: 'Original draft' });
-          } else if (change === 'recreated' || change === 'removed') {
-            activeChatsStore.removeChat(id);
-            if (change === 'recreated') {
-              activeChatsStore.initChat(id, {
-                agentSlug: 'station',
-                agentName: 'Station',
-                title: 'Replacement draft chat',
-              });
-              activeChatsStore.updateChat(id, { input: 'Original draft' });
-            }
-          }
-        });
-        await act(async () => finish({ receiptId: 'receipt-draft' }));
-        expect(activeChatsStore.getSnapshot()[id]?.input).toBe(
-          change === 'unchanged'
-            ? 'Plugin seed'
-            : change === 'edited'
-              ? 'New user draft'
-              : change === 'removed'
-                ? undefined
-                : 'Original draft',
-        );
-        if (change !== 'unchanged')
-          expect(setDockStateMock).not.toHaveBeenCalled();
-      } finally {
-        finish?.({ receiptId: 'cleanup' });
-        activeChatsStore.removeChat(id);
-      }
-    },
-  );
-
-  test('does not advertise a preview-hidden surface through a plugin command', async () => {
-    pluginsMock = [
-      {
-        name: 'demo-plugin',
-        version: '1.0.0',
-        commandGeneration: 'a'.repeat(64),
-        commandContributions: [
-          {
-            version: '1.0',
-            id: 'demo-plugin.open-developer',
-            title: 'Open developer tools',
-            intent: { kind: 'navigate', surfaceId: 'developer' },
-          },
-        ],
-      },
-    ];
-    await renderCommandPalette();
-    open();
-
-    const option = screen.getByRole('option', { name: /Open developer tools/ });
-    expect(option.getAttribute('aria-disabled')).toBe('true');
-    await act(async () => fireEvent.click(option));
-    expect(authorizePluginPaletteCommand).not.toHaveBeenCalled();
-    expect(screen.getByRole('status').textContent).toContain(
-      "Station does not expose the 'developer' destination.",
-    );
-  });
-
-  test('performs no composer effect when durable command admission fails', async () => {
-    activeChatsStore.initChat('session-plugin-refused', {
-      agentSlug: 'station',
-      agentName: 'Station',
-      title: 'Plugin command chat',
-    });
-    activeChatsStore.updateChat('session-plugin-refused', {
-      input: 'Keep this draft.',
-    });
-    activeChatMock = 'session-plugin-refused';
-    pluginsMock = [
-      {
-        name: 'demo-plugin',
-        version: '1.0.0',
-        commandGeneration: 'a'.repeat(64),
-        commandContributions: [
-          {
-            version: '1.0',
-            id: 'demo-plugin.review-work',
-            title: 'Review this work',
-            intent: { kind: 'seed-composer', text: 'Replacement prompt.' },
-          },
-        ],
-      },
-    ];
-    authorizePluginPaletteCommand.mockRejectedValueOnce(
-      new Error('Plugin command was not admitted: generation-changed'),
-    );
-    try {
-      await renderCommandPalette();
-      open();
-      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
-
-      await waitFor(() =>
-        expect(
-          screen.getByText(
-            'Plugin command was not admitted: generation-changed',
-          ),
-        ).toBeTruthy(),
-      );
-      expect(
-        activeChatsStore.getSnapshot()['session-plugin-refused']?.input,
-      ).toBe('Keep this draft.');
-      expect(setDockStateMock).not.toHaveBeenCalled();
-    } finally {
-      activeChatsStore.removeChat('session-plugin-refused');
-    }
-  });
-
-  test('does not seed a chat that stopped being active while admission was pending', async () => {
-    activeChatsStore.initChat('session-old', {
-      agentSlug: 'station',
-      agentName: 'Station',
-      title: 'Old chat',
-    });
-    activeChatsStore.initChat('session-new', {
-      agentSlug: 'station',
-      agentName: 'Station',
-      title: 'New chat',
-    });
-    activeChatMock = 'session-old';
-    pluginsMock = [
-      {
-        name: 'demo-plugin',
-        version: '1.0.0',
-        commandGeneration: 'a'.repeat(64),
-        commandContributions: [
-          {
-            version: '1.0',
-            id: 'demo-plugin.review-work',
-            title: 'Review this work',
-            intent: {
-              kind: 'seed-composer',
-              text: 'Do not stage in the old chat.',
-            },
-          },
-        ],
-      },
-    ];
-    let resolve!: (value: { receiptId: string }) => void;
-    authorizePluginPaletteCommand.mockReturnValueOnce(
-      new Promise((settle) => {
-        resolve = settle;
-      }),
-    );
-    try {
-      await renderCommandPalette();
-      open();
-      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
-      activeChatMock = 'session-new';
-      await act(async () => resolve({ receiptId: 'receipt-a' }));
-      expect(activeChatsStore.getSnapshot()['session-old']?.input).toBe('');
-      expect(activeChatsStore.getSnapshot()['session-new']?.input).toBe('');
-    } finally {
-      activeChatsStore.removeChat('session-old');
-      activeChatsStore.removeChat('session-new');
-    }
-  });
-
-  test('retires a pending local effect when plugin lifecycle changes', async () => {
-    activeChatsStore.initChat('session-retired', {
-      agentSlug: 'station',
-      agentName: 'Station',
-      title: 'Retired command chat',
-    });
-    activeChatMock = 'session-retired';
-    pluginsMock = [
-      {
-        name: 'demo-plugin',
-        version: '1.0.0',
-        commandGeneration: 'a'.repeat(64),
-        commandContributions: [
-          {
-            version: '1.0',
-            id: 'demo-plugin.review-work',
-            title: 'Review this work',
-            intent: {
-              kind: 'seed-composer',
-              text: 'Do not stage after removal.',
-            },
-          },
-        ],
-      },
-    ];
-    let resolve!: (value: { receiptId: string }) => void;
-    authorizePluginPaletteCommand.mockReturnValueOnce(
-      new Promise((settle) => {
-        resolve = settle;
-      }),
-    );
-    try {
-      await renderCommandPalette();
-      open();
-      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
-      retirePluginCommandExecutions();
-      await act(async () => resolve({ receiptId: 'receipt-a' }));
-      expect(activeChatsStore.getSnapshot()['session-retired']?.input).toBe('');
-    } finally {
-      activeChatsStore.removeChat('session-retired');
-    }
-  });
-
   test('projects both registered region toggles into the command palette', async () => {
     const chat = REGION_SURFACE_REGISTRY.get('chat');
     const activity = REGION_SURFACE_REGISTRY.get('activity');
     expect(chat).toBeTruthy();
     expect(activity).toBeTruthy();
     registeredShortcutIdentity = {
-      id: chat!.shortcut.id,
-      key: chat!.shortcut.key,
-      modifiers: [...chat!.shortcut.modifiers],
+      id: chat!.shortcut!.id,
+      key: chat!.shortcut!.key,
+      modifiers: [...chat!.shortcut!.modifiers],
       description: `Toggle ${chat!.title} region`,
     };
     additionalRegisteredShortcutIdentities = [
       {
-        id: activity!.shortcut.id,
-        key: activity!.shortcut.key,
-        modifiers: [...activity!.shortcut.modifiers],
+        id: activity!.shortcut!.id,
+        key: activity!.shortcut!.key,
+        modifiers: [...activity!.shortcut!.modifiers],
         description: `Toggle ${activity!.title} region`,
       },
     ];
@@ -1101,6 +763,35 @@ describe('CommandPalette', () => {
     }
   });
 
+  /**
+   * #2062 review MED-6: the Boards section is hidden when the viewer owns
+   * none, and its `+` lives inside it, so this row is the ONLY way to make a
+   * first Board. The panel half — what the dispatch does — is asserted in
+   * `ProjectSidebarBoards.test.tsx` against the real `ProjectSidebar`; both
+   * sides import the trigger itself rather than writing the event name down,
+   * so they cannot drift apart silently.
+   */
+  test('registers New Board and dispatches its create request', async () => {
+    const { NEW_BOARD_REQUEST_EVENT } = await import(
+      '../components/project-sidebar/new-board-events'
+    );
+    const listener = vi.fn();
+    window.addEventListener(NEW_BOARD_REQUEST_EVENT, listener);
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'new board' },
+      });
+      fireEvent.click(screen.getByRole('option', { name: /New Board/ }));
+      expect(listener).toHaveBeenCalledTimes(1);
+      // The palette closes so the panel's rename input is what has focus next.
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      window.removeEventListener(NEW_BOARD_REQUEST_EVENT, listener);
+    }
+  });
+
   test('Enter runs the highlighted command then closes', async () => {
     await renderCommandPalette();
     open();
@@ -1110,6 +801,25 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
     expect(navigateMock).toHaveBeenCalledWith('/schedule');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('Activity navigation reveals its registered region surface', async () => {
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'activity' },
+    });
+    // #928: `/activity` is not the only wrong destination any more — the
+    // registry's `route` field now holds the surface's deep link, so a
+    // palette entry that fell through to `navigate(surface.route)` would
+    // reach a real URL and look like it worked. Count the calls across the
+    // click instead of naming one absent path. (Mocks are not auto-cleared
+    // in this suite, so the baseline is read rather than assumed to be 0.)
+    const navigationsBefore = navigateMock.mock.calls.length;
+    fireEvent.click(screen.getByRole('option', { name: /^Activity/ }));
+
+    expect(showSurfaceMock).toHaveBeenCalledWith('activity');
+    expect(navigateMock.mock.calls.length).toBe(navigationsBefore);
   });
 
   test('IME Enter does not run the highlighted command, then plain Enter does', async () => {
@@ -1278,6 +988,30 @@ describe('CommandPalette', () => {
     );
     expect(navigateMock).not.toHaveBeenCalled();
     expect(commandFrecencyStorage.read()).toEqual([]);
+  });
+
+  test('a desktop-only settings command stays listed and explains its desktop boundary', async () => {
+    // The palette lazily loads the real settings catalog on first query and
+    // projects it through the platform profile. This file's mocked
+    // usePlatformProfile returns { isMobile: false } with no isDesktop key, so
+    // the row goes unavailable because `!undefined` is truthy — exactly the
+    // shape a web/browser shell has, and the desktop reason must be the one
+    // announced, not the mobile one.
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'Desktop app updates' },
+    });
+    const option = await screen.findByRole('option', {
+      name: /Desktop app updates/,
+    });
+    expect(option.getAttribute('aria-disabled')).toBe('true');
+    expect(option.textContent).toContain('Available in the desktop app.');
+    fireEvent.click(option);
+    expect(screen.getByRole('status').textContent).toContain(
+      'Available in the desktop app.',
+    );
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   test('reset keeps the palette open, reports local feedback, and restores baseline history', async () => {

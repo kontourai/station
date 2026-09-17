@@ -3,7 +3,7 @@
  *
  * Home's counts and its chart describe populations Home itself renders, and
  * nothing outside Home can be navigated to with those populations applied:
- * `/activity` takes only `?session=<id>` (`app-shell/routing.ts`), and its
+ * Activity takes only a session intent, and its
  * project filter is component state with no route parameter, so every
  * external destination would land on an unfiltered list. Revealing the exact
  * lane the number counted is the destination that is actually true.

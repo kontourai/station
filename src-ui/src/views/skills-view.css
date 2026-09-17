@@ -61,17 +61,34 @@
   line-height: 1.5;
 }
 
+/* The refusal's package path. Its own block, its own label, monospace: the
+   string is author-controlled and must never read as part of the sentence
+   above it. `overflow-wrap` because a plugin's path can be arbitrarily long
+   and must not push the pane wide. */
+.skill-detail__source-path {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0.25rem 0 0;
+  font-size: var(--text-sm);
+}
+
+.skill-detail__source-path-label {
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+}
+
+.skill-detail__source-path code {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
 .skills-view__sidebar-actions {
   display: grid;
   gap: 0.5rem;
-}
-
-.guidance-conversion__notes {
-  margin: 12px 0 0;
-  padding-left: 18px;
-  color: var(--text-secondary);
-  font-size: var(--text-md);
-  line-height: 1.5;
 }
 
 .skill-detail__badge {
@@ -86,9 +103,9 @@
 }
 
 .skill-detail__badge--installed {
-  background: rgba(52, 211, 153, 0.12);
-  color: #34d399;
-  border: 1px solid rgba(52, 211, 153, 0.2);
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
 }
 
 .skill-detail__badge--registry {
@@ -151,9 +168,9 @@
 }
 
 .skill-detail__btn--uninstall:hover:not(:disabled) {
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.4);
-  background: rgba(239, 68, 68, 0.06);
+  color: var(--error-text);
+  border-color: var(--error-border);
+  background: var(--error-bg);
 }
 
 .skill-detail__btn-icon {
@@ -370,4 +387,21 @@
   border-color: var(--accent-primary);
   color: var(--accent-primary);
   background: var(--accent-hover);
+}
+
+/*
+ * The list row's source chip (#1582 D6). Same token pair and metrics as
+ * `.engine-chip__pill` — `--text-tertiary` on `--bg-tertiary`, measured there
+ * at 8.49:1 dark / 5.91:1 light — rather than a new tone, so the two quiet
+ * chips a row can carry read as one family.
+ */
+.skill-source-chip {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
 }

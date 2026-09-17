@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { DEMO_LAYOUT_PREVIEW } from './fixtures/plugin-preview';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
@@ -27,14 +28,6 @@ async function mockStationIdentity(page: Page) {
       },
     }),
   );
-}
-
-async function forceClick(page: Page, selector: string) {
-  await page
-    .locator(selector)
-    .evaluate((el) =>
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
 }
 
 async function mockRegistry(page: Page) {
@@ -201,6 +194,19 @@ async function mockRegistry(page: Page) {
     });
   }
 
+  await page.route('**/api/plugins/preview', (route) => {
+    const { registryId } = route.request().postDataJSON();
+    return route.fulfill({
+      json:
+        registryId === 'project-planner'
+          ? { valid: false, code: 'registry-plugin-not-found' }
+          : DEMO_LAYOUT_PREVIEW,
+    });
+  });
+  await page.route('**/api/plugins/reload', (route) =>
+    route.fulfill({ json: { success: true } }),
+  );
+
   return { catalog, installCalls, installed, layoutStates };
 }
 
@@ -271,10 +277,46 @@ test.describe('Registry page', () => {
     await expect(detail.getByRole('button', { name: 'Use' })).toBeVisible();
   });
 
-  test('sidebar shows Registry nav item', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'Registry' })).toBeVisible({
-      timeout: 5_000,
+  // #2059: Registry is configuration, so it left the left panel for Settings.
+  // #2144 decision 4 then FOLDED it into Plugins: browsing the catalogue and
+  // managing what it installed are one errand, so Settings offers one row for
+  // both and the Plugins surface carries the step to the catalogue.
+  //
+  // The guarantee is unchanged — an advertised control someone can press
+  // reaches this surface — and the whole path is walked by pressing, because a
+  // fold is exactly the shape that can drop a surface while every individual
+  // list still looks complete.
+  test('Settings reaches Registry through the Plugins entry it folds into', async ({
+    page,
+  }) => {
+    await expect(
+      page.getByRole('navigation', { name: 'Primary navigation' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
+    const sections = page.getByRole('navigation', {
+      name: 'Settings sections',
     });
+    await expect(sections).toBeVisible({ timeout: 10_000 });
+    // The fold is a real fold: Registry has no row of its own to press.
+    await expect(
+      sections.getByRole('link', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+
+    await sections.getByRole('link', { name: 'Plugins', exact: true }).click();
+    await expect(page).toHaveURL(/\/plugins$/);
+    await page
+      .getByRole('button', { name: 'Browse Registry', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/registry/);
   });
 
   test('skill cards open preview details before explicit install', async ({
@@ -284,7 +326,7 @@ test.describe('Registry page', () => {
     await page.goto('/registry');
     await page.waitForSelector('.page__tab', { timeout: 15_000 });
 
-    await forceClick(page, '.page__tab:has-text("Skills")');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
     await page.getByRole('button', { name: /Prompt Toolkit/i }).click();
 
     await expect(page.getByTestId('registry-detail')).toContainText(
@@ -363,6 +405,9 @@ test.describe('Registry page', () => {
         .getByTestId('registry-detail')
         .getByRole('button', { name: entry.install })
         .click();
+      if (entry.tab === 'Plugins') {
+        await page.getByRole('button', { name: 'Confirm Install' }).click();
+      }
       await expect(page.getByText(`Installed ${entry.item}`)).toBeVisible();
       await expect(
         page

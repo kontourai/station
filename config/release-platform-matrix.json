@@ -29,7 +29,7 @@
     },
     "windows": {
       "artifactIdentity": "signed MSI/installer and updater archive/signature",
-      "signingRequirement": "Authenticode and Tauri updater signature"
+      "signingRequirement": "Tauri updater signature; Authenticode optional for Nightly and required for tagged preview/stable"
     },
     "linux": {
       "artifactIdentity": "AppImage, deb, rpm, updater archive/signature",
@@ -150,26 +150,28 @@
       },
       "macos": {
         "state": "configured",
-        "buildJob": "nightly-native-cohort.yml#stage-macos",
+        "buildJob": "nightly-native-stage.yml#stage-macos",
         "testLane": "nightly.yml#test-gate plus cohort admission and notarized artifact checks",
         "publicationTarget": "rolling GitHub prerelease nightly-desktop",
         "updateAuthority": "signed Tauri Nightly updater feed",
         "rollbackSource": "previous rolling prerelease asset retained by release history",
         "requiredForPromotion": true,
-        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
+        "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-desktop" }
       },
       "windows": {
-        "state": "gated",
-        "buildJob": null,
-        "testLane": "Windows portable floor",
-        "publicationTarget": "not configured",
-        "updateAuthority": "not configured",
-        "rollbackSource": "last stable Windows release",
+        "state": "configured",
+        "buildJob": "nightly-native-stage.yml#stage-windows",
+        "testLane": "Windows NSIS packaging and extraction, exact-SHA cohort admission, and protected signing checks",
+        "publicationTarget": "shared rolling GitHub prerelease nightly-desktop",
+        "updateAuthority": "signed Tauri Nightly updater feed",
+        "rollbackSource": "previous version-specific desktop downloads retained beside the shared manifest",
+        "requiredForPromotion": true,
+        "availabilityPolicy": "per-platform-native-cohort; macOS and Windows share one manifest publication; fleet completion remains NOT_VERIFIED",
         "evidence": {
           "kind": "not-verified",
-          "owner": "#844",
-          "reason": "Nightly Windows artifacts are not configured."
+          "owner": "#1045",
+          "reason": "Windows updater signing and provider/install receipts must be verified separately; optional Authenticode status is disclosed and existing macOS ledger entries do not establish Windows delivery."
         }
       },
       "linux": {
@@ -187,25 +189,25 @@
       },
       "android": {
         "state": "configured",
-        "buildJob": "nightly-native-cohort.yml#stage-android",
+        "buildJob": "nightly-native-stage.yml#stage-android",
         "testLane": "nightly.yml#test-gate plus cohort admission and signed AAB identity checks",
         "publicationTarget": "Google Play Internal io.kontourai.station.nightly",
         "updateAuthority": "Google Play Internal testing track",
         "rollbackSource": "previous immutable Play version code",
         "requiredForPromotion": true,
-        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
+        "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-android" }
       },
       "ios": {
         "state": "configured",
-        "buildJob": "nightly-native-cohort.yml#deliver-ios",
+        "buildJob": "nightly-native-stage.yml#stage-ios",
         "iconSource": "src-desktop/icons/nightly/icon.png",
         "testLane": "nightly exact-SHA gate plus signed IPA/profile/package checks",
         "publicationTarget": "TestFlight for io.kontourai.station.nightly",
         "updateAuthority": "TestFlight internal group",
         "rollbackSource": "previous processed TestFlight Nightly build",
-        "requiredForPromotion": true,
-        "availabilityPolicy": "native cohort recovery remains locked until exact-version TestFlight reconciliation succeeds; fleet completion remains NOT_VERIFIED",
+        "requiredForPromotion": false,
+        "availabilityPolicy": "independent TestFlight delivery (#1774): a failed upload reddens Nightly and is disclosed as an ios: note on the nightly-android and nightly-desktop ledger rows whenever the cohort records (an all-platform failure discloses it in the recovery receipt instead), but never blocks Android/macOS finality or writes the recovery lock; fleet completion remains NOT_VERIFIED",
         "evidence": {
           "kind": "not-verified",
           "owner": "#1016",

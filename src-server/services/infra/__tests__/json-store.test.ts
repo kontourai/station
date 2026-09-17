@@ -9,7 +9,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { JsonFileStore, JsonFileStoreCorruptionError } from '../json-store.js';
+import {
+  JsonFileStore,
+  JsonFileStoreCorruptionError,
+  JsonFileStoreReadLimitError,
+} from '../json-store.js';
 
 describe('JsonFileStore', () => {
   let dir: string;
@@ -25,6 +29,25 @@ describe('JsonFileStore', () => {
   test('read returns fallback when file missing', () => {
     const store = new JsonFileStore(join(dir, 'missing.json'), { x: 1 });
     expect(store.read()).toEqual({ x: 1 });
+  });
+
+  test('opt-in read bound accepts exact bytes and refuses primary and recovery oversize distinctly', () => {
+    const path = join(dir, 'bounded.json');
+    writeFileSync(path, '"é"');
+    const exact = new JsonFileStore(path, null, {
+      maxReadBytes: 4,
+      onCorruption: 'throw',
+      durableAtomicWrite: true,
+    });
+    expect(exact.read()).toBe('é');
+    writeFileSync(path, '"é" ');
+    expect(() => exact.read()).toThrow(JsonFileStoreReadLimitError);
+    rmSync(path);
+    writeFileSync(`${path}.previous`, '"é" ');
+    expect(() => exact.read()).toThrow(JsonFileStoreReadLimitError);
+    expect(() => new JsonFileStore(path, null, { maxReadBytes: NaN })).toThrow(
+      TypeError,
+    );
   });
 
   test('write then read round-trips', () => {

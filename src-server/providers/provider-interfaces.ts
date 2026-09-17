@@ -1,7 +1,4 @@
-import type {
-  ACPConnectionConfig,
-  ACPConnectionRegistryEntry,
-} from '@kontourai/station-contracts/acp';
+import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
 import type {
   AuthStatus,
   RenewResult,
@@ -65,6 +62,11 @@ export interface ISkillRegistryProvider {
 
 export interface IPluginRegistryProvider {
   readonly registryKey?: string;
+  /** One fresh catalog observation. Claims remain untrusted until the installer verifies them. */
+  resolvePackage?(id: string): Promise<{
+    source: string;
+    claim?: unknown;
+  } | null>;
   listAvailable(): Promise<RegistryItem[]>;
   listInstalled(): Promise<RegistryItem[]>;
   resolveSource?(id: string): Promise<string | null>;
@@ -83,7 +85,16 @@ export interface IPluginRegistryProvider {
   install(
     id: string,
     options?: { expectedInstalledPluginName?: string },
-  ): Promise<InstallResult>;
+  ): Promise<
+    InstallResult & {
+      /**
+       * Compensates only the durable registry ownership written by this
+       * successful install. The dependency installer invokes it when a later
+       * validation or activation step refuses the installed tree.
+       */
+      rollback?: () => Promise<void>;
+    }
+  >;
   uninstall(id: string): Promise<InstallResult>;
   preview?(id: string): Promise<PluginPreview>;
   update?(id: string): Promise<InstallResult>;
@@ -201,39 +212,10 @@ export interface NotificationStatusUpdate {
   actionId?: string;
 }
 
-export interface ILayoutTypeProvider {
-  readonly id: string;
-  readonly displayName: string;
-  readonly icon: string;
-  getConfigSchema?(): unknown;
-  getDefaultConfig(): Record<string, unknown>;
-}
-
-export interface IACPConnectionsProvider {
-  getConnections(): ACPConnectionConfig[];
-}
-
 export interface IACPConnectionRegistryProvider {
   readonly id?: string;
   readonly displayName?: string;
   listAvailable(): ACPConnectionRegistryEntry[];
-}
-
-export interface Template {
-  id: string;
-  icon: string;
-  label: string;
-  description: string;
-  type: 'agent' | 'layout';
-  form: Record<string, any>;
-  tabs?: Array<{ id: string; label: string; component: string }>;
-  source?: string;
-}
-
-export interface ITemplateProvider {
-  readonly id: string;
-  readonly displayName: string;
-  listTemplates(): Promise<Template[]>;
 }
 
 export interface IProviderAdapterRegistry {
@@ -243,7 +225,7 @@ export interface IProviderAdapterRegistry {
   onChange?(listener: () => void): () => void;
 }
 
-export type ProviderCardinality = 'singleton' | 'additive';
+type ProviderCardinality = 'singleton' | 'additive';
 
 export const PROVIDER_TYPE_META: Record<string, ProviderCardinality> = {
   auth: 'singleton',

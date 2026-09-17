@@ -39,6 +39,8 @@ const PUBLIC_QUERY_DOMAINS = [
   'featurePreviews',
   'flowRuns',
   'peerCredentials',
+  'personalLayouts',
+  'pluginVisibility',
   'knowledgeStores',
   'knownEnvironments',
   'notifications',
@@ -89,6 +91,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'lazy-only developer-surface hooks, intentionally published only from the `@kontourai/station-sdk/developer-runtime` subpath to keep them out of the root entry bundle.',
   actionOperations:
     'Activity-only operation query, intentionally published from the `@kontourai/station-sdk/action-operations` subpath to preserve the lazy Activity bundle boundary.',
+  mobileDevices:
+    '#1969: the Device pane\u2019s inventory/capture hooks, published only from the `@kontourai/station-sdk/mobile-devices-query` subpath. The client it wraps (`mobile-device.ts`) is itself subpath-only for the same reason: the root barrel is eager in every consumer, and a device host is reached by one lazy dock pane.',
   liveActivity:
     'station#3819: Activity-only roster query, intentionally published from the `@kontourai/station-sdk/live-activity` subpath to preserve the lazy Activity bundle boundary.',
   resourcePosture:
@@ -107,6 +111,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'fully re-exported by name from systemRuntime.ts already.',
   uiBlocks:
     "extractUIBlocks is exported directly by index.ts (`export { extractUIBlocks } from './query-domains/uiBlocks.js'`), bypassing queries.ts on purpose.",
+  workspacePaneHostActions:
+    'published only from the documented @kontourai/station-sdk/workspace-pane subpath; keep Project host-action hooks outside the root namespace and its eager bundle.',
   workspaceConnections:
     'implementation detail folded into workspace.ts via `export *`.',
   workspaceCredentialRecovery:
@@ -519,6 +525,22 @@ describe('sdk public barrel re-exports the Workspace Pane contract API (#1369/#1
       'function',
     );
     expect(typeof previewSdk.previewProjectWorkspaceFile).toBe('function');
+  });
+
+  it('publishes every host-action hook through the documented Pane subpath', async () => {
+    const [sdk, paneSdk, hostActions] = await Promise.all([
+      import('../index'),
+      import('../workspace-pane'),
+      import('../query-domains/workspacePaneHostActions'),
+    ]);
+    const packageJson = JSON.parse(fs.readFileSync(SDK_PACKAGE_PATH, 'utf8'));
+    expect(packageJson.exports['./workspace-pane']).toBe(
+      './src/workspace-pane.ts',
+    );
+    for (const [name, binding] of Object.entries(hostActions)) {
+      expect((paneSdk as Record<string, unknown>)[name], name).toBe(binding);
+      expect(name in sdk, name).toBe(false);
+    }
   });
 
   it('keeps Pane runtime helpers opt-in while exposing identical bindings from the dedicated SDK subpath', async () => {

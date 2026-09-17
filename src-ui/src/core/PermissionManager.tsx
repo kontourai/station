@@ -1,4 +1,4 @@
-import type { PermissionTier } from '@kontourai/station-contracts/plugin';
+import type { PluginPermissionPrompt } from '@kontourai/station-contracts/plugin';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import {
   createContext,
@@ -8,21 +8,16 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { PermissionRequestModal } from '../components/modals/PermissionRequestModal';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNativeConsentBroker } from '../platform/native/useNativeConsentBroker';
-import { describePermission } from './permission-vocabulary';
 
 // ── Types ──────────────────────────────────────────────
-
-interface PermissionRequest {
-  permission: string;
-  tier: PermissionTier;
-}
 
 interface ConsentRequest {
   pluginName: string;
   displayName: string;
-  permissions: PermissionRequest[];
+  permissions: PluginPermissionPrompt[];
   /**
    * archive#4288. `true` when the plugin is NOT installed yet and the answer
    * decides whether it gets installed at all. Approving records nothing here:
@@ -31,6 +26,7 @@ interface ConsentRequest {
    * the tree is final.
    */
   decisionOnly: boolean;
+  recovery?: boolean;
   resolve: (granted: boolean) => void;
 }
 
@@ -39,7 +35,7 @@ interface PermissionContextType {
   requestConsent: (
     pluginName: string,
     displayName: string,
-    permissions: PermissionRequest[],
+    permissions: PluginPermissionPrompt[],
   ) => Promise<boolean>;
   /**
    * Ask BEFORE installing (archive#4288). Same chrome, but it only returns
@@ -50,7 +46,8 @@ interface PermissionContextType {
   requestInstallConsent: (
     pluginName: string,
     displayName: string,
-    permissions: PermissionRequest[],
+    permissions: PluginPermissionPrompt[],
+    options?: { action: 'recover' },
   ) => Promise<boolean>;
   /** Grant permissions on the server */
   grantPermissions: (
@@ -60,17 +57,6 @@ interface PermissionContextType {
 }
 
 const PermissionContext = createContext<PermissionContextType | null>(null);
-
-// ── Tier badge styling ─────────────────────────────────
-
-const TIER_STYLES: Record<
-  PermissionTier,
-  { label: string; color: string; bg: string }
-> = {
-  passive: { label: 'Passive', color: '#22c55e', bg: '#22c55e20' },
-  active: { label: 'Active', color: '#f59e0b', bg: '#f59e0b20' },
-  trusted: { label: 'Trusted', color: '#ef4444', bg: '#ef444420' },
-};
 
 type HostApprovalStatus = 'pending' | 'approved' | 'denied' | 'expired';
 
@@ -91,7 +77,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
     (
       pluginName: string,
       displayName: string,
-      permissions: PermissionRequest[],
+      permissions: PluginPermissionPrompt[],
     ): Promise<boolean> => {
       return new Promise((resolve) => {
         setPending({
@@ -110,7 +96,8 @@ export function PermissionManager({ children }: { children: ReactNode }) {
     (
       pluginName: string,
       displayName: string,
-      permissions: PermissionRequest[],
+      permissions: PluginPermissionPrompt[],
+      options?: { action: 'recover' },
     ): Promise<boolean> => {
       return new Promise((resolve) => {
         setPending({
@@ -118,6 +105,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
           displayName,
           permissions,
           decisionOnly: true,
+          recovery: options?.action === 'recover',
           resolve,
         });
       });
@@ -284,166 +272,11 @@ export function PermissionManager({ children }: { children: ReactNode }) {
     <PermissionContext.Provider value={value}>
       {children}
       {pending && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000,
-          }}
-        >
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: this dialog surface only shields backdrop dismissal; it is not an interactive control. */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users do not need to activate a propagation shield. */}
-          <div
-            style={{
-              background: 'var(--bg-primary, #1a1a2e)',
-              borderRadius: 12,
-              padding: '1.5rem',
-              maxWidth: 480,
-              width: '90%',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 4px', fontSize: '1rem' }}>
-              {pending.decisionOnly
-                ? 'Install this plugin?'
-                : 'Permission Request'}
-            </h3>
-            <p
-              style={{
-                margin: '0 0 1rem',
-                fontSize: '13px',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <strong>{pending.displayName || pending.pluginName}</strong>
-              {pending.decisionOnly
-                ? ' has not been installed yet. Installing it requires:'
-                : ' is requesting the following permissions:'}
-            </p>
-
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                marginBottom: '1.25rem',
-              }}
-            >
-              {pending.permissions.map((p) => {
-                const style = TIER_STYLES[p.tier];
-                return (
-                  <div
-                    key={p.permission}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      background: 'var(--bg-secondary)',
-                      border: '1px solid var(--border-primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: '10px',
-                        fontWeight: 600,
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        background: style.bg,
-                        color: style.color,
-                        border: `1px solid ${style.color}40`,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                      }}
-                    >
-                      {style.label}
-                    </span>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: 500 }}>
-                        {p.permission}
-                      </div>
-                      <div
-                        style={{ fontSize: '11px', color: 'var(--text-muted)' }}
-                      >
-                        {describePermission(p.permission)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {pending.permissions.some((p) => p.tier === 'trusted') && (
-              <div
-                style={{
-                  padding: '10px 12px',
-                  marginBottom: '1rem',
-                  borderRadius: 8,
-                  background: '#ef444415',
-                  border: '1px solid #ef444440',
-                  fontSize: '12px',
-                  color: '#fca5a5',
-                }}
-              >
-                Trusted permissions can run server-side code or modify Station
-                behavior.{' '}
-                {pending.decisionOnly
-                  ? 'They are not granted by installing: after the install, a separate host-owned review page — which plugin code cannot submit for you — decides them.'
-                  : 'Approval opens a separate, host-owned review page that plugin code cannot submit for you.'}
-              </div>
-            )}
-
-            <div
-              style={{
-                display: 'flex',
-                gap: '8px',
-                justifyContent: 'flex-end',
-              }}
-            >
-              <button
-                type="button"
-                onClick={handleDeny}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 6,
-                  fontSize: '13px',
-                  border: '1px solid var(--border-primary)',
-                  background: 'transparent',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                }}
-              >
-                Deny
-              </button>
-              <button
-                type="button"
-                onClick={handleApprove}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 6,
-                  fontSize: '13px',
-                  border: 'none',
-                  background: 'var(--accent-primary)',
-                  color: 'white',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                }}
-              >
-                {pending.decisionOnly
-                  ? 'Install'
-                  : pending.permissions.some((p) => p.tier === 'trusted')
-                    ? 'Review trusted access'
-                    : 'Approve'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <PermissionRequestModal
+          request={pending}
+          onApprove={handleApprove}
+          onDeny={handleDeny}
+        />
       )}
     </PermissionContext.Provider>
   );

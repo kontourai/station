@@ -1,7 +1,7 @@
 # node-pty Linux prebuilds
 
 Attested, digest-pinned Linux builds of the exact `node-pty` version pinned in
-`package-lock.json`, staged into `node_modules/node-pty/prebuilds/<target>/`
+`pnpm-lock.yaml`, staged into `node_modules/node-pty/prebuilds/<target>/`
 by the dependency lifecycle (#1245) so a Linux install does not need a C++
 toolchain. Upstream node-pty ships prebuilds for darwin and win32 only; its
 own loader and install hook already understand this `prebuilds/` layout, so
@@ -51,7 +51,7 @@ staging slots into upstream with no fork and no vendored package.
 
 ## Refreshing
 
-Rebuild only when `package-lock.json` moves node-pty to a new version (the
+Rebuild only when `pnpm-lock.yaml` moves node-pty to a new version (the
 consistency test fails until the manifest follows), or on a node-pty
 security advisory. node-pty is an N-API addon: artifacts are ABI-stable
 across Node majors and do not need rebuilding for a Node upgrade.

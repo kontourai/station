@@ -1,8 +1,10 @@
 import type { ConversationListItem } from '@kontourai/station-sdk';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
+import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
 import { LazyBoundary } from '../LazyBoundary';
 import type { NewChatModalMode } from '../modals/NewChatModal';
 
@@ -33,6 +35,7 @@ interface ChatDockModalStackProps {
   newChatProjectOverride?: { slug: string; name: string } | null;
   sessions: ChatSession[];
   showNewChatModal: boolean;
+  newChatRequestEpoch?: number;
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
@@ -73,6 +76,8 @@ interface ChatDockModalStackProps {
   forkSource?: { id: string; agentSlug: string } | null;
   forkMode?: Omit<NewChatModalMode, 'disclosure'>;
   onForkAgentSelect?: ChatDockModalStackProps['onSelectNewChat'];
+  onReplayConversation?: () => void;
+  replayCaptureSource?: ReplayCaptureSource;
 }
 
 export function ChatDockModalStack({
@@ -82,6 +87,7 @@ export function ChatDockModalStack({
   newChatProjectOverride,
   sessions,
   showNewChatModal,
+  newChatRequestEpoch,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
@@ -102,6 +108,8 @@ export function ChatDockModalStack({
   forkSource,
   forkMode,
   onForkAgentSelect,
+  onReplayConversation,
+  replayCaptureSource,
 }: ChatDockModalStackProps) {
   const handleNewChatSelect: ChatDockModalStackProps['onSelectNewChat'] = (
     agent,
@@ -111,14 +119,18 @@ export function ChatDockModalStack({
     else onSelectNewChat(agent, ...args);
   };
 
+  const requestAuthority = useHostRequestAuthorityScope();
+
   return (
     <>
       {showNewChatModal && (
         <LazyBoundary
+          key={newChatRequestEpoch}
           load={loadNewChatModal}
           componentProps={{
             agents,
             projects,
+            requestAuthority,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,
@@ -147,6 +159,8 @@ export function ChatDockModalStack({
             autoHideEnabled,
             setAutoHideEnabled: onAutoHideChange,
             sessionSummary,
+            onReplayConversation,
+            replayCaptureSource,
           }}
           pending={null}
         />

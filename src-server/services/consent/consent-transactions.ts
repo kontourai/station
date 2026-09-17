@@ -55,19 +55,15 @@ const MAX_RATE_KEYS = 1024;
  * re-rendering forever. The budget bounds that to a small, human-plausible
  * number per transaction; a transaction that exhausts it must be re-opened.
  */
-export const MAX_REVIEW_RENDERS = 30;
+const MAX_REVIEW_RENDERS = 30;
 /**
  * Review MED 3: the audit trail is bounded. When full, the oldest entry
  * AFTER the initial `created` event is dropped, so creation provenance and
  * the most recent history are both retained.
  */
-export const MAX_AUDIT_EVENTS = 100;
+const MAX_AUDIT_EVENTS = 100;
 
-export type ConsentTransactionStatus =
-  | 'pending'
-  | 'approved'
-  | 'denied'
-  | 'expired';
+type ConsentTransactionStatus = 'pending' | 'approved' | 'denied' | 'expired';
 export type ConsentDecision = 'approved' | 'denied';
 
 /** Exactly what would be granted, in a canonically comparable form. */
@@ -84,7 +80,7 @@ export interface ConsentTargetSnapshot {
   readonly fingerprint: string;
 }
 
-export interface ConsentDescriptionItem {
+interface ConsentDescriptionItem {
   readonly label: string;
   readonly detail: string;
 }
@@ -99,13 +95,22 @@ export interface ConsentDescription {
   readonly denyLabel: string;
 }
 
-export interface ConsentRequesterAttribution {
+interface ConsentRequesterAttribution {
   /** Who asked, e.g. `plugin-ui`. */
   readonly kind: string;
   readonly id: string;
 }
 
-export interface ConsentAuditEvent {
+/** Bounded, value-free projection of the domain effect committed by consent. */
+export interface ConsentEffectProjection {
+  readonly status: 'completed' | 'winding-down' | 'incomplete' | 'superseded';
+  readonly operationId: string;
+  readonly generation: number;
+  readonly effects?: readonly string[];
+  readonly failures?: readonly string[];
+}
+
+interface ConsentAuditEvent {
   readonly at: number;
   readonly event:
     | 'created'
@@ -132,7 +137,7 @@ export class ConsentCommitRefusedError extends Error {
   }
 }
 
-export interface ConsentTransactionInit {
+interface ConsentTransactionInit {
   readonly tenantId: string;
   readonly target: ConsentTargetSnapshot;
   readonly description: ConsentDescription;
@@ -156,7 +161,9 @@ export interface ConsentTransactionInit {
    */
   readonly revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
   /** Commits the approval's domain effect. Runs only after every check passed. */
-  readonly commitApproval: () => Promise<void>;
+  readonly commitApproval: () =>
+    | Promise<ConsentEffectProjection>
+    | Promise<void>;
   /**
    * Review HIGH 1: mutual exclusion between target revalidation → grant
    * commit and whatever can mutate the target's content (for plugins, the
@@ -185,10 +192,13 @@ interface ConsentTransactionRecord {
   decisionInFlight: boolean;
   decidedAt?: number;
   decidedVia?: ConsentDecisionAuthority;
+  effect?: ConsentEffectProjection;
   /** Transaction-bound decision-session secret (the `station-consent` cookie). */
   readonly decisionSessionSecret: string;
   readonly revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
-  readonly commitApproval: () => Promise<void>;
+  readonly commitApproval: () =>
+    | Promise<ConsentEffectProjection>
+    | Promise<void>;
   readonly guardDecision?: <T>(fn: () => Promise<T>) => Promise<T>;
   readonly audit: ConsentAuditEvent[];
 }
@@ -217,13 +227,14 @@ export interface ConsentTransactionView {
   readonly requester: ConsentRequesterAttribution;
   readonly createdAt: number;
   readonly expiresAt: number;
+  readonly effect?: ConsentEffectProjection;
 }
 
-export type ConsentCreateResult =
+type ConsentCreateResult =
   | { readonly ok: true; readonly transaction: ConsentTransactionView }
   | { readonly ok: false; readonly reason: 'capacity' | 'rate_limited' };
 
-export type ConsentRenderResult =
+type ConsentRenderResult =
   | {
       readonly ok: true;
       readonly nonce: string;
@@ -235,7 +246,7 @@ export type ConsentRenderResult =
       readonly status?: ConsentTransactionStatus;
     };
 
-export type ConsentDecideRefusalReason =
+type ConsentDecideRefusalReason =
   | 'not_found'
   | 'not_pending'
   | 'decision_in_flight'
@@ -244,7 +255,7 @@ export type ConsentDecideRefusalReason =
   | 'target_changed'
   | 'commit_refused';
 
-export type ConsentDecideResult =
+type ConsentDecideResult =
   | { readonly ok: true; readonly status: ConsentDecision }
   | {
       readonly ok: false;
@@ -294,6 +305,7 @@ function viewOf(
     requester: record.requester,
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
+    ...(record.effect ? { effect: structuredClone(record.effect) } : {}),
   };
 }
 
@@ -584,7 +596,8 @@ export class ConsentTransactionStore {
           return { ok: true, status: 'denied' } as const;
         }
         try {
-          await record.commitApproval();
+          const effect = await record.commitApproval();
+          if (effect) record.effect = structuredClone(effect);
         } catch (error) {
           if (error instanceof ConsentCommitRefusedError) {
             return refuse('commit_refused', error.safeDetail);

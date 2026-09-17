@@ -215,17 +215,24 @@ describe('describeDeviceScope', () => {
 
   it('station#1398 slice 2: "Full access" is reserved for a scope that genuinely carries every token', () => {
     // "Every token" is the whole current vocabulary. access:approve joined
-    // PAIRING_SCOPES in #1887 slice 1 and consent:decide in #3677, so the
-    // full set is now seven tokens — a six-token scope is Custom, not Full.
+    // PAIRING_SCOPES in #1887 slice 1 and consent:decide in #3677;
+    // home:transfer brought the set to eight tokens, and home:control and
+    // engine:login (#2035) to ten, so each earlier full set is now Custom.
     expect(
       describeDeviceScope(
-        'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide',
+        'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide home:transfer engine:login',
       ),
-    ).toBe('Full access');
+    ).toBe('Custom access');
+    // Neither nine-token set is every token.
+    expect(
+      describeDeviceScope(
+        'orchestration:read orchestration:operate terminal:operate access:manage inference:invoke access:approve consent:decide home:transfer home:control',
+      ),
+    ).toBe('Custom access');
     // Order-independent, like every other preset match.
     expect(
       describeDeviceScope(
-        'consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
+        'engine:login home:control home:transfer consent:decide access:approve inference:invoke access:manage terminal:operate orchestration:operate orchestration:read',
       ),
     ).toBe('Full access');
     // A scope missing any single token (here consent:decide) is not Full.
@@ -238,6 +245,14 @@ describe('describeDeviceScope', () => {
 
   it('station#1398 slice 2: labels the fleet-inference preset', () => {
     expect(describeDeviceScope('inference:invoke')).toBe('Fleet inference');
+  });
+
+  it('labels the dedicated home-transfer preset', () => {
+    expect(describeDeviceScope('home:transfer')).toBe('Home transfer');
+  });
+
+  it('labels the operator-promoted home-control scope', () => {
+    expect(describeDeviceScope('home:control')).toBe('Home control');
   });
 
   it('labels the read-only preset', () => {

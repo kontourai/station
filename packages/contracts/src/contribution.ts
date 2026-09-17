@@ -90,8 +90,8 @@
  * path". §3.5's binding store never leaves the machine, and §4.3's privacy
  * property and consent property are the same property. So
  * {@link ContributedExecution} has no path field, and the builder's input
- * observation type (`contribution-projection.ts`) has no field that could hold
- * one — including the resolver's own `reason`, whose prose embeds the declared
+ * observation type has no field that could hold one — including the
+ * resolver's own `reason`, whose prose embeds the declared
  * path. The messages in `diagnostics[]` are derived from the repo id and the
  * resolution state, never carried through from a local record.
  *

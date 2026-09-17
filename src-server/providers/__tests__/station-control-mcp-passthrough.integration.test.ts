@@ -36,6 +36,19 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
 }));
 
+// #1551 review M5: `startSession` reaches cli-auth for real -- login-shell
+// PATH augmentation, `findCliBinaryAsync`, and (since #1551) a
+// `claude --version` probe on any host that HAS claude installed. None of
+// that is what this file tests, and all of it makes the result depend on the
+// developer's machine. Stub the module so the seam under test is the only
+// live one: no installed claude, no spawn.
+vi.mock('../auth/cli-auth.js', () => ({
+  augmentedSpawnEnv: vi.fn().mockResolvedValue(undefined),
+  buildCliRuntimePrerequisites: vi.fn().mockResolvedValue([]),
+  findCliBinaryAsync: vi.fn().mockResolvedValue(null),
+  runCliCommand: vi.fn().mockResolvedValue(null),
+}));
+
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';

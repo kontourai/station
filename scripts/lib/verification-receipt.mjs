@@ -354,6 +354,7 @@ export function createVerificationReceipt({
   reusableOutputs,
   recoveredFailures,
   reconcileNote,
+  infrastructureCause,
 }) {
   if (!DISPOSITIONS.has(disposition)) {
     throw new Error(`unknown receipt disposition: ${disposition}`);
@@ -408,6 +409,29 @@ export function createVerificationReceipt({
   if (boundedRecovered.length) terminal.recoveredFailures = boundedRecovered;
   if (typeof reconcileNote === 'string' && reconcileNote.length)
     terminal.reconcileNote = reconcileNote.slice(0, 1024);
+  // station#1827: the stopping runner's own final word about why this lane
+  // never reached a verdict (ci:fast's feedback-budget kill is the case that
+  // motivated it). Admitted only for the status it explains -- an
+  // `infrastructure_error` is the one terminal that means "stopped, cause
+  // known to the runner". Accepting it on any other status would let a caller
+  // stamp an infrastructure explanation onto an ordinary red, which is a
+  // label nothing derived; the schema binds the same pair independently.
+  //
+  // Sliced by CODE POINTS, which is the unit the schema's `maxLength: 512`
+  // counts, so this bound and the schema's are the same wall rather than two
+  // that disagree at a surrogate pair (`String.prototype.slice` counts UTF-16
+  // code units and can cut one in half, leaving a lone surrogate that no
+  // reader can render). The producer upstream has already bounded the value
+  // to 512 BYTES, which is the tighter of the two and therefore the binding
+  // one; this slice is the backstop for a caller that did not.
+  if (
+    terminal.status === 'infrastructure_error' &&
+    typeof infrastructureCause === 'string' &&
+    infrastructureCause.length
+  )
+    terminal.infrastructureCause = [...infrastructureCause]
+      .slice(0, 512)
+      .join('');
   const requiredReusableOutputs =
     resolveLane(request.laneId).reusableOutputs ?? [];
   if (
@@ -559,4 +583,43 @@ export function assertReceiptSemantics(receipt) {
     );
   }
   return receipt;
+}
+
+/**
+ * The text a receipt should carry for a thrown value, losing neither the
+ * message nor the stack.
+ *
+ * WHY `error.stack` ALONE IS NOT SAFE. A stack is conventionally
+ * `${name}: ${message}` followed by frames, which is why preferring it reads as
+ * strictly more information. Vitest breaks that convention for the one failure
+ * a receipt most needs to name. `makeTimeoutError`
+ * (`@vitest/runner`) builds a fresh `Error` carrying
+ * `Test timed out in 30000ms.` and then overwrites its stack with a DONOR
+ * stack captured at the test's definition site, so the frames point at the
+ * right source line:
+ *
+ *   error.stack = stackTraceError.stack.replace(error.message, stackTraceError.message)
+ *
+ * That `.replace()` is a no-op — it searches the DONOR's stack for the TIMEOUT
+ * message, which was never in it — so the donor's own headline survives intact
+ * and `error.stack` begins `Error: STACK_TRACE_ERROR`. The duration, the word
+ * "timed out", and the distinction between a test and a hook live ONLY in
+ * `.message`. A consumer preferring `.stack` therefore records an unreadable
+ * placeholder for a real, actionable, perfectly well-formed timeout, and the
+ * reader has no way back to what happened. Vitest's own default reporter
+ * prints `.message` and is unaffected, which is why this survived: the terminal
+ * was honest while the receipt was not.
+ *
+ * So: emit the stack when it already carries the message (the ordinary case,
+ * with no duplication), emit the message when there is no stack, and emit BOTH
+ * when they disagree — which is exactly the vitest-timeout case and any other
+ * error whose stack was reassigned from a donor.
+ */
+export function receiptErrorText(error) {
+  if (error === null || typeof error !== 'object') return String(error);
+  const message = typeof error.message === 'string' ? error.message : '';
+  const stack = typeof error.stack === 'string' ? error.stack : '';
+  if (stack === '') return message === '' ? String(error) : message;
+  if (message === '' || stack.includes(message)) return stack;
+  return `${message}\n${stack}`;
 }

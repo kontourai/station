@@ -93,6 +93,14 @@ function paneCatalog() {
   };
   return {
     projectId: 'project-hostile',
+    // The catalog route answers `projectSlug: project.slug` beside the id
+    // (`src-server/routes/projects/projects.ts`), and since #1451 the pane
+    // route REQUIRES it: a plugin pane whose catalog carries no slug renders
+    // "Station could not bind this plugin pane to its owning Project and
+    // plugin." instead of the frame. This fixture predates that change and
+    // was never updated, so the hostile pane stopped mounting and the
+    // containment proof below stopped running at all (#2089).
+    projectSlug: 'hostile',
     descriptors: [
       {
         id: 'hostile-pane',
@@ -327,15 +335,36 @@ async function tearDown() {
 }
 
 async function runProof() {
+  // Spans the shell's boot burst, which occupies the WebView main loop that
+  // `execute/sync` runs on. The budget is long because the QUEUE is long; the
+  // per-attempt bound (SCRIPT_TIMEOUT_MS, 5 s) stays short so this loop gets
+  // many attempts inside it rather than one. Measured: at a 120 s per-attempt
+  // bound against this 30 s budget, 2 of 10 runs died here on `script
+  // timeout` having made exactly one attempt (#2109).
   await browser.waitUntil(
     async () =>
       (await browser.execute(() => document.readyState)) === 'complete',
-    { timeout: 30_000, timeoutMsg: 'Tauri document did not become ready.' },
+    { timeout: 120_000, timeoutMsg: 'Tauri document did not become ready.' },
   );
-  const mainBridge = await browser.execute(
-    () =>
-      typeof (window as unknown as { __TAURI_INTERNALS__?: unknown })
-        .__TAURI_INTERNALS__,
+  // Readiness does not imply the host's internals are installed: `readyState`
+  // is 'complete' once the document parsed, while `__TAURI_INTERNALS__` is
+  // injected by the shell. A bare assertion here is a one-shot read of a
+  // value that arrives slightly later, and one run died on exactly that
+  // (#2109). Same treatment as its neighbours.
+  let mainBridge: string | undefined;
+  await browser.waitUntil(
+    async () => {
+      mainBridge = await browser.execute(
+        () =>
+          typeof (window as unknown as { __TAURI_INTERNALS__?: unknown })
+            .__TAURI_INTERNALS__,
+      );
+      return mainBridge === 'object';
+    },
+    {
+      timeout: 30_000,
+      timeoutMsg: 'The Tauri bridge was never installed on the main frame.',
+    },
   );
   assert.equal(mainBridge, 'object');
   stationOrigin = await browser.execute(() =>
@@ -506,7 +535,7 @@ async function runProof() {
       })),
       paneHtml:
         document
-          .querySelector('.project-page__workspace-pane-route')
+          .querySelector('[data-workspace-pane-route]')
           ?.innerHTML.slice(0, 5_000) ?? null,
       errors:
         (window as unknown as { __tauriShellErrors?: string[] })

@@ -16,7 +16,10 @@ import {
 import { dirname, join } from 'node:path';
 import { parsePairingScope } from '@kontourai/station-contracts/environment-security';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 
 /**
  * Outbound peer-credential store (archive#1123,
@@ -85,13 +88,6 @@ interface PeerCredentialDocument {
   peers: StoredPeerCredential[];
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type PeerCredentialMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 type PeerCredentialWriteOperations = {
   closeSync: typeof closeSync;
   fsyncDirectorySync: typeof fsyncDirectorySync;
@@ -112,9 +108,19 @@ const peerCredentialWriteOperations: PeerCredentialWriteOperations = {
 
 export interface PeerCredentialStoreOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: PeerCredentialMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   writeOperations?: Partial<PeerCredentialWriteOperations>;
+}
+
+/** Server-owned current-authority recheck for externally reachable mutations. */
+type PeerCredentialMutationAuthorizer = () => boolean;
+
+export class PeerCredentialMutationAuthorizationError extends Error {
+  constructor() {
+    super('Peer credential mutation is not authorized');
+    this.name = 'PeerCredentialMutationAuthorizationError';
+  }
 }
 
 function hasControlCharacters(value: string): boolean {
@@ -272,7 +278,7 @@ function validateDocument(value: unknown): PeerCredentialDocument {
 export class PeerCredentialStore {
   readonly #directory: string;
   readonly #file: string;
-  readonly #acquireMutationLock: PeerCredentialMutationLock;
+  readonly #acquireMutationLock: FileMutationLock;
   readonly #writeOperations: PeerCredentialWriteOperations;
 
   constructor(homeDir: string, options: PeerCredentialStoreOptions = {}) {
@@ -305,13 +311,16 @@ export class PeerCredentialStore {
     return record ? { ...record } : null;
   }
 
-  async upsert(input: {
-    environmentId: string;
-    apiBase: string;
-    scope: string;
-    credential: string;
-    label?: string;
-  }): Promise<PeerCredentialSummary> {
+  async upsert(
+    input: {
+      environmentId: string;
+      apiBase: string;
+      scope: string;
+      credential: string;
+      label?: string;
+    },
+    authorize?: PeerCredentialMutationAuthorizer,
+  ): Promise<PeerCredentialSummary> {
     const environmentId = safeEnvironmentId(input.environmentId);
     const apiBase = safeApiBase(input.apiBase);
     const scope = safeScope(input.scope);
@@ -340,10 +349,13 @@ export class PeerCredentialStore {
         result: toSummary(record),
         next: { schemaVersion: SCHEMA_VERSION, peers },
       };
-    });
+    }, authorize);
   }
 
-  async remove(environmentId: string): Promise<boolean> {
+  async remove(
+    environmentId: string,
+    authorize?: PeerCredentialMutationAuthorizer,
+  ): Promise<boolean> {
     return this.#mutate((document) => {
       const peers = document.peers.filter(
         (peer) => peer.environmentId !== environmentId,
@@ -353,7 +365,7 @@ export class PeerCredentialStore {
         result: true,
         next: { schemaVersion: SCHEMA_VERSION, peers },
       };
-    });
+    }, authorize);
   }
 
   /**
@@ -366,9 +378,24 @@ export class PeerCredentialStore {
       result: T;
       next?: PeerCredentialDocument;
     },
+    authorize?: PeerCredentialMutationAuthorizer,
   ): Promise<T> {
     const release = await this.#acquireMutationLock(`${this.#file}.mutation`);
     try {
+      if (authorize !== undefined) {
+        if (typeof authorize !== 'function') {
+          throw new PeerCredentialMutationAuthorizationError();
+        }
+        try {
+          const decision: unknown = authorize();
+          if (decision !== true) {
+            void Promise.resolve(decision).catch(() => {});
+            throw new PeerCredentialMutationAuthorizationError();
+          }
+        } catch {
+          throw new PeerCredentialMutationAuthorizationError();
+        }
+      }
       const outcome = mutation(this.#read());
       if (outcome.next) this.#write(outcome.next);
       return outcome.result;

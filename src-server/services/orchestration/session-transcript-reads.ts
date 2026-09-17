@@ -21,22 +21,25 @@ import {
   stampUsageReceiptPrice,
 } from '../../analytics/usage-pricing-snapshot-reader.js';
 import type { EventStore } from './event-store.js';
+import { createIsolatedSessionTranscriptSearch } from './isolated-session-transcript-search.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists — and it avoids adding ANOTHER copy of the read-scope
 // union (session-lifecycle-module.ts already re-declares one privately; the
 // durable fix is exporting the union from contracts/tenancy beside its two
 // constituents, tracked on the epic).
 import type { SessionReadScope } from './orchestration-service.js';
+import type { SessionAuthorization } from './session-authorization.js';
+import { messageSearchExcerpt } from './transcript-search-queries.js';
 
 /** The documented freshness allowance relative to the requested window end. */
-export const USAGE_COVERAGE_STALE_AFTER_MS = 24 * 60 * 60 * 1_000;
+const USAGE_COVERAGE_STALE_AFTER_MS = 24 * 60 * 60 * 1_000;
 export const USAGE_COVERAGE_EVIDENCE_CAP = 1_000;
 const COVERAGE_CAP_REASON =
   'coverage evidence cap reached (1000 observations); additional provider evidence is missing';
 const STALE_OBSERVATION_REASON =
   'provider observations are older than the 24-hour freshness threshold for this window';
 
-export interface SessionTranscriptReadsDeps {
+interface SessionTranscriptReadsDeps {
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
   isEphemeralSession: (threadId: string) => boolean;
   sessionAttributionFor: (
@@ -50,6 +53,7 @@ export interface SessionTranscriptReadsDeps {
   listUsageCoverageEvents: EventStore['listUsageCoverageEvents'];
   // Derived from the store's own method type — no re-declared row shape.
   searchConversationMessages: EventStore['searchConversationMessages'];
+  transcriptOwnerConstraint?: SessionAuthorization['transcriptOwnerConstraint'];
   readSessionThreadIds: (authority: SessionReadScope) => string[];
   requireTenantExecutionContext: () => boolean;
   /**
@@ -81,6 +85,13 @@ export interface SessionTranscriptReadsDeps {
 export class SessionTranscriptReads {
   constructor(private readonly deps: SessionTranscriptReadsDeps) {}
 
+  /** Additive async owner seam; synchronous consumers keep their existing API. */
+  createIsolatedSearch(
+    ...input: Parameters<typeof createIsolatedSessionTranscriptSearch>
+  ) {
+    return createIsolatedSessionTranscriptSearch(...input);
+  }
+
   readSessionMessages(
     threadId: string,
     authority: SessionReadScope,
@@ -109,7 +120,9 @@ export class SessionTranscriptReads {
     if (!isSessionReadAuthority(authority)) return [];
     const rows = this.deps.searchConversationMessages({
       query,
-      ownerUserId: authority.userId,
+      ...(this.deps.transcriptOwnerConstraint?.(authority) ?? {
+        ownerUserId: authority.userId,
+      }),
       ...(authority.mode === 'hosted' && authority.tenantExecutionContext
         ? { tenantId: authority.tenantExecutionContext.tenantId }
         : {}),
@@ -475,13 +488,4 @@ function decodeUsageCursor(
  * response remains the same ordinary React string child as every other
  * palette label.
  */
-export function messageSearchExcerpt(content: string, query: string): string {
-  const normalized = query.trim();
-  const matchAt = content
-    .toLocaleLowerCase()
-    .indexOf(normalized.toLocaleLowerCase());
-  if (matchAt < 0 || content.length <= 240) return content.slice(0, 240);
-  const start = Math.max(0, matchAt - 80);
-  const end = Math.min(content.length, start + 240);
-  return `${start > 0 ? '…' : ''}${content.slice(start, end)}${end < content.length ? '…' : ''}`;
-}
+export { messageSearchExcerpt } from './transcript-search-queries.js';

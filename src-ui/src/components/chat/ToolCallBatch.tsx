@@ -47,7 +47,7 @@ export interface ToolCallBatchProps<P extends ToolCallLike> {
    * per-part `ToolCallDisplay` renderer (including its `onApprove` wiring)
    * so this component never builds a second detail renderer.
    */
-  renderCall: (part: P, index: number) => ReactNode;
+  renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
 }
 
 /**
@@ -88,6 +88,11 @@ export function ToolCallBatch<P extends ToolCallLike>({
           <span className="tool-call-batch__pulse" aria-hidden="true" />
         )}
         <span className="tool-call-batch__label">{group.summary}</span>
+        {group.inProgress && (
+          <span className="tool-call-batch__count">
+            {group.calls.length} tools
+          </span>
+        )}
         {/* A collapsed batch must disclose failure without being opened
             (station#2652 redesign) — the summary alone would bury it. */}
         {group.failedCount > 0 && (
@@ -97,10 +102,65 @@ export function ToolCallBatch<P extends ToolCallLike>({
               : `${group.failedCount} failed`}
           </span>
         )}
+        {/* station#1569 (item 3): the verb alone can only decline to claim
+            completion — it cannot say HOW MANY of these calls may never have
+            run. Same disclosure duty as the failure count beside it. */}
+        {group.unresolvedCount > 0 && (
+          <span className="tool-call-batch__unresolved">
+            {group.unresolvedCount === 1
+              ? '1 with no result'
+              : `${group.unresolvedCount} with no result`}
+          </span>
+        )}
+        {group.awaitingApprovalCount > 0 && (
+          <span className="tool-call-batch__awaiting">
+            {group.awaitingApprovalCount === 1
+              ? 'Awaiting approval'
+              : `${group.awaitingApprovalCount} awaiting approval`}
+          </span>
+        )}
+        {group.deniedCount > 0 && (
+          <span className="tool-call-batch__failed">
+            {group.deniedCount === 1
+              ? '1 denied'
+              : `${group.deniedCount} denied`}
+          </span>
+        )}
+        {group.cancelledCount > 0 && (
+          <span className="tool-call-batch__unresolved">
+            {group.cancelledCount === 1
+              ? '1 cancelled'
+              : `${group.cancelledCount} cancelled`}
+          </span>
+        )}
         <span className="tool-call-batch__chevron" aria-hidden="true">
           ›
         </span>
       </button>
+      {group.progressMessage && (
+        <div
+          className="tool-call-batch__progress"
+          role="status"
+          aria-live="polite"
+        >
+          {group.progressMessage}
+        </div>
+      )}
+      {!isOpen &&
+        group.calls
+          .filter(
+            (call) =>
+              call.awaitingApproval ||
+              (group.awaitingApprovalCount > 0 && call.inProgress),
+          )
+          .map((call) => (
+            <div
+              key={call.part.toolCallId ?? `awaiting:${call.index}`}
+              className="tool-call-batch__pending-grant"
+            >
+              {renderCall(call.part, call.index, true)}
+            </div>
+          ))}
       {isOpen && (
         <ToolCallBatchSheetBoundary
           group={group}

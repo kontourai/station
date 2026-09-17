@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
@@ -158,14 +159,14 @@ async function seedRoutes(page: Page) {
 
 async function openNewChat(page: Page) {
   await page.goto('/?dock=open');
-  // This suite runs at 390x844. archive#3309 pinned New chat as a far-right header
-  // icon; with this fixture's single chat-ready runtime, clicking it would
-  // take the one-click direct path, so assert the affordance and open the
-  // modal via the deterministic event instead (the pattern
-  // mobile-chat-composer.spec.ts's openComposer established).
+  await dismissSetupLauncher(page);
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: 'New chat', exact: true }),
+    page.getByRole('menuitem', { name: 'New chat', exact: true }),
   ).toBeVisible();
+  await page.keyboard.press('Escape');
+  // The single-runtime fixture takes the direct chat path from New chat.
+  // Open the explicit chooser event to exercise workspace selection.
   await page.evaluate(() =>
     window.dispatchEvent(new Event('station:open-new-chat')),
   );

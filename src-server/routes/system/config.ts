@@ -17,13 +17,18 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import {
   buildAppConfigProvenance,
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
+import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import {
   grantedPairingScope,
@@ -35,6 +40,7 @@ import {
   LogLevelEditService,
 } from '../../services/config/log-level-edit-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -68,6 +74,34 @@ function projectPublicAppConfig(config: Record<string, any>) {
         },
       ),
     ),
+  };
+}
+
+/**
+ * Reads one project record for `GET /config/app?project=<slug>` (#2144
+ * slice 2), turning only ABSENCE into a value the route can answer 404 with.
+ *
+ * `FileStorageNotFoundError` is a typed error the storage layer throws for a
+ * slug with no record (`domain/project-file-transactions.ts`), so "this
+ * project does not exist" is told apart from "reading it failed" by the
+ * error's own type — the same `instanceof` join
+ * `projectMutationStatus` in `routes/projects/projects.ts` already uses.
+ *
+ * Everything else rethrows. A corrupt `project.json`, an unreadable home, or
+ * a slug that is not a safe path segment are not "no such project": reporting
+ * them as one would send the operator to check a NAME while the disk, or
+ * their own request, is the problem.
+ */
+export function createConfigProjectReader(
+  projects: Pick<IStorageAdapter, 'getProject'>,
+): (slug: string) => ProjectConfig | undefined {
+  return (slug) => {
+    try {
+      return projects.getProject(slug);
+    } catch (error) {
+      if (error instanceof FileStorageNotFoundError) return undefined;
+      throw error;
+    }
   };
 }
 
@@ -158,6 +192,14 @@ export function createConfigRoutes(
   // Runtime-derived origin for the isolated plugin frame. Kept separate from
   // MCP UI so a future listener split remains an internal deployment detail.
   getPluginFrameOrigin?: () => string | undefined,
+  // #2144 slice 2: reads one project record for `GET /app?project=<slug>`,
+  // which reports the per-field provenance a project's overrides produce.
+  // Returns `undefined` for a slug this Station does not have (the route
+  // answers 404 rather than reporting Station-only provenance under a name
+  // that does not exist), and THROWS for every other failure. Production
+  // supplies `createConfigProjectReader` above. Optional so callers and tests
+  // that never ask about a project see no behavior change.
+  readProject?: (slug: string) => ProjectConfig | undefined,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -241,16 +283,70 @@ export function createConfigRoutes(
   app.get('/app', async (c) => {
     try {
       configOps.add(1, { op: 'get_app' });
+      // #2144 slice 2. Asking about a project is a request for MORE
+      // provenance, never for different VALUES: the response body stays this
+      // Station's config, and only `provenance` gains the project's scope
+      // attribution. A surface that wants the effective value composes it
+      // from the overrides it already holds.
+      const projectSlug = c.req.query('project')?.trim();
+      let project: ProjectConfig | undefined;
+      if (projectSlug) {
+        try {
+          project = readProject?.(projectSlug);
+        } catch (error) {
+          if (!(error instanceof InvalidPathSegmentError)) throw error;
+          // A slug that is not a path segment is a malformed REQUEST, not a
+          // missing project and not a server fault. The message is FIXED:
+          // `InvalidPathSegmentError`'s own text quotes the value back, and
+          // this one reaches a caller who chose it.
+          configOps.add(1, { op: 'get_app_project_slug_invalid' });
+          return c.json(
+            {
+              success: false,
+              error:
+                'The project query parameter must be a single project slug; no provenance was reported.',
+            },
+            400,
+          );
+        }
+        if (!project) {
+          return c.json(
+            {
+              success: false,
+              error: `Project '${projectSlug}' was not found on this Station; no provenance was reported.`,
+            },
+            404,
+          );
+        }
+      }
       const config = await configLoader.loadAppConfig();
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       const managedChatOrchestrationEnabled =
         getManagedChatOrchestrationEnabled?.() === true;
+      // #1582 D9: what a terminal would start here with nothing configured,
+      // derived from the resolver a spawn actually walks rather than a
+      // hard-coded hint the Settings input would print on every host. Same
+      // injected-into-GET-/app-only, never-in-the-update-schema pattern as the
+      // frame origins above.
+      const terminalShellDefault = defaultTerminalShell({
+        platform: process.platform,
+        env: process.env,
+      });
       const injected: Record<string, string> = {};
       if (frameOrigin) injected.mcpUiFrameOrigin = 'MCP_UI_FRAME_PORT';
       if (pluginFrameOrigin) injected.pluginFrameOrigin = 'MCP_UI_FRAME_PORT';
       if (managedChatOrchestrationEnabled) {
         injected.managedChatOrchestration = 'STATION_FEATURES';
+      }
+      // Only claimed as environment-sourced when the environment is what
+      // supplied it; a platform fallback is nobody's setting.
+      if (terminalShellDefault?.source === 'env') {
+        injected.defaultTerminalShell =
+          process.platform === 'win32' &&
+          terminalShellDefault.shell === process.env.COMSPEC
+            ? 'COMSPEC'
+            : 'SHELL';
       }
       return c.json({
         success: true,
@@ -261,8 +357,16 @@ export function createConfigRoutes(
           ...(managedChatOrchestrationEnabled
             ? { managedChatOrchestration: true }
             : {}),
+          ...(terminalShellDefault
+            ? { defaultTerminalShell: terminalShellDefault.shell }
+            : {}),
         },
-        provenance: buildAppConfigProvenance(config, { injected }),
+        provenance: buildAppConfigProvenance(config, {
+          injected,
+          ...(project
+            ? { projectOverrides: readProjectOverrides(project) }
+            : {}),
+        }),
       });
     } catch (error: unknown) {
       logger.error('Failed to load app config', { error });

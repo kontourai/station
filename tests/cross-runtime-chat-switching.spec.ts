@@ -1,5 +1,9 @@
 import { writeFileSync } from 'node:fs';
-import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
 import { expect, type Page, type TestInfo, test } from '@playwright/test';
 import { createDailyDriverUiObservation } from '../scripts/lib/daily-driver-ui-observation.mjs';
 import { monitorBrowserHealth } from './helpers/browser-health';
@@ -474,6 +478,30 @@ async function seedCrossRuntimeRoutes(
     'conv-codex-beta': ['conv-codex-beta'],
     'conv-acp-alpha': ['session-acp-alpha'],
   } as const;
+  // Same authorized current-child facts that the real /open route returns.
+  // Inventory/Agent defaults do not authorize the next execution binding.
+  const executionBySession: Record<string, ConversationOpenExecution> = {
+    'conv-claude-alpha': {
+      sessionId: 'conv-claude-alpha',
+      agentId: agentId('claude'),
+      provider: 'claude',
+      engineConnectionId: 'claude',
+      model: 'claude-sonnet-4-20250514',
+    },
+    'conv-codex-beta': {
+      sessionId: 'conv-codex-beta',
+      agentId: agentId('codex'),
+      provider: 'codex',
+      engineConnectionId: 'codex',
+      model: 'gpt-5-codex',
+    },
+    'session-acp-alpha': {
+      sessionId: 'session-acp-alpha',
+      agentId: agentId('kiro'),
+      provider: 'acp',
+      engineConnectionId: 'kiro',
+    },
+  };
   const historicalBySession = Object.fromEntries(
     Object.entries(MESSAGES).map(([conversationId, messages]) => [
       sessionIdsByConversation[
@@ -583,6 +611,16 @@ async function seedCrossRuntimeRoutes(
     );
   });
 
+  // This mocked chat journey must not depend on the checkout's live upstream status.
+  await page.route('**/api/system/core-update', (route) =>
+    route.fulfill(
+      json({
+        updateAvailable: false,
+        installKind: 'source-checkout',
+        behind: 0,
+      }),
+    ),
+  );
   await page.route('**/api/system/status', (route) =>
     route.fulfill(
       json({
@@ -769,7 +807,7 @@ async function seedCrossRuntimeRoutes(
           resolution: {
             engine: {
               kind: 'connection',
-              connectionId: engineConnectionId(`${agent}-runtime`),
+              connectionId: engineConnectionId(agent),
             },
             workspace: {
               kind: 'project',
@@ -888,7 +926,12 @@ async function seedCrossRuntimeRoutes(
               mutable: false,
               answerability: { answerable: true },
             },
-            ...(currentSessionId ? { currentSessionId } : {}),
+            ...(currentSessionId
+              ? {
+                  currentSessionId,
+                  execution: executionBySession[currentSessionId],
+                }
+              : {}),
             transcript: {
               available: Boolean(currentSessionId),
               owner: 'runtime',
@@ -960,7 +1003,7 @@ async function openNewChatModal(page: Page) {
     .locator('.chat-dock__tab-actions .chat-dock__new')
     .nth(1);
   await expect(newChatButton).toBeVisible({ timeout: 10_000 });
-  await newChatButton.dispatchEvent('click');
+  await newChatButton.click();
   await expect(page.locator('.new-chat-modal')).toBeVisible({ timeout: 5_000 });
 }
 
@@ -1584,10 +1627,21 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     // instead of landing behind the dock.
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
 
-    const openChatsSummary = page.getByRole('button', {
-      name: /\d+ open chats?/,
-    });
-    const sessionsBeforeSwitch = await openChatsSummary.textContent();
+    // #2059 retired the sidebar footer's "N open chats" summary button (it
+    // restated the panel's own Open chats section from a second read of the
+    // same store). What that assertion PROVED — a Switch preserves the open
+    // conversation inventory, where an Open navigates away from it — is
+    // asserted here against the surviving surface, and against the identities
+    // rather than a count: a switch that swapped one open chat for another
+    // would have held the count constant.
+    const openChatRows = page.locator('#sidebar-open-chats .sidebar-chat-drop');
+    await expect(openChatRows.first()).toBeVisible();
+    const readOpenChats = () =>
+      openChatRows.evaluateAll((rows) =>
+        rows.map((row) => row.getAttribute('aria-label')),
+      );
+    const sessionsBeforeSwitch = await readOpenChats();
+    expect(sessionsBeforeSwitch.length).toBeGreaterThan(0);
     const activeChatBeforeSwitch = new URL(page.url()).searchParams.get('chat');
     expect(activeChatBeforeSwitch).toBeTruthy();
     await badge.click();
@@ -1597,7 +1651,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       .click();
     await expect(badge).toContainText('Beta Project');
     await expect(page.locator('.new-chat-modal')).toHaveCount(0);
-    await expect(openChatsSummary).toHaveText(sessionsBeforeSwitch ?? '');
+    await expect.poll(readOpenChats).toEqual(sessionsBeforeSwitch);
     expect(new URL(page.url()).searchParams.get('chat')).toBe(
       activeChatBeforeSwitch,
     );
@@ -1606,62 +1660,85 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     );
   });
 
-  test('mobile trigger opens an un-anchored edge sheet at 390x844 with touch-safe actions', async ({
-    page,
-  }) => {
-    await seedCrossRuntimeRoutes(page);
-    await page.goto('/projects/alpha?dock=open');
-    // The compact mobile dock intentionally has no desktop inbox/history
-    // landmark. Establish the persisted conversation through its desktop
-    // discovery surface, then verify the mobile-only project-switcher contract
-    // with that real active session.
-    await selectInventoryConversation(page, {
-      title: 'Codex Beta Chat',
-      runtimeName: 'Codex',
-      project: 'Beta Project',
+  for (const width of [320, 390, 412]) {
+    test(`mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`, async ({
+      page,
+    }, testInfo) => {
+      await seedCrossRuntimeRoutes(page);
+      await page.goto('/projects/alpha?dock=open');
+      // The compact mobile dock intentionally has no desktop inbox/history
+      // landmark. Establish the persisted conversation through its desktop
+      // discovery surface, then verify the mobile-only project-switcher contract
+      // with that real active session.
+      await selectInventoryConversation(page, {
+        title: 'Codex Beta Chat',
+        runtimeName: 'Codex',
+        project: 'Beta Project',
+      });
+      await selectInventoryConversation(page, {
+        title: 'Claude Alpha Chat',
+        runtimeName: 'Claude Code',
+        project: 'Alpha Project',
+      });
+      await page.setViewportSize({ width, height: 844 });
+
+      const trigger = page.getByRole('button', {
+        name: 'Switch project — Alpha Project',
+      });
+      await expect(trigger).toBeVisible({ timeout: 15_000 });
+      // Match desktop's named project badge: the mobile trigger must expose the
+      // project visually, not only through an accessible name on a folder icon.
+      await expect(trigger).toContainText('Alpha Project');
+      const triggerBox = await trigger.boundingBox();
+      expect(triggerBox?.width ?? 0).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX,
+      );
+      expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX,
+      );
+      // Distinct from the task switcher — never the buried eyebrow.
+      await expect(
+        page.getByRole('button', { name: 'Switch task' }),
+      ).toBeVisible();
+
+      await expect(
+        page
+          .getByRole('log')
+          .getByText('Claude Alpha transcript loaded.', { exact: true }),
+      ).toBeVisible();
+      await trigger.click({ trial: true });
+      await page
+        .getByRole('button', { name: /^Switch task/ })
+        .click({ trial: true });
+      await page.screenshot({
+        path: testInfo.outputPath('mobile-primary-context.png'),
+      });
+      await testInfo.attach('mobile-primary-context', {
+        path: testInfo.outputPath('mobile-primary-context.png'),
+        contentType: 'image/png',
+      });
+      await trigger.click();
+      const dialog = page.getByRole('dialog', { name: 'Switch project' });
+      await expect(dialog).toBeVisible();
+      // Mobile renders the shared surface as an edge sheet — no anchor.
+      await expect(
+        page.locator('.responsive-surface-overlay[data-anchored]'),
+      ).toHaveCount(0);
+
+      const controls = dialog.getByRole('button');
+      const controlCount = await controls.count();
+      expect(controlCount).toBeGreaterThan(0);
+      for (let index = 0; index < controlCount; index += 1) {
+        const box = await controls.nth(index).boundingBox();
+        expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+      }
+
+      await dialog.getByRole('button', { name: 'Open Beta Project' }).click();
+      await expect(page).toHaveURL(/\/projects\/beta/);
+      await expect(dialog).not.toBeVisible();
+      // archive#3319: same collapse contract on the mobile edge sheet — the opened
+      // project page must be visible, with the session on the collapsed bar.
+      await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
     });
-    await selectInventoryConversation(page, {
-      title: 'Claude Alpha Chat',
-      runtimeName: 'Claude Code',
-      project: 'Alpha Project',
-    });
-    await page.setViewportSize({ width: 390, height: 844 });
-
-    const trigger = page.getByRole('button', {
-      name: 'Switch project — Alpha Project',
-    });
-    await expect(trigger).toBeVisible({ timeout: 15_000 });
-    // Match desktop's named project badge: the mobile trigger must expose the
-    // project visually, not only through an accessible name on a folder icon.
-    await expect(trigger).toContainText('Alpha Project');
-    const triggerBox = await trigger.boundingBox();
-    expect(triggerBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-    expect(triggerBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-    // Distinct from the task switcher — never the buried eyebrow.
-    await expect(
-      page.getByRole('button', { name: 'Switch task' }),
-    ).toBeVisible();
-
-    await trigger.click();
-    const dialog = page.getByRole('dialog', { name: 'Switch project' });
-    await expect(dialog).toBeVisible();
-    // Mobile renders the shared surface as an edge sheet — no anchor.
-    await expect(
-      page.locator('.responsive-surface-overlay[data-anchored]'),
-    ).toHaveCount(0);
-
-    const controls = dialog.getByRole('button');
-    const controlCount = await controls.count();
-    expect(controlCount).toBeGreaterThan(0);
-    for (let index = 0; index < controlCount; index += 1) {
-      const box = await controls.nth(index).boundingBox();
-      expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-    }
-
-    await dialog.getByRole('button', { name: 'Open Beta Project' }).click();
-    await expect(page).toHaveURL(/\/projects\/beta/);
-    // archive#3319: same collapse contract on the mobile edge sheet — the opened
-    // project page must be visible, with the session on the collapsed bar.
-    await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
-  });
+  }
 });

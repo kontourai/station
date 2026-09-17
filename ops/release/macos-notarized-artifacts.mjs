@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { redactVerificationOutput } from '../../scripts/lib/verification-redaction.mjs';
 import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   sealEmbeddedMacosMachOBounded,
@@ -41,6 +42,19 @@ export const DMG_CREATION_COMMAND_TIMEOUT_MS =
   LARGE_ARTIFACT_COMMAND_TIMEOUT_MS;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
+// `hdiutil create` on hosted macOS runners intermittently exits nonzero under
+// I/O contention (an overlapped notarization upload, attach/detach races)
+// while the identical invocation succeeds moments later. That is the only
+// release phase with a bounded, program-scoped retry; it is deliberately
+// separate from the transport-classified timestamp/notary retry above.
+export const DMG_CREATION_MAX_ATTEMPTS = 3;
+export const DMG_CREATION_RETRY_BACKOFF_MS = Object.freeze([
+  5 * 1000,
+  15 * 1000,
+]);
+// A terminal command failure carries a bounded, single-line tail of its
+// diagnostics so the hosted log names the cause, not only the phase.
+export const MAX_COMMAND_FAILURE_EXCERPT_CHARS = 300;
 // Standalone callers retain a bounded relative deadline. Hosted release passes
 // an absolute epoch recorded at the start of its 120-minute job instead.
 export const MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS = 100 * 60 * 1000;
@@ -133,6 +147,29 @@ if (!Array.isArray(args) || !Number.isSafeInteger(graceMs) || graceMs < 0) {
 }
 `;
 
+/**
+ * Reduces captured command output to one bounded line for a terminal failure
+ * message: control characters and runs of whitespace collapse, only the tail
+ * survives, and the shared token redactor runs over what remains. The full
+ * bounded streams stay on the error object; this is what the hosted log sees.
+ */
+export function commandFailureExcerpt(
+  stderr,
+  stdout,
+  maxChars = MAX_COMMAND_FAILURE_EXCERPT_CHARS,
+) {
+  const source = [stderr, stdout].find(
+    (stream) => typeof stream === 'string' && stream.trim() !== '',
+  );
+  if (source === undefined) return '';
+  const collapsed = source.replace(/[\p{Cc}\s]+/gu, ' ').trim();
+  const tail =
+    collapsed.length > maxChars
+      ? `…${collapsed.slice(collapsed.length - maxChars)}`
+      : collapsed;
+  return redactVerificationOutput(tail);
+}
+
 export class ReleaseCommandError extends Error {
   constructor({
     phase,
@@ -147,7 +184,19 @@ export class ReleaseCommandError extends Error {
     const detail = timedOut
       ? `timed out during ${phase}`
       : `failed during ${phase}`;
-    super(`${program} ${detail}.`);
+    const outcome = outputTruncated
+      ? ' (output exceeded the capture limit)'
+      : Number.isInteger(status)
+        ? ` (exit status ${status})`
+        : typeof signal === 'string'
+          ? ` (${signal})`
+          : '';
+    const excerpt = commandFailureExcerpt(stderr, stdout);
+    super(
+      excerpt === ''
+        ? `${program} ${detail}${outcome}.`
+        : `${program} ${detail}${outcome}: ${excerpt}`,
+    );
     this.name = 'ReleaseCommandError';
     this.phase = phase;
     this.program = program;
@@ -390,6 +439,55 @@ export async function retryRetryableTransportFailure(
   throw new Error('Release retry loop exhausted unexpectedly.');
 }
 
+/**
+ * Only a nonzero `hdiutil create` exit is retried. A timeout already consumed
+ * the phase budget and terminated a process group; an overflowed capture is a
+ * bound the release refuses to relax; anything that is not a bounded release
+ * command failure (deadline exhaustion, spawn refusal, a plain error) is not a
+ * transient tool outcome. The transport retry's diagnostic regex is not used
+ * here because hdiutil's contention failures carry no stable text.
+ */
+export function isRetryableDmgCreationFailure(error) {
+  return (
+    error instanceof ReleaseCommandError &&
+    error.program === 'hdiutil' &&
+    error.phase === 'DMG creation' &&
+    error.timedOut !== true &&
+    error.outputTruncated !== true
+  );
+}
+
+export async function retryTransientDmgCreationFailure(
+  operation,
+  { logger, sleep, discardPartialOutput, remainingMs },
+) {
+  const warn = loggerMethod(logger, 'warn');
+  for (let attempt = 1; attempt <= DMG_CREATION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isRetryableDmgCreationFailure(error)) throw error;
+      // Every nonzero exit discards the image, including the last: a partial
+      // image must neither survive the terminal failure nor be mistaken for
+      // the output of the next attempt.
+      discardPartialOutput();
+      if (attempt === DMG_CREATION_MAX_ATTEMPTS) throw error;
+      const backoffMs = DMG_CREATION_RETRY_BACKOFF_MS[attempt - 1];
+      const label = `[macOS release] DMG creation: hdiutil attempt ${attempt}/${DMG_CREATION_MAX_ATTEMPTS} failed`;
+      // The next attempt still needs its own cleanup grace after the backoff;
+      // rethrow the informative hdiutil failure rather than sleeping into the
+      // deadline error the command wrapper would raise instead.
+      if (remainingMs() - backoffMs <= COMMAND_TERMINATION_GRACE_MS) {
+        warn(`${label}; the release deadline leaves no room to retry.`);
+        throw error;
+      }
+      warn(`${label}; retrying in ${backoffMs / 1000}s.`);
+      await sleep(backoffMs);
+    }
+  }
+  throw new Error('DMG creation retry loop exhausted unexpectedly.');
+}
+
 function captured(value) {
   return typeof value === 'string'
     ? { status: 0, stdout: value, stderr: '' }
@@ -589,6 +687,12 @@ async function submit(command, file, key, keyId, issuer, logger) {
 export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const logger = injected.logger ?? console;
   const now = injected.now ?? Date.now;
+  const sleep =
+    injected.sleep ??
+    ((ms) =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      }));
   const relativeDeadlineMs =
     injected.deadlineMs ?? MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS;
   if (
@@ -656,6 +760,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   if (options.dmgOnly !== undefined && options.dmgOnly !== true)
     throw new Error('DMG-only mode must be explicitly enabled.');
   const dmgOnly = options.dmgOnly === true;
+  if (
+    options.overlapNotarization !== undefined &&
+    options.overlapNotarization !== true
+  )
+    throw new Error('Overlapped notarization must be explicitly enabled.');
+  const overlapNotarization = options.overlapNotarization === true;
   const identity = need(options.identity, 'identity');
   const key = need(options.notaryKey, 'notaryKey');
   const keyId = need(options.notaryKeyId, 'notaryKeyId');
@@ -678,6 +788,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const dmg = join(assets, `${prefix}.dmg`);
   const updater = join(assets, `${prefix}.app.tar.gz`);
   let detachNeeded = false;
+  const pendingNotarizations = [];
   try {
     const embeddedCommand = (
       phase,
@@ -800,32 +911,63 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         entitlementOutput.stderr !== `${entitlementDiagnostic}\n`)
     )
       throw new Error('Outer app has unexpected entitlements.');
-    if (!dmgOnly) {
+    const validateAndAssessApp = async () => {
+      await command('application staple validation', 'xcrun', [
+        'stapler',
+        'validate',
+        app,
+      ]);
+      await command('application Gatekeeper assessment', 'spctl', [
+        '--assess',
+        '--type',
+        'execute',
+        '--verbose=4',
+        app,
+      ]);
+    };
+    const stapleAndAdmitApp = async () => {
+      await command('application stapling', 'xcrun', [
+        'stapler',
+        'staple',
+        app,
+      ]);
+      await validateAndAssessApp();
+    };
+    // Each `notarytool submit --wait` costs the release five to six minutes,
+    // and the two submissions are independent of one another. By default the
+    // application submission is joined and stapled here, before the disk image
+    // is staged, so the image encloses an application carrying its own local
+    // ticket and an offline user who copies it out of the image is unaffected.
+    // `overlapNotarization` trades that away for wall-clock time: the
+    // application submission stays in flight while the disk image is staged,
+    // created, signed, and admitted, so the two service waits overlap, and the
+    // image then encloses a signed but not-yet-stapled application whose own
+    // ticket Gatekeeper resolves online. Only the Nightly channel accepts that
+    // trade; nothing is stapled until every submission is accepted either way.
+    let pendingAppNotarization;
+    if (dmgOnly) {
+      // A DMG-only run receives an application another run already notarized
+      // and stapled; its ticket must be present before this run images it.
+      await validateAndAssessApp();
+    } else {
       await command(
         'application notarization archive',
         'ditto',
         ['-c', '-k', '--sequesterRsrc', '--keepParent', app, zip],
         LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
       );
-      await submit(command, zip, key, keyId, issuer, logger);
-      await command('application stapling', 'xcrun', [
-        'stapler',
-        'staple',
-        app,
-      ]);
+      const appNotarization = submit(command, zip, key, keyId, issuer, logger);
+      pendingNotarizations.push(appNotarization);
+      // The join below is the only consumer of this outcome. Retain a no-op
+      // handler so a rejection arriving while the disk image is still being
+      // prepared cannot surface as an unhandled rejection.
+      appNotarization.catch(() => {});
+      if (overlapNotarization) pendingAppNotarization = appNotarization;
+      else {
+        await appNotarization;
+        await stapleAndAdmitApp();
+      }
     }
-    await command('application staple validation', 'xcrun', [
-      'stapler',
-      'validate',
-      app,
-    ]);
-    await command('application Gatekeeper assessment', 'spctl', [
-      '--assess',
-      '--type',
-      'execute',
-      '--verbose=4',
-      app,
-    ]);
     fs.mkdirSync(dmgRoot, { recursive: true });
     await command(
       'DMG staging',
@@ -833,21 +975,30 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       [app, join(dmgRoot, appName)],
       LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
     );
-    await command(
-      'DMG creation',
-      'hdiutil',
-      [
-        'create',
-        '-volname',
-        'Station',
-        '-srcfolder',
-        dmgRoot,
-        '-ov',
-        '-format',
-        'UDZO',
-        dmg,
-      ],
-      LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+    await retryTransientDmgCreationFailure(
+      () =>
+        command(
+          'DMG creation',
+          'hdiutil',
+          [
+            'create',
+            '-volname',
+            'Station',
+            '-srcfolder',
+            dmgRoot,
+            '-ov',
+            '-format',
+            'UDZO',
+            dmg,
+          ],
+          LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+        ),
+      {
+        logger,
+        sleep,
+        discardPartialOutput: () => fs.rmSync(dmg, { force: true }),
+        remainingMs: () => deadlineAt - now(),
+      },
     );
     const dmgSigningArgs = ['--force', '--sign', identity, '--timestamp', dmg];
     await retryRetryableTransportFailure(
@@ -888,7 +1039,21 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         `DMG designated requirement query failed with status ${dmgRequirement.status}.`,
       );
     assertKontourDeveloperIdRequirement(dmgRequirement);
-    await submit(command, dmg, key, keyId, issuer, logger);
+    const dmgNotarization = submit(command, dmg, key, keyId, issuer, logger);
+    pendingNotarizations.push(dmgNotarization);
+    dmgNotarization.catch(() => {});
+    // Every outstanding submission must be accepted. Settling them all first
+    // keeps a rejection of either one terminal without abandoning the other
+    // mid-upload, and the first rejection is rethrown unchanged.
+    for (const outcome of await Promise.allSettled(
+      pendingAppNotarization === undefined
+        ? [dmgNotarization]
+        : [pendingAppNotarization, dmgNotarization],
+    ))
+      if (outcome.status === 'rejected') throw outcome.reason;
+    // Only an overlapped run still owes the application its staple; the
+    // default already joined and stapled it before the disk image was staged.
+    if (pendingAppNotarization !== undefined) await stapleAndAdmitApp();
     await command('DMG stapling', 'xcrun', ['stapler', 'staple', dmg]);
     await command('DMG staple validation', 'xcrun', [
       'stapler',
@@ -980,6 +1145,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         // Preserve the primary failure; cleanup is only best-effort here.
       }
     }
+    // A failure between starting a submission and the join above would leave
+    // that submission uploading a scratch archive this cleanup is about to
+    // delete. Both promises already carry handlers, so settling them only
+    // bounds the surviving child processes; each remains bounded by the
+    // notary command timeout and the release deadline.
+    await Promise.allSettled(pendingNotarizations);
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
@@ -997,13 +1168,15 @@ export function parseMacosNotarizedArtifactsCli(argv) {
     '--bundle-id',
     '--deadline-epoch',
   ]);
+  // Bare switches take no value: a following token is read as the next flag
+  // name, so `--dmg-only true` still fails the unique --name value check.
+  const booleanFlags = new Set(['--dmg-only', '--overlap-notarization']);
   const raw = {};
   for (let index = 0; index < argv.length; ) {
     const name = argv[index];
-    if (name === '--dmg-only') {
-      if (raw['--dmg-only'])
-        throw new Error('Expected unique --name value arguments.');
-      raw['--dmg-only'] = true;
+    if (booleanFlags.has(name)) {
+      if (raw[name]) throw new Error('Expected unique --name value arguments.');
+      raw[name] = true;
       index += 1;
       continue;
     }
@@ -1031,6 +1204,8 @@ export function parseMacosNotarizedArtifactsCli(argv) {
     bundleId: raw['--bundle-id'],
     deadlineEpoch: raw['--deadline-epoch'],
     dmgOnly: raw['--dmg-only'] === true ? true : undefined,
+    overlapNotarization:
+      raw['--overlap-notarization'] === true ? true : undefined,
   };
 }
 

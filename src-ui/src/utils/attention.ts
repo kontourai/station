@@ -1,3 +1,7 @@
+import {
+  isAcknowledgeableAttentionKind,
+  isPendingAttentionItem,
+} from '@kontourai/station-contracts/attention';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   ApprovalAttentionItem,
@@ -34,6 +38,31 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
 }
 
 /**
+ * Whether this item can be ACKNOWLEDGED away (#1536 D8, review M1).
+ *
+ * A standing notice cannot: it is still true after the dismissal, and the
+ * server refuses the acknowledgement for that reason. Delta review DM3 moved
+ * the membership into the contract (`isStandingAttentionKind`), so this
+ * predicate and the server's refusal and ordering band are three readings of
+ * ONE declaration rather than three lists that agree today. Imported from the
+ * CONTRACT rather than through the SDK barrel: the barrel is mocked wholesale
+ * by a dozen suites, so routing a pure predicate through it makes every one of
+ * them declare an export it does not care about. Both the per-row
+ * dismiss and "Dismiss all" read this — without it, dismiss-all posted an
+ * acknowledgement the server now refuses, and before the refusal it cleared the
+ * only row saying why chat could not start until the next poll happened to move
+ * the row's timestamp.
+ */
+export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
+  // #2064 (a) added a SECOND refusal beside the standing-notice one — a
+  // proposed change and a paused gate review resolve by being decided, not by
+  // being dismissed. Both memberships live in the contract and are joined
+  // there, so this predicate, the server's refusal and "Dismiss all" remain
+  // three readings of one declaration rather than three lists.
+  return isAcknowledgeableAttentionKind(item.kind);
+}
+
+/**
  * archive#3214: the client-side mirror of the ONE predicate that decides what
  * "pending" means — `AttentionProjectionService.list`'s
  * `items.filter((item) => !item.acknowledgedAt)`
@@ -54,7 +83,11 @@ export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
  * module exists to prevent.
  */
 export function pendingAttentionItems(items: AttentionItem[]): AttentionItem[] {
-  return items.filter((item) => !item.acknowledgedAt);
+  // #2064: the predicate itself moved to the contract, where the server's
+  // `pendingCount` and the per-project counts read it too — three surfaces,
+  // one declaration, instead of three `!item.acknowledgedAt` spellings that
+  // agree today.
+  return items.filter(isPendingAttentionItem);
 }
 
 /** See `pendingAttentionItems` — the same one predicate, counted. */

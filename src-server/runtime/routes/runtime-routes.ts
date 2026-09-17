@@ -1,21 +1,34 @@
+import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
+import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
+import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
+import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
+import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
+import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
+import type {
+  ProjectMembershipAuthority,
+  ProjectMembershipService,
+} from '../../services/projects/project-membership-service.js';
+import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
+
+export {
+  type BoundedBodyResult,
+  readBoundedRequestBody,
+} from '../../security/bounded-request-body.js';
+
 import {
   createHash,
   randomBytes,
   randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
-import {
-  closeSync,
-  fchmodSync,
-  constants as fsConstants,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
@@ -33,6 +46,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -69,6 +83,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
+import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
@@ -79,10 +94,7 @@ import {
   registerPullRequestProvider,
 } from '../../providers/registries/registry.js';
 import { createAgentToolRoutes } from '../../routes/agents/agent-tools.js';
-import {
-  createAgentRoutes,
-  deriveAgentCatalog,
-} from '../../routes/agents/agents.js';
+import { createAgentRoutes } from '../../routes/agents/agents.js';
 import {
   agentCatalogReadSeam,
   createEnrichedAgentRoutes,
@@ -108,6 +120,7 @@ import { createConnectionRoutes } from '../../routes/connections/connections.js'
 import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
+import { createHomeAuthorityRoutes } from '../../routes/environments/home-authority-routes.js';
 import { createPeerCredentialRoutes } from '../../routes/environments/peer-credential-routes.js';
 import {
   createDiffCommentRoutes,
@@ -129,12 +142,14 @@ import {
 } from '../../routes/knowledge/knowledge.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
+import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
 import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
 } from '../../routes/mcp/station-control-mcp-route.js';
+import { createPersonalLayoutRoutes } from '../../routes/me/personal-layouts.js';
 import { createActionOperationRoutes } from '../../routes/operations/action-operations.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
@@ -162,6 +177,8 @@ import {
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
+import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
+import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
@@ -172,7 +189,9 @@ import {
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
+import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
+import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
 import {
@@ -190,9 +209,13 @@ import {
 import { createBootRoutes } from '../../routes/system/boot.js';
 import { createBrandingRoutes } from '../../routes/system/branding.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
-import { createConfigRoutes } from '../../routes/system/config.js';
+import {
+  createConfigProjectReader,
+  createConfigRoutes,
+} from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
+import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
@@ -204,7 +227,6 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
-  requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
@@ -214,11 +236,13 @@ import {
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
   isLoopbackAuthority,
+  isRuntimeRequestPrincipalCurrent,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
   type RuntimeAuthenticatedRequestPrincipal,
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
+  resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -239,6 +263,7 @@ import {
   TurnCheckpointCaptureCoordinator,
   wireTurnCheckpointCaptureWhenEnabled,
 } from '../../services/checkpoints/turn-checkpoint-capture.js';
+import { appHomeActive } from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
@@ -287,7 +312,10 @@ import {
   TailscaleServeIdentitySource,
   type VerifiedIdentity,
 } from '../../services/identity/identity-source.js';
-import { resolvePrincipal as resolveStationPrincipal } from '../../services/identity/principal-resolver.js';
+import {
+  PrincipalUnresolvedError,
+  resolvePrincipal as resolveStationPrincipal,
+} from '../../services/identity/principal-resolver.js';
 import { FleetInferenceService } from '../../services/inference/fleet-inference-service.js';
 import { FleetServeReceiptLog } from '../../services/inference/fleet-serve-receipt-log.js';
 import { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
@@ -296,12 +324,13 @@ import { createServerLogReader } from '../../services/infra/server-log-reader.js
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
+import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
-import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
+import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -322,8 +351,9 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
-import { createPluginCommandExecutionAuthority } from '../../services/plugins/plugin-command-execution.js';
-import { withPluginCommandServerGrantAdmission } from '../../services/plugins/plugin-permissions.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
+import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -333,6 +363,7 @@ import { ProjectBindingsStore } from '../../services/projects/project-binding-st
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
+import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
@@ -340,6 +371,7 @@ import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js'
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
+import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
@@ -418,7 +450,6 @@ import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-cont
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  isTrustedInternalApiToken,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -427,6 +458,10 @@ import {
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
+  createPersonalHomeAuthorityDatabase,
+  HOME_AUTHORITY_DATABASE_ENV,
+} from '../bootstrap/personal-home-authority-database.js';
+import {
   configureRuntimeHttp,
   LOOPBACK_DEVICE_SESSION_COOKIE,
   parseDeviceSessionCookie,
@@ -434,15 +469,17 @@ import {
 } from '../bootstrap/runtime-http.js';
 import {
   createHostedTenantMiddleware,
+  createPersonalRuntimeRequestGuard,
   currentTenantExecutionContext,
   getTenantRequestContext,
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
+import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import {
+  createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
-  resolveManagedAvailabilityReason,
 } from '../plugins/runtime-provider-resolution.js';
 import type {
   AgentConfigurationMutationRunner,
@@ -458,6 +495,7 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import { createRuntimeWorkspacePaneHostActions } from './workspace-pane-host-actions.js';
 
 type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
@@ -472,6 +510,11 @@ export function pullRequestThreadForProject<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  projectMembership?: ProjectMembershipService;
+  deploymentAuthentication?: LoadedDeploymentAuthentication;
+  localAccounts?: LoadedLocalAccounts;
+  applicationSessions?: ApplicationSessionService;
+  runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
   eventBus: EventBus;
@@ -525,11 +568,10 @@ export interface ConfigureRuntimeRoutesContext {
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
   orchestrationEventStore?: EventStore;
-  /** Runtime's notification-bearing durable operational-event publisher. */
-  operationalEventPublisher?: OperationalEventPublisher;
+  pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
-    'quiesce'
+    'quiesce' | 'reconcile'
   >;
   // station#1225: shared per-user live-`/events`-subscriber presence — read
   // by `createOrchestrationRoutes` (connect/disconnect bookkeeping) and by
@@ -759,48 +801,10 @@ export function createPersonalTaskAnswerSupportModule(
  * scope can be narrowed without rotating the credential, so validity alone
  * is not sufficient at a later publication boundary.
  */
-export interface CurrentRuntimeRequestPrincipalSecurity {
-  authorizeCredential(
-    credential: string,
-    request: { method: string; path: string },
-  ): boolean;
-  resolveGrantedScope(credential: string): string | undefined;
-}
-
-export function isRuntimeRequestPrincipalCurrent(
-  request: Request,
-  security: CurrentRuntimeRequestPrincipalSecurity,
-): boolean {
-  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-  if (!principal) return false;
-  if (principal.kind === 'internal')
-    return isTrustedInternalApiToken(
-      request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,
-    );
-  const path = new URL(request.url).pathname;
-  if (
-    !security.authorizeCredential(principal.credential, {
-      method: request.method,
-      path,
-    })
-  ) {
-    return false;
-  }
-  // Match ingress exactly: an unmapped capability or a no-longer-granted
-  // pairing scope both fail closed at the delayed publication boundary.
-  const capability = requiredExternalSurfaceCapability(
-    'http',
-    request.method,
-    path,
-  );
-  if (capability?.capability !== 'pairing-scope' || !capability.scope)
-    return false;
-  const grantedScope = security.resolveGrantedScope(principal.credential);
-  return (
-    grantedScope !== undefined &&
-    pairingScopeIncludes(grantedScope, capability.scope)
-  );
-}
+export {
+  type CurrentRuntimeRequestPrincipalSecurity,
+  isRuntimeRequestPrincipalCurrent,
+} from '../../security/runtime-request-security.js';
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -812,6 +816,7 @@ export function configureRuntimeRoutes(
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
+    deploymentAuthentication: context.deploymentAuthentication?.service,
     verifyCredential: (
       credential: string,
       request?: { method: string; path: string },
@@ -1009,6 +1014,70 @@ export function configureRuntimeRoutes(
   // Unifying those two facts into one stable per-person identity is an
   // open, disclosed design question (decision-needed follow-up), not
   // something this fix resolves.
+  // #2067. ONE instance for this runtime, shared by the plugin routes' list
+  // projection, the operator grant surface, and the pane catalogue's
+  // visibility fact. Three readers of one grant record and one derivation —
+  // a second instance would not diverge (the service caches nothing), but a
+  // second CONSTRUCTION invites a second projectHomeDir.
+  const pluginVisibility = new PluginVisibilityService(
+    context.configLoader.getProjectHomeDir(),
+  );
+  /**
+   * The ONE per-request plugin-visibility predicate every projected route in
+   * this file shares (#2067) — the Pane catalogue, the layout catalog faces,
+   * and the Home-role status. One derivation rather than one per call site,
+   * because a second reader of an authorized store eventually gets the
+   * authorization wrong; this slice has now proved that four times.
+   *
+   * Fails CLOSED on every error class, not just an unresolvable caller: a
+   * grant record that cannot be read (oversized, corrupt, mid-write) is not
+   * evidence of a grant either. It logs, because a defect inside `canSee`
+   * would otherwise hide every plugin from every caller with no signal
+   * anywhere.
+   */
+  /**
+   * The subscriber's principal, or null when this request cannot be
+   * attributed. Null rather than a throw because the event relay asks this
+   * per frame on a long-lived stream, and a denial is the answer either way.
+   */
+  const resolveSubscriberPrincipal = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ) => {
+    try {
+      return resolveOrchestrationRequestPrincipal(c);
+    } catch (error) {
+      // Logged, because the inline original logged it and the extraction
+      // dropped it: a stream that silently relays nothing is very hard to
+      // tell from one with nothing to relay.
+      context.logger.debug?.(
+        'Plugin event relay: the subscriber could not be attributed; relaying nothing',
+        { error: error instanceof Error ? error.message : error },
+      );
+      return null;
+    }
+  };
+  const canSeePluginForRequest = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    pluginId: string,
+  ): boolean => {
+    try {
+      return pluginVisibility.canSee(
+        resolveOrchestrationRequestPrincipal(c),
+        pluginId,
+      );
+    } catch (error) {
+      if (!(error instanceof PrincipalUnresolvedError)) {
+        context.logger.debug?.(
+          'Plugin visibility read failed; treating the plugin as not visible',
+          {
+            pluginId,
+            error: error instanceof Error ? error.message : error,
+          },
+        );
+      }
+      return false;
+    }
+  };
   const resolveOrchestrationRequestPrincipal = memoizePerRequest(
     (c: {
       env: unknown;
@@ -1049,8 +1118,47 @@ export function configureRuntimeRoutes(
       // device-credential authority are mutually exclusive per credential
       // (`resolveCredentialAuthority` returns exactly one), so this is
       // choosing between disjoint cases, not silently dropping one.
+      const ingressIdentity = identifyIngress(c);
+      const binding =
+        runtimePrincipal?.authority === 'device-credential'
+          ? context.environmentSecurityService.identifyDevice(
+              runtimePrincipal.credential,
+            )?.principalBinding
+          : undefined;
+      if (
+        binding &&
+        (hostedTenantRegistry !== undefined ||
+          (ingressIdentity &&
+            (ingressIdentity.provider !== binding.provider ||
+              ingressIdentity.subject !== binding.subject)))
+      ) {
+        throw new PrincipalUnresolvedError(
+          'Device person binding conflicts with the current identity or deployment',
+        );
+      }
+      const verifiedPerson = binding ?? ingressIdentity;
+      const account =
+        context.deploymentAuthentication?.service.resolvePrincipal(
+          c.req.raw,
+          verifiedPerson
+            ? [
+                deploymentHumanPrincipal(
+                  verifiedPerson.provider,
+                  verifiedPerson.subject,
+                  verifiedPerson.subject,
+                ),
+              ]
+            : [],
+        );
+      if (account) return account;
       return resolveStationPrincipal(
-        identifyIngress(c) ??
+        (binding
+          ? {
+              provider: binding.provider,
+              subject: binding.subject,
+              displayName: binding.subject,
+            }
+          : ingressIdentity) ??
           (operatorAuthority ? null : deviceSessionIdentity(runtimePrincipal)),
         hostedTenantRegistry !== undefined ? 'hosted' : 'personal',
         operatorAuthority,
@@ -1166,10 +1274,112 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     security: runtimeSecurity,
   });
+  context.app.use('*', async (c, next) => {
+    const account = context.deploymentAuthentication?.service.current(
+      c.req.raw,
+    );
+    if (account && account.kind !== 'absent') {
+      if (account.kind !== 'authenticated')
+        return c.json(
+          { error: { code: 'account_authentication_invalid' } },
+          401,
+        );
+      const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(
+        c.req.raw,
+      );
+      const binding =
+        runtimePrincipal?.authority === 'device-credential'
+          ? context.environmentSecurityService.identifyDevice(
+              runtimePrincipal.credential,
+            )?.principalBinding
+          : undefined;
+      const people = [identifyIngress(c), binding].filter(
+        (person) => person !== null && person !== undefined,
+      );
+      try {
+        context.deploymentAuthentication!.service.resolvePrincipal(
+          c.req.raw,
+          people.map((person) =>
+            deploymentHumanPrincipal(
+              person.provider,
+              person.subject,
+              person.subject,
+            ),
+          ),
+        );
+      } catch (error) {
+        if (!(error instanceof PrincipalUnresolvedError)) throw error;
+        return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+      }
+    }
+    await next();
+  });
+  context.app.route(
+    '/api/account-auth/continuations',
+    createApplicationSessionRoutes(context.applicationSessions),
+  );
+  context.app.route(
+    '/api/account-auth',
+    createDeploymentAuthenticationRoutes(
+      context.deploymentAuthentication,
+      context.projectMembership && context.deploymentAuthentication
+        ? (request, token, environment) =>
+            context.projectMembership!.accept(token, {
+              async current() {
+                const account =
+                  await context.deploymentAuthentication!.service.authenticate(
+                    request,
+                  );
+                if (account.kind !== 'authenticated')
+                  throw new ProjectMembershipRefusal('forbidden');
+                const ingress = identifyIngress({
+                  env: environment,
+                  req: {
+                    header: (name) => request.headers.get(name) ?? undefined,
+                  },
+                });
+                if (
+                  ingress &&
+                  deploymentHumanPrincipal(
+                    ingress.provider,
+                    ingress.subject,
+                    ingress.subject,
+                  ).id !== account.principal.id
+                )
+                  throw new ProjectMembershipRefusal('forbidden');
+                return {
+                  principal: account.principal,
+                  verifiedEmails: account.session.contacts.map(
+                    (contact) => contact.value,
+                  ),
+                };
+              },
+              async operator() {
+                throw new ProjectMembershipRefusal('forbidden');
+              },
+            })
+        : undefined,
+      context.projectMembership
+        ? (token) => context.projectMembership!.previewInvitation(token)
+        : undefined,
+    ),
+  );
+  context.app.route(
+    '/api/home-authority',
+    createHomeAuthorityRoutes(
+      context.environmentSecurityService,
+      createPersonalHomeAuthorityDatabase(
+        context.configLoader.getProjectHomeDir(),
+        process.env[HOME_AUTHORITY_DATABASE_ENV],
+      ),
+      { peers: peerCredentialStore },
+    ),
+  );
   // Shared resolver keeps project and Registry catalog projections identical.
   const layoutCatalog = new DistributionProfileService(
     context.configLoader.getProjectHomeDir(),
     context.appConfig.distributionProfile,
+    context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
   );
   const kitObservabilityRegistry = new StationKitObservabilityRegistry(
     new StationKitObservabilityHost({
@@ -1335,6 +1545,8 @@ export function configureRuntimeRoutes(
       }),
   );
   const reviewedSourceBasisResolver = new ReviewedSourceBasisResolver({
+    packageMcpJournal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
     projectHomeDir: context.configLoader.getProjectHomeDir(),
     logger: context.logger,
   });
@@ -1423,6 +1635,11 @@ export function configureRuntimeRoutes(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
   );
+  // #2144 slice 5: the agent-facing settings deep-link registry. Its own
+  // top-level prefix rather than a leaf under `/config`, so an enumeration
+  // that carries no stored values is not tiered with the route that reads
+  // and writes them.
+  context.app.route('/api/settings', createSettingsRegistryRoutes());
 
   configureDevicePairingHostRoutes(
     context.app,
@@ -1432,8 +1649,20 @@ export function configureRuntimeRoutes(
       // residue being exercised — warn volume, same as a denied remote
       // authentication, so it is readable in the same place.
       audit: pairingApprovalAudit,
+      verifyOperatorCredential: (credential) =>
+        context.environmentSecurityService.verifyOperatorCredential(credential),
+      isApprovalCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
       connectedClientPresence,
       clientPresenceAvailable: hostedTenantRegistry === undefined,
+      isRequestPrincipalCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
     },
   );
 
@@ -1534,6 +1763,15 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         consentChannel: context.consentChannel,
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        registryTrustPolicyAuthority: context.orchestrationEventStore
+          ? createLocalRegistryTrustPolicyAuthority(
+              context.configLoader.getProjectHomeDir(),
+              context.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
+            )
+          : undefined,
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         refreshKitObservability: () =>
           kitObservabilityRegistry.discoverInstalled([
@@ -1542,11 +1780,11 @@ export function configureRuntimeRoutes(
           ]),
         settleProviderAdapterRetirements: () =>
           context.orchestrationService.settleProviderAdapterRetirements(),
-        reconcileEngineConnections: async (plugin) => {
+        reconcileEngineConnections: async (plugin, view) => {
           await replacePluginEngineConnections(
             context.configLoader,
             plugin,
-            listProviders('acpConnections')
+            listProviders('acpConnections', view)
               .filter((entry: any) => entry.source === plugin)
               .flatMap((entry: any) =>
                 (entry.provider.getConnections?.() ?? []).map(
@@ -1563,6 +1801,27 @@ export function configureRuntimeRoutes(
         },
         quiesceEventSubscriptions: (plugin) =>
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
+        reconcileEventSubscriptions: () =>
+          context.pluginOperationalEventSubscriptions.reconcile(),
+        // #2067. The SAME memoized, fail-closed resolver every other
+        // identity-bearing route in this file reads, so `GET /api/plugins`
+        // projects onto the request's own caller and no header or body can
+        // name one. The directory is the trusted device registry's own list
+        // (`DevicePairingService.listKnownPrincipals`); before the
+        // environment is initialised there is no registry, and the honest
+        // answer is that this instance has no pairing record yet — the
+        // visibility route adds the operator row itself.
+        visibility: {
+          service: pluginVisibility,
+          resolvePrincipal: resolveOrchestrationRequestPrincipal,
+          listKnownPrincipals: () => {
+            try {
+              return context.environmentSecurityService.devicePairing.listKnownPrincipals();
+            } catch {
+              return [];
+            }
+          },
+        },
       },
     ),
   );
@@ -1578,6 +1837,20 @@ export function configureRuntimeRoutes(
       context.reloadSkillsAndAgents,
       context.skillService,
       {
+        // #2067: the registry's plugin catalog faces are operator-only; this
+        // is the resolution they refuse with.
+        visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
+        // #2067: the layout catalog faces are PROJECTED rather than refused.
+        canSeePlugin: (c, pluginId) => canSeePluginForRequest(c, pluginId),
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        registryTrustPolicyAuthority: context.orchestrationEventStore
+          ? createLocalRegistryTrustPolicyAuthority(
+              context.configLoader.getProjectHomeDir(),
+              context.orchestrationEventStore.createRegistryTrustPolicyDecisions(),
+            )
+          : undefined,
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         approveKitOperatorAction: (candidate) =>
           context.approvalRegistry.register(
@@ -1603,12 +1876,16 @@ export function configureRuntimeRoutes(
     ),
   );
 
-  // #749: these route families are the only public conversation discovery and
-  // open surfaces. Bind the same principal-derived authority used by
-  // orchestration before either route can inspect inventory or transcript.
+  // Discovery, reopening, and Task references must use the same verified
+  // principal as the chat that produced the answer. An OS-alias fallback here
+  // rejects new principal-owned Sessions and can select legacy-owned history.
   context.app.use('/agents/*', bindConversationReadAuthority);
   context.app.use('/api/conversations', bindConversationReadAuthority);
   context.app.use('/api/conversations/*', bindConversationReadAuthority);
+  context.app.use('/api/search', bindConversationReadAuthority);
+  context.app.use('/api/search/*', bindConversationReadAuthority);
+  context.app.use('/api/tasks', bindConversationReadAuthority);
+  context.app.use('/api/tasks/*', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -1616,17 +1893,10 @@ export function configureRuntimeRoutes(
       context.skillService,
       context.applyAgentConfigurationMutation,
       context.getVoltAgent,
-      (spec) =>
-        resolveManagedAvailabilityReason(spec, {
-          appConfig: context.appConfig,
-          listProviderConnections: () =>
-            context.providerService.listProviderConnections(),
-          // Review H1: the same receipts the Connections hub reads, so an
-          // agent bound to a faulted connection is not reported runnable
-          // beside a card saying its check failed.
-          gatedConnectionIds:
-            context.connectionService.checkGatedModelConnectionIds(),
-        }),
+      // #1536 D8 review H2: one reader for every surface that asks, reading
+      // LIVE config. These three sites each built the call separately and had
+      // already drifted onto the boot snapshot.
+      createStationEngineAvailabilityReader(context),
       // Station#975 (unification slice 5) D-3: save-response validation
       // findings need the same runtime-connection lookup the enriched-agents
       // route below already performs — same shape, same fail-open contract
@@ -1836,6 +2106,25 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
+  // Mobile helpers belong to the personal operator host, never a shared tenant.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    context.app.route(
+      '/api/mobile-devices',
+      createMobileDeviceRoutes(
+        new LocalMobileDeviceHost({
+          endpoint: process.env.STATION_MOBILE_DEVICE_HUB_URL,
+        }),
+        { isRequestPrincipalCurrent },
+      ),
+    );
+  }
+  context.app.route(
+    '/api/search',
+    createSearchRoutes(context.runtimeSearch, {
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
+      isRequestPrincipalCurrent,
+    }),
+  );
   const sessionInventoryAppRead = createSessionInventoryAppReadModule({
     read: async ({ scope, authority, request: _request, current }) => {
       const outcome = await sessionInventory.read({
@@ -2006,58 +2295,6 @@ export function configureRuntimeRoutes(
     '/api/ui',
     createUICommandRoutes(context.eventBus, {
       isHostedDeployment: () => hostedTenantRegistry !== undefined,
-      pluginCommandExecution: createPluginCommandExecutionAuthority({
-        pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
-        publisher: context.operationalEventPublisher ??
-          context.orchestrationEventStore?.createOperationalEventPublisher() ?? {
-            append: () => ({ kind: 'unavailable' as const }),
-          },
-        withServerGrant: (pluginId, admit) =>
-          withPluginCommandServerGrantAdmission(
-            context.configLoader.getProjectHomeDir(),
-            pluginId,
-            admit,
-          ),
-        resolveRequirement: ({ requirement, request }) => {
-          if (requirement === 'active-chat') {
-            return request.context.activeChatSessionId &&
-              (request.target.kind !== 'composer' ||
-                request.target.sessionId ===
-                  request.context.activeChatSessionId)
-              ? { kind: 'available' as const }
-              : { kind: 'missing' as const };
-          }
-          if (requirement === 'session') {
-            return request.context.sessionId &&
-              (request.target.kind !== 'composer' ||
-                request.target.sessionId === request.context.sessionId)
-              ? { kind: 'available' as const }
-              : { kind: 'missing' as const };
-          }
-          if (requirement === 'project') {
-            if (!request.context.projectSlug) {
-              return { kind: 'missing' as const };
-            }
-            try {
-              return context.projectService.getProject(
-                request.context.projectSlug,
-              )
-                ? { kind: 'available' as const }
-                : { kind: 'missing' as const };
-            } catch {
-              return { kind: 'missing' as const };
-            }
-          }
-          const task = request.context.taskId
-            ? context.taskGraphService.readTask(request.context.taskId)
-            : null;
-          return task &&
-            (!request.context.projectSlug ||
-              task.projectId === request.context.projectSlug)
-            ? { kind: 'available' as const }
-            : { kind: 'missing' as const };
-        },
-      }),
     }),
   );
   context.app.route(
@@ -2065,7 +2302,7 @@ export function configureRuntimeRoutes(
     createTaskOutputRoutes(taskOutputs, {
       taskGraph: context.taskGraphService,
       sessionOutputs: context.orchestrationService.sessionOutputs,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
       isRequestPrincipalCurrent,
@@ -2076,7 +2313,7 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
       sessionInventory,
@@ -2134,13 +2371,7 @@ export function configureRuntimeRoutes(
       };
     try {
       const spec = await context.agentService.getAgent(agentId);
-      const managed = resolveManagedAvailabilityReason(spec, {
-        appConfig: context.getLiveAppConfig(),
-        listProviderConnections: () =>
-          context.providerService.listProviderConnections(),
-        gatedConnectionIds:
-          context.connectionService.checkGatedModelConnectionIds(),
-      });
+      const managed = createStationEngineAvailabilityReader(context)(spec);
       if (managed) return { state: 'unavailable' as const, reason: managed };
       if (!spec.execution?.agentConnectionId)
         return { state: 'ready' as const, agentId };
@@ -2364,10 +2595,18 @@ export function configureRuntimeRoutes(
     const roomTaskIds = context.taskGraphService
       .listTasks()
       .map((task) => task.id);
-    projectTaskRoomLifecycleReady = Promise.all([
-      roomRuntime.reconcileAgentLifecycles(roomTaskIds),
-      roomRuntime.reconcileRevisionPublications(roomTaskIds),
-    ]).then(() => undefined);
+    projectTaskRoomLifecycleReady = recoverCompletedTaskDispatches({
+      eventStore: context.orchestrationEventStore,
+      taskGraph: context.taskGraphService,
+      room: roomRuntime,
+    })
+      .then(() =>
+        Promise.all([
+          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
+          roomRuntime.reconcileRevisionPublications(roomTaskIds),
+        ]),
+      )
+      .then(() => undefined);
     // station#4075 stage 3 slice 1: resolve the calling principal once, here,
     // where the real Hono `c` (env + headers) is available, and cache it on
     // `c.req.raw` for `requestAuthority.resolve` above — see the
@@ -2413,8 +2652,16 @@ export function configureRuntimeRoutes(
     };
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
+    context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route('/api/tasks', createProjectTaskRoomRoutes(roomRuntime));
   }
+  context.app.route(
+    '/api/home-authority/rooms',
+    createHomeTransferRoomRoutes({
+      security: context.environmentSecurityService,
+      roomRuntime: projectTaskRoomRuntime,
+    }),
+  );
   context.app.route(
     '/api/live-activity',
     createLiveActivityRoutes({
@@ -2499,6 +2746,37 @@ export function configureRuntimeRoutes(
   // Current-host composer staging is intentionally process-local: unfinished
   // uploads expire on restart rather than becoming a durable hidden queue.
   const attachmentStaging = new AttachmentStagingService();
+  const paneHostActions = createRuntimeWorkspacePaneHostActions({
+    projectHomeDir: context.configLoader.getProjectHomeDir(),
+    journal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+    projects: context.storageAdapter,
+    orchestration: context.orchestrationService,
+    getConnection: (id) => context.connectionService.getConnection(id),
+    nativeAgentAvailable: (id, spec) => {
+      const runtime = context.buildRuntimeContext();
+      return (
+        runtime.getAgentConfigurationRevision() !== null &&
+        runtime.activeAgents.has(id) &&
+        nativeRuntimeSpecMatches(spec, runtime.agentSpecs.get(id))
+      );
+    },
+  });
+  context.app.route(
+    '/api/orchestration/pane-host',
+    createWorkspacePaneHostActionRoutes({
+      service: paneHostActions,
+      actorFor: (c) => {
+        const principal = resolveOrchestrationRequestPrincipal(c);
+        return {
+          principal,
+          readAuthority: readAuthorityForExecution(principal.id),
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          isCurrent: () => isRequestPrincipalCurrent(c.req.raw),
+        };
+      },
+    }),
+  );
   context.app.route(
     '/api/orchestration/attachment-staging',
     createAttachmentStagingRoutes({
@@ -2730,16 +3008,8 @@ export function configureRuntimeRoutes(
         ),
       getAgentConfigurationRevision: context.getAgentConfigurationRevision,
       logger: context.logger,
-      resolveAvailability: (spec) =>
-        resolveManagedAvailabilityReason(spec, {
-          appConfig: context.appConfig,
-          listProviderConnections: () =>
-            context.providerService.listProviderConnections(),
-          // Review H1: see the sibling call above — Home's recommendation and
-          // the Agents list read this reason.
-          gatedConnectionIds:
-            context.connectionService.checkGatedModelConnectionIds(),
-        }),
+      // Home's recommendation and the Agents list read this reason.
+      resolveAvailability: createStationEngineAvailabilityReader(context),
       // §3.3 orphan visibility (station#1004, unification slice 7): known
       // project slugs, used to mark a persisted agent's `project` as an
       // orphan finding when it names a project that no longer exists.
@@ -2764,6 +3034,13 @@ export function configureRuntimeRoutes(
       // instead of falsely reporting a persisted, ready external-engine
       // agent "not currently launchable".
       connectionService: context.connectionService,
+      // #1536 D8 delta review DM1: the live inputs the shared availability
+      // reader needs. Without them `/chat` answered its 409 from the boot
+      // snapshot, so fixing the default model connection at runtime cleared
+      // the picker and the inbox while chat went on refusing until restart.
+      getLiveAppConfig: () => context.getLiveAppConfig(),
+      checkGatedModelConnectionIds: () =>
+        context.connectionService.checkGatedModelConnectionIds(),
       listAgents: () => context.agentService.listAgents(),
       getDefaultAgentIds: async () =>
         new Set(
@@ -2774,6 +3051,152 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.route('/agents', createWorkflowRoutes(context.layoutService));
+  const projectMembershipAuthority = (
+    request: Request,
+  ): ProjectMembershipAuthority => ({
+    async current() {
+      if (
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        throw new ProjectMembershipRefusal('forbidden');
+      const account =
+        await context.deploymentAuthentication?.service.authenticate(request);
+      if (
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        throw new ProjectMembershipRefusal('forbidden');
+      if (account?.kind === 'authenticated') {
+        const runtime = getRuntimeAuthenticatedRequestPrincipal(request);
+        const binding =
+          runtime?.authority === 'device-credential'
+            ? context.environmentSecurityService.identifyDevice(
+                runtime.credential,
+              )?.principalBinding
+            : undefined;
+        const principal =
+          context.deploymentAuthentication!.service.resolvePrincipal(
+            request,
+            binding
+              ? [
+                  deploymentHumanPrincipal(
+                    binding.provider,
+                    binding.subject,
+                    binding.subject,
+                  ),
+                ]
+              : [],
+          );
+        if (
+          !principal ||
+          roomRequestPrincipals.get(request)?.id !== principal.id
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+        return {
+          principal,
+          verifiedEmails: account.session.contacts.map(
+            (contact) => contact.value,
+          ),
+        };
+      }
+      if (account && account.kind !== 'absent')
+        throw new ProjectMembershipRefusal('forbidden');
+      const principal = roomRequestPrincipals.get(request);
+      if (!principal) throw new ProjectMembershipRefusal('forbidden');
+      return { principal, verifiedEmails: [] };
+    },
+    async operator() {
+      if (
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ) ||
+        (getRuntimeAuthenticatedRequestPrincipal(request)?.authority !==
+          'operator-credential' &&
+          getRuntimeAuthenticatedRequestPrincipal(request)?.locality !==
+            'home-possession')
+      )
+        throw new ProjectMembershipRefusal('forbidden');
+    },
+  });
+  context.app.use('/api/projects/:slug/access', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
+  context.app.route(
+    '/api/operator/accounts',
+    createLocalAccountAdministrationRoutes(
+      context.localAccounts,
+      context.deploymentAuthentication,
+      (request) => projectMembershipAuthority(request).operator(),
+    ),
+  );
+  context.app.use('/api/projects/:slug/access/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
+  context.app.route(
+    '/api/projects',
+    createProjectMembershipRoutes(
+      context.projectMembership,
+      projectMembershipAuthority,
+      context.deploymentAuthentication?.publicOrigin,
+    ),
+  );
+  // #2061: the personal scope. Ownership comes from
+  // `resolveOrchestrationRequestPrincipal` — the SAME memoized, fail-closed
+  // resolver every other identity-bearing route in this file reads — so no
+  // path or body ever names a principal. Two devices see ONE set of Boards
+  // exactly when they resolve to one principal: a WhoIs identity, or a person
+  // binding on the pairing (`principalBinding` above). A bare paired device
+  // with no person binding and no Serve identity in front of it resolves to
+  // the coarser per-device fact instead, and its Boards are that device's —
+  // see the precedence comment on `resolveOrchestrationRequestPrincipal`
+  // above and `docs/design/principals.md`. Unifying those facts into one
+  // stable per-person identity is the open design question recorded there,
+  // not something this scope resolves.
+  // Built once at wiring time, not per request: `buildProjectResolutionRouteDeps`
+  // constructs a manifest store, a bindings store and a resolver, and the
+  // projects routes below take theirs the same way.
+  const personalLayoutResolver =
+    buildProjectResolutionRouteDeps(context).resolver;
+  context.app.route(
+    '/api/me',
+    createPersonalLayoutRoutes(ownedLayoutStore(context.storageAdapter), {
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      // #2062 review BLOCKING-2 — promote publishes into a project, so it must
+      // pass the admission that project's own create route applies. Both are
+      // wired from the SAME two expressions, a few lines apart, so the agent
+      // list and the workspace resolver cannot diverge between the two doors
+      // into one store.
+      listAgents: async () =>
+        (await context.agentService.listAgents()).map(({ slug, project }) => ({
+          slug: agentId(slug),
+          project,
+        })),
+      resolveWorkspacePath: async (projectSlug, resourceId) =>
+        await resolveProjectWorkspacePath(projectSlug, {
+          resolver: personalLayoutResolver,
+          resourceId,
+        }),
+      // #2090. The same projection and the same caller resolver the project
+      // layout routes read, so a Board tab and a project Layout tab naming a
+      // plugin this person cannot see answer with the same causeless
+      // placeholder instead of "not installed or registered".
+      canSeePlugin: canSeePluginForRequest,
+    }),
+  );
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -2805,6 +3228,15 @@ export function configureRuntimeRoutes(
         // the same project. The stores below share that pinned source for the
         // same reason.
         resolution: buildProjectResolutionRouteDeps(context),
+        // #2067/#2090/#2103. The visibility fact for every layout-facing
+        // route in this family, from the same projection `GET /api/plugins`
+        // applies and the same caller resolver. DISCOVERY: a plugin outside
+        // the projection is dropped from the Pane catalogue and the layout
+        // picker. REFERENCE: a saved layout that already names such a pane
+        // has its plugin binding withheld and carries a causeless per-tab
+        // verdict the host renders a placeholder from, and apply,
+        // from-plugin and the layout list answer the same way.
+        canSeePlugin: canSeePluginForRequest,
       },
     ),
   );
@@ -2830,9 +3262,14 @@ export function configureRuntimeRoutes(
       // the connection's SAVED config directly — never the in-memory
       // adapter state — same source of truth `runtimeDefaultConfig`/
       // `sanitizeRuntimeConfig` already treat as authoritative.
+      // station#2072: through `appHomeActive`, so an explicit
+      // `configHome` (which wins over the opt-in at spawn time) does not
+      // make this guard claim a station-managed profile is in use when the
+      // connection's spawns actually run from the configured home.
       isUseAppHomeEnabled: async (id) =>
-        (await context.connectionService.getConnection(id))?.config
-          ?.useAppHome === true,
+        appHomeActive(
+          (await context.connectionService.getConnection(id))?.config,
+        ),
       // Credential-profile management delegates all registry/application
       // state transitions to the single ConnectionService authority.
       connectionService: context.connectionService,
@@ -2877,6 +3314,56 @@ export function configureRuntimeRoutes(
   registerPullRequestProvider(new GitHubPullRequestProvider());
   registerPullRequestProvider(new GitLabPullRequestProvider());
   const pullRequestContextResolver = new PullRequestRepositoryContextResolver();
+  const conversationPullRequestLinks = new ConversationPullRequestLinkStore(
+    context.configLoader.getProjectHomeDir(),
+  );
+  context.app.route(
+    '/api/conversation-pull-requests',
+    createConversationPullRequestLinkRoutes(
+      conversationPullRequestLinks,
+      () => listProviders('pullRequest').map((entry) => entry.provider),
+      {
+        current: isRequestPrincipalCurrent,
+        operator: (request) => {
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return principal?.authority === 'operator-credential'
+            ? getCachedUser().alias
+            : undefined;
+        },
+        canRead: (request, conversationId) =>
+          context.orchestrationService.canUserReadSession(
+            conversationId,
+            readAuthorityForRequest(request),
+          ),
+        declared: async (request, conversationId) => {
+          if (
+            !context.orchestrationService.canUserReadSession(
+              conversationId,
+              readAuthorityForRequest(request),
+            )
+          )
+            return [];
+          return context.taskGraphService
+            .listTasks()
+            .flatMap((task) =>
+              context.taskGraphService.listKeptDeclaredPullRequestsForSession(
+                task.id,
+                conversationId,
+              ),
+            )
+            .map((reference) => ({
+              provider: reference.provider,
+              host: reference.host,
+              repository: reference.repository,
+              ref: reference.ref,
+              source: 'task-declared' as const,
+              linkedAt: reference.keptAt,
+              linkedBy: 'station.task-graph',
+            }));
+        },
+      },
+    ),
+  );
   context.app.route(
     '/api/pull-requests',
     createPullRequestRoutes(
@@ -2914,6 +3401,7 @@ export function configureRuntimeRoutes(
         });
       },
       {
+        isRequestPrincipalCurrent,
         operatorIdentityForRequest: (routeContext) => {
           const authority = (
             routeContext as unknown as { get: (key: string) => unknown }
@@ -2956,12 +3444,16 @@ export function configureRuntimeRoutes(
   // rather than a second file read.
   context.app.route(
     '/api/environments/peers',
-    createPeerCredentialRoutes(peerCredentialStore, (environmentId) =>
-      context.sshEnvironmentService
-        .list()
-        .some(
-          (environment) => environment.profile.environmentId === environmentId,
-        ),
+    createPeerCredentialRoutes(
+      peerCredentialStore,
+      (environmentId) =>
+        context.sshEnvironmentService
+          .list()
+          .some(
+            (environment) =>
+              environment.profile.environmentId === environmentId,
+          ),
+      isRequestPrincipalCurrent,
     ),
   );
   // station#1423: the operator's own answer-share management family. The base
@@ -3373,6 +3865,17 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
     }),
   );
+  const personalSourceRequest = createPersonalRuntimeRequestGuard();
+  context.app.route(
+    '/api/knowledge',
+    createKnowledgeSourceRoutes(context.knowledgeStoreProvider, (request) =>
+      isLocalKnowledgeSourceRequestCurrent(
+        request,
+        context.environmentSecurityService,
+        personalSourceRequest,
+      ),
+    ),
+  );
   // K5 Neo4j graph-view routes (`s203-knowledge-meeting-notes` Wave 1 Task 1) — same
   // `/api/knowledge` base, sub-paths of the file-based graph route
   // (`/roots/:rootId/graph/neo4j*`), so no collision with the route mounted just
@@ -3401,6 +3904,9 @@ export function configureRuntimeRoutes(
       context.getManagedChatOrchestrationEnabled,
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
+      // #2144 slice 2: one project record for `GET /config/app?project=`.
+      // The reader owns which failures become "absent"; see its docblock.
+      createConfigProjectReader(context.storageAdapter),
     ),
   );
   context.app.route(
@@ -3440,20 +3946,14 @@ export function configureRuntimeRoutes(
         ).json(),
       branding: async () => (await createBrandingRoutes().request('/')).json(),
       agents: async () => {
-        const enrichedAgents = await context.agentService.getEnrichedAgents(
-          await context.getVoltAgent()!.getAgents(),
-        );
         return {
           success: true,
-          data: await deriveAgentCatalog(
-            context.agentService,
-            enrichedAgents,
-            (spec) =>
-              resolveManagedAvailabilityReason(spec, {
-                appConfig: context.appConfig,
-                listProviderConnections: () =>
-                  context.providerService.listProviderConnections(),
-              }),
+          data: await context.agentService.getAgentCatalog(
+            await context.getVoltAgent()!.getAgents(),
+            // This site also omitted `gatedConnectionIds` entirely, so
+            // `/api/boot`'s catalog reported an agent bound to a faulted
+            // connection as runnable.
+            createStationEngineAvailabilityReader(context),
           ),
         };
       },
@@ -3627,7 +4127,18 @@ export function configureRuntimeRoutes(
     attentionProjection,
     webPushService,
     webPushEnabled,
-  } = configureRuntimeSupportServices(context, flowRunService);
+  } = configureRuntimeSupportServices(context, flowRunService, {
+    // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
+    // the same live project inventory — one read, so a paused review counted
+    // by the bell is the same row the Review page lists.
+    // Whole aggregate, not just `items`: a project Station could not read
+    // must reach the inbox as a stated gap (#2064 review (c)), not as an
+    // absence indistinguishable from "nothing needs you".
+    listGateReviews: () =>
+      surveyReview.listAll(
+        context.projectService.listProjects().map((project) => project.slug),
+      ),
+  });
   const nativeInvocationRunReader =
     runtimeContext.orchestrationEventStore.nativeInvocationRunReader();
   const voiceTurnRunReader =
@@ -3737,6 +4248,41 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
       readAuthorityForRequest,
+      /**
+       * #2067. The plugin lifecycle channels, gated by the same projection
+       * `GET /api/plugins` applies and the same memoized caller resolver.
+       *
+       * `plugins:updates-available` is the exception and the operator's own
+       * signal: its payload is a LIST of pending updates rather than one
+       * named plugin, and the route that produces it
+       * (`GET /api/plugins/check-updates`) is operator-only for the same
+       * reason. Filtering the list per subscriber would mean rewriting the
+       * frame body, and a half-filtered maintenance signal is a worse answer
+       * than not relaying it to somebody who cannot act on it.
+       *
+       * Every failure path denies: an unattributable caller, a payload that
+       * names no plugin, a grant record that cannot be read.
+       */
+      canReadPluginEvent: (event, data, c) =>
+        canRelayPluginIdentityEvent({
+          event,
+          data,
+          principal: resolveSubscriberPrincipal(c),
+          canSee: (principal, pluginName) => {
+            try {
+              return pluginVisibility.canSee(principal, pluginName);
+            } catch (error) {
+              context.logger.debug?.(
+                'Plugin event relay denied: the visibility record could not be read',
+                {
+                  event,
+                  error: error instanceof Error ? error.message : error,
+                },
+              );
+              return false;
+            }
+          },
+        }),
       canReadNotificationEvent: (_event, data, authority) => {
         const record = data as Record<string, unknown> | undefined;
         const sessionId = notificationSessionIdentity(record);
@@ -4185,16 +4731,20 @@ const PAIRING_OFFER_BODY_KEYSETS = new Set([
 
 async function readPairingOfferJson(
   request: Request,
+  allowedKeysets: ReadonlySet<string> = PAIRING_OFFER_BODY_KEYSETS,
 ): Promise<Record<string, unknown> | undefined> {
   const result = await readBoundedRequestBody(request, 2_048);
   if (result.status !== 'ok') return undefined;
+  // Node HTTP adapters can represent a bodyless POST as an empty stream.
+  // Only callers admitting an empty object may accept zero decoded bytes.
+  if (result.body === '' && allowedKeysets.has('')) return {};
   try {
     const value = JSON.parse(result.body);
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return undefined;
     }
     const keys = Object.keys(value).sort().join(',');
-    if (!PAIRING_OFFER_BODY_KEYSETS.has(keys)) return undefined;
+    if (!allowedKeysets.has(keys)) return undefined;
     return value as Record<string, unknown>;
   } catch {
     return undefined;
@@ -4422,48 +4972,6 @@ function isSameMachineBrowserCaller(c: {
   );
 }
 
-const LOCAL_GRANT_DIRECTORY_MODE = 0o700;
-const LOCAL_GRANT_FILE_MODE = 0o600;
-
-/**
- * Mints a fresh per-boot local-grant secret (station#1715) and durably writes
- * it to `secretPath` (parent directory 0700, file 0600), atomically replacing
- * any previous boot's value. The file exists only so the desktop shell —
- * running as the same OS user — can read it directly off disk
- * (`src-desktop/src/lib.rs`'s `station_local_grant_secret`); the route
- * created below never re-reads it, it compares every presented candidate
- * against the value returned here, held in a closure for the life of the
- * process.
- */
-function writeLocalGrantSecretFile(secretPath: string): string {
-  const secret = randomBytes(32).toString('base64url');
-  mkdirSync(dirname(secretPath), {
-    recursive: true,
-    mode: LOCAL_GRANT_DIRECTORY_MODE,
-  });
-  const temporaryPath = `${secretPath}.${process.pid}.${randomUUID()}.tmp`;
-  let descriptor: number | undefined;
-  try {
-    descriptor = openSync(
-      temporaryPath,
-      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
-      LOCAL_GRANT_FILE_MODE,
-    );
-    if (process.platform !== 'win32') {
-      fchmodSync(descriptor, LOCAL_GRANT_FILE_MODE);
-    }
-    writeFileSync(descriptor, secret, 'utf8');
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    renameSync(temporaryPath, secretPath);
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-    rmSync(temporaryPath, { force: true });
-  }
-  return secret;
-}
-
 /** Timing-safe compare over digests, so a length mismatch never short-circuits. */
 function timingSafeSecretEqual(candidate: string, expected: string): boolean {
   const candidateDigest = createHash('sha256').update(candidate).digest();
@@ -4621,6 +5129,54 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'local_grant_forbidden' }, 403);
     }
     return c.json({ ready: true });
+  });
+  app.post(PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH, async (c) => {
+    if (
+      !localGrantSecret ||
+      !isDirectLoopbackCaller(c) ||
+      c.req.header('forwarded') ||
+      c.req.header('x-forwarded-for') ||
+      c.req.header('x-forwarded-host')
+    )
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    if (new URL(c.req.url).search)
+      return c.json({ error: 'invalid_request' }, 400);
+    const body = await readPairingJson(c.req.raw, ['secret', 'action']);
+    if (
+      !body ||
+      typeof body.secret !== 'string' ||
+      !['list', 'approve', 'deny'].includes(String(body.action)) ||
+      (body.action !== 'list' &&
+        (typeof body.requestId !== 'string' || body.requestId.length > 128)) ||
+      (body.action === 'list' && body.requestId !== undefined)
+    )
+      return c.json({ error: 'invalid_request' }, 400);
+    if (!timingSafeSecretEqual(body.secret, localGrantSecret))
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    try {
+      if (body.action === 'list')
+        return c.json({ requests: pairing.listRequests() });
+      const requestId = body.requestId as string;
+      const result =
+        body.action === 'approve'
+          ? pairing.confirmRequest(requestId, { kind: 'local-grant' })
+          : pairing.denyRequest(requestId);
+      options.audit?.({
+        event:
+          body.action === 'approve'
+            ? 'station.pairing.approved'
+            : 'station.pairing.refused',
+        approver: 'local-grant',
+        source: result.source,
+        timestamp: Date.now(),
+      });
+      return c.json(result);
+    } catch (error) {
+      return c.json(
+        { error: pairingErrorCode(error) },
+        pairingErrorStatus(error),
+      );
+    }
   });
   app.post(PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH, async (c) => {
     if (new URL(c.req.url).search) {
@@ -5397,12 +5953,52 @@ export function configureDevicePairingHostRoutes(
   pairing: DevicePairingService,
   options: {
     audit?: (record: PairingApprovalAuditRecord) => void;
+    verifyOperatorCredential?: (credential: string) => boolean;
+    isApprovalCurrent?: (request: Request) => boolean;
     connectedClientPresence?: ClientConnectionPresence;
     /** Hosted tenants cannot safely share this process-local aggregate. */
     clientPresenceAvailable?: boolean;
-  } = {},
+    /**
+     * Revalidates the ingress principal against current credential state.
+     *
+     * Required, not optional. Operator pairing management without principal
+     * revalidation is not a mode any caller wants, so an optional field here
+     * encodes a mode that should not exist -- and omitting it used to fail
+     * closed silently, which turned a missing call site into a 401 in a
+     * fixture no pull-request lane runs (#1640, found only by Nightly).
+     * Making it required lets the compiler answer the question instead.
+     */
+    isRequestPrincipalCurrent: (request: Request) => boolean;
+  },
 ): void {
   const audit = options.audit;
+  const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
+  const currentOperator = (context: unknown, request: Request): boolean => {
+    const authority = (context as { get: (key: string) => unknown }).get(
+      RUNTIME_CREDENTIAL_AUTHORITY_VAR,
+    );
+    if (authority !== 'operator-credential') return false;
+    try {
+      // Anything but a literal `true` denies, including a non-boolean from a
+      // malformed implementation: a widened return type must not be able to
+      // read as authorization here. An absent callback throws on call and is
+      // denied by the catch below, so the untyped caller fails closed too.
+      const current = isRequestPrincipalCurrent(request);
+      if (current !== true) {
+        return false;
+      }
+      return true;
+    } catch {
+      // The fail-closed path, not error hygiene: a callback that cannot
+      // answer must deny. Since the option became required this catch is the
+      // only thing between an unanswerable check and a silent allow, so it
+      // must stay broad -- narrowing it to a specific error type, or
+      // deleting it as redundant, re-opens the allow. Pinned by the
+      // 'throwing' row of the current-principal table in
+      // device-pairing-routes.test.ts.
+      return false;
+    }
+  };
   app.post('/api/pairing/offers', async (c) => {
     const body = await readPairingOfferJson(c.req.raw);
     if (!body || typeof body.endpoint !== 'string') {
@@ -5448,7 +6044,7 @@ export function configureDevicePairingHostRoutes(
   app.get('/api/pairing/requests', (c) =>
     c.json({ requests: pairing.listRequests() }),
   );
-  app.post('/api/pairing/requests/:requestId/confirm', (c) => {
+  app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
     const requestId = c.req.param('requestId');
     // station#1490: the ONLY caller-identity signal this handler has. The
     // granted-scope var is published by `runtime-http.ts` exclusively on the
@@ -5464,7 +6060,62 @@ export function configureDevicePairingHostRoutes(
         ? { kind: 'unauthenticated' }
         : { kind: 'presented-credential' };
     try {
-      const request = pairing.confirmRequest(requestId, approval);
+      // Existing bodyless approvals remain device-only. Identity binding is an
+      // explicit operator action, never inferred from requester provenance.
+      let bindingApproval: { principalId: string } | undefined;
+      if (c.req.raw.body !== null) {
+        const body = await readPairingOfferJson(
+          c.req.raw,
+          new Set(['', 'bindVerifiedIdentity']),
+        );
+        if (
+          !body ||
+          Object.keys(body).some((key) => key !== 'bindVerifiedIdentity') ||
+          (body.bindVerifiedIdentity !== undefined &&
+            typeof body.bindVerifiedIdentity !== 'boolean')
+        ) {
+          return c.json({ error: 'invalid_request' }, 400);
+        }
+        // Reading the body yielded. Reapply the existing credential and scope
+        // predicate before either ordinary approval or person binding commits.
+        if (options.isApprovalCurrent?.(c.req.raw) !== true) {
+          return c.json({ error: 'approval_requires_operator' }, 403);
+        }
+        if (body.bindVerifiedIdentity === true) {
+          const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          const operatorCredential =
+            actor?.authority === 'operator-credential' &&
+            options.verifyOperatorCredential?.(actor.credential) === true;
+          const localGrant =
+            actor?.authority === 'device-credential' &&
+            actor.locality === 'home-possession' &&
+            actor.mintKind === 'local-grant' &&
+            pairing.credentialLocality(actor.credential) ===
+              'home-possession' &&
+            pairing.credentialMintKind(actor.credential) === 'local-grant';
+          if (isHostedTenantExecutionRequired()) {
+            return c.json({ error: 'person_binding_unavailable' }, 409);
+          }
+          if (!operatorCredential && !localGrant) {
+            return c.json({ error: 'approval_requires_operator' }, 403);
+          }
+          bindingApproval = {
+            principalId: resolveStationPrincipal(
+              identifyIngress(c),
+              'personal',
+              localGrant
+                ? { locality: 'home-possession' }
+                : { verifiedOperatorCredential: true },
+              undefined,
+            ).id,
+          };
+        }
+      }
+      const request = pairing.confirmRequest(
+        requestId,
+        approval,
+        bindingApproval,
+      );
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'approved',
@@ -5485,7 +6136,10 @@ export function configureDevicePairingHostRoutes(
           timestamp: Date.now(),
         });
       }
-      return c.json(request);
+      return c.json({
+        ...request,
+        ...(bindingApproval ? { personBindingApproved: true } : {}),
+      });
     } catch (error) {
       if (
         error instanceof DevicePairingError &&
@@ -5567,14 +6221,12 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/devices/:deviceId', (c) => {
     try {
-      const authority = (c as unknown as { get: (key: string) => unknown }).get(
-        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-      );
-      if (authority !== 'operator-credential') {
+      const request = c.req.raw;
+      if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       const deviceId = c.req.param('deviceId');
-      const device = pairing.revokeDevice(deviceId, authority);
+      const device = pairing.revokeDevice(deviceId, 'operator-credential');
       options.connectedClientPresence?.disconnectDevice(deviceId);
       return c.json(device);
     } catch (error) {
@@ -5596,13 +6248,11 @@ export function configureDevicePairingHostRoutes(
    */
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
-      const authority = (c as unknown as { get: (key: string) => unknown }).get(
-        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-      );
-      if (authority !== 'operator-credential') {
+      const request = c.req.raw;
+      if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
-      const body = (await c.req.json().catch(() => null)) as {
+      const body = (await request.json().catch(() => null)) as {
         scope?: unknown;
         expectedScope?: unknown;
       } | null;
@@ -5617,6 +6267,9 @@ export function configureDevicePairingHostRoutes(
         typeof body?.expectedScope === 'string'
           ? body.expectedScope
           : undefined;
+      if (!currentOperator(c, request)) {
+        return c.json({ error: 'authentication_required' }, 401);
+      }
       const deviceId = c.req.param('deviceId');
       const device = pairing.setDeviceScope(
         deviceId,
@@ -5662,14 +6315,15 @@ export function configureDevicePairingHostRoutes(
   });
   app.delete('/api/pairing/devices/:deviceId/record', (c) => {
     try {
-      const authority = (c as unknown as { get: (key: string) => unknown }).get(
-        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-      );
-      if (authority !== 'operator-credential') {
+      const request = c.req.raw;
+      if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       return c.json(
-        pairing.removeRevokedDevice(c.req.param('deviceId'), authority),
+        pairing.removeRevokedDevice(
+          c.req.param('deviceId'),
+          'operator-credential',
+        ),
       );
     } catch (error) {
       return c.json(
@@ -5680,11 +6334,6 @@ export function configureDevicePairingHostRoutes(
   });
 }
 
-export type BoundedBodyResult =
-  | { status: 'ok'; body: string }
-  | { status: 'too-large' }
-  | { status: 'invalid' };
-
 /** Exact hosted-ingress exception for the bearer-stage-grant-only upload leaf. */
 export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
   const { pathname } = new URL(request.url);
@@ -5694,57 +6343,6 @@ export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
       pathname,
     )
   );
-}
-
-/** Reads an unauthenticated request body without ever buffering past maxBytes. */
-export async function readBoundedRequestBody(
-  request: Request,
-  maxBytes: number,
-): Promise<BoundedBodyResult> {
-  const declared = request.headers.get('content-length');
-  if (declared !== null) {
-    if (!/^\d+$/.test(declared) || Number(declared) > maxBytes) {
-      return { status: 'too-large' };
-    }
-  }
-  const stream = request.body;
-  if (!stream) return { status: 'invalid' };
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      total += result.value.byteLength;
-      if (total > maxBytes) {
-        await reader
-          .cancel('proof request body exceeded byte limit')
-          .catch(() => {});
-        return { status: 'too-large' };
-      }
-      chunks.push(result.value);
-    }
-  } catch {
-    await reader.cancel().catch(() => {});
-    return { status: 'invalid' };
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return {
-      status: 'ok',
-      body: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    };
-  } catch {
-    return { status: 'invalid' };
-  }
 }
 
 function resolveConfiguredRuntimeOrigins(

@@ -225,152 +225,184 @@ describe('ecosystem manifest', () => {
   // the machine is busy and names their branch as the cause (station#3124).
   // Nothing here asserts latency; a latency-derived failure is noise by
   // construction. The bound stays finite so a genuine hang still fails.
-  it('installs a signed portable artifact without gh or a GitHub credential', {
-    timeout: 60_000,
-  }, () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-public-install-'));
-    roots.push(dir);
-    const artifacts = join(dir, 'artifacts');
-    const manifests = join(dir, 'manifests');
-    const keys = join(dir, 'keys');
-    const fakeBin = join(dir, 'bin');
-    const source = join(dir, 'source', 'station');
-    for (const path of [artifacts, manifests, keys, fakeBin, source]) {
-      mkdirSync(path, { recursive: true });
-    }
-    writeFileSync(join(source, 'package-lock.json'), '{}\n');
-    writeFileSync(
-      join(source, '.station-release.json'),
-      `${JSON.stringify({ schemaVersion: 2, sha: 'a'.repeat(40), ref: 'v1.2.3', createdAt: '2026-08-16T00:00:00.000Z', channel: 'stable', releaseChannel: 'stable', prerelease: false })}\n`,
-    );
-    writeFileSync(
-      join(source, 'station'),
-      `#!/bin/sh
+  it.each(['npm', 'pnpm'] as const)(
+    'installs a signed %s portable artifact without gh or a GitHub credential',
+    {
+      timeout: 60_000,
+    },
+    (manager) => {
+      const dir = mkdtempSync(join(tmpdir(), 'station-public-install-'));
+      roots.push(dir);
+      const artifacts = join(dir, 'artifacts');
+      const manifests = join(dir, 'manifests');
+      const keys = join(dir, 'keys');
+      const fakeBin = join(dir, 'bin');
+      const source = join(dir, 'source', 'station');
+      for (const path of [artifacts, manifests, keys, fakeBin, source]) {
+        mkdirSync(path, { recursive: true });
+      }
+      writeFileSync(
+        join(source, 'package.json'),
+        JSON.stringify({
+          name: 'station-portable-fixture',
+          version: '1.2.3',
+          ...(manager === 'pnpm' ? { packageManager: 'pnpm@11.25.0' } : {}),
+          scripts: {
+            'dependencies:ci': 'node scripts/dependency-lifecycle.mjs ci',
+          },
+        }),
+      );
+      if (manager === 'pnpm') {
+        writeFileSync(join(source, 'pnpm-lock.yaml'), '{}\n');
+        writeFileSync(join(source, 'pnpm-workspace.yaml'), 'packages: []\n');
+      } else {
+        writeFileSync(join(source, 'package-lock.json'), '{}\n');
+      }
+      writeFileSync(
+        join(source, '.station-release.json'),
+        `${JSON.stringify({ schemaVersion: 2, sha: 'a'.repeat(40), ref: 'v1.2.3', createdAt: '2026-08-16T00:00:00.000Z', channel: 'stable', releaseChannel: 'stable', prerelease: false })}\n`,
+      );
+      writeFileSync(
+        join(source, 'station'),
+        `#!/bin/sh
 if [ "\${1:-}" = start ]; then touch "$(dirname "$0")/.launched"; fi
 exit 0
 `,
-    );
-    chmodSync(join(source, 'station'), 0o755);
-    const archive = join(artifacts, 'station-portable.tar.gz');
-    expect(
-      spawnSync('tar', ['-czf', archive, '-C', join(dir, 'source'), 'station'])
-        .status,
-    ).toBe(0);
-    const macos = join(artifacts, 'station-1.2.3-macos-universal.dmg');
-    writeFileSync(macos, 'fixture dmg\n');
-    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-    const privatePath = join(dir, 'private.pem');
-    const publicPath = join(keys, 'public.pem');
-    writeFileSync(
-      privatePath,
-      privateKey.export({ format: 'pem', type: 'pkcs8' }),
-    );
-    writeFileSync(
-      publicPath,
-      publicKey.export({ format: 'pem', type: 'spki' }),
-    );
-    const payloadPath = join(dir, 'payload.json');
-    const manifestPath = join(manifests, 'stable.json');
-    writeFileSync(
-      payloadPath,
-      `${JSON.stringify({
-        schemaVersion: 1,
-        channel: 'stable',
-        version: '1.2.3',
-        releaseTag: 'v1.2.3',
-        sourceSha: 'a'.repeat(40),
-        publishedAt: '2026-08-16T00:00:00.000Z',
-        artifacts: {
-          macos: {
-            name: 'station-1.2.3-macos-universal.dmg',
-            url: pathToFileURL(macos).href,
-            sha256: digest(macos),
+      );
+      chmodSync(join(source, 'station'), 0o755);
+      const archive = join(artifacts, 'station-portable.tar.gz');
+      expect(
+        spawnSync('tar', [
+          '-czf',
+          archive,
+          '-C',
+          join(dir, 'source'),
+          'station',
+        ]).status,
+      ).toBe(0);
+      const macos = join(artifacts, 'station-1.2.3-macos-universal.dmg');
+      writeFileSync(macos, 'fixture dmg\n');
+      const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+      const privatePath = join(dir, 'private.pem');
+      const publicPath = join(keys, 'public.pem');
+      writeFileSync(
+        privatePath,
+        privateKey.export({ format: 'pem', type: 'pkcs8' }),
+      );
+      writeFileSync(
+        publicPath,
+        publicKey.export({ format: 'pem', type: 'spki' }),
+      );
+      const payloadPath = join(dir, 'payload.json');
+      const manifestPath = join(manifests, 'stable.json');
+      writeFileSync(
+        payloadPath,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          channel: 'stable',
+          version: '1.2.3',
+          releaseTag: 'v1.2.3',
+          sourceSha: 'a'.repeat(40),
+          publishedAt: '2026-08-16T00:00:00.000Z',
+          artifacts: {
+            macos: {
+              name: 'station-1.2.3-macos-universal.dmg',
+              url: pathToFileURL(macos).href,
+              sha256: digest(macos),
+            },
+            portable: {
+              name: 'station-portable.tar.gz',
+              url: pathToFileURL(archive).href,
+              sha256: digest(archive),
+            },
           },
-          portable: {
-            name: 'station-portable.tar.gz',
-            url: pathToFileURL(archive).href,
-            sha256: digest(archive),
-          },
+        })}\n`,
+      );
+      expect(
+        run(
+          [
+            'create',
+            '--payload',
+            payloadPath,
+            '--private-key',
+            privatePath,
+            '--key-id',
+            'station-ecosystem-v1',
+            '--output',
+            manifestPath,
+          ],
+          { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
+        ).status,
+      ).toBe(0);
+      writeFileSync(
+        join(fakeBin, 'npm'),
+        '#!/bin/sh\ntouch "$PWD/.npm-ci-complete"\n',
+      );
+      writeFileSync(
+        join(fakeBin, 'gh'),
+        '#!/bin/sh\necho gh-must-not-run >&2\nexit 99\n',
+      );
+      writeFileSync(
+        join(fakeBin, 'node'),
+        `#!/bin/sh\nif [ "$1" = -p ]; then printf '24\\n'; exit 0; fi\nexec "${process.execPath}" "$@"\n`,
+      );
+      chmodSync(join(fakeBin, 'npm'), 0o755);
+      chmodSync(join(fakeBin, 'gh'), 0o755);
+      chmodSync(join(fakeBin, 'node'), 0o755);
+      const result = spawnSync('sh', [installer], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HOME: join(dir, 'home'),
+          PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
+          GH_TOKEN: '',
+          GITHUB_TOKEN: '',
+          STATION_ROOT: '',
+          STATION_HOME: '',
+          STATION_INSTALL_ROOT: '',
+          STATION_BIN_DIR: '',
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
+          STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL:
+            pathToFileURL(publicPath).href,
+          STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
         },
-      })}\n`,
-    );
-    expect(
-      run(
-        [
-          'create',
-          '--payload',
-          payloadPath,
-          '--private-key',
-          privatePath,
-          '--key-id',
-          'station-ecosystem-v1',
-          '--output',
-          manifestPath,
-        ],
-        { STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS: '1' },
-      ).status,
-    ).toBe(0);
-    writeFileSync(
-      join(fakeBin, 'npm'),
-      '#!/bin/sh\ntouch "$PWD/.npm-ci-complete"\n',
-    );
-    writeFileSync(
-      join(fakeBin, 'gh'),
-      '#!/bin/sh\necho gh-must-not-run >&2\nexit 99\n',
-    );
-    writeFileSync(
-      join(fakeBin, 'node'),
-      `#!/bin/sh\nif [ "$1" = -p ]; then printf '24\\n'; exit 0; fi\nexec "${process.execPath}" "$@"\n`,
-    );
-    chmodSync(join(fakeBin, 'npm'), 0o755);
-    chmodSync(join(fakeBin, 'gh'), 0o755);
-    chmodSync(join(fakeBin, 'node'), 0o755);
-    const result = spawnSync('sh', [installer], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        HOME: join(dir, 'home'),
-        PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
-        GH_TOKEN: '',
-        GITHUB_TOKEN: '',
-        STATION_ROOT: '',
-        STATION_HOME: '',
-        STATION_INSTALL_ROOT: '',
-        STATION_BIN_DIR: '',
-        STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
-        STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: pathToFileURL(publicPath).href,
-        STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
-      },
-    });
-    expect(result.status, result.stderr).toBe(0);
-    const installedRelease = realpathSync(
-      join(dir, 'home', '.station', 'installs', 'stable', 'current'),
-    );
-    expect(existsSync(join(installedRelease, '.launched'))).toBe(true);
+      });
+      expect(result.status, result.stderr).toBe(0);
+      const installedRelease = realpathSync(
+        join(dir, 'home', '.station', 'installs', 'stable', 'current'),
+      );
+      expect(existsSync(join(installedRelease, '.launched'))).toBe(true);
 
-    writeFileSync(join(source, 'checksum-mismatch-marker'), 'mutated\n');
-    expect(
-      spawnSync('tar', ['-czf', archive, '-C', join(dir, 'source'), 'station'])
-        .status,
-    ).toBe(0);
-    const rejected = spawnSync('sh', [installer], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        HOME: join(dir, 'other-home'),
-        PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
-        GH_TOKEN: '',
-        GITHUB_TOKEN: '',
-        STATION_ROOT: '',
-        STATION_HOME: '',
-        STATION_INSTALL_ROOT: '',
-        STATION_BIN_DIR: '',
-        STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
-        STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: pathToFileURL(publicPath).href,
-        STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
-      },
-    });
-    expect(rejected.stderr).toContain('release checksum did not match');
-    expect(rejected.status).toBe(1);
-  });
+      writeFileSync(join(source, 'checksum-mismatch-marker'), 'mutated\n');
+      expect(
+        spawnSync('tar', [
+          '-czf',
+          archive,
+          '-C',
+          join(dir, 'source'),
+          'station',
+        ]).status,
+      ).toBe(0);
+      const rejected = spawnSync('sh', [installer], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HOME: join(dir, 'other-home'),
+          PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
+          GH_TOKEN: '',
+          GITHUB_TOKEN: '',
+          STATION_ROOT: '',
+          STATION_HOME: '',
+          STATION_INSTALL_ROOT: '',
+          STATION_BIN_DIR: '',
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
+          STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL:
+            pathToFileURL(publicPath).href,
+          STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+        },
+      });
+      expect(rejected.stderr).toContain('release checksum did not match');
+      expect(rejected.status).toBe(1);
+    },
+  );
 });

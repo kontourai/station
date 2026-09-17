@@ -1,7 +1,13 @@
 /** @vitest-environment jsdom */
 
 import { toWorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -23,13 +29,30 @@ const mocks = vi.hoisted(() => ({
   batch: vi.fn(),
   adoptCommitted: vi.fn(),
   refetchAuthoritative: vi.fn(),
-  queryClient: { setQueryData: vi.fn(), fetchQuery: vi.fn() },
+  queryClient: {
+    setQueryData: vi.fn(),
+    fetchQuery: vi.fn(),
+    getQueryData: vi.fn(),
+  },
   command: vi.fn(),
   stream: 'live' as 'live' | 'terminal',
+  liveGeneration: undefined as string | undefined,
+  documentListener: undefined as
+    | ((document: {
+        kind: 'snapshot' | 'delta';
+        revision: string;
+        text: string;
+      }) => void)
+    | undefined,
 }));
 
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   adoptCommittedProjectTaskRoomDocument: mocks.adoptCommitted,
+  projectTaskRoomQueries: {
+    document: (taskId: string) => ({
+      queryKey: ['task-room-document', taskId],
+    }),
+  },
   refetchAuthoritativeProjectTaskRoomDocument: mocks.refetchAuthoritative,
   useProjectTaskRoomDiscoveryQuery: () => mocks.discovery,
   useProjectTaskRoomDocumentQuery: () => mocks.document,
@@ -50,9 +73,18 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
     taskId: 'task-1',
     discovery: mocks.discovery,
     stream: mocks.stream,
-    live: { panes: [], cursors: [] },
+    live: { panes: [], cursors: [], generation: mocks.liveGeneration },
     command: mocks.command,
     commandPending: false,
+    subscribeDocument: (
+      listener: NonNullable<typeof mocks.documentListener>,
+    ) => {
+      mocks.documentListener = listener;
+      return () => {
+        if (mocks.documentListener === listener)
+          mocks.documentListener = undefined;
+      };
+    },
   }),
 }));
 
@@ -97,6 +129,9 @@ beforeEach(() => {
   mocks.document.isLoading = false;
   mocks.document.isFetching = false;
   mocks.document.isError = false;
+  mocks.queryClient.getQueryData
+    .mockReset()
+    .mockImplementation(() => mocks.document.data);
   mocks.document.refetch.mockReset();
   mocks.document.refetch.mockResolvedValue({ data: undefined });
   mocks.plan.mockReset();
@@ -116,6 +151,8 @@ beforeEach(() => {
   mocks.command.mockReset();
   mocks.command.mockResolvedValue({ kind: 'available' });
   mocks.stream = 'live';
+  mocks.liveGeneration = undefined;
+  mocks.documentListener = undefined;
 });
 
 describe('TaskRoomEditorPane', () => {
@@ -192,6 +229,131 @@ describe('TaskRoomEditorPane', () => {
     unsubscribe();
   });
 
+  test('commits a parsed stream document without waiting for query notification', async () => {
+    const marks: InteractiveWorkspacePerformanceProductMark[] = [];
+    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((event) =>
+      marks.push(event),
+    );
+    render(<TaskRoomEditorPane taskId="task-1" />);
+    await waitFor(() => expect(mocks.documentListener).toBeDefined());
+    marks.splice(0);
+
+    act(() =>
+      mocks.documentListener?.({
+        kind: 'delta',
+        revision: 'revision-stream',
+        text: 'stream applied',
+      }),
+    );
+
+    await waitFor(() =>
+      expect((editor() as HTMLTextAreaElement).value).toBe('stream applied'),
+    );
+    expect(mocks.document.data.revision).toBe('revision-1');
+    const relevant = marks.filter(
+      (event) =>
+        (event.kind === 'task-apply' || event.kind === 'task-commit') &&
+        event.mark.workingRevision === 'revision-stream',
+    );
+    expect(relevant.map((event) => event.kind)).toEqual([
+      'task-apply',
+      'task-commit',
+    ]);
+    unsubscribe();
+  });
+
+  test.each([
+    {
+      label: 'gap',
+      data: { kind: 'gap', floor: 'revision-stream' },
+      isError: false,
+      status: 'The shared document is stale. Resync before editing.',
+    },
+    {
+      label: 'unavailable',
+      data: { kind: 'unavailable' },
+      isError: false,
+      status: 'The shared document is unavailable. Editing is disabled.',
+    },
+    {
+      label: 'failed read',
+      data: {
+        kind: 'snapshot',
+        revision: 'revision-before-failure',
+        text: 'older query text',
+      },
+      isError: true,
+      status:
+        'The shared document could not be loaded. Editing is disabled until a successful resync.',
+    },
+  ])(
+    'keeps stream text visible but revokes edit/save authority after $label query truth',
+    async ({ data, isError, status }) => {
+      const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+      await waitFor(() => expect(mocks.documentListener).toBeDefined());
+      act(() =>
+        mocks.documentListener?.({
+          kind: 'delta',
+          revision: 'revision-stream',
+          text: 'stream applied',
+        }),
+      );
+      await waitFor(() =>
+        expect((editor() as HTMLTextAreaElement).value).toBe('stream applied'),
+      );
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(false);
+
+      mocks.document.data = data as never;
+      mocks.document.isError = isError;
+      rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+
+      expect((editor() as HTMLTextAreaElement).value).toBe('stream applied');
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+      expect(screen.getByText(status)).toBeTruthy();
+      const save = screen.getByRole('button', {
+        name: 'Save shared document',
+      });
+      expect(save.matches(':disabled')).toBe(true);
+      fireEvent.click(save);
+      expect(mocks.plan).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([false, true])(
+    'does not submit an in-flight plan after a document gap (recovered=%s)',
+    async (recovered) => {
+      let finishPlan!: (value: ReturnType<typeof planned>) => void;
+      mocks.plan.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishPlan = resolve;
+          }),
+      );
+      const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+      changeDraft('pending gap draft');
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Save shared document' }),
+      );
+      await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
+      mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
+      rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+      if (recovered) {
+        mocks.document.data = {
+          kind: 'snapshot',
+          revision: 'new',
+          text: 'new truth',
+        };
+        rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+      }
+      await act(async () => {
+        finishPlan(planned());
+      });
+      expect(mocks.batch).not.toHaveBeenCalled();
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(!recovered);
+      expect((editor() as HTMLTextAreaElement).value).toBe('pending gap draft');
+    },
+  );
+
   test('guards browser Back and keeps the draft on cancel before replaying on confirm', async () => {
     navigationStore.navigate('/guard-back-origin');
     navigationStore.navigate('/guard-back-editor');
@@ -263,13 +425,13 @@ describe('TaskRoomEditorPane', () => {
       reason: 'dirty',
     });
 
-    navigationStore.navigate('/activity');
+    navigationStore.navigate('/agents');
     expect(window.location.pathname).toBe('/projects/station');
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     expect(window.location.pathname).toBe('/projects/station');
-    navigationStore.navigate('/activity');
+    navigationStore.navigate('/agents');
     fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
-    await waitFor(() => expect(window.location.pathname).toBe('/activity'));
+    await waitFor(() => expect(window.location.pathname).toBe('/agents'));
   });
 
   test('settles unchanged without submitting and clears dirty state', async () => {
@@ -614,6 +776,52 @@ describe('TaskRoomEditorPane', () => {
     });
   });
 
+  test('reconciles an identical retry when document recovery begins during submission', async () => {
+    let finishRetry!: (value: unknown) => void;
+    mocks.plan.mockResolvedValue(planned());
+    mocks.batch
+      .mockResolvedValueOnce({ kind: 'unavailable' })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishRetry = resolve;
+          }),
+      );
+    mocks.refetchAuthoritative.mockResolvedValue({
+      kind: 'snapshot',
+      revision: 'converged',
+      text: 'concurrent truth',
+    });
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    changeDraft('possibly committed');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save shared document' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Retry identical batch' }),
+    );
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledTimes(2));
+    mocks.document.data = { kind: 'unavailable' } as never;
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    await act(async () =>
+      finishRetry({
+        kind: 'duplicate',
+        revision: 'older',
+        text: 'older receipt text',
+      }),
+    );
+    expect(mocks.refetchAuthoritative).toHaveBeenCalledWith(
+      mocks.queryClient,
+      'task-1',
+    );
+    expect((editor() as HTMLTextAreaElement).value).toBe('concurrent truth');
+    expect(
+      screen.queryByRole('button', { name: 'Retry identical batch' }),
+    ).toBeNull();
+    // A readable response does not itself restore query/stream write authority.
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+  });
+
   test('does not submit a plan that resolves after authorization becomes terminal', async () => {
     let settlePlan: ((value: ReturnType<typeof planned>) => void) | undefined;
     mocks.plan.mockImplementation(
@@ -828,4 +1036,51 @@ describe('TaskRoomEditorPane', () => {
         .matches(':disabled'),
     ).toBe(true);
   });
+
+  test('does not apply a query notification that arrives after stream revocation', async () => {
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    await waitFor(() =>
+      expect((editor() as HTMLTextAreaElement).value).toBe('shared base'),
+    );
+    mocks.stream = 'terminal';
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    mocks.document.data = {
+      kind: 'snapshot',
+      revision: 'revision-after-revocation',
+      text: 'must not apply',
+    };
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+
+    expect((editor() as HTMLTextAreaElement).value).toBe('shared base');
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+  });
+});
+
+test('cursor publication serializes requests, keeps only the latest pending selection, and stops on retirement', async () => {
+  mocks.liveGeneration = 'generation';
+  const completions: Array<(value: unknown) => void> = [];
+  mocks.command.mockImplementation(
+    () => new Promise((resolve) => completions.push(resolve)),
+  );
+  const view = render(<TaskRoomEditorPane taskId="task-1" />);
+  const input = editor();
+  fireEvent.select(input, { target: { selectionStart: 1, selectionEnd: 1 } });
+  fireEvent.select(input, { target: { selectionStart: 2, selectionEnd: 2 } });
+  fireEvent.select(input, { target: { selectionStart: 3, selectionEnd: 3 } });
+  try {
+    expect(mocks.command).toHaveBeenCalledTimes(1);
+    await act(async () => completions.shift()!({ kind: 'available' }));
+    await waitFor(() => expect(mocks.command).toHaveBeenCalledTimes(2));
+    expect(mocks.command.mock.calls[1]![0]).toMatchObject({
+      command: 'cursor',
+      selection: { anchor: 3, focus: 3 },
+    });
+    fireEvent.select(input, { target: { selectionStart: 4, selectionEnd: 4 } });
+    view.unmount();
+    await act(async () => completions.shift()!({ kind: 'available' }));
+    expect(mocks.command).toHaveBeenCalledTimes(2);
+  } finally {
+    view.unmount();
+    for (const complete of completions) complete({ kind: 'available' });
+  }
 });

@@ -25,14 +25,12 @@ export function SessionInventoryEntryPoint({
   isMobile,
   dockMode,
   fullscreen,
-  controlsId,
   onClose,
 }: {
   launch: SessionInventoryLaunch;
   isMobile: boolean;
   dockMode: DockMode;
   fullscreen: boolean;
-  controlsId: string;
   onClose(): void;
 }) {
   const authority = useHostRequestAuthorityScope();
@@ -69,7 +67,13 @@ export function SessionInventoryEntryPoint({
   if (!valid || !sessionId || !scope || preparedKey !== preparationKey)
     return null;
   return (
-    <div id={controlsId}>
+    // #1536 F: this div carried an `id` for the inventory BUTTON's
+    // `aria-controls`. That button is a row of the dock header's More menu now,
+    // and the menu closes before the panel mounts — the two never coexist, so
+    // the relationship it advertised was not observable and the id referenced
+    // nothing. The wrapper stays (it is this portal's single mount point); the
+    // dangling id does not.
+    <div>
       <SessionInventoryHost
         scope={scope}
         projectId={launch.projectId}

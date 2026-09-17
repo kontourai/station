@@ -3,3 +3,5 @@
 Read [the SDK reference](../../docs/reference/sdk.md) for the public tutorial and API surface. Plugins consume stable SDK exports; never import Station app internals. Keep public type and behavior changes documented in the canonical SDK reference rather than duplicating tutorial prose here.
 
 Run focused SDK and affected consumer tests selected by `npm run gate:for`.
+
+When testing cancellation or stream/query races, assert both the canonical cache and the waiting caller's result. Swallowing the rejected promise can hide a caller left in an unresolved state even when the cache is correct. Include a control that keeps cancellation or lost authority observable when no authoritative replacement arrives.

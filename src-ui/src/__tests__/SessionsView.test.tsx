@@ -2,6 +2,8 @@
  * @vitest-environment jsdom
  */
 
+import type { AttachedSessionSourceMetadata } from '@kontourai/station-contracts/provider';
+
 import {
   isSessionLifecycleStateTerminal,
   SESSION_LIFECYCLE_STATES,
@@ -19,6 +21,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import { ATTACHED_SESSION_CONTINUATION_STORAGE_KEY } from '../lib/attached-session-continuation-store';
+
+// The native transport is mocked; positive continuation fixtures explicitly
+// carry the source context that the server now requires before adoption.
+const VERIFIED_ATTACHED_SOURCE: AttachedSessionSourceMetadata = {
+  kind: 'claude-transcript',
+  externalSessionId: 'fixture-native-source',
+  affinity: { kind: 'fixture-home', ref: 'sessions-view-fixture' },
+};
 
 const sendTurn = vi.fn().mockResolvedValue(undefined);
 const resolveRequest = vi.fn().mockResolvedValue(undefined);
@@ -44,6 +54,9 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+// Every config this render passed to the sessions query, so the list's own
+// refresh cadence can be read from the query rather than inferred.
+const orchestrationSessionsQueryConfig = vi.hoisted(() => [] as unknown[]);
 let pairedDevices: Array<Record<string, unknown>> = [];
 let sessionsQueryError: Error | null = null;
 let feedEvents: Array<Record<string, unknown>> = [];
@@ -71,6 +84,14 @@ let workflowTasksByProject: Record<
     flowRun?: { current_step: string; open_gate_ids: string[] };
   }>
 > = {};
+
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
 
 vi.mock('../contexts/ToastContext', () => ({
   ToastProvider: ({ children }: { children: unknown }) => children,
@@ -118,15 +139,24 @@ vi.mock('@kontourai/station-sdk', () => ({
   createAdoptOrchestrationSessionIntent: () => adoptionIntent,
   getStarterWork: (starterId: string, apiBase?: string) =>
     getStarterWork(starterId, apiBase),
-  useProjectQuery: () => ({ data: undefined }),
+  // Delegation waits for this Project's authoritative routing defaults.
+  useProjectQuery: (slug: string) => ({
+    data: slug === 'station' ? { slug, name: 'Station' } : undefined,
+    isSuccess: slug === 'station',
+    isError: false,
+    refetch: vi.fn(),
+  }),
   // The open-chats refactor (archive#2683) renders shared membership metadata.
   useAgentsQuery: () => ({ data: [], isLoading: false }),
-  useOrchestrationSessionsQuery: () => ({
-    data: sessions,
-    isLoading: false,
-    error: sessionsQueryError,
-    refetch: refetchSessions,
-  }),
+  useOrchestrationSessionsQuery: (config?: unknown) => {
+    orchestrationSessionsQueryConfig.push(config);
+    return {
+      data: sessions,
+      isLoading: false,
+      error: sessionsQueryError,
+      refetch: refetchSessions,
+    };
+  },
   usePairedDevicesQuery,
   usePullRequestContextQuery: () => ({ data: { available: false } }),
   usePullRequestsQuery: () => ({ data: undefined }),
@@ -240,26 +270,52 @@ vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
 
 import { SessionsView } from '../views/SessionsView';
 
-function renderView(sessionId?: string, focusHint?: 'evidence') {
+function renderView(
+  sessionId?: string,
+  focusHint?: 'evidence',
+  intentToken?: number,
+  onFocusConsumed?: () => void,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const view = (nextSessionId?: string, nextFocusHint?: 'evidence') => (
+  const view = (
+    nextSessionId?: string,
+    nextFocusHint?: 'evidence',
+    nextIntentToken?: number,
+    nextOnFocusConsumed?: () => void,
+  ) => (
     <QueryClientProvider client={client}>
       <NavigationProvider>
         <SessionsView
           apiBase="http://test.local"
           sessionId={nextSessionId}
           focusHint={nextFocusHint}
+          intentToken={nextIntentToken}
+          onFocusConsumed={nextOnFocusConsumed}
         />
       </NavigationProvider>
     </QueryClientProvider>
   );
-  const rendered = render(view(sessionId, focusHint));
+  const rendered = render(
+    view(sessionId, focusHint, intentToken, onFocusConsumed),
+  );
   return {
     ...rendered,
-    rerenderSession: (nextSessionId?: string, nextFocusHint?: 'evidence') =>
-      rendered.rerender(view(nextSessionId, nextFocusHint)),
+    rerenderSession: (
+      nextSessionId?: string,
+      nextFocusHint?: 'evidence',
+      nextIntentToken?: number,
+      nextOnFocusConsumed?: () => void,
+    ) =>
+      rendered.rerender(
+        view(
+          nextSessionId,
+          nextFocusHint,
+          nextIntentToken,
+          nextOnFocusConsumed,
+        ),
+      ),
   };
 }
 
@@ -787,7 +843,7 @@ describe('SessionsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
     fireEvent.click(
-      screen.getByRole('button', { name: 'Load earlier events' }),
+      screen.getByRole('button', { name: 'Show older messages' }),
     );
 
     expect(loadOlder).toHaveBeenCalledOnce();
@@ -797,7 +853,7 @@ describe('SessionsView', () => {
     // browser chrome in a fully themed transcript (archive#3150). Pin the
     // shared treatment: a class name that matches no stylesheet is worse than
     // none, because it tells the next reader the styling is handled.
-    const more = screen.getByRole('button', { name: 'Load earlier events' });
+    const more = screen.getByRole('button', { name: 'Show older messages' });
     expect(more.className).toContain('button--secondary');
     expect(screen.getByRole('alert').textContent).toBe(
       'Update Station to view this session history.',
@@ -851,7 +907,7 @@ describe('SessionsView', () => {
     const elided = renderView();
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
     expect(screen.getByTestId('session-history-elided').textContent).toBe(
-      '1 earlier item is shown without its content, and 1 tool result is shortened — too large to load in full here. The session still holds the complete content.',
+      '1 recorded event has omitted content, and 1 tool result is shortened in this view. The session record retains the full details.',
     );
     elided.unmount();
 
@@ -878,6 +934,7 @@ describe('SessionsView', () => {
     sessions[0] = {
       ...sessions[0],
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
     };
     historyState = {
       hasMore: true,
@@ -891,12 +948,12 @@ describe('SessionsView', () => {
 
     const notice = screen.getByTestId('session-history-elided');
     expect(notice.textContent).toContain(
-      '1 earlier item is shown without its content',
+      '1 recorded event has omitted content',
     );
     // It shares its row with the pagination button, which is what
     // `.session-history-controls`' wrap/gap exists for.
     expect(
-      screen.getByRole('button', { name: 'Load earlier events' }),
+      screen.getByRole('button', { name: 'Show older messages' }),
     ).toBeTruthy();
     expect(notice.parentElement?.className).toContain(
       'session-history-controls',
@@ -1059,9 +1116,9 @@ describe('SessionsView', () => {
     renderView();
 
     const starter = screen.getByTestId('delegated-task-starter');
-    expect(starter.textContent).toContain('Start a resumable worker');
+    expect(starter.textContent).toContain('Ask an AI app to work on something');
     fireEvent.click(
-      within(starter).getByRole('button', { name: 'Delegate worker' }),
+      within(starter).getByRole('button', { name: 'Start a task' }),
     );
 
     expect(
@@ -1106,7 +1163,7 @@ describe('SessionsView', () => {
     function openLauncher() {
       const starter = screen.getByTestId('delegated-task-starter');
       const trigger = within(starter).getByRole('button', {
-        name: 'Delegate worker',
+        name: 'Start a task',
       });
       trigger.focus();
       fireEvent.click(trigger);
@@ -1668,7 +1725,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -1706,7 +1763,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -1745,7 +1802,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -1788,7 +1845,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -2033,7 +2090,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -2090,7 +2147,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -2139,6 +2196,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:ambiguous-1',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
       projectSlug: undefined,
       projectAttribution: { state: 'ambiguous', candidates: ['alpha', 'beta'] },
@@ -2180,6 +2238,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-1',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     feedEvents = [
@@ -2218,7 +2277,7 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(
-      within(detail).getByText('Following terminal session · Read only'),
+      within(detail).getByText('Started in Claude Code · Read only'),
     ).toBeTruthy();
     expect(within(detail).getByText('Inspect the workspace')).toBeTruthy();
     expect(within(detail).getByText('The workspace is ready.')).toBeTruthy();
@@ -2234,6 +2293,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-1',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     adoptSession.mockImplementation(async () => {
@@ -2280,6 +2340,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:response-loss',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const child = {
@@ -2314,6 +2375,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:later-continuation',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     getStarterWork.mockResolvedValueOnce({ state: 'bound', binding: {} });
@@ -2339,6 +2401,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:corrupt-continuation',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     window.localStorage.setItem(
@@ -2366,6 +2429,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:unsafe-retry',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     launchContinueSessionStarter.mockResolvedValueOnce({
@@ -2407,6 +2471,7 @@ describe('SessionsView', () => {
       threadId: 'external:claude:unsafe-first',
       displayTitle: 'Attached A',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const second = {
@@ -2414,6 +2479,7 @@ describe('SessionsView', () => {
       threadId: 'external:claude:safe-second',
       displayTitle: 'Attached B',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     sessions = [first, second];
@@ -2461,6 +2527,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:cleanup-failure',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     let lockRequests = 0;
@@ -2510,6 +2577,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:status-loss',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const child = {
@@ -2556,7 +2624,7 @@ describe('SessionsView', () => {
       within(detail).queryByRole('button', { name: 'Continue in Station' }),
     ).toBeNull();
     expect(
-      within(detail).queryByText('Following terminal session · Read only'),
+      within(detail).queryByText('Started in Claude Code · Read only'),
     ).toBeNull();
   });
 
@@ -2570,6 +2638,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-mobile',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const pendingRefetch = deferred<void>();
@@ -2610,6 +2679,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-pending',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const child = {
@@ -2649,6 +2719,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-mobile',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const sibling = {
@@ -2700,6 +2771,7 @@ describe('SessionsView', () => {
       ...sessions[0],
       threadId: 'external:claude:terminal-mobile',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       delegation: undefined,
     };
     const sibling = {
@@ -2740,7 +2812,7 @@ describe('SessionsView', () => {
     });
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByPlaceholderText('Search sessions…'), {
+    fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
       target: { value: 'station' },
     });
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -2964,7 +3036,7 @@ describe('SessionsView', () => {
         createdAt: '2026-06-28T00:00:02.000Z',
         updatedAt: '2026-06-28T00:00:02.000Z',
         sessionId: 'thread-alpha',
-        openHref: '/activity?session=thread-alpha',
+        openHref: '/?surface=activity&session=thread-alpha',
         source: { threadId: 'thread-alpha' },
       },
     ];
@@ -3148,7 +3220,7 @@ describe('SessionsView', () => {
           createdAt: '2026-06-28T00:00:02.000Z',
           updatedAt: '2026-06-28T00:00:02.000Z',
           sessionId: 'thread-alpha',
-          openHref: '/activity?session=thread-alpha',
+          openHref: '/?surface=activity&session=thread-alpha',
           source: {
             notificationId: 'notif-1',
             notificationSource: 'approval-inbox',
@@ -3208,6 +3280,7 @@ describe('SessionsView', () => {
         status: 'idle',
         lifecycleState: 'completed',
         controlMode: 'read-only-attached',
+        attachedSource: VERIFIED_ATTACHED_SOURCE,
         answerability: { answerable: false },
         isLoaded: true,
         isPersisted: true,
@@ -3239,7 +3312,7 @@ describe('SessionsView', () => {
     }
 
     function search(query: string) {
-      fireEvent.change(screen.getByPlaceholderText('Search sessions…'), {
+      fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
         target: { value: query },
       });
     }
@@ -3287,7 +3360,7 @@ describe('SessionsView', () => {
       expect(headings).toEqual([]);
       expect(sectionHeadings(container)).toEqual([
         'Delegated/background work · 2',
-        'Operator sessions · 1',
+        'Conversations · 1',
       ]);
     });
 
@@ -3437,7 +3510,7 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       // Every fixture is `completed` and hours old: one lane, one heading.
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
       expect(listRows(container)).toHaveLength(4);
       expect(rowNames(container)).toEqual([
         'Beta two',
@@ -3458,6 +3531,7 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'earlier-1',
           displayTitle: 'Long finished',
+          controlMode: 'station-owned',
           createdAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
           updatedAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
         }),
@@ -3472,6 +3546,7 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'just-done-1',
           displayTitle: 'Finished a moment ago',
+          controlMode: 'station-owned',
           updatedAt: new Date(Date.now() - 90_000).toISOString(),
         }),
         attachedSession({
@@ -3487,7 +3562,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
       expect(rowNames(container)).toEqual([
         'Waiting on a decision',
         'Also waiting on you',
@@ -3559,12 +3634,14 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'canceled',
           displayTitle: 'Canceled run',
+          controlMode: 'station-owned',
           lifecycleState: 'canceled',
           updatedAt: new Date(Date.now() - 70_000).toISOString(),
         }),
         attachedSession({
           threadId: 'long-failed',
           displayTitle: 'Failed yesterday',
+          controlMode: 'station-owned',
           lifecycleState: 'failed',
           createdAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
           updatedAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
@@ -3597,7 +3674,7 @@ describe('SessionsView', () => {
       // over a short or single-lane render would pass while checking nothing.
       expect(rendered).toHaveLength(6);
       expect(new Set(rendered.map((entry) => entry.heading))).toEqual(
-        new Set(['Operator sessions']),
+        new Set(['Conversations']),
       );
 
       // The four A1 shapes, by the word each used to print.
@@ -3692,7 +3769,7 @@ describe('SessionsView', () => {
       fireEvent.click(alphaPill);
 
       expect(rowNames(container)).toEqual(['Alpha work']);
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 1']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 1']);
       const clear = screen.getByRole('button', {
         name: 'Clear the alpha project filter',
       });
@@ -3922,8 +3999,8 @@ describe('SessionsView', () => {
   /**
    * archive#4052: a session row that has ENDED is one activation from
    * the evidence behind its outcome. The control rides the existing
-   * `/activity?session=<id>` deep-link path plus the one-shot
-   * `focus=evidence` route intent the session detail honors exactly once.
+   * local Activity selection path plus the one-shot evidence intent the
+   * session detail honors exactly once.
    */
   describe('evidence affordance (station#4052 slice 3)', () => {
     function flatSession(
@@ -3940,7 +4017,10 @@ describe('SessionsView', () => {
     }
 
     beforeEach(() => {
-      window.history.replaceState({}, '', '/activity');
+      // #928: the surface is reached through its canonical deep link now.
+      // The URL matters here only because the assertions below prove a local
+      // activation does not touch it.
+      window.history.replaceState({}, '', '/?surface=activity');
     });
 
     afterEach(() => {
@@ -3979,6 +4059,7 @@ describe('SessionsView', () => {
           threadId: 'attached-done',
           displayTitle: 'Attached transcript',
           controlMode: 'read-only-attached',
+          attachedSource: VERIFIED_ATTACHED_SOURCE,
           answerability: { answerable: false },
         }),
       ];
@@ -4044,7 +4125,7 @@ describe('SessionsView', () => {
       ).toBeNull();
     });
 
-    test('activation rides the session deep link with the one-shot focus hint, which is honored then cleared', async () => {
+    test('activation selects locally and focuses evidence without changing the route', async () => {
       sessions = [flatSession({})];
       const view = renderView();
 
@@ -4052,29 +4133,22 @@ describe('SessionsView', () => {
         screen.getByRole('button', { name: 'Evidence for Completed work' }),
       );
 
-      // The control navigated the same working deep-link path every other
-      // surface uses, plus the one-shot focus intent…
-      expect(window.location.pathname).toBe('/activity');
-      expect(window.location.search).toBe('?session=done&focus=evidence');
-
-      // …which the route plumbing hands back as props
-      // (`AppViewContent`: `sessionId={view.sessionId} focusHint={view.focus}`).
-      view.rerenderSession('done', 'evidence');
+      expect(window.location.pathname).toBe('/');
+      expect(window.location.search).toBe('?surface=activity');
 
       expect(screen.getByTestId('session-detail')).toBeTruthy();
       const region = screen.getByTestId('session-evidence-region');
       await waitFor(() => expect(document.activeElement).toBe(region));
-      // Consumed one-shot: the focus param is cleared after admission (the
-      // `openFilePreviewIntent` idiom), so a stale hint can never re-fire on
-      // the next same-path navigation.
-      expect(window.location.search).toBe('?session=done');
+      // A local activation is not a routed intent: the surface reports
+      // nothing upward and writes nothing to the URL.
+      expect(window.location.search).toBe('?surface=activity');
 
       // A later render with the routed props unchanged must not drag the
       // reader back to the region they have since left.
       screen
         .getByRole('button', { name: 'Evidence for Completed work' })
         .focus();
-      view.rerenderSession('done', 'evidence');
+      view.rerenderSession();
       expect(document.activeElement).not.toBe(region);
     });
 
@@ -4136,7 +4210,7 @@ describe('SessionsView', () => {
       );
     });
 
-    test('the Evidence control is keyboard-operable', () => {
+    test('the Evidence control is keyboard-operable', async () => {
       sessions = [flatSession({})];
       renderView();
 
@@ -4154,7 +4228,111 @@ describe('SessionsView', () => {
       control.focus();
       expect(document.activeElement).toBe(control);
       fireEvent.click(document.activeElement as HTMLElement);
-      expect(window.location.search).toBe('?session=done&focus=evidence');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByTestId('session-evidence-region'),
+        ),
+      );
+      // The activation is local: the URL this surface was reached by is left
+      // exactly as it was.
+      expect(window.location.search).toBe('?surface=activity');
+    });
+
+    // `armEvidenceReveal` reports the ROUTED focus consumed, so it must fire
+    // `onFocusConsumed` only for the routed session. A local activation on
+    // another row is that row's own reveal: reporting it would clear a routed
+    // `focus=evidence` that was never delivered, and the intent's own session
+    // would then land without its evidence region.
+    //
+    // #928 retired the sibling of this test ("the standalone route keeps a
+    // routed focus another row did not consume"). It drove the branch where
+    // no `onFocusConsumed` is supplied and the surface cleared `focus` from
+    // the URL itself — the standalone `/activity` placement's way of
+    // consuming its own routed param. No placement produces that shape now:
+    // the region shell always supplies the callback, and the Developer
+    // archive embed supplies no `sessionId`, so it returns before reaching
+    // it. The behaviour that mattered — a routed focus another row did not
+    // consume stays pending — is what the test below asserts, through the
+    // callback that a real placement actually passes.
+    test('activating Evidence on another row does not report the routed focus consumed', async () => {
+      sessions = [
+        flatSession({ threadId: 'other', displayTitle: 'Other work' }),
+      ];
+      const onFocusConsumed = vi.fn();
+      // The routed session is not in the list, so its focus is still pending.
+      renderView('done', 'evidence', 1, onFocusConsumed);
+      expect(onFocusConsumed).not.toHaveBeenCalled();
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Evidence for Other work' }),
+      );
+
+      // The click really did arm a reveal — for `other`, not for `done`.
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByTestId('session-evidence-region'),
+        ),
+      );
+      expect(onFocusConsumed).not.toHaveBeenCalled();
+    });
+
+    test('a new intent token re-fires the same mounted session and focus intent', async () => {
+      sessions = [flatSession({})];
+      const onFocusConsumed = vi.fn();
+      const view = renderView('done', 'evidence', 1, onFocusConsumed);
+
+      const evidenceRegion = await screen.findByTestId(
+        'session-evidence-region',
+      );
+      await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
+      expect(onFocusConsumed).toHaveBeenCalledTimes(1);
+      const evidenceButton = screen.getByRole('button', {
+        name: 'Evidence for Completed work',
+      });
+      evidenceButton.focus();
+      // the region host clears the consumed focus from the intent it holds
+      // (`ActivityRegionShell`) under the same token: no second reveal
+      view.rerenderSession('done', undefined, 1, onFocusConsumed);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(evidenceButton);
+      expect(onFocusConsumed).toHaveBeenCalledTimes(1);
+
+      view.rerenderSession('done', 'evidence', 2, onFocusConsumed);
+
+      await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
+      expect(onFocusConsumed).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * The list is kept fresh by polling because the SSE feed is per-session.
+     * That poll belongs to the query: the interval this replaced called
+     * `refetch()` on the same cache entry from a second scheduler, so it kept
+     * firing in every state React Query pauses a `refetchInterval` for.
+     */
+    test('polls the sessions list through the query, not an interval beside it', () => {
+      orchestrationSessionsQueryConfig.length = 0;
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      try {
+        renderView();
+
+        expect(orchestrationSessionsQueryConfig.length).toBeGreaterThan(0);
+        expect(orchestrationSessionsQueryConfig[0]).toMatchObject({
+          refetchInterval: 5000,
+        });
+        // Some five-second timers in this tree belong to React Query's own
+        // `refetchInterval` machinery, so their presence proves nothing. What
+        // the removed interval did was call the list query's `refetch()`, so
+        // fire every five-second timer and assert none of them does.
+        refetchSessions.mockClear();
+        for (const [handler] of setIntervalSpy.mock.calls.filter(
+          ([, delay]) => delay === 5000,
+        )) {
+          (handler as () => void)();
+        }
+        expect(refetchSessions).not.toHaveBeenCalled();
+      } finally {
+        setIntervalSpy.mockRestore();
+      }
     });
   });
 });
@@ -4184,6 +4362,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
       status: 'idle',
       lifecycleState: 'completed',
       controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
       answerability: { answerable: false },
       isLoaded: true,
       isPersisted: true,
@@ -4217,7 +4396,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
     expect(
-      screen.getByText('Agent sessions appear here as they run on this host.'),
+      screen.getByText('Your conversations and tasks will appear here.'),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);
   });
@@ -4240,15 +4419,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
       Array.from(container.querySelectorAll('.split-pane__section-header')).map(
         (node) => node.textContent,
       ),
-    ).toEqual(['Delegated/background work · 1', 'Operator sessions · 1']);
+    ).toEqual(['Delegated/background work · 1', 'Conversations · 1']);
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
-  test('groups by the current paired-device name, relabels on rename, and keeps an empty device', () => {
-    pairedDevices = [
-      { id: 'phone-1', name: 'Brian’s Pixel' },
-      { id: 'tablet-1', name: 'Travel tablet' },
-    ];
+  test('groups by recorded client without reading the operator-only device registry', () => {
+    usePairedDevicesQuery.mockClear();
     sessions = [
       activitySession({
         displayTitle: 'Phone-started review',
@@ -4262,57 +4438,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
         },
       }),
     ];
-    const rendered = renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-
-    expect(screen.getByText('Brian’s Pixel')).toBeTruthy();
-    expect(screen.getByText('Travel tablet')).toBeTruthy();
-    expect(
-      screen
-        .getByText('Travel tablet')
-        .classList.contains('split-pane__section-header--empty'),
-    ).toBe(true);
-
-    pairedDevices = [
-      { id: 'phone-1', name: 'Renamed phone' },
-      { id: 'tablet-1', name: 'Travel tablet' },
-    ];
-    rendered.rerenderSession();
-    expect(screen.getByText('Renamed phone')).toBeTruthy();
-    expect(screen.queryByText('Brian’s Pixel')).toBeNull();
-  });
-
-  test('reads the operator-only device inventory only while the origin axis is shown', () => {
-    // /api/pairing/devices answers 401 to a paired device's own session, and
-    // the fresh-home walkthrough counts every refused request on /activity.
-    // The inventory only names origin groups, so it must not be fetched on
-    // the default task axis at all.
-    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
-    usePairedDevicesQuery.mockClear();
     renderView();
-    const enabledCalls = () =>
-      usePairedDevicesQuery.mock.calls.map(
-        (call) => (call[1] as { enabled?: boolean } | undefined)?.enabled,
-      );
-    expect(enabledCalls().length).toBeGreaterThan(0);
-    expect(enabledCalls().every((enabled) => enabled === false)).toBe(true);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-    expect(enabledCalls().at(-1)).toBe(true);
-    expect(screen.getByText('Idle phone')).toBeTruthy();
-
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
+    expect(screen.getByText('Paired device · Mobile app')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'By task' }));
-    expect(enabledCalls().at(-1)).toBe(false);
-  });
-
-  test('renders the paired-device inventory when no sessions exist', () => {
-    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
-    sessions = [];
-    renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-
-    expect(screen.getByText('Idle phone')).toBeTruthy();
-    expect(screen.queryByText('Nothing has run yet')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
+    expect(usePairedDevicesQuery).not.toHaveBeenCalled();
   });
 
   test('keeps an unrecorded origin out of device groups and discloses mixed origins on the row', () => {
@@ -4333,12 +4464,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
       }),
     ];
     const { container } = renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
 
-    expect(screen.getByText('Origin not recorded')).toBeTruthy();
-    const deviceHeading = screen.getByText('Brian’s Pixel');
     expect(
-      deviceHeading.classList.contains('split-pane__section-header--empty'),
+      Array.from(
+        container.querySelectorAll('.split-pane__section-header'),
+      ).some((node) => node.textContent === 'Started in Claude Code'),
     ).toBe(true);
     expect(container.textContent).toContain('No provenance session');
     expect(screen.getByText('Also driven from another origin')).toBeTruthy();
@@ -4353,9 +4484,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
     fireEvent.keyDown(taskTab, { key: 'ArrowRight' });
 
     expect(
-      screen
-        .getByRole('tab', { name: 'By origin' })
-        .getAttribute('aria-selected'),
+      screen.getByRole('tab', { name: 'By app' }).getAttribute('aria-selected'),
     ).toBe('true');
     expect(screen.getByTestId('session-detail')).toBeTruthy();
   });

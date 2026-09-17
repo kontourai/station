@@ -42,3 +42,17 @@ export function isCleartextNonLoopback(url: string): boolean {
     return false;
   }
 }
+
+/** Exact device-approved HTTP origin; absence always keeps HTTPS required. */
+export function httpDevelopmentOrigin(address: string): string | undefined {
+  if (!isCleartextNonLoopback(address)) return undefined;
+  try {
+    const origin = new URL(address).origin;
+    return localStorage.getItem(`station-http-development:${origin}`) ===
+      'allowed'
+      ? origin
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

@@ -1,10 +1,9 @@
 import {
-  modelDisplayLabel,
-  resolvedModelLabel,
+  modelIdentityLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
 
-export interface WorkingDirectoryParts {
+interface WorkingDirectoryParts {
   parentPath: string;
   leafName: string;
   hasWorkingDirectory: boolean;
@@ -48,6 +47,38 @@ export function shouldOpenDockForFirstRun(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * What the first-run nudge should do this render (#2151). Pure, so the
+ * decision is testable without mounting the dock; `ChatDock` applies it.
+ *
+ * - `wait`: the inbox read is still pending. Nothing is consumed -- the
+ *   one-shot flag stays unset so a slow first fetch still nudges once it
+ *   settles.
+ * - `skip`: the nudge has already happened, this is a fullscreen placement,
+ *   or the read failed. A failed read leaves the dock where it is rather
+ *   than guessing.
+ * - `settle`: the inbox is known and EMPTY. The flag is consumed and the
+ *   dock is left collapsed -- opening it spent a third of the screen on two
+ *   empties side by side, and the collapsed bar keeps the entry point.
+ * - `open`: the inbox is known and holds something. The flag is consumed
+ *   and the dock opens.
+ *
+ * This only ever moves the dock TOWARD open: a dock the user opened
+ * (`dock=open`) is never closed here.
+ */
+export function firstRunDockNudge(input: {
+  isFullscreenPlacement: boolean;
+  sessionsStatus: 'pending' | 'success' | 'error';
+  sessionCount: number;
+  firstRunPending: boolean;
+}): 'wait' | 'skip' | 'settle' | 'open' {
+  if (input.isFullscreenPlacement) return 'skip';
+  if (input.sessionsStatus === 'pending') return 'wait';
+  if (!input.firstRunPending) return 'skip';
+  if (input.sessionsStatus !== 'success') return 'skip';
+  return input.sessionCount > 0 ? 'open' : 'settle';
 }
 
 export function markDockFirstRunSeen(): void {
@@ -154,50 +185,23 @@ export function effectiveChatModelId(input: {
  * What to CALL the model a chat is running, for a surface that names it
  * alongside the composer (station#3309).
  *
- * Not a third derivation: it is the composer's own two questions in the
- * composer's own order. `resolvedModelLabel` first, so an alias the engine has
- * resolved renders as the concrete model it resolved to (#1012) rather than as
- * "Default (recommended)"; a catalog-backed name otherwise (station#3391).
- * Asking only the second one is what made the dock header and the composer
- * pill disagree about one chat, live.
- *
- * The fallbacks are not byte-identical, deliberately. The composer's is
- * `effectiveModelInfo?.name || effectiveModelId`, which prints a raw id when
- * the catalog has no entry; this uses `modelDisplayLabel`, which prettifies it
- * ('claude-opus-5[1m]' -> 'Opus 5 (1M)'). For an uncatalogued model the pill
- * and this row therefore render the same model under two spellings. That is a
- * cosmetic difference between a control that must round-trip a selectable id
- * and a row that only has to name something, not the two-answers-for-one-fact
- * problem above — a compact identity row showing a raw id is the defect
- * `modelDisplayLabel` was written to end.
- *
- * `null` when no model id was reported — the caller shows nothing rather than
- * `modelDisplayLabel`'s "Model not reported", which is a claim about the
- * SESSION and not something a compact identity row is entitled to make.
+ * Not a second derivation: `modelIdentityLabel` is the one rule, shared with
+ * the composer chip, Home, the sidebar rows and the transcript's provenance
+ * strip (#1536 B5). This adds only the `null` contract — no model id reported
+ * means the caller shows nothing, rather than "Model not reported", which is a
+ * claim about the SESSION and not something a compact identity row is entitled
+ * to make.
  */
 export function chatModelLabel(
   modelId: string | undefined,
   models: SelectableModel[],
 ): string | null {
   if (!modelId) return null;
-  const entry = models.find((model) => model.id === modelId);
-  return (
-    resolvedModelLabel(entry, models) ?? modelDisplayLabel(modelId, models)
-  );
-}
-
-/**
- * Whether the mobile task-switcher sheet can mount in this chrome — the other
- * half of the same question `inboxPanelMounts` answers for desktop. Named so
- * the routing guarantee can be DERIVED for both surfaces instead of one being
- * asserted in a test comment.
- */
-export function mobileTaskSwitcherMounts({ isMobile }: DockChrome): boolean {
-  return isMobile;
+  return modelIdentityLabel(modelId, models);
 }
 
 /** The minimal shape every project-name lookup below needs. */
-export interface ProjectNameLookup {
+interface ProjectNameLookup {
   slug: string;
   name: string;
 }
@@ -275,6 +279,16 @@ export function resolveDockBadgeProjectName(
  * lead-in label the facts row shows in that case (e.g. "ProjectB ·
  * ~/dev/foo"); `null` on a genuine match, so the row renders exactly as it
  * did before this fix.
+ *
+ * WHAT #1536 G6 CHANGED, and what it did not: the ruling above stands for the
+ * git and layout-link facts, and for the directory whenever a session has
+ * one. `resolveDockProjectContextDirectory` adds one step BELOW those — the
+ * bound project's own directory — reached only when no session reports one,
+ * and refused outright when the session on screen belongs to a different
+ * project. So the ruling's subject (never substituting the badge's facts for
+ * the visible session's) is intact; the case it did not face is "no session at
+ * all", where the row used to print "Home folder" beside a project whose
+ * directory is set.
  */
 export function resolveSessionProjectMismatchLabel(
   input: Omit<DockProjectNameInput, 'projects'>,
@@ -283,6 +297,64 @@ export function resolveSessionProjectMismatchLabel(
   if (!input.sessionProjectSlug) return null;
   if (input.sessionProjectSlug === input.dockProjectSlug) return null;
   return input.sessionProjectName || input.sessionProjectSlug;
+}
+
+/**
+ * The directory the dock header names — one derivation, so the badge and the
+ * path beside it can never describe different projects.
+ *
+ * #1536 G6: with the dock collapsed and nothing open, there is no session to
+ * report on, so `sessionDisplayCwd` is null and the row printed "Home folder"
+ * — beside a badge naming a project whose working directory IS set, and whose
+ * real path the expanded header showed. The name came from the dock's own
+ * persistent binding and the directory from a session that did not exist.
+ *
+ * The order, and why each step stops where it does:
+ *
+ * 1. A project chat-SCOPE filter shows no session-specific facts at all. That
+ *    predates this and is unchanged.
+ * 2. The session's own resolved directory — the truth about the chat on
+ *    screen, whatever it is (`useChatDockViewModel`'s `sessionDisplayCwd`
+ *    documents its own two steps).
+ * 3. The BOUND project's working directory, but only when the session cannot
+ *    contradict it: either there is no session, or its project is that same
+ *    bound project. A session belonging to project B must never be captioned
+ *    with project A's directory — that is the station#1146 class of lie, and
+ *    substituting the badge's path for a foreign session's would reintroduce
+ *    it facing the other way.
+ *
+ *    #1536 L4: an UNBOUND session (`sessionProjectSlug` undefined) in a
+ *    project-bound dock reaches this step, deliberately, and is the one case
+ *    where the two readings of `undefined` — "no session" and "a session with
+ *    no project" — are answered the same way. That matches the precedent this
+ *    step extends: `useChatDockViewModel`'s `sessionDisplayCwd` step 2 already
+ *    falls back to the project's `workingDirectory` for a chat that has not
+ *    started one, and a projectless chat in a bound dock is not a claim about
+ *    a DIFFERENT project's directory — it is a chat with nothing of its own to
+ *    report, which is what the fallback is for. `resolveSessionProjectMismatchLabel`
+ *    agrees (it returns null for an unbound session, so the row shows no
+ *    divergence lead-in). If those two ever need to diverge, this input needs a
+ *    third state rather than a sharper reading of `undefined`.
+ * 4. Nothing known. `ChatDockProjectContext` then says "Home folder", which is
+ *    a true statement about what an unbound chat gets.
+ */
+export function resolveDockProjectContextDirectory(input: {
+  scopedProjectSlug: string | null | undefined;
+  /** `useChatDockViewModel`'s session-first directory, already resolved. */
+  sessionDisplayCwd: string | null;
+  sessionProjectSlug: string | undefined;
+  dockProjectSlug: string | null | undefined;
+  dockProjectWorkingDirectory: string | null | undefined;
+}): string | null {
+  if (input.scopedProjectSlug) return null;
+  if (input.sessionDisplayCwd) return input.sessionDisplayCwd;
+  if (
+    input.sessionProjectSlug !== undefined &&
+    input.sessionProjectSlug !== input.dockProjectSlug
+  ) {
+    return null;
+  }
+  return input.dockProjectWorkingDirectory ?? null;
 }
 
 /**
@@ -307,17 +379,7 @@ export function resolveDirectNewChatProjectSlug(input: {
   return input.dockChromeProjectSlug ?? undefined;
 }
 
-/**
- * station#4525 review MED-3 (design ruling): the New Chat modal's own
- * project-selection step defaults to the dock's shell-owned binding when
- * one is set (the owner's persistent-context design) — but for a user who
- * has never bound one, this restores the PRE-station#4525 behavior
- * (`useActiveProject`, the route-level "project I am currently viewing")
- * rather than leaving the picker unbound. A fork confirmation always wins
- * outright (its own explicit source project, not a default at all — see
- * `resolveDockBadgeProjectName`'s sibling note on why a fork never syncs
- * the ambient binding either, station#4525 review LOW-1).
- */
+/** New chat follows the project shown in its dock; an explicit fork wins. */
 export function resolveNewChatModalDefaultProjectSlug(input: {
   forkProjectSlug: string | undefined;
   hasImmutableProjectScope: boolean;
@@ -327,12 +389,10 @@ export function resolveNewChatModalDefaultProjectSlug(input: {
 }): string | undefined {
   if (input.forkProjectSlug) return input.forkProjectSlug;
   if (input.hasImmutableProjectScope) return input.immutableProjectSlug;
-  return (
-    input.dockChromeProjectSlug ?? input.routeActiveProjectSlug ?? undefined
-  );
+  return input.dockChromeProjectSlug ?? undefined;
 }
 
-export type OpenChatsCollectionRoute =
+type OpenChatsCollectionRoute =
   | { surface: 'task-switcher-sheet' }
   | {
       surface: 'inbox-panel';

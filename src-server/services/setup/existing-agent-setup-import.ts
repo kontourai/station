@@ -53,7 +53,7 @@ const SOURCE_ID = 'codex-prompts';
 const STORE_SCHEMA_VERSION = 1;
 const SOURCE_ADAPTER_VERSION = 2;
 
-export type SetupImportErrorCode =
+type SetupImportErrorCode =
   | 'INVALID_SOURCE'
   | 'SOURCE_UNAVAILABLE'
   | 'SOURCE_CHANGED'
@@ -425,7 +425,7 @@ export type SetupImportPreview = Omit<
   warnings: string[];
 };
 
-export type SetupImportPublicItem = {
+type SetupImportPublicItem = {
   /** Source-relative reviewed identity; never a filesystem path. */
   sourceId: string;
   reviewedTarget?: string;
@@ -438,7 +438,7 @@ export type SetupImportPublicItem = {
   rollback: { state: RollbackState; retryable: boolean };
 };
 
-export type SetupImportPublicReceipt = {
+type SetupImportPublicReceipt = {
   id: string;
   createdAt: string;
   previewId: string;
@@ -447,11 +447,11 @@ export type SetupImportPublicReceipt = {
   rolledBackAt?: string;
 };
 
-export interface SetupImportApplyInput {
+interface SetupImportApplyInput {
   previewId: string;
   witnessId: string;
 }
-export interface SetupImportTargetReviewInput {
+interface SetupImportTargetReviewInput {
   previewId: string;
   items: Array<{ id: string; action: 'import' | 'skip'; targetName?: string }>;
 }

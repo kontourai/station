@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 
 /**
  * Epic archive#4142: a route is a PLACEMENT of a pane, not a second
- * identity. `/activity` renders the sessions surface through the pane path —
+ * identity. `?surface=activity` renders the sessions surface through the pane path —
  * `ActivityWorkspacePane` with the canonical occurrence — and the ambient
  * dock and the Developer archive embed render the SAME pane. That leaves
  * `SessionsView` with exactly one mounter reachable from the shell. A second

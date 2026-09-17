@@ -3,6 +3,7 @@ import type {
   PluginProviderDetail,
   PluginSettingField,
 } from '@kontourai/station-sdk';
+import { Button } from '../../components/Button';
 import { DetailHeader } from '../../components/DetailHeader';
 import { Skeleton } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
@@ -10,6 +11,7 @@ import {
   type PluginPermissionEntry,
   PluginPermissionsSection,
 } from './PluginPermissionsSection';
+import { PluginRecoveryPanel } from './PluginRecoveryPanel';
 import { PluginSettingFieldRow } from './PluginSettingFieldRow';
 import {
   isRejectedPlugin,
@@ -17,6 +19,7 @@ import {
   type PluginMessage,
   type PluginUpdateSummary,
 } from './types';
+import { pluginContributions } from './view-utils';
 import { WorkspaceHomeRoleSection } from './WorkspaceHomeRoleSection';
 
 /**
@@ -63,6 +66,9 @@ export function PluginDetailPanel({
   revokingPermissions,
   onReloadRejected,
   reloadRejectedPending,
+  layoutTargetProjectName,
+  onAddLayout,
+  addLayoutPending,
 }: {
   selected: Plugin;
   updates: PluginUpdateSummary[];
@@ -106,6 +112,13 @@ export function PluginDetailPanel({
   revokingPermissions: ReadonlySet<string>;
   onReloadRejected: () => void;
   reloadRejectedPending: boolean;
+  /**
+   * The one project an "Add to project" would target without asking, by name,
+   * or null when the picker has to ask (no projects, or several).
+   */
+  layoutTargetProjectName: string | null;
+  onAddLayout: () => void;
+  addLayoutPending: boolean;
 }) {
   if (isRejectedPlugin(selected)) {
     return (
@@ -144,14 +157,31 @@ export function PluginDetailPanel({
       </div>
     );
   }
+  if (
+    selected.installationReadiness &&
+    selected.installationReadiness.state !== 'ready'
+  )
+    return (
+      <PluginRecoveryPanel
+        key={selected.name}
+        plugin={selected}
+        onRemove={onRemove}
+      />
+    );
   const update = updates.find((entry) => entry.name === selected.name);
   const providersExpanded = expandedProviders.has(selected.name);
+  const contributions = pluginContributions(selected);
 
   return (
     <div className="detail-panel">
       {message && (
         <div className={`plugins__message plugins__message--${message.type}`}>
-          {message.text}
+          <span>{message.text}</span>
+          {message.action && (
+            <Button onClick={message.action.invoke}>
+              {message.action.label}
+            </Button>
+          )}
         </div>
       )}
 
@@ -163,7 +193,7 @@ export function PluginDetailPanel({
           variant: 'muted' as const,
         }}
       >
-        {update ? (
+        {update || (selected.retainedOnRemoval && selected.git?.remote) ? (
           <button
             type="button"
             className="editor-btn editor-btn--primary"
@@ -172,9 +202,11 @@ export function PluginDetailPanel({
           >
             {updatePending && updateTarget === selected.name
               ? 'Updating…'
-              : update.source === 'git'
-                ? `Update (${update.latestVersion})`
-                : `Update to v${update.latestVersion}`}
+              : !update
+                ? 'Update from source'
+                : update.source === 'git'
+                  ? `Update (${update.latestVersion})`
+                  : `Update to v${update.latestVersion}`}
           </button>
         ) : (
           <button type="button" className="editor-btn" onClick={onCheckUpdates}>
@@ -189,6 +221,12 @@ export function PluginDetailPanel({
           Remove
         </button>
       </DetailHeader>
+      {selected.retainedOnRemoval && (
+        <p>
+          Updates preserve stored data. Removing this plugin retains its data
+          and prior code versions.
+        </p>
+      )}
 
       <div className="detail-panel__body">
         <div className="detail-panel__caps">
@@ -219,6 +257,44 @@ export function PluginDetailPanel({
             </span>
           )}
         </div>
+
+        {/* #1536 G2: the chips above say `ui` and `layout:getting-started`.
+            They do not say that a layout arrived, what it is called, or how to
+            reach it — installing a starter and then finding nothing to open
+            was the whole complaint. Only a layout gets an action, because a
+            layout is the only contribution the operator has to place. */}
+        {contributions.length > 0 && (
+          <div className="detail-panel__section">
+            <div className="plugins__contributions-header">What it adds</div>
+            <ul className="plugins__contributions">
+              {contributions.map((contribution) => (
+                <li key={contribution.id} className="plugins__contribution">
+                  <span className="plugins__contribution-kind">
+                    {contribution.kindLabel}
+                  </span>
+                  <span className="plugins__contribution-name">
+                    {contribution.name}
+                  </span>
+                  {contribution.kind === 'layout' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="plugins__contribution-action"
+                      disabled={addLayoutPending}
+                      onClick={onAddLayout}
+                    >
+                      {addLayoutPending
+                        ? 'Adding…'
+                        : layoutTargetProjectName
+                          ? `Add to ${layoutTargetProjectName}`
+                          : 'Add to project…'}
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {selected.providers && selected.providers.length > 0 && (
           <div className="detail-panel__section">

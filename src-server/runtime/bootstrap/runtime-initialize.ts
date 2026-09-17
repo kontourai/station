@@ -49,8 +49,7 @@ import {
   registerProviderAdapters,
   registerSkillRegistryProvider,
 } from '../../providers/registries/registry.js';
-import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
-import { publicIdentityAgentSetView } from '../../routes/agents/runtime-agent-identity.js';
+import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import {
@@ -61,6 +60,7 @@ import {
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
+import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
@@ -89,8 +89,13 @@ import {
   builtinStationAgentSpec,
   createSessionAgentResolver,
 } from '../../services/orchestration/session-agent-resolution.js';
+import type {
+  RegistryTrustPolicyApplication,
+  RegistryTrustPolicyAuthority,
+} from '../../services/plugins/registry-trust-policy.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
+import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
@@ -140,6 +145,7 @@ import {
   scheduleRuntimePluginUpdateCheck,
   startRuntimeACPConnections,
 } from './runtime-background-tasks.js';
+import { withStationShutdownOwnership } from './runtime-signal-ownership.js';
 import {
   checkOllamaAvailability,
   prepareRuntimeStartup,
@@ -153,6 +159,7 @@ import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js'
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
   logger: Logger;
@@ -160,7 +167,10 @@ export interface InitializeRuntimeDeps {
   approvalRegistry: ApprovalRegistry;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'canSharePersonalConversation'
+    | 'personalConversationOwnerIds'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -196,6 +206,8 @@ export interface InitializeRuntimeDeps {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
+  /** Reconcile the built-in role after background ACP readiness settles. */
+  onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -208,6 +220,7 @@ export interface InitializeRuntimeDeps {
   agentTools: Map<string, unknown>;
   agentSpecs: Map<string, AgentSpec>;
   mcpConfigs: Map<string, unknown>;
+  mcpCustody: import('@kontourai/station-shared/mcp').MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: Map<
     string,
@@ -243,10 +256,13 @@ export interface InitializeRuntimeDeps {
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   };
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   }) => void;
   guardDefaultAgentTools?: (tools: any[]) => any[];
   replaceTemplateVariables: (text: string, agentName?: string) => string;
@@ -275,6 +291,7 @@ export interface InitializeRuntimeDeps {
 }
 
 interface InitializeRuntimeResult {
+  registryPolicyApplication?: RegistryTrustPolicyApplication;
   appConfig: AppConfig;
   framework: RuntimeFramework;
   orchestrationService: OrchestrationService;
@@ -296,10 +313,11 @@ interface InitializeRuntimeResult {
 export function initializeRuntimeBackgroundTasks(
   deps: Pick<
     InitializeRuntimeDeps,
-    'timers' | 'logger' | 'configLoader' | 'acpBridge'
+    'timers' | 'logger' | 'configLoader' | 'acpBridge' | 'onACPConnectionsReady'
   >,
 ): void {
-  const { timers, logger, configLoader, acpBridge } = deps;
+  const { timers, logger, configLoader, acpBridge, onACPConnectionsReady } =
+    deps;
 
   scheduleRuntimeEngineSpawnTmpReaping({ timers, logger });
   startRuntimeACPConnections({
@@ -310,6 +328,7 @@ export function initializeRuntimeBackgroundTasks(
     },
     acpBridge,
     logger,
+    onReady: onACPConnectionsReady,
   });
 }
 
@@ -562,9 +581,28 @@ export async function initializeRuntime(
     // process's former OS alias. SessionAuthorization admits it only for the
     // request-derived home-possession local-operator principal.
     legacyPersonalOwner: getCachedUser().alias,
+    personalConversationAccess: {
+      canRead: (requesterId, ownerId) =>
+        deps.environmentSecurityService.canSharePersonalConversation(
+          requesterId,
+          ownerId,
+        ),
+      ownerIds: (requesterId) =>
+        deps.environmentSecurityService.personalConversationOwnerIds(
+          requesterId,
+        ),
+    },
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),
+    resolveProjectSessionDirectory: createProjectSessionDirectoryResolver(
+      configLoader.getProjectHomeDir(),
+      storageAdapter,
+    ),
+    // #2144 slice 2. Loaded per call, not captured: the operator's edit to
+    // this Station's default applies to the next chat, not the next restart.
+    resolveStationDefaultWorkspaceIsolation: async () =>
+      (await configLoader.loadAppConfig()).defaultWorkspaceIsolation,
     nativeDeclaredPullRequestResolver,
     // archive#1501: shadow `resolveProjectResource` against the
     // session-cwd seam over REAL traffic before slice 3c flips it. Dispatched
@@ -621,7 +659,8 @@ export async function initializeRuntime(
     homeDir: configLoader.getProjectHomeDir(),
   });
   const attachedSessionFollowService = new AttachedSessionFollowService({
-    sources: [new ClaudeTranscriptSessionSource()],
+    sources: deps.attachedSessionSources ?? [],
+    adapterRegistry: publicAdapterRegistry,
     eventStore: orchestrationEventStore,
     adoptionLedger,
     eventBus,
@@ -729,6 +768,8 @@ export async function initializeRuntime(
   logger.debug('Bedrock model catalog initialized');
 
   await loadRuntimePluginAssets({
+    packageMcpJournal:
+      orchestrationEventStore.createPackageMcpAdmissionJournal(),
     logger,
     projectHomeDir: configLoader.getProjectHomeDir(),
     loadPluginOverrides: () => configLoader.loadPluginOverrides(),
@@ -789,6 +830,8 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
+  const registryPolicyApplication =
+    await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
   const agents = await initializeRuntimeAgents({
     configLoader: deps.configLoader as any,
@@ -833,6 +876,7 @@ export async function initializeRuntime(
             port,
             provenanceGeneration!,
             deps.integrationSecretResolver,
+            deps.mcpCustody,
           ),
         guardTools: deps.guardDefaultAgentTools,
         activeAgents: activeAgents as any,
@@ -869,14 +913,16 @@ export async function initializeRuntime(
     configurationBefore &&
     configurationAfter &&
     (configurationBefore.provider !== configurationAfter.provider ||
-      configurationBefore.appConfig !== configurationAfter.appConfig)
+      configurationBefore.appConfig !== configurationAfter.appConfig ||
+      configurationBefore.selectedPackageFingerprint !==
+        configurationAfter.selectedPackageFingerprint)
   ) {
     throw new Error(
       'Runtime configuration changed while startup agents were being constructed.',
     );
   }
-  if (configurationAfter) {
-    deps.onAgentConfigurationReady?.(configurationAfter);
+  if (configurationBefore) {
+    deps.onAgentConfigurationReady?.(configurationBefore);
   }
   stationAgentsReady = true;
 
@@ -947,11 +993,14 @@ export async function initializeRuntime(
     };
   };
 
-  const voltAgent = new VoltAgent({
-    agents,
-    logger: logger as any,
-    server: trackedServerFactory,
-  });
+  const voltAgent = withStationShutdownOwnership(
+    () =>
+      new VoltAgent({
+        agents,
+        logger: logger as any,
+        server: trackedServerFactory,
+      }),
+  );
   onVoltAgentCreated(voltAgent);
   await voltAgent.ready;
   if (serverStartInvoked) await serverStartup;
@@ -990,6 +1039,7 @@ export async function initializeRuntime(
     logger,
     configLoader,
     acpBridge,
+    onACPConnectionsReady: deps.onACPConnectionsReady,
   });
 
   scheduleRuntimePluginUpdateCheck({
@@ -1025,6 +1075,7 @@ export async function initializeRuntime(
   logger.debug('Station Runtime initialized', { port });
 
   return {
+    registryPolicyApplication,
     appConfig,
     framework,
     orchestrationService,

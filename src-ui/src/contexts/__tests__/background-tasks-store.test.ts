@@ -113,6 +113,69 @@ describe('ingestBackgroundTaskEvent — tool cards', () => {
     expect(state.entries['call-1'].state).toBe('stopped');
   });
 
+  // station#1558: the session ended with this call still open. Not 'stopped'
+  // (nobody asked it to stop) and not 'failed' (nothing observed a failure).
+  // station#1569: `unresolved` is the one settled state that is not final —
+  // the engine can still report the real result after the session-end
+  // settle, and the card must follow the transcript's correction.
+  test('a real result after an unresolved settle corrects the card; other settled states stay put', () => {
+    let state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', { toolCallId: 'call-1', toolName: 'bash' }),
+    );
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'unresolved',
+      }),
+    );
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'success',
+        createdAt: '2026-07-29T00:00:12.000Z',
+      }),
+    );
+    expect(state.entries['call-1']).toMatchObject({
+      state: 'completed',
+      endedAt: Date.parse('2026-07-29T00:00:12.000Z'),
+    });
+    // A completed card is final: a later unresolved does not reopen it.
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'unresolved',
+      }),
+    );
+    expect(state.entries['call-1'].state).toBe('completed');
+  });
+
+  test('tool.completed(unresolved) closes the card as unresolved', () => {
+    let state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', { toolCallId: 'call-1', toolName: 'bash' }),
+    );
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'unresolved',
+        createdAt: '2026-07-29T00:00:09.000Z',
+      }),
+    );
+    expect(state.entries['call-1']).toMatchObject({
+      state: 'unresolved',
+      endedAt: Date.parse('2026-07-29T00:00:09.000Z'),
+    });
+  });
+
   test('tool.completed(error) closes the card as failed', () => {
     let state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),
@@ -499,6 +562,37 @@ describe('selectChatBackgroundTasks — provider-task dedup by toolCallId', () =
       // Inherits the suppressed tool card's startedAt via the toolCallId link.
       startedAt: Date.parse('2026-07-29T00:00:00.000Z'),
     });
+  });
+
+  test('station#1877: a provider task with a reporting session offers a task-scoped stop', () => {
+    const view = selectChatBackgroundTasks(
+      createEmptyBackgroundTasksState(),
+      'chat-1',
+      [
+        {
+          taskId: 'provider-task-1',
+          description: 'Long investigation',
+          sessionThreadId: 'session-9',
+        },
+      ],
+    );
+    expect(view.running[0]).toMatchObject({
+      id: 'provider-task-1',
+      sessionThreadId: 'session-9',
+      // Task-scoped, never 'turn-interrupt' — that would stop every sibling.
+      stop: { kind: 'provider-task-stop' },
+    });
+  });
+
+  test('station#1877: a provider task with no reporting session offers no stop at all', () => {
+    const view = selectChatBackgroundTasks(
+      createEmptyBackgroundTasksState(),
+      'chat-1',
+      [{ taskId: 'provider-task-1', description: 'Long investigation' }],
+    );
+    // Nothing to address, so no control: a dead Stop button is worse than
+    // none, and falling back to the turn interrupt would stop the siblings.
+    expect(view.running[0]?.stop).toBeUndefined();
   });
 
   test('a tool card with no matching provider task is not suppressed', () => {

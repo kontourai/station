@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const runId = 'schedule:built-in:daily-report:log-1';
 const outputRef = {
@@ -13,6 +14,10 @@ async function mockScheduleRunsApi(
   page: import('@playwright/test').Page,
   runOverrides: Record<string, unknown> = {},
 ) {
+  await page.route('**/api/**', async (route) => {
+    if (await fulfillStationShellRead(route)) return;
+    await route.fallback();
+  });
   const job = {
     name: 'daily-report',
     provider: 'built-in',
@@ -155,7 +160,7 @@ test.describe('Schedule run history', () => {
     ).toBeVisible();
   });
 
-  test('deep-links directly to schedule run output', async ({ page }) => {
+  test('deep-links to the exact run and opens its output', async ({ page }) => {
     await mockScheduleRunsApi(page);
     await page.goto(`/schedule?run=${encodeURIComponent(runId)}`);
 
@@ -165,6 +170,9 @@ test.describe('Schedule run history', () => {
     await expect(
       page.locator('.schedule__detail-header').getByText('Run History'),
     ).toBeVisible();
+    const focusedRun = page.locator(`[data-run-id="${runId}"]`);
+    await expect(focusedRun).toBeFocused();
+    await focusedRun.getByRole('button', { name: 'Output' }).click();
     await expect(
       page.getByText('Daily report output from opaque run ref'),
     ).toBeVisible();

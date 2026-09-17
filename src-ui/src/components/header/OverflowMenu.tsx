@@ -1,13 +1,58 @@
 import { ConnectionStatusDot } from '@kontourai/station-connect';
 import type { ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { nativePlatformPromise } from '../../platform/native';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { MonitorGlyph, QuestionGlyph } from '../icons/Glyph';
 import './HeaderMenu.css';
+import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 
 type ConnectionStatus = ComponentProps<typeof ConnectionStatusDot>['status'];
+
+/**
+ * #917: where the `⋯` button is rendered, the region commands live here rather
+ * than in the toolbar row, whose width budget could not hold a 44px region
+ * control and still keep the Settings gear on a 402px viewport. The hook, not
+ * this component, decides which devices those are.
+ *
+ * Split into its own component so the hook that reads the region model is only
+ * called where a `RegionModelProvider` is known to be above it — the overflow
+ * menu itself is rendered in tests and stories without one.
+ *
+ * Toggle buttons, not `menuitemcheckbox`: that role must be owned by a `menu`,
+ * and this container has never been one — its other rows are plain buttons. The
+ * toolbar's own region menu IS a `role="menu"` and keeps `menuitemcheckbox`
+ * there. `aria-pressed` carries the same state without claiming a menu
+ * structure that does not exist. The `fieldset`/clipped `legend` names the
+ * section.
+ */
+function RegionMenuSection({ onClose }: { onClose: () => void }) {
+  const { commandsInOverflowMenu, menuItems } = useRegionSurfaceMenu();
+  if (!commandsInOverflowMenu) return null;
+  return (
+    <fieldset className="menu-group app-toolbar__overflow-regions">
+      <legend>Regions</legend>
+      {menuItems.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          className="menu-row"
+          aria-pressed={item.checked}
+          onClick={() => {
+            onClose();
+            item.onSelect();
+          }}
+        >
+          <span className="menu-row__glyph" aria-hidden="true" />
+          {item.label}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
 
 interface OverflowMenuProps {
   isOpen: boolean;
@@ -32,6 +77,7 @@ export function OverflowMenu({
 }: OverflowMenuProps) {
   const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
   const { isDesktop } = usePlatformProfile();
+  const hasRegionModel = useRegionModelOptional() !== null;
   if (!isOpen) return null;
   const openDesktopTrayMenu =
     onOpenDesktopTrayMenu ??
@@ -71,40 +117,37 @@ export function OverflowMenu({
         }}
         onClick={onClose}
       />
-      <div ref={menuRef} className="app-toolbar__overflow-menu" tabIndex={-1}>
+      <div
+        ref={menuRef}
+        className="menu-surface app-toolbar__overflow-menu"
+        tabIndex={-1}
+      >
         <button
           type="button"
+          className="menu-row"
           aria-label="Connections"
           onClick={() => {
             onClose();
             onOpenConnections();
           }}
         >
-          <ConnectionStatusDot status={connStatus} size={7} />
+          <span className="menu-row__glyph" aria-hidden="true">
+            <ConnectionStatusDot status={connStatus} size={7} />
+          </span>
           Connections
         </button>
         {openDesktopTrayMenu && (
           <button
             type="button"
+            className="menu-row"
             onClick={() => {
               onClose();
               void openDesktopTrayMenu();
             }}
           >
-            <svg
-              aria-hidden="true"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="4" y="4" width="16" height="13" rx="2" />
-              <path d="M9 21h6M12 17v4" />
-            </svg>
+            <span className="menu-row__glyph" aria-hidden="true">
+              <MonitorGlyph />
+            </span>
             Open desktop tray
           </button>
         )}
@@ -118,42 +161,39 @@ export function OverflowMenu({
             reconnect banner up. */}
         <button
           type="button"
+          className="menu-row"
           aria-label="Profile"
           onClick={() => {
             onClose();
             onOpenProfile();
           }}
         >
-          <span className="app-toolbar__overflow-initials" aria-hidden="true">
-            {userInitials}
+          <span className="menu-row__glyph" aria-hidden="true">
+            <span className="app-toolbar__overflow-initials">
+              {userInitials}
+            </span>
           </span>
           Profile
         </button>
         <button
           type="button"
+          className="menu-row"
           onClick={(event) => {
             event.stopPropagation();
             onClose();
             onOpenHelp();
           }}
         >
-          <svg
-            aria-hidden="true"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
+          <span className="menu-row__glyph" aria-hidden="true">
+            <QuestionGlyph />
+          </span>
           Help
         </button>
+        {/* Appended, not prepended: every row above keeps the position the
+            banner-overlap note describes, and the region rows are the ones a
+            phone user reaches for repeatedly, so they sit closest to the
+            thumb. */}
+        {hasRegionModel && <RegionMenuSection onClose={onClose} />}
       </div>
     </>,
     document.body,

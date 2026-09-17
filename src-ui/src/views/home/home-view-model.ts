@@ -6,26 +6,38 @@ import type {
   SessionControlMode,
   TaskRecord,
 } from '@kontourai/station-sdk';
-import type { ChatUIState } from '../../contexts/active-chats-state';
+import {
+  activeChatHasWork,
+  type ChatUIState,
+} from '../../contexts/active-chats-state';
 import type { AgentSummary } from '../../types';
 import type { HomeLifecycleLabel } from '../../utils/lifecycle-priority';
 import {
   LIFECYCLE_PRIORITY,
   moreImportantLifecycle,
 } from '../../utils/lifecycle-priority';
-import { modelDisplayLabel } from '../../utils/modelCapabilities';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
 } from '../../utils/session-state';
-import { sessionProjectLabel, sessionTitle } from '../../utils/sessionDisplay';
+import {
+  sessionProjectLabel,
+  sessionRecency,
+  sessionTitle,
+} from '../../utils/sessionDisplay';
 
 export interface HomeWorkItem {
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
-  kindLabel: 'Durable Task' | 'Direct chat' | 'Session' | 'Remote session';
+  kindLabel:
+    | 'Durable Task'
+    | 'Direct chat'
+    | 'Session'
+    | 'Remote session'
+    | 'Conversation';
   title: string;
   projectLabel: string;
   agentLabel: string;
@@ -76,7 +88,7 @@ export interface HomeWorkItem {
    * archive#1297 introduced it for `'orchestration'` items
    * (`session.assignedAgentSlug`), so a row-open policy could rehydrate the
    * session into the chat overlay (`useOpenConversation`/`openConversation`)
-   * instead of falling back to `/activity` purely because no in-memory chat
+   * instead of revealing Activity purely because no in-memory chat
    * tab happens to exist for it yet. Its docblock then said "never set on a
    * `'chat'` item", which described that need, not a hazard: a chat item
    * always carries `chatSessionId`, and `resolveWorkItemOpenAction` returns
@@ -108,7 +120,7 @@ export interface HomeWorkItem {
    * archive#1297: an `'orchestration'` item's `session.controlMode`. A
    * `'read-only-attached'` session is followed from an external source
    * Station does not own the runtime for — it cannot be rehydrated into the
-   * chat overlay, so the row-open policy falls back to `/activity` for it
+   * chat overlay, so the row-open policy reveals Activity for it
    * even when `agentSlug` is present.
    */
   controlMode?: SessionControlMode;
@@ -216,7 +228,7 @@ function safeAgentLabel({
  * sessions, as returned by the server's `/api/environments/ssh/sessions`
  * aggregation endpoint (`useRemoteSessionsQuery`, `@kontourai/station-sdk`).
  */
-export interface RemoteHomeEnvironmentSessions {
+interface RemoteHomeEnvironmentSessions {
   environmentId: string;
   environmentName: string;
   sessions: OrchestrationSessionSummary[];
@@ -232,7 +244,7 @@ export interface RemoteHomeEnvironmentSessions {
 export type ResolveModelLabel = (modelId: string | null | undefined) => string;
 
 export const defaultResolveModelLabel: ResolveModelLabel = (modelId) =>
-  modelDisplayLabel(modelId);
+  modelIdentityLabel(modelId);
 
 export function buildHomeWorkItems({
   chats,
@@ -345,7 +357,11 @@ function buildSessionWorkItem(
       ? { conversationId: session.conversationId }
       : {}),
     kind: provenance ? 'remote-session' : 'orchestration',
-    kindLabel: provenance ? 'Remote session' : 'Session',
+    kindLabel: provenance
+      ? 'Remote session'
+      : session.controlMode === 'read-only-attached'
+        ? 'Conversation'
+        : 'Session',
     // archive#3227 A2: `sessionTitle` is the one name a session is listed
     // under, and its contract is that no branch may return a raw thread id.
     // Home carried a private copy with a different taskId regex that
@@ -375,11 +391,7 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel: `…/${cwdLabel}` } : {}),
     turnProgress: activeTurnProgress(session),
-    updatedAt: Math.max(
-      timestamp(session.updatedAt),
-      timestamp(session.lastEventAt),
-      timestamp(session.createdAt),
-    ),
+    updatedAt: sessionRecency(session),
     lifecycleLabel,
     // The basis behind an `'Unanswerable'` chip. Carried on the item rather
     // than recomputed at render so the row and the label come from one read
@@ -645,13 +657,15 @@ function mergedExecutionLineage(
   right: HomeWorkItem,
 ): string[] {
   return [
-    ...(left.orchestrationThreadIds ?? []),
-    left.orchestrationThreadId,
-    ...(right.orchestrationThreadIds ?? []),
-    right.orchestrationThreadId,
-  ]
-    .filter((id): id is string => Boolean(id))
-    .filter((id, index, all) => all.indexOf(id) === index);
+    ...new Set(
+      [
+        ...(left.orchestrationThreadIds ?? []),
+        left.orchestrationThreadId,
+        ...(right.orchestrationThreadIds ?? []),
+        right.orchestrationThreadId,
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
 }
 
 function isLocalActionableLifecycle(item: HomeWorkItem): boolean {
@@ -821,9 +835,23 @@ export function buildActiveChatTaskItems({
   agents,
   sessions = [],
   resolveModelLabel = defaultResolveModelLabel,
+  onlyWork = false,
 }: {
   chats: Record<string, ChatUIState>;
   agents: AgentSummary[];
+  /**
+   * #1582 B9: drop chats nothing has been put into (`activeChatHasWork`).
+   *
+   * OFF by default, and the default is the load-bearing half: an inbox lists
+   * the chats OPEN IN THIS TAB, and a chat the user is looking at has to be in
+   * it whether or not it has been typed into yet. Filtering here unconditionally
+   * made a just-created chat vanish from the dock's own list — caught by
+   * `tests/cross-runtime-chat-switching.spec.ts`, not by any unit test.
+   *
+   * Home's "Continue most recent work" card is the surface that means WORK, so
+   * it is the one that opts in (`useOpenWorkChats`).
+   */
+  onlyWork?: boolean;
   /**
    * Optional: when a chat correlates with an orchestration session, that
    * session's `hasActiveTurn` fold decides whether the chat is "Running".
@@ -834,6 +862,9 @@ export function buildActiveChatTaskItems({
   resolveModelLabel?: ResolveModelLabel;
 }): HomeWorkItem[] {
   const turnByThread = new Map<string, ChatSessionCorrelation>();
+  const sessionByThread = new Map(
+    sessions.map((session) => [session.threadId, session]),
+  );
   for (const session of sessions) {
     const entry: ChatSessionCorrelation = {
       hasActiveTurn: session.hasActiveTurn === true,
@@ -853,50 +884,61 @@ export function buildActiveChatTaskItems({
       }
     }
   }
-  const items = Object.entries(chats).map<MergeItem>(([id, chat]) => {
-    const agentLabel = safeAgentLabel({
-      slug: chat.agentSlug,
-      name:
-        chat.agentName ||
-        agents.find((agent) => agent.slug === chat.agentSlug)?.name,
+  const items = Object.entries(chats)
+    .filter(([, chat]) => !onlyWork || activeChatHasWork(chat))
+    .map<MergeItem>(([id, chat]) => {
+      const agentLabel = safeAgentLabel({
+        slug: chat.agentSlug,
+        name:
+          chat.agentName ||
+          agents.find((agent) => agent.slug === chat.agentSlug)?.name,
+      });
+      const currentExecution = sessionByThread.get(
+        chat.currentSessionId ?? chat.conversationId ?? id,
+      );
+      const observedModel =
+        currentExecution?.reportedModel ??
+        currentExecution?.model ??
+        currentExecution?.appliedModel;
+      const model = observedModel ?? chat.orchestrationModel ?? chat.model;
+      return {
+        id: chat.conversationId || id,
+        ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
+        kind: 'chat' as const,
+        kindLabel: 'Direct chat' as const,
+        // Match the dock session-title convention (useDerivedSessions):
+        // untitled chats read "<Agent> Chat", not the bare agent name —
+        // title is not persisted across reloads, so this fallback is the
+        // steady-state name for rehydrated sessions.
+        title:
+          chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
+        projectLabel: chat.projectName || chat.projectSlug || 'No project',
+        agentLabel,
+        modelLabel: resolveModelLabel(model),
+        // archive#3391: the id itself, not only its label — the label is a
+        // derivation of this, and a consumer that needs the model (reopen)
+        // must not have to parse a display string back into one.
+        model,
+        updatedAt: latestChatTimestamp(chat),
+        lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
+        // Bound to the label in both directions, like unanswerableNotice: a
+        // notice may exist only under a 'Failed' chip, and a 'Failed' chip
+        // shows its reason whenever one was recorded.
+        ...(chatLifecycleLabel(chat, id, turnByThread) === 'Failed' &&
+        chatFailureNotice(chat)
+          ? { failureNotice: chatFailureNotice(chat) as string }
+          : {}),
+        chatSessionId: id,
+        ...(chat.currentSessionId
+          ? { currentSessionId: chat.currentSessionId }
+          : {}),
+        // Identity facts, not display ones — see the field docblocks. Both
+        // are inert for the open policy (`chatSessionId` above short-circuits
+        // it) and are read by Home's row icon and its activity chart.
+        ...(chat.agentSlug ? { agentSlug: chat.agentSlug } : {}),
+        ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
+      };
     });
-    return {
-      id: chat.conversationId || id,
-      ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
-      kind: 'chat' as const,
-      kindLabel: 'Direct chat' as const,
-      // Match the dock session-title convention (useDerivedSessions):
-      // untitled chats read "<Agent> Chat", not the bare agent name —
-      // title is not persisted across reloads, so this fallback is the
-      // steady-state name for rehydrated sessions.
-      title: chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
-      projectLabel: chat.projectName || chat.projectSlug || 'No project',
-      agentLabel,
-      modelLabel: resolveModelLabel(chat.orchestrationModel || chat.model),
-      // archive#3391: the id itself, not only its label — the label is a
-      // derivation of this, and a consumer that needs the model (reopen)
-      // must not have to parse a display string back into one.
-      model: chat.orchestrationModel || chat.model,
-      updatedAt: latestChatTimestamp(chat),
-      lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
-      // Bound to the label in both directions, like unanswerableNotice: a
-      // notice may exist only under a 'Failed' chip, and a 'Failed' chip
-      // shows its reason whenever one was recorded.
-      ...(chatLifecycleLabel(chat, id, turnByThread) === 'Failed' &&
-      chatFailureNotice(chat)
-        ? { failureNotice: chatFailureNotice(chat) as string }
-        : {}),
-      chatSessionId: id,
-      ...(chat.currentSessionId
-        ? { currentSessionId: chat.currentSessionId }
-        : {}),
-      // Identity facts, not display ones — see the field docblocks. Both
-      // are inert for the open policy (`chatSessionId` above short-circuits
-      // it) and are read by Home's row icon and its activity chart.
-      ...(chat.agentSlug ? { agentSlug: chat.agentSlug } : {}),
-      ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
-    };
-  });
   // A handoff replaces the execution Session while retaining one durable
   // Conversation. Every consumer of this adapter must therefore see the
   // newest child identity, never an arbitrary predecessor map entry.

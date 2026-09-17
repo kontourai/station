@@ -1,8 +1,19 @@
+import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
+import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { expect, type Page } from '@playwright/test';
 import {
   E2E_STATION_COMPATIBILITY,
   installE2EWorkspacePaneCatalog,
 } from './current-station-contract';
+import { rejectUnexpectedFixtureRequest } from './fixture-audit';
+
+type ConversationLookupFixture = {
+  id: string;
+  currentSessionId: string;
+  agentSlug: string;
+  projectSlug?: string;
+  title?: string;
+};
 
 const E2E_ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const emittedOrchestrationEvents = new WeakMap<
@@ -21,21 +32,209 @@ const conversationSessionReaders = new WeakMap<
 const CHAT_REGION_LABELS = ['Left', 'Right', 'Bottom'] as const;
 type ChatRegionLabel = (typeof CHAT_REGION_LABELS)[number];
 
+/**
+ * Whether a Playwright rejection is a STRICT-MODE VIOLATION — a locator that
+ * matched more than one element.
+ *
+ * This file used to answer `false`/`null` for it 17 times over, and
+ * `agents-journey.ts:265-277` records what that costs: a broad
+ * `/^Expand chat/` matched three unrelated controls, the surrounding
+ * `.catch(() => false)` swallowed the violation as "not visible", and a real
+ * ambiguity became a silent no-op instead of a loud failure. The sixteen
+ * `isVisible()` reads below no longer catch at all — `isVisible()` returns
+ * immediately and answers `false` for an absent element, so absence never
+ * needed a catch, and a violation, a closed page and an invalid selector were
+ * the only things one could ever have hidden. This predicate exists for the
+ * one read whose catch has a legitimate case to keep.
+ *
+ * A read that is NOT one of those sixteen is the chooser wait in
+ * `openChatThroughRegionControl`: it asks for an element that appears as a
+ * consequence of a click it just made, behind a lazy boundary, so it
+ * auto-waits and fails loudly rather than answering `false` (#2155 delta
+ * review F3). The distinction to keep is the page's state, not the API: a
+ * probe on a settled page may read immediately; a probe on a page that is
+ * still becoming what the probe asks about may not.
+ */
+function isAmbiguousLocator(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message.includes('strict mode violation')
+  );
+}
+
 async function activeChatRegion(page: Page): Promise<ChatRegionLabel | null> {
   const className = await page
     .getByRole('region', { name: 'Dock', exact: true })
     .getAttribute('class')
-    .catch(() => null);
+    // NOT a bare `() => null`, unlike the `isVisible()` reads below, and the
+    // difference is real: `getAttribute` DOES auto-wait, so its timeout means
+    // "no Dock region", which is this function's documented `null` answer. A
+    // strict-mode violation is not that — it means the NAME matched several
+    // regions, and answering `null` would report "no dock" for "too many
+    // docks", then pick a layout branch from it.
+    .catch((error: unknown) => {
+      if (isAmbiguousLocator(error)) throw error;
+      return null;
+    });
   const region = className?.match(/\bchat-dock--(left|right|bottom)\b/)?.[1];
   if (!region) return null;
   return `${region[0]?.toUpperCase()}${region.slice(1)}` as ChatRegionLabel;
 }
 
 /**
+ * The toolbar's folded region control on a coarse device too wide to be
+ * mobile ("Regions"); `null` on a fine pointer, which has per-region toggles
+ * (#2143), and on a phone, where #917 moved the region commands into the `⋯`
+ * overflow.
+ */
+async function regionControlTrigger(page: Page) {
+  const trigger = page.getByRole('button', { name: 'Regions', exact: true });
+  return (await trigger.isVisible()) ? trigger : null;
+}
+
+/**
+ * Opens Chat through the shell's region controls, whichever chrome this
+ * breakpoint draws.
+ *
+ * FINE POINTER (#2143, #2155): one toggle per dock region, `aria-pressed`
+ * from the model, and it only shows and hides. Chat's region is read off the
+ * Dock's own class; if that region's toggle is not pressed, pressing it shows
+ * the region; then, if Chat is behind another pane's tab there, its tab is
+ * selected. An UNPLACED Chat has no region at all, so the toggle pressed is
+ * Bottom's (Chat's default) — which opens Bottom EMPTY, on its own chooser
+ * (#2154), and the "Chat" row there is the placement.
+ *
+ * That second half is #2155's, and the shape it replaces is why it is spelled
+ * out: until then an empty region's toggle had NO `aria-pressed` and opened
+ * an offer menu, so this helper branched on `pressed !== null`. Every toggle
+ * reports `aria-pressed` now, so that branch became unreachable and the one
+ * it fell into opened an empty region and waited for a `Dock` landmark an
+ * empty region never has — a timeout where the contract says "return false
+ * and let the caller's fallbacks run".
+ *
+ * Chat's own shell is the one landmark named `Dock` rather than by its
+ * surface (`DockShell`), which is why the placement is driven here rather
+ * than through `region-placement.ts`'s `chooseSurfaceInEmptyRegion` — that
+ * helper's post-condition reads a shell named for its surface.
+ *
+ * COARSE, WIDE: the flat "Region surfaces" menu, unchanged since #1536 F.
+ *
+ * The post-condition is read after the write settles — the toggle's pressed
+ * state re-derived from the arrangement, or the menu reopened — never the
+ * DOM just clicked.
+ *
+ * Returns false when no region control is on screen, or when the one that is
+ * could not place Chat, leaving the caller's remaining fallbacks to run.
+ */
+async function openChatThroughRegionControl(page: Page): Promise<boolean> {
+  const region = await activeChatRegion(page);
+  const label = region ?? 'Bottom';
+  const toggle = page.getByRole('button', {
+    name: `${label} region`,
+    exact: true,
+  });
+  if (await toggle.isVisible()) {
+    if ((await toggle.getAttribute('aria-pressed')) === 'false') {
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    }
+    if (region === null) {
+      // Chat is placed nowhere, so the region just opened is empty and its
+      // body is the chooser. Its "Chat" row is `openSurfaceInRegion`, which
+      // places Chat here; the list going away is the placement landing.
+      //
+      // AUTO-WAITING, unlike the `isVisible()` reads elsewhere in this file
+      // (#2155 delta review F3). Those are branch-selection probes on a
+      // SETTLED page — "which chrome does this breakpoint draw" — and answer
+      // a question that is already decided when they run. This one asks for
+      // an element that appears as a CONSEQUENCE of the click three lines
+      // above, through `RegionShells` → a `LazyBoundary` whose `pending` is
+      // `null`: there is a real window in which the region is open and its
+      // body renders nothing at all, and the pre-warm that usually closes it
+      // has no reason to have run on a route that never mounted Chat. A
+      // non-waiting probe there does not report "no chooser", it reports
+      // "not yet" — and returning `false` for it would send 43 importing
+      // specs down their fallbacks for a timing accident.
+      const chooser = page.getByRole('list', {
+        name: `Add to ${label} region`,
+      });
+      await expect(
+        chooser,
+        `the ${label} region opened but never rendered its chooser, so Chat cannot be placed from it`,
+      ).toBeVisible();
+      // Settled now, so this one IS a branch-selection probe: whether the
+      // registry offers Chat for this region at all.
+      const row = chooser.getByRole('button', { name: /^Chat( |$)/ });
+      if (!(await row.isVisible())) return false;
+      await row.click();
+      await expect(chooser).toBeHidden();
+    }
+    // The region is showing, but "Dock" names the region whose panes
+    // INCLUDE Chat, selected or not (#2046 D3) — so Chat may be behind
+    // another pane's tab. The strip renders only for two or more panes;
+    // if it is there and Chat's tab is not selected, select it, and read
+    // `aria-selected` back rather than trusting the click. `count()` does
+    // not wait, so the strip is given the region's own settle first.
+    const chatTab = page
+      .getByRole('tablist', { name: 'Region panes' })
+      .getByRole('tab', { name: 'Chat', exact: true });
+    await page.getByRole('region', { name: 'Dock', exact: true }).waitFor();
+    if (
+      (await chatTab.count()) > 0 &&
+      (await chatTab.getAttribute('aria-selected')) !== 'true'
+    ) {
+      await chatTab.click();
+      await expect(chatTab).toHaveAttribute('aria-selected', 'true');
+    }
+    return true;
+  }
+
+  const trigger = await regionControlTrigger(page);
+  if (!trigger) return false;
+  await trigger.click();
+
+  // The folded rows name the dock since #1386 ("Hide Chat from the dock"),
+  // because the bare verb collided with the docked shell's own control.
+  const menu = page.getByRole('menu', { name: 'Region surfaces' });
+  if (await menu.isVisible()) {
+    const hide = menu.getByRole('menuitemcheckbox', {
+      name: 'Hide Chat from the dock',
+    });
+    if (!(await hide.isVisible())) {
+      await menu
+        .getByRole('menuitemcheckbox', { name: 'Show Chat in the dock' })
+        .click();
+      const reopen = await regionControlTrigger(page);
+      if (!reopen) {
+        throw new Error('The region control disappeared after showing Chat.');
+      }
+      await reopen.click();
+    }
+    await expect(
+      page
+        .getByRole('menu', { name: 'Region surfaces' })
+        .getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' }),
+      'the folded region menu does not offer Hide Chat, so Chat is not shown',
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('menu', { name: 'Region surfaces' }),
+    ).toBeHidden();
+    return true;
+  }
+
+  // A trigger that opened none of the three is a chrome this helper has not
+  // been taught. Close whatever it did open and let the caller's remaining
+  // fallbacks run; `openChatRegion`'s own error names the failure if they
+  // cannot either.
+  await page.keyboard.press('Escape');
+  return false;
+}
+
+/**
  * Opens Chat through the shell's region controls instead of an internal dock
  * affordance. The region command is the public ownership boundary for where
- * Chat lives: after opening or placing it, the same region must expose its
- * complementary Hide command.
+ * Chat lives: after opening or placing it, the same region must report that it
+ * now shows Chat.
  *
  * Phone chrome does not always render the desktop region toolbar, so it falls
  * back only to the named mobile/legacy Chat expander. The anchored label
@@ -48,11 +247,16 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Hide Chat ${region} region`,
       exact: true,
     });
-    if (await hide.isVisible().catch(() => false)) {
+    if (await hide.isVisible()) {
       await expect(hide).toBeVisible();
       return;
     }
   }
+
+  // The live chrome since #1536 F: one folded control rather than a button per
+  // region. Tried before the legacy per-region Place/Show lookups below, which
+  // no surface has rendered since that fold.
+  if (await openChatThroughRegionControl(page)) return;
 
   // The Dock's own region class is the live shell state. A surface registry
   // can retain a dormant Chat registration in another region, so choosing the
@@ -64,7 +268,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Show Chat ${activeRegion} region`,
       exact: true,
     });
-    if (await show.isVisible().catch(() => false)) {
+    if (await show.isVisible()) {
       await show.click();
       await expect(
         page.getByRole('button', {
@@ -79,7 +283,7 @@ export async function openChatRegion(page: Page): Promise<void> {
       name: `Place Chat in ${activeRegion} region`,
       exact: true,
     });
-    if (await place.isVisible().catch(() => false)) {
+    if (await place.isVisible()) {
       await place.click();
       await expect(
         page.getByRole('button', {
@@ -94,7 +298,7 @@ export async function openChatRegion(page: Page): Promise<void> {
   const expand = page.getByRole('button', {
     name: /^Expand chat(?: dock)?$/,
   });
-  if (await expand.isVisible().catch(() => false)) {
+  if (await expand.isVisible()) {
     await expand.click();
     await expect(
       page.getByRole('button', { name: /^Collapse chat(?: dock)?$/ }),
@@ -227,6 +431,10 @@ type StoredChat = {
   agentSlug: string;
   title?: string;
   model?: string;
+  requestedModel?: string;
+  requestedProviderOptions?: Record<string, unknown>;
+  agentConnectionId?: string;
+  executionMode?: 'external' | 'station';
   provider?: string;
   providerOptions?: Record<string, unknown>;
   projectSlug?: string;
@@ -379,6 +587,35 @@ export async function installMockOrchestrationEventWindow(
  * current clients may carry distinct Conversation and Session identities, so a
  * synthetic 404 cannot safely fall back to the Session route.
  */
+/** Capture the observed source prefix once; retries must not recopy later turns. */
+export function forkMockOrchestrationTranscript(
+  page: Page,
+  sourceSessionIds: readonly string[],
+  targetSessionId: string,
+  branchPointTurnId: string,
+): Record<string, unknown>[] {
+  const historical = historicalOrchestrationEvents.get(page);
+  if (!historical)
+    throw new Error('Orchestration history fixture is not installed');
+  if (historical[targetSessionId]) return historical[targetSessionId];
+  const sources = new Set(sourceSessionIds);
+  const events = [
+    ...sourceSessionIds.flatMap((id) => historical[id] ?? []),
+    ...(emittedOrchestrationEvents.get(page) ?? []).filter(
+      (event) =>
+        typeof event.threadId === 'string' && sources.has(event.threadId),
+    ),
+  ];
+  const end = events.findIndex(
+    (event) =>
+      event.turnId === branchPointTurnId && event.method === 'turn.completed',
+  );
+  if (end < 0) throw new Error('Fork fixture has no completed source turn');
+  const prefix = structuredClone(events.slice(0, end + 1));
+  historical[targetSessionId] = prefix;
+  return prefix;
+}
+
 export async function installMockOrchestrationConversationEventWindow(
   page: Page,
   readSessionIds: (conversationId: string) => string[],
@@ -457,7 +694,14 @@ export async function emitMockOrchestrationEvent(
     payload.event !== null
   ) {
     const events = emittedOrchestrationEvents.get(page) ?? [];
-    events.push(payload.event as Record<string, unknown>);
+    const event = payload.event as Record<string, unknown>;
+    // EventStore assigns identity before both live delivery and replay.
+    // Negative fixtures can still explicitly supply a malformed identity.
+    const identified = Object.hasOwn(event, 'eventId')
+      ? event
+      : { ...event, eventId: `e2e-live-${events.length + 1}` };
+    payload = { ...payload, event: identified };
+    events.push(identified);
     emittedOrchestrationEvents.set(page, events);
   }
   await page.evaluate(
@@ -468,19 +712,48 @@ export async function emitMockOrchestrationEvent(
   );
 }
 
+/**
+ * Opens Settings the way the shell now offers it.
+ *
+ * #1552 D1 folded "Open settings" into the avatar's menu on a fine pointer: the
+ * standalone gear is `.app-toolbar__action--compact-only`, so at a desktop
+ * viewport it is `display: none` and `button[aria-label="Open settings"]`
+ * matches nothing visible. The gear still exists on a phone, where the avatar —
+ * and therefore its menu — is hidden instead, so this takes whichever route the
+ * running breakpoint actually offers rather than assuming one.
+ *
+ * The avatar branch is deliberately a real click through the real menu: it is
+ * the only end-to-end coverage of the route D1 introduced, and a spec that
+ * reached Settings by chord would pass with that menu completely broken.
+ */
+export async function openHeaderSettings(page: Page): Promise<void> {
+  const avatar = page.getByRole('button', { name: 'Profile and settings' });
+  const gear = page.getByRole('button', { name: 'Open settings' });
+  // WAIT BEFORE BRANCHING. Asking `isVisible()` the instant after `goto` answers
+  // "has the toolbar rendered yet", not "which breakpoint is this" — a first
+  // draft branched on that answer, took the phone path on a desktop, and then
+  // waited ten seconds for a gear that is `display: none` there. Wait for
+  // whichever route this breakpoint renders, THEN choose.
+  await expect(avatar.or(gear).first()).toBeVisible({ timeout: 15_000 });
+  if (await avatar.isVisible()) {
+    await avatar.click();
+    await page
+      .getByRole('menuitem', { name: 'Open settings' })
+      .click({ timeout: 10_000 });
+    return;
+  }
+  // The phone toolbar keeps the gear (see `.app-toolbar__action--compact-only`).
+  await gear.first().click();
+}
+
 export async function dismissSetupLauncher(page: Page): Promise<void> {
-  const continueButton = page.getByRole('button', {
-    name: 'Continue Without Setup',
-  });
-  await continueButton.click({ timeout: 1000 }).catch(async () => {
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
-  });
-  await page.getByTestId('setup-launcher').waitFor({
-    state: 'detached',
-    timeout: 3000,
-  });
+  const launcher = page.getByTestId('setup-launcher');
+  if (await launcher.isVisible()) {
+    await launcher
+      .getByRole('button', { name: 'Dismiss setup launcher', exact: true })
+      .click();
+    await expect(launcher).toBeHidden();
+  }
 }
 
 export async function seedOrchestrationRoutes(
@@ -498,16 +771,8 @@ export async function seedOrchestrationRoutes(
       updatedAt: string;
       messageCount?: number;
     }>;
-    conversationLookups?: Record<
-      string,
-      {
-        id: string;
-        currentSessionId: string;
-        agentSlug: string;
-        projectSlug?: string;
-        title?: string;
-      }
-    >;
+    conversationLookups?: Record<string, ConversationLookupFixture>;
+    executionBySession?: Record<string, ConversationOpenExecution>;
   },
 ): Promise<void> {
   await installMockOrchestrationEventWindow(page);
@@ -515,6 +780,19 @@ export async function seedOrchestrationRoutes(
     projectSlug: 'dev',
     projectId: DEV_CONFIG.id,
     layoutSlug: CODING_LAYOUT.slug,
+  });
+  // This fixture Project has only built-in Panes and no installed package
+  // actions. Its identity exists in mocked Project routes, not the live server.
+  const paneActions: WorkspacePaneHostActionCatalog = {
+    projectSlug: 'dev',
+    support: 'supported',
+    complete: true,
+    contributions: [],
+  };
+  await page.route('**/api/orchestration/pane-host/dev/catalog', (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    return route.fulfill({ json: { success: true, data: paneActions } });
   });
   await page.addInitScript(() => {
     if (localStorage.getItem('station-connect-connections-active')) return;
@@ -535,8 +813,16 @@ export async function seedOrchestrationRoutes(
   const providerSummaries =
     options?.providerSummaries ?? DEFAULT_PROVIDER_SUMMARIES;
   const conversations = options?.conversations ?? DEFAULT_CONVERSATIONS;
-  const conversationLookups =
+  const conversationLookups: Record<string, ConversationLookupFixture> =
     options?.conversationLookups ?? DEFAULT_CONVERSATION_LOOKUPS;
+  // A test may replace the default catalog after its beforeEach setup. Its
+  // event-window/open resolver must follow the same replacement snapshot.
+  if (!conversationSessionReaders.has(page) || options?.conversationLookups) {
+    await installMockOrchestrationConversationEventWindow(page, (id) => {
+      const conversation = conversationLookups[id];
+      return conversation ? [conversation.currentSessionId] : [];
+    });
+  }
 
   await Promise.all([
     page.route('**/.well-known/station/v1', (r) =>
@@ -664,18 +950,7 @@ export async function seedOrchestrationRoutes(
       const parts = url.pathname.split('/').filter(Boolean);
       const conversationId =
         (parts.at(-1) === 'open' ? parts.at(-2) : parts.at(-1)) ?? '';
-      const conversation = (
-        conversationLookups as Record<
-          string,
-          {
-            id: string;
-            currentSessionId: string;
-            agentSlug: string;
-            projectSlug?: string;
-            title?: string;
-          }
-        >
-      )[conversationId];
+      const conversation = conversationLookups[conversationId];
       if (parts.at(-1) === 'open' && conversation) {
         const inventory = conversations.find(
           (candidate) => candidate.id === conversationId,
@@ -694,6 +969,17 @@ export async function seedOrchestrationRoutes(
         const currentSessionId = sessionReader
           ? sessionReader(conversationId).at(-1)
           : conversation.currentSessionId;
+        const execution = currentSessionId
+          ? options?.executionBySession?.[currentSessionId]
+          : undefined;
+        if (
+          execution &&
+          (execution.sessionId !== currentSessionId ||
+            execution.agentId !== conversation.agentSlug)
+        )
+          throw new Error(
+            'Conversation fixture execution identity is inconsistent',
+          );
         const { currentSessionId: _seededCurrentSessionId, ...identity } =
           conversation;
         const exactConversation = {
@@ -715,6 +1001,7 @@ export async function seedOrchestrationRoutes(
               status: currentSessionId ? 'resolved' : 'missing-session',
               conversation: exactConversation,
               ...(currentSessionId ? { currentSessionId } : {}),
+              ...(execution ? { execution } : {}),
               transcript: {
                 available: Boolean(currentSessionId),
                 owner: 'runtime',

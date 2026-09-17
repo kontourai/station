@@ -13,6 +13,10 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import {
+  WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+  WORKSPACE_DEVICE_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-device-pane';
+import {
   createWorkspacePlanPaneInstance,
   createWorkspaceReadinessPaneInstance,
   createWorkspaceTrustPaneInstance,
@@ -42,7 +46,7 @@ import {
  * placed an occurrence. Preview panes deliberately have no instances here:
  * an instance is a real placement, not a synonym for a descriptor.
  */
-export interface KnownWorkspacePaneDeclaration {
+interface KnownWorkspacePaneDeclaration {
   descriptor: WorkspacePaneDescriptor;
   /** Server-authoritative facts that must not be inferred from a renderer ref. */
   availabilityInput: WorkspacePaneAvailabilityInput;
@@ -124,6 +128,29 @@ export const KNOWN_WORKSPACE_PANE_DECLARATIONS = Object.freeze([
       context: { project: 'present' },
     },
     createWorkspaceCodingTerminalPaneInstance,
+  ),
+  // #1969: the Device pane. Declared here — unlike Activity and Agents,
+  // which are shell surfaces — because a region's "+" is its ONLY offer, and
+  // the catalog's Open path needs an entry carrying an instance.
+  //
+  // Two omissions are the design, not oversights:
+  //
+  // - NO `requirements.hostCapabilities`. Browser Preview declares
+  //   `local-browser-preview` because the desktop shell renders it; a
+  //   captured PNG renders anywhere, so gating this pane on a desktop
+  //   capability would refuse a surface that works.
+  // - NO `context`. Every other entry declares `project: 'present'` because
+  //   it needs one. Device inventory is the Station host's, so claiming a
+  //   Project requirement would be a false statement about what it reads —
+  //   and would make the pane unavailable in a dock with no project, which
+  //   is the case it is built for.
+  //
+  // `createInstance` ignores `projectId` and answers the one constant, which
+  // is the honest shape for a pane whose occurrence binds nothing.
+  declaration(
+    WORKSPACE_DEVICE_PANE_DESCRIPTOR,
+    { rollout: 'available', distribution: 'enabled' },
+    () => WORKSPACE_DEVICE_PANE_INSTANCE,
   ),
   declaration(
     WORKSPACE_PLAN_PANE_DESCRIPTOR,

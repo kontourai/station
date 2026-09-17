@@ -4,6 +4,7 @@ import {
   adapterDefaultApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
+  approvalModeForDispatch,
   approvalModeKnobSupported,
   approvalModeLabel,
   resolveEffectiveApprovalMode,
@@ -26,12 +27,9 @@ describe('approvalModeKnobSupported', () => {
 });
 
 describe('adapterDefaultApprovalMode', () => {
-  test('codex defaults to never (full access) — its actual pre-#727 hardcoded behavior', () => {
-    expect(adapterDefaultApprovalMode('codex')).toBe('never');
-  });
-
-  test('claude defaults to ask — its actual pre-#727 default permission mode', () => {
-    expect(adapterDefaultApprovalMode('claude')).toBe('ask');
+  test('claude and codex no longer guess Ask/Never — inherit the engine config (station#1950)', () => {
+    expect(adapterDefaultApprovalMode('codex')).toBeUndefined();
+    expect(adapterDefaultApprovalMode('claude')).toBeUndefined();
   });
 
   test('no-knob or unknown runtimes have no known adapter default', () => {
@@ -106,7 +104,29 @@ describe('approvalModeDescription', () => {
     );
   });
 
-  test('non-auto modes are not provider-aware', () => {
+  test('ask is provider-aware for Claude: names whose settings can skip an approval (#1545)', () => {
+    // Station adds no approval floor over Claude's own permission flow in this
+    // mode, so the copy has to say which rules can still allow a call without
+    // one. Station also sets no `settingSources`, so a trusted workspace's
+    // checked-in settings are among them — the copy must not narrow the claim
+    // to the operator's own file, which an earlier draft did while the
+    // (now-reverted) narrowing was in place.
+    expect(approvalModeDescription('ask', 'claude')).toBe(
+      "Claude asks before tool calls its own rules don't already allow — your Claude settings and a trusted workspace's both count.",
+    );
+    expect(approvalModeDescription('ask', 'claude')).not.toMatch(/every time/i);
+    expect(approvalModeDescription('ask', 'claude')).not.toMatch(/only your/i);
+  });
+
+  test('ask falls back to generic copy that still claims no floor', () => {
+    for (const engineId of [undefined, 'codex', 'acp']) {
+      expect(approvalModeDescription('ask', engineId)).toBe(
+        'Asks before actions the engine does not already allow on its own.',
+      );
+    }
+  });
+
+  test('never is not provider-aware', () => {
     expect(approvalModeDescription('never', 'codex')).toBe(
       approvalModeDescription('never', 'claude'),
     );
@@ -123,7 +143,7 @@ describe('resolveEffectiveApprovalMode', () => {
       }),
     ).toEqual({
       mode: 'ask',
-      label: 'Ask every time',
+      label: 'Ask first',
       source: 'session override',
     });
   });
@@ -156,22 +176,19 @@ describe('resolveEffectiveApprovalMode', () => {
     });
   });
 
-  test('#727 review item 2 (CRITICAL): an untouched Codex connection reads as never/full-access, not the connection-default placeholder', () => {
+  test('an untouched Claude or Codex connection does not invent Ask/Never (station#1950)', () => {
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'codex' }),
     ).toEqual({
-      mode: 'never',
-      label: 'Never ask (full access) — default',
+      mode: 'connection-default',
+      label: 'Connection default',
       source: 'adapter default',
     });
-  });
-
-  test('an untouched Claude connection reads as ask, not the connection-default placeholder', () => {
     expect(
       resolveEffectiveApprovalMode({ engineConnectionId: 'claude' }),
     ).toEqual({
-      mode: 'ask',
-      label: 'Ask every time — default',
+      mode: 'connection-default',
+      label: 'Connection default',
       source: 'adapter default',
     });
   });
@@ -191,6 +208,101 @@ describe('resolveEffectiveApprovalMode', () => {
     );
   });
 
+  /**
+   * #2144 slice 6 added `AppConfig.defaultApprovalMode` as a FOURTH layer,
+   * between the connection default and the adapter default. Each case below
+   * pins one boundary of the order, and the last two pin where the Station
+   * value must NOT apply.
+   */
+  describe('the Station default (#2144 slice 6)', () => {
+    test('a session override wins over it', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          sessionOverride: 'ask',
+          stationDefault: 'never',
+        }),
+      ).toEqual({
+        mode: 'ask',
+        label: 'Ask first',
+        source: 'session override',
+      });
+    });
+
+    test('the connection default wins over it', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          connectionDefault: 'auto',
+          stationDefault: 'never',
+        }),
+      ).toEqual({
+        mode: 'auto',
+        label: 'Auto — default',
+        source: 'connection default',
+      });
+    });
+
+    test('it wins over the adapter default when nothing above it is set', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          stationDefault: 'auto',
+        }),
+      ).toEqual({
+        mode: 'auto',
+        label: 'Auto — default',
+        source: 'station default',
+      });
+    });
+
+    test('an engine with no approval knob ignores it', () => {
+      // `acp` is in no branch of `approvalModeKnobSupported`, so a Station
+      // posture here would be a claim nothing applies.
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'acp',
+          stationDefault: 'never',
+        }),
+      ).toEqual({
+        mode: 'connection-default',
+        label: 'Connection default',
+        source: 'adapter default',
+      });
+      // The same value on a supporting engine DOES resolve — without this
+      // half, the assertion above would pass for a resolver that ignored the
+      // Station layer entirely.
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'claude',
+          stationDefault: 'never',
+        }).source,
+      ).toBe('station default');
+    });
+
+    test('connection-default stored at Station scope states no posture', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          stationDefault: 'connection-default',
+        }),
+      ).toEqual({
+        mode: 'connection-default',
+        label: 'Connection default',
+        source: 'adapter default',
+      });
+    });
+
+    test('an unrecognized Station value is ignored, not surfaced as-is', () => {
+      expect(
+        resolveEffectiveApprovalMode({
+          engineConnectionId: 'codex',
+          stationDefault: 'yolo',
+        }).source,
+      ).toBe('adapter default');
+    });
+  });
+
   test('an unrecognized override/default value is ignored, not surfaced as-is', () => {
     expect(
       resolveEffectiveApprovalMode({
@@ -199,9 +311,99 @@ describe('resolveEffectiveApprovalMode', () => {
         connectionDefault: 'also-not-real',
       }),
     ).toEqual({
-      mode: 'never',
-      label: 'Never ask (full access) — default',
+      mode: 'connection-default',
+      label: 'Connection default',
       source: 'adapter default',
     });
+  });
+});
+
+/**
+ * The ENFORCEMENT counterpart of `resolveEffectiveApprovalMode`. What the
+ * chip displays and what the send path requests must not diverge; the payload
+ * assertions live in `foregroundMessageDispatch.test.ts` and
+ * `useActiveChatSessionMessaging.test.ts`, which reach the wire.
+ */
+describe('approvalModeForDispatch', () => {
+  /** A chat starting its session on an external, knob-capable engine. */
+  const starting = {
+    engineConnectionId: 'codex',
+    executionMode: 'external',
+    sessionAlreadyStarted: false,
+  } as const;
+
+  test("the Station default becomes this turn's request", () => {
+    expect(
+      approvalModeForDispatch({ ...starting, stationDefault: 'never' }),
+    ).toBe('never');
+  });
+
+  test("the connection's default outranks the Station default", () => {
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        connectionDefault: 'auto',
+        stationDefault: 'never',
+      }),
+    ).toBe('auto');
+  });
+
+  test('a session override is already on the wire, so nothing is added', () => {
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        sessionOverride: 'ask',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('an engine with no approval knob is asked for nothing', () => {
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        engineConnectionId: 'acp',
+        connectionDefault: 'auto',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('a Station-mode chat is asked for nothing, knob-capable id or not', () => {
+    // It keeps its model provider's id, and no approval control renders.
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        executionMode: 'station',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+    expect(
+      approvalModeForDispatch({
+        engineConnectionId: 'codex',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('a chat whose session is already live is asked for nothing', () => {
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        sessionAlreadyStarted: true,
+        connectionDefault: 'auto',
+        stationDefault: 'never',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('stating no posture sends no posture', () => {
+    expect(
+      approvalModeForDispatch({
+        ...starting,
+        stationDefault: 'connection-default',
+      }),
+    ).toBeUndefined();
+    expect(approvalModeForDispatch(starting)).toBeUndefined();
   });
 });

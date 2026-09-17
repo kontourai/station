@@ -232,3 +232,63 @@ describe('useSlashCommands — ACP command source (#149 orchestration cutover)',
     });
   });
 });
+
+/**
+ * #1536 review M5. `/model` named the current model through the shared
+ * identity rule but without the catalog, so an unresolved engine default read
+ * "Default" here while the composer pill and the dock header — same rule, same
+ * id, WITH the catalog — named the concrete model it resolves to. One rule and
+ * two answers, because one caller withheld an input.
+ */
+describe('useSlashCommands — the /model row names what the composer names', () => {
+  const catalog = [
+    {
+      id: 'default',
+      name: 'Default (recommended)',
+      resolvedModel: 'claude-opus-5',
+    },
+    { id: 'claude-opus-5', name: 'Opus 5', originalId: 'claude-opus-5' },
+  ] as never[];
+
+  beforeEach(() => {
+    useProviderCommandsQueryMock.mockReset().mockReturnValue({ data: [] });
+    skills = [];
+    agents = [
+      {
+        slug: 'station',
+        name: 'Station',
+        model: 'default',
+      },
+    ];
+  });
+
+  function modelRow(models?: never[]) {
+    const { result } = renderHook(() =>
+      useSlashCommands('station', null, undefined, models),
+    );
+    const row = result.current.catalog.find(
+      (command) => command.cmd === '/model',
+    );
+    expect(row, 'no /model row in the catalog').toBeDefined();
+    return row as unknown as { description: string; currentModel: string };
+  }
+
+  it('names the concrete model the engine default resolves to, given the catalog', () => {
+    const row = modelRow(catalog);
+    expect(row.currentModel).toBe('Opus 5');
+    expect(row.description).toContain('Opus 5');
+    expect(row.description).not.toContain('recommended');
+  });
+
+  it('falls back to "Default" only when no catalog is available', () => {
+    expect(modelRow().currentModel).toBe('Default');
+  });
+
+  it('says the model was not reported rather than rendering an empty gap', () => {
+    agents = [{ slug: 'station', name: 'Station' }];
+    const row = modelRow(catalog);
+    // `modelIdentityLabel` answers this itself, which is why the old
+    // `|| 'Model not reported'` fallbacks were unreachable.
+    expect(row.currentModel).toBe('Model not reported');
+  });
+});

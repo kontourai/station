@@ -48,6 +48,10 @@ jobs:
           timeout-seconds: "600"
           owner-lifetime-seconds: "7800"
 
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
       - run: npm run dependencies:ci
 
       - name: Build production Station bundles for the attached browser target
@@ -117,6 +121,10 @@ jobs:
           lease-weight: "6"
           timeout-seconds: "600"
           owner-lifetime-seconds: "7800"
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
 
       - run: npm run dependencies:ci
 
@@ -194,6 +202,10 @@ jobs:
           lease-weight: "6"
           timeout-seconds: "600"
           owner-lifetime-seconds: "7800"
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
 
       - run: npm run dependencies:ci
 

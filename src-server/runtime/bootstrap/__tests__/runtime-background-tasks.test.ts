@@ -64,12 +64,14 @@ describe('startRuntimeACPConnections', () => {
 
   test('starts configured ACP connections and reports readiness', async () => {
     const { logger, acpBridge } = harness();
+    const onReady = vi.fn();
 
     startRuntimeACPConnections({
       loadACPConfig: async () => ({ connections: [] }),
       acpBridge: acpBridge as any,
       logger: logger as any,
       listProvidersFn: (() => []) as any,
+      onReady,
     });
     // archive#3404: boot is the `'background'` probe path — nothing awaits
     // this chain, so first contact with a cold engine may take the long
@@ -79,6 +81,31 @@ describe('startRuntimeACPConnections', () => {
     );
     expect(logger.info).toHaveBeenCalledWith(
       '[Runtime] ACP connections established',
+    );
+    expect(onReady).toHaveBeenCalledOnce();
+  });
+
+  test('reports ACP-ready reconciliation failure without relabeling startup as failed', async () => {
+    const { logger, acpBridge } = harness();
+    startRuntimeACPConnections({
+      loadACPConfig: async () => ({ connections: [] }),
+      acpBridge: acpBridge as any,
+      logger: logger as any,
+      listProvidersFn: (() => []) as any,
+      onReady: async () => {
+        throw new Error('rebind failed');
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        '[Runtime] ACP-ready reconciliation failed',
+        { error: 'rebind failed' },
+      ),
+    );
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      '[Runtime] ACP startup failed',
+      expect.anything(),
     );
   });
 

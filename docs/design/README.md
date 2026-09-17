@@ -33,16 +33,20 @@ category.
 - [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (station#1423)
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (Station #1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (Station #1375)
+- [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer
 - [chat-composer.md](chat-composer.md) — Design: Chat composer & the agent-navigability principle
 - [cli-product.md](cli-product.md) — Design: the Station CLI as a published product
 - [cli-triage.md](cli-triage.md) — Design: bounded guided triage
+- [cloud-move.md](cloud-move.md) — Move a Station setup to the cloud
 - [collaborative-editor-pane.md](collaborative-editor-pane.md) — Collaborative editor pane
 - [conduit-runtime-integration.md](conduit-runtime-integration.md) — Conduit runtime integration
+- [connection-broker.md](connection-broker.md) — Optional Station connection broker
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
 - [entity-hierarchy.md](entity-hierarchy.md) — Design: Entity Hierarchy & Navigation Restructure
 - [event-store-ledger-migration.md](event-store-ledger-migration.md) — EventStore ledger migration order
+- [hosted-execution-isolation.md](hosted-execution-isolation.md) — Hosted execution and plugin isolation
 - [identity.md](identity.md) — Design: Identity (pluggable sources, local-first invariant)
 - [inference-fleet.md](inference-fleet.md) — Design: the inference fleet — receipted model routing across your Stations
 - [instance-registry.md](instance-registry.md) — Design: Instance Registry (`<STATION_HOME>/instances.json`)
@@ -62,18 +66,27 @@ category.
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
+- [placement.md](placement.md) — Placement: regions, surfaces, layouts, panes, pane hosts
 - [plugin-authority-model.md](plugin-authority-model.md) — The plugin authority model: contributions, loci, and where consent belongs
+- [plugin-installation-lifecycle.md](plugin-installation-lifecycle.md) — Plugin installation lifecycle
 - [plugin-knowledge-store-contributions.md](plugin-knowledge-store-contributions.md) — Plugin-contributed Knowledge stores
+- [pnpm-workspace-installation.md](pnpm-workspace-installation.md) — pnpm workspace installation
 - [portable-project-identity.md](portable-project-identity.md) — Design: portable Project identity — remote-keyed resources, per-Station bindings
 - [principals.md](principals.md) — Design: Principals — what "people" means in Station, and when it changes
+- [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
+- [project-membership.md](project-membership.md) — Project membership and device enrollment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
+- [registry-trust-policy.md](registry-trust-policy.md) — Applied registry trust policy
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
+- [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
+- [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
 - [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, station#1123)
+- [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
 - [task-dispatcher.md](task-dispatcher.md) — Task Dispatcher
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane

@@ -1,5 +1,9 @@
 /** @vitest-environment jsdom */
 
+import {
+  PAIRING_SCOPE_GRANT_PATHS,
+  PAIRING_SCOPES,
+} from '@kontourai/station-contracts/environment-security';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import {
@@ -15,7 +19,8 @@ import {
  *
  * The model these pin: the base ladder is ORCHESTRATION access (with a real
  * "none" rung), and everything that composes freely with it — fleet
- * inference, and the two operator-promotion grants — is a capability. An
+ * inference, home transfer, and the operator-promotion grants (pairing
+ * approval, consent, engine sign-in) — is a capability. An
  * earlier version modelled inference as a base rung, which made valid MIXED
  * scopes unrepresentable and silently dropped tokens on Apply.
  */
@@ -93,6 +98,41 @@ test('a MIXED inference scope survives an unrelated edit (review MEDIUM)', () =>
   );
 });
 
+test('a home-transfer scope survives an unrelated orchestration edit', () => {
+  const onApply = openEditor('orchestration:read home:transfer');
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: /Home transfer/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+
+  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate', 'home:transfer'],
+    'orchestration:read home:transfer',
+  );
+});
+
+test('an operator-promoted home-control scope survives an unrelated edit', () => {
+  const onApply = openEditor('orchestration:read home:control');
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: /Home control/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate', 'home:control'],
+    'orchestration:read home:control',
+  );
+});
+
 test('a pure fleet-inference device holds no orchestration access, and keeps it that way', () => {
   const onApply = openEditor('inference:invoke');
   expect(
@@ -158,10 +198,79 @@ test('the derivations agree with the contracts vocabulary', () => {
   // to the none rung — never the widest, which would make the first Apply a
   // silent widening.
   expect(closestBasePreset('inference:invoke')).toBeNull();
+  expect(closestBasePreset('home:transfer')).toBeNull();
   expect(closestBasePreset('legacy-unparseable')).toBeNull();
 
   expect(
     scopeSelectionTokens('delegation', new Set(['access:approve'])),
   ).toEqual(['orchestration:read', 'orchestration:operate', 'access:approve']);
   expect(scopeSelectionTokens(null, new Set())).toEqual([]);
+  expect(scopeSelectionTokens(null, new Set(['home:transfer']))).toEqual([
+    'home:transfer',
+  ]);
+});
+
+test('an operator can grant engine sign-in, and it is marked elevated', () => {
+  const standard = 'orchestration:read orchestration:operate terminal:operate';
+  const onApply = openEditor(standard);
+  const toggle = screen.getByRole('checkbox', {
+    name: /Start engine sign-in/,
+  }) as HTMLInputElement;
+
+  expect(toggle.checked).toBe(false);
+  expect(toggle.closest('label')?.textContent).toContain('Elevated');
+
+  fireEvent.click(toggle);
+  apply();
+
+  expect(onApply).toHaveBeenCalledWith(
+    [
+      'orchestration:read',
+      'orchestration:operate',
+      'terminal:operate',
+      'engine:login',
+    ],
+    standard,
+  );
+});
+
+test('an engine sign-in grant survives an unrelated base edit', () => {
+  const onApply = openEditor(
+    'orchestration:read orchestration:operate terminal:operate engine:login',
+  );
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: /Start engine sign-in/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+
+  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  apply();
+
+  expect(onApply.mock.calls[0][0]).toEqual([
+    'orchestration:read',
+    'orchestration:operate',
+    'engine:login',
+  ]);
+});
+
+/*
+ * The editor offers operator-promotion grants from a hand-written list, and the
+ * contracts vocabulary grows independently of it. When `engine:login` joined
+ * the contracts with `operator-promotion` as its only grant path, this editor
+ * silently could not grant it and no test noticed, so the capability was
+ * unreachable from the product. Compared as sets through the editor's own
+ * selection derivation, so a token missing from the list is a failure here.
+ */
+test('every operator-promotion token in the contracts is offered by the editor', () => {
+  const promotionTokens = PAIRING_SCOPES.filter((token) =>
+    PAIRING_SCOPE_GRANT_PATHS[token].includes('operator-promotion'),
+  );
+  expect(promotionTokens.length).toBeGreaterThan(0);
+
+  const offered = scopeSelectionTokens(null, new Set(promotionTokens));
+
+  expect([...offered].sort()).toEqual([...promotionTokens].sort());
 });

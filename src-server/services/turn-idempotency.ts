@@ -39,7 +39,7 @@ export interface TurnIdempotencyPersistence {
     },
   ): T;
 }
-export type TurnIdempotencyClaim =
+type TurnIdempotencyClaim =
   | { claimed: true }
   | { claimed: false; value?: string };
 
@@ -53,7 +53,7 @@ export type TurnIdempotencyClaim =
  * unresolved turn is therefore never discarded for being old -- it is never
  * a pruning candidate at all.
  */
-export function ownerIsProvablyDead(
+function ownerIsProvablyDead(
   owner: TurnClaimOwner | undefined,
   probe: ProcessIdentityProbe = probeExactProcessIdentity,
 ): boolean {

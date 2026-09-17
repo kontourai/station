@@ -17,11 +17,13 @@
       "types": "./dist/core/healthProbe.d.ts",
       "default": "./dist/core/healthProbe.js"
     },
+    "./connection-trust": "./src/core/connectionTrust.ts",
     "./device-pairing": "./src/core/devicePairing.ts",
     "./pairing-deep-link": "./src/core/pairingDeepLink.ts",
     "./local-self-provision": "./src/core/localSelfProvision.ts",
     "./known-environment": "./src/core/knownEnvironmentRegistry.ts",
-    "./node-storage": "./src/core/nodeStorage.ts"
+    "./node-storage": "./src/core/nodeStorage.ts",
+    "./application-channel": "./src/core/applicationChannel.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets && node ../../scripts/write-dist-stamp.mjs",
@@ -62,7 +64,7 @@
     "@testing-library/react": "^16.3.3",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.18",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "typescript": "^5.9.3",

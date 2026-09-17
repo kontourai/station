@@ -5,7 +5,8 @@ import type { DockMode } from '../types';
  * The single source of truth for the mobile breakpoint, mirroring the
  * `--bp-mobile` documentation token in `tokens.css`. CSS media queries cannot
  * read a custom property, so this literal must stay byte-identical to the
- * condition on every mobile `@media` block across the stylesheets.
+ * condition on general mobile-layout `@media` blocks. Short-window adaptations
+ * can use its exact height-and-pointer branch to narrow that same population.
  *
  * The second clause exists because width alone was wrong. A phone in landscape
  * is ~855 CSS px wide, so `max-width: 768px` reported it as a desktop and
@@ -36,8 +37,9 @@ const EVERY_EDGE: readonly DockMode[] = ['left', 'right', 'bottom'];
  * mobile breakpoint (archive#3928).
  *
  * They ask different questions. `MOBILE_MEDIA_QUERY` asks "is this a phone",
- * and it has to stay byte-identical to the condition on every mobile `@media`
- * block or the stylesheets and the components disagree about the same device.
+ * and general mobile-layout media queries must match it so the stylesheets and
+ * components classify the same devices. Short-window overrides use its exact
+ * height-and-pointer branch.
  * This asks "can this device usefully put the dock on a side", and the answer
  * is no for ANY coarse pointer, including a wide touchscreen laptop that is
  * emphatically not a phone. Deriving one from the other means widening the
@@ -49,6 +51,32 @@ export function availablePlacements({
   coarsePointer,
 }: DockSlotDevice): readonly DockMode[] {
   return coarsePointer || viewportWidth <= 768 ? BOTTOM_ONLY : EVERY_EDGE;
+}
+
+/**
+ * Whether this device's fold offers ONE dock region only — a phone, or any
+ * coarse-pointer or narrow viewport. DEVICE state, not region state, which is
+ * what makes it readable from a pane renderer.
+ *
+ * Shared by the region provider's own `bottomOnly` and the readers OUTSIDE
+ * the provider that must not offer what the model will refuse (Chat's link
+ * context, the background-tasks affordance) — those are the copies #2049
+ * found and folded together.
+ *
+ * It is NOT yet the only spelling of this fold in the tree: two readers
+ * inside the region layer still write `available.length === 1` inline
+ * (`useRegionSurfaceMenu`, `RegionShells`). Routing them here is correct and
+ * was measured — it reds five suites that mock this module wholesale, one of
+ * them a browser-mode suite — so it belongs in its own change rather than in
+ * a fix round.
+ */
+export function dockFoldsToOneRegion(available: readonly DockMode[]): boolean {
+  return available.length === 1;
+}
+
+/** `dockFoldsToOneRegion` for a caller that needs no other placement fact. */
+export function useDockFoldsToOneRegion(): boolean {
+  return dockFoldsToOneRegion(availablePlacements(useDockSlotDevice()));
 }
 
 export function effectivePlacement(

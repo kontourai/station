@@ -6,7 +6,7 @@ import { resolveTurnStallWindowMs } from '@kontourai/station-contracts/turn-stal
 import { orchestrationTurnStallDetections } from '../../telemetry/metrics.js';
 import { TurnStallWatchdog } from './turn-stall-watchdog.js';
 
-export interface TurnProgressTrackerDeps {
+interface TurnProgressTrackerDeps {
   /**
    * `sessionAdapters.get(threadId)?.provider` — undefined means the thread
    * has no live adapter in this process, and a stall on it is not reportable.
@@ -106,10 +106,16 @@ export class TurnProgressTracker {
   }
 
   /** Resolve and pin a thread's stall window from its agent's config. */
-  async setWindow(threadId: string, agentSlug: unknown): Promise<void> {
+  async setWindow(
+    threadId: string,
+    agentSlug: unknown,
+    captured?: { execution: AgentExecutionConfig | undefined },
+  ): Promise<void> {
     this.windowByThread.set(
       threadId,
-      await this.resolveWindowMsForAgent(agentSlug),
+      captured
+        ? resolveTurnStallWindowMs(captured.execution)
+        : await this.resolveWindowMsForAgent(agentSlug),
     );
   }
 

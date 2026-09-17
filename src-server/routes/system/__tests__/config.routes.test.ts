@@ -16,8 +16,19 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   configOps: { add: vi.fn() },
 }));
 
-const { createConfigRoutes } = await import('../config.js');
+const { createConfigProjectReader, createConfigRoutes } = await import(
+  '../config.js'
+);
+const { FileStorageNotFoundError, FileStorageUnavailableError } = await import(
+  '../../../domain/project-file-transactions.js'
+);
+const { InvalidPathSegmentError } = await import(
+  '../../../knowledge-index/path-safety.js'
+);
 const { ConfigLoader } = await import('../../../domain/config-loader.js');
+const { defaultTerminalShell } = await import(
+  '../../../services/terminal/terminal-shells.js'
+);
 
 function createMockConfigLoader(
   initial: Record<string, any> = {
@@ -220,6 +231,35 @@ describe('Config Routes', () => {
     expect('mcpUiFrameOrigin' in body.data).toBe(false);
   });
 
+  // #1582 D9: the Settings "Terminal shell" input had no hint at all, and a
+  // hard-coded one would be wrong on any host whose SHELL differs. The value
+  // is derived from the same resolver a terminal spawn walks, and it is the
+  // DEFAULT (what happens if the field is left empty) — never the configured
+  // value, which the input renders itself.
+  test('GET /app reports the shell this host would try when terminalShell is unset', async () => {
+    const loader = createMockConfigLoader({ terminalShell: '/usr/bin/nu' });
+    const app = createConfigRoutes(loader as any, mockLogger);
+    const body = await json(await app.request('/app'));
+    // Pinned independently of the derivation, or the assertion moves with it:
+    // on a host that sets SHELL that is the answer, and on one that does not
+    // it is the platform's own first fallback.
+    const expected =
+      process.env.SHELL ??
+      (process.platform === 'win32'
+        ? (process.env.COMSPEC ?? 'C:\\Program Files\\Git\\bin\\bash.exe')
+        : '/bin/zsh');
+    expect(body.data.defaultTerminalShell).toBe(expected);
+    // ...and it agrees with the resolver a spawn walks, which is the point.
+    expect(body.data.defaultTerminalShell).toBe(
+      defaultTerminalShell({ platform: process.platform, env: process.env })
+        ?.shell,
+    );
+    // The configured value is reported separately and must not become the
+    // default it is an override of.
+    expect(body.data.terminalShell).toBe('/usr/bin/nu');
+    expect(body.data.defaultTerminalShell).not.toBe('/usr/bin/nu');
+  });
+
   test('GET /app injects the runtime-only pluginFrameOrigin', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(
@@ -378,6 +418,228 @@ describe('Config Routes', () => {
       source: 'env',
       envVar: 'STATION_FEATURES',
     });
+  });
+
+  /**
+   * #2144 slice 2. Two shapes, and the first one is the compatibility
+   * claim: a read that names no project must be byte-identical to what it
+   * was before the field existed. Asserted on the WHOLE entry (`toEqual`,
+   * not `toMatchObject`) — a stray `scope` on an unscoped read is exactly
+   * the regression this pins.
+   */
+  test('GET /app reports no scope when no project is named', async () => {
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      defaultLLMProvider: 'station-local',
+    });
+    const app = createConfigRoutes(loader as any, mockLogger);
+    const body = await json(await app.request('/app'));
+    expect(body.provenance.defaultModel).toEqual({ source: 'file' });
+    expect(body.provenance.defaultLLMProvider).toEqual({ source: 'file' });
+  });
+
+  test('GET /app?project= attributes overridden keys to the project and the rest to the Station', async () => {
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      defaultLLMProvider: 'station-local',
+      terminalShell: '/bin/zsh',
+    });
+    const app = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (slug) =>
+        slug === 'atlas'
+          ? ({
+              id: 'p',
+              slug: 'atlas',
+              name: 'Atlas',
+              createdAt: 'now',
+              updatedAt: 'now',
+              defaultProviderId: 'atlas-engine',
+              defaultModel: 'atlas-model',
+              defaultWorkspaceIsolation: 'worktree',
+            } as never)
+          : undefined,
+    );
+    const body = await json(await app.request('/app?project=atlas'));
+    // The alias is applied: the project's `defaultProviderId` is what makes
+    // the SETTING `defaultLLMProvider` project-scoped. The project carries
+    // the WHOLE model pair here, which is what makes it an override at all —
+    // see the half-pair case below.
+    expect(body.provenance.defaultLLMProvider).toEqual({
+      source: 'file',
+      scope: 'project',
+    });
+    expect(body.provenance.defaultModel).toEqual({
+      source: 'file',
+      scope: 'project',
+    });
+    // Stored on the project but absent from the Station file — still a
+    // project-scoped `file`, not the registry default it would otherwise be.
+    expect(body.provenance.defaultWorkspaceIsolation).toEqual({
+      source: 'file',
+      scope: 'project',
+    });
+    // A key the project does not override stays the Station's.
+    expect(body.provenance.terminalShell).toEqual({
+      source: 'file',
+      scope: 'station',
+    });
+    // Values are untouched: naming a project asks for provenance, not for a
+    // different config document.
+    expect(body.data.defaultLLMProvider).toBe('station-local');
+  });
+
+  /**
+   * `ProviderService.resolveProviderAndModel` takes the project branch only
+   * when the project has BOTH `defaultProviderId` and `defaultModel`
+   * (provider-service.ts:283). A project carrying one of them resolves to the
+   * Station pair entire, so naming the project as the source of either half
+   * would describe a resolution that never happens.
+   */
+  test('GET /app?project= does not attribute a half model pair to the project', async () => {
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      defaultLLMProvider: 'station-local',
+    });
+    const halfPair = (field: 'defaultProviderId' | 'defaultModel') =>
+      createConfigRoutes(
+        loader as any,
+        mockLogger,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () =>
+          ({
+            id: 'p',
+            slug: 'atlas',
+            name: 'Atlas',
+            createdAt: 'now',
+            updatedAt: 'now',
+            [field]: 'only-half',
+            defaultWorkspaceIsolation: 'worktree',
+          }) as never,
+      );
+
+    for (const field of ['defaultProviderId', 'defaultModel'] as const) {
+      const body = await json(
+        await halfPair(field).request('/app?project=atlas'),
+      );
+      expect(body.provenance.defaultLLMProvider, field).toEqual({
+        source: 'file',
+        scope: 'station',
+      });
+      expect(body.provenance.defaultModel, field).toEqual({
+        source: 'file',
+        scope: 'station',
+      });
+      // The isolation override is independent and survives — the pair rule
+      // must not take unrelated keys down with it.
+      expect(body.provenance.defaultWorkspaceIsolation, field).toEqual({
+        source: 'file',
+        scope: 'project',
+      });
+    }
+  });
+
+  /**
+   * The REAL wrapper (`createConfigProjectReader`) over a stub adapter, so
+   * the three outcomes are proved through the production join rather than a
+   * test-local lambda that happens to behave the same way. The distinction
+   * matters: before this round the wrapper matched the adapter's not-found
+   * MESSAGE, which reported "no such project" for any error whose text
+   * happened to contain those words.
+   */
+  describe('the project reader tells absence from failure', () => {
+    const routesFor = (getProject: (slug: string) => never | any) =>
+      createConfigRoutes(
+        createMockConfigLoader() as any,
+        mockLogger,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        createConfigProjectReader({ getProject } as never),
+      );
+
+    test('a slug with no record is absent — 404', async () => {
+      const app = routesFor(() => {
+        throw new FileStorageNotFoundError("Project 'ghost' not found");
+      });
+      const res = await app.request('/app?project=ghost');
+      expect(res.status).toBe(404);
+    });
+
+    test('a slug that is not a path segment is a bad request — 400, and the slug is not echoed', async () => {
+      const app = routesFor((slug) => {
+        throw new InvalidPathSegmentError('project slug', slug);
+      });
+      const res = await app.request(
+        `/app?project=${encodeURIComponent('../../etc/passwd')}`,
+      );
+      expect(res.status).toBe(400);
+      const body = await json(res);
+      expect(body.success).toBe(false);
+      // The error class's own message quotes the value back; this one reaches
+      // a caller who chose it, so it must not.
+      expect(body.error).not.toContain('passwd');
+      expect(body.error).not.toContain('..');
+      expect(body.error).toBe(
+        'The project query parameter must be a single project slug; no provenance was reported.',
+      );
+    });
+
+    test('an unreadable store is a server fault — 500, not a missing project', async () => {
+      const app = routesFor(() => {
+        throw new FileStorageUnavailableError('Project storage is unavailable');
+      });
+      const res = await app.request('/app?project=atlas');
+      expect(res.status).toBe(500);
+      expect((await json(res)).success).toBe(false);
+    });
+
+    /**
+     * The message-matching join this replaced: a storage FAILURE whose text
+     * contains "not found" was reported as an absent project. Pinned so the
+     * typed join cannot quietly regress to a substring test.
+     */
+    test('a read failure that merely mentions "not found" is still a failure', async () => {
+      const app = routesFor(() => {
+        throw new FileStorageUnavailableError(
+          'Project storage is unavailable: mount point not found',
+        );
+      });
+      expect((await app.request('/app?project=atlas')).status).toBe(500);
+    });
+  });
+
+  test('GET /app?project= answers 404 for a slug this Station does not have', async () => {
+    const loader = createMockConfigLoader();
+    const app = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => undefined,
+    );
+    const res = await app.request('/app?project=missing');
+    expect(res.status).toBe(404);
+    expect((await json(res)).success).toBe(false);
   });
 
   test('PUT /app strips runtime-derived keys (managedChatOrchestration) and reports them as ignoredKeys, so a GET-then-PUT round trip cannot persist them', async () => {

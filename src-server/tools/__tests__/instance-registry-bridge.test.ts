@@ -1657,3 +1657,18 @@ describe('instance registry bridge legacy manifest transaction (archive#4457)', 
     ]);
   });
 });
+
+test('home-schema incompatibility is specific and path-free across the native bridge', () => {
+  const home = root();
+  writeFileSync(join(home, 'existing-data.txt'), 'preserve me');
+  const result = bridgeChild('ensureHomeSchema', { home });
+  expect(result.status).toBe(1);
+  expect(JSON.parse(result.stdout)).toEqual({
+    ok: false,
+    error: { code: 'HOME_SCHEMA_INCOMPATIBLE' },
+  });
+  expect(result.stdout).not.toContain(home);
+  expect(readFileSync(join(home, 'existing-data.txt'), 'utf8')).toBe(
+    'preserve me',
+  );
+});

@@ -96,6 +96,7 @@ describe('station-vocabulary-gate', () => {
     expect(isVocabularyTextFile('docs/new-guide.md')).toBe(true);
     expect(isVocabularyTextFile('src-desktop/src/lib.rs')).toBe(true);
     expect(isVocabularyTextFile('package-lock.json')).toBe(false);
+    expect(isVocabularyTextFile('pnpm-lock.yaml')).toBe(false);
     expect(isVocabularyTextFile('asset.png')).toBe(false);
 
     const files = ['docs/a.md', 'src/a.ts', 'asset.png'];

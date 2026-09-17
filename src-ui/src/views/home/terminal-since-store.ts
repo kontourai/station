@@ -13,7 +13,7 @@
 const TERMINAL_SINCE_STORAGE_KEY = 'station.activity.terminalSince';
 
 /** item id -> epoch ms of the first observed terminal transition. */
-export type TerminalSinceMap = Record<string, number>;
+type TerminalSinceMap = Record<string, number>;
 
 /**
  * `maxAgeMs` prunes anchors older than the linger window plus a safety
@@ -44,10 +44,12 @@ export function readTerminalSince(
   }
 }
 
-export function writeTerminalSince(map: TerminalSinceMap): void {
+export function writeTerminalSince(map: TerminalSinceMap): boolean {
   try {
     localStorage.setItem(TERMINAL_SINCE_STORAGE_KEY, JSON.stringify(map));
+    return true;
   } catch {
-    /* ignore — source timestamps still classify historical work correctly */
+    // Source timestamps still classify historical work correctly; retry later.
+    return false;
   }
 }

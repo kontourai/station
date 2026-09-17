@@ -10,30 +10,36 @@ diagnosis requires them.
 - A **device** is what you connect from: a browser, phone, tablet, or laptop.
 - Pairing grants a device scoped, revocable access to a Station.
 
-## Agents, Engines, Providers, And Models
+## Agents, Engines, And Model Connections
 
 - An **agent** is the working identity you choose for a Task or Session.
 - A **Station agent** is executed by Station's engine. Station owns its prompt,
   skills, tools, commands, and Model choice.
 - An **External agent** is executed by another supported engine. That engine
   owns its behavior and tool loop.
-- A **Provider** is the user-facing connection to a model service or agent app.
-- A **Model** is the inference option selected within a Provider.
+- A **Model connection** is a local or hosted model service that Station's
+  engine runs inference on. Connections lists these on its **Models** tab.
+- An **Engine** is an installed agent CLI, or a custom engine you connected,
+  that runs its own agent loop. Connections lists these on its **Engines** tab.
+- A **Model** is the inference option selected within a Model connection or
+  offered by an Engine.
 
 Station names the concrete engine when that distinction matters. Protocols such
 as ACP are connection details, not agent types users need to choose.
 
 Concrete examples:
 
-- **Local model:** a local model service is the Provider, one of its installed
-  models is the Model, and a Station agent uses Station's engine to run it.
-- **External engine:** the engine is the Provider; the Agent is an External
-  agent because that engine owns its tool loop.
-- **Hosted model:** a hosted model service is the Provider, one of its models is
-  the Model, and a Station agent owns the prompt, skills, and tools around it.
+- **Local model:** a local model service is the Model connection, one of its
+  installed models is the Model, and a Station agent uses Station's engine to
+  run it.
+- **External engine:** the engine is the Engine connection; the Agent is an
+  External agent because that engine owns its tool loop.
+- **Hosted model:** a hosted model service is the Model connection, one of its
+  models is the Model, and a Station agent owns the prompt, skills, and tools
+  around it.
 
 See the [Connections guide](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
-for the current supported Providers and their setup details.
+for the current supported model services and engines and their setup details.
 
 ## Projects, Tasks, And Sessions
 
@@ -79,9 +85,10 @@ terminal pane states why it cannot open. Agent execution does not use
 
 ## Local-First Data
 
-Station stores its data under `~/.station` by default. A Provider receives data
-only when you configure it and use a feature that needs it. Observability data
-leaves the machine only when an operator configures an export endpoint.
+Station stores its data under `~/.station` by default. A hosted model service,
+an Engine, a paired device, or a remote computer receives data only when you
+configure it and use a feature that needs it. Observability data leaves the
+machine only when an operator configures an export endpoint.
 
 ## Next
 

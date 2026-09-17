@@ -37,6 +37,27 @@ describe('toastStore.show', () => {
     expect(toast?.message).toBe('boom');
   });
 
+  test.each(['success', 'warning', 'error'] as const)(
+    'retains the public SDK %s tone without using session attribution',
+    (tone) => {
+      toastStore.show(
+        'SDK notice',
+        undefined,
+        100_000,
+        undefined,
+        undefined,
+        tone,
+      );
+      expect(toastStore.getSnapshot()).toContainEqual(
+        expect.objectContaining({
+          message: 'SDK notice',
+          sessionId: undefined,
+          type: tone,
+        }),
+      );
+    },
+  );
+
   test('dismissAll removes every active toast at once', () => {
     toastStore.show('a', 's3', 100_000);
     toastStore.show('b', 's3', 100_000);
@@ -110,5 +131,43 @@ describe('toastStore.show — duration: 0 is sticky', () => {
     expect(toastStore.getSnapshot().some((t) => t.sessionId === 's-b2-3')).toBe(
       true,
     );
+  });
+});
+
+describe('toastStore.showToolActivity (station#1558)', () => {
+  beforeEach(() => {
+    toastStore.dismissAll();
+    toastStore.clearHistory();
+  });
+
+  const activity = (
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved',
+  ) =>
+    toastStore.showToolActivity({
+      sessionId: `s-tool-${status}`,
+      toolName: 'shell exec',
+      agentName: 'Dev Agent',
+      status,
+    });
+
+  test('an unresolved call reads as a reported non-outcome, not a failure or a stop', () => {
+    activity('unresolved');
+    const toast = toastStore
+      .getSnapshot()
+      .find((entry) => entry.sessionId === 's-tool-unresolved');
+    expect(toast?.message).toBe('Dev Agent reported no result for shell exec');
+  });
+
+  test('the three outcome-asserting statuses keep their own copy', () => {
+    activity('error');
+    activity('cancelled');
+    activity('completed');
+    const messageFor = (status: string) =>
+      toastStore
+        .getSnapshot()
+        .find((entry) => entry.sessionId === `s-tool-${status}`)?.message;
+    expect(messageFor('error')).toBe('Dev Agent failed shell exec');
+    expect(messageFor('cancelled')).toBe('Dev Agent cancelled shell exec');
+    expect(messageFor('completed')).toBe('Dev Agent finished shell exec');
   });
 });

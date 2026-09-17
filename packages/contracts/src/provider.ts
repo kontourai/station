@@ -158,6 +158,8 @@ export const SESSION_AGENT_ICON_MAX_LENGTH = AGENT_ICON_TOKEN_MAX_LENGTH;
  */
 export const FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY =
   'firstTurnInstructionsComposed';
+export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
+  'workspacePaneHostAction';
 
 /**
  * Complete set of orchestration evidence fields a public caller may never
@@ -180,6 +182,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 ] as const;
 
 /**
@@ -379,7 +382,13 @@ export function modelLaunchTelemetryAttributes(
  * existing sessions and payloads that never set this field keep behaving
  * exactly as before.
  *
- * - `ask` — ask before every consequential action.
+ * - `ask` — the engine asks before actions its own rules do not already
+ *   allow. NOT "asks every time": each engine keeps its own allow list and
+ *   read-only classifier underneath this mode, so some calls run without a
+ *   Station approval request. For Claude that list includes the operator's
+ *   `~/.claude/settings.json` AND a trusted workspace's checked-in
+ *   `.claude/settings.json` — an accepted gap with a same-user threat model
+ *   (#1545, and the `settingSources` comment in claude-adapter.ts).
  * - `auto` — run some actions automatically; the exact boundary is
  *   provider-specific (see each adapter's mapping — e.g. Codex asks at its
  *   own discretion within a workspace-scoped sandbox, Claude auto-accepts
@@ -444,14 +453,13 @@ export const PROVIDER_MUSE = 'muse';
  *   reads `approvalMode`; `mapReasoningEffort` reads `effort`, falling back to
  *   `reasoningEffort` — both genuinely applied, so both are listed; `fastMode`
  *   is read directly (`codex-adapter.ts` ~lines 71-73, 555-633, 683-718).
- * - `acp` (`acp-adapter.ts`): reads `modelOptions` in exactly two places
- *   (~lines 579, 650), both `effectiveModelMetadata(...)` calls that only
- *   ECHO the bag into a display-only `session.configured`/`turn.started`
- *   metadata snapshot — no key changes ACP's actual session/turn behavior
- *   today, so the support list is empty. Deviation from an earlier draft
- *   that guessed `approvalMode` here: ACP's own approval flow is the
- *   interactive `session/request_permission` handshake, unrelated to a
- *   settable `modelOptions.approvalMode`.
+ * - `acp` (`acp-adapter.ts`): `modelOptions.mode` is the requested ACP
+ *   session mode (station#1945). The adapter applies it from the fresh
+ *   session catalog — `setConfigOption` when a `category: "mode"` option
+ *   exists, otherwise `session/set_mode`. Display-only
+ *   `effectiveModelMetadata` echoes still exist and do not add keys.
+ *   ACP's per-tool `session/request_permission` handshake is unrelated
+ *   to Station `approvalMode`, which remains unsupported here.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
@@ -473,7 +481,7 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'autoMode',
     ],
     [PROVIDER_CODEX]: ['approvalMode', 'effort', 'reasoningEffort', 'fastMode'],
-    [PROVIDER_ACP]: [],
+    [PROVIDER_ACP]: ['mode'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // `muse-adapter.ts` reads `modelOptions` nowhere at all: `sendTurn` uses
@@ -568,28 +576,14 @@ export function unsupportedModelOptionError(
 export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
   'approval-escalation-requires-restart';
 
-/**
- * `RuntimeErrorEvent.code` published when a provider adapter's own
- * STRUCTURED result signals that the underlying engine binding can never
- * make progress again (archive#1827) — e.g. the Claude Agent SDK's `result`
- * message reporting `is_error: true` for a `--resume`d session whose native
- * transcript no longer exists ("No conversation found with session ID:
- * ..."). Classified from the SDK's own structured `is_error` flag, never
- * from parsing the engine's English — see `claude-result-outcome.ts`. The
- * raw engine text still rides in the event's `message` (for a details
- * disclosure); this code is what the recovery path and the UI act on.
- *
- * Distinct from `SESSION_RECOVERY_FAILED_CODE`
- * (`orchestration-session-state.ts`, archive#1090): that code marks a
- * session `status: 'error'` and KEEPS replaying it on every boot, because
- * the failure is a config problem a person can fix (an ACP connection's
- * changed args, a missing credential) — the same binding may work again
- * once they do. This code marks a session `status: 'dead'` and STOPS
- * replaying it: the specific engine-side binding this session held is gone,
- * and no config change brings back that exact transcript. Starting a fresh
- * session for the same chat is the only way forward.
- */
+/** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
+
+/**
+ * A provider reported a failed query/turn without disproving its native binding.
+ * This is not a completed turn, a retry instruction, or a resumability claim.
+ */
+export const ENGINE_TURN_FAILED_CODE = 'engine-turn-failed';
 
 /**
  * Whether Station owns an orchestration session or only follows it.
@@ -604,8 +598,23 @@ export type SessionControlMode = 'station-owned' | 'read-only-attached';
  * Provider-specific discovery details remain outside the orchestration
  * contract so a source cannot leak local filesystem paths through APIs.
  */
+/** An opaque source-owned configuration identity; it is not a path or credential. */
+export interface ProviderSessionSourceAffinity {
+  kind: string;
+  ref: string;
+}
+
+/** A provider position backed by a completed-turn observation. */
+export interface ProviderSessionContinuationBoundary {
+  kind: 'completed-turn';
+  providerTurnId: string;
+  observedEventId: string;
+}
+
 export interface AttachedSessionSourceMetadata {
   kind: string;
+  affinity?: ProviderSessionSourceAffinity;
+  completedBoundary?: ProviderSessionContinuationBoundary;
   externalSessionId: string;
   revision?: string;
 }
@@ -838,6 +847,8 @@ export interface ProviderSessionAdoptInput
   /** Provider cursor of the read-only source. Never returned in adoption responses. */
   sourceSessionId: string;
   sourceKind: string;
+  sourceAffinity?: ProviderSessionSourceAffinity;
+  sourceBoundary?: ProviderSessionContinuationBoundary;
 }
 
 export interface ProviderSendTurnInput {

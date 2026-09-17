@@ -436,13 +436,10 @@ test.describe('Project forms', () => {
       );
       await page.goto('/projects/new');
 
-      const scrollRegion = page.locator('.new-project-modal__draft-scroll');
       const starter = page.locator('.new-project-modal__starter');
       const footer = page.locator('.new-project-modal__actions');
       await expect(starter).toBeVisible();
-      await scrollRegion.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-      });
+      await starter.scrollIntoViewIfNeeded();
 
       const geometry = await page.evaluate(() => {
         const overlay = document.querySelector('.responsive-surface-overlay');
@@ -471,7 +468,6 @@ test.describe('Project forms', () => {
           footerBottom: actionsBox.bottom,
           scrollHeight: scroll.scrollHeight,
           clientHeight: scroll.clientHeight,
-          scrollTop: scroll.scrollTop,
           overflowY: getComputedStyle(scroll).overflowY,
         };
       });
@@ -483,11 +479,8 @@ test.describe('Project forms', () => {
       expect(geometry!.formBottom).toBeLessThanOrEqual(geometry!.panelBottom);
       expect(geometry!.overflowY).toBe('auto');
       expect(geometry!.scrollHeight).toBeGreaterThan(geometry!.clientHeight);
-      expect(geometry!.scrollTop).toBe(
-        geometry!.scrollHeight - geometry!.clientHeight,
-      );
-      // Fractional rect bottoms can differ after scrollTop reaches the exact
-      // scrollHeight - clientHeight limit; allow at most one CSS pixel.
+      // The card must be reachable and clear of the footer; an exact scroll
+      // offset is incidental and changes when fonts or viewport metrics settle.
       expect(geometry!.cardBottom).toBeLessThanOrEqual(
         geometry!.scrollBottom + 1,
       );

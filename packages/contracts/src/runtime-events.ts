@@ -181,9 +181,17 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // `{threadId}` names one session, so this follows the same ownership gate
   // as canonical orchestration events on the dedicated stream.
   [SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED]: 'scoped',
-  [SERVER_EVENTS.PLUGINS_INSTALLED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_REMOVED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_UPDATED]: 'broadcast',
+  // #2067: these six were 'broadcast', which in the SSE relay means relayed
+  // to EVERY listener unconditionally. Each payload names a plugin, so a
+  // collaborator who merely held the stream open watched the instance's
+  // plugin inventory change by name — the same enumeration
+  // `GET /api/plugins` was projected to withhold, spread over time instead of
+  // returned in one response. 'scoped' means DENIED unless a named gate in
+  // `routes/orchestration/events.ts` recognizes the channel; that gate is the
+  // per-principal plugin projection.
+  [SERVER_EVENTS.PLUGINS_INSTALLED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_REMOVED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_UPDATED]: 'scoped',
   // Settings payload deliberately excludes every field the plugin manifest
   // marks `secret` (see the emit site) — what remains is meant to be
   // non-secret configuration, not per-user content. `field.secret` is
@@ -197,9 +205,9 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // function's docblock); a field whose VALUE merely looks credential-shaped
   // under a non-secret name is logged but still emitted, since that signal
   // alone is too unreliable to justify a silent drop.
-  [SERVER_EVENTS.PLUGINS_SETTINGS_CHANGED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: 'broadcast',
-  [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: 'broadcast',
+  [SERVER_EVENTS.PLUGINS_SETTINGS_CHANGED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: 'scoped',
+  [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: 'scoped',
   [SERVER_EVENTS.RUNTIME_HEALTH_CHANGED]: 'broadcast',
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: 'broadcast',
   // `{ path: string }` — not identity-carrying content by itself, but every
@@ -496,7 +504,61 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   itemId: string;
   toolCallId: string;
   toolName: string;
-  status: 'success' | 'error' | 'cancelled';
+  /**
+   * The observed outcome of the call.
+   *
+   * Three of these assert what happened: `success` and `error` are the
+   * engine's own verdict, and `cancelled` is a stop Station or the user
+   * asked for. `unresolved` (station#1558) asserts the opposite — that no
+   * verdict will ever arrive. It is published for a tool call still open
+   * when its SESSION ended, where the call's fate is genuinely unknown:
+   * Station never saw a result, and cannot tell whether the tool ran. Every
+   * adapter that tracks its open calls settles them this way when its
+   * session ends (station#1569 item 4 extended this past Claude to ACP,
+   * Codex and station-agent).
+   *
+   * A session SUPERSEDED by a restart on the same thread settles its own
+   * calls too, on their OWN turns — every terminal carries the turnId that
+   * issued the call and both folds attribute by turn — while withholding
+   * what is thread-keyed rather than turn-keyed: `session.exited`, which a
+   * client reads as "this thread's session ended" and which would close the
+   * successor's still-running cards. For Claude that is an observed path
+   * (`stopSession` removes the record before awaiting its drain, so a
+   * restart during that window is real). Codex's transport takes the same
+   * decision on the same shape, but as a defensive branch: its registration
+   * lifecycle admits no restart mid-drain today, so nothing production
+   * reaches it with an open call (station#1586 item 3; see
+   * `codex-adapter-transport.ts`'s `finalizeUnexpectedExit`). It is
+   * NOT a failure (nothing observed the tool fail) and NOT a cancellation
+   * (nobody asked for it to stop); folding it into either would be a claim
+   * Station cannot support. Without it, the row simply stayed "running"
+   * forever.
+   *
+   * **Compatibility.** A client built before this member sees an
+   * unrecognised string, and the two folds degrade differently. Neither
+   * degrades *silently* only in the sense that the event's `output` carries
+   * the explicit prose "No result was reported before the session ended;
+   * whether the tool ran is unknown." — the enum itself is read wrongly in
+   * both, and in one of them the row makes a positive claim:
+   * - the durable projection (`runtime-event-projection.ts`) tested
+   *   `status === 'error'` / `=== 'cancelled'` and fell through to
+   *   `state: 'result'` with the sentence as the row's `result`. In an older
+   *   `ToolCallDisplay` that combination satisfies `completedSuccessfully`
+   *   (`state === 'result'`, no error, not cancelled), so the row renders
+   *   the past-tense label with NO badge at all, and expanding it prints the
+   *   status footer "Success". An older rehydrated transcript therefore
+   *   presents an unresolved call as a successful one whose output happens
+   *   to be that sentence;
+   * - the live handler (`streamHandlers.ts`) mapped anything that was
+   *   neither `success` nor `cancelled` to `state: 'error'`, so an older
+   *   live client renders it as a failure carrying the same sentence.
+   *
+   * So the sentence, not the enum, is the only thing an older client gets
+   * right, and a reader has to open the row to find it. That asymmetry is
+   * the reason the text is written to stand alone. Publishers must not use
+   * this status for any other situation.
+   */
+  status: 'success' | 'error' | 'cancelled' | 'unresolved';
   output?: unknown;
   error?: string;
   /** See {@link ToolProgressEvent.outputReceipt}. */

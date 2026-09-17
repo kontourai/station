@@ -14,6 +14,10 @@ import {
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  publishHistoryForCapture,
+  removeHistoryForCapture,
+} from './replay/capture-tap';
 
 function eventKey(item: OrchestrationSequencedEvent): string {
   return item.event.eventId || `sequence:${item.sequence}`;
@@ -30,7 +34,7 @@ function mergePages(
   );
 }
 
-export interface SessionEventWindowReader {
+interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
@@ -45,6 +49,19 @@ export interface SessionEventWindowReader {
   reload: () => Promise<void>;
   upgradeRequired: boolean;
   loading: boolean;
+  /**
+   * Has this reader produced a reading yet?
+   *
+   * `loading` cannot answer that: it is `false` both before the first request
+   * starts and after it finishes, so a caller reading `events.length === 0 &&
+   * !loading` cannot tell "this conversation is empty" from "nobody has looked
+   * yet" — and the chat dock rendered the empty "Start a conversation"
+   * placeholder over a conversation with turns in it for ~1.7s on every reload
+   * because of exactly that (#1582 E3/B6). `settled` becomes true when the
+   * first read attempt finishes, success or failure, and resets when the
+   * reader is pointed at a different thread.
+   */
+  settled: boolean;
   error?: Error;
 }
 
@@ -59,7 +76,7 @@ async function readConversationWindow(
     return await fetchOrchestrationConversationEventWindow(
       conversationId,
       apiBase,
-      input,
+      { ...input, direction: 'newest' },
       options,
     );
   } catch (error) {
@@ -74,7 +91,7 @@ async function readConversationWindow(
     const legacy = await fetchOrchestrationSessionEventWindow(
       legacySessionId,
       apiBase,
-      input,
+      { ...input, direction: 'newest' },
       options,
     );
     return {
@@ -94,6 +111,9 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
+  const readerKey = threadId
+    ? JSON.stringify([apiBase, threadId, legacySessionId])
+    : undefined;
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [sessionLineage, setSessionLineage] =
@@ -107,6 +127,7 @@ export function useSessionEventWindow(
   const [cursor, setCursor] = useState<string | undefined>();
   const [watermark, setWatermark] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [settled, setSettled] = useState(false);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [error, setError] = useState<Error>();
   const generation = useRef(0);
@@ -207,8 +228,13 @@ export function useSessionEventWindow(
       if (
         requestGeneration === generation.current &&
         requestSerial === requestSerialRef.current
-      )
+      ) {
         setLoading(false);
+        // A failed or upgrade-refused read is still a reading: the caller now
+        // knows something, and `error`/`upgradeRequired` say what. Only a read
+        // superseded by a newer one leaves the question open.
+        setSettled(true);
+      }
     }
   }, [apiBase, legacySessionId, threadId]);
 
@@ -259,7 +285,6 @@ export function useSessionEventWindow(
   }, [apiBase, legacySessionId, reload, threadId]);
 
   useEffect(() => {
-    const readerKey = threadId ? `${apiBase}\u0000${threadId}` : undefined;
     if (readerKeyRef.current === readerKey) return;
     readerKeyRef.current = readerKey;
     generation.current += 1;
@@ -279,6 +304,8 @@ export function useSessionEventWindow(
     setWatermark(0);
     setError(undefined);
     setUpgradeRequired(false);
+    // A new thread has not been read yet, whatever the previous one reported.
+    setSettled(false);
     if (threadId) void reload();
     return () => {
       requestControllerRef.current?.abort();
@@ -288,7 +315,7 @@ export function useSessionEventWindow(
       }
       readerKeyRef.current = undefined;
     };
-  }, [apiBase, reload, threadId]);
+  }, [readerKey, reload, threadId]);
 
   const previousRevision = useRef(reconcileRevision);
   useEffect(() => {
@@ -297,17 +324,56 @@ export function useSessionEventWindow(
     if (threadId) void reload();
   }, [reconcileRevision, reload, threadId]);
 
-  return {
+  // Effects reset the request after commit. Do not expose the prior reader's
+  // authority or transcript during the first render of a different identity.
+  const currentReader = Boolean(threadId) && readerKeyRef.current === readerKey;
+  useEffect(() => {
+    if (!threadId || !currentReader) return;
+    publishHistoryForCapture(apiBase, threadId, {
+      events,
+      currentSessionId,
+      sessionLineage,
+      handoffs,
+      contextBoundaries,
+      hasMore: Boolean(cursor),
+      loading,
+      settled,
+      upgradeRequired,
+      errorMessage: error?.message,
+    });
+  }, [
+    apiBase,
+    threadId,
+    currentReader,
     events,
-    ...(currentSessionId ? { currentSessionId } : {}),
-    ...(sessionLineage ? { sessionLineage } : {}),
+    currentSessionId,
+    sessionLineage,
     handoffs,
     contextBoundaries,
-    hasMore: Boolean(cursor),
+    cursor,
+    loading,
+    settled,
+    upgradeRequired,
+    error,
+  ]);
+  useEffect(
+    () => () => {
+      if (threadId) removeHistoryForCapture(apiBase, threadId);
+    },
+    [apiBase, threadId],
+  );
+  return {
+    events: currentReader ? events : [],
+    ...(currentReader && currentSessionId ? { currentSessionId } : {}),
+    ...(currentReader && sessionLineage ? { sessionLineage } : {}),
+    handoffs: currentReader ? handoffs : [],
+    contextBoundaries: currentReader ? contextBoundaries : [],
+    hasMore: currentReader && Boolean(cursor),
     loadOlder,
     reload,
-    upgradeRequired,
-    loading,
-    error,
+    upgradeRequired: currentReader && upgradeRequired,
+    loading: currentReader ? loading : Boolean(threadId),
+    settled: currentReader && settled,
+    error: currentReader ? error : undefined,
   };
 }

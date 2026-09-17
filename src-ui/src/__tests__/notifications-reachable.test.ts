@@ -1,12 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import {
   getManagementNavigationGroup,
   getPathForView,
   resolveViewFromPath,
 } from '../app-shell/routing';
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
 
 /**
  * #872: "there is no way to navigate to past ones" — the inbox was reachable
@@ -28,25 +26,25 @@ describe('the notification inbox is a destination', () => {
     );
   });
 
-  it('has a sidebar entry', () => {
+  it('is advertised where a person can find it without a notification', () => {
+    // #2059 (D3) moved it out of the sidebar's row list and into the panel
+    // footer's bell, which renders this destination and its badge by id
+    // (ProjectSidebarFooter.test.tsx drives that control). The registry's
+    // half of #872 is that it stays advertised at all: the palette entry is
+    // the one that survives on every device, including the collapsed rail
+    // and the mobile drawer.
     expect(
-      APP_SURFACE_REGISTRY.getSidebar().some(
+      APP_DESTINATION_REGISTRY.getPalette().some(
         (surface) => surface.id === 'notifications',
       ),
     ).toBe(true);
-  });
-
-  it('renders something when there is nothing', () => {
-    // Landing on a blank page reads as broken; both lanes say so instead.
-    const dir = join(__dirname, '..', 'components');
+    // A footer control, not a panel row — and not a Settings row either:
+    // attention is not configuration.
     expect(
-      readFileSync(
-        join(dir, 'notifications', 'NotificationSection.tsx'),
-        'utf-8',
-      ),
-    ).toMatch(/length === 0/);
+      APP_DESTINATION_REGISTRY.get('notifications')?.sidebar,
+    ).toBeUndefined();
     expect(
-      readFileSync(join(dir, 'attention', 'AttentionSection.tsx'), 'utf-8'),
-    ).toMatch(/length === 0/);
+      APP_DESTINATION_REGISTRY.get('notifications')?.settingsNav,
+    ).toBeUndefined();
   });
 });

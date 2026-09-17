@@ -14,18 +14,16 @@ import type {
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import { isRecord } from '../../utils/is-record.js';
 
 const SKILL_ORIGINS: readonly SkillOrigin[] = [
   'user',
+  'project',
   'registry',
   'plugin',
   'package',
   'migrated-playbook',
 ];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export function readSkillCommand(value: unknown): SkillCommand | undefined {
   if (!isRecord(value)) return undefined;
@@ -82,12 +80,7 @@ export function readSkillOrigin(value: unknown): SkillOrigin | undefined {
  * would be a second chance to emit a file the spec parser refuses — or, worse,
  * one whose unescaped `description` forges a `command:` block.
  */
-export {
-  serializeSkillCommandLines,
-  serializeSkillMarkdown,
-  serializeSkillVariableLines,
-  yamlScalar,
-} from '@kontourai/station-contracts/skill-markdown';
+export { serializeSkillMarkdown } from '@kontourai/station-contracts/skill-markdown';
 
 /** What an imported `.md` file contributes to a new local skill. */
 export interface ImportedSkillMarkdown {
@@ -168,12 +161,16 @@ export function parseImportedSkillMarkdown(
   };
 }
 
+export type {
+  SkillPackageDirectoryCondition,
+  SkillPackageDirectoryReport,
+} from '../../domain/skill-paths.js';
 export {
   assertSafeSkillName,
-  isDirectoryPhysicallyWithin,
+  assertSkillPackageDirectory,
   isDirectoryWithin,
   isSafeSkillName,
-  PROTOTYPE_AFFECTING_KEYS,
   resolveSkillDirectory,
+  skillPackageDirectoryReport,
   skillsRootDir,
 } from '../../domain/skill-paths.js';

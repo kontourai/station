@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CANONICAL_PLUGIN_ID_PATTERN } from '@kontourai/station-contracts/plugin';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { isReservedObjectKey } from '../../../utils/reserved-object-keys.js';
 import { ContextSafetyError } from '../../orchestration/context-safety.js';
 import { DistributionProfileService } from '../distribution-profile-service.js';
-import { readPluginManifestFile } from '../plugin-manifest-loader.js';
-
-const STATION_EXTENSION = 'io.kontourai.station';
+import {
+  readPluginManifestFile,
+  readPluginManifestFileWithFormat,
+} from '../plugin-manifest-loader.js';
 
 describe('plugin-manifest-loader', () => {
   let dir: string;
@@ -43,176 +45,158 @@ describe('plugin-manifest-loader', () => {
     );
   });
 
-  describe('Station command contributions', () => {
-    async function loadCommands(
-      commands: unknown[],
-      manifest: Record<string, unknown> = {},
-    ) {
-      const manifestPath = join(dir, 'plugin.json');
-      writeFileSync(
-        manifestPath,
-        JSON.stringify({
-          name: 'demo-plugin',
-          version: '1.0.0',
-          ...manifest,
-          extensions: {
-            [STATION_EXTENSION]: { schemaVersion: '1.0', commands },
-          },
-        }),
-      );
-      return readPluginManifestFile(manifestPath);
-    }
-
-    const navigateCommand = {
-      version: '1.0',
-      id: 'demo-plugin.open-settings',
-      title: 'Open settings',
-      subtitle: 'Review Station settings',
-      icon: 'plugin',
-      keywords: ['settings', 'review'],
-      requires: ['project'],
-      intent: { kind: 'navigate', surfaceId: 'settings' },
-    };
-
-    test('normalizes a manifest-only command without executable plugin code', async () => {
-      await expect(loadCommands([navigateCommand])).resolves.toMatchObject({
-        extensions: {
-          [STATION_EXTENSION]: {
-            schemaVersion: '1.0',
-            commands: [navigateCommand],
-          },
-        },
-      });
-    });
-
-    test('gives iframe and trusted packages the same inert command shape', async () => {
-      const iframe = await loadCommands([navigateCommand], {
-        entrypoint: 'src/index.tsx',
-      });
-      const trusted = await loadCommands([navigateCommand], {
-        serverModule: 'server.mjs',
-      });
-      expect(iframe.extensions?.[STATION_EXTENSION]).toEqual(
-        trusted.extensions?.[STATION_EXTENSION],
-      );
-    });
-
-    test('accepts commands beside other canonical Station namespace fields', async () => {
-      const manifestPath = join(dir, 'plugin.json');
-      writeFileSync(
-        manifestPath,
-        JSON.stringify({
-          name: 'demo-plugin',
-          version: 'release candidate 1',
-          extensions: {
-            [STATION_EXTENSION]: {
-              schemaVersion: '1.0',
-              title: 'Demo plugin',
-              permissions: ['navigation.dock'],
-              commands: [navigateCommand],
-            },
-          },
-        }),
-      );
-
-      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
-        {
-          extensions: {
-            [STATION_EXTENSION]: {
-              schemaVersion: '1.0',
-              title: 'Demo plugin',
-              commands: [navigateCommand],
-            },
-          },
-        },
-      );
-    });
-
-    test.each([
-      [
-        'unknown intent',
-        { ...navigateCommand, intent: { kind: 'run-code' } },
-        /intent\.kind is unknown/,
-      ],
-      [
-        'invalid icon',
-        { ...navigateCommand, icon: '<svg onload=alert(1)>' },
-        /icon is invalid/,
-      ],
-      [
-        'excessive title',
-        { ...navigateCommand, title: 'x'.repeat(81) },
-        /title must be trimmed text between 1 and 80/,
-      ],
-      [
-        'hostile URL allowlist',
-        {
-          ...navigateCommand,
-          argument: {
-            kind: 'url',
-            label: 'URL',
-            allowedHosts: ['*.example.com'],
-          },
-        },
-        /allowedHosts\[0\] must be an exact host/,
-      ],
-      [
-        'unused argument',
-        {
-          ...navigateCommand,
-          argument: { kind: 'text', label: 'Query' },
-        },
-        /argument is declared but unused/,
-      ],
-    ])('rejects %s', async (_name, command, error) => {
-      await expect(loadCommands([command])).rejects.toThrow(error);
-    });
-
-    test('rejects duplicate owner-qualified command ids', async () => {
-      await expect(
-        loadCommands([navigateCommand, navigateCommand]),
-      ).rejects.toThrow(/contains duplicate id 'demo-plugin\.open-settings'/);
-    });
-
-    test.each([
-      { schemaVersion: '1.0', commands: [], callback: 'run-me' },
-      { schemaVersion: '1.0', validator: '.*' },
-    ])(
-      'rejects unknown fields in the reserved Station namespace',
-      async (station) => {
-        const manifestPath = join(dir, 'plugin.json');
-        writeFileSync(
-          manifestPath,
-          JSON.stringify({
-            name: 'demo-plugin',
-            version: '1.0.0',
-            extensions: { [STATION_EXTENSION]: station },
-          }),
-        );
-        await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
-          /Plugin extension 'io\.kontourai\.station' contains unknown field/,
-        );
-      },
+  test('dispatches recognized Agent Plugins through the vendored loader while legacy remains explicit', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        futureField: true,
+      }),
     );
+    await expect(readPluginManifestFile(manifestPath)).resolves.toEqual({
+      name: 'portable.example',
+      version: '0.0.0-agent-plugin-unversioned',
+      description: undefined,
+    });
 
-    test('leaves another extension namespace opaque', async () => {
-      const manifestPath = join(dir, 'plugin.json');
-      const opaque = { callback: 'owned elsewhere', version: 7 };
-      writeFileSync(
-        manifestPath,
-        JSON.stringify({
-          name: 'demo-plugin',
-          version: '1.0.0',
-          extensions: { 'example.other-host': opaque },
-        }),
-      );
-      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
-        {
-          extensions: { 'example.other-host': opaque },
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        layout: {},
+      }),
+    );
+    await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
+      /Agent Plugin manifest is invalid: Plugin manifest uses retired Station root field 'layout'/,
+    );
+  });
+
+  test('normalizes validated Station contributions into their existing host contract', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'portable.example',
+        version: '2.0',
+        extensions: {
+          'io.kontourai.station': {
+            schemaVersion: '1.0',
+            title: 'Example',
+            agents: [{ slug: 'echo', source: './agents/echo/agent.json' }],
+            providers: [{ type: 'userIdentity', module: './identity.js' }],
+            workspacePanes: [
+              {
+                version: '1.0',
+                id: 'review-queue',
+                name: 'Review Queue',
+                rendererId: 'portable.example.review-queue',
+                renderer: { kind: 'plugin-component', name: 'review-queue' },
+                placement: { supportedRegions: ['secondary'] },
+                modes: [
+                  { id: 'default', contextRequirement: { project: true } },
+                ],
+                provenance: { origin: 'plugin', pluginId: 'portable.example' },
+                lifecycle: { stage: 'stable' },
+              },
+            ],
+            permissions: ['agents.invoke'],
+            dependencies: [{ name: 'common', version: '*' }],
+            settings: [
+              {
+                key: 'authDomain',
+                title: 'Domain',
+                type: 'string',
+                default: 'example.test',
+              },
+              {
+                key: 'mode',
+                title: 'Mode',
+                type: 'select',
+                options: [{ title: 'Local', value: 'local' }],
+              },
+            ],
+            secretReferences: [
+              { key: 'apiToken', title: 'API token', required: true },
+            ],
+          },
         },
-      );
+      }),
+    );
+    await expect(
+      readPluginManifestFileWithFormat(manifestPath),
+    ).resolves.toMatchObject({
+      format: 'agent-plugin-1.0',
+      stationExtension: { status: 'validated' },
+      manifest: {
+        name: 'portable.example',
+        displayName: 'Example',
+        agents: [{ slug: 'echo', source: './agents/echo/agent.json' }],
+        providers: [{ type: 'userIdentity', module: './identity.js' }],
+        workspacePanes: [
+          {
+            id: 'review-queue',
+            provenance: { origin: 'plugin', pluginId: 'portable.example' },
+          },
+        ],
+        permissions: ['agents.invoke'],
+        dependencies: [{ id: 'common', version: '*' }],
+        settings: [
+          {
+            key: 'authDomain',
+            label: 'Domain',
+            type: 'string',
+            default: 'example.test',
+          },
+          {
+            key: 'mode',
+            label: 'Mode',
+            type: 'select',
+            options: [{ label: 'Local', value: 'local' }],
+          },
+          {
+            key: 'apiToken',
+            label: 'API token',
+            type: 'string',
+            secret: true,
+            required: true,
+          },
+        ],
+      },
     });
   });
+
+  test.each([
+    { settings: [{ key: 'constructor', title: 'Invalid', type: 'string' }] },
+    {
+      settings: [{ key: 'token', title: 'Token', type: 'string' }],
+      secretReferences: [{ key: 'token', title: 'Token' }],
+    },
+    { providers: [{ type: 'userIdentity', module: 'invalid-path' }] },
+  ])(
+    'disables an invalid Station extension while preserving portable identity: %j',
+    async (extension) => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'portable.example',
+          extensions: {
+            'io.kontourai.station': { schemaVersion: '1.0', ...extension },
+          },
+        }),
+      );
+      const loaded = await readPluginManifestFileWithFormat(manifestPath);
+      expect(loaded.stationExtension).toMatchObject({ status: 'disabled' });
+      expect(loaded.manifest.name).toBe('portable.example');
+      expect(loaded.manifest.providers).toBeUndefined();
+      expect(loaded.manifest.settings).toBeUndefined();
+    },
+  );
 
   // archive#4307: `manifest.name` is a STORE KEY (plugin-overrides, grants,
   // the provider resolver, the installed-plugin registry) and the manifest's
@@ -256,6 +240,67 @@ describe('plugin-manifest-loader', () => {
         );
       },
     );
+
+    test('rejects an event-sentinel name (#2067)', async () => {
+      // `workspace-home-role` is what Station emits as the `name` on the
+      // Home-role `plugins:grants-changed` frame, which the SSE relay
+      // exempts from the per-principal projection. Guard the premise: it
+      // passes BOTH other axes, so before this rule a plugin could take it
+      // and have its own frames — including the settings channel, which
+      // carries non-secret setting VALUES — ride that exemption.
+      expect(CANONICAL_PLUGIN_ID_PATTERN.test('workspace-home-role')).toBe(
+        true,
+      );
+      expect(isReservedObjectKey('workspace-home-role')).toBe(false);
+      await expect(loadName('workspace-home-role')).rejects.toThrow(
+        /reserved: Station emits it as a sentinel/,
+      );
+    });
+
+    test('rejects an event-sentinel name in the AGENT PLUGINS format too', async () => {
+      // The reservation used to live only in the legacy parser, while
+      // `readAgentPluginManifest` returns from two places that never reach
+      // it — the no-extension branch and the normalization catch. A manifest
+      // in the forward format with the sentinel name LOADED, so the axis
+      // certified a rule the other format skipped. Both inputs here exit
+      // through the no-extension branch: `parseAgentPluginManifest` leaves
+      // `stationExtension` undefined for a schema-invalid extension rather
+      // than throwing, so the normalization catch is not reachable this way.
+      // The assertion runs before every exit, so both are covered regardless.
+      const manifestPath = join(dir, 'plugin.json');
+      for (const extra of [
+        {},
+        { 'io.kontourai.station': { settings: [{ not: 'a field' }] } },
+      ]) {
+        writeFileSync(
+          manifestPath,
+          JSON.stringify({
+            $schema:
+              'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+            name: 'workspace-home-role',
+            ...extra,
+          }),
+        );
+        await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
+          /reserved: Station emits it as a sentinel/,
+        );
+      }
+    });
+
+    test('an ordinary agent-format name still loads', async () => {
+      // The control: the rejection above must be the NAME, not the format.
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'ordinary.example',
+        }),
+      );
+      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
+        { name: 'ordinary.example' },
+      );
+    });
 
     test.each(['Name With Spaces', 'Upper-Case', 'has_underscore', '../evil'])(
       'rejects the non-canonical name %s',
@@ -346,6 +391,23 @@ describe('plugin-manifest-loader', () => {
     writeFileSync(
       manifestPath,
       `{\n  "name": "unsafe-plugin",\n  "version": "1.0.0",\n  "description": "safe\u200Btext"\n}\n`,
+    );
+
+    await expect(readPluginManifestFile(manifestPath)).rejects.toBeInstanceOf(
+      ContextSafetyError,
+    );
+  });
+
+  test('applies hidden-content safety before Agent Plugin dispatch', async () => {
+    const manifestPath = join(dir, 'plugin.json');
+    writeFileSync(
+      manifestPath,
+      `{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "unsafe-portable",
+  "description": "safe​text"
+}
+`,
     );
 
     await expect(readPluginManifestFile(manifestPath)).rejects.toBeInstanceOf(

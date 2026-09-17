@@ -70,3 +70,21 @@ README.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+
+## Registry authoring Node leaves
+
+Candidate releases containing these exports provide `computePluginTreeDigest(root)`
+from `@kontourai/station-shared/plugin-tree-digest` and
+`registryPackageSignaturePayload(claim)` from
+`@kontourai/station-shared/plugin-registry-signature`. They are explicit Node
+subpaths, not root-barrel exports. The digest observes a source tree without
+following symlinks and excludes root `.git` metadata; it does not grant execution
+or prove materialization containment. Signature input uses the untrusted
+`RegistryPackageClaim` shape from `@kontourai/station-contracts/registry-trust`.
+
+Use a release containing these leaves or packaged candidates from the reviewed
+checkout. A source change is not evidence that the exports are already on npm.
+The [signing example](../../examples/registry/signed-package/README.md) uses a
+TS-aware loader, keeps private keys outside the signed package, and leaves host
+trust configuration to the host operator.

@@ -290,6 +290,45 @@
           "scripts/__tests__/catch-log.test.ts"
         ]
       }
+    },
+    {
+      "id": "mobile-primary-context-contract",
+      "kind": "required-artifacts",
+      "classification": "promotable-policy",
+      "enforcementLevel": "Guide",
+      "message": "Preserve direct mobile project and conversation switching; changes require an explicit product-contract decision.",
+      "owner": "station-mobile",
+      "rollback_switch": null,
+      "explain": {
+        "summary": "Primary mobile context actions are a product contract, not a fixed button count. This rule supplies context and artifact presence only; named product-law observations and required browser evidence prove behavior.",
+        "mustDo": [
+          "Keep project and conversation switching directly reachable with readable context and touch-safe targets.",
+          "Run the registered product-law observations and the critical browser journey at 320px, 390px, and 412px.",
+          "State the product decision and replacement evidence when changing a contract test; review the advisory diff signals."
+        ],
+        "mustNotDo": [
+          "Do not rewrite assertions solely to match an implementation that removes a primary action.",
+          "Do not count skipped, absent, stale, or retried critical browser evidence as a clean pass."
+        ],
+        "exampleGood": "Restore the direct project action, preserve conversation binding, and verify the real mobile journey before merge.",
+        "exampleBad": "Replace direct project switching with a hidden menu, then assert that the header has exactly three buttons.",
+        "contextLinks": [
+          "docs/design/chat-composer.md",
+          "docs/guides/testing.md",
+          "docs/reference/product-laws.md",
+          "config/product-laws.json"
+        ]
+      },
+      "match": {
+        "artifacts": [
+          "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+          "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+          "docs/design/chat-composer.md",
+          "config/product-laws.json",
+          "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
+          "tests/cross-runtime-chat-switching.spec.ts"
+        ]
+      }
     }
   ]
 }

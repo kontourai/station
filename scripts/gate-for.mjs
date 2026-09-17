@@ -19,7 +19,9 @@ import {
   decideSdkBarrelScope,
 } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
+import { decideTypecheckScope } from './check-prepush-typecheck.mjs';
 import { decideBundleScope } from './check-prepush-ui-bundle.mjs';
+import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
 function resolveBaseSha(base) {
   try {
@@ -40,6 +42,7 @@ export function gateReport({ changedPaths, baseSha }) {
   const statics = decideStaticGateScope({ baseSha, changedPaths });
   const barrel = decideSdkBarrelScope({ baseSha, changedPaths });
   const transfer = decideOrchestrationTransferScope({ baseSha, changedPaths });
+  const typecheck = decideTypecheckScope({ baseSha, changedPaths });
   const scoped = [
     [
       'UI entry-bundle ceiling',
@@ -65,12 +68,20 @@ export function gateReport({ changedPaths, baseSha }) {
       barrel.reason,
       'node scripts/check-prepush-sdk-barrel.mjs',
     ],
+    [
+      'typecheck (thirteen tsc lanes, ~91s)',
+      typecheck.run,
+      typecheck.reason,
+      'node scripts/check-prepush-typecheck.mjs',
+    ],
   ];
   const lines = [
     `gate:for — ${changedPaths.length} changed path(s)`,
     '',
     'Every push (armed in .githooks/pre-push):',
     '  npm run lint:check                             # biome lint/format/imports',
+    '  npm run proof:repo-governance                  # governance proof (~4s)',
+    '  npm run veritas:readiness                      # Veritas readiness (~15-35s)',
     '  node scripts/commit-message-gate.mjs --prepush-stdin   # commit subjects in the push range',
     '',
     'Scoped to this change surface:',
@@ -80,6 +91,13 @@ export function gateReport({ changedPaths, baseSha }) {
     lines.push(`          ${reason}`);
     if (applies) lines.push(`          ${command}`);
   }
+  const fixtureCommands = fixturePolicyCommands(changedPaths);
+  if (fixtureCommands.length)
+    lines.push(
+      '',
+      'Fixture and test-effectiveness route:',
+      ...fixtureCommands.map((command) => `  ${command}`),
+    );
   lines.push(
     '',
     'Tests — derive the focused selection (do not guess):',

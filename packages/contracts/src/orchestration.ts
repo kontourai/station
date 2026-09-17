@@ -1,4 +1,5 @@
 import type { AgentId, EngineId } from './agent-identity.js';
+import type { AttentionRequestReference } from './attention.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type {
@@ -36,6 +37,8 @@ export interface OrchestrationSendTurnInput
     'recoveryCorrelationId' | 'reviewIsolation'
   > {
   ambientContext?: string;
+  /** Read-only constraint checked again at actual adapter invocation. */
+  expectedInputRequest?: AttentionRequestReference;
 }
 
 /**
@@ -74,6 +77,8 @@ export type OrchestrationCommand =
       type: 'respondToRequest';
       threadId: string;
       requestId: string;
+      /** Compare this exact opened event immediately before responding. */
+      expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
   | { type: 'stopSession'; threadId: string };
@@ -712,6 +717,12 @@ export interface OrchestrationSessionEventPage {
   nextSequence: number;
 }
 
+/** Derived SSE envelope routing, resolved from Station's lineage at delivery time. */
+export interface OrchestrationConversationStreamBinding {
+  conversationId: string;
+  currentSessionId: string;
+}
+
 /** Versioned bounded hydration contract for one orchestration session. */
 export interface OrchestrationSessionEventWindow {
   protocolVersion: 1;
@@ -983,11 +994,23 @@ export interface ConversationListItem {
  * branch on `status`; they must not infer a writable Session from an Agent or
  * provider decoration on the inventory row.
  */
+/** Execution facts from the same authorized current-child read, never Agent defaults. */
+export interface ConversationOpenExecution {
+  sessionId: string;
+  agentId: AgentId;
+  provider: EngineId;
+  engineConnectionId?: string;
+  model?: string;
+  acceptedModel?: string;
+}
+
 export type ConversationOpenResolution =
   | {
       status: 'resolved';
       conversation: ConversationListItem;
       currentSessionId: string;
+      /** Absent on older servers; a replaced child cannot borrow its predecessor's execution state. */
+      execution?: ConversationOpenExecution;
       transcript: {
         available: true;
         owner: 'runtime';
@@ -996,6 +1019,8 @@ export type ConversationOpenResolution =
       };
       /** Computed from the current Session control/lifecycle facts. */
       canContinue: boolean;
+      /** Continuation is temporarily blocked only by the current active turn. */
+      continuationPending?: boolean;
       answerability: RequestAnswerability;
       recoveryActions: readonly [];
     }
@@ -1022,3 +1047,14 @@ export interface ConversationForkProvenance {
   targetAgent: string;
   forkedAt: string;
 }
+
+/** Bounded exact-answer text for user-selected quotation, never evidence standing. */
+export interface OrchestrationQuoteSource {
+  version: 1;
+  sessionId: string;
+  turnId: string;
+  messageId: string;
+  text: string;
+  revision: string;
+}
+export const QUOTE_SOURCE_MAX_BYTES = 128 * 1024;

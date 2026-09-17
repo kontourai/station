@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { installVisualViewportFixture } from './helpers/visual-viewport';
 
 type SkillRecord = {
   name: string;
@@ -10,8 +11,10 @@ type SkillRecord = {
   agent?: string;
   global?: boolean;
   source?: string;
+  origin?: 'user' | 'project' | 'registry';
   path?: string;
   installed?: boolean;
+  writable?: boolean;
   version?: string;
 };
 
@@ -27,6 +30,8 @@ async function seedSkillRoutes(page: Page) {
         tags: ['review'],
         global: true,
         source: 'local',
+        writable: true,
+        origin: 'user',
         path: '/tmp/skills/review/SKILL.md',
         installed: true,
       },
@@ -38,6 +43,7 @@ async function seedSkillRoutes(page: Page) {
         description: 'Installed from registry',
         body: 'Registry managed body',
         source: 'registry',
+        origin: 'registry',
         path: 'registry://registry-skill',
         installed: true,
         version: '1.0.0',
@@ -92,6 +98,8 @@ async function seedSkillRoutes(page: Page) {
       const skill = {
         ...body,
         source: 'local',
+        writable: true,
+        origin: 'user',
         installed: true,
         path: `/tmp/skills/${body.name}/SKILL.md`,
       };
@@ -128,11 +136,11 @@ test.describe('Skills (via Registry + API)', () => {
     await page.goto('/skills');
     await page.waitForSelector('.split-pane', { timeout: 15_000 });
 
-    // /skills redirects to /guidance?tab=skills, and archive#4463
-    // pins the page title at 'Guidance' — it does not change to 'Skills'
-    // per tab (the tab strip already names the section).
+    // /skills redirects to /guidance?tab=skills. archive#4463 pins the page
+    // title as a CONSTANT that does not change per tab; #2144 slice 4 renamed
+    // that constant to 'Skills' (label only — the route is still /guidance).
     await expect(
-      page.getByRole('heading', { name: 'Guidance', level: 1, exact: true }),
+      page.getByRole('heading', { name: 'Skills', level: 1, exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'New skill' })).toBeVisible();
     await expect(
@@ -170,7 +178,9 @@ test.describe('Skills (via Registry + API)', () => {
     ).toBeVisible();
 
     await page.getByRole('button', { name: 'Review Skill' }).click();
-    await expect(page.getByText('Workspace-authored skill')).toBeVisible();
+    await expect(
+      page.locator('.skill-detail').getByText('This machine', { exact: true }),
+    ).toBeVisible();
     await expect(page.locator('.skill-detail textarea')).toHaveValue(
       'Review {{diff}}',
     );
@@ -189,9 +199,11 @@ test.describe('Skills (via Registry + API)', () => {
     // `SkillsView.tsx:351-355`), which the next line already asserts. `exact`
     // keeps this off "Browse Registry Skills".
     await page
-      .getByRole('button', { name: 'Registry Skill', exact: true })
+      .getByRole('button', { name: /^Registry Skill Registry$/ })
       .click();
-    await expect(page.getByText('Installed read-only skill')).toBeVisible();
+    await expect(
+      page.locator('.skill-detail').getByText('Registry', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save' })).not.toBeVisible();
     await expect(page.locator('.skill-detail textarea')).toBeDisabled();
   });
@@ -222,6 +234,8 @@ async function seedCommandSkillRoutes(page: Page) {
         description: 'Ship a release',
         body: 'Ship {{ticket}}',
         source: 'local',
+        writable: true,
+        origin: 'user',
         path: '/tmp/skills/release-check/SKILL.md',
         installed: true,
         variables: [{ name: 'ticket', description: 'Jira key' }],
@@ -235,6 +249,8 @@ async function seedCommandSkillRoutes(page: Page) {
         description: 'Not a command',
         body: 'Just a skill',
         source: 'local',
+        writable: true,
+        origin: 'user',
         path: '/tmp/skills/plain-skill/SKILL.md',
         installed: true,
       },
@@ -426,6 +442,65 @@ test.describe('Command skills', () => {
     // `src-server/routes/agents/__tests__/skills.routes.test.ts:339`
     // ("POST /:name/run counts a run and answers with the stats"). What needs a
     // browser is the variable resolution reaching the dispatch, above.
+  });
+
+  // #1180: `SkillsView` (`guidance`) is one of the routes where
+  // `SplitPaneLayout`'s mobile detail sheet marks `PageFrame`'s route frame
+  // `inert` (PageFrame.tsx:155) while it is open. `SkillRunModal` and
+  // `ImportSkillsModal` render as plain siblings of `SplitPaneLayout`, so
+  // either dialog fell inside that `inert` subtree: visible, but `.focus()` a
+  // no-op and every button unclickable. A visibility assertion alone cannot
+  // tell the two states apart — this proves focus and a real click instead,
+  // the same shape #1131's `plugin-update.spec.ts` coverage uses.
+  test('skill dialogs stay reachable around a phone mobile detail sheet', async ({
+    page,
+  }) => {
+    await installVisualViewportFixture(page);
+    await seedCommandSkillRoutes(page);
+
+    // `SkillRunModal` opens from "▶ Test" INSIDE the skill detail — the
+    // exact content `SplitPaneLayout` portals into `PageFrame`'s
+    // mobile-detail slot once a skill is selected on a phone, so this dialog
+    // opens with the ancestor already `inert`.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/guidance/release-check?tab=skills');
+    await page.waitForSelector('.skill-detail', { timeout: 15_000 });
+
+    await page.getByRole('button', { name: '▶ Test' }).click();
+    const runDialog = page.getByRole('dialog', { name: 'Test: release-check' });
+    await expect(runDialog).toBeVisible();
+    await expect(runDialog).toBeFocused();
+    await runDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(runDialog).toBeHidden();
+
+    // `ImportSkillsModal` opens from "Import .md" in the LIST pane, which a
+    // phone hides (`display: none`) the instant a mobile sheet is showing —
+    // so opening it AFTER a skill is already selected on a phone is not
+    // reachable through the UI at all. The realistic ordering is the other
+    // way around: select the skill and open the dialog while both panes are
+    // still visible (desktop — `guidance.selectedId` is deliberately excluded
+    // from the route's identity, so selecting a skill never replays the
+    // route entrance), then cross the mobile breakpoint underneath both of
+    // them — a window resize, a foldable rotation, or a narrowed split view
+    // all flip `useIsMobile()` the same way. The dialog's own state survives
+    // that; `PageFrame` marking the frame `inert` is what used to trap it.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/guidance/release-check?tab=skills');
+    await page.waitForSelector('.skill-detail', { timeout: 15_000 });
+    await page.getByRole('button', { name: 'Import .md' }).click();
+    const importDialog = page.getByRole('dialog', { name: 'Import Skills' });
+    await expect(importDialog).toBeVisible();
+    await expect(importDialog).toBeFocused();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // Visible is not proof it is still reachable: the HTML spec has the
+    // browser blur whatever was focused inside an element the instant it
+    // becomes inert — this is the assertion that tells the pre-fix and
+    // post-fix states apart.
+    await expect(importDialog).toBeFocused();
+    await importDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(importDialog).toBeHidden();
   });
 
   test('a read-only skill is told what would make it a command', async ({

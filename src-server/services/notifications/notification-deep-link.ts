@@ -1,3 +1,5 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
+
 /**
  * Resolves the exact-session deep link for a notification's metadata —
  * shared by `AttentionProjectionService`'s approval projection (the attention
@@ -23,13 +25,13 @@ export function resolveNotificationOpenHref(
   const projectSlug = stringValue(meta.projectSlug);
   // archive#1284 (AC4): both dock-targeting hrefs below carry `dock=open` so
   // the deep link actually opens the chat dock (`navigation-store.ts`'s
-  // `isDockOpen` reads this param) — `/activity?session=<id>` is not a dock
-  // target and is deliberately left unchanged.
+  // `isDockOpen` reads this param) — the Activity surface deep link is not a
+  // dock target and deliberately carries no `dock=open`.
   if (projectSlug && sessionId) {
     return `/projects/${encodeURIComponent(projectSlug)}?chat=${encodeURIComponent(sessionId)}&dock=open`;
   }
   if (sessionKind === 'runtime' && sessionId) {
-    return `/activity?session=${encodeURIComponent(sessionId)}`;
+    return activityDeepLink({ sessionId });
   }
   if (sessionKind === 'managed' && sessionId) {
     return `/?chat=${encodeURIComponent(sessionId)}&dock=open`;

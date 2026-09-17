@@ -238,11 +238,11 @@
 
 .insights-agent-row.is-selectable:hover,
 .insights-agent-row.is-selectable.is-active {
-  background: var(--surface-hover, rgba(127, 127, 127, 0.12));
+  background: var(--bg-hover);
 }
 
 .insights-agent-row.is-selectable:focus-visible {
-  outline: 2px solid var(--focus-ring, currentColor);
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 
@@ -259,7 +259,7 @@
 }
 
 .insights-inline-action:focus-visible {
-  outline: 2px solid var(--focus-ring, currentColor);
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 

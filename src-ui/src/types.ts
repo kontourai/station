@@ -44,7 +44,7 @@ export type {
   FlowRunBinding,
 } from './contexts/active-chats-state';
 
-export interface AgentCommands {
+interface AgentCommands {
   [commandName: string]: SlashCommand;
 }
 
@@ -237,9 +237,9 @@ export interface ChatMessage {
   changedFiles?: TurnChangedFiles;
 }
 
-export type ChatSessionSource = 'manual' | 'prompt' | 'workflow';
+type ChatSessionSource = 'manual' | 'prompt' | 'workflow';
 
-export type ChatSessionStatus = 'idle' | 'sending' | 'error' | 'queued';
+type ChatSessionStatus = 'idle' | 'sending' | 'error' | 'queued';
 
 /**
  * One permanently refused follow-up (archive#3706). `content` is the user's
@@ -341,6 +341,19 @@ export interface ChatSession {
   backgroundTasks?: ChatBackgroundTask[];
   /** Latest provider-reported usage observation for the live context meter. */
   liveUsage?: ChatLiveUsage;
+  /** Synthetic event-replay chat; absent on ordinary sessions. */
+  replay?: {
+    elapsedMs?: number;
+    connectionPhase?:
+      | 'unknown'
+      | 'receiving'
+      | 'caught-up'
+      | 'interrupted'
+      | 'closed';
+    connectionElapsedMs?: number;
+    sourceThreadId: string;
+    tapeEventCount: number;
+  };
 }
 
 export interface Tool {
@@ -392,19 +405,6 @@ export type NavigationView =
   | { type: 'connections-computers' }
   | { type: 'plugins' }
   | { type: 'registry'; tab?: RegistryCatalogTab }
-  | { type: 'review-queue' }
-  | {
-      type: 'activity';
-      sessionId?: string;
-      /**
-       * One-shot route intent: land the reader on the selected session's
-       * evidence region (receipts/diagnostics). Only meaningful alongside
-       * `sessionId`; consumed and cleared by the Activity surface after it is
-       * honored, following the `openFilePreviewIntent` idiom
-       * (`navigation-store.ts`).
-       */
-      focus?: 'evidence';
-    }
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }
@@ -414,6 +414,13 @@ export type NavigationView =
   // archive#4079: the board face, reached by URL only (no sidebar
   // item this slice — see docs/design/... and page-frame-registry.ts).
   | { type: 'board'; reference: BoardReference }
+  /**
+   * #2062: one of the viewer's own Boards — a Layout owned by a principal
+   * rather than a project. Distinct from `board` above, which is the
+   * archive#4079 task/session board face; the two share an English word and
+   * nothing else (see docs/glossary.md).
+   */
+  | { type: 'personal-board'; boardSlug: string }
   | { type: 'project'; slug: string }
   | { type: 'project-session-board'; slug: string }
   | { type: 'project-flow-console'; slug: string; runId?: string }

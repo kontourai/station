@@ -11,10 +11,6 @@ import {
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import {
-  type DiscoveredLeafRoute,
-  scanRegisteredLeafRoutes,
-} from '../pairing-route-leaf-scan.js';
-import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
   EXTERNAL_SURFACE_CAPABILITY_TABLE,
@@ -27,6 +23,10 @@ import {
   requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../pairing-route-scopes.js';
+import {
+  type DiscoveredLeafRoute,
+  scanRegisteredLeafRoutes,
+} from './pairing-route-leaf-scan.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RUNTIME_ROUTES_PATH = join(
@@ -85,6 +85,55 @@ function scanMountedRouteBases(): string[] {
 }
 
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
+  test('reserves the entire home-authority family for explicit home-transfer grants', () => {
+    const transferScope = pairingScopePresetString('home-transfer');
+
+    for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+      const path = '/api/home-authority/identity';
+      expect(matchPairingScopeRule(method, path)).toMatchObject({
+        method: '*',
+        prefix: '/api/home-authority',
+        scope: 'home:transfer',
+        origin: 'explicit',
+      });
+      expect(requiredPairingScope(method, path)).toBe('home:transfer');
+      expect(pairingScopeIncludes(transferScope, 'home:transfer')).toBe(true);
+      expect(
+        pairingScopeIncludes(DEFAULT_GRANT_PAIRING_SCOPE, 'home:transfer'),
+      ).toBe(false);
+    }
+
+    expect(requiredPairingScope('GET', '/api/home-authority')).toBe(
+      'home:transfer',
+    );
+    expect(requiredPairingScope('GET', '/api/home-authority-other')).toBe(
+      undefined,
+    );
+  });
+
+  test('keeps control-session participation and operator administration on exact rules', () => {
+    expect(
+      requiredPairingScope('POST', '/api/home-authority/control-sessions/open'),
+    ).toBe('home:control');
+    for (const leaf of ['inspect', 'retire']) {
+      expect(
+        requiredPairingScope(
+          'POST',
+          `/api/home-authority/control-sessions/device-a/${leaf}`,
+        ),
+      ).toBe('access:manage');
+    }
+    expect(
+      requiredPairingScope('GET', '/api/home-authority/control-sessions/open'),
+    ).toBe('home:transfer');
+    expect(
+      requiredPairingScope(
+        'POST',
+        '/api/home-authority/control-sessions/device-a/unknown',
+      ),
+    ).toBe('home:transfer');
+  });
+
   test('a standard paired chat tier admits every attachment staging control leaf', () => {
     const standard = pairingScopePresetString('standard');
     const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');
@@ -331,11 +380,62 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     const uncovered: string[] = [];
     for (const base of new Set(bases)) {
       if (PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS.includes(base)) continue;
-      if (requiredPairingScope('GET', base) === undefined) {
+      if (
+        requiredExternalSurfaceCapability('http', 'GET', base) === undefined
+      ) {
         uncovered.push(base);
       }
     }
     expect(uncovered).toEqual([]);
+  });
+
+  test('account login has its own method-limited boundary and cannot expose the Project catalog', () => {
+    for (const method of ['GET', 'POST']) {
+      expect(
+        requiredExternalSurfaceCapability('http', method, '/api/account-auth'),
+      ).toMatchObject({ capability: 'public' });
+      expect(
+        requiredExternalSurfaceCapability(
+          'http',
+          method,
+          '/api/account-auth/login',
+        ),
+      ).toMatchObject({ capability: 'public' });
+    }
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'PUT',
+        '/api/account-auth/login',
+      ),
+    ).toBeUndefined();
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'GET',
+        '/api/account-authentication',
+      ),
+    ).toBeUndefined();
+    expect(
+      requiredExternalSurfaceCapability('http', 'GET', '/api/projects'),
+    ).toMatchObject({ capability: 'pairing-scope' });
+  });
+
+  test('continuation middleware classification does not admit arbitrary methods', () => {
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        '*',
+        '/api/account-auth/continuations/*',
+      ),
+    ).toMatchObject({ capability: 'middleware' });
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'DELETE',
+        '/api/account-auth/continuations/login',
+      ),
+    ).toBeUndefined();
   });
 
   test('the catch-all mount exceptions are exactly the two known absolute-leaf-path bases', () => {
@@ -789,6 +889,36 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       });
     },
   );
+
+  /**
+   * #2062. Promote is the one `/api/me` leaf whose write lands outside the
+   * caller's own records, so the question "should it be a raised tier" has to
+   * be answered by derivation rather than by the family comment. It is
+   * answered NO, and this is the derivation: promote publishes through the
+   * same project transaction `POST /api/projects/:slug/layouts` uses, so a
+   * credential that can post a layout to a project directly can already
+   * produce the identical record. A tier above that would refuse a caller for
+   * taking the shorter route to a write it may already perform.
+   *
+   * If either side ever moves, this fails — which is the point. The equality
+   * is asserted between the two resolved scopes, not against a literal, so
+   * raising `/api/projects`'s tier alone is what reds it.
+   */
+  test('scopes promote exactly as writing the same layout to the project directly', () => {
+    const promote = matchPairingScopeRule(
+      'POST',
+      '/api/me/layouts/:layoutSlug/promote',
+    );
+    const projectLayoutWrite = matchPairingScopeRule(
+      'POST',
+      '/api/projects/:slug/layouts',
+    );
+    expect(promote?.scope).toBeDefined();
+    expect(promote?.scope).toBe(projectLayoutWrite?.scope);
+    expect(
+      isLeafScopeDeclared('POST', '/api/me/layouts/:layoutSlug/promote'),
+    ).toBe(true);
+  });
 
   test('does not let an exact ACP provider override classify a trailing descendant', () => {
     const path = '/acp/connections/:id/providers/set/future';
@@ -1399,5 +1529,34 @@ describe('API docs stay credentialed while their launcher does not (#934)', () =
       PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
     );
     expect(post?.capability).not.toBe('public');
+  });
+});
+
+/*
+ * Engine device-code login. These leaves START a process on the host, so they
+ * carry their own `engine:login` rule instead of inheriting the enrolment
+ * family's `access:manage`. Pinned because deleting that rule would go
+ * unnoticed otherwise: the explicit enrolment prefix still matches every leaf
+ * beneath it, so the leaf scan would keep reporting them as declared.
+ */
+describe('engine device-code login routes', () => {
+  const leaf = '/api/connections/agent/:id/enrolment/:ref/device-code';
+
+  test.each(['GET', 'POST', 'DELETE'] as const)(
+    '%s on the device-code leaf requires engine:login through its own rule',
+    (method) => {
+      expect(requiredPairingScope(method, leaf)).toBe('engine:login');
+      expect(matchPairingScopeRule(method, leaf)).toMatchObject({
+        origin: 'explicit',
+        prefix: leaf,
+        scope: 'engine:login',
+      });
+    },
+  );
+
+  test('the enrolment leaf above it keeps access:manage', () => {
+    expect(
+      requiredPairingScope('GET', '/api/connections/agent/:id/enrolment/:ref'),
+    ).toBe('access:manage');
   });
 });

@@ -1,39 +1,29 @@
 import type React from 'react';
-import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
-import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
+import { createPortal } from 'react-dom';
+import { toastStore } from '../../contexts/ToastContext';
+import { useShortcutDisplayLookup } from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
+import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
 import { LazyBoundary } from '../LazyBoundary';
-import { DockPlacementControl } from './DockPlacementControl';
-import type { DockSnap } from './dockSnap';
-import { readDockSnap } from './dockSnap';
+import {
+  ChatDockHeaderMoreMenu,
+  type DockMoreAction,
+} from './ChatDockHeaderMoreMenu';
+import {
+  toggleSessionInventoryOccurrence,
+  useSessionInventoryHostRegistered,
+  useSessionInventoryOccurrence,
+} from './sessionInventoryOccurrence';
 
-const loadChatDockWorkspaceControls = () =>
+const loadChatDockSessionInventoryHost = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({
-    default: module.ChatDockWorkspaceControls,
+    default: module.ChatDockSessionInventoryHost,
   }));
 const loadChatDockWorkspaceActions = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({
     default: module.ChatDockWorkspaceActions,
   }));
-
-function RegionExtentGlyph({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className="chat-dock__extent-svg"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      {expanded ? (
-        <path d="M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6" />
-      ) : (
-        <path d="M3 9h6V3m12 6h-6V3M3 15h6v6m12-6h-6v6" />
-      )}
-    </svg>
-  );
-}
 
 interface Session {
   id: string;
@@ -73,8 +63,22 @@ export interface ChatDockWorkspaceControls {
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
   backgroundTasksRunningCount: number;
   isBackgroundTasksOpen: boolean;
+  /**
+   * Whether the row opens the Agents PANE rather than the sheet (#2050).
+   * The dialog semantics belong to the sheet alone: a row announcing
+   * `haspopup="dialog"` and an expanded state while it places a dock tab
+   * would describe an interaction that does not happen.
+   */
+  backgroundTasksOpensPane?: boolean;
   onToggleBackgroundTasks: () => void;
   sessionInventory?: {
+    /**
+     * The occurrence store's key for this dock's inventory, owned by the
+     * caller: since #1536 F the CONTROL is a row of this header's More menu
+     * while the HOST is the lazily mounted `ChatDockSessionInventoryHost`, and
+     * the two halves have to name the same host.
+     */
+    hostId: string;
     chatStoreId: string;
     executionId: string;
     projectId?: string;
@@ -88,10 +92,19 @@ export interface ChatDockWorkspaceControls {
   onNewChat: () => void;
 }
 
+/**
+ * Chat's OWN toolbar (#2046 2b): the identity, context meter, project
+ * context, session counter, unread badge and More menu of the Chat pane.
+ * Inside a region host it renders into the region bar's two slots
+ * (`RegionChromeSlots`) so the dock keeps one chrome bar; the region's own
+ * controls — placement grab, tab strip, maximize, visibility, the click
+ * surface that collapses the bar — are `RegionChromeBar`'s, rendered by the
+ * host from the shell's chrome, and no longer live here. The full-screen
+ * placement has no region bar and renders this as its own `.chat-dock__header`.
+ */
 interface ChatDockHeaderProps {
   /** Absent for a non-Chat occupant — see `ChatDockHeaderChatControls`. */
   chatControls?: ChatDockHeaderChatControls;
-  isDragging: boolean;
   /**
    * The active chat's project context, rendered inline in this row rather
    * than as a third chrome bar below it. The desktop dock used to stack
@@ -103,245 +116,230 @@ interface ChatDockHeaderProps {
   projectContext?: React.ReactNode;
   /** Active conversation title + engine/Flow identity, sharing this row. */
   chatIdentity?: React.ReactNode;
-  /** Single owner for the persisted snap + navigation maximize state. */
-  onDockSnap: (snap: DockSnap) => void;
-  /** Full-screen layout placement keeps ambient dock controls out of its chrome. */
+  /** Full-screen layout placement: no region bar, so this renders its own. */
   fullscreen?: boolean;
   /** #3309: tab-strip controls folded into this bar. Absent while collapsed. */
   workspaceControls?: ChatDockWorkspaceControls;
   /** The active session's compact context meter, rendered beside identity. */
   contextMeter?: React.ReactNode;
-  availableDockSlotPlacements: readonly DockMode[];
-  effectiveDockSlotPlacement: DockMode;
-  onDockPlacementChange: (placement: DockMode) => void;
   /**
-   * A pre-rendered `DockOccupantPicker`, not `{current, onChoose}` data
-   * (station#4460 review M4): this component is imported by the EAGER entry
-   * path (`ChatDock.tsx` → `App.tsx`), and `DockOccupantPicker` pulls in
-   * `ambientDockOccupants.ts` plus all three pane-descriptor contracts
-   * modules — real weight that belongs in the ambient host's LAZY chunk,
-   * which is the only place that still imports `DockOccupantPicker` and
-   * builds this node. Absent only for the full-screen Chat layout
-   * placement, which has no ambient occupant to switch away from.
+   * Whether the region is showing: a collapsed bar offers "Start a chat" in
+   * place of the open pane's own CTA (#800).
    */
-  occupantPicker?: React.ReactNode;
   regionVisible: boolean;
-  shellMaximized: boolean;
-  /** Registered visibility shortcut for the shell's surface. */
-  surfaceShortcutId?: string;
-  /** Registered title for a non-Chat shell's visibility action. */
-  surfaceTitle?: string;
-  /** Whether this shell owns the Chat-only maximize state. */
-  canMaximize?: boolean;
+  /**
+   * Extra rows for the More menu, supplied by the caller because their subject
+   * is the active conversation rather than the dock's chrome — Copy thread ID,
+   * Copy project path, Open code layout (#1536 F). Appended after the header's
+   * own rows.
+   */
+  moreActions?: readonly DockMoreAction[];
 }
 
 export function ChatDockHeader({
   chatIdentity,
   projectContext,
   chatControls,
-  isDragging,
-  onDockSnap,
   fullscreen = false,
   workspaceControls,
   contextMeter,
-  availableDockSlotPlacements,
-  effectiveDockSlotPlacement,
-  onDockPlacementChange,
-  occupantPicker,
   regionVisible,
-  shellMaximized,
-  surfaceShortcutId = 'dock.toggle',
-  surfaceTitle,
-  canMaximize = true,
+  moreActions,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
-  const isDockMaximized = shellMaximized;
-  const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
-  const maximizeShortcut = useShortcutDisplay('dock.maximize');
-  const visibilityLabel = surfaceTitle
-    ? `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`
-    : `${isDockOpen ? 'Hide' : 'Show'} dock region`;
-  const side =
-    effectiveDockSlotPlacement === 'bottom' ? null : effectiveDockSlotPlacement;
+  const slots = useRegionChromeSlots();
+  // One hook for a variable number of per-session rows: `useShortcutDisplay`
+  // is a hook and cannot be called inside the activity map.
+  const shortcutDisplay = useShortcutDisplayLookup();
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
     isSessionExecutionActive(s),
   );
+  const inventory = workspaceControls?.sessionInventory;
+  const inventoryOccurrence = useSessionInventoryOccurrence(
+    inventory?.hostId ?? '',
+  );
+  // The host arrives with a lazily loaded chunk, so the row is not pressable
+  // the instant it renders — and the chunk can fail to arrive at all. Derived
+  // from the registration the host writes, never from a timer.
+  const inventoryReady = useSessionInventoryHostRegistered(
+    inventory?.hostId ?? '',
+  );
+  /**
+   * #1536 F: the bar carried thirteen controls in 40px and the conversation
+   * title got about one character of what was left. These are the commands
+   * that are not the dock's primary verbs — every one still reachable, none of
+   * them holding width the title needs.
+   */
+  const dockMoreActions: DockMoreAction[] = [
+    ...(chatControls
+      ? [
+          {
+            key: 'chat-settings',
+            label: 'Chat settings',
+            onSelect: () =>
+              chatControls.setShowChatSettings((previous) => !previous),
+          },
+        ]
+      : []),
+    ...(workspaceControls?.showInboxToggle
+      ? [
+          {
+            key: 'chat-list',
+            label: workspaceControls.isInboxOpen
+              ? 'Collapse chat list'
+              : 'Expand chat list',
+            checked: workspaceControls.isInboxOpen,
+            onSelect: () => workspaceControls.onToggleInbox(),
+          },
+        ]
+      : []),
+    ...(workspaceControls
+      ? [
+          {
+            key: 'background-tasks',
+            label:
+              workspaceControls.backgroundTasksRunningCount > 0
+                ? `Background tasks — ${workspaceControls.backgroundTasksRunningCount} running`
+                : 'Background tasks',
+            ...(workspaceControls.backgroundTasksOpensPane
+              ? {}
+              : {
+                  haspopup: 'dialog' as const,
+                  expanded: workspaceControls.isBackgroundTasksOpen,
+                }),
+            onSelect: () => workspaceControls.onToggleBackgroundTasks(),
+          },
+        ]
+      : []),
+    ...(inventory
+      ? [
+          {
+            key: 'session-inventory',
+            label: inventoryReady
+              ? 'Session inventory'
+              : 'Session inventory — loading',
+            haspopup: 'dialog' as const,
+            expanded: Boolean(inventoryOccurrence),
+            disabled: !inventoryReady,
+            onSelect: (trigger: HTMLElement) => {
+              // The backstop, not the mechanism: the row is disabled until the
+              // registration exists, so this refusal means the host went away
+              // between render and click (or its chunk never resolved). A
+              // refusal nobody can see is the defect being closed here, so it
+              // gets words. `toastStore` rather than `useToast`: this component
+              // renders in surfaces with no ToastProvider above it, and the
+              // store is the same one the provider reads (`OverflowMenu` takes
+              // the same route).
+              if (
+                !toggleSessionInventoryOccurrence({
+                  hostId: inventory.hostId,
+                  projectId: inventory.projectId,
+                  executionRead: inventory.executionRead,
+                  trigger,
+                })
+              )
+                toastStore.show(
+                  'Session inventory is not ready for this chat yet.',
+                );
+            },
+          },
+        ]
+      : []),
+    ...(moreActions ?? []),
+  ];
 
-  const handleHeaderClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (fullscreen) return;
-    /**
-     * The header row toggles the dock, but it now also hosts the project
-     * context and identity (#1064), whose interactive descendants must not
-     * double as a toggle. Deciding that here — rather than making each child
-     * stop propagation — leaves non-interactive context text available as a
-     * toggle when its conditional path handler is absent, and avoids making a
-     * wrapper `<div onClick>` a static element with a mouse handler and no
-     * keyboard equivalent.
-     */
-    if (
-      event.target instanceof Element &&
-      event.target.closest(
-        'a, button, [role="button"], [role="link"], input, select, textarea',
-      )
-    ) {
-      return;
-    }
-    onDockSnap(isDockOpen ? 'collapsed' : 'half');
-  };
+  // No "Chat Dock" label: the dock is the only thing this chrome can belong
+  // to, and the row's space is worth more to the project context than to
+  // restating the surface's own name (owner call, #1064). Mobile renders
+  // ChatDockMobileHeader instead of this component, so mobile-only branches
+  // here are unreachable (#1066).
+  //
+  // #1536 F: the chat-settings gear, the chat-list toggle, Background tasks,
+  // Session inventory and the bare ⌘D keycap that sat here are rows of the
+  // More menu in the actions cluster now. #1529 (#928 C2b) took the occupant
+  // picker with the legacy docked-Home path. #2046 2b took the placement grab
+  // too: it moved to the region bar with the tab strip, since it moves the
+  // REGION and not this pane. What is left is the invisible inventory host
+  // and the pane's own identity.
+  const leading = (
+    <>
+      {inventory ? (
+        <LazyBoundary
+          load={loadChatDockSessionInventoryHost}
+          pending={null}
+          componentProps={{ sessionInventory: inventory }}
+        />
+      ) : null}
+      {chatIdentity ? (
+        <div className="chat-dock__header-identity">{chatIdentity}</div>
+      ) : null}
+      {contextMeter ? (
+        <div className="chat-dock__header-meter">{contextMeter}</div>
+      ) : null}
+      {projectContext ? (
+        <div className="chat-dock__header-context">{projectContext}</div>
+      ) : null}
+    </>
+  );
 
-  const handleMaximize = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isDockMaximized) {
-      onDockSnap('half');
-    } else {
-      onDockSnap('full');
-    }
-  };
-
-  return (
-    // A convenience click surface that duplicates the labelled Expand/Collapse
-    // button below, which is already the keyboard path. Giving the bar its own
-    // role and tab stop would add a second, unlabelled way to do the same
-    // thing — and it wraps the dock's other controls, so it would nest
-    // interactive content inside an interactive element.
-    // biome-ignore lint/a11y/noStaticElementInteractions: convenience mouse surface; keyboard path is the Expand/Collapse button.
-    // biome-ignore lint/a11y/useKeyWithClickEvents: same — duplicating a labelled control, not adding one.
-    <div
-      className={`chat-dock__header ${isDockMaximized ? 'is-maximized' : ''} ${isDragging ? 'is-dragging' : ''}`}
-      onClick={handleHeaderClick}
-    >
-      <div className="chat-dock__title">
-        {/* No "Chat Dock" label: the dock is the only thing this chrome can
-            belong to, and the row's space is worth more to the project
-            context than to restating the surface's own name (owner call,
-            #1064). Mobile renders ChatDockMobileHeader instead of this
-            component, so mobile-only branches here are unreachable (#1066). */}
-        {!fullscreen ? (
-          <DockPlacementControl
-            availablePlacements={availableDockSlotPlacements}
-            effectivePlacement={effectiveDockSlotPlacement}
-            onPlacementChange={onDockPlacementChange}
-          />
-        ) : null}
-        {/* station#4460: every ambient occupant carries the SAME switcher —
-            Chat is one entry in the menu, not a special case with no way
-            back in. Replaces the old fixed "Dock this pane"/"return to
-            Chat" idea entirely: choosing THIS occupant again is a no-op
-            (`DockOccupantPicker` itself guards that), so there is no
-            meaningful second control to suppress. Pre-rendered by the
-            caller — see the `occupantPicker` prop doc. */}
-        {!fullscreen ? occupantPicker : null}
-        {chatControls && (
-          <button
-            type="button"
-            className="chat-dock__icon-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              chatControls.setShowChatSettings((prev) => !prev);
-            }}
-            title="Chat settings"
-            aria-label="Chat settings"
-          >
-            <svg
-              aria-hidden="true"
-              className="chat-dock__icon-svg"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
+  const trailing = (
+    <>
+      {workspaceControls ? (
+        <LazyBoundary
+          load={loadChatDockWorkspaceActions}
+          pending={null}
+          componentProps={workspaceControls}
+        />
+      ) : null}
+      {activeSessions.length > 0 && (
+        <div className="chat-dock__activity">
+          <button type="button" className="chat-dock__activity-btn">
+            <span className="loading-dots">
+              <span>●</span>
+              <span>●</span>
+              <span>●</span>
+            </span>
+            {activeSessions.length}
           </button>
-        )}
-        {chatControls ? (
-          <span
-            className="chat-dock__subtitle chat-dock__toggle-shortcut"
-            data-chrome-group="chat-settings"
-            style={{ flex: '0 0 auto' }}
-          >
-            {toggleDockShortcut}
-          </span>
-        ) : null}
-        {workspaceControls ? (
-          <LazyBoundary
-            load={loadChatDockWorkspaceControls}
-            pending={null}
-            componentProps={workspaceControls}
-          />
-        ) : null}
-        {chatIdentity ? (
-          <div className="chat-dock__header-identity">{chatIdentity}</div>
-        ) : null}
-        {contextMeter ? (
-          <div className="chat-dock__header-meter">{contextMeter}</div>
-        ) : null}
-        {projectContext ? (
-          <div className="chat-dock__header-context">{projectContext}</div>
-        ) : null}
-      </div>
-      {/* An event shield, not a control: its only handler stops the click
-          from reaching the collapse surface above. There is no action here to
-          give a keyboard user — the real controls are its children. */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: event shield with no action of its own. */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing to activate; children carry the actions. */}
-      <div
-        className="chat-dock__header-actions"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {workspaceControls ? (
-          <LazyBoundary
-            load={loadChatDockWorkspaceActions}
-            pending={null}
-            componentProps={workspaceControls}
-          />
-        ) : null}
-        {activeSessions.length > 0 && (
-          <div className="chat-dock__activity">
-            <button type="button" className="chat-dock__activity-btn">
-              <span className="loading-dots">
-                <span>●</span>
-                <span>●</span>
-                <span>●</span>
-              </span>
-              {activeSessions.length}
-            </button>
-            <div className="chat-dock__activity-dropdown">
-              {activeSessions.map((session) => {
-                const idx = (chatControls?.sessions ?? []).findIndex(
-                  (s) => s.id === session.id,
-                );
-                return (
-                  <button
-                    type="button"
-                    key={session.id}
-                    className="chat-dock__activity-item"
-                    onClick={() => chatControls?.focusSession(session.id)}
-                  >
-                    <span className="chat-dock__activity-label">
-                      {session.title}
+          <div className="chat-dock__activity-dropdown">
+            {activeSessions.map((session) => {
+              const idx = (chatControls?.sessions ?? []).findIndex(
+                (s) => s.id === session.id,
+              );
+              return (
+                <button
+                  type="button"
+                  key={session.id}
+                  className="chat-dock__activity-item"
+                  onClick={() => chatControls?.focusSession(session.id)}
+                >
+                  <span className="chat-dock__activity-label">
+                    {session.title}
+                  </span>
+                  {/*
+                      `dock.session1`…`dock.session9` are Cmd-N on macOS and
+                      Ctrl-N everywhere else; the literal `⌘{n}` that used to
+                      sit here named a chord no Windows or Linux user could
+                      press (#1649). `getDisplay` returns '' for a session
+                      index nothing has registered, and
+                      `.chat-dock__subtitle:empty` hides the badge rather than
+                      drawing an empty keycap.
+                    */}
+                  {idx < 9 && (
+                    <span className="chat-dock__subtitle">
+                      {shortcutDisplay(`dock.session${idx + 1}`)}
                     </span>
-                    {idx < 9 && (
-                      <span className="chat-dock__subtitle">⌘{idx + 1}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        )}
-        {chatControls &&
-          (chatControls.sessions.length === 0 && !isDockOpen ? (
+        </div>
+      )}
+      {chatControls &&
+        (!chatIdentity || chatControls.sessions.length > 0) &&
+        (chatControls.sessions.length === 0 ? (
+          !isDockOpen ? (
             // #800: this read "Start a chat" and carried a pointer cursor,
             // but was inert text — clicking it only toggled the dock open
             // (the header's own handler) and left the user hunting for
@@ -357,83 +355,68 @@ export function ChatDockHeader({
               Start a chat
             </button>
           ) : (
-            <span className="chat-dock__counter">
-              {chatControls.sessions.length === 0
-                ? 'Start a chat'
-                : `${chatControls.sessions.length} session${chatControls.sessions.length === 1 ? '' : 's'}`}
-            </span>
-          ))}
-        {chatControls && chatControls.unreadCount > 0 && (
-          <span className="chat-dock__badge">{chatControls.unreadCount}</span>
-        )}
-        {!fullscreen && (
-          <>
-            {canMaximize ? (
-              <button
-                type="button"
-                className="chat-dock__maximize-btn"
-                onClick={handleMaximize}
-                title={
-                  isDockMaximized
-                    ? withShortcutHint(
-                        'Restore dock region size',
-                        'dock.maximize',
-                        () => maximizeShortcut,
-                      )
-                    : withShortcutHint(
-                        'Expand dock region to workspace',
-                        'dock.maximize',
-                        () => maximizeShortcut,
-                      )
-                }
-                aria-label={
-                  isDockMaximized
-                    ? 'Restore dock region size'
-                    : 'Expand dock region to workspace'
-                }
-              >
-                <RegionExtentGlyph expanded={isDockMaximized} />
-                <span className="chat-dock__subtitle">{maximizeShortcut}</span>
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="chat-dock__icon-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDockSnap(
-                  isDockOpen
-                    ? 'collapsed'
-                    : canMaximize && readDockSnap() === 'full'
-                      ? 'full'
-                      : 'half',
-                );
-              }}
-              title={withShortcutHint(
-                visibilityLabel,
-                surfaceShortcutId,
-                () => toggleDockShortcut,
-              )}
-              aria-label={visibilityLabel}
-            >
-              <svg
-                aria-hidden="true"
-                className={`chat-dock__chevron-svg ${side ? `is-${side}-${isDockOpen ? 'open' : 'closed'}` : isDockOpen ? 'is-open' : 'is-closed'}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </button>
-          </>
-        )}
+            <span className="chat-dock__counter">Start a chat</span>
+          )
+        ) : chatControls.sessions.length > 1 ? (
+          // #1536 F: "1 session" is not a count anyone reads — it is the
+          // state you are always in with one chat open, priced in a bar that
+          // could not fit the conversation's own title. A real count (more
+          // than one) still earns its words; the chat list rail is what
+          // enumerates them either way.
+          <span className="chat-dock__counter">
+            {`${chatControls.sessions.length} sessions`}
+          </span>
+        ) : null)}
+      {chatControls && chatControls.unreadCount > 0 && (
+        <span className="chat-dock__badge">{chatControls.unreadCount}</span>
+      )}
+      <ChatDockHeaderMoreMenu
+        actions={dockMoreActions}
+        // The Background tasks sheet anchors to the control that opened it,
+        // and since #1536 F that control is this menu's trigger.
+        triggerRef={workspaceControls?.backgroundTasksTriggerRef}
+        // Folding Background tasks into the menu took its running-count badge
+        // off the bar with it, and a count that only exists inside a closed
+        // menu is not a signal. It rides the trigger instead.
+        badgeCount={workspaceControls?.backgroundTasksRunningCount ?? 0}
+        badgeLabel={
+          workspaceControls && workspaceControls.backgroundTasksRunningCount > 0
+            ? `${workspaceControls.backgroundTasksRunningCount} background task${
+                workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
+              } running`
+            : undefined
+        }
+      />
+    </>
+  );
+
+  // Inside a region host the bar is the region's (`RegionChromeBar`), and
+  // this pane's toolbar renders INTO it: one chrome bar per dock, not a pane
+  // bar under a region bar. Portalled, so the DOM order is the bar's — the
+  // strip, then this identity, then the region controls — while React
+  // ownership (the More menu's anchor ref, the lazy chunks) stays here. A
+  // slot that has not mounted yet renders nothing for that render rather
+  // than flashing an inline bar first.
+  if (!fullscreen && slots) {
+    return (
+      <>
+        {slots.leading ? createPortal(leading, slots.leading) : null}
+        {slots.trailing ? createPortal(trailing, slots.trailing) : null}
+      </>
+    );
+  }
+
+  return (
+    <div className="chat-dock__header">
+      <div className="chat-dock__title">
+        {leading}
+        {/* The row's growth, on an empty element rather than inside any of the
+            labels above: the identity and the project context used to grow
+            themselves, which spread them to opposite ends and made one bar read
+            as three fragments (#1536 F). */}
+        <span className="chat-dock__title-spacer" />
       </div>
+      <div className="chat-dock__header-actions">{trailing}</div>
     </div>
   );
 }

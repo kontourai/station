@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { createInMemorySessionTurnBoundaryAuthority } from '../../orchestration/session-turn-boundary.js';
 import {
   createTaskDispatcher,
   type TaskDispatchGraphState,
@@ -35,6 +36,57 @@ function graph(
 const telemetry = { succeeded: vi.fn(), failed: vi.fn() };
 
 describe('TaskDispatcher Interface', () => {
+  test.each(['prepare', 'publish'] as const)(
+    'retains admission only when the durable %s phase is missing',
+    async (phase) => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+      const owned = authority.claimTaskDispatch(
+        reservation.sessionId,
+        new Date().toISOString(),
+      );
+      if (owned.kind !== 'owner')
+        throw new Error('Expected dispatch ownership');
+      const dispatcher = createTaskDispatcher(
+        graph(),
+        {
+          claim: async () => undefined,
+          compensate: async () => ({ kind: 'released' }),
+        },
+        {
+          readiness: () => ({ kind: 'ready' }),
+          mayHaveStarted: () => true,
+          startOrSeed: async () => ({
+            outcome: 'started',
+            session: {
+              threadId: reservation.sessionId,
+              provider: 'claude',
+              status: 'ready',
+              createdAt: '2026-09-05T00:00:00.000Z',
+              updatedAt: '2026-09-05T00:00:00.000Z',
+            },
+          }),
+        },
+        telemetry,
+        {
+          prepareAgentStarted: async () => {
+            if (phase === 'prepare') throw new Error('outbox unavailable');
+          },
+          publishAgentStarted: async () => {
+            if (phase === 'publish') throw new Error('delivery unavailable');
+          },
+        },
+        { claim: async () => owned },
+      );
+      expect(await dispatcher.dispatch('task-1', {})).toMatchObject({
+        kind: 'dispatched',
+      });
+      expect(authority.hasPossibleEffect(reservation.sessionId)).toEqual({
+        kind: 'available',
+        active: phase === 'prepare',
+      });
+    },
+  );
+
   test('rejects a monitor whose declared Task Agent differs before reservation', async () => {
     const state = graph();
     const dispatcher = createTaskDispatcher(

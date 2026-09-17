@@ -11,6 +11,7 @@ import {
 import { projectHostPressureForStatus } from './lib/verification-host-pressure.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 import {
+  failedTestFilesFromCapture,
   readVerifiedVerificationArtifact,
   sweepVerificationArtifactOrphans,
   VERIFICATION_ARTIFACT_RETENTION_POLICY,
@@ -117,6 +118,24 @@ export function boundedControlResult(result) {
         ...(result.receipt.terminal?.indeterminate === true
           ? { indeterminate: true }
           : {}),
+        // station#1827 fix round 2: NOT stamped from the receipt, unlike the
+        // two fields above, and the difference is the point.
+        //
+        // `passed` and `indeterminate` are verdict facts the summary shapes
+        // omit, so the receipt is their only source. This one is a claim
+        // ABOUT THE EXCERPT beside it -- "the head excerpt is a declaration,
+        // not a scan result" -- so it is only true of a summary that has that
+        // excerpt. Stamping it from the receipt broke that twice: it
+        // overwrote the summarizer's truncation-aligned copy with the full
+        // one, so a 67-byte excerpt rendered beside a 347-byte marker of the
+        // same declaration; and on a `reused`/`joined` disposition, where
+        // there is no summary and therefore no excerpts at all, it stamped a
+        // marker qualifying nothing.
+        //
+        // The summary's own field is therefore the only source -- it arrives
+        // through the spread above and is deliberately not re-stamped here --
+        // and its absence means what it says: this rendering has no declared
+        // cause to qualify. The receipt keeps the durable record either way.
       },
     };
   if (Array.isArray(result?.jobs)) {
@@ -158,28 +177,51 @@ function boundedTail(value, maxBytes = FAILED_STDOUT_TAIL_BYTE_CAP) {
   return tail;
 }
 
-function diagnosticStdoutTail(result) {
-  if (
-    !['failed', 'infrastructure_error'].includes(
-      result?.receipt?.terminal?.status,
-    )
-  )
-    return undefined;
-  const requestKey = result.receipt.request?.key;
-  const artifact = result.receipt.artifacts?.find((entry) => {
-    const match =
-      /^\.kontourai\/verification-output\/([0-9a-f]{64})\/stdout-[0-9a-f]{64}\.txt$/.exec(
-        entry?.path ?? '',
-      );
+function isNonPassingResult(result) {
+  return ['failed', 'infrastructure_error'].includes(
+    result?.receipt?.terminal?.status,
+  );
+}
+
+/**
+ * Per-render memo for `capturedStream`. Reading a stream artifact opens it,
+ * stats it twice and re-hashes up to 3 MiB to prove the digest; the tail and
+ * the failing-file scan both want the same bytes, so without this a single
+ * `renderBounded` paid that three times.
+ */
+const capturedStreams = new WeakMap();
+
+/**
+ * The verified, already-redacted capture of one of the run's own streams, or
+ * undefined when the receipt does not carry it.
+ */
+function capturedStream(result, kind) {
+  const memo = capturedStreams.get(result) ?? new Map();
+  capturedStreams.set(result, memo);
+  if (memo.has(kind)) return memo.get(kind);
+  const value = readCapturedStream(result, kind);
+  memo.set(kind, value);
+  return value;
+}
+
+function readCapturedStream(result, kind) {
+  const requestKey = result?.receipt?.request?.key;
+  const reference = new RegExp(
+    `^\\.kontourai/verification-output/([0-9a-f]{64})/${kind}-[0-9a-f]{64}\\.txt$`,
+  );
+  const artifact = result?.receipt?.artifacts?.find((entry) => {
+    const match = reference.exec(entry?.path ?? '');
     return match?.[1] === requestKey;
   });
   if (!artifact || typeof result.receipt.request?.worktree !== 'string')
     return undefined;
   try {
-    // The artifact has already passed the redaction boundary at :281: raw
+    // The artifact has already passed the redaction boundary:
+    // `persistVerificationOutput` (verification-reporter.mjs) redacts the
+    // complete bounded source before choosing the persisted prefix, so raw
     // child output lives only in digest-addressed redacted artifacts, never
-    // stdout. Reading this verified artifact is therefore safe to surface.
-    return boundedTail(
+    // here. Reading this verified artifact is therefore safe to surface.
+    return String(
       readVerifiedVerificationArtifact({
         root: result.receipt.request.worktree,
         artifact,
@@ -188,6 +230,12 @@ function diagnosticStdoutTail(result) {
   } catch {
     return undefined;
   }
+}
+
+function diagnosticStdoutTail(result) {
+  if (!isNonPassingResult(result)) return undefined;
+  const captured = capturedStream(result, 'stdout');
+  return captured === undefined ? undefined : boundedTail(captured);
 }
 
 /** Enough to identify the failing surface; not a substitute for the artifact. */
@@ -209,13 +257,7 @@ const FAILED_TEST_FILE_CAP = 8;
  * count is what ends the investigation, and it stays small enough to survive
  * the output cap.
  */
-function diagnosticFailedTestFiles(result) {
-  if (
-    !['failed', 'infrastructure_error'].includes(
-      result?.receipt?.terminal?.status,
-    )
-  )
-    return undefined;
+function attachmentFailedTestFiles(result) {
   const requestKey = result.receipt.request?.key;
   const artifact = result.receipt.artifacts?.find((entry) => {
     const match =
@@ -263,8 +305,47 @@ function diagnosticFailedTestFiles(result) {
     : listed;
 }
 
+/**
+ * The same question answered from the run's OWN captured streams, for the runs
+ * that have no per-execution diagnostics attachment at all (station#1471).
+ *
+ * A completion-phase parent — the hosted full-regression gate — attaches phase
+ * receipts, not the `executions[].failedTests` document `#1139` reads, so on
+ * the one run shape that most needs a location the field was simply absent.
+ * The `FAIL <file> > <test>` lines the runner itself printed are already in the
+ * folded capture; vitest writes that banner to STDERR, which is why stdout
+ * alone was never enough.
+ *
+ * No `(count)` suffix here, unlike the attachment path: a persisted stream is a
+ * bounded prefix and the failing shard's block reaches the parent as a tail, so
+ * a count derived from it would be a number nothing guarantees.
+ */
+function capturedFailedTestFiles(result) {
+  const files = [
+    ...new Set([
+      ...failedTestFilesFromCapture(capturedStream(result, 'stdout') ?? ''),
+      ...failedTestFilesFromCapture(capturedStream(result, 'stderr') ?? ''),
+    ]),
+  ];
+  if (files.length === 0) return undefined;
+  const listed = files.slice(0, FAILED_TEST_FILE_CAP);
+  const omitted = files.length - listed.length;
+  return omitted > 0
+    ? [...listed, `… ${omitted} more file(s) in the redacted capture`]
+    : listed;
+}
+
+/**
+ * The failing test files, from the diagnostics attachment when the run has one
+ * and from its own capture when it does not. A passing run names none.
+ */
+function diagnosticFailedTestFiles(result) {
+  if (!isNonPassingResult(result)) return undefined;
+  return attachmentFailedTestFiles(result) ?? capturedFailedTestFiles(result);
+}
+
 function tailFallback(bounded, stdoutTail) {
-  const envelope = (tail) => ({
+  const buildEnvelope = (tail, { withExcerpt }) => ({
     disposition: bounded.disposition,
     request: bounded.request,
     summary: {
@@ -272,6 +353,36 @@ function tailFallback(bounded, stdoutTail) {
       counts: bounded.summary?.counts,
       cleanup: bounded.summary?.cleanup,
       passed: bounded.summary?.passed,
+      // Carried through truncation for the same reason as the file list below
+      // it, and ahead of it: this is the sentence that says WHAT broke, and
+      // dropping it is what made a red hosted nightly annotate itself "no
+      // causal excerpt; read the artifact" while the FAIL line sat in its own
+      // capture (station#1471). It is a single bounded line — the summary's
+      // own byte budget already capped it — so it costs the tail very little.
+      ...(withExcerpt && typeof bounded.summary?.firstCausalExcerpt === 'string'
+        ? {
+            firstCausalExcerpt: bounded.summary.firstCausalExcerpt,
+            // The caveat travels with the excerpt or not at all: carrying the
+            // excerpt while dropping the note that says it was picked off an
+            // unattributed stream would state a stronger claim than the run
+            // supports, exactly the trade the reporter refuses at its own cap.
+            ...(bounded.summary?.causeStream
+              ? { causeStream: bounded.summary.causeStream }
+              : {}),
+            // station#1827: the same rule for the positive marker. This
+            // repeats the excerpt's own bytes, which is the one place in this
+            // envelope that costs the tail something real (at most
+            // DECLARED_CAUSE_BYTE_CAP, against an 8 KiB cap that the tail
+            // then shrinks to fit). It is still the right trade for exactly
+            // the reason the caveat above is: an excerpt carried without the
+            // field that says how it was selected reads as a scanned guess,
+            // and a truncated document is where a reader is least able to go
+            // look for themselves.
+            ...(typeof bounded.summary?.infrastructureCause === 'string'
+              ? { infrastructureCause: bounded.summary.infrastructureCause }
+              : {}),
+          }
+        : {}),
       // Carried through truncation: a capped list of file names is small, and
       // it is the field that says where to look. Dropping it here would
       // reproduce #1139 for exactly the largest, least readable failures.
@@ -288,6 +399,14 @@ function tailFallback(bounded, stdoutTail) {
     },
     truncated: true,
   });
+  // The excerpt is only carried while the envelope can still hold the
+  // mandatory fields with an empty tail. A cap too small for both keeps the
+  // measured terminal truth rather than the prose about it.
+  const withExcerpt =
+    Buffer.byteLength(
+      JSON.stringify(buildEnvelope('', { withExcerpt: true }), null, 2),
+    ) <= CONTROL_OUTPUT_CAP;
+  const envelope = (tail) => buildEnvelope(tail, { withExcerpt });
   const tail = stdoutTail;
   let rendered = JSON.stringify(envelope(tail), null, 2);
   if (Buffer.byteLength(rendered) <= CONTROL_OUTPUT_CAP) return rendered;

@@ -8,8 +8,8 @@
 
 export const UNPAIRED_SAMPLE_PROJECT = 'Getting started';
 
-export const UNPAIRED_SAMPLE_SURFACES = {
-  'review-queue': {
+const UNPAIRED_SAMPLE_SURFACES = {
+  notifications: {
     title: 'Sample Task',
     eyebrow: 'Waiting for a decision',
     body: 'A weekly digest stopped here because someone still has to approve it. The decision, when it happens, stays with the run that asked for it.',
@@ -31,7 +31,7 @@ export const UNPAIRED_SAMPLE_SURFACES = {
   },
 } as const;
 
-export type UnpairedSampleSurfaceId = keyof typeof UNPAIRED_SAMPLE_SURFACES;
+type UnpairedSampleSurfaceId = keyof typeof UNPAIRED_SAMPLE_SURFACES;
 
 export function sampleSurfaceForAnchor(anchor: string) {
   if (Object.hasOwn(UNPAIRED_SAMPLE_SURFACES, anchor)) {

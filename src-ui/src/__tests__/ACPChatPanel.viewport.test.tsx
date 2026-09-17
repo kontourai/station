@@ -8,6 +8,9 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
+  // #2144 slice 6: the panel reads the Station-scope default approval
+  // mode through `useConfig`. No stored value is the neutral answer here.
+  useConfigQuery: () => ({ data: undefined, dataUpdatedAt: 0 }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
@@ -41,6 +44,9 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
     _sessionId: string,
     selector: (state: typeof acpFixture | null) => unknown,
   ) => selector(acpFixture),
+}));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useCreateChatSession: () => () => 'acp-session',

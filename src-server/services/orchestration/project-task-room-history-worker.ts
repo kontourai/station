@@ -18,8 +18,21 @@ import type {
 } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_HISTORY_MIGRATION } from '../../domain/migrations/005-project-task-room-history.js';
+import { SharedWorkingState } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
+import {
+  PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS,
+  PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS,
+  type ProjectTaskRoomAppendReceiptRow,
+  parseDurableProjectTaskRoomAppendReceipt,
+} from './project-task-room-append-receipt.js';
+import {
+  hasPendingProjectTaskRoomExecution,
+  initializeProjectTaskRoomSourceSeals,
+  persistProjectTaskRoomSourceSeal,
+  readProjectTaskRoomSourceSeal,
+} from './project-task-room-source-seal.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -61,23 +74,13 @@ interface Row {
   record_json: string;
   record_bytes: number;
 }
-interface Identity {
-  proposal_id: string;
-  proposal_digest: string;
-  epoch: number;
-  seq: number;
-  envelope_digest: string;
-  checkpoint_digest: string;
-  committed_at: string;
-  receipt_json: string;
-  receipt_bytes: number;
-  receipt_digest: string;
-}
 interface WorkerInit {
   databasePath: string;
   retentionRecords: number;
   retentionBytes: number;
   maxIdentities: number;
+  /** SQLite busy wait; derived by the owner from the admission deadline. */
+  lockWaitMs: number;
   faultAfterCommitOnce?: boolean;
   unavailableAfterCommitOnce?: boolean;
 }
@@ -95,6 +98,7 @@ interface AppendRequest {
   body: ProjectTaskRoomRecord['body'];
   grantReceipt: unknown;
   authorizationId: string;
+  writeAdmissionRequired: boolean;
 }
 type Request =
   | {
@@ -113,6 +117,23 @@ type Request =
       limit: number;
       pageBytes: number;
     }
+  | {
+      type: 'seal-source';
+      scope: ProjectTaskRoomScope;
+      channelId: string;
+      policyRevision: string;
+      authorizationId: string;
+      operationId: string;
+      sourceHomeRef: string;
+      targetHomeRef: string;
+    }
+  | {
+      type: 'locate-proposal';
+      scope: ProjectTaskRoomScope;
+      channelId: string;
+      proposalId: string;
+    }
+  | { type: 'read-source-seal'; scope: ProjectTaskRoomScope; channelId: string }
   | { type: 'close' };
 if (
   !exactObject(workerData, [
@@ -120,6 +141,7 @@ if (
     'retentionRecords',
     'retentionBytes',
     'maxIdentities',
+    'lockWaitMs',
     'faultAfterCommitOnce',
     'unavailableAfterCommitOnce',
   ]) ||
@@ -132,6 +154,8 @@ if (
   Number(workerData.retentionBytes) < 48 * 1024 ||
   !Number.isSafeInteger(workerData.maxIdentities) ||
   Number(workerData.maxIdentities) < Number(workerData.retentionRecords) ||
+  !Number.isSafeInteger(workerData.lockWaitMs) ||
+  Number(workerData.lockWaitMs) < 1 ||
   (workerData.faultAfterCommitOnce !== undefined &&
     typeof workerData.faultAfterCommitOnce !== 'boolean') ||
   (workerData.unavailableAfterCommitOnce !== undefined &&
@@ -342,6 +366,41 @@ function validRequest(value: unknown): value is Request {
   )
     return false;
   if (value.type === 'close') return exactObject(value, ['type']);
+  if (value.type === 'read-source-seal')
+    return (
+      exactObject(value, ['type', 'scope', 'channelId']) &&
+      validScope(value.scope) &&
+      typeof value.channelId === 'string' &&
+      value.channelId.length <= 256
+    );
+  if (value.type === 'seal-source')
+    return (
+      exactObject(value, [
+        'type',
+        'scope',
+        'channelId',
+        'policyRevision',
+        'authorizationId',
+        'operationId',
+        'sourceHomeRef',
+        'targetHomeRef',
+      ]) &&
+      validScope(value.scope) &&
+      [
+        'channelId',
+        'policyRevision',
+        'authorizationId',
+        'operationId',
+        'sourceHomeRef',
+        'targetHomeRef',
+      ].every(
+        (key) =>
+          typeof value[key] === 'string' &&
+          value[key].length > 0 &&
+          value[key].length <= 256,
+      ) &&
+      value.sourceHomeRef !== value.targetHomeRef
+    );
   if (value.type === 'open')
     return (
       exactObject(value, [
@@ -355,6 +414,15 @@ function validRequest(value: unknown): value is Request {
       typeof value.channelId === 'string' &&
       typeof value.policyRevision === 'string' &&
       typeof value.authorizationId === 'string'
+    );
+  if (value.type === 'locate-proposal')
+    return (
+      exactObject(value, ['type', 'scope', 'channelId', 'proposalId']) &&
+      validScope(value.scope) &&
+      typeof value.channelId === 'string' &&
+      typeof value.proposalId === 'string' &&
+      value.proposalId.length > 0 &&
+      value.proposalId.length <= 256
     );
   if (value.type === 'read')
     return (
@@ -390,6 +458,7 @@ function validRequest(value: unknown): value is Request {
       'body',
       'grantReceipt',
       'authorizationId',
+      'writeAdmissionRequired',
     ]) &&
     validScope(value.scope) &&
     [
@@ -411,6 +480,7 @@ function validRequest(value: unknown): value is Request {
     canonical(value.grantReceipt.principal) === canonical(value.principal) &&
     value.grantReceipt.policyRevision === value.policyRevision &&
     value.grantReceipt.receiptId === value.authorizationId &&
+    typeof value.writeAdmissionRequired === 'boolean' &&
     value.grantReceipt.capability ===
       expectedCapability(value.principal, value.body) &&
     measureBoundedJson(value.body, {
@@ -422,11 +492,14 @@ function validRequest(value: unknown): value is Request {
     }).ok
   );
 }
-const db = new DatabaseSync(init.databasePath, { timeout: 175 });
+// `sqliteLockWaitMs` in project-task-room-history.ts says why this is
+// derived rather than a literal (#1531).
+const db = new DatabaseSync(init.databasePath, { timeout: init.lockWaitMs });
 // archive#3661: bounded retry rather than a silent swallow — see
 // `enableWalJournalMode` for why `busy_timeout` does not cover this pragma.
 applyWalJournalMode(db, { store: 'project task room history' });
 db.exec(PROJECT_TASK_ROOM_HISTORY_MIGRATION);
+initializeProjectTaskRoomSourceSeals(db);
 let faultPending = init.faultAfterCommitOnce === true;
 let unavailableAfterCommitPending = init.unavailableAfterCommitOnce === true;
 
@@ -454,46 +527,18 @@ function checkpoint(
 function readIdentity(
   channelId: string,
   proposalId: string,
-): Identity | undefined {
+): ProjectTaskRoomAppendReceiptRow | undefined {
   return db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND proposal_id=?',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND proposal_id=?`,
     )
-    .get(channelId, proposalId) as Identity | undefined;
+    .get(channelId, proposalId) as ProjectTaskRoomAppendReceiptRow | undefined;
 }
 function exactReceipt(
-  identity: Identity,
+  identity: ProjectTaskRoomAppendReceiptRow,
   channelId: string,
 ): ProjectTaskRoomAppendReceipt | undefined {
-  try {
-    if (
-      utf8.encode(identity.receipt_json).byteLength !== identity.receipt_bytes
-    )
-      return;
-    if (sha(identity.receipt_json) !== identity.receipt_digest) return;
-    const value = JSON.parse(
-      identity.receipt_json,
-    ) as ProjectTaskRoomAppendReceipt;
-    if (
-      value?.schemaVersion !== 'station.project-task-room-append-receipt/v1' ||
-      value.proposalId !== identity.proposal_id ||
-      value.proposalDigest !== identity.proposal_digest ||
-      value.coordinate.channelId !== channelId ||
-      value.coordinate.epoch !== identity.epoch ||
-      value.coordinate.seq !== identity.seq ||
-      value.checkpoint.channelId !== channelId ||
-      value.checkpoint.epoch !== identity.epoch ||
-      value.checkpoint.throughSeq !== identity.seq ||
-      value.checkpoint.retainedAnchorSeq > value.checkpoint.throughSeq ||
-      value.envelopeDigest !== identity.envelope_digest ||
-      value.checkpoint.checkpointDigest !== identity.checkpoint_digest ||
-      value.committedAt !== identity.committed_at
-    )
-      return;
-    return value;
-  } catch {
-    return;
-  }
+  return parseDurableProjectTaskRoomAppendReceipt(identity, channelId)?.receipt;
 }
 
 async function open(
@@ -502,9 +547,13 @@ async function open(
 ) {
   db.exec('BEGIN IMMEDIATE');
   try {
-    if (!(await authorizeCommit(requestId, request.authorizationId))) {
+    const authorization = await authorizeCommit(
+      requestId,
+      request.authorizationId,
+    );
+    if (authorization !== 'admitted') {
       db.exec('ROLLBACK');
-      return { kind: 'denied' };
+      return refused(authorization);
     }
     const value = head(request.scope);
     if (value) {
@@ -536,17 +585,298 @@ async function open(
   }
 }
 
-const authorizationWaiters = new Map<string, (granted: boolean) => void>();
-function authorizeCommit(requestId: number, authorizationId: string) {
-  return new Promise<boolean>((resolve) => {
-    const key = `${requestId}:${authorizationId}`;
+/** Validate and bind all document snapshots while the caller holds the room transaction. */
+function roomWorkingStateDigest(
+  scope: ProjectTaskRoomScope,
+): string | undefined {
+  const digest = createHash('sha256').update(
+    'station-room-seal-documents/v1\0',
+  );
+  digest.update(JSON.stringify([scope.projectId, scope.taskId]));
+  if (
+    !db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_working_states'",
+      )
+      .get()
+  )
+    return digest.digest('hex');
+  const size = db
+    .prepare(`SELECT count(*) AS count,
+    coalesce(max(length(CAST(snapshot_json AS BLOB))),0) AS largest,
+    coalesce(max(length(CAST(document_id AS BLOB))),0) AS idBytes,
+    coalesce(max(length(CAST(revision AS BLOB))),0) AS revisionBytes,
+    coalesce(max(length(CAST(compaction_floor AS BLOB))),0) AS floorBytes
+    FROM project_task_room_working_states WHERE project_id=? AND task_id=?`)
+    .get(scope.projectId, scope.taskId) as {
+    count: number;
+    largest: number;
+    idBytes: number;
+    revisionBytes: number;
+    floorBytes: number;
+  };
+  if (
+    size.count > 128 ||
+    size.largest > 512 * 1024 ||
+    size.idBytes > 1024 ||
+    size.revisionBytes > 1024 ||
+    size.floorBytes > 1024
+  )
+    return undefined;
+  for (const raw of db
+    .prepare(`SELECT document_id,snapshot_json,revision,compaction_floor
+    FROM project_task_room_working_states WHERE project_id=? AND task_id=? ORDER BY document_id`)
+    .iterate(scope.projectId, scope.taskId)) {
+    const row = raw as {
+      document_id: string;
+      snapshot_json: string;
+      revision: string;
+      compaction_floor: string;
+    };
+    const state = new SharedWorkingState({
+      scope: {
+        projectId: scope.projectId,
+        taskId: scope.taskId,
+        documentId: row.document_id,
+      },
+      snapshot: JSON.parse(row.snapshot_json),
+    });
+    const snapshot = state.snapshot();
+    if (
+      snapshot.revision !== row.revision ||
+      typeof row.compaction_floor !== 'string' ||
+      row.compaction_floor.length === 0 ||
+      snapshot.deferred.length
+    )
+      return undefined;
+    // Length-framed JSON binds the exact accepted source bytes, not just a caller's revision label.
+    digest.update(
+      JSON.stringify([
+        row.document_id,
+        row.revision,
+        row.compaction_floor,
+        row.snapshot_json,
+      ]),
+    );
+  }
+  return digest.digest('hex');
+}
+
+function inspectSourceSeal(
+  request: Extract<Request, { type: 'read-source-seal' }>,
+) {
+  db.exec('BEGIN');
+  try {
+    const room = head(request.scope);
+    if (
+      !room ||
+      room.channel_id !== request.channelId ||
+      room.project_slug !== request.scope.projectSlug
+    )
+      return { kind: 'denied' };
+    const all = db
+      .prepare(
+        'SELECT * FROM project_task_room_records WHERE channel_id=? AND epoch=? ORDER BY seq',
+      )
+      .iterate(room.channel_id, room.epoch) as IterableIterator<Row>;
+    if (!validateHistory(room, all)) return { kind: 'unavailable' };
+    const row = readProjectTaskRoomSourceSeal(db, request.scope) as
+      | {
+          operationId: unknown;
+          sourceHomeRef: unknown;
+          targetHomeRef: unknown;
+          checkpointJson: unknown;
+          workingStateDigest: unknown;
+        }
+      | undefined;
+    if (!row) return { kind: 'unsealed' };
+    if (
+      ![row.operationId, row.sourceHomeRef, row.targetHomeRef].every(
+        (value) =>
+          typeof value === 'string' && value.length > 0 && value.length <= 256,
+      ) ||
+      row.sourceHomeRef === row.targetHomeRef ||
+      typeof row.checkpointJson !== 'string'
+    )
+      return { kind: 'unavailable' };
+    const sealedCheckpoint = JSON.parse(row.checkpointJson);
+    if (
+      canonical(sealedCheckpoint) !== canonical(checkpoint(room)) ||
+      typeof row.workingStateDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(row.workingStateDigest) ||
+      row.workingStateDigest !== roomWorkingStateDigest(request.scope)
+    )
+      return { kind: 'unavailable' };
+    return {
+      kind: 'sealed',
+      seal: {
+        operationId: row.operationId,
+        sourceHomeRef: row.sourceHomeRef,
+        targetHomeRef: row.targetHomeRef,
+        checkpoint: sealedCheckpoint,
+        workingStateDigest: row.workingStateDigest,
+      },
+    };
+  } finally {
+    db.exec('COMMIT');
+  }
+}
+
+async function sealSource(
+  request: Extract<Request, { type: 'seal-source' }>,
+  requestId: number,
+) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const room = head(request.scope);
+    if (
+      !room ||
+      room.channel_id !== request.channelId ||
+      room.project_slug !== request.scope.projectSlug ||
+      room.policy_revision !== request.policyRevision
+    ) {
+      db.exec('ROLLBACK');
+      return { kind: 'denied' };
+    }
+    const authorization = await authorizeCommit(
+      requestId,
+      request.authorizationId,
+    );
+    if (authorization !== 'admitted') {
+      db.exec('ROLLBACK');
+      return refused(authorization);
+    }
+    const all = db
+      .prepare(
+        'SELECT * FROM project_task_room_records WHERE channel_id=? AND epoch=? ORDER BY seq',
+      )
+      .iterate(room.channel_id, room.epoch) as IterableIterator<Row>;
+    if (!validateHistory(room, all)) {
+      db.exec('ROLLBACK');
+      return { kind: 'unavailable' };
+    }
+    const existing = readProjectTaskRoomSourceSeal(db, request.scope) as
+      | {
+          operationId: string;
+          sourceHomeRef: string;
+          targetHomeRef: string;
+          checkpointJson: string;
+          workingStateDigest: string | null;
+        }
+      | undefined;
+    if (existing) {
+      const documentDigest = roomWorkingStateDigest(request.scope);
+      db.exec('ROLLBACK');
+      if (
+        existing.operationId !== request.operationId ||
+        existing.sourceHomeRef !== request.sourceHomeRef ||
+        existing.targetHomeRef !== request.targetHomeRef
+      )
+        return { kind: 'conflict' };
+      const priorCheckpoint = JSON.parse(existing.checkpointJson);
+      if (
+        canonical(priorCheckpoint) !== canonical(checkpoint(room)) ||
+        !documentDigest ||
+        existing.workingStateDigest !== documentDigest
+      )
+        return { kind: 'unavailable' };
+      return {
+        kind: 'sealed',
+        seal: {
+          operationId: existing.operationId,
+          sourceHomeRef: existing.sourceHomeRef,
+          targetHomeRef: existing.targetHomeRef,
+          checkpoint: priorCheckpoint,
+          workingStateDigest: documentDigest,
+        },
+      };
+    }
+    // A history-only room need not have materialized working-state tables.
+    // If present, both durable publication queues must be empty at closure.
+    for (const table of [
+      'project_task_room_revision_publication_outbox',
+      'project_task_room_agent_lifecycle_outbox',
+    ]) {
+      if (
+        db
+          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+          .get(table) &&
+        db
+          .prepare(
+            `SELECT 1 FROM ${table} WHERE project_id=? AND task_id=? LIMIT 1`,
+          )
+          .get(request.scope.projectId, request.scope.taskId)
+      ) {
+        db.exec('ROLLBACK');
+        return { kind: 'publication-pending' };
+      }
+    }
+    if (hasPendingProjectTaskRoomExecution(db, request.scope)) {
+      db.exec('ROLLBACK');
+      return { kind: 'execution-pending' };
+    }
+    const workingStateDigest = roomWorkingStateDigest(request.scope);
+    if (!workingStateDigest) {
+      db.exec('ROLLBACK');
+      return { kind: 'unavailable' };
+    }
+    const seal = {
+      workingStateDigest,
+      operationId: request.operationId,
+      sourceHomeRef: request.sourceHomeRef,
+      targetHomeRef: request.targetHomeRef,
+      checkpoint: checkpoint(room),
+    };
+    persistProjectTaskRoomSourceSeal(db, request.scope, seal);
+    db.exec('COMMIT');
+    return { kind: 'sealed', seal };
+  } catch {
+    try {
+      db.exec('ROLLBACK');
+    } catch {}
+    return { kind: 'unavailable' };
+  }
+}
+
+type CommitPhase = 'authorize' | 'admit-new-write';
+type CommitDisposition = 'admitted' | 'denied' | 'unavailable';
+const authorizationWaiters = new Map<
+  string,
+  (disposition: CommitDisposition) => void
+>();
+function authorizeCommit(
+  requestId: number,
+  authorizationId: string,
+  phase: CommitPhase = 'authorize',
+) {
+  return new Promise<CommitDisposition>((resolve) => {
+    const key = `${requestId}:${authorizationId}:${phase}`;
     authorizationWaiters.set(key, resolve);
     parentPort!.postMessage({
       type: 'authorize',
       id: requestId,
       authorizationId,
+      phase,
     });
   });
+}
+
+function refused(disposition: CommitDisposition) {
+  return { kind: disposition === 'unavailable' ? 'unavailable' : 'denied' };
+}
+
+/**
+ * The retention plan is computed before the pending record is inserted, so the
+ * scan has to be handed that record explicitly. It always carries the highest
+ * seq in the epoch (`head_seq + 1`), and the stored rows arrive behind it in
+ * descending seq order, which is the exact sequence a post-insert scan saw.
+ */
+function* retentionCandidates(
+  pending: { seq: number; record_bytes: number },
+  stored: IterableIterator<{ seq: number; record_bytes: number }>,
+): IterableIterator<{ seq: number; record_bytes: number }> {
+  yield pending;
+  yield* stored;
 }
 
 async function append(request: AppendRequest, requestId: number) {
@@ -562,9 +892,13 @@ async function append(request: AppendRequest, requestId: number) {
       db.exec('ROLLBACK');
       return { kind: 'denied' };
     }
-    if (!(await authorizeCommit(requestId, request.authorizationId))) {
+    const authorization = await authorizeCommit(
+      requestId,
+      request.authorizationId,
+    );
+    if (authorization !== 'admitted') {
       db.exec('ROLLBACK');
-      return { kind: 'denied' };
+      return refused(authorization);
     }
     const existing = readIdentity(room.channel_id, request.proposalId);
     if (existing) {
@@ -573,6 +907,10 @@ async function append(request: AppendRequest, requestId: number) {
         return { kind: 'conflict' };
       const receipt = exactReceipt(existing, room.channel_id);
       return receipt ? { kind: 'duplicate', receipt } : { kind: 'unavailable' };
+    }
+    if (readProjectTaskRoomSourceSeal(db, request.scope)) {
+      db.exec('ROLLBACK');
+      return { kind: 'denied' };
     }
     const count = db
       .prepare(
@@ -683,26 +1021,13 @@ async function append(request: AppendRequest, requestId: number) {
     if (!recordMeasure.ok) throw new Error('room record exceeds budget');
     const recordJson = canonical(record);
     const recordBytes = recordMeasure.bytes;
-    db.prepare(
-      'INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) VALUES(?,?,?,?,?,?,?,?,?)',
-    ).run(
-      room.channel_id,
-      room.epoch,
-      seq,
-      request.proposalId,
-      request.proposalDigest,
-      envelopeDigest,
-      nextCheckpoint,
-      recordJson,
-      recordBytes,
-    );
     let anchorSeq = room.retained_anchor_seq;
     let anchorEnvelope = room.retained_anchor_envelope_digest;
     let anchorCheckpoint = room.retained_anchor_checkpoint_digest;
     let retainedCount = 0;
     let retainedBytes = 0;
     let floor = seq;
-    const newest = db
+    const stored = db
       .prepare(
         'SELECT seq,record_bytes FROM project_task_room_records WHERE channel_id=? AND epoch=? ORDER BY seq DESC',
       )
@@ -710,6 +1035,10 @@ async function append(request: AppendRequest, requestId: number) {
       seq: number;
       record_bytes: number;
     }>;
+    const newest = retentionCandidates(
+      { seq, record_bytes: recordBytes },
+      stored,
+    );
     for (const candidate of newest) {
       if (
         retainedCount >= init.retentionRecords ||
@@ -734,21 +1063,6 @@ async function append(request: AppendRequest, requestId: number) {
       anchorEnvelope = anchor.envelope_digest;
       anchorCheckpoint = anchor.checkpoint_digest;
     }
-    db.prepare(
-      'DELETE FROM project_task_room_records WHERE channel_id=? AND epoch=? AND seq<=?',
-    ).run(room.channel_id, room.epoch, anchorSeq);
-    db.prepare(
-      'UPDATE project_task_room_heads SET head_seq=?,head_envelope_digest=?,head_checkpoint_digest=?,retained_anchor_seq=?,retained_anchor_envelope_digest=?,retained_anchor_checkpoint_digest=? WHERE channel_id=? AND head_seq=?',
-    ).run(
-      seq,
-      envelopeDigest,
-      nextCheckpoint,
-      anchorSeq,
-      anchorEnvelope,
-      anchorCheckpoint,
-      room.channel_id,
-      room.head_seq,
-    );
     const receipt: ProjectTaskRoomAppendReceipt = {
       schemaVersion: 'station.project-task-room-append-receipt/v1',
       proposalId: request.proposalId,
@@ -767,14 +1081,60 @@ async function append(request: AppendRequest, requestId: number) {
       assurance: 'L0',
     };
     const receiptMeasure = measureBoundedJson(receipt, {
-      maxBytes: 4_096,
-      maxDepth: 8,
-      maxItems: 80,
-      maxStringCodeUnits: 1_024,
-      maxKeyCodeUnits: 128,
+      ...PROJECT_TASK_ROOM_APPEND_RECEIPT_LIMITS,
     });
     if (!receiptMeasure.ok) throw new Error('room receipt exceeds budget');
     const receiptJson = canonical(receipt);
+    // Admission is the last step before the first durable write of this
+    // transaction. Everything above it — the envelope, its validation, the
+    // record and receipt budgets, and the retention plan including its anchor
+    // lookup — is computation over rows this transaction has only read, so a
+    // deterministic refusal there rolls back without having asked the
+    // controller for anything. Nothing between this call and COMMIT can fail
+    // on its own inputs; what remains is process death and storage faults —
+    // COMMIT can still return SQLITE_FULL or SQLITE_IOERR, and the record
+    // INSERT would collide on its primary key if a room's head_seq ever
+    // lagged its rows. Both strand an unresolved admission and both are
+    // reconciliation's job, not a reordering's.
+    if (request.writeAdmissionRequired) {
+      const admission = await authorizeCommit(
+        requestId,
+        request.authorizationId,
+        'admit-new-write',
+      );
+      if (admission !== 'admitted') {
+        db.exec('ROLLBACK');
+        return refused(admission);
+      }
+    }
+    db.prepare(
+      'INSERT INTO project_task_room_records(channel_id,epoch,seq,proposal_id,proposal_digest,envelope_digest,checkpoint_digest,record_json,record_bytes) VALUES(?,?,?,?,?,?,?,?,?)',
+    ).run(
+      room.channel_id,
+      room.epoch,
+      seq,
+      request.proposalId,
+      request.proposalDigest,
+      envelopeDigest,
+      nextCheckpoint,
+      recordJson,
+      recordBytes,
+    );
+    db.prepare(
+      'DELETE FROM project_task_room_records WHERE channel_id=? AND epoch=? AND seq<=?',
+    ).run(room.channel_id, room.epoch, anchorSeq);
+    db.prepare(
+      'UPDATE project_task_room_heads SET head_seq=?,head_envelope_digest=?,head_checkpoint_digest=?,retained_anchor_seq=?,retained_anchor_envelope_digest=?,retained_anchor_checkpoint_digest=? WHERE channel_id=? AND head_seq=?',
+    ).run(
+      seq,
+      envelopeDigest,
+      nextCheckpoint,
+      anchorSeq,
+      anchorEnvelope,
+      anchorCheckpoint,
+      room.channel_id,
+      room.head_seq,
+    );
     db.prepare(
       'INSERT INTO project_task_room_identities(channel_id,proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
     ).run(
@@ -904,9 +1264,11 @@ function validateHistory(room: Head, rows: Iterable<Row>): boolean {
   }
   const identities = db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? ORDER BY seq',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? ORDER BY seq`,
     )
-    .iterate(room.channel_id) as IterableIterator<Identity>;
+    .iterate(
+      room.channel_id,
+    ) as IterableIterator<ProjectTaskRoomAppendReceiptRow>;
   let identityCount = 0;
   for (const identity of identities) {
     identityCount += 1;
@@ -921,10 +1283,10 @@ function validateHistory(room: Head, rows: Iterable<Row>): boolean {
   if (room.retained_anchor_seq > 0) {
     const anchorIdentity = db
       .prepare(
-        'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?',
+        `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?`,
       )
       .get(room.channel_id, room.epoch, room.retained_anchor_seq) as
-      | Identity
+      | ProjectTaskRoomAppendReceiptRow
       | undefined;
     const anchorReceipt = anchorIdentity
       ? exactReceipt(anchorIdentity, room.channel_id)
@@ -995,9 +1357,11 @@ function historicalCheckpoint(
   }
   const identity = db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?`,
     )
-    .get(room.channel_id, room.epoch, seq) as Identity | undefined;
+    .get(room.channel_id, room.epoch, seq) as
+    | ProjectTaskRoomAppendReceiptRow
+    | undefined;
   return identity
     ? exactReceipt(identity, room.channel_id)?.checkpoint
     : undefined;
@@ -1009,11 +1373,48 @@ function historicalReceipt(
   if (seq === 0) return undefined;
   const identity = db
     .prepare(
-      'SELECT proposal_id,proposal_digest,epoch,seq,envelope_digest,checkpoint_digest,committed_at,receipt_json,receipt_bytes,receipt_digest FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?',
+      `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND epoch=? AND seq=?`,
     )
-    .get(room.channel_id, room.epoch, seq) as Identity | undefined;
+    .get(room.channel_id, room.epoch, seq) as
+    | ProjectTaskRoomAppendReceiptRow
+    | undefined;
   return identity ? exactReceipt(identity, room.channel_id) : undefined;
 }
+/** Locate only; the parent must feed this cursor through the existing full
+ * history read/validation path before any record becomes observable. */
+function locateProposal(
+  request: Extract<Request, { type: 'locate-proposal' }>,
+) {
+  db.exec('BEGIN');
+  try {
+    const room = head(request.scope);
+    if (!room || room.channel_id !== request.channelId)
+      return { kind: 'missing' };
+    const identity = readIdentity(room.channel_id, request.proposalId);
+    if (!identity || identity.seq <= room.retained_anchor_seq)
+      return { kind: 'missing' };
+    const receipt = exactReceipt(identity, room.channel_id);
+    const before =
+      identity.seq > 1 ? historicalReceipt(room, identity.seq - 1) : undefined;
+    if (!receipt || (identity.seq > 1 && !before))
+      return { kind: 'unavailable' };
+    return {
+      kind: 'located',
+      cursor: {
+        schemaVersion: 'station.project-task-room-cursor/v1',
+        ...checkpoint(room),
+        afterSeq: identity.seq - 1,
+        afterEnvelopeDigest: before?.envelopeDigest ?? null,
+        afterCheckpointDigest:
+          before?.checkpoint.checkpointDigest ??
+          sha(`room-genesis:${room.channel_id}`),
+      },
+    };
+  } finally {
+    db.exec('COMMIT');
+  }
+}
+
 function read(request: Extract<Request, { type: 'read' }>) {
   try {
     db.exec('BEGIN');
@@ -1208,9 +1609,15 @@ async function handleRequest(message: unknown) {
         ? await open(message.request, Number(message.id))
         : message.request.type === 'append'
           ? await append(message.request, Number(message.id))
-          : message.request.type === 'read'
-            ? read(message.request)
-            : { kind: 'closed' };
+          : message.request.type === 'read-source-seal'
+            ? inspectSourceSeal(message.request)
+            : message.request.type === 'seal-source'
+              ? await sealSource(message.request, Number(message.id))
+              : message.request.type === 'locate-proposal'
+                ? locateProposal(message.request)
+                : message.request.type === 'read'
+                  ? read(message.request)
+                  : { kind: 'closed' };
   } catch {
     result = { kind: 'unavailable' };
   }
@@ -1223,17 +1630,26 @@ async function handleRequest(message: unknown) {
 let requestQueue = Promise.resolve();
 parentPort.on('message', (message: unknown) => {
   if (
-    exactObject(message, ['type', 'id', 'authorizationId', 'granted']) &&
+    exactObject(message, [
+      'type',
+      'id',
+      'authorizationId',
+      'phase',
+      'disposition',
+    ]) &&
     message.type === 'authorization' &&
     Number.isSafeInteger(message.id) &&
     typeof message.authorizationId === 'string' &&
-    typeof message.granted === 'boolean'
+    (message.phase === 'authorize' || message.phase === 'admit-new-write') &&
+    ['admitted', 'denied', 'unavailable'].includes(
+      message.disposition as string,
+    )
   ) {
-    const key = `${message.id}:${message.authorizationId}`;
+    const key = `${message.id}:${message.authorizationId}:${message.phase}`;
     const resolve = authorizationWaiters.get(key);
     if (resolve) {
       authorizationWaiters.delete(key);
-      resolve(message.granted);
+      resolve(message.disposition as CommitDisposition);
     }
     return;
   }

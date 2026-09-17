@@ -1,5 +1,23 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ApiBaseSource, ParsedCoreArgs } from '../commands/core-api.js';
+
+// The plugin source was the fixed shared name `/tmp/demo` -- a path in a
+// world-writable directory this test does not own, passed as an argument and
+// asserted in a request body (#1790). `install()` does stat it
+// (`install.ts:39-40`), but for an ABSOLUTE source `resolve(INVOKED_CWD, source)`
+// equals `source`, so both branches of that ternary return the same string and
+// the stat's result is unobservable: no file appearing at `/tmp/demo` could have
+// changed these outcomes. The reason to own the path is therefore hygiene and
+// consistency with the rest of the suite, not a live failure mode.
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-install-test-'));
+const PLUGIN_SOURCE = join(TEST_TEMP_ROOT, 'demo');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
+});
 
 const authenticatedFetch = vi.hoisted(() => vi.fn());
 const listPlugins = vi.hoisted(() => vi.fn());
@@ -49,6 +67,70 @@ describe('plugin CLI API authority', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
+  test.each(['parent', 'dependency'])(
+    'refuses a preview with a missing %s permission revision before installation',
+    async (missing) => {
+      authenticatedFetch.mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1' },
+          components: [],
+          contentDigest: 'sha256:reviewed',
+          ...(missing === 'parent' ? {} : { grantRevision: 'parent-revision' }),
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
+          dependencies:
+            missing === 'dependency'
+              ? [
+                  {
+                    id: 'child',
+                    consent: {
+                      contentDigest: 'sha256:child',
+                      permissions: [],
+                      dependencies: [],
+                      pendingConsent: [],
+                    },
+                  },
+                ]
+              : [],
+        }),
+      );
+      const { install } = await import('../commands/install.js');
+      await expect(install(PLUGIN_SOURCE, [], parsed, approve)).rejects.toThrow(
+        /permission revision/,
+      );
+      expect(authenticatedFetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test('reports a stale permission decision refusal without retrying the install', async () => {
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1' },
+          components: [],
+          contentDigest: 'sha256:reviewed',
+          grantRevision: 'stale-revision',
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: 'Permission decision changed; preview again' },
+          { status: 409 },
+        ),
+      );
+    const { install } = await import('../commands/install.js');
+    await expect(install(PLUGIN_SOURCE, [], parsed, approve)).rejects.toThrow(
+      /Permission decision changed/,
+    );
+    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+    expect(
+      JSON.parse(authenticatedFetch.mock.calls[1][1].body).consent
+        .grantRevision,
+    ).toBe('stale-revision');
+  });
+
   /**
    * station#4288. The install carries the operator's decision, taken from the
    * preview it just read — so this asserts the ORDER as well as the body: a
@@ -63,8 +145,25 @@ describe('plugin CLI API authority', () => {
       manifest: { name: 'demo', version: '1.0.0', entrypoint: 'src/index.tsx' },
       components: [],
       conflicts: [],
-      dependencies: [{ id: 'shared-lib', status: 'will-install' }],
+      dependencies: [
+        {
+          id: 'shared-lib',
+          status: 'will-install',
+          consent: {
+            permissions: ['providers.register'],
+            contentDigest: 'sha256:dependency',
+            registryTrustRevision: `sha256:${'e'.repeat(64)}`,
+            grantRevision: 'dependency-reviewed-revision',
+            dependencies: [],
+            pendingConsent: [
+              { permission: 'providers.register', tier: 'trusted' },
+            ],
+          },
+        },
+      ],
       contentDigest: 'sha256:reviewed',
+      registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+      grantRevision: 'parent-reviewed-revision',
       permissions: {
         required: ['navigation.dock', 'network.fetch'],
         autoGranted: ['navigation.dock'],
@@ -77,12 +176,23 @@ describe('plugin CLI API authority', () => {
         Response.json({
           success: true,
           plugin: { name: 'demo', version: '1.0.0' },
+          permissions: {
+            pendingConsent: [],
+            dependencies: [
+              {
+                id: 'shared-lib',
+                pendingConsent: [
+                  { permission: 'providers.register', tier: 'trusted' },
+                ],
+              },
+            ],
+          },
         }),
       );
     const { install } = await import('../commands/install.js');
 
     await expect(
-      install('/tmp/demo', ['agent:helper'], parsed, approve),
+      install(PLUGIN_SOURCE, ['agent:helper'], parsed, approve),
     ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
 
     expect(authenticatedFetch.mock.calls.map(([url]) => url)).toEqual([
@@ -93,17 +203,32 @@ describe('plugin CLI API authority', () => {
       'http://127.0.0.1:3141/api/plugins/install',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({
-          source: '/tmp/demo',
-          skip: ['agent:helper'],
-          consent: {
-            permissions: ['navigation.dock', 'network.fetch'],
-            contentDigest: 'sha256:reviewed',
-            dependencies: ['shared-lib'],
-          },
-        }),
+        body: expect.any(String),
       }),
     );
+    const postedBody = authenticatedFetch.mock.calls.at(-1)?.[1]?.body;
+    expect(typeof postedBody).toBe('string');
+    expect(JSON.parse(postedBody as string)).toEqual({
+      source: PLUGIN_SOURCE,
+      skip: ['agent:helper'],
+      consent: {
+        permissions: ['navigation.dock', 'network.fetch'],
+        contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+        grantRevision: 'parent-reviewed-revision',
+        dependencies: ['shared-lib'],
+        dependencyApprovals: [
+          {
+            id: 'shared-lib',
+            permissions: ['providers.register'],
+            contentDigest: 'sha256:dependency',
+            registryTrustRevision: `sha256:${'e'.repeat(64)}`,
+            grantRevision: 'dependency-reviewed-revision',
+            dependencies: [],
+          },
+        ],
+      },
+    });
 
     // The disclosure the operator answered: the server's own derivation,
     // printed before the question. A prompt with nothing above it is not a
@@ -116,8 +241,90 @@ describe('plugin CLI API authority', () => {
     expect(printed).toContain('sha256:reviewed');
     expect(printed).toContain('network.fetch (active)');
     expect(printed).toContain('shared-lib');
+    expect(printed).toContain('shared-lib requires providers.register');
     expect(printed).toContain('an in-page bundle');
+    expect(printed).toContain(
+      'Installed demo@1.0.0, but activation is incomplete',
+    );
+    expect(printed).toContain(
+      'shared-lib requires host approval for providers.register',
+    );
+    expect(printed).toContain('Station host in the Plugins page');
+    expect(printed).not.toContain('✅ Installed demo@1.0.0 through Station');
   });
+
+  test.each([true, false])(
+    'uses post-install dependency status instead of preview requirements (status available: %s)',
+    async (statusAvailable) => {
+      authenticatedFetch
+        .mockResolvedValueOnce(
+          Response.json({
+            valid: true,
+            manifest: { name: 'demo', version: '1.0.0' },
+            components: [],
+            conflicts: [],
+            dependencies: [
+              {
+                id: 'shared-lib',
+                status: 'will-install',
+                consent: {
+                  permissions: ['providers.register'],
+                  contentDigest: 'sha256:dependency',
+                  registryTrustRevision: `sha256:${'e'.repeat(64)}`,
+                  grantRevision: 'dependency-reviewed-revision',
+                  dependencies: [],
+                  pendingConsent: [
+                    { permission: 'providers.register', tier: 'trusted' },
+                  ],
+                },
+              },
+            ],
+            contentDigest: 'sha256:reviewed',
+            registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+            grantRevision: 'parent-reviewed-revision',
+            permissions: {
+              required: [],
+              autoGranted: [],
+              pendingConsent: [],
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          Response.json({
+            success: true,
+            plugin: { name: 'demo', version: '1.0.0' },
+            permissions: {
+              pendingConsent: [],
+              ...(statusAvailable
+                ? { dependencies: [{ id: 'shared-lib', pendingConsent: [] }] }
+                : {}),
+            },
+          }),
+        );
+      const { install } = await import('../commands/install.js');
+      vi.mocked(console.log).mockClear();
+
+      await install(PLUGIN_SOURCE, [], parsed, approve);
+
+      const printed = (
+        console.log as unknown as { mock: { calls: unknown[][] } }
+      ).mock.calls
+        .map((args) => String(args[0]))
+        .join('\n');
+      if (statusAvailable)
+        expect(printed).toContain('✅ Installed demo@1.0.0 through Station');
+      else {
+        expect(printed).toContain(
+          'did not report current dependency approval status',
+        );
+        expect(printed).not.toContain('✅ Installed');
+      }
+      expect(printed).not.toContain('activation is incomplete');
+      expect(printed).not.toContain(
+        'requires host approval for providers.register',
+      );
+    },
+  );
 
   /**
    * The refusal path, executable. A gate whose rejection branch never runs is
@@ -132,6 +339,8 @@ describe('plugin CLI API authority', () => {
         components: [],
         conflicts: [],
         contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+        grantRevision: 'parent-reviewed-revision',
         permissions: {
           required: ['network.fetch'],
           autoGranted: [],
@@ -141,7 +350,7 @@ describe('plugin CLI API authority', () => {
     );
     const { install } = await import('../commands/install.js');
 
-    await expect(install('/tmp/demo', [], parsed, decline)).rejects.toThrow(
+    await expect(install(PLUGIN_SOURCE, [], parsed, decline)).rejects.toThrow(
       'Not installed: the install was not approved. Nothing was added or changed.',
     );
     expect(authenticatedFetch).toHaveBeenCalledTimes(1);
@@ -169,12 +378,14 @@ describe('plugin CLI API authority', () => {
         components: [],
         conflicts: [],
         contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+        grantRevision: 'parent-reviewed-revision',
         permissions: { required: [], autoGranted: [], pendingConsent: [] },
       }),
     );
     const { install } = await import('../commands/install.js');
 
-    await expect(install('/tmp/demo', [], parsed, null)).rejects.toThrow(
+    await expect(install(PLUGIN_SOURCE, [], parsed, null)).rejects.toThrow(
       'there is no terminal to ask',
     );
     expect(authenticatedFetch).toHaveBeenCalledTimes(1);
@@ -189,6 +400,8 @@ describe('plugin CLI API authority', () => {
           components: [],
           conflicts: [],
           contentDigest: 'sha256:reviewed',
+          registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+          grantRevision: 'parent-reviewed-revision',
           permissions: { required: [], autoGranted: [], pendingConsent: [] },
         }),
       )
@@ -201,7 +414,7 @@ describe('plugin CLI API authority', () => {
     const { install } = await import('../commands/install.js');
 
     await expect(
-      install('/tmp/demo', [], { ...parsed, flags: { yes: true } }, null),
+      install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null),
     ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
     expect(authenticatedFetch).toHaveBeenCalledTimes(2);
   });
@@ -217,7 +430,7 @@ describe('plugin CLI API authority', () => {
     );
     const { install } = await import('../commands/install.js');
 
-    await expect(install('/tmp/demo', [], parsed, approve)).rejects.toThrow(
+    await expect(install(PLUGIN_SOURCE, [], parsed, approve)).rejects.toThrow(
       /did not report what installing this plugin requires/,
     );
     expect(authenticatedFetch).toHaveBeenCalledTimes(1);
@@ -267,6 +480,8 @@ describe('plugin CLI API authority', () => {
           components: [],
           conflicts: [],
           contentDigest: 'sha256:reviewed',
+          registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+          grantRevision: 'parent-reviewed-revision',
           permissions: {
             required: [],
             autoGranted: [],
@@ -287,17 +502,22 @@ describe('plugin CLI API authority', () => {
     expect(authenticatedFetch).toHaveBeenLastCalledWith(
       'http://127.0.0.1:3141/api/plugins/install',
       expect.objectContaining({
-        body: JSON.stringify({
-          source: process.cwd(),
-          skip: [],
-          consent: {
-            permissions: [],
-            contentDigest: 'sha256:reviewed',
-            dependencies: [],
-          },
-        }),
+        body: expect.any(String),
       }),
     );
+    const postedBody = authenticatedFetch.mock.calls.at(-1)?.[1]?.body;
+    expect(typeof postedBody).toBe('string');
+    expect(JSON.parse(postedBody as string)).toEqual({
+      source: process.cwd(),
+      skip: [],
+      consent: {
+        permissions: [],
+        contentDigest: 'sha256:reviewed',
+        registryTrustRevision: `sha256:${'d'.repeat(64)}`,
+        grantRevision: 'parent-reviewed-revision',
+        dependencies: [],
+      },
+    });
   });
 
   test.each(['preview', 'install'] as const)(

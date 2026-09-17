@@ -35,6 +35,10 @@ import {
   priorStringList,
 } from '@kontourai/station-contracts/device-settings';
 import type { SettingValueDescriptor } from '@kontourai/station-contracts/settings-registry';
+import {
+  parseRegionArrangementRecord,
+  toRegionArrangementRecord,
+} from '../regions/region-arrangement-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
@@ -293,7 +297,18 @@ function validateFeatureSettings(
     }
   }
 
-  return { valid: true, value: candidate };
+  // These switches were retired; migration/import must not keep resurrecting
+  // them in the canonical envelope. Preserve unknown future fields otherwise.
+  const value = { ...candidate };
+  for (const key of [
+    'voiceModeEnabled',
+    'meetingTranscriptionEnabled',
+    'locationContextEnabled',
+    'offlineQueueEnabled',
+  ]) {
+    delete value[key];
+  }
+  return { valid: true, value };
 }
 
 /**
@@ -458,6 +473,22 @@ function validateImportedValue<K extends keyof DeviceSettings>(
           ? {
               valid: true,
               value: outcome.value as unknown as DeviceSettings[K],
+            }
+          : { valid: false };
+      }
+      if (definition.key === 'regionArrangement') {
+        // #928 D: the record's own parser is its only shape validation (the
+        // generic composite path below would accept any plain object). An
+        // unrecognisable record is dropped; a readable one is canonicalized,
+        // so a retired surface or an undeclared placement lands as an empty
+        // region rather than as bytes every later read has to re-reject.
+        const parsed = parseRegionArrangementRecord(candidate);
+        return parsed
+          ? {
+              valid: true,
+              value: toRegionArrangementRecord(
+                parsed,
+              ) as unknown as DeviceSettings[K],
             }
           : { valid: false };
       }
@@ -727,6 +758,15 @@ class DeviceSettingsStore {
         priorRaw,
         definition.defaultValue,
       );
+      if (definition.key === 'featureSettings') {
+        const normalized = validateImportedValue(
+          definition,
+          values.featureSettings,
+        );
+        values.featureSettings = normalized.valid
+          ? (normalized.value as DeviceSettings['featureSettings'])
+          : (definition.defaultValue as DeviceSettings['featureSettings']);
+      }
       migratedPriorKeys.add(priorStorageKey);
     }
 
@@ -891,10 +931,25 @@ class DeviceSettingsStore {
 
   /** Clears an explicit override, falling back to the registry default. Read-merge-write. */
   reset = <K extends keyof DeviceSettings>(key: K): void => {
+    this.resetMany([key]);
+  };
+
+  /**
+   * Clears several overrides in ONE read-merge-write: one persist, one
+   * notify, one snapshot. "Restore device defaults" called `reset` per key,
+   * which re-read and re-wrote the envelope N times and published N
+   * intermediate snapshots — every subscriber re-rendered against a device
+   * that was only partly restored (#2144 slice 6 fix round 1).
+   *
+   * Keys holding no explicit override are skipped, so an all-default set is
+   * the same true no-op `reset` already was.
+   */
+  resetMany = (keys: readonly (keyof DeviceSettings)[]): void => {
     const fresh = this.readPersistedEnvelope();
-    if (!Object.hasOwn(fresh.values, key)) return;
+    const stored = keys.filter((key) => Object.hasOwn(fresh.values, key));
+    if (stored.length === 0) return;
     const nextValues = { ...fresh.values };
-    delete nextValues[key];
+    for (const key of stored) delete nextValues[key];
     this.applyEnvelope({ ...fresh, values: nextValues });
   };
 }

@@ -7,8 +7,20 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
+import {
+  ANSWER_DELIVERY_OPTIONS,
+  answerDeliveryModeOf,
+  isAnswerDeliveryMode,
+  smoothRevealForAnswerDelivery,
+} from '../../utils/answerDelivery';
+import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
+import {
+  ReplayCaptureControls,
+  type ReplayCaptureSource,
+} from './ReplayCaptureControls';
 
 interface ChatSettingsPanelProps {
   isOpen: boolean;
@@ -36,6 +48,9 @@ interface ChatSettingsPanelProps {
     agentSlug: string;
     conversationId: string;
   };
+  /** Developer-tools entry: step the current conversation's events in-dock. */
+  onReplayConversation?: () => void;
+  replayCaptureSource?: ReplayCaptureSource;
 }
 
 export function ChatSettingsPanel({
@@ -51,12 +66,15 @@ export function ChatSettingsPanel({
   autoHideEnabled,
   setAutoHideEnabled,
   sessionSummary,
+  onReplayConversation,
+  replayCaptureSource,
 }: ChatSettingsPanelProps) {
   const reasoningId = useId();
   const toolsId = useId();
   const autoHideId = useId();
-  const smoothRevealId = useId();
-  const { featureSettings } = useDeviceSettings();
+  const answerDeliveryId = useId();
+  const { featureSettings, developerToolsEnabled } = useDeviceSettings();
+  const { navigate } = useNavigationActions();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const dismissSummary = useDismissSessionSummaryMutation();
   const showSummary = useShowSessionSummaryMutation();
@@ -64,6 +82,7 @@ export function ChatSettingsPanel({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       overlayClassName="chat-settings-overlay"
       panelClassName="chat-settings-modal"
@@ -113,31 +132,42 @@ export function ChatSettingsPanel({
         </div>
       </fieldset>
 
+      {/* #585 / #2144 slice 6 item B: the same two named options as the
+          Settings Appearance row, over the same boolean and the same
+          mapping module — the two surfaces cannot drift. */}
       <div className="chat-settings-modal__section">
         <label
-          className="chat-settings-modal__checkbox"
-          htmlFor={smoothRevealId}
+          className="chat-settings-modal__label"
+          htmlFor={answerDeliveryId}
         >
-          <Toggle
-            id={smoothRevealId}
-            checked={featureSettings.smoothReveal ?? false}
-            onChange={(checked) =>
-              setDeviceSetting('featureSettings', {
-                ...featureSettings,
-                smoothReveal: checked,
-              })
-            }
-            size="sm"
-            describedBy="chat-settings-smooth-reveal-hint"
-          />
-          <span>Smooth answer reveal</span>
+          Answer delivery
         </label>
+        <select
+          id={answerDeliveryId}
+          className="editor-select"
+          value={answerDeliveryModeOf(featureSettings.smoothReveal)}
+          aria-describedby="chat-settings-answer-delivery-hint"
+          onChange={(event) => {
+            const mode = event.target.value;
+            if (!isAnswerDeliveryMode(mode)) return;
+            setDeviceSetting('featureSettings', {
+              ...featureSettings,
+              smoothReveal: smoothRevealForAnswerDelivery(mode),
+            });
+          }}
+        >
+          {ANSWER_DELIVERY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
         <p
-          id="chat-settings-smooth-reveal-hint"
+          id="chat-settings-answer-delivery-hint"
           className="chat-settings-modal__hint"
         >
-          Reveal incoming answer text steadily instead of showing network bursts
-          all at once
+          Either way the same text arrives at the same time; only its pacing on
+          screen differs
         </p>
       </div>
 
@@ -245,6 +275,52 @@ export function ChatSettingsPanel({
           </p>
         </fieldset>
       )}
+
+      {developerToolsEnabled && onReplayConversation ? (
+        <fieldset className="chat-settings-modal__section">
+          <legend className="chat-settings-modal__label">Event replay</legend>
+          <ReplayCaptureControls
+            source={replayCaptureSource}
+            onOpen={onClose}
+          />
+          <button
+            type="button"
+            className="chat-settings-modal__btn"
+            onClick={() => {
+              onReplayConversation();
+              onClose();
+            }}
+          >
+            Step through this conversation
+          </button>
+          <p className="chat-settings-modal__hint">
+            Opens a copy of this chat in the dock and plays its recorded events
+            one at a time. The live conversation is not changed.
+          </p>
+        </fieldset>
+      ) : null}
+
+      {/* #2144 decision 3: this panel STAYS a shortcut — the handful of
+          choices someone changes mid-conversation, where they are having it.
+          Chat's full set lives in Settings' own Chat section, and both
+          surfaces write the same device-settings keys through the same store,
+          so this is a link to the rest rather than a second copy of the
+          state. It lands on the first row this panel does not offer, so
+          "more" is literally where it takes you. */}
+      <div className="chat-settings-modal__section">
+        <button
+          type="button"
+          className="chat-settings-modal__link"
+          onClick={() => {
+            onClose();
+            navigate(
+              settingsDeepLinkUrl({ view: 'chat', highlight: 'diff-style' }),
+            );
+          }}
+        >
+          More chat settings
+        </button>
+      </div>
 
       <div className="chat-settings-modal__actions">
         <button

@@ -13,9 +13,7 @@
  * the same trap `getMcpUiFrameOrigin` (`() => this.mcpUiFrameServer?.origin`)
  * already avoids by not routing through `appConfig` either.
  */
-export function parseStationFeatures(
-  env: NodeJS.ProcessEnv = process.env,
-): string[] {
+function parseStationFeatures(env: NodeJS.ProcessEnv = process.env): string[] {
   return (env.STATION_FEATURES || '').split(',').filter(Boolean);
 }
 

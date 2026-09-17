@@ -5,12 +5,14 @@ import {
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
+  steerOrchestrationTurn,
   useEngineConnectionsQuery,
   useInvalidateQuery,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
+import { useAgents } from '../contexts/AgentsContext';
 import {
   type ChatMessage,
   isTurnInFlight,
@@ -19,16 +21,24 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../contexts/active-chats-store';
+import { useConfig } from '../contexts/ConfigContext';
 import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
+import { approvalModeForDispatch } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
   translateChatError,
 } from '../utils/chatErrorTranslation';
-import { sessionAdapterSupportsSteering } from '../utils/execution';
+import {
+  chatSessionIsLive,
+  resolveSessionEngineConnectionId,
+  sessionAdapterSupportsSteering,
+} from '../utils/execution';
+import { steerRefusalMessage } from '../utils/steerTurn';
+import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
 import { useStreamingMessage } from './useStreamingMessage';
 
@@ -136,13 +146,21 @@ export function useSendMessage(
     clearEphemeralMessages,
   } = useActiveChatActions();
   const { clearStreamingMessage } = useStreamingMessage();
-  // Only consulted at the mid-turn send gate below to decide steering vs.
-  // enqueue (archive#613). No built-in adapter declares 'steering' today, so this
-  // list never actually flips the branch in production.
+  // Mid-turn send gate: matrix `midTurnSteer` (via sessionAdapterSupportsSteering)
+  // chooses steer vs queue. Muse and Station queue.
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data: ConnectionConfig[];
   };
   const invalidate = useInvalidateQuery();
+  // #2144 slice 6 fix round 1: the two default layers below a session
+  // override (the engine connection's own default, then this Station's
+  // `defaultApprovalMode`) were display-only — the composer chip read them
+  // and nothing put them on the wire. This is the one send path that starts a
+  // conversation, so it is where the whole resolved chain becomes a request.
+  const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
+  // Only for the Agent-record link of the engine-connection chain the
+  // composer resolves its approval chip from (round 2 LOW-5).
+  const agents = useAgents();
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -166,6 +184,12 @@ export function useSendMessage(
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
         skipInMemoryQueueOnBusy?: boolean;
+        /**
+         * When a turn is already running on a steering engine, still hold
+         * this as a follow-up instead of injecting it. Steer remains the
+         * default send-while-busy path.
+         */
+        queueOnBusy?: boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -176,32 +200,41 @@ export function useSendMessage(
         };
       },
     ) => {
+      if (isReplayThread(sessionId))
+        throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       const currentState = allChats[sessionId];
       const submittedDraft = content;
+      // Steer is more input on the OPEN turn (`steerTurn`). Queue is a
+      // follow-up that waits for `turn.completed` and starts a new turn.
+      // Durable outbound replay stays durable either way — it must not
+      // collapse into either the in-memory queue or a live steer.
+      let steerOpenTurn = false;
 
       if (currentState?.status === 'sending') {
-        const steeringCapable = sessionAdapterSupportsSteering(
-          currentState.agentConnectionId,
-          agentConnections,
-        );
+        if (options?.skipInMemoryQueueOnBusy) {
+          return options?.dispatch
+            ? ({
+                kind: 'not-invoked',
+              } satisfies OutboundDispatchTransportResult)
+            : undefined;
+        }
+        const steeringCapable =
+          !options?.queueOnBusy &&
+          sessionAdapterSupportsSteering(
+            currentState.agentConnectionId,
+            agentConnections,
+            currentState.orchestrationProvider,
+          ) &&
+          !(attachments && attachments.length > 0);
         if (!steeringCapable) {
-          if (options?.skipInMemoryQueueOnBusy) {
-            return options?.dispatch
-              ? ({
-                  kind: 'not-invoked',
-                } satisfies OutboundDispatchTransportResult)
-              : undefined;
-          }
           clearInput(sessionId);
           updateChat(sessionId, {
             queuedMessages: [...(currentState.queuedMessages || []), content],
           });
           return;
         }
-        // Steering-capable adapter: skip the enqueue and fall through to
-        // dispatch immediately below — the same send path a drained queued
-        // message takes (archive#613), rather than waiting for the turn boundary.
+        steerOpenTurn = true;
       }
 
       if (content.startsWith('/') && handleSlashCommand) {
@@ -220,6 +253,46 @@ export function useSendMessage(
           });
           content = result;
         }
+      }
+
+      if (steerOpenTurn && currentState) {
+        // Inject into the live turn. Do not fall through to sendTurn — that
+        // would start a second turn and wipe the in-flight stream.
+        clearInput(sessionId);
+        try {
+          const result = await steerOrchestrationTurn({
+            threadId: currentState.currentSessionId ?? sessionId,
+            text: content,
+            turnId: currentState.openTurnId,
+            apiBase,
+          });
+          if (result.outcome === 'steered') {
+            return options?.dispatch
+              ? ({
+                  kind: 'accepted',
+                  providerTurnId: result.turnId,
+                } satisfies OutboundDispatchTransportResult)
+              : true;
+          }
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: steerRefusalMessage(result),
+          });
+        } catch (error) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
+          });
+        }
+        const latest = activeChatsStore.getSnapshot()[sessionId];
+        if ((latest?.input ?? '') === '') {
+          updateChat(sessionId, { input: submittedDraft });
+        }
+        return options?.dispatch
+          ? ({
+              kind: 'not-invoked',
+            } satisfies OutboundDispatchTransportResult)
+          : undefined;
       }
 
       const transaction = prepareSendTransaction({
@@ -253,11 +326,43 @@ export function useSendMessage(
         const { dispatchForeground } = await import(
           '../lib/foregroundMessageDispatch'
         );
+        // The chip's own chain, shared (round 2 LOW-5).
+        const sessionEngineConnectionId = resolveSessionEngineConnectionId({
+          conversationOpenState: currentState?.conversationOpenState,
+          currentSessionId: currentState?.currentSessionId,
+          chatStateConnectionId: currentState?.agentConnectionId,
+          agentBoundConnectionId: agents.find(
+            (agent) => agent.slug === agentSlug,
+          )?.execution?.agentConnectionId,
+        });
+        const dispatchedProviderOptions = options?.executionSnapshot
+          ? (options.executionSnapshot.requestedProviderOptions ??
+            options.executionSnapshot.providerOptions)
+          : (currentState?.requestedProviderOptions ??
+            currentState?.providerOptions);
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
           agentSlug,
           projectSlug: currentState?.projectSlug,
+          // The layers below the session override, resolved here because this
+          // is where the engine identity, the connection record and the app
+          // config all exist at once. `undefined` unless this turn STARTS the
+          // chat's session on an external engine whose adapter has the knob —
+          // see `approvalModeForDispatch` for every gate and why.
+          approvalModeFallback: approvalModeForDispatch({
+            engineConnectionId: sessionEngineConnectionId,
+            executionMode: currentState?.executionMode,
+            // Liveness, not the existence of an id: `currentSessionId`
+            // outlives its session, and a reopened conversation is marked
+            // started whether or not anything is running (round 3 F1).
+            sessionAlreadyStarted: chatSessionIsLive(currentState),
+            sessionOverride: dispatchedProviderOptions?.approvalMode,
+            connectionDefault: agentConnections.find(
+              (connection) => connection.id === sessionEngineConnectionId,
+            )?.config.approvalMode,
+            stationDefault: stationApprovalModeDefault,
+          }),
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
             : currentState?.requestedModel,
@@ -556,6 +661,7 @@ export function useSendMessage(
     [
       addEphemeralMessage,
       agentConnections,
+      agents,
       apiBase,
       assignConversationId,
       clearEphemeralMessages,
@@ -565,6 +671,7 @@ export function useSendMessage(
       invalidate,
       onActiveSessionChange,
       onError,
+      stationApprovalModeDefault,
       updateChat,
     ],
   );

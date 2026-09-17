@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { BACKLOG_POLICY } from '../backlog-priority-policy.mjs';
 import {
-  BUG_LABEL,
-  BUG_PRIORITY,
   isSubstantiveReply,
   NEEDS_MAINTAINER,
   NEEDS_REPORTER,
@@ -13,53 +10,32 @@ import {
 const unrelated = ['P1', 'agent:claimed', 'stage:preview', 'security'];
 
 describe('issue lifecycle reducer', () => {
-  test('a bug filed without any classification derives P1 at open, alongside the handoff label', () => {
+  test('a bug derives no priority at open; the reducer assigns none', () => {
+    // The "every bug is P1" derivation was removed (owner decision,
+    // 2026-09-09). Filing a bug now yields the handoff label and nothing else,
+    // so priority is a triage judgement rather than something a label implies.
+    // The backlog gate is what still requires a classification to arrive.
     for (const kind of ['issue-opened', 'issue-reopened']) {
       expect(
         reduceIssueLifecycle({
           kind,
-          issue: { labels: [BUG_LABEL, 'agent:claimed'] },
+          issue: { labels: ['bug', 'agent:claimed'] },
         }),
-      ).toEqual({ add: [NEEDS_MAINTAINER, BUG_PRIORITY], remove: [] });
+      ).toEqual({ add: [NEEDS_MAINTAINER], remove: [] });
     }
   });
 
-  test('an already-classified bug derives nothing extra — for every classification label', () => {
-    for (const classification of BACKLOG_POLICY.classificationLabels) {
-      const { add } = reduceIssueLifecycle({
-        kind: 'issue-opened',
-        issue: { labels: [BUG_LABEL, classification] },
-      });
-      expect(add).toEqual([NEEDS_MAINTAINER]);
+  test('labeling bug later derives nothing at all', () => {
+    for (const existing of [[], ['P2'], ['epic']]) {
+      expect(
+        reduceIssueLifecycle({
+          kind: 'maintainer-requested-reporter',
+          label: 'bug',
+          actorPermission: 'admin',
+          issue: { labels: ['bug', ...existing, NEEDS_MAINTAINER] },
+        }),
+      ).toEqual({ add: [], remove: [] });
     }
-  });
-
-  test('a non-bug issue derives no priority at open', () => {
-    expect(
-      reduceIssueLifecycle({
-        kind: 'issue-opened',
-        issue: { labels: ['enhancement'] },
-      }),
-    ).toEqual({ add: [NEEDS_MAINTAINER], remove: [] });
-  });
-
-  test('labeling bug later derives P1 on an unclassified issue and nothing on a classified one', () => {
-    expect(
-      reduceIssueLifecycle({
-        kind: 'maintainer-requested-reporter',
-        label: BUG_LABEL,
-        actorPermission: 'read',
-        issue: { labels: [BUG_LABEL, NEEDS_MAINTAINER] },
-      }),
-    ).toEqual({ add: [BUG_PRIORITY], remove: [] });
-    expect(
-      reduceIssueLifecycle({
-        kind: 'maintainer-requested-reporter',
-        label: BUG_LABEL,
-        actorPermission: 'admin',
-        issue: { labels: [BUG_LABEL, 'P2', NEEDS_MAINTAINER] },
-      }),
-    ).toEqual({ add: [], remove: [] });
   });
 
   test('opens and reopens at the maintainer handoff without replacing unrelated labels', () => {

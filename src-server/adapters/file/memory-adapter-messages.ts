@@ -357,7 +357,7 @@ export async function removeLastStoredMessage({
  * MODULE goes through the one serialized, atomic seam. Other paths remove the
  * file from outside it — `deleteConversationAssets`'s `unlink`, the
  * agent-directory removals in `config-loader-agents.ts` and
- * `plugin-install-shared.ts`, and out-of-process `station clean` — so a
+ * `plugin-install-transaction.ts`, and out-of-process `station clean` — so a
  * delete landing between a queued
  * rewrite's read and its rename can still resurrect an orphan transcript.
  * That race predates this change (`writeFile` recreated the file too) and is

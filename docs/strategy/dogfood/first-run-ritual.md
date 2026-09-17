@@ -22,7 +22,7 @@ what you saw, screenshot.
 | 2 | **One chat, 2+ turns.** New chat on a real engine; send a second turn while the first runs. | Both turns land in the *same* conversation; no raw session errors (A1), no fragment sessions or orphan drafts (A2); tool calls show results (A4). |
 | 3 | **One project.** Create a project with a working directory; chat inside it; reload the deep link. | Modal fits the viewport (F7); reload returns to the conversation, not an inspector (A5); headers name the real working directory (C2). |
 | 4 | **One plugin.** Install a bundled/featured plugin from Registry; open its layout and panes. | Everything it ships renders — no "Unsupported layout tab", no "Temporarily unavailable" (D1); Registry categories make sense (F1). |
-| 5 | **One docked pane.** Dock a non-chat pane; try to use it; un-dock. | Content stays reachable while docked (C1); actions inside the pane still work; ⌘M behaves. |
+| 5 | **One docked pane.** Show Activity in a dock region (⌘⇧A, or the region toolbar); try to use it; hide it again. | Content stays reachable while docked (C1); actions inside the pane still work; ⌘M behaves. |
 | 6 | **One scheduled job.** Create a job from Schedule. | Defaults point at an agent that can actually run (D8); empty states before data look intentional (F3). |
 | 7 | **Sweep.** Open the browser console; skim the routes you visited. | No 403/404/503 noise on a healthy instance (E5); no status chips disagreeing with each other (E4); any UI copy naming a CLI command actually matches the CLI (D3). |
 

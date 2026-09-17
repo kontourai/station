@@ -1,6 +1,31 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { stationTempRoot } from '@kontourai/station-shared/temp-dir';
+import { installNodeHttpCompatibility } from './packages/shared/src/node-http-compat.mjs';
+import { enableFixtureSqliteSynchronousOffForTest } from './src-server/utils/sqlite-fixture-durability.js';
+
+installNodeHttpCompatibility();
+
+/**
+ * Testing Library's `waitFor` / `findBy*` give up after 1,000 ms by default.
+ * That figure is a latency assertion nobody wrote, in the same class as the
+ * inherited 5 s `testTimeout` the config below replaced (#1531): a jsdom suite
+ * that mounts a real provider tree and awaits a lazy chunk can exceed one
+ * second on a loaded runner while being entirely correct, and the corpus has
+ * 261 files that wait this way. The wait now scales with the test budget --
+ * a genuine hang still fails inside `testTimeout`, just not in the time it
+ * takes a busy machine to do real work.
+ *
+ * Only under jsdom: the DOM package is not loaded for node-environment
+ * suites, and importing it there would drag a DOM into every server worker.
+ * Negative waits (`expect(findBy…).rejects`) pass their own shorter timeout
+ * already; the ones that did not would become slower, not wrong, and the
+ * corpus has none (grep'd at the time of writing).
+ */
+if (typeof document !== 'undefined') {
+  const { configure } = await import('@testing-library/dom');
+  configure({ asyncUtilTimeout: 10_000 });
+}
 
 /**
  * Give every test file an isolated Station root and runtime home.
@@ -32,6 +57,11 @@ mkdirSync(runRoot, { recursive: true });
 // a runtime override and must never route a test to the owner's profiles.
 const testRootDir = mkdtempSync(join(runRoot, 'root-'));
 process.env.STATION_ROOT = testRootDir;
+// Fixture stores in this worker skip per-commit fsync (see
+// src-server/utils/sqlite-fixture-durability.ts, applied by sqlite-wal.ts).
+// An in-process flag, not an environment variable: child processes a test
+// spawns keep production durability.
+enableFixtureSqliteSynchronousOffForTest();
 
 if (!process.env.STATION_HOME) {
   const testHomeDir = join(testRootDir, 'instances', 'test');

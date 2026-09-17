@@ -58,6 +58,8 @@ import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -65,10 +67,13 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
+import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import {
+  PAIRING_SCOPE_ENGINE_LOGIN,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -116,6 +121,7 @@ export interface PairingScopeRouteRule {
  * upgrades handled by {@link PAIRING_WS_SCOPES} instead.
  */
 const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
+  '/api/search',
   '/api/models',
   '/api/system',
   '/api/analytics',
@@ -139,6 +145,12 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // Personal spatial-board reads need read; every revisioned mutation needs
   // operate. Hosted execution does not mount this family.
   '/api/spatial-board',
+  // #2061: the caller's OWN personal-scope records (Boards). Every path under
+  // it is scoped to the resolved request principal, so the read tier discloses
+  // only what that credential's own person stored and the mutate tier changes
+  // only their own records — no leaf here reaches another principal.
+  '/api/me',
+  '/api/mobile-devices',
   '/api/orchestration',
   // archive#3677 PR 3: the native consent broker. The FAMILY sits on the
   // ordinary tiers so the local-grant-minted desktop credential (whose scope
@@ -183,6 +195,11 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/diff-comments',
   '/api/knowledge',
   '/api/feature-previews',
+  // #2144 slice 5: the settings deep-link registry. A separate top-level
+  // family from `/config` on purpose — it enumerates which controls EXIST
+  // and where they are, and carries no stored value, so it does not belong
+  // on the tier that reads and writes configuration.
+  '/api/settings',
   '/api/coding',
   '/api/templates',
   '/config',
@@ -234,6 +251,115 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/home-authority/control-sessions/open:home-control',
+    method: 'POST',
+    prefix: '/api/home-authority/control-sessions/open',
+    exact: true,
+    scope: PAIRING_SCOPE_HOME_CONTROL,
+    origin: 'explicit',
+  },
+  ...[
+    '/api/home-authority/control-sessions/:deviceId/inspect',
+    '/api/home-authority/control-sessions/:deviceId/retire',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
+  {
+    id: '/api/operator/accounts:operator-read',
+    method: 'GET',
+    prefix: '/api/operator/accounts',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/accounts/:accountId/actions:operator-action',
+    method: 'POST',
+    prefix: '/api/operator/accounts/:accountId/actions',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/projects/:slug/access:member-administration-read',
+    method: 'GET',
+    prefix: '/api/projects/:slug/access',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...[
+    '/api/projects/:slug/access/enable',
+    '/api/projects/:slug/access/invitations',
+    '/api/projects/:slug/access/invitations/:invitationId/revoke',
+    '/api/projects/:slug/access/members',
+    '/api/projects/:slug/access/transfer',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:member-administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  ...[
+    '/api/home-authority/channels/:channelId/bindings',
+    '/api/home-authority/channels/:channelId/bindings/:controllerDeviceId/inspect',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
+
+  {
+    id: '/api/home-authority/channels/:channelId/owner:administration',
+    method: 'POST',
+    prefix: '/api/home-authority/channels/:channelId/owner',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Home-authority preparation and transfer participation is a separate,
+  // explicitly granted capability. Every present and future method beneath
+  // this family stays on that one tier; it does not inherit ordinary
+  // orchestration read/operate authority or pairing-management authority.
+  {
+    id: '/api/home-authority:home-transfer',
+    method: '*',
+    prefix: '/api/home-authority',
+    scope: PAIRING_SCOPE_HOME_TRANSFER,
+    origin: 'explicit',
+  },
+  // Body-shaped reads, including fresh open resolution, have no navigation or mutation effect.
+  ...[
+    '/api/search',
+    '/api/search/resolve-open',
+    '/api/search/read-message',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:query`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -325,6 +451,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     prefix: '/api/orchestration/sessions/:threadId/outputs/:eventId/inspect',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  // A screen can expose an arbitrary app or terminal running on the operator's
+  // device host. Inventory is read-only metadata; frame inspection deliberately
+  // requires the stronger existing terminal authority, not ordinary read.
+  {
+    id: '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/capture:terminal-operate',
+    method: 'POST',
+    prefix:
+      '/api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/capture',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
   // Terminal termination kills a PTY process. It must match the dedicated
@@ -674,6 +812,20 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/conversation-pull-requests:read',
+    method: 'GET',
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['POST', 'DELETE'] as const).map((method) => ({
+    id: `/api/conversation-pull-requests:${method.toLowerCase()}`,
+    method,
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // archive#1131 review round 1 (HIGH, own-audit finding beyond what the
   // reviewer named): `registerPluginHostApprovalRoutes`
   // (`plugin-host-approval-routes.ts`) exists specifically so a 'trusted'
@@ -789,14 +941,44 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // sharper reason than either: it names a filesystem path inside Station's
   // profile store and the exact command that will write a credential into it.
   // That is a recipe for provisioning an account on this host, which no paired
-  // remote credential should be able to read — the fact that Station returns
-  // the command rather than running it makes the response MORE useful to a
-  // remote caller, not less.
+  // remote credential should be able to read.
+  //
+  //
+  // The device-code leaves (`…/enrolment/:ref/device-code`, POST/GET/DELETE)
+  // are deliberately NOT part of this rule. They carry their own, more
+  // specific rule below, at `engine:login`.
   {
     id: '/api/connections/agent/:id/enrolment:manage',
     method: '*',
     prefix: '/api/connections/agent/:id/enrolment',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // The device-code leaves, which START the engine's own login as a child
+  // process on this host. A LONGER, more specific prefix than the enrolment
+  // family above, so it wins rather than inheriting that family's tier.
+  //
+  // `access:manage` was the obvious reuse and is the wrong answer in both
+  // directions. The pairing UI's `standard` preset WITHHOLDS `access:manage`,
+  // so gating here would close the flow to exactly the paired phone device
+  // code exists for; meanwhile `access:manage` IS in
+  // DEFAULT_GRANT_PAIRING_SCOPE, so the population that would have been able
+  // to start a login is the migrated and scope-omitting one that never chose
+  // it. Simultaneously unreachable for the intended caller and granted to an
+  // unintended one.
+  //
+  // `engine:login` is in no preset and no default grant: it reaches a device
+  // only by operator promotion, the `access:approve` posture. A preset was the
+  // first choice and is unavailable — `parsePairingScope` refuses a whole
+  // scope string on one unknown token, so shipping this token inside
+  // `standard` would make every newly issued standard grant unparseable to any
+  // peer built before it. Promotion after pairing is the only shape that is
+  // both additive and backward-compatible; see the token's docblock.
+  {
+    id: '/api/connections/agent/:id/enrolment/:ref/device-code:engine-login',
+    method: '*',
+    prefix: '/api/connections/agent/:id/enrolment/:ref/device-code',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
     origin: 'explicit',
   },
   // archive#1398 (docs/design/inference-fleet.md §3.3): the fleet
@@ -1117,6 +1299,26 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // its own narrow proof, rate limit, loopback-secret, or share-token
     // contract. Keep every exception method-specific and exact.
     {
+      id: 'public:account-auth-get',
+      transport: 'http',
+      method: 'GET',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'operator authentication module routes; exact endpoint dispatch and account self-authentication owned by account-auth router',
+    },
+    {
+      id: 'public:account-auth-post',
+      transport: 'http',
+      method: 'POST',
+      prefix: DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'origin-bound operator authentication module endpoints; no Project membership or host API scope',
+    },
+    {
       id: 'public:station-handshake',
       transport: 'http',
       method: 'GET',
@@ -1142,6 +1344,15 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'exact',
       capability: 'public',
       reason: 'public challenge proof',
+    },
+    {
+      id: 'public:pairing-local-access',
+      transport: 'http',
+      method: 'POST',
+      prefix: PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason: 'direct-loopback owner-secret access review',
     },
     {
       id: 'public:pairing-local-grant',
@@ -1280,6 +1491,26 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // Hono records middleware in `app.routes` alongside externally reachable
     // endpoints. Classify the exact registrations so the guard can enumerate
     // the real runtime without giving an unknown endpoint a wildcard pass.
+    {
+      id: 'middleware:account-continuations',
+      transport: 'http',
+      method: '*',
+      prefix: `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/continuations/*`,
+      match: 'exact',
+      capability: 'middleware',
+      reason:
+        'Hono body-limit and no-store middleware registration; endpoint admission still requires Origin and Device/account proof',
+    },
+    {
+      id: 'middleware:account-auth',
+      transport: 'http',
+      method: '*',
+      prefix: `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/*`,
+      match: 'exact',
+      capability: 'middleware',
+      reason:
+        'Hono registration for account origin, body and attempt middleware; does not admit undeclared HTTP methods',
+    },
     {
       id: 'middleware:runtime-global',
       transport: 'http',
@@ -1636,6 +1867,33 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // connected is a strict subset of what that same credential already
     // reads, so this takes the family default rather than a raised tier.
     { method: 'GET', path: '/api/orchestration/presence/summary' },
+    // #2061 Boards: the family read/mutate split is exactly right here —
+    // every leaf resolves its owner from the request principal and can reach
+    // no other principal's records, so none is more sensitive than the family.
+    { method: 'GET', path: '/api/me/layouts' },
+    { method: 'POST', path: '/api/me/layouts' },
+    { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'PUT', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/layouts/:layoutSlug' },
+    // #2062 promote is the one leaf in this family that writes OUTSIDE the
+    // caller's own records — it publishes the Board as a project's Layout.
+    // It takes the family default anyway, and deliberately: it writes through
+    // the same project transaction `POST /api/projects/:slug/layouts` uses,
+    // and that leaf resolves to the same `orchestration:operate` tier, so a
+    // raised tier here would refuse a caller who can already perform the
+    // identical write by addressing the project directly. The scope equality
+    // is asserted in `pairing-route-scopes.test.ts`, not just stated here.
+    //
+    // SHARPENED (#2062 review BLOCKING-2): "the identical write" is a claim
+    // about ADMISSION, and it was false when this comment was written —
+    // promote skipped the agent-reference and working-directory refusals the
+    // project route applies, so it accepted bodies that route rejected. Both
+    // now derive their answer from `admitProjectLayoutWrite`. Two distinctions
+    // worth keeping straight, because conflating them is what produced the
+    // false claim: equal SCOPE is about who may call, equal ADMISSION is about
+    // what a call may contain, and neither implies the other. This entry
+    // records the first; `project-layout-admission.ts` owns the second.
+    { method: 'POST', path: '/api/me/layouts/:layoutSlug/promote' },
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.
@@ -1678,9 +1936,23 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // caller's own Session. Their GET leaves inherit read; narrative and
     // assessment replacement/removal are owner mutations and inherit operate.
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/outputs' },
+    // The input-reply context read (#1855) resolves ONE pending input
+    // request inside the caller's own thread: it requires the request
+    // principal to be current (checked before AND after the service call)
+    // and passes the caller's read authority into the service, so it
+    // discloses no thread the family's session reads do not already expose
+    // and crosses no Environment/Station boundary. Read tier is intended.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/input-requests/:requestId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/quote-source',
     },
     {
       method: 'PUT',
@@ -1962,6 +2234,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
+    },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph' },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph/neo4j' },
     { method: 'POST', path: '/api/knowledge/roots/:rootId/graph/neo4j-sync' },
@@ -1985,6 +2261,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // delegation: both can resolve a target Environment and run an Agent.
     // POST therefore inherits the orchestration family's operate scope.
     { method: 'POST', path: '/api/orchestration/chat' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/pane-host/:projectSlug/catalog',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/pane-host/:projectSlug/prepare',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/pane-host/:projectSlug/execute',
+    },
     { method: 'POST', path: '/api/orchestration/chat/delegated' },
     { method: 'POST', path: '/api/orchestration/chat/background' },
     {
@@ -2058,6 +2346,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
     {
       method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId',
+    },
+    {
+      method: 'GET',
       path: '/api/orchestration/sessions/:threadId/builder-run',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/event-page' },
@@ -2066,6 +2358,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
+    // station#1877: stops ONE provider-reported subagent inside a session the
+    // caller already reaches through this family. It mutates, but no more
+    // sensitively than `delegations/:taskId/interrupt` directly above, which
+    // is the same shape — a task-scoped stop — and inherits here too. It
+    // returns only `{outcome, taskId}` for a task on THIS Station: no other
+    // environment's data, no other Station's, and nothing about a task the
+    // caller could not already observe through this family's session reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound
@@ -2132,6 +2435,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },
     { method: 'POST', path: '/api/projects' },
+    // Portable identity reads do not mutate; preparation and attachment retain
+    // the Project family's operate scope and grant no peer/member authority.
+    { method: 'GET', path: '/api/projects/:slug/identity' },
+    { method: 'POST', path: '/api/projects/:slug/identity/prepare' },
+    { method: 'POST', path: '/api/projects/attach' },
     // Reorders this Station's own project list and returns it. A mutation
     // within its family and no more sensitive than the rest of it: it reads
     // and writes nothing beyond the local ordering, and discloses no peer or
@@ -2454,6 +2762,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/starter-work/:starterId/observation' },
     { method: 'POST', path: '/api/starter-work/bind' },
     { method: 'DELETE', path: '/api/starter-work/:starterId/binding' },
+    { method: 'GET', path: '/api/mobile-devices/hosts/local/devices' },
     { method: 'GET', path: '/api/spatial-board' },
     { method: 'GET', path: '/api/spatial-board/resolved' },
     { method: 'POST', path: '/api/spatial-board/pins' },
@@ -2475,6 +2784,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/voice/sessions' },
     { method: 'DELETE', path: '/api/voice/sessions/:id' },
     { method: 'GET', path: '/api/voice/status' },
+    // #2144 slice 5: agent-facing enumeration of settings deep links;
+    // read-only, no secrets. The body is a checked-in generated artifact of
+    // labels, help sentences, scope names, section ids and URL paths — it
+    // discloses strictly less than the `/config/app` read already at this
+    // same tier, which returns the stored values themselves.
+    { method: 'GET', path: '/api/settings/registry' },
     { method: 'GET', path: '/api/feature-previews' },
     { method: 'PUT', path: '/api/feature-previews/:id' },
     { method: 'GET', path: '/bedrock/models' },
@@ -2549,8 +2864,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // status poll live under `/api/plugins/home-role/requests` and carry the
     // explicit `access:manage` override above — creating a request returns
     // the transaction-bound decision cookie, so it is authority-bearing.
-    // Candidates is a read-only eligibility listing (no authority minted,
-    // reveals no more than the plugin list) on the family GET tier.
+    // Candidates is a read-only eligibility listing (no authority minted) on
+    // the family GET tier.
+    //
+    // #2067 CORRECTION: "reveals no more than the plugin list" used to be the
+    // whole justification, and it was true while the plugin list was an
+    // unprojected instance inventory. It is now false as a justification and
+    // true as a requirement: the plugin list is a per-principal projection,
+    // so parity with it means this route must be projected too, which it now
+    // is (`plugin-home-role-routes.ts` filters candidates through
+    // `projectVisiblePlugins`). A wire scope is not what keeps this honest —
+    // the projection in the handler is. See `PLUGIN_IDENTITY_ROUTES` for the
+    // whole family and its dispositions.
     { method: 'GET', path: '/api/plugins/home-role' },
     { method: 'DELETE', path: '/api/plugins/home-role' },
     { method: 'GET', path: '/api/plugins/home-role/candidates' },
@@ -2590,6 +2915,39 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/plugins/:name/settings' },
     { method: 'PUT', path: '/api/plugins/:name/settings' },
     { method: 'POST', path: '/api/plugins/:name/update' },
+    // station#1744 (routes added by station#1377): the retained-recovery
+    // leaves of `plugin-install-routes.ts`. `GET /:name/retained-generations`
+    // pages `packageMcpJournal.history()` — this Station's own generation
+    // records for one plugin (journal/plugin/incarnation ids, content digest,
+    // counts), no filesystem path; the family's `GET /api/plugins` listing
+    // already returns each plugin's `packageRoot` and digest to the same
+    // read-tier caller, so this discloses strictly less. `GET
+    // /:name/recovery-preview` returns `inspectRetainedPluginRecovery`'s
+    // `view` (manifest, expected installation revision, permission basis,
+    // dependency approvals, a recovery revision hash) and drops `source`;
+    // it only reads the journal, manifests and digests — same shape as the
+    // sibling `POST /preview`. `POST /:name/recover` re-materializes an
+    // already-selected, locally retained generation through the SAME
+    // `installPluginFromSource` seam `POST /install` and `POST /:name/update`
+    // call, with the same operator-decision consent gate and no remote
+    // fetch — a subset of `update`'s mutation surface, so the family's
+    // ordinary mutate tier is the consistent call. None returns another
+    // environment's or another Station's data.
+    // #2067: per-principal plugin visibility. The scope tier is the family
+    // default DELIBERATELY, because a wire scope is not what authorizes
+    // these: every handler re-resolves the request's own principal and
+    // refuses a non-operator in-handler
+    // (`routes/plugins/plugin-visibility-routes.ts`), the same shape as the
+    // locality-gated consent leaves above. `GET /visibility` discloses which
+    // principals this instance has a pairing record of and which plugins
+    // each has been granted — operator-only for that reason, never inherited
+    // from a read tier alone.
+    { method: 'GET', path: '/api/plugins/visibility' },
+    { method: 'POST', path: '/api/plugins/visibility/grants' },
+    { method: 'DELETE', path: '/api/plugins/visibility/grants' },
+    { method: 'GET', path: '/api/plugins/:name/retained-generations' },
+    { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
+    { method: 'POST', path: '/api/plugins/:name/recover' },
     { method: 'GET', path: '/api/plugins/check-updates' },
     // POST /api/plugins/:name/fetch is currently a stub that always 403s
     // ("Plugin fetch proxy is disabled until plugin execution identity is

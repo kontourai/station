@@ -4,6 +4,8 @@
 
 import type {
   ApprovalAttentionItem,
+  GateReviewAttentionItem,
+  ProposedChangeAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { render, screen } from '@testing-library/react';
@@ -56,7 +58,7 @@ describe('AttentionHistoryItem — approval kind', () => {
   test('renders an "Open session" link when the item resolves a session target', () => {
     render(
       <AttentionHistoryItem
-        item={baseApproval({ openHref: '/activity?session=thread-1' })}
+        item={baseApproval({ openHref: '/?surface=activity&session=thread-1' })}
         isPending={false}
         isDismissPending={false}
         onAction={vi.fn()}
@@ -66,7 +68,9 @@ describe('AttentionHistoryItem — approval kind', () => {
     );
 
     const link = screen.getByRole('link', { name: 'Open session' });
-    expect(link.getAttribute('href')).toBe('/activity?session=thread-1');
+    expect(link.getAttribute('href')).toBe(
+      '/?surface=activity&session=thread-1',
+    );
   });
 
   test('renders no "Open session" link when the item has no resolvable target', () => {
@@ -96,7 +100,7 @@ function baseFailure(
     title: 'Fix the login redirect',
     createdAt: now,
     updatedAt: now,
-    openHref: '/activity?session=thread-boom',
+    openHref: '/?surface=activity&session=thread-boom',
     source: { threadId: 'thread-boom' },
     ...overrides,
   };
@@ -215,7 +219,9 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
     expect(navigate).not.toHaveBeenCalled();
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity?session=thread-boom'),
+      expect(navigate).toHaveBeenCalledWith(
+        '/?surface=activity&session=thread-boom',
+      ),
     );
   });
 
@@ -223,7 +229,9 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     // Only `session-failed` is acknowledgeable server-side; an ack recorded
     // against any other kind is discarded, so firing one would be a write
     // that claims the row was seen and changes nothing.
-    renderRow(baseApproval({ openHref: '/activity?session=thread-1' }));
+    renderRow(
+      baseApproval({ openHref: '/?surface=activity&session=thread-1' }),
+    );
 
     screen.getByRole('link', { name: 'Open session' }).click();
 
@@ -237,7 +245,7 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
     const onDismiss = vi.fn();
     render(
       <AttentionHistoryItem
-        item={baseApproval({ openHref: '/activity?session=thread-1' })}
+        item={baseApproval({ openHref: '/?surface=activity&session=thread-1' })}
         isPending={false}
         isDismissPending={false}
         onAction={vi.fn()}
@@ -289,5 +297,87 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       (screen.getByRole('button', { name: 'Dismiss' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+});
+
+/**
+ * #2064 review LOW-5: the two kinds that moved in from Review have no session
+ * behind them at all — a proposed change is a file decision and a paused gate
+ * review is a Survey session — so the popover's default "Open session" label
+ * named a destination that does not exist and does not match where the link
+ * goes.
+ */
+describe('AttentionHistoryItem — decision kinds', () => {
+  const now = '2026-09-13T12:00:00.000Z';
+
+  test('an acknowledged proposed change opens in Review, not in a session', () => {
+    render(
+      <AttentionHistoryItem
+        item={
+          {
+            id: 'proposed-change:change-1',
+            kind: 'proposed-change',
+            title: 'src/index.ts',
+            createdAt: now,
+            updatedAt: now,
+            projectSlug: 'campfit',
+            path: 'src/index.ts',
+            contentKind: 'code',
+            sourceRuntime: 'claude',
+            openHref: '/projects/campfit/layouts/review?change=change-1',
+            source: {
+              proposedChangeId: 'change-1',
+              projectSlug: 'campfit',
+            },
+          } as ProposedChangeAttentionItem
+        }
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'Open in Review' });
+    expect(link.getAttribute('href')).toBe(
+      '/projects/campfit/layouts/review?change=change-1',
+    );
+    expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
+  });
+
+  test('an acknowledged gate review opens the review', () => {
+    render(
+      <AttentionHistoryItem
+        item={
+          {
+            id: 'gate-review:review-session-1',
+            kind: 'gate-review',
+            title: 'Survey gate review',
+            createdAt: now,
+            updatedAt: now,
+            projectSlug: 'campfit',
+            pendingDecisions: 2,
+            openHref:
+              '/projects/campfit/layouts/review?review=review-session-1',
+            source: {
+              reviewSessionRef: 'review-session-1',
+              projectSlug: 'campfit',
+              workflowSubjectRef: 'flow:build#7',
+            },
+          } as GateReviewAttentionItem
+        }
+        isPending={false}
+        isDismissPending={false}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'Open review' }).getAttribute('href'),
+    ).toBe('/projects/campfit/layouts/review?review=review-session-1');
+    expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
   });
 });

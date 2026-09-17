@@ -78,7 +78,7 @@ export function useBasisPaneLauncher(): {
       // it is a successful handoff, not a failed duplicate open that should
       // create a second fallback surface.
       if (instance && host?.focusExisting?.(instance.instanceId)) return 'host';
-      if (instance && host?.open(instance)) return 'host';
+      if (instance && host?.open(instance).ok === true) return 'host';
       setFallbackState({
         scope: { ...scope },
         currentProjectId: instance?.boundContext?.projectId,

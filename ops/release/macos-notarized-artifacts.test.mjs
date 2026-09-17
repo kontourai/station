@@ -11,12 +11,17 @@ import { expect, test } from 'vitest';
 import {
   admitMacosAppBundle,
   assertAcceptedNotaryReceipt,
+  commandFailureExcerpt,
   createMacosNotarizedArtifacts,
   DEFAULT_COMMAND_TIMEOUT_MS,
   DMG_CREATION_COMMAND_TIMEOUT_MS,
+  DMG_CREATION_MAX_ATTEMPTS,
+  DMG_CREATION_RETRY_BACKOFF_MS,
   EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
   EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
+  isRetryableDmgCreationFailure,
   LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+  MAX_COMMAND_FAILURE_EXCERPT_CHARS,
   outerAppDesignatedRequirement,
   parseMacosNotarizedArtifactsCli,
   parseReleaseDeadlineEpoch,
@@ -117,6 +122,134 @@ function fixture({
   };
 }
 
+function isSubmission(program, args, extension) {
+  return (
+    program === 'xcrun' &&
+    args[0] === 'notarytool' &&
+    args[1] === 'submit' &&
+    args.some((argument) => argument.endsWith(extension))
+  );
+}
+
+/**
+ * Records, for every scratch-root removal, how many notarization submissions
+ * were still in flight at the moment the release deleted the archives those
+ * submissions upload. `outstandingSubmissions` is what the cleanup contract
+ * turns on: a removal observed with a pending submission means a notarytool
+ * child outlived the file it was sending.
+ */
+function withSubmissionSettlementRecording(release, state) {
+  const baseRmSync = release.fs.rmSync;
+  state.startedSubmissions = 0;
+  state.settledSubmissions = 0;
+  state.removals = [];
+  release.fs.rmSync = (file, options) => {
+    state.removals.push({
+      file,
+      outstandingSubmissions:
+        state.startedSubmissions - state.settledSubmissions,
+    });
+    return baseRmSync(file, options);
+  };
+  return (promise) => {
+    state.startedSubmissions += 1;
+    const settle = () => {
+      state.settledSubmissions += 1;
+    };
+    promise.then(settle, settle);
+    return promise;
+  };
+}
+
+/**
+ * Withholds the application notarization receipt until the DMG submission has
+ * actually been invoked, so the two submissions can only both complete when
+ * they overlap. A release that waits for the application receipt before it
+ * creates and submits the DMG cannot reach that resolution; the bounded guard
+ * turns that into a named failure rather than a hang.
+ */
+function withOverlappedSubmissions(
+  release,
+  {
+    applicationReceipt,
+    dmgReceipt,
+    applicationSettlesLast = false,
+    dmgSettlesLast = false,
+  } = {},
+) {
+  const baseRun = release.run;
+  const state = { applicationSettled: false, dmgSettled: false };
+  const trackSubmission = withSubmissionSettlementRecording(release, state);
+  let observeDmgSubmission;
+  let guardTimer;
+  const dmgSubmissionStarted = new Promise((resolve) => {
+    observeDmgSubmission = resolve;
+  });
+  const guard = new Promise((_resolve, reject) => {
+    guardTimer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            'the DMG submission never started while the application submission was still waiting',
+          ),
+        ),
+      750,
+    );
+  });
+  release.run = (program, args, options) => {
+    if (isSubmission(program, args, '.zip')) {
+      const observed = baseRun(program, args, options);
+      const settleApplication = () => {
+        state.applicationSettled = true;
+        state.dmgPendingAtApplicationOutcome = !state.dmgSettled;
+        return applicationReceipt ?? observed;
+      };
+      return trackSubmission(
+        Promise.race([
+          dmgSubmissionStarted.then(() =>
+            applicationSettlesLast
+              ? // Keep the application submission genuinely in flight past
+                // the DMG outcome, so a removal that races it is visible.
+                new Promise((resolve) => {
+                  setTimeout(() => resolve(settleApplication()), 20);
+                })
+              : settleApplication(),
+          ),
+          guard,
+        ]),
+      );
+    }
+    if (isSubmission(program, args, '.dmg')) {
+      const observed = baseRun(program, args, options);
+      observeDmgSubmission();
+      state.applicationPendingAtDmgOutcome = !state.applicationSettled;
+      const receipt = dmgReceipt ?? observed;
+      if (!dmgSettlesLast) {
+        state.dmgSettled = true;
+        return trackSubmission(Promise.resolve(receipt));
+      }
+      // Keep the DMG submission genuinely in flight so an application outcome
+      // that arrives first is observed against a pending DMG submission.
+      return trackSubmission(
+        new Promise((resolve) => {
+          setTimeout(() => {
+            state.dmgSettled = true;
+            resolve(receipt);
+          }, 20);
+        }),
+      );
+    }
+    return baseRun(program, args, options);
+  };
+  return { release, state, stopGuard: () => clearTimeout(guardTimer) };
+}
+
+const invalidReceipt = {
+  status: 0,
+  stdout: JSON.stringify({ status: 'Invalid' }),
+  stderr: '',
+};
+
 async function rejectsBeforeSubmission({
   designatedRequirement,
   entitlementOutput,
@@ -192,6 +325,37 @@ test('uses a visible phase for each injected command and preserves the canonical
     ['-d', '--entitlements', '-', '--xml', '/app/Station.app'],
     expect.objectContaining({ phase: 'outer app entitlements' }),
   ]);
+  // Without `overlapNotarization` the notarization region is serial: the
+  // application is submitted, stapled, and admitted before the disk image is
+  // staged, so the image encloses an application carrying its own ticket.
+  const phases = calls.map(([_program, _args, options]) => options.phase);
+  expect(
+    phases.slice(phases.indexOf('application notarization archive')),
+  ).toEqual([
+    'application notarization archive',
+    'notarize notarization-input.zip',
+    'application stapling',
+    'application staple validation',
+    'application Gatekeeper assessment',
+    'DMG staging',
+    'DMG creation',
+    'DMG signing',
+    'DMG signature verification',
+    'DMG signing metadata',
+    'DMG designated requirement',
+    'notarize station-v1.2.3-macos-aarch64.dmg',
+    'DMG stapling',
+    'DMG staple validation',
+    'DMG Gatekeeper assessment',
+    'DMG mount',
+    'mounted app signature verification',
+    'mounted app bundle identity',
+    'mounted app Gatekeeper assessment',
+    'DMG detach',
+    'updater archive derivation',
+    'updater archive validation',
+    'updater signature derivation',
+  ]);
 });
 
 test('rejects missing, non-app, symlinked, newline, and escaping app paths before signing', async () => {
@@ -261,6 +425,9 @@ test('does not assess Gatekeeper until the accepted app has been stapled', async
       args[1] === 'submit' &&
       args.includes('/scratch/notarization-input.zip'),
   );
+  const dmgSubmit = calls.findIndex(([program, args]) =>
+    isSubmission(program, args, '.dmg'),
+  );
   const staple = calls.findIndex(
     ([program, args]) =>
       program === 'xcrun' &&
@@ -273,8 +440,174 @@ test('does not assess Gatekeeper until the accepted app has been stapled', async
       args.includes('execute') &&
       args.includes('/app/Station.app'),
   );
+  const dmgStaple = calls.findIndex(
+    ([program, args]) =>
+      program === 'xcrun' &&
+      args[1] === 'staple' &&
+      args.some((argument) => argument.endsWith('.dmg')),
+  );
+  expect(submit).toBeGreaterThanOrEqual(0);
+  // The default is serial: the application is stapled and assessed before the
+  // disk image it will be enclosed in is even submitted.
   expect(submit).toBeLessThan(staple);
   expect(staple).toBeLessThan(assess);
+  expect(assess).toBeLessThan(dmgSubmit);
+  expect(dmgSubmit).toBeLessThan(dmgStaple);
+});
+
+test('overlapped notarization submits the DMG before the application is stapled', async () => {
+  const { calls, embeddedMacos, fs, options, run } = fixture();
+  await createMacosNotarizedArtifacts(
+    { ...options, overlapNotarization: true },
+    { embeddedMacos, fs, run },
+  );
+  const phases = calls.map(([_program, _args, options_]) => options_.phase);
+  // The disk image is built and admitted while the application submission is
+  // still in flight, so its enclosed application is not yet stapled.
+  expect(
+    phases.slice(
+      phases.indexOf('application notarization archive'),
+      phases.indexOf('DMG stapling') + 1,
+    ),
+  ).toEqual([
+    'application notarization archive',
+    'notarize notarization-input.zip',
+    'DMG staging',
+    'DMG creation',
+    'DMG signing',
+    'DMG signature verification',
+    'DMG signing metadata',
+    'DMG designated requirement',
+    'notarize station-v1.2.3-macos-aarch64.dmg',
+    'application stapling',
+    'application staple validation',
+    'application Gatekeeper assessment',
+    'DMG stapling',
+  ]);
+});
+
+test('waits on both notarizations concurrently before stapling either artifact', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture());
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization: true },
+        release,
+      ),
+    ).resolves.toMatchObject({
+      dmg: '/assets/station-v1.2.3-macos-aarch64.dmg',
+    });
+  } finally {
+    stopGuard();
+  }
+  // The injected application submission only produced its receipt after the
+  // DMG submission had been invoked, so completing at all proves the waits
+  // overlapped rather than ran back to back.
+  expect(state.applicationPendingAtDmgOutcome).toBe(true);
+  const phase = (name) =>
+    release.calls.findIndex(
+      ([_program, _args, options]) => options.phase === name,
+    );
+  expect(phase('notarize notarization-input.zip')).toBeLessThan(
+    phase('DMG creation'),
+  );
+  expect(phase('DMG creation')).toBeLessThan(
+    phase('notarize station-v1.2.3-macos-aarch64.dmg'),
+  );
+  expect(phase('notarize station-v1.2.3-macos-aarch64.dmg')).toBeLessThan(
+    phase('application stapling'),
+  );
+});
+
+test('staples nothing when the DMG is rejected while the application submission is still waiting', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture(), {
+    dmgReceipt: invalidReceipt,
+    applicationSettlesLast: true,
+  });
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization: true },
+        release,
+      ),
+    ).rejects.toThrow('notarytool rejected station-v1.2.3-macos-aarch64.dmg.');
+  } finally {
+    stopGuard();
+  }
+  expect(state.applicationPendingAtDmgOutcome).toBe(true);
+  for (const name of ['application stapling', 'DMG stapling'])
+    expect(
+      release.calls.some(
+        ([_program, _args, options]) => options.phase === name,
+      ),
+    ).toBe(false);
+  expect(state.removals).toEqual([
+    { file: '/scratch', outstandingSubmissions: 0 },
+  ]);
+});
+
+test('staples nothing when the application is rejected while the DMG submission is still waiting', async () => {
+  const { release, state, stopGuard } = withOverlappedSubmissions(fixture(), {
+    applicationReceipt: invalidReceipt,
+    dmgSettlesLast: true,
+  });
+  try {
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization: true },
+        release,
+      ),
+    ).rejects.toThrow('notarytool rejected notarization-input.zip.');
+  } finally {
+    stopGuard();
+  }
+  expect(state.dmgPendingAtApplicationOutcome).toBe(true);
+  for (const name of ['application stapling', 'DMG stapling'])
+    expect(
+      release.calls.some(
+        ([_program, _args, options]) => options.phase === name,
+      ),
+    ).toBe(false);
+  expect(state.removals).toEqual([
+    { file: '/scratch', outstandingSubmissions: 0 },
+  ]);
+});
+
+test('removes the scratch root only after a mid-flight failure has settled the application submission', async () => {
+  // The two rejection tests above reach cleanup through the join, which has
+  // already settled both submissions. Only a failure raised BETWEEN starting
+  // the application submission and that join leaves a notarytool child
+  // uploading an archive cleanup is about to delete, so this is where the
+  // `finally` settle has power.
+  const release = fixture();
+  const state = {};
+  const trackSubmission = withSubmissionSettlementRecording(release, state);
+  const baseRun = release.run;
+  release.run = (program, args, options) => {
+    if (isSubmission(program, args, '.zip')) {
+      const observed = baseRun(program, args, options);
+      return trackSubmission(
+        new Promise((resolve) => {
+          setTimeout(() => resolve(observed), 30);
+        }),
+      );
+    }
+    if (program === 'hdiutil' && args[0] === 'create') {
+      baseRun(program, args, options);
+      throw new Error('hdiutil create failed');
+    }
+    return baseRun(program, args, options);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(
+      { ...release.options, overlapNotarization: true },
+      release,
+    ),
+  ).rejects.toThrow('hdiutil create failed');
+  expect(state.startedSubmissions).toBe(1);
+  expect(state.removals).toEqual([
+    { file: '/scratch', outstandingSubmissions: 0 },
+  ]);
 });
 
 test('DMG-only mode revalidates a notarized app but never signs, archives, submits, or staples it', async () => {
@@ -425,6 +758,33 @@ test('parses the DMG-only CLI flag as a bare opt-in and rejects a value for it',
     expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
       /unique --name value/,
     );
+  // Overlapping the notarization waits is the same shape of bare opt-in, and
+  // absent it the release keeps the serial staple-then-package order.
+  expect(
+    parseMacosNotarizedArtifactsCli([...args, '--overlap-notarization']),
+  ).toMatchObject({ overlapNotarization: true });
+  expect(parseMacosNotarizedArtifactsCli(args)).toMatchObject({
+    overlapNotarization: undefined,
+  });
+  for (const invalid of [
+    [...args, '--overlap-notarization', 'true'],
+    [...args, '--overlap-notarization', '--overlap-notarization'],
+    [...args, '--overlap-notarisation'],
+  ])
+    expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
+      /unique --name value/,
+    );
+});
+
+test('refuses an overlapped-notarization option that is not an explicit opt-in', async () => {
+  const release = fixture();
+  for (const overlapNotarization of [false, 'true', 1, null])
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, overlapNotarization },
+        release,
+      ),
+    ).rejects.toThrow('Overlapped notarization must be explicitly enabled.');
 });
 
 test('refuses a DMG whose signed authority or designated requirement is not Kontour before notarization', async () => {
@@ -449,7 +809,8 @@ test('refuses a DMG whose signed authority or designated requirement is not Kont
           return {
             status: 0,
             stdout: '',
-            stderr: 'designated => identifier "station.dmg" and cdhash H"deadbeef"',
+            stderr:
+              'designated => identifier "station.dmg" and cdhash H"deadbeef"',
           };
         return baseRun(program, args, options);
       };
@@ -989,5 +1350,251 @@ test('keeps notary rejection terminal and fail-closed', () => {
   ).toThrow('notarytool rejected Station.app.zip.');
   expect(() => assertAcceptedNotaryReceipt('{', '/tmp/Station.dmg')).toThrow(
     'notarytool did not return JSON.',
+  );
+});
+
+const dmgPath = '/assets/station-v1.2.3-macos-aarch64.dmg';
+
+/**
+ * Replaces the fixture's `hdiutil create` outcome for the first `failures`
+ * attempts with `failure` (a ReleaseCommandError by default, the only shape
+ * the release classifies as a transient hdiutil exit) and counts attempts.
+ */
+function withFailingDmgCreation(release, { failures, failure } = {}) {
+  const baseRun = release.run;
+  const state = { attempts: 0, sleeps: [] };
+  release.run = (program, args, options) => {
+    if (program === 'hdiutil' && args[0] === 'create') {
+      state.attempts += 1;
+      if (state.attempts <= failures) {
+        baseRun(program, args, options);
+        throw (
+          failure ??
+          new ReleaseCommandError({
+            phase: options.phase,
+            program,
+            status: 1,
+            stdout: '',
+            stderr: 'hdiutil: create failed - Resource busy\n',
+          })
+        );
+      }
+    }
+    return baseRun(program, args, options);
+  };
+  release.sleep = (ms) => {
+    state.sleeps.push(ms);
+  };
+  return state;
+}
+
+test('retries a nonzero hdiutil DMG creation exit with bounded backoff and discards the partial image', async () => {
+  const release = fixture();
+  const releaseLogger = logger();
+  const state = withFailingDmgCreation(release, { failures: 2 });
+  await expect(
+    createMacosNotarizedArtifacts(release.options, {
+      ...release,
+      logger: releaseLogger,
+    }),
+  ).resolves.toMatchObject({ dmg: dmgPath });
+  expect(DMG_CREATION_MAX_ATTEMPTS).toBe(3);
+  expect(DMG_CREATION_RETRY_BACKOFF_MS).toEqual([5_000, 15_000]);
+  expect(state.attempts).toBe(3);
+  expect(state.sleeps).toEqual([5_000, 15_000]);
+  expect(release.removed).toEqual([dmgPath, dmgPath, '/scratch']);
+  const retryLines = releaseLogger.entries.filter((entry) =>
+    entry.includes('hdiutil attempt'),
+  );
+  expect(retryLines).toEqual([
+    '[macOS release] DMG creation: hdiutil attempt 1/3 failed; retrying in 5s.',
+    '[macOS release] DMG creation: hdiutil attempt 2/3 failed; retrying in 15s.',
+  ]);
+  // Only the creation phase repeats; every other phase still runs once.
+  const phases = release.calls.map(
+    ([_program, _args, options]) => options.phase,
+  );
+  expect(phases.filter((phase) => phase === 'DMG creation')).toHaveLength(3);
+  for (const phase of ['DMG staging', 'DMG signing', 'DMG mount'])
+    expect(phases.filter((candidate) => candidate === phase)).toHaveLength(1);
+});
+
+test('surfaces the phase and a stderr excerpt when hdiutil fails on its final attempt', async () => {
+  const release = fixture();
+  const releaseLogger = logger();
+  const state = withFailingDmgCreation(release, { failures: 3 });
+  await expect(
+    createMacosNotarizedArtifacts(release.options, {
+      ...release,
+      logger: releaseLogger,
+    }),
+  ).rejects.toThrow(
+    'hdiutil failed during DMG creation (exit status 1): hdiutil: create failed - Resource busy',
+  );
+  expect(state.attempts).toBe(3);
+  expect(state.sleeps).toEqual([5_000, 15_000]);
+  expect(release.removed).toEqual([dmgPath, dmgPath, dmgPath, '/scratch']);
+  expect(
+    releaseLogger.entries.filter((entry) => entry.includes('hdiutil attempt')),
+  ).toHaveLength(2);
+  expect(
+    release.calls.some(([_program, _args, options]) =>
+      options.phase.startsWith('DMG signing'),
+    ),
+  ).toBe(false);
+});
+
+test('never retries a timed-out, overflowed, or unclassified DMG creation failure', async () => {
+  const cases = [
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      timedOut: true,
+      stderr: '',
+    }),
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      status: 1,
+      outputTruncated: true,
+      stderr: 'x'.repeat(16),
+    }),
+    new Error('hdiutil create failed'),
+  ];
+  for (const failure of cases) {
+    const release = fixture();
+    const state = withFailingDmgCreation(release, { failures: 3, failure });
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toBe(failure);
+    expect(state.attempts).toBe(1);
+    expect(state.sleeps).toEqual([]);
+    expect(isRetryableDmgCreationFailure(failure)).toBe(false);
+  }
+  // The classifier is scoped to the creation phase: an hdiutil attach or
+  // detach exit is not retried through it.
+  expect(
+    isRetryableDmgCreationFailure(
+      new ReleaseCommandError({
+        phase: 'DMG mount',
+        program: 'hdiutil',
+        status: 1,
+      }),
+    ),
+  ).toBe(false);
+  expect(
+    isRetryableDmgCreationFailure(
+      new ReleaseCommandError({
+        phase: 'DMG creation',
+        program: 'hdiutil',
+        status: 1,
+      }),
+    ),
+  ).toBe(true);
+});
+
+test('creates the DMG with exactly one hdiutil invocation and no backoff on the happy path', async () => {
+  const release = fixture();
+  const state = withFailingDmgCreation(release, { failures: 0 });
+  release.sleep = () => {
+    throw new Error('the happy path must not sleep');
+  };
+  await expect(
+    createMacosNotarizedArtifacts(release.options, release),
+  ).resolves.toMatchObject({ dmg: dmgPath });
+  expect(state.attempts).toBe(1);
+  expect(release.removed).toEqual(['/scratch']);
+});
+
+test('rethrows the hdiutil failure instead of sleeping when the release deadline leaves no room to retry', async () => {
+  const release = fixture();
+  const releaseLogger = logger();
+  const state = withFailingDmgCreation(release, { failures: 3 });
+  const start = 1_700_000_000_000;
+  let clock = start;
+  const baseRun = release.run;
+  release.run = (program, args, options) => {
+    // The first backoff is 5s and cleanup grace is 10s: 14s remaining admits
+    // this attempt (more than grace) but cannot fund backoff plus grace.
+    if (program === 'ditto' && options.phase === 'DMG staging')
+      clock = start + 60_000 - 14_000;
+    return baseRun(program, args, options);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(release.options, {
+      ...release,
+      deadlineMs: 60_000,
+      logger: releaseLogger,
+      now: () => clock,
+    }),
+  ).rejects.toThrow('hdiutil failed during DMG creation (exit status 1)');
+  expect(state.attempts).toBe(1);
+  expect(state.sleeps).toEqual([]);
+  expect(release.removed).toEqual([dmgPath, '/scratch']);
+  expect(releaseLogger.entries).toContain(
+    '[macOS release] DMG creation: hdiutil attempt 1/3 failed; the release deadline leaves no room to retry.',
+  );
+});
+
+test('bounds, collapses, and redacts the diagnostic excerpt on every terminal command failure', async () => {
+  expect(
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      status: 1,
+      stdout: '',
+      stderr: '  hdiutil: create failed -\n\t Resource busy \r\n',
+    }).message,
+  ).toBe(
+    'hdiutil failed during DMG creation (exit status 1): hdiutil: create failed - Resource busy',
+  );
+  expect(
+    new ReleaseCommandError({ phase: 'DMG creation', program: 'hdiutil' })
+      .message,
+  ).toBe('hdiutil failed during DMG creation.');
+  expect(
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      timedOut: true,
+      signal: 'SIGTERM',
+      stderr: 'still attaching',
+    }).message,
+  ).toBe('hdiutil timed out during DMG creation (SIGTERM): still attaching');
+  expect(
+    new ReleaseCommandError({
+      phase: 'default output cap',
+      program: 'node',
+      status: 0,
+      outputTruncated: true,
+      stdout: 'x'.repeat(64),
+    }).message,
+  ).toBe(
+    `node failed during default output cap (output exceeded the capture limit): ${'x'.repeat(64)}`,
+  );
+  const long = `${'a'.repeat(400)} tail-marker`;
+  const bounded = commandFailureExcerpt(long, '');
+  expect(bounded.length).toBe(MAX_COMMAND_FAILURE_EXCERPT_CHARS + 1);
+  expect(bounded.startsWith('…')).toBe(true);
+  expect(bounded.endsWith(' tail-marker')).toBe(true);
+  expect(commandFailureExcerpt('', 'stdout only')).toBe('stdout only');
+  expect(commandFailureExcerpt(undefined, undefined)).toBe('');
+  const token = `ghp_${'A'.repeat(36)}`;
+  const redacted = commandFailureExcerpt(`auth failed for ${token}`, '');
+  expect(redacted).not.toContain(token);
+  expect(redacted).toContain('[REDACTED]');
+  expect(/^[^\n\r]*$/.test(bounded)).toBe(true);
+  // A real child's terminal failure carries the excerpt through the runner.
+  await expect(
+    runBoundedCommand(
+      process.execPath,
+      [
+        '-e',
+        "process.stderr.write('first line\\nsecond line\\n'); process.exit(3);",
+      ],
+      { phase: 'excerpt fixture', logger: logger() },
+    ),
+  ).rejects.toThrow(
+    'failed during excerpt fixture (exit status 3): first line second line',
   );
 });

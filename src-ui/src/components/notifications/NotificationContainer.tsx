@@ -12,7 +12,7 @@ import {
   useState,
 } from 'react';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useNotificationHistory, useToast } from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import './NotificationContainer.css';
@@ -90,6 +90,9 @@ function ToastCard({
     <article
       className={[
         'toast-card',
+        ['success', 'warning', 'error'].includes(notification.type ?? '')
+          ? `toast-card--${notification.type}`
+          : '',
         isApproval ? 'toast-card--approval' : '',
         isPairing ? 'toast-card--pairing' : '',
         clickable ? 'toast-card--clickable' : '',
@@ -128,6 +131,18 @@ function ToastCard({
             </time>
           </div>
           <div className="toast-card__message">{notification.message}</div>
+          {/*
+            #1545: which command, or which file, the call will touch — so the
+            operator is deciding about that rather than about the word "Bash".
+            Already bounded, single-line and redacted by `toolRequestPreview`
+            — render it as text, never re-truncate or re-format it here, and
+            never present it as the complete tool input.
+          */}
+          {notification.toolPreview ? (
+            <div className="toast-card__detail toast-card__detail--tool">
+              {notification.toolPreview}
+            </div>
+          ) : null}
           {notification.metadata?.detail ? (
             <div className="toast-card__detail">
               {String(notification.metadata.detail)}
@@ -240,7 +255,7 @@ export function NotificationContainer() {
   const history = useNotificationHistory();
   const { dismissToast } = useToast();
   const activeChats = useAllActiveChats();
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);

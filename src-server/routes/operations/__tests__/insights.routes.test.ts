@@ -110,6 +110,27 @@ describe('Insights Routes', () => {
       toolCallId: 'tool-3',
       result: { arbitrary: 'output' },
     });
+    // station#1558: an explicitly reported non-outcome — the session ended
+    // with the call still open. Neither an error nor a silent non-report.
+    emitter.emitToolCall({
+      slug: 'default',
+      conversationId: 'conversation-1',
+      userId: 'user-1',
+      traceId: 'trace-1',
+      toolName: 'open_tool',
+      toolCallId: 'tool-4',
+    });
+    emitter.emitToolResult({
+      slug: 'default',
+      conversationId: 'conversation-1',
+      userId: 'user-1',
+      traceId: 'trace-1',
+      toolName: 'open_tool',
+      toolCallId: 'tool-4',
+      result:
+        'No result was reported before the session ended; whether the tool ran is unknown.',
+      outcome: 'unresolved',
+    });
     emitter.emitAgentComplete({
       slug: 'default',
       conversationId: 'conversation-1',
@@ -129,7 +150,7 @@ describe('Insights Routes', () => {
     const app = createInsightsRoutes(dir);
     const body = await json(await app.request('/?days=1'));
     expect(body.data.totalChats).toBe(1);
-    expect(body.data.totalToolCalls).toBe(3);
+    expect(body.data.totalToolCalls).toBe(4);
     expect(body.data.agentUsage.default.chats).toBe(1);
     expect(body.data.modelUsage['claude-3']).toBe(1);
     expect(body.data.totalErrors).toBe(1);
@@ -139,17 +160,24 @@ describe('Insights Routes', () => {
     // `legacy_tool` is exactly that case — it has an END span with no
     // outcome — so the number is load-bearing here, not decoration.
     expect(body.data.toolUsage).toEqual({
-      read_file: { calls: 1, errors: 1, outcomeUnknown: 0 },
-      write_file: { calls: 1, errors: 0, outcomeUnknown: 0 },
-      legacy_tool: { calls: 1, errors: 0, outcomeUnknown: 1 },
+      read_file: { calls: 1, errors: 1, outcomeUnknown: 0, unresolved: 0 },
+      write_file: { calls: 1, errors: 0, outcomeUnknown: 0, unresolved: 0 },
+      legacy_tool: { calls: 1, errors: 0, outcomeUnknown: 1, unresolved: 0 },
+      // station#1558: counted in neither `errors` nor `outcomeUnknown`.
+      open_tool: { calls: 1, errors: 0, outcomeUnknown: 0, unresolved: 1 },
     });
     expect(body.data.totalOutcomeUnknown).toBe(1);
+    expect(body.data.totalUnresolved).toBe(1);
+    // The error rate must not move because a session ended mid-tool.
+    expect(body.data.totalErrors).toBe(1);
     expect(
       body.data.hourlyActivity.reduce(
         (sum: number, value: number) => sum + value,
         0,
       ),
-    ).toBe(8);
+      // 8 before station#1558 added a fourth tool call (its own start and
+      // end spans are both activity).
+    ).toBe(10);
   });
 
   test('counts each no-session terminal span while retaining real-trace deduplication', async () => {

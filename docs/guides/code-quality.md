@@ -12,7 +12,7 @@ npm run dependencies:install  # refresh an existing developer checkout
 ```
 
 Both commands install with npm lifecycle scripts disabled, then run only the
-reviewed lifecycle allowlist, Station's explicit patch step, and Git-hook
+reviewed lifecycle allowlist, pnpm's explicit patch configuration, and Git-hook
 setup. To repair hook setup alone:
 
 ```bash
@@ -23,16 +23,19 @@ npm run hooks:install    # git config core.hooksPath .githooks
 change surface feeds, using the hook's own scope deciders — ask it before
 writing to know what a change will owe.
 
-The pre-push hook runs six checks, in this order (the hook file,
+The pre-push hook runs nine checks, in this order (the hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts):
 
 | Check | Cost | Refuses |
 | --- | --- | --- |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
+| `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
 | `node scripts/check-prepush-ui-bundle.mjs` | ~9s, and only when the push changes a UI build input | a tree over the entry-bundle ceiling |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
+| `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. It cannot be path-scoped — its rules read repository state and run repository-wide commands rather than a diff — and it runs after the governance proof because it re-executes it. It is not redundant with that proof: the proof evaluates three of the nine repo-standards rules, readiness evaluates all nine plus the protected-standards attestation |
+| `node scripts/check-prepush-typecheck.mjs` | ~50-90s (51s wall measured end to end, preconditions included; station#4273 recorded 82s for the aggregate alone), and only when the push changes a `.ts`/`.tsx`/`.mts`/`.cts` source, any `tsconfig`, a manifest, or a patch | any of the thirteen `typecheck:*` lanes. `ci:fast` already runs the same aggregate pre-merge, so this moves the finding to the author rather than a CI cycle later |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
 The transfer check has a finite capture **liveness timeout**, which only bounds
@@ -105,8 +108,8 @@ server or desktop app is serving.
 
 There is deliberately no per-check escape hatch for either. Both are
 properties of your own tree that you can fix in seconds, and a bypass would
-reproduce exactly the unowned-raise loop #3033 exists to close. `git push
---no-verify` remains for a genuine emergency.
+reproduce exactly the unowned-raise loop #3033 exists to close. Diagnose and
+fix the failing gate; do not bypass the pre-push hooks.
 
 ### Composition freshness belongs to the merge queue
 
@@ -119,19 +122,41 @@ identity while `main` keeps moving; the server-side queue, not repeated local
 merges and test runs, owns composition freshness.
 
 
-## Local CI Pipeline
+## Code-health prevention
 
-Run these in order before pushing — they mirror CI:
+`ci:fast` runs [the code-health gate](../../scripts/code-health-gate.mjs) against
+its explicit upstream base. Run it directly while implementing:
 
 ```bash
-cd packages/sdk && npm run build && cd ../connect && npm run build && cd ../..
-npx tsc --noEmit --skipLibCheck    # zero errors
-npm run lint                        # zero biome warnings
-npm run build:server && npm run build:ui
-npm test -- --run                   # all tests pass
+node scripts/code-health-gate.mjs --base=origin/main
 ```
 
-> `packages/shared` has no build step — it's consumed directly as TypeScript source by the server and other packages.
+The installed analyzer compares new findings with inherited findings. Newly
+introduced unused exports and types block delivery; resolve their actual caller
+or entrypoint/public-API contract before changing code or configuration. Class
+members, dependencies, complexity, and clone candidates remain advisory because
+their correctness depends on external interfaces, runtime loading, or design
+intent. A high score based on estimated coverage does not establish a test gap.
+
+Review new advisory findings in each PR and record a fix or an evidence-backed
+reason to retain them. Do not extract pass-through wrappers to reduce a score.
+The gate reads all three analyzer baselines from the immutable upstream commit,
+so candidate rebaselining cannot hide its new findings. Missing or incomplete
+analysis fails the gate. Required CI logs the result, writes a job summary, and
+retains the full report in its fast-feedback artifact under `.kontourai/code-health/`.
+Configured public APIs and entrypoints remain explicit analysis limits.
+
+Track confirmed defects separately from advisory review, and distinguish new
+findings from fixes and inherited debt. Freeze each repair batch for validation
+and landing; later discoveries belong to a subsequent batch. These gates reduce
+specific regressions; they cannot guarantee that new code has no defects.
+
+## Local CI pipeline
+
+Use `npm run gate:for -- <paths>` before editing, run its focused checks, then
+`npm run ci:fast` before pushing. The pre-push hook enforces its scoped gates;
+the merge queue verifies the latest-main composition. The [testing guide](testing.md)
+owns the full schedule and promotion-completion requirements.
 
 ## Biome Lint
 

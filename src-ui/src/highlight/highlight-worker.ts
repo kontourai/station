@@ -9,22 +9,27 @@
  * Loaded only from the async `highlight-client.ts` chunk — never from the
  * entry bundle.
  */
-import { createHighlighter, type Highlighter } from 'shiki';
-import { PRELOAD_LANGS, THEME } from './shared';
+import {
+  createChatHighlighter,
+  type HighlighterCore,
+  loadHighlighterLanguage,
+} from './core-highlighter';
+import {
+  IncrementalHighlightStore,
+  sessionTokenizerFor,
+} from './incremental-session';
+import { THEME } from './shared';
 
 type HighlightRequest = { id: number; code: string; lang: string };
 type HighlightResponse = { id: number; html?: string; error?: string };
 
-let highlighter: Highlighter | null = null;
-let initPromise: Promise<Highlighter> | null = null;
+let highlighter: HighlighterCore | null = null;
+let initPromise: Promise<HighlighterCore> | null = null;
 
-async function ensureHighlighter(): Promise<Highlighter> {
+async function ensureHighlighter(): Promise<HighlighterCore> {
   if (highlighter) return highlighter;
   if (!initPromise) {
-    initPromise = createHighlighter({
-      themes: [THEME],
-      langs: [...PRELOAD_LANGS],
-    }).then((h) => {
+    initPromise = createChatHighlighter().then((h) => {
       highlighter = h;
       return h;
     });
@@ -37,19 +42,25 @@ const ctx = self as unknown as {
   postMessage(message: HighlightResponse): void;
 };
 
+/**
+ * #2093 — resume store shared by every request this worker serves. Matching
+ * is transparent (longest reusable `\n`-terminated prefix), so the message
+ * protocol is unchanged: growing streamed blocks resume, everything else
+ * takes the full path exactly as before. Bounded — one worker serves a page
+ * of chat, not an archive.
+ */
+const sessions = new IncrementalHighlightStore(16);
+
 ctx.addEventListener('message', async (e: MessageEvent) => {
   const { id, code, lang } = e.data as HighlightRequest;
   try {
     const h = await ensureHighlighter();
-    let resolved = lang;
-    if (!h.getLoadedLanguages().includes(resolved)) {
-      try {
-        await h.loadLanguage(resolved as never);
-      } catch {
-        resolved = 'text';
-      }
-    }
-    const html = h.codeToHtml(code, { lang: resolved, theme: THEME });
+    const resolved = (await loadHighlighterLanguage(h, lang)) ? lang : 'text';
+    const html = sessions.highlight(
+      sessionTokenizerFor(h, THEME),
+      code,
+      resolved,
+    );
     ctx.postMessage({ id, html });
   } catch (err) {
     ctx.postMessage({ id, error: String(err) });

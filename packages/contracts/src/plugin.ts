@@ -1,18 +1,15 @@
-import {
-  STATION_AGENT_PLUGIN_EXTENSION_ID,
-  type StationAgentPluginExtensionV1,
-} from './agent-plugin.js';
+import type { PluginCommandContribution } from './agent-plugin.js';
 import type { KnowledgeNamespaceConfig } from './knowledge.js';
 import type {
   OperationalEventProjection,
   OperationalEventScope,
 } from './operational-event.js';
 import type { WorkspacePaneDescriptor } from './workspace-pane.js';
+import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
 /**
- * Canonical persisted plugin identity. Plugin directories and registry aliases
- * use this exact path-safe lowercase identifier rather than accepting a second
- * broader spelling at their storage boundary.
+ * Canonical logical plugin identity. Local adapters derive safe physical keys;
+ * filesystem spellings never create a second logical identifier grammar.
  */
 export const CANONICAL_PLUGIN_ID_PATTERN =
   /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
@@ -23,6 +20,42 @@ export function isCanonicalPluginId(value: unknown): value is string {
 
 /** Plugin permission consent tier. */
 export type PermissionTier = 'passive' | 'active' | 'trusted';
+
+export interface PluginPermissionPrompt {
+  permission: string;
+  tier: PermissionTier;
+}
+
+/** Current installed permission truth. Missing dependency status is unknown, not approved. */
+export interface PluginInstallPermissionStatus {
+  autoGranted: string[];
+  consentGranted?: string[];
+  pendingConsent: PluginPermissionPrompt[];
+  withdrawn?: string[];
+  /** Optional for compatibility with servers predating dependency status. */
+  dependencies?: Array<{
+    id: string;
+    pendingConsent: PluginPermissionPrompt[];
+  }>;
+}
+
+/** Direct and registry plugin-install outcome; older servers may omit status fields. */
+export interface PluginInstallResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  plugin?: {
+    name: string;
+    displayName?: string;
+    version: string;
+    hasBundle: boolean;
+    agents: Array<{ slug: string }>;
+  };
+  layout?: { slug: string };
+  tools?: Array<{ id: string; status: string }>;
+  dependencies?: Array<{ id: string; status: string; error?: string }>;
+  permissions?: PluginInstallPermissionStatus;
+}
 
 /**
  * The tier of each built-in plugin permission.
@@ -88,6 +121,8 @@ export interface PluginProviderEntry {
 export interface PluginDependency {
   id: string;
   source?: string;
+  /** Exact opaque version, or '*' for any declared version. */
+  version?: string;
 }
 
 export interface PluginSettingField {
@@ -99,60 +134,6 @@ export interface PluginSettingField {
   options?: Array<{ label: string; value: string }>;
   secret?: boolean;
   required?: boolean;
-}
-
-export const PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION =
-  'station.plugin-command-execution/v1' as const;
-/** Shared availability/request limit; it does not reject legacy non-command plugins. */
-export const PLUGIN_COMMAND_VERSION_MAX_LENGTH = 256;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: This wire-format predicate explicitly excludes C0 and DEL controls.
-export const PLUGIN_COMMAND_VERSION_PATTERN = /^[^\u0000-\u001f\u007f]+$/;
-
-export type PluginCommandResolvedTarget =
-  | { kind: 'surface'; surfaceId: string }
-  | { kind: 'composer'; sessionId: string };
-
-/** Client-visible host facts bound into admission and rechecked before effect. */
-export interface PluginCommandResolvedContext {
-  activeChatSessionId?: string;
-  projectSlug?: string;
-  sessionId?: string;
-  taskId?: string;
-}
-
-/** Browser intent admitted by the host before a local palette effect. */
-export interface PluginCommandExecutionRequest {
-  schemaVersion: typeof PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION;
-  requestId: string;
-  pluginId: string;
-  pluginVersion: string;
-  commandGeneration: string;
-  commandId: string;
-  target: PluginCommandResolvedTarget;
-  context: PluginCommandResolvedContext;
-}
-
-/** Durable operational-event receipt. No command input or composer text. */
-export interface PluginCommandExecutionReceipt {
-  schemaVersion: typeof PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION;
-  receiptId: string;
-  requestId: string;
-  pluginId: string;
-  pluginVersion: string;
-  commandGeneration: string;
-  commandId: string;
-  target: PluginCommandResolvedTarget;
-  actor: import('./client-origin.js').ClientOriginActor;
-  reportedSurface: import('./client-origin.js').ClientOriginSurface;
-  decision: 'authorized';
-  outcome: 'admitted';
-  recordedAt: string;
-}
-
-/** Other Agent Plugins extension namespaces remain opaque to Station. */
-export interface PluginExtensions {
-  [STATION_AGENT_PLUGIN_EXTENSION_ID]?: StationAgentPluginExtensionV1;
-  [namespace: string]: unknown;
 }
 
 export type PluginOperationalEventProjection = 'metadata' | 'envelope';
@@ -246,6 +227,7 @@ export interface PluginManifest {
   serverModule?: string;
   build?: string;
   capabilities?: string[];
+  commands?: PluginCommandContribution[];
   permissions?: string[];
   links?: unknown;
   agents?: Array<{ slug: string; source: string }>;
@@ -253,6 +235,8 @@ export interface PluginManifest {
   layouts?: Array<{ slug: string; source: string }>;
   /** Versioned, inert Pane declarations parsed before any renderer can load. */
   workspacePanes?: WorkspacePaneDescriptor[];
+  /** Inert package-level actions/Agent selection; admission is server-owned. */
+  workspacePaneHost?: WorkspacePaneHostContributionV1;
   /** Versioned declarations whose execution remains host-authorized. */
   operationalEventSubscriptions?: PluginOperationalEventSubscriptionEntry[];
   providers?: PluginProviderEntry[];
@@ -263,8 +247,6 @@ export interface PluginManifest {
   prompts?: { source: string };
   skills?: string[];
   settings?: PluginSettingField[];
-  /** Agent Plugins host overlays. Station reads only its reserved namespace. */
-  extensions?: PluginExtensions;
 }
 
 export type PluginManifestRejectionCode =
@@ -305,13 +287,13 @@ export interface PluginOverrideConfig {
 export type PluginOverrides = Record<string, PluginOverrideConfig>;
 
 export interface ConflictInfo {
-  type: 'agent' | 'command' | 'workspace' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   existingSource?: string;
 }
 
 export interface PluginComponent {
-  type: 'agent' | 'command' | 'workspace' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   detail?: string;
   conflict?: ConflictInfo;
@@ -326,3 +308,20 @@ export interface PluginPreview {
   components: PluginComponent[];
   conflicts: ConflictInfo[];
 }
+/** Opaque installation authority observation, distinct from package bytes. */
+export interface PluginInstallationRevision {
+  readonly scope: string;
+  readonly installation: string;
+  readonly generation: string;
+  readonly artifact: { readonly digest: string };
+  readonly materialization: string;
+  readonly dataScope: string;
+  /** Acquisition-owner scoped continuity token; not authenticated publisher identity. */
+  readonly origin?: string;
+}
+
+/** Server-observed runtime readiness, independent of install/consent completion. */
+export type PluginInstallationReadiness =
+  | { readonly state: 'ready' }
+  | { readonly state: 'pending'; readonly recovery: 'review' }
+  | { readonly state: 'unavailable' };

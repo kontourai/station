@@ -13,7 +13,8 @@
  * pin the fix: a failed fetch tears the just-created tab back down
  * (`removeChat`) and resolves `null` so `useChatDockActions`' `openConversation`
  * reports failure to the row-open policy, which then falls back to
- * `onOpenSession`/`/activity` instead of leaving an orphaned empty tab.
+ * `onOpenSession` (which reveals the Activity surface) instead of leaving an
+ * orphaned empty tab.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
@@ -49,6 +50,7 @@ vi.mock('../contexts/active-chats-store', () => ({
   },
 }));
 
+import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import {
   useCreateChatSession,
   useOpenConversation,
@@ -221,6 +223,9 @@ describe('useOpenConversation fetch-failure handling', () => {
     );
 
     expect(sessionId).toBe('thread-managed');
+    expect(conversationOpenPhase(mocks.initChat.mock.calls.at(-1)![1])).toBe(
+      'resolving',
+    );
     expect(mocks.fetchMessages).not.toHaveBeenCalled();
     expect(mocks.initChat).toHaveBeenCalledWith(
       'thread-managed',
@@ -249,7 +254,14 @@ describe('useOpenConversation fetch-failure handling', () => {
       'Claude Code',
       undefined,
       undefined,
-      { provider: 'claude', executionMode: 'external', providerOptions: {} },
+      {
+        provider: 'claude',
+        executionMode: 'external',
+        providerOptions: {},
+        requestedModel: 'chosen-model',
+        requestedModelSource: 'session override',
+        requestedProviderOptions: { effort: 'high' },
+      },
       undefined,
       true,
     );
@@ -270,7 +282,12 @@ describe('useOpenConversation fetch-failure handling', () => {
     );
     expect(mocks.initChat).toHaveBeenCalledWith(
       'fork-child',
-      expect.objectContaining({ orchestrationSessionStarted: false }),
+      expect.objectContaining({
+        orchestrationSessionStarted: false,
+        requestedModel: 'chosen-model',
+        requestedModelSource: 'session override',
+        requestedProviderOptions: { effort: 'high' },
+      }),
     );
   });
 });

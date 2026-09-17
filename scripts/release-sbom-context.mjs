@@ -5,7 +5,9 @@ import { join, resolve } from 'node:path';
 import {
   allowlistDigest,
   expectedLifecyclePurls,
+  npmPurl,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { readPnpmDependencyGraph } from './lib/pnpm-dependency-graph.mjs';
 import { releaseVariants } from './lib/release-artifacts.mjs';
 import { canonicalJson } from './lib/release-sboms.mjs';
 
@@ -23,10 +25,30 @@ function option(name) {
 }
 
 function platformMatches(packageMeta, platform, arch) {
-  return (
-    (!packageMeta.os?.length || packageMeta.os.includes(platform)) &&
-    (!packageMeta.cpu?.length || packageMeta.cpu.includes(arch))
-  );
+  const matches = (values, value) =>
+    !values?.length ||
+    (!values.includes(`!${value}`) &&
+      (!values.some((entry) => !entry.startsWith('!')) ||
+        values.includes(value)));
+  return matches(packageMeta.os, platform) && matches(packageMeta.cpu, arch);
+}
+
+function graphPurls(graph, platform, arch, productionOnly) {
+  const selected = new Set();
+  const purls = new Set();
+  const visit = (id) => {
+    if (selected.has(id)) return;
+    const node = graph.nodes.get(id);
+    if (!node) throw new Error(`Missing release dependency: ${id}`);
+    if (!node.importer && !platformMatches(node.meta, platform, arch)) return;
+    selected.add(id);
+    if (!node.importer) purls.add(npmPurl(node.name, node.version));
+    for (const child of graph.dependencies(node, productionOnly)) visit(child);
+  };
+  // The container copies the unpruned workspace installation, not just root
+  // production dependencies. Every importer contributes its installed graph.
+  for (const node of graph.nodes.values()) if (node.importer) visit(node.id);
+  return purls;
 }
 
 function packagePath(lock, parent, name) {
@@ -87,12 +109,16 @@ function lifecyclePurls(allowlist, selected) {
   return purls;
 }
 
+/** @param {{ allowlist: any, rootLock?: any, graph?: ReturnType<typeof readPnpmDependencyGraph>, platform?: string, arch?: string }} options */
 export function productionLifecyclePurls({
   allowlist,
-  rootLock,
+  rootLock = undefined,
+  graph = undefined,
   platform = RELEASE_PLATFORM,
   arch = RELEASE_ARCH,
 }) {
+  if (graph)
+    return lifecyclePurls(allowlist, graphPurls(graph, platform, arch, true));
   const reachable = productionPackagePaths(rootLock, platform, arch);
   return lifecyclePurls(
     allowlist,
@@ -104,7 +130,21 @@ export function productionLifecyclePurls({
   );
 }
 
-export function containerLifecyclePurls({ allowlist, rootLock }) {
+/** @param {{ allowlist: any, rootLock?: any, graph?: ReturnType<typeof readPnpmDependencyGraph>, platform?: string, arch?: string }} options */
+export function containerLifecyclePurls({
+  allowlist,
+  rootLock = undefined,
+  graph = undefined,
+}) {
+  if (graph)
+    return lifecyclePurls(
+      allowlist,
+      new Set(
+        CONTAINER_PLATFORMS.flatMap(([platform, arch]) => [
+          ...graphPurls(graph, platform, arch, false),
+        ]),
+      ),
+    );
   if (!rootLock?.packages || typeof rootLock.packages !== 'object')
     throw new Error('Invalid release lifecycle lock');
   return lifecyclePurls(
@@ -126,23 +166,22 @@ export function containerLifecyclePurls({ allowlist, rootLock }) {
   );
 }
 
-function releaseRootLock() {
-  return JSON.parse(readFileSync(resolve('package-lock.json'), 'utf8'));
-}
-
+/** @param {{ allowlist: any, rootLock?: any, graph?: ReturnType<typeof readPnpmDependencyGraph>, platform?: string, arch?: string }} options */
 export function releaseDependencyLifecycle({
   allowlist,
-  rootLock,
+  rootLock = undefined,
+  graph = undefined,
   platform = RELEASE_PLATFORM,
   arch = RELEASE_ARCH,
 }) {
   const production = productionLifecyclePurls({
     allowlist,
     rootLock,
+    graph,
     platform,
     arch,
   });
-  const container = containerLifecyclePurls({ allowlist, rootLock });
+  const container = containerLifecyclePurls({ allowlist, rootLock, graph });
   return {
     digest: allowlistDigest(allowlist),
     purlsByScope: {
@@ -201,7 +240,7 @@ if (process.argv[1]?.endsWith('release-sbom-context.mjs'))
         container,
         dependencyLifecycle: releaseDependencyLifecycle({
           allowlist: dependencyLifecycle,
-          rootLock: releaseRootLock(),
+          graph: readPnpmDependencyGraph(process.cwd()),
         }),
         subjectsByScope,
       }),

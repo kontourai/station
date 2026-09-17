@@ -2,8 +2,11 @@ import type { EngineConnectionId } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
+import type { ApprovalMode } from './provider.js';
+import type { RegistryTrustConfiguration } from './registry-trust.js';
 import type { AgentConnectionSettings } from './tool.js';
 import type { UserProfileSettings } from './user-profile.js';
+import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
 export interface ApprovalGuardianConfig {
   enabled?: boolean;
@@ -23,10 +26,56 @@ export interface AppConfig {
   systemPrompt?: string;
   templateVariables?: TemplateVariable[];
   defaultChatFontSize?: number;
+  /**
+   * Workspace mode a new project chat starts in when the project record does
+   * not name one (epic #2144 slice 2). Resolution is
+   * `project.defaultWorkspaceIsolation -> this -> 'shared'`; the fall-through
+   * lives in `resolveWorkspaceIsolationMode`
+   * (`@kontourai/station-contracts/workspace-isolation`) so every reader
+   * applies the same order.
+   */
+  defaultWorkspaceIsolation?: WorkspaceIsolationMode;
+  /**
+   * Approval posture a new chat starts in when neither the chat itself nor
+   * its engine connection names one (epic #2144 slice 6).
+   *
+   * Two readers, deliberately paired, in `src-ui/src/utils/approvalMode.ts`:
+   * `resolveEffectiveApprovalMode` decides what the composer chip DISPLAYS,
+   * and `approvalModeForDispatch` decides what the send path ENFORCES by
+   * folding into `modelOptions.approvalMode` — the only channel the server
+   * reads (`readApprovalMode` below). Both place it under a session override
+   * and under the engine connection's own default, and above the adapter
+   * default.
+   *
+   * ENFORCEMENT IS NARROWER THAN DISPLAY, by design. It applies only to a
+   * message that STARTS a session — a new chat, a reopened conversation
+   * whose session has stopped, or one that exited (`chatSessionIsLive` in
+   * `utils/execution.ts` is the derivation, and answers "unsure" as not
+   * live so the posture is sent rather than withheld) — and only for an
+   * `external`-mode chat on an engine whose adapter has a native knob (`approvalModeKnobSupported`
+   * — claude and codex; `PROVIDER_MODEL_OPTION_SUPPORT` in `provider.ts` is
+   * the server-side authority). Re-requesting a posture on a live session
+   * would reconfigure a running chat from a setting edited elsewhere, and
+   * Claude refuses a mid-session escalation to `'never'` on a session
+   * that was not spawned with its bypass flag. Only a
+   * session override may change a live chat's posture.
+   *
+   * The same send carries an engine connection's OWN `approvalMode` when it
+   * has one: that layer was display-only before #2144 slice 6 too, and it
+   * now enforces at session start under exactly these rules. A queued
+   * follow-up never carries either (`queueDrain.ts` passes no fallback — a
+   * queued message is never the message that starts a session).
+   *
+   * `'connection-default'` is a real, canonical value here and means "this
+   * Station states no posture" — it is NOT a fourth posture. Both readers
+   * skip it exactly as they skip a session override holding it.
+   */
+  defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /** Default on, but nothing is sent unless an endpoint is configured. */
   telemetryEnabled?: boolean;
   registryUrl?: string;
+  registryTrust?: RegistryTrustConfiguration;
   gitRemote?: string;
   defaultLLMProvider?: string;
   defaultEmbeddingProvider?: string;
@@ -34,6 +83,19 @@ export interface AppConfig {
   defaultVectorDbProvider?: string;
   agentConnections?: Record<string, AgentConnectionSettings>;
   terminalShell?: string;
+  /**
+   * Runtime-derived (never persisted): the shell this host would try FIRST
+   * when `terminalShell` is unset — `SHELL` where the environment sets one,
+   * else the platform's own first fallback. Produced by
+   * `defaultTerminalShell` in the server's terminal-shell resolver, which is
+   * the same list a spawn walks, so the hint the Settings input shows cannot
+   * disagree with what a terminal actually starts. Absent when the resolver
+   * offers no candidate at all.
+   *
+   * "Tries first", not "uses": a spawn falls through when a candidate fails to
+   * start, and nothing computes that without launching a process.
+   */
+  defaultTerminalShell?: string;
   disableDefaultSkillRegistries?: boolean;
   approvalGuardian?: ApprovalGuardianConfig;
   /**

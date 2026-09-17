@@ -1478,21 +1478,44 @@ describe('BuiltinScheduler', () => {
   });
 
   test('previewSchedule returns ISO strings', async () => {
+    // `new Date(x)` throws for NOTHING -- `new Date('garbage')` is an Invalid
+    // Date -- so the previous `expect(() => new Date(p)).not.toThrow()` passed
+    // for any string this method could return. Parse it instead, and pin the
+    // schedule the expression names: two consecutive noons, 24h apart.
     const previews = await scheduler.previewSchedule('0 12 * * *', 2);
     expect(previews).toHaveLength(2);
-    previews.forEach((p) => expect(() => new Date(p)).not.toThrow());
+    for (const preview of previews) {
+      expect(preview).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(Number.isNaN(Date.parse(preview))).toBe(false);
+      expect(new Date(preview).getUTCHours()).toBe(12);
+    }
+    expect(Date.parse(previews[1]) - Date.parse(previews[0])).toBe(
+      24 * 60 * 60 * 1000,
+    );
   });
 
-  test('subscribe / unsubscribe manages SSE clients', () => {
+  test('subscribe / unsubscribe manages SSE clients', async () => {
     const messages: string[] = [];
     const unsub = scheduler.subscribe((d) => messages.push(d));
-    // Trigger a broadcast indirectly via start (tick won't match, but we can test subscribe works)
+
+    // A manual run broadcasts on the same SSE fan-out, so a subscriber that
+    // is really attached receives it.
+    await scheduler.addJob({ name: 'sse-subscribed', prompt: 'test' });
+    await scheduler.runJob('sse-subscribed');
+    expect(messages.length).toBeGreaterThan(0);
+    const deliveredWhileSubscribed = messages.length;
+
+    // The half the old test never made: broadcast AFTER unsubscribing and
+    // assert nothing more arrives. It only checked `typeof unsub`, which is
+    // 'function' whether or not it removes the client.
     unsub();
-    // After unsubscribe, no more messages
-    expect(typeof unsub).toBe('function');
+    await scheduler.addJob({ name: 'sse-unsubscribed', prompt: 'test' });
+    await scheduler.runJob('sse-unsubscribed');
+    expect(messages).toHaveLength(deliveredWhileSubscribed);
   });
 
   test('listJobs includes nextRun for enabled cron jobs', async () => {
+    const before = Date.now();
     await scheduler.addJob({
       name: 'cron-job',
       prompt: 'test',
@@ -1500,7 +1523,12 @@ describe('BuiltinScheduler', () => {
     });
     const jobs = await scheduler.listJobs();
     expect(jobs[0].nextRun).toBeDefined();
-    expect(() => new Date(jobs[0].nextRun!)).not.toThrow();
+    // Parseable, and an actual future instant on the hour -- not merely a
+    // string `new Date()` declines to throw on.
+    const nextRun = Date.parse(jobs[0].nextRun!);
+    expect(Number.isNaN(nextRun)).toBe(false);
+    expect(nextRun).toBeGreaterThan(before);
+    expect(new Date(nextRun).getUTCMinutes()).toBe(0);
   });
 
   test('listJobs omits nextRun for disabled jobs', async () => {
@@ -2206,6 +2234,40 @@ describe('SchedulerService', () => {
     expect(previews).toHaveLength(3);
     previews.forEach((p) => expect(p).toMatch(/^\d{4}-\d{2}-\d{2}T/));
   });
+
+  test('previewSchedule projects in the zone it is given', async () => {
+    // #1536 D1: the zone is why this parameter exists — 22:00 UTC is 08:00 the
+    // next day in Brisbane, so an unzoned projection of the same expression
+    // names different instants.
+    const [first] = await service.previewSchedule(
+      '0 8 * * 1-5',
+      1,
+      'Australia/Brisbane',
+    );
+    const hourInZone = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Australia/Brisbane',
+      hour: 'numeric',
+      hour12: false,
+    }).format(new Date(first));
+    // `hour12: false` renders a padded 24-hour hour on this ICU build.
+    expect(hourInZone.replace(/^0/, '')).toBe('8');
+  });
+
+  test.each([
+    ['an unknown IANA zone', '0 8 * * 1-5', 'Mars/Olympus'],
+    ['a cron field out of range', '0 99 * * *', undefined],
+  ])(
+    'previewSchedule refuses %s instead of throwing a RangeError',
+    async (_label, cron, timezone) => {
+      // #1536 R3: `nextOccurrences` throws a RangeError on an unknown zone, and
+      // that reached the HTTP route as a 500 — an operator's typo reported as a
+      // server fault. Validated here, once, so the MCP operator tool is covered
+      // by the same check as the route.
+      await expect(service.previewSchedule(cron, 3, timezone)).rejects.toThrow(
+        /Invalid schedule/,
+      );
+    },
+  );
 
   test('addProvider registers a custom provider', async () => {
     const mock: any = {

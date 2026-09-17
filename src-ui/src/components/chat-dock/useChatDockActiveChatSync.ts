@@ -6,16 +6,11 @@ import { type ChatSession } from '../../types';
 interface UseChatDockActiveChatSyncArgs {
   activeChat: string | null;
   agentCatalogKey: string;
-  /**
-   * station#1284 (D2c): the cold-path fallback when resolution definitively
-   * fails — navigates to `/activity?session=<id>` (the same working pattern
-   * `ChatDock.tsx`'s own inbox panel already uses via
-   * `navigate('/activity', { session: threadId })`) instead of silently
-   * clearing the pointer with `setActiveChat(null)`. `/activity` is not a
-   * project layout, so a plain `navigate()` from `useNavigation()` is the
-   * correct call here (never `setLayout`/raw `window.location`).
-   */
-  navigate: (pathname: string, params?: Record<string, string | null>) => void;
+  updateParams: (params: Record<string, string | null>) => void;
+  showSurface: (
+    surfaceId: string,
+    intent?: { session?: string; focus?: 'evidence' },
+  ) => void;
   /**
    * Whether the agent catalog query has resolved SUCCESSFULLY at least once
    * — not merely settled (`useAgentsLoaded` deliberately excludes an errored
@@ -53,7 +48,8 @@ export function useChatDockActiveChatSync({
   sessions,
   openConversation,
   setActiveSessionId,
-  navigate,
+  updateParams,
+  showSurface,
 }: UseChatDockActiveChatSyncArgs) {
   const [lookupRetryGeneration, setLookupRetryGeneration] = useState(0);
   const attemptRef = useRef<{
@@ -62,10 +58,12 @@ export function useChatDockActiveChatSync({
   } | null>(null);
   const requestGenerationRef = useRef(0);
   const openConversationRef = useRef(openConversation);
-  const navigateRef = useRef(navigate);
+  const updateParamsRef = useRef(updateParams);
+  const showSurfaceRef = useRef(showSurface);
   const sessionsRef = useRef(sessions);
   openConversationRef.current = openConversation;
-  navigateRef.current = navigate;
+  updateParamsRef.current = updateParams;
+  showSurfaceRef.current = showSurface;
   sessionsRef.current = sessions;
 
   useEffect(() => {
@@ -116,30 +114,39 @@ export function useChatDockActiveChatSync({
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const catalogWasLoadedForThisAttempt = agentsLoaded;
-    // station#1284 (D2c): the definitive-miss fallback — never a silent
-    // setActiveChat(null). Mirrors the working pattern ChatDock's own inbox
-    // panel already uses (`navigate('/activity', { session: threadId })`),
-    // plus explicitly clearing the `chat` param in the SAME navigate call —
-    // leaving it would re-seed `activeChat` from the URL on the very next
-    // render (parseUrl() reads `chat` regardless of pathname) and loop this
-    // effect right back into the dead conversation it just gave up on.
-    // Also explicitly clears `dock` (review finding 3, MED): navigate()
-    // preserves every unlisted param, and a dock-targeting deep link
-    // (station#1284 AC4) already stamps `dock=open` on the URL this pointer
-    // came from — without this, the fallback would land on
-    // `/activity?dock=open` and force the dock open and empty on a page
-    // that has no conversation to show in it.
-    // Reads `navigateRef`/the closed-over `activeChat` rather than being
-    // listed as an effect dependency, matching this file's existing pattern
-    // for callback stability (openConversationRef, sessionsRef, ...) — a
-    // fresh function identity every render must never force this attempt-
-    // budget effect to re-run.
-    const fallbackToActivityRoute = () => {
-      navigateRef.current('/activity', {
-        chat: null,
-        dock: null,
-        session: activeChat,
-      });
+    /**
+     * Drop the URL pointer at a chat this dock could not open. Clearing `chat`
+     * is mandatory, not cosmetic: leaving it would re-seed `activeChat` from
+     * the URL on the very next render (parseUrl() reads `chat` regardless of
+     * pathname) and loop this effect right back into the dead conversation it
+     * just gave up on. Clearing `dock` prevents a stale open Chat dock.
+     * `maximize` is not named here: `updateParams` deletes it on every
+     * `dock: null` write (station#1613), so a reload of a maximized chat whose
+     * session was never persisted closes to a plain closed dock rather than
+     * the closed-plus-maximized pair archive#795 refuses.
+     */
+    const clearDeadChatPointer = () => {
+      updateParamsRef.current({ chat: null, dock: null });
+    };
+    /**
+     * station#1284 (D2c): the clear is not silent — Activity is revealed with
+     * the session, mirroring the pattern ChatDock's own inbox panel uses, so
+     * the user keeps a way back to the conversation.
+     *
+     * Reachable only where the lookup PRODUCED a conversation record. That
+     * record is the evidence there is a session to go and see; without it the
+     * reveal is a claim with no source, and #1582 measured what that costs: a
+     * chat that was never promoted to a conversation leaves `?chat=<sessionId>`
+     * in the URL (`activeChatDurableId`), the reload's lookup 404s because
+     * nothing was ever persisted, and the fallback opened the Activity region
+     * — a region the user never opened, filled with skeletons for a session id
+     * that resolves to nothing. A definitive miss now clears the pointer and
+     * places no surface, so what is on screen after a load stays a derivation
+     * of the persisted arrangement.
+     */
+    const revealActivityForSession = () => {
+      clearDeadChatPointer();
+      showSurfaceRef.current('activity', { session: activeChat });
     };
     /**
      * A persisted tab can hydrate at any point while a cold lookup is in
@@ -174,7 +181,8 @@ export function useChatDockActiveChatSync({
         // on the now-stale lookup result.
         if (hydratedLocally()) return;
         if (!conversation) {
-          fallbackToActivityRoute();
+          // No record: this Station does not know the id at all (#1582).
+          clearDeadChatPointer();
           return;
         }
         const opened =
@@ -211,7 +219,10 @@ export function useChatDockActiveChatSync({
         const retryStillAvailable = attempt.attemptKeys.length < 2;
         const inconclusive = !catalogWasLoadedForThisAttempt;
         if (opened === false && !(inconclusive && retryStillAvailable)) {
-          fallbackToActivityRoute();
+          // The lookup returned this conversation; only its owning agent is
+          // gone. There is a real session behind the id, so Activity has
+          // something to show (archive#801, station#1284).
+          revealActivityForSession();
         }
       } catch {
         if (cancelled || requestGeneration !== requestGenerationRef.current)
@@ -228,7 +239,10 @@ export function useChatDockActiveChatSync({
           }, 250);
           return;
         }
-        fallbackToActivityRoute();
+        // The lookup never answered, so whether the conversation exists is
+        // unknown rather than settled. An unresolved pointer keeps
+        // station#1284's reveal; only a definitive miss loses it.
+        revealActivityForSession();
       }
     })();
 

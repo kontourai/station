@@ -2,6 +2,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import type { DispatchReceipt } from '@kontourai/dispatch';
 import type { NativeOutputRelayCompanion } from '../native-output-turn-grant.js';
+import type { NativeForegroundRelayCompanion } from './native-foreground-invocation.js';
+import type { NativeMemoryHistoryCompanion } from './native-memory-history.js';
 
 /**
  * The only correlation Station carries from an authorized orchestration turn
@@ -27,12 +29,17 @@ export const INTERNAL_TURN_CORRELATION_HEADER =
   'x-station-authorized-turn-correlation';
 
 const MAX_CORRELATION_ID_LENGTH = 512;
-const turnCorrelations = new AsyncLocalStorage<AuthorizedTurnCorrelation>();
+const turnCorrelations = new AsyncLocalStorage<{
+  correlation: AuthorizedTurnCorrelation;
+  nativeMemory?: NativeMemoryHistoryCompanion;
+}>();
 const relayHandoffs = new Map<
   string,
   {
     correlation: AuthorizedTurnCorrelation;
     nativeOutput?: NativeOutputRelayCompanion;
+    nativeForeground?: NativeForegroundRelayCompanion;
+    nativeMemory?: NativeMemoryHistoryCompanion;
     expiresAt: number;
   }
 >();
@@ -143,6 +150,8 @@ export function createAuthorizedTurnCorrelation(input: {
 export function issueAuthorizedTurnCorrelationHandoff(
   correlation: AuthorizedTurnCorrelation,
   nativeOutput?: NativeOutputRelayCompanion,
+  nativeMemory?: NativeMemoryHistoryCompanion,
+  nativeForeground?: NativeForegroundRelayCompanion,
 ): string {
   const exact = parseAuthorizedTurnCorrelation(correlation);
   if (!exact) {
@@ -160,6 +169,8 @@ export function issueAuthorizedTurnCorrelationHandoff(
   relayHandoffs.set(handoffId, {
     correlation: exact,
     ...(nativeOutput ? { nativeOutput } : {}),
+    ...(nativeForeground ? { nativeForeground } : {}),
+    ...(nativeMemory ? { nativeMemory } : {}),
     expiresAt: now + RELAY_HANDOFF_TTL_MS,
   });
   return handoffId;
@@ -173,6 +184,25 @@ export function readNativeOutputRelayCompanion(
   const handoff = relayHandoffs.get(handoffId);
   if (!handoff || handoff.expiresAt <= Date.now()) return undefined;
   return handoff.nativeOutput;
+}
+
+export function readNativeForegroundRelayCompanion(
+  handoffId: string | undefined,
+): NativeForegroundRelayCompanion | undefined {
+  if (!handoffId || handoffId.length > 128) return undefined;
+  const handoff = relayHandoffs.get(handoffId);
+  if (!handoff || handoff.expiresAt <= Date.now()) return undefined;
+  return handoff.nativeForeground;
+}
+
+/** Private history access travels only with its existing opaque relay handoff. */
+export function readNativeMemoryRelayCompanion(
+  handoffId: string | undefined,
+): NativeMemoryHistoryCompanion | undefined {
+  if (!handoffId || handoffId.length > 128) return undefined;
+  const handoff = relayHandoffs.get(handoffId);
+  if (!handoff || handoff.expiresAt <= Date.now()) return undefined;
+  return handoff.nativeMemory;
 }
 
 /**
@@ -199,15 +229,26 @@ export function readAuthorizedTurnCorrelationHandoff(
 export function runWithAuthorizedTurnCorrelation<T>(
   correlation: AuthorizedTurnCorrelation,
   work: () => T,
+  nativeMemory?: NativeMemoryHistoryCompanion,
 ): T {
-  return turnCorrelations.run(correlation, work);
+  return turnCorrelations.run(
+    { correlation, ...(nativeMemory ? { nativeMemory } : {}) },
+    work,
+  );
 }
 
 /** The current request-scoped correlation, never reconstructed from a receipt. */
 export function currentAuthorizedTurnCorrelation():
   | AuthorizedTurnCorrelation
   | undefined {
-  return turnCorrelations.getStore();
+  return turnCorrelations.getStore()?.correlation;
+}
+
+/** Not reconstructed from public options, cursor data, or a serialized identity. */
+export function currentNativeMemoryHistory():
+  | NativeMemoryHistoryCompanion
+  | undefined {
+  return turnCorrelations.getStore()?.nativeMemory;
 }
 
 /**

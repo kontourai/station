@@ -9,7 +9,14 @@ import {
 } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
-import { WorkspacePaneHostOpenContext } from '../WorkspacePaneHostOpenContext';
+import {
+  type WorkspacePaneHostOpenAction,
+  WorkspacePaneHostOpenContext,
+} from '../WorkspacePaneHostOpenContext';
+import {
+  WORKSPACE_PANE_OPENED,
+  workspacePaneOpenRefused,
+} from '../workspacePaneHostOpenOutcome';
 
 vi.mock('../ConnectedStationBasisPane', () => ({
   ConnectedStationBasisPane: ({ scope }: { scope: unknown }) => (
@@ -79,7 +86,10 @@ describe('BasisWorkspacePane', () => {
   });
 
   test('issues the exact portable MCP App occurrence through the current host', () => {
-    const open = vi.fn(() => true);
+    const open = vi.fn(
+      (() =>
+        WORKSPACE_PANE_OPENED) satisfies WorkspacePaneHostOpenAction['open'],
+    );
     const instance = createDirectAnswerBasisPaneInstance(
       'project-canonical',
       'session-a',
@@ -104,6 +114,36 @@ describe('BasisWorkspacePane', () => {
           turnId: 'turn-a',
         }),
       }),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('names the reason the host refused the portable occurrence', () => {
+    // "Portable Basis App cannot open here" was wrong for `no-lease`: nothing
+    // about the pane is unsupported, another tab is holding the layout and
+    // will let go (#1596).
+    const open = vi.fn((() =>
+      workspacePaneOpenRefused(
+        'no-lease',
+      )) satisfies WorkspacePaneHostOpenAction['open']);
+    const instance = createDirectAnswerBasisPaneInstance(
+      'project-canonical',
+      'session-a',
+      'turn-a',
+    )!;
+    render(
+      <WorkspacePaneHostOpenContext.Provider value={{ open }}>
+        <BasisWorkspacePane
+          descriptor={WORKSPACE_BASIS_PANE_DESCRIPTOR}
+          instance={instance}
+        />
+      </WorkspacePaneHostOpenContext.Provider>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open portable MCP App' }),
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'This tab cannot save workspace changes right now, so the pane was not opened.',
     );
   });
 });

@@ -14,6 +14,7 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   type DevicePairingOffer,
   type DevicePairingRequest,
+  PAIRING_SCOPE_HOME_CONTROL,
   type PairedDevice,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
@@ -23,6 +24,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PairingFailureLimiter } from '../../security/pairing-failure-limiter.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
@@ -43,6 +45,7 @@ import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 import {
   configureDevicePairingHostRoutes,
   configureDevicePairingPublicRoutes,
+  isRuntimeRequestPrincipalCurrent,
   type PairingApprovalAuditRecord,
   type PairingAuthFailureAuditRecord,
 } from '../routes/runtime-routes.js';
@@ -63,6 +66,7 @@ function createHarness(
     maxActiveOffers?: number;
     maxActiveCredentialsWithoutVerifiedIdentity?: number;
     localGrant?: boolean;
+    approvalStillCurrent?: boolean;
     startupIdentity?: { instanceId: string; bootId: string } | null;
     uiBootstrapToken?: string;
     now?: () => number;
@@ -70,6 +74,7 @@ function createHarness(
     connectedClientPresence?: ClientConnectionPresence;
     clientPresenceAvailable?: boolean;
     resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
+    isRequestPrincipalCurrent?: (request: Request) => boolean;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
@@ -154,8 +159,29 @@ function createHarness(
   });
   configureDevicePairingHostRoutes(app as never, pairing, {
     audit: (record) => auditRecords.push(record),
+    verifyOperatorCredential: (credential) => credential === MASTER_CREDENTIAL,
+    isApprovalCurrent: (request) =>
+      options.approvalStillCurrent !== false &&
+      isRuntimeRequestPrincipalCurrent(request, {
+        authorizeCredential: (credential) =>
+          credential === MASTER_CREDENTIAL ||
+          pairing.credentialMayApprovePairing(credential),
+        resolveGrantedScope: (credential) =>
+          credential === MASTER_CREDENTIAL
+            ? DEFAULT_GRANT_PAIRING_SCOPE
+            : pairing.identifyDevice(credential)?.scope,
+      }),
     connectedClientPresence: options.connectedClientPresence,
     clientPresenceAvailable: options.clientPresenceAvailable,
+    isRequestPrincipalCurrent:
+      options.isRequestPrincipalCurrent ??
+      ((request) => {
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        return (
+          principal?.authority === 'operator-credential' &&
+          principal.credential === MASTER_CREDENTIAL
+        );
+      }),
   });
   app.get('/api/projects', (c) => c.json({ projects: [] }));
   app.post('/api/projects', (c) => c.json({ projects: [] }));
@@ -167,6 +193,10 @@ function createHarness(
 
   const request = (path: string, init: RequestInit = {}, peer = REMOTE_PEER) =>
     app.request(path, init, {
+      incoming: { socket: { remoteAddress: peer } },
+    } as TestBindings);
+  const requestRaw = (request: Request, peer = REMOTE_PEER) =>
+    app.fetch(request, {
       incoming: { socket: { remoteAddress: peer } },
     } as TestBindings);
   /**
@@ -191,6 +221,7 @@ function createHarness(
     logger,
     pairing,
     request,
+    requestRaw,
     requestWithoutPeer,
     json,
     auditRecords,
@@ -1612,6 +1643,170 @@ describe('device scope change (station#3816)', () => {
       paired.device.scope,
     );
   });
+
+  test('operator rotation during delayed body delivery refuses home-control promotion', async () => {
+    let current = true;
+    const checkedRequests: Request[] = [];
+    const harness = createHarness({
+      isRequestPrincipalCurrent: (request) => {
+        checkedRequests.push(request);
+        return current;
+      },
+    });
+    const paired = await pairDevice(harness, 'Home');
+    const originalScope = paired.device.scope;
+    let releaseBody!: () => void;
+    let bodyRead!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      bodyRead = resolve;
+    });
+    let pulled = false;
+    const encoded = new TextEncoder().encode(
+      JSON.stringify({
+        scope: ['orchestration:read', PAIRING_SCOPE_HOME_CONTROL],
+      }),
+    );
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (pulled) return;
+          pulled = true;
+          bodyRead();
+          return new Promise<void>((resolve) => {
+            releaseBody = () => {
+              controller.enqueue(encoded);
+              controller.close();
+              resolve();
+            };
+          });
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const request = new Request(
+      `http://station/api/pairing/devices/${paired.device.id}/scope`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${MASTER_CREDENTIAL}`,
+        },
+        body,
+        duplex: 'half',
+      } as RequestInit,
+    );
+    const response = harness.requestRaw(request);
+    await reading;
+    current = false;
+    releaseBody();
+    expect((await response).status).toBe(401);
+    expect(harness.pairing.identifyDevice(paired.credential)?.scope).toBe(
+      originalScope,
+    );
+    expect(
+      harness.pairing.homeControlGrantRevision(paired.device.id),
+    ).toBeUndefined();
+    expect(checkedRequests).toHaveLength(1);
+  });
+
+  test('operator currentness lost after handler body parsing prevents promotion', async () => {
+    let checks = 0;
+    const harness = createHarness({
+      isRequestPrincipalCurrent: () => ++checks === 1,
+    });
+    const paired = await pairDevice(harness, 'Home');
+    const response = await harness.request(
+      `/api/pairing/devices/${paired.device.id}/scope`,
+      harness.json(
+        { scope: ['orchestration:read', PAIRING_SCOPE_HOME_CONTROL] },
+        MASTER_CREDENTIAL,
+      ),
+    );
+    expect(response.status).toBe(401);
+    expect(checks).toBe(2);
+    expect(harness.pairing.identifyDevice(paired.credential)?.scope).toBe(
+      paired.device.scope,
+    );
+    expect(
+      harness.pairing.homeControlGrantRevision(paired.device.id),
+    ).toBeUndefined();
+  });
+
+  test('valid operator freshness checks preserve one handler Request identity', async () => {
+    const checkedRequests: Request[] = [];
+    const harness = createHarness({
+      isRequestPrincipalCurrent: (request) => {
+        checkedRequests.push(request);
+        return true;
+      },
+    });
+    const paired = await pairDevice(harness, 'Home');
+    const response = await harness.request(
+      `/api/pairing/devices/${paired.device.id}/scope`,
+      harness.json({ scope: ['orchestration:read'] }, MASTER_CREDENTIAL),
+    );
+    expect(response.status).toBe(200);
+    expect(checkedRequests).toHaveLength(2);
+    expect(checkedRequests[1]).toBe(checkedRequests[0]);
+  });
+
+  // An ABSENT callback is deliberately not a row here: the option is
+  // required, so omitting it is a compile error rather than a behaviour to
+  // pin, and writing the case would need a cast to express a state the type
+  // forbids. The 'throwing' row is what pins the fail-closed catch that
+  // absence used to exercise.
+  test.each([
+    ['false', () => false],
+    [
+      'throwing',
+      () => {
+        throw new Error('Current authority unavailable');
+      },
+    ],
+    [
+      // Not "async is supported" -- nothing can produce a Promise here. What
+      // this pins is that a NON-BOOLEAN return from a malformed callback is
+      // denied rather than read as truthy authorization. The cast below is
+      // load-bearing and deliberate: it constructs a value the option's type
+      // forbids, which is the only way to reach this branch at all.
+      'non-boolean-returning',
+      (() => Promise.resolve(true)) as unknown as (request: Request) => boolean,
+    ],
+  ] as const)(
+    'a %s current-principal callback cannot authorize a scope mutation',
+    async (_case, isRequestPrincipalCurrent) => {
+      const harness = createHarness({ isRequestPrincipalCurrent });
+      const paired = await pairDevice(harness, 'Home');
+      const originalScope = paired.device.scope;
+      const response = await harness.request(
+        `/api/pairing/devices/${paired.device.id}/scope`,
+        harness.json(
+          {
+            scope: ['orchestration:read', PAIRING_SCOPE_HOME_CONTROL],
+          },
+          MASTER_CREDENTIAL,
+        ),
+      );
+      expect(response.status).toBe(401);
+      expect(harness.pairing.identifyDevice(paired.credential)?.scope).toBe(
+        originalScope,
+      );
+      expect(
+        harness.pairing.homeControlGrantRevision(paired.device.id),
+      ).toBeUndefined();
+      const revoke = await harness.request(
+        `/api/pairing/devices/${paired.device.id}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+        },
+      );
+      expect(revoke.status).toBe(401);
+      expect(
+        harness.pairing.identifyDevice(paired.credential)?.revokedAt,
+      ).toBeNull();
+    },
+  );
 
   test('promotion to consent:decide works; a default-grant-only token is refused with its own code', async () => {
     const harness = createHarness();
@@ -3457,3 +3652,198 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     });
   });
 });
+
+describe('explicit person-binding approval', () => {
+  test.each([undefined, ''])(
+    'bodyless approval accepts an absent or empty HTTP stream: %j',
+    async (body) => {
+      const h = createHarness();
+      const offer = h.pairing.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const pending = h.pairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Simulator',
+        requesterPosition: 'off-box',
+        source: 'pairing-code',
+      });
+      const response = await h.request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${MASTER_CREDENTIAL}`,
+            'Content-Length': '0',
+          },
+          body,
+        },
+      );
+      expect(response.status, await response.text()).toBe(200);
+      const result = h.pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      });
+      expect(result.device.principalBinding).toBeUndefined();
+    },
+  );
+
+  test('an empty streamed approval still rechecks authority before committing', async () => {
+    const h = createHarness({ approvalStillCurrent: false });
+    const offer = h.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Simulator',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+    const response = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${MASTER_CREDENTIAL}`,
+          'Content-Length': '0',
+        },
+        body: '',
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(h.pairing.listRequests()[0]?.status).toBe('pending');
+  });
+
+  test('accepts only the explicit boolean and derives the subject from verified request provenance', async () => {
+    const h = createHarness();
+    const offer = h.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Collaborator phone',
+      requesterPosition: 'off-box',
+      source: 'tailnet',
+      requester: {
+        provider: 'tailscale-serve',
+        login: 'collaborator@example.test',
+      },
+    });
+    const path = `/api/pairing/requests/${pending.requestId}/confirm`;
+    for (const body of [
+      { bindVerifiedIdentity: 'true' },
+      { bindVerifiedIdentity: true, subject: 'attacker@example.test' },
+    ]) {
+      const response = await h.request(path, h.json(body, MASTER_CREDENTIAL));
+      expect(response.status).toBe(400);
+      expect(h.pairing.listRequests()[0]?.status).toBe('pending');
+    }
+    const response = await h.request(
+      path,
+      h.json({ bindVerifiedIdentity: true }, MASTER_CREDENTIAL),
+    );
+    expect(response.status, await response.text()).toBe(200);
+    const result = h.pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    expect(result.device.principalBinding).toMatchObject({
+      subject: 'collaborator@example.test',
+      approvedBy: 'human:local:operator',
+    });
+  });
+
+  test('cannot bind an identityless pairing-code request or enable shared-home hosted binding', async () => {
+    const h = createHarness();
+    const offer = h.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Unknown phone',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+    const path = `/api/pairing/requests/${pending.requestId}/confirm`;
+    expect(
+      (
+        await h.request(
+          path,
+          h.json({ bindVerifiedIdentity: true }, MASTER_CREDENTIAL),
+        )
+      ).status,
+    ).toBe(400);
+    const prior = process.env.STATION_HOSTED_TENANT_REGISTRY_FILE;
+    process.env.STATION_HOSTED_TENANT_REGISTRY_FILE =
+      '/unconfigured-tenant-registry';
+    try {
+      expect(
+        (
+          await h.request(
+            path,
+            h.json({ bindVerifiedIdentity: true }, MASTER_CREDENTIAL),
+          )
+        ).status,
+      ).toBe(409);
+    } finally {
+      if (prior === undefined)
+        delete process.env.STATION_HOSTED_TENANT_REGISTRY_FILE;
+      else process.env.STATION_HOSTED_TENANT_REGISTRY_FILE = prior;
+    }
+    expect(h.pairing.listRequests()[0]?.status).toBe('pending');
+    expect(
+      (
+        await h.request(path, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      h.pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      }).device.principalBinding,
+    ).toBeUndefined();
+  });
+});
+
+test.each([{}, { bindVerifiedIdentity: true }])(
+  'approval rechecks live authority after reading its body: %j',
+  async (body) => {
+    const h = createHarness({ approvalStillCurrent: false });
+    const offer = h.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Collaborator device',
+      requesterPosition: 'off-box',
+      source: 'tailnet',
+      requester: {
+        provider: 'tailscale-serve',
+        login: 'collaborator@example.test',
+      },
+    });
+    const response = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.json(body, MASTER_CREDENTIAL),
+    );
+    expect(response.status).toBe(403);
+    expect(h.pairing.listRequests()[0]?.status).toBe('pending');
+    expect(() =>
+      h.pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      }),
+    ).toThrow('request_not_confirmed');
+  },
+);

@@ -6,6 +6,7 @@ row that matches the job you are doing.
 | Audience | Start here | Publication |
 | --- | --- | --- |
 | Product evaluators and end users | [../README.md](../README.md), [user/getting-started.md](user/getting-started.md), [user/concepts.md](user/concepts.md) | Public |
+| Company and project integrators | [guides/integrating-station.md](guides/integrating-station.md) | Public repository guide; hosted target distinguished from supported behavior |
 | Operators | [guides/deployment.md](guides/deployment.md), [guides/machine-relationships.md](guides/machine-relationships.md), [reference/config.md](reference/config.md) | Repository only unless explicitly listed in the public manifest |
 | Release operators | [guides/ecosystem-packaging.md](guides/ecosystem-packaging.md), [guides/store-entry.md](guides/store-entry.md), [guides/store-listing.md](guides/store-listing.md) | Owner-gated Homebrew, public installer plumbing, and store consoles |
 | Plugin authors | [guides/plugins.md](guides/plugins.md), [guides/build-your-first-plugin.md](guides/build-your-first-plugin.md), [reference/sdk.md](reference/sdk.md) | Repository only |
@@ -50,15 +51,24 @@ clearly mark the stale document.
 ## Repository Documentation
 
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Mobile device inspection](guides/mobile-device-workspace.md)** — configure an explicit device host and capture native app screens through the authenticated API/SDK.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
+- **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
+- **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
+  the staged path to verified execution handoff.
+- **[Personal transfer controller](guides/home-transfer-controller.md)** — explicit pairing, authenticated remote room bindings, and current preparation limits.
+- **[Workspace packages](guides/workspace-packages.md)** — encrypted Git checkout copies between hosts, supported content, and recovery.
+- **[Private cloud environment](design/private-cloud-environment.md)** — working
+  single-VM deployment and execution design.
 - **[Design records](design/README.md)** — proposals, accepted decisions, and
   superseded designs. A design file is not current merely because it remains
   in the repository; read its status and follow its named successor.
 - **[Strategy](strategy/)** — durable identity, decisions, historical phase
-  records, and private execution context.
+  records, and maintainer execution context. Repository contents are public;
+  exclusion from Pages is not a privacy boundary.
 - **[Plans](plans/)** — implementation plans and staged initiatives; lifecycle
-  cleanup is tracked separately in issue #273.
+  and current work status must be checked against the owning GitHub issue.
 - **[Migration records](migration/)** — cutover-era identifier maps retained for
   historical lookup; GitHub issues and pull requests remain the authority for
   live work.
@@ -70,6 +80,8 @@ clearly mark the stale document.
 - **[Conformance](conformance/)** — external-contract conformance notes.
 - **[Security](security/)** — security design notes; disclosure policy lives
   in [../SECURITY.md](../SECURITY.md).
+- **[Local collaboration lab](guides/local-collaboration-lab.md)** — free, isolated
+  transport/enrollment checks and explicit remaining collaboration acceptance.
 - **[Testing](testing/)** — supplementary testing records; the canonical
   guide is [guides/testing.md](guides/testing.md).
 - **[Third-party](third-party/)** — vendored/external integration notes.
@@ -79,8 +91,8 @@ clearly mark the stale document.
 
 Root-level records: [glossary.md](glossary.md) (vocabulary authority),
 [architecture.md](architecture.md) (defers to the module map),
-[acp-chat-architecture.md](acp-chat-architecture.md),
-[strands-migration.md](strands-migration.md),
+[acp-chat-architecture.md](acp-chat-architecture.md) (historical proposal),
+[strands-migration.md](strands-migration.md) (historical assessment),
 [privacy-policy.md](privacy-policy.md), and
 a historical audit retained in the repository archive.
 User-facing docs not named in the audience table:
@@ -89,6 +101,10 @@ User-facing docs not named in the audience table:
 [user/contributing.md](user/contributing.md).
 
 ## Public Site
+
+For file placement, naming, source authority, and retiring old material, use
+[Maintaining documentation](guides/documentation.md). For code and tooling
+placement, use [Repository layout](guides/repository-layout.md).
 
 The public site is an intentionally small product and end-user projection. Its
 source boundary is:

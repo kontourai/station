@@ -1,5 +1,5 @@
-export type ContextSafetySeverity = 'block';
-export type ContextSafetyProfile = 'full' | 'hidden-only';
+type ContextSafetySeverity = 'block';
+type ContextSafetyProfile = 'full' | 'hidden-only';
 
 export interface ContextSafetyFinding {
   excerpt: string;
@@ -8,7 +8,7 @@ export interface ContextSafetyFinding {
   severity: ContextSafetySeverity;
 }
 
-export interface ContextSafetyScanResult {
+interface ContextSafetyScanResult {
   blocked: boolean;
   findings: ContextSafetyFinding[];
   source: string;

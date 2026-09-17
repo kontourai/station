@@ -9,6 +9,8 @@
     "*.css"
   ],
   "exports": {
+    "./mobile-device": "./src/mobile-device.ts",
+    "./mobile-devices-query": "./src/query-domains/mobileDevices.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
@@ -38,13 +40,23 @@
     "./error-state": "./src/components/ErrorState.tsx",
     "./app-config": "./src/app-config.ts",
     "./developer-runtime": "./src/query-domains/developerRuntime.ts",
+    "./project-identity": "./src/client/project-identity.ts",
+    "./project-access": "./src/project-access.ts",
+    "./project-access-client": "./src/client/project-access.ts",
+    "./account-authentication": "./src/client/account-authentication.ts",
     "./project-task-rooms": "./src/query-domains/projectTaskRooms.ts",
     "./live-activity": "./src/live-activity.ts",
     "./action-operations": "./src/action-operations.ts",
     "./resource-posture": "./src/query-domains/resourcePosture.ts",
     "./spatial-board": "./src/spatial-board.ts",
     "./testing": "./src/voice/testing.ts",
-    "./voice": "./src/voice/session.ts"
+    "./voice": "./src/voice/session.ts",
+    "./quote-source": "./src/client/quote-source.ts",
+    "./pull-request-review": "./src/client/pull-request-review.ts",
+    "./conversation-pull-request-links": "./src/client/conversation-pull-request-links.ts",
+    "./input-reply": "./src/client/input-reply.ts",
+    "./local-accounts": "./src/client/local-accounts.ts",
+    "./application-session": "./src/client/application-session.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -82,15 +94,17 @@
     "@kontourai/flow-agents": "6.2.0",
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/station-shared": "^0.7.0",
-    "@kontourai/surface": "^3.0.0",
+    "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0",
-    "@kontourai/ui": "^1.12.0"
+    "@kontourai/ui": "^1.12.0",
+    "zod": "^4.5.4"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.90.12",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
+    "@tanstack/react-query": "^5.102.8",
     "@types/react": "^19.2.18",
     "typescript": "^5.9.3",
     "vitest": "4.1.11"

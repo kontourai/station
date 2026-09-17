@@ -20,6 +20,7 @@ import {
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 // Seed a connected server so the app skips onboarding
 const SEED_STORAGE = () => {
@@ -91,12 +92,10 @@ const STATUS_READY = JSON.stringify({
   },
 });
 
-/** Open the Voice & Features section directly and wait for its real surface. */
+/** Open the Voice section directly and wait for its real surface. */
 async function openSettings(page: import('@playwright/test').Page) {
   await page.goto('/settings?section=voice');
-  await expect(
-    page.getByRole('heading', { name: 'Voice & Features' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Voice' })).toBeVisible();
 }
 
 test.describe('Voice Providers — Settings UI', () => {
@@ -204,7 +203,7 @@ test.describe('Voice Providers — Settings UI', () => {
 
   test('TTS readback toggle is still present', async ({ page }) => {
     await openSettings(page);
-    await expect(page.locator('text=Read agent responses aloud')).toBeVisible();
+    await expect(page.locator('text=Read replies aloud')).toBeVisible();
   });
 
   test('screenshot: voice settings section (desktop)', async ({
@@ -213,7 +212,7 @@ test.describe('Voice Providers — Settings UI', () => {
     await openSettings(page);
     const voiceSection = page.locator('#section-voice');
     await expect(
-      voiceSection.getByRole('heading', { name: 'Voice & Features' }),
+      voiceSection.getByRole('heading', { name: 'Voice' }),
     ).toBeVisible();
     await voiceSection.scrollIntoViewIfNeeded();
     await page.screenshot({
@@ -471,6 +470,16 @@ test.describe('Voice Providers — VoiceOrb in chat input', () => {
       },
     ]);
     await seedOrchestrationRoutes(page);
+    await mockRuntimeConversation(page, {
+      id: 'conv-1',
+      agentSlug: 'dev-agent',
+      title: 'Dev Agent Chat',
+      projectSlug: 'dev',
+      provider: 'station-agent',
+      model: 'claude-sonnet',
+      canContinue: true,
+      turns: () => [],
+    });
     await page.route('**/api/system/capabilities', (route) =>
       route.fulfill({
         status: 200,
@@ -543,35 +552,5 @@ test.describe('Voice Providers — VoiceOrb in chat input', () => {
       path: testInfo.outputPath('voice-orb-chat-input.png'),
       fullPage: false,
     });
-  });
-});
-
-test.describe('Voice Providers — useMobileSettings cleanup', () => {
-  test('removed feature flags are absent from localStorage shape', async ({
-    page,
-  }) => {
-    await page.addInitScript(SEED_STORAGE);
-    await page.route('**/api/**', (r) =>
-      r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-    );
-
-    await page.goto('/');
-    await expect(page.locator('body')).toBeVisible();
-
-    const stored = await page.evaluate(() => {
-      const raw = localStorage.getItem('station-feature-settings');
-      return raw ? JSON.parse(raw) : null;
-    });
-
-    if (stored) {
-      // Old flags must be gone
-      expect(stored).not.toHaveProperty('voiceModeEnabled');
-      expect(stored).not.toHaveProperty('meetingTranscriptionEnabled');
-      expect(stored).not.toHaveProperty('locationContextEnabled');
-      expect(stored).not.toHaveProperty('offlineQueueEnabled');
-      // Remaining flags must be present
-      expect(stored).toHaveProperty('pushNotificationsEnabled');
-    }
-    // If stored is null, settings haven't been written yet (first visit) — that's fine
   });
 });

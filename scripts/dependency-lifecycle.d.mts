@@ -4,7 +4,35 @@ export function inertInstallTimeout(
   platform?: NodeJS.Platform,
   env?: NodeJS.ProcessEnv,
 ): number;
-export function check(options?: { cwd?: string }): unknown;
+export function check(options?: {
+  cwd?: string;
+  bootstrap?: boolean;
+  /** Test-only override of the committed allowlist policy. */
+  allowlist?: unknown;
+}): unknown;
+export function pnpmInvocation(options?: {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  node?: string;
+  platform?: NodeJS.Platform;
+  exec?: (
+    command: string,
+    args: string[],
+    options: {
+      cwd: string;
+      env: NodeJS.ProcessEnv;
+      encoding: 'utf8';
+      timeout: number;
+      windowsHide: true;
+    },
+  ) => string;
+}): { command: string; args: string[] };
+export function pnpmCommand(
+  args: string[],
+  cwd?: string,
+  invocation?: { command: string; args: string[] },
+): void;
+export function refreshLock(options?: { cwd?: string }): void;
 export function preflightInstalledLifecycle(
   allowlist: unknown,
   options?: { cwd?: string; scope?: string },
@@ -24,3 +52,16 @@ export function stageLifecyclePrebuilds(
 export function verify(options?: { cwd?: string }): unknown;
 export function install(options?: { developer?: boolean }): void;
 export function propose(options?: { cwd?: string }): unknown;
+export function describeFailure(
+  error: unknown,
+  options?: { maxDepth?: number; maxLength?: number },
+): string;
+export function reportCliFailure(
+  error: unknown,
+  options?: { log?: (line: string) => void },
+): number;
+export function generateBuildInputs(options?: {
+  run?: (command: string, args: string[]) => unknown;
+  exists?: (path: string) => boolean;
+  log?: (line: string) => void;
+}): void;

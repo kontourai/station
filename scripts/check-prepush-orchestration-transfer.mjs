@@ -6,6 +6,7 @@ import { resolveRef } from './lib/git-ref.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 export const ORCHESTRATION_TRANSFER_INPUT_PREFIXES = Object.freeze([
+  'patches/',
   'src-server/routes/orchestration/',
   'src-server/runtime/',
   'src-server/providers/',
@@ -17,6 +18,8 @@ export const ORCHESTRATION_TRANSFER_INPUT_PREFIXES = Object.freeze([
 export const ORCHESTRATION_TRANSFER_INPUT_FILES = Object.freeze([
   'package.json',
   'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
   'scripts/orchestration-transfer-capture.ts',
   'scripts/orchestration-transfer-budget.mjs',
   'scripts/orchestration-transfer-gate.mjs',

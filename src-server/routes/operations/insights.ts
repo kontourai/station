@@ -13,8 +13,11 @@ import {
 } from '../../../src-shared/monitoring-keys.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
 import { insightOps } from '../../telemetry/metrics.js';
+import { createLogger } from '../../utils/logger.js';
 import { getCachedUser } from '../system/auth.js';
 import { canReadMonitoringEvent } from './monitoring.js';
+
+const logger = createLogger({ name: 'insights-routes' });
 
 /**
  * A derived absence, never a value. Parenthesized so it cannot collide with
@@ -41,6 +44,60 @@ function timestampFor(event: MonitoringEventRecord): number | null {
     return Number.isFinite(timestamp) ? timestamp : null;
   }
   return null;
+}
+
+const EVENT_FILE_DAY_PATTERN = /^events-(\d{4})-(\d{2})-(\d{2})\.ndjson$/;
+
+/**
+ * The exclusive upper bound of the UTC day a monitoring log file is named
+ * for, or `null` when the name carries no parseable calendar date.
+ *
+ * `RuntimeEventLog` picks the filename at APPEND time from
+ * `new Date().toISOString()`, so the day in the name is a UTC day taken from
+ * THIS Station's clock. For a row this Station stamped itself, that day can
+ * never be earlier than the row's own timestamp, so a file whose day has
+ * already ended at the cutoff cannot hold a single row this scan would keep,
+ * and opening and parsing it is pure cost — on a 14-day window with the
+ * default 30-day retention, more than half the corpus.
+ *
+ * The skip is therefore exact for Station-stamped rows and NOT exact for
+ * ingested ones. `monitoring/otlp-receiver.ts` writes the EXPORTER's own
+ * `timestamp` into the row while still appending to the file named for the
+ * receiver's current day, so an exporter whose clock runs ahead across UTC
+ * midnight can land a next-day-stamped row in today's file. Such a row is
+ * dropped by this skip once the cutoff passes that file's day end, where the
+ * old full scan would have kept it. Accepted: it needs a clock-skewed
+ * exporter and a midnight boundary, it loses at most the rows that exporter
+ * stamped into its skew window at the one day boundary the cutoff just
+ * crossed, and the alternative is reading every file on every request.
+ *
+ * Returns `null` rather than guessing for anything that is not a date
+ * (`events-test.ndjson`, an operator's hand-placed export, a rolled-over
+ * `events-2026-13-01`): an unparseable name says nothing about its contents,
+ * so the caller must still read it and let the per-row `ts < cutoff` check
+ * decide. The day named for the cutoff itself straddles the cutoff instant
+ * and is likewise always read.
+ */
+function eventFileDayEndMs(name: string): number | null {
+  const match = EVENT_FILE_DAY_PATTERN.exec(name);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const dayStart = Date.UTC(year, month - 1, day);
+  // `Date.UTC` rolls invalid components over silently (month 13 becomes
+  // January of the next year), which would move a garbage name to a
+  // DIFFERENT real day and could skip a file that should be read. Round-trip
+  // the components and treat any name that does not survive as unparseable.
+  const roundTrip = new Date(dayStart);
+  if (
+    roundTrip.getUTCFullYear() !== year ||
+    roundTrip.getUTCMonth() !== month - 1 ||
+    roundTrip.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return dayStart + MS_PER_DAY;
 }
 
 function isHealthProbe(event: MonitoringEventRecord): boolean {
@@ -148,7 +205,18 @@ export function createInsightsRoutes(
 
     const toolUsage: Record<
       string,
-      { calls: number; errors: number; outcomeUnknown: number }
+      {
+        calls: number;
+        errors: number;
+        outcomeUnknown: number;
+        /**
+         * station#1558: results the producer explicitly reported as
+         * `unresolved` — the session ended with the call still open. Kept
+         * apart from `errors` (nothing observed a failure) and from
+         * `outcomeUnknown` (nothing was reported at all).
+         */
+        unresolved: number;
+      }
     > = {};
     const hourlyActivity: number[] = new Array(24).fill(0);
     const agentUsage: Record<string, { chats: number; tokens: number }> = {};
@@ -159,6 +227,7 @@ export function createInsightsRoutes(
     let totalToolCalls = 0;
     let totalErrors = 0;
     let totalOutcomeUnknown = 0;
+    let totalUnresolved = 0;
 
     if (!existsSync(monitoringDir))
       return c.json({
@@ -175,6 +244,7 @@ export function createInsightsRoutes(
           // sanity-check here, so dropping the honest denominator and the
           // applied-filter echo is exactly the wrong place to do it.
           totalOutcomeUnknown: 0,
+          totalUnresolved: 0,
           days,
           ...(filters.agent !== undefined ||
           filters.tool !== undefined ||
@@ -249,6 +319,11 @@ export function createInsightsRoutes(
     for (const file of files.filter(
       (f) => f.startsWith('events-') && f.endsWith('.ndjson'),
     )) {
+      // Decide from the FILENAME, before any I/O: every row in a day that
+      // ended at or before the cutoff fails `ts < cutoff` below, so the open,
+      // the stream and the per-line `JSON.parse` all buy nothing.
+      const dayEndMs = eventFileDayEndMs(file);
+      if (dayEndMs !== null && dayEndMs <= cutoff) continue;
       try {
         const stream = createReadStream(join(monitoringDir, file));
         const rl = createInterface({ input: stream, crlfDelay: Infinity });
@@ -333,7 +408,12 @@ export function createInsightsRoutes(
                   ? toolValue
                   : UNNAMED_TOOL;
               if (!toolUsage[tool]) {
-                toolUsage[tool] = { calls: 0, errors: 0, outcomeUnknown: 0 };
+                toolUsage[tool] = {
+                  calls: 0,
+                  errors: 0,
+                  outcomeUnknown: 0,
+                  unresolved: 0,
+                };
               }
               toolUsage[tool].calls++;
             }
@@ -348,11 +428,25 @@ export function createInsightsRoutes(
                   ? toolValue
                   : UNNAMED_TOOL;
               if (!toolUsage[tool]) {
-                toolUsage[tool] = { calls: 0, errors: 0, outcomeUnknown: 0 };
+                toolUsage[tool] = {
+                  calls: 0,
+                  errors: 0,
+                  outcomeUnknown: 0,
+                  unresolved: 0,
+                };
               }
               if (outcome === 'error') {
                 totalErrors++;
                 toolUsage[tool].errors++;
+              } else if (outcome === 'unresolved') {
+                // station#1558: an explicitly reported non-outcome. It is
+                // NOT an error — nothing observed the tool fail — and it is
+                // not `outcomeUnknown` either, which means the producer said
+                // nothing at all. Counting it as either would move the error
+                // rate for a population whose outcome Station knows it does
+                // not know.
+                totalUnresolved++;
+                toolUsage[tool].unresolved++;
               } else if (outcome !== 'success') {
                 // The emitter OMITS the outcome when the producer reported
                 // no terminal status, so these results are neither successes
@@ -364,11 +458,11 @@ export function createInsightsRoutes(
               }
             }
           } catch (e) {
-            console.debug('Failed to parse insights event line:', e);
+            logger.debug('Failed to parse insights event line', { error: e });
           }
         }
       } catch (e) {
-        console.debug('Failed to read insights event file:', e);
+        logger.debug('Failed to read insights event file', { error: e });
       }
     }
 
@@ -391,6 +485,13 @@ export function createInsightsRoutes(
          * error rate computed without them silently flatters itself.
          */
         totalOutcomeUnknown,
+        /**
+         * station#1558: tool results whose producer reported that no outcome
+         * will ever arrive (the session ended with the call open). In
+         * `totalToolCalls`, and neither successes, failures, nor silent
+         * non-reports.
+         */
+        totalUnresolved,
         days,
         ...(filters.agent !== undefined ||
         filters.tool !== undefined ||

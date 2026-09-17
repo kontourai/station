@@ -9,9 +9,51 @@
  * covered here against the real `ProjectSidebar` composition (mirrors
  * `ProjectSidebarReturnFocus.test.tsx`'s mock shape).
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
+
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+// #928 C2a: the Home row's active state reads `main`'s occupant. `null`
+// is the no-provider mount every other test here uses.
+const sidebarRegion = vi.hoisted(() => ({
+  mainOccupant: undefined as string | null | undefined,
+}));
+vi.mock('../contexts/RegionModelContext', () => ({
+  useRegionModelOptional: () =>
+    sidebarRegion.mainOccupant === undefined
+      ? null
+      : {
+          // The full arrangement: `ProjectSidebarNav` reads the dock regions
+          // for its `regionSurface` rows.
+          regions: {
+            main: {
+              visible: true,
+              size: 0,
+              panes: sidebarRegion.mainOccupant
+                ? [sidebarRegion.mainOccupant]
+                : [],
+              occupant: sidebarRegion.mainOccupant,
+            },
+            left: { visible: false, size: 400, panes: [], occupant: null },
+            right: { visible: false, size: 400, panes: [], occupant: null },
+            bottom: {
+              visible: false,
+              size: 320,
+              panes: ['chat'],
+              occupant: 'chat',
+            },
+          },
+        },
+}));
 
 vi.mock('../build-info', () => ({
   buildInfo: { version: '0.1.2', commit: 'test' },
@@ -25,6 +67,8 @@ const {
   setLayout,
   projects,
   sessions,
+  boards,
+  boardCreateSpy,
   platformProfile,
   branding,
 } = vi.hoisted(() => ({
@@ -35,6 +79,9 @@ const {
   setLayout: vi.fn(),
   projects: [] as Array<{ id: string; slug: string; name: string }>,
   sessions: [] as Array<Record<string, unknown>>,
+  boards: [] as Array<{ slug: string; name: string }>,
+  /** Shared, so a test can observe the section acting while it renders nothing. */
+  boardCreateSpy: vi.fn(),
   platformProfile: {
     isTauri: false,
     productName: undefined as string | undefined,
@@ -76,23 +123,49 @@ vi.mock('../contexts/open-chats-store', () => ({
     },
   },
 }));
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     selectedProject: null,
     selectedProjectLayout: null,
     navigate,
     setProject,
     setLayout,
     pathname: '/',
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 vi.mock('../hooks/useBranding', () => ({
   useBranding: () => branding,
 }));
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => platformProfile,
 }));
-vi.mock('../hooks/useIsMobile', () => ({
+// #1858 gave the lazy Open chats rows file intake (`FileDropRow`), so the
+// section now reads the host request authority scope from ApiBaseContext,
+// which throws outside a ConnectionsProvider. The scope itself is not under
+// test here — no assertion drops files — so the read is stubbed the same way
+// ChatDockBoundaryDialogsOnDemand stubs it, keeping this harness a sidebar
+// harness rather than a connections one.
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://test.local' }),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+/**
+ * `useIsMobile` only. A bare factory here replaced the WHOLE module, including
+ * the dock-placement half (`useDockSlotDevice`, `availablePlacements`) that
+ * `ProjectSidebarBoards` reads since #2158 — the section then threw on mount
+ * and this file's lazy-boundary case saw the error alert it exists to refuse.
+ */
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => false,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
@@ -110,17 +183,64 @@ vi.mock('@kontourai/station-sdk', () => ({
   // expanded: the row's read is gated `enabled: expanded && !collapsed`, so
   // the server is never asked, and nothing here asserts a Board entry.
   useBoardAvailabilityQuery: () => ({ data: undefined }),
+  // #2059: the lazy panel footer reads the attention projection for its bell
+  // badge. Same hazard as the two recorded above, one hook later.
+  useAttentionQuery: () => ({ data: { pendingCount: 0 } }),
+  // #2062: the Boards section reaches five personal-layout hooks. FOURTH
+  // instance of the hazard recorded three times above, and the first whose
+  // symptom was not a red test — the section is mounted through a
+  // LazyBoundary, so a missing export threw inside the lazy chunk and the
+  // boundary rendered its "Unable to load this part of Station." alert INSIDE
+  // the panel while every assertion here still passed. `rendersTheBoardsSection`
+  // below is what makes this block load-bearing rather than decorative.
+  usePersonalLayoutsQuery: () => ({ data: boards }),
+  useCreatePersonalLayoutMutation: () => ({
+    mutate: boardCreateSpy,
+    isPending: false,
+  }),
+  useUpdatePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
+  useDeletePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
+  usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { requestNewBoard } from '../components/project-sidebar/new-board-events';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
+// #1765 routed the sidebar status row's command-palette keycap through
+// `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
+// unmount/remount loop around that crash took the Open chats section with
+// it. Mounting the real provider keeps the status row in the tree instead
+// of stubbing the hook out from under every other consumer.
+// #2066's presence tray reads `useLiveActivityQuery`, so the real footer needs
+// a QueryClient the way it already needs KeyboardShortcutsProvider. Without
+// one the tray throws, the Boards LazyBoundary catches it, and the panel
+// renders its error alert where the section belongs — which is how main went
+// red: #2084 added the tray and #2095 added the test that mounts the real
+// sidebar, each green alone. Retries are off so a failing fetch settles in one
+// tick instead of holding the test open; the tray's own suites are where its
+// error and capability states are asserted.
+function renderSidebar(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <KeyboardShortcutsProvider>{ui}</KeyboardShortcutsProvider>
+    </QueryClientProvider>,
+  );
+}
+
 function resetState() {
+  sidebarRegion.mainOccupant = undefined;
   for (const key of Object.keys(chats)) delete chats[key];
   agents.length = 0;
   projects.length = 0;
   sessions.length = 0;
+  boards.length = 0;
+  boardCreateSpy.mockClear();
   navigate.mockClear();
   setProject.mockClear();
   setLayout.mockClear();
@@ -136,6 +256,53 @@ function resetState() {
   deviceSettingsStore.reloadFromStorage();
 }
 
+/**
+ * #928 C2a: Home is a region surface whose only placement is `main`. Both
+ * sidebar Home affordances (the header's app-name button and the Work list's
+ * Home row) reveal it through `showSurface('home')`; navigating to `/` is the
+ * region model's job once the placement lands, and a sidebar that navigated
+ * itself would show whatever surface occupies `main`.
+ */
+describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', () => {
+  test('the Work list Home row and the header home button call showSurface(home) and do not navigate', () => {
+    resetState();
+    showSurfaceStub.mockClear();
+    renderSidebar(<ProjectSidebar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    expect(showSurfaceStub).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+
+    showSurfaceStub.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Station home' }));
+    expect(showSurfaceStub).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('the Home row is active at / only while main shows Home', () => {
+    const homeRow = () => screen.getByRole('button', { name: 'Home' });
+    const active = 'sidebar__project-btn--active';
+    resetState();
+
+    sidebarRegion.mainOccupant = 'activity';
+    const withActivity = renderSidebar(<ProjectSidebar />);
+    expect(homeRow().classList.contains(active)).toBe(false);
+    withActivity.unmount();
+
+    sidebarRegion.mainOccupant = 'home';
+    const withHome = renderSidebar(<ProjectSidebar />);
+    expect(homeRow().classList.contains(active)).toBe(true);
+    withHome.unmount();
+
+    // A null occupant is Home on screen (`MainRegionSurface`).
+    sidebarRegion.mainOccupant = null;
+    const withNull = renderSidebar(<ProjectSidebar />);
+    expect(homeRow().classList.contains(active)).toBe(true);
+    withNull.unmount();
+    sidebarRegion.mainOccupant = undefined;
+  });
+});
+
 describe('ProjectSidebar WORK list labeling (station#1300)', () => {
   test.each([
     ['Stable', 'unexpected package title', 'stable', undefined],
@@ -150,7 +317,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       platformProfile.productName = packageName;
       platformProfile.channel = channel as typeof platformProfile.channel;
       branding.appName = 'Remote Station';
-      render(<ProjectSidebar />);
+      renderSidebar(<ProjectSidebar />);
       const home = screen.getByRole('button', {
         name: `Station${badge ? ` ${badge}` : ''} v0.1.2 Build timestamp unavailable. home`,
       });
@@ -173,7 +340,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     platformProfile.productName = 'Station Nightly';
     platformProfile.channel = 'nightly';
     branding.appName = 'Acme Station';
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(
       screen.getByRole('button', { name: 'Acme Station home' }).textContent,
     ).toContain('Acme Station');
@@ -184,7 +351,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     chats['session-a'] = { title: 'Fix login bug', agentSlug: 'a' };
     agents.push({ slug: 'a', name: 'Agent A' });
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(screen.getByText('Open chats')).toBeTruthy();
     // The mini-inbox rows are lazy-loaded (archive#3314) — await their chunk.
     expect(await screen.findByText('Fix login bug')).toBeTruthy();
@@ -192,7 +359,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
 
   test('hides the "Open chats" heading when there are none', () => {
     resetState();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(screen.queryByText('Open chats')).toBeNull();
   });
 
@@ -202,7 +369,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       title: 'Finish release notes',
       agentSlug: 'writer',
     };
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     act(() => chatDraftsStore.set('session-draft', '  Remember migration  '));
     expect(screen.getByText('Drafts')).toBeTruthy();
@@ -239,7 +406,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('rows render through the shared inbox row anatomy, and clicking focuses the chat', async () => {
     resetState();
     seedChats(1);
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     const row = await screen.findByRole('button', {
       name: 'Chat 0, Station',
@@ -255,7 +422,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('the section collapses through the shared disclosure anatomy and persists', async () => {
     resetState();
     seedChats(1);
-    const first = render(<ProjectSidebar />);
+    const first = renderSidebar(<ProjectSidebar />);
 
     const toggle = screen.getByRole('button', { name: 'Open chats' });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -270,7 +437,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
 
     // Persisted device-side: a fresh mount stays collapsed.
     first.unmount();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(
       screen
         .getByRole('button', { name: 'Open chats' })
@@ -281,7 +448,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('the section can be removed from the sidebar entirely', () => {
     resetState();
     seedChats(1);
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Remove Open chats from sidebar' }),
@@ -295,7 +462,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('caps the list and offers "N more" that opens the dock inbox', async () => {
     resetState();
     seedChats(5);
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     await screen.findByText('Chat 0');
     expect(screen.getByText('Chat 2')).toBeTruthy();
@@ -322,7 +489,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('Drafts collapses and removes independently', () => {
     resetState();
     chats['session-draft'] = { title: 'Draft owner', agentSlug: 'a' };
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     act(() => chatDraftsStore.set('session-draft', 'draft text'));
 
     const toggle = screen.getByRole('button', { name: 'Drafts' });
@@ -339,13 +506,172 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   });
 });
 
-describe('ProjectSidebar management navigation', () => {
-  test('renders the Customize disclosure independently of deferred sidebar status', () => {
+/**
+ * #2059 (design record D3), the acceptance this slice is measured by: "Panel
+ * order: header, Home, Activity, Projects, footer. No other destination rows."
+ *
+ * Asserted against the real `ProjectSidebar` composition in DOM order, not
+ * against `ProjectSidebarNav` alone: Home is the sidebar's own row and
+ * Activity is the nav's, so only the composition can say that the one follows
+ * the other — and only an ORDERED inventory notices a row nobody meant to add.
+ * The footer is lazy, so it is not in this synchronous tree; its own suite
+ * (ProjectSidebarFooter.test.tsx) covers it.
+ */
+/**
+ * #2062. The Boards section is mounted here through a `LazyBoundary`, which
+ * catches whatever the chunk throws and renders an alert IN PLACE of the
+ * section. That is why this file's other assertions could not see a missing
+ * `@kontourai/station-sdk` export: the panel rendered "Unable to load this
+ * part of Station." where Boards belongs and every other row was unaffected,
+ * so a broken section read as a passing suite.
+ *
+ * These two assertions are what make the module mock above load-bearing. The
+ * first fails for ANY throw inside the chunk (a hook this file forgot, a
+ * context the section reaches, an import that moved); the second proves the
+ * section actually rendered rather than merely declining to crash, which a
+ * `null`-returning section would also do.
+ */
+describe('ProjectSidebar Boards section mounts (#2062)', () => {
+  test("renders the section rather than the lazy boundary's error alert", async () => {
     resetState();
-    render(<ProjectSidebar />);
+    boards.push({ slug: 'daily', name: 'Daily brief' });
+    renderSidebar(<ProjectSidebar />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
-    expect(screen.getByRole('button', { name: 'Agents' })).toBeTruthy();
+    expect(await screen.findByText('Boards')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
+    // Named separately from the positive assertion: a future change that
+    // renders the section AND an alert somewhere else in the panel is still a
+    // broken panel, and the positive check alone would not say so.
+    expect(document.querySelector('.lazy-boundary__error')).toBeNull();
+  });
+
+  test('renders no Boards chrome — and no error alert — for a viewer with none', async () => {
+    resetState();
+    renderSidebar(<ProjectSidebar />);
+
+    // The chunk still loads; it is the SECTION that returns null. Proving the
+    // lazy work has SETTLED is the hard part of this case, because a section
+    // rendering nothing offers nothing to wait for — and an earlier revision
+    // awaited `Home`, which `ProjectSidebar` renders itself, so both negative
+    // assertions ran before the chunk had resolved or rejected and this test
+    // passed even with the module mock broken (#2062 review F3).
+    //
+    // The settle-proof is the section DOING something: answering the palette's
+    // create request, which is the affordance that exists for precisely this
+    // viewer. Only a mounted section can, so a chunk that threw cannot satisfy
+    // it.
+    // Let the dynamic import resolve and the section mount. Bounded and
+    // re-dispatching, because the listener only exists once the chunk is in
+    // the tree — and a flush count is a guess, whereas the spy is the fact.
+    // This cannot manufacture a pass: the assertion below still requires the
+    // section to have handled the request.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await act(async () => {
+        requestNewBoard();
+      });
+      if (boardCreateSpy.mock.calls.length > 0) break;
+    }
+    expect(boardCreateSpy).toHaveBeenCalledWith({
+      slug: 'untitled-board',
+      name: 'Untitled Board',
+    });
+
+    expect(screen.queryByText('Boards')).toBeNull();
+    expect(document.querySelector('.lazy-boundary__error')).toBeNull();
+  });
+});
+
+describe('ProjectSidebar panel order (#2059)', () => {
+  const panelRowLabels = () =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '.sidebar__project-btn, .sidebar__nav-btn',
+      ),
+      // The label element, not the whole button: the Home row leads with an
+      // aria-hidden `⌂` and the nav rows with an aria-hidden icon.
+    ).map((button) =>
+      (
+        button.querySelector('.sidebar__project-name, .sidebar__nav-label') ??
+        button
+      ).textContent?.trim(),
+    );
+
+  test('lists header, Home, Activity, then the projects — and no other destination rows', () => {
+    resetState();
+    projects.push(
+      { id: 'p1', slug: 'station', name: 'Station' },
+      { id: 'p2', slug: 'ferry', name: 'Ferry' },
+    );
+    renderSidebar(<ProjectSidebar />);
+
+    // The header is above the body and is its own control, so it anchors the
+    // order rather than joining the row list.
+    expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
+    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
+  });
+
+  test('removes every configuration destination and both group headers from the panel', () => {
+    resetState();
+    renderSidebar(<ProjectSidebar />);
+
+    // Named one by one so a failure says WHICH one came back. The ordered
+    // inventory above is what catches an unnamed addition.
+    for (const label of [
+      'Agents',
+      'Connections',
+      'Skills',
+      'Registry',
+      'Review',
+      'Plugins',
+      'Schedule',
+      'Developer',
+      'Notifications',
+      'Settings',
+      'Customize',
+      'System',
+    ]) {
+      expect(
+        screen.queryByRole('button', { name: label }),
+        `${label} is still a panel row`,
+      ).toBeNull();
+    }
+    // #2150: the panel lists places, and "Work" was a category label over
+    // its two unlabelled places (Home, Activity) -- the one header the design
+    // record (D3) does not draw. Asserted as text, not a button: it never was
+    // a control, which is exactly why the row inventory above missed it.
+    expect(screen.queryByText('Work')).toBeNull();
+  });
+});
+
+/**
+ * #2150: `LayoutIcon` falls back to a two-letter monogram for a project with
+ * no icon. At the row's 18px that was a smudge, it landed in the accessible
+ * name ("CA Campfit"), and the design record draws the accent bar beside it
+ * for identity. An icon-less project now shows the bar alone; a project WITH
+ * an icon keeps it, because that is identity the user chose. Both directions
+ * are pinned so the gate cannot quietly become "never show an icon".
+ */
+describe('project row identity (#2150)', () => {
+  test('an icon-less project shows no monogram and is named by its name alone', () => {
+    resetState();
+    projects.push({ id: 'p1', slug: 'campfit', name: 'Campfit' });
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: 'Campfit' });
+    expect(row.textContent?.trim()).toBe('Campfit');
+    expect(row.querySelector('.sidebar__project-accent')).toBeTruthy();
+  });
+
+  test('a project with an icon keeps it', () => {
+    resetState();
+    projects.push({
+      id: 'p1',
+      slug: 'campfit',
+      name: 'Campfit',
+      icon: '🏕️',
+    } as (typeof projects)[number]);
+    renderSidebar(<ProjectSidebar />);
+    const row = screen.getByRole('button', { name: /Campfit/ });
+    expect(row.textContent).toContain('🏕️');
   });
 });
 
@@ -391,7 +717,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(
       screen.getByRole('button', { name: /station.*needs you: 1/i }),
     ).toBeTruthy();
@@ -413,7 +739,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     // The number and the sentence come from the same lanes, so the badge can
     // never total something its own explanation does not account for.
     expect(
@@ -449,7 +775,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(screen.queryByText(/needs you: /i)).toBeNull();
     expect(
       screen.getByRole('button', { name: /station.*active now: 1/i }),
@@ -467,7 +793,7 @@ describe('ProjectSidebar live-work badge', () => {
       session({ threadId: 'broken', lifecycleState: 'failed' }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     expect(container.querySelector('.sidebar__project-live-count')).toBeNull();
   });
 
@@ -486,7 +812,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     const badges = container.querySelectorAll('.sidebar__project-live-count');
     expect(badges).toHaveLength(1);
     expect(
@@ -505,7 +831,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     const count = container.querySelector('.sidebar__project-live-count');
     const label = container.querySelector('.sidebar__project-live-label');
     expect(count?.getAttribute('title')).toBe('Needs you: 1');
@@ -523,7 +849,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     // Clicking the number is clicking the row: the badge stays decoration
     // inside the project button, and the project page it selects is where the
     // live sessions are now listed.
@@ -537,7 +863,7 @@ describe('ProjectSidebar live-work badge', () => {
 describe('ProjectSidebar New Project affordance (station#1300)', () => {
   test('renders a "+" icon button on the Projects header instead of a full-width row', () => {
     resetState();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     const trigger = screen.getByRole('button', { name: 'New Project' });
     expect(trigger).toBeTruthy();
@@ -547,7 +873,7 @@ describe('ProjectSidebar New Project affordance (station#1300)', () => {
 
   test('clicking it navigates to /projects/new, same as before', () => {
     resetState();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     fireEvent.click(screen.getByRole('button', { name: 'New Project' }));
     expect(navigate).toHaveBeenCalledWith('/projects/new');
@@ -567,7 +893,7 @@ describe('ProjectSidebar compact rail chat entry (#1348)', () => {
       openCollection: listener,
     });
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     fireEvent.click(screen.getByRole('button', { name: 'Open chats' }));
 
     expect(listener).toHaveBeenCalledOnce();

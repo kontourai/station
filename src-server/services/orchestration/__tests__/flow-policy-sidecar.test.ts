@@ -307,6 +307,31 @@ describe('FlowPolicySidecar (unit pins)', () => {
     );
   });
 
+  // station#1558: no observed outcome, so no evidence. `commandOutcomePassed`
+  // reads any non-`success` status with a null exit code as a FAILING claim,
+  // which would attach a gate verdict for a command Station never saw finish.
+  it('spools nothing for an unresolved completion', () => {
+    const deps = makeDeps({
+      latestEventPayloadByMethod: vi.fn(() => flowAttached()),
+    });
+    const sidecar = new FlowPolicySidecar(deps);
+    const spool = spoolSpy(sidecar);
+    sidecar.spoolCommandEvidence(toolStarted('npm test'));
+    sidecar.spoolCommandEvidence({
+      eventId: 'evt-tool-unresolved',
+      provider: 'claude',
+      threadId: THREAD,
+      createdAt: '2026-08-01T00:00:04.000Z',
+      method: 'tool.completed',
+      toolName: 'bash',
+      toolCallId: 'call-1',
+      status: 'unresolved',
+      output:
+        'No result was reported before the session ended; whether the tool ran is unknown.',
+    } as unknown as CanonicalRuntimeEvent);
+    expect(spool).not.toHaveBeenCalled();
+  });
+
   it('reports truncation from the adapter receipt, not as a flat false', () => {
     // archive#4237 review M1: asserting `outputTruncated: false` recorded a
     // head-sliced output as complete, so the evidence file's "tail" was

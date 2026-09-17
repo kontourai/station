@@ -33,7 +33,13 @@ describe('UI build input detection', () => {
   it('recognizes the manifests, because a dependency bump moves the bundle', () => {
     // The failure this gate exists for has arrived this way: no source file
     // changed, the entry chunk grew anyway, and nobody owned the bytes.
-    expect(isUiBuildInput('package-lock.json')).toBe(true);
+    for (const path of [
+      'package-lock.json',
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
+      'patches/dependency.patch',
+    ])
+      expect(isUiBuildInput(path)).toBe(true);
     expect(isUiBuildInput('package.json')).toBe(true);
     expect(isUiBuildInput('vite.config.ts')).toBe(true);
   });

@@ -8,9 +8,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { collectRepositoryIdentity } from '../lib/test-reliability.mjs';
 import {
   executeTransferComparison,
@@ -27,14 +26,11 @@ import {
   withTransferGitEnvironment,
 } from '../orchestration-transfer-gate.mjs';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0)) {
-    // Temp fixtures are owned by this test process and cleaned by the OS when
-    // the suite exits; no repository baseline or dependency tree is touched.
-    void root;
-  }
-});
+// The managed per-file root is reclaimed by Vitest global teardown, even
+// when a pooled worker is interrupted. Raw OS temp paths bypass that owner.
+if (!process.env.STATION_ROOT)
+  throw new Error('Transfer fixtures require the managed Vitest root.');
+const fixtureParent = process.env.STATION_ROOT;
 
 const sha = (char: string) => char.repeat(40);
 const phases = () =>
@@ -88,8 +84,7 @@ function git(root: string, args: string[]) {
 }
 
 function twoRootGitFixture() {
-  const root = mkdtempSync(join(tmpdir(), 'station-transfer-git-roots-'));
-  roots.push(root);
+  const root = mkdtempSync(join(fixtureParent, 'station-transfer-git-roots-'));
   const candidate = join(root, 'candidate');
   const baseline = join(root, 'baseline');
   git(root, ['init', candidate]);
@@ -108,8 +103,7 @@ function twoRootGitFixture() {
 }
 
 function run(overrides: Record<string, unknown> = {}) {
-  const outputDir = mkdtempSync(join(tmpdir(), 'station-transfer-gate-'));
-  roots.push(outputDir);
+  const outputDir = mkdtempSync(join(fixtureParent, 'station-transfer-gate-'));
   const baseSha = sha('a');
   const candidateSha = sha('b');
   const calls: unknown[] = [];
@@ -148,6 +142,19 @@ function run(overrides: Record<string, unknown> = {}) {
 }
 
 describe('orchestration transfer gate control flow', () => {
+  test('keeps transfer fixture repositories and outputs under their managed owner', () => {
+    const ownerRoot = process.env.STATION_ROOT;
+    if (!ownerRoot) throw new Error('Managed test root is unavailable');
+    const { candidate, baseline } = twoRootGitFixture();
+    const { outputDir } = run();
+    for (const directory of [candidate, baseline, outputDir]) {
+      const within = relative(realpathSync(ownerRoot), realpathSync(directory));
+      expect(within).not.toBe('');
+      expect(isAbsolute(within)).toBe(false);
+      expect(within.split(sep)[0]).not.toBe('..');
+    }
+  });
+
   test('scrubs inherited hook git location before selecting a baseline', () => {
     const env = transferGitEnvironment({
       GIT_DIR: '/candidate/.git',
@@ -365,6 +372,23 @@ describe('orchestration transfer gate control flow', () => {
     }
   });
 
+  test('a dirty root refusal retains the changed path that blocked capture', () => {
+    const { candidate, baseline, baselineSha } = twoRootGitFixture();
+    writeFileSync(
+      join(baseline, 'subject.txt'),
+      'changed during verification\n',
+    );
+    expect(() =>
+      runTransferGate({
+        candidateRoot: candidate,
+        baselineRoot: baseline,
+        base: baselineSha,
+        outputDir: '.kontourai/orchestration-transfer-gate',
+        prepareBaseline: false,
+      }),
+    ).toThrow(/baseline root is dirty[\s\S]*subject\.txt/);
+  });
+
   test('#1279: suggests a sibling baseline for a lane worktree, not a nested station-worktrees', () => {
     const base = sha('c');
     expect(
@@ -392,9 +416,8 @@ describe('orchestration transfer gate control flow', () => {
     // nested inside the primary checkout's own working tree. Seven such
     // baselines existed on the reference machine.
     const root = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-transfer-agent-lane-')),
+      mkdtempSync(join(fixtureParent, 'station-transfer-agent-lane-')),
     );
-    roots.push(root);
     const primary = join(root, 'station');
     git(root, ['init', primary]);
     git(primary, ['config', 'user.email', 'transfer-gate@example.test']);
@@ -420,8 +443,9 @@ describe('orchestration transfer gate control flow', () => {
   });
 
   test('captures baseline modules after the candidate removes a contracts export', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-transfer-resolution-'));
-    roots.push(root);
+    const root = mkdtempSync(
+      join(fixtureParent, 'station-transfer-resolution-'),
+    );
     const candidate = join(root, 'candidate');
     const baseline = join(root, 'baseline');
     const output = join(root, 'capture.json');
@@ -665,7 +689,9 @@ writeFileSync(output, JSON.stringify({
   });
 
   test('propagates a failed or zero-output capture instead of reusing an old artifact', () => {
-    const outputDir = mkdtempSync(join(tmpdir(), 'station-transfer-gate-'));
+    const outputDir = mkdtempSync(
+      join(fixtureParent, 'station-transfer-gate-'),
+    );
     writeFileSync(
       join(outputDir, 'candidate.json'),
       JSON.stringify({ green: true }),

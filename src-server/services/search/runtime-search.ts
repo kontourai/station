@@ -1,0 +1,295 @@
+import {
+  isSessionReadAuthority,
+  type SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
+import {
+  UNIFIED_SEARCH_V1,
+  type UnifiedSearchMessagePageOutcome,
+  type UnifiedSearchMessagePageRequest,
+  type UnifiedSearchOpenLocator,
+  type UnifiedSearchOpenResolution,
+  type UnifiedSearchOutcome,
+  type UnifiedSearchProvider,
+  type UnifiedSearchRequest,
+} from '@kontourai/station-contracts/unified-search';
+import { createLogger, type Logger } from '../../utils/logger.js';
+import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import type { TaskGraphService } from '../projects/task-graph-service.js';
+import { createStationMessageSearchProvider } from './station-search-providers.js';
+import { UnifiedSearchService } from './unified-search-service.js';
+
+/**
+ * Where the unified-search logger is actually constructed.
+ *
+ * `unified-search-service.ts` deliberately takes its logger as an input and
+ * imports the seam type-only: a value import puts pino into the standalone
+ * Task-reader bundle that `server-build-portability` builds and runs, and pino
+ * cannot survive that bundle. This module is not part of any portable probe,
+ * so it is the right edge to own the logger.
+ */
+const defaultLogger = createLogger({ name: 'unified-search' });
+
+interface SearchReadContext {
+  authority: SessionReadAuthority;
+  current: () => boolean;
+  signal?: AbortSignal;
+}
+
+/** One runtime owns the readers. Request adapters never allocate worker owners. */
+export function createRuntimeSearch(input: {
+  stationId: string;
+  tasks: Pick<TaskGraphService, 'createPersonalSearchReader'>;
+  transcripts: Pick<
+    OrchestrationService,
+    | 'createIsolatedTranscriptSearch'
+    | 'retireIsolatedTranscriptSearchAfterFailedInitialization'
+  >;
+  /** Overridden in tests; production uses this module's own logger. */
+  logger?: Logger;
+}) {
+  const tasks = input.tasks.createPersonalSearchReader(input.stationId);
+  const transcripts = input.transcripts.createIsolatedTranscriptSearch();
+  const retireTranscripts =
+    input.transcripts.retireIsolatedTranscriptSearchAfterFailedInitialization.bind(
+      input.transcripts,
+    );
+  let closed = false;
+  const active = new Set<AbortController>();
+  /**
+   * station#1707: BOTH readers are `worker_threads` workers created on first
+   * use — the transcript reader is the one the reported failure named, and
+   * the Task reader has the identical shape behind `station.tasks`. Every budget that brackets a search — the unified
+   * service's `providerTimeoutMs`, `readAuthorized`'s own deadline, and the
+   * worker's read deadline — starts before that spawn, so the FIRST search
+   * after a runtime boots was paying thread creation, entry-module load
+   * (transform included, under a test runner) and database open out of a
+   * budget meant for the query. On a loaded host it exceeded it, and the
+   * response was an honest-looking 200 whose `station.messages` source was
+   * `unavailable` with `provider-timeout-or-error`.
+   *
+   * Started here, at composition, so the boot overlaps runtime startup
+   * instead of a request; awaited again in `run` so that when a request does
+   * arrive mid-boot it waits for the worker rather than billing the wait to
+   * the read. Readiness is the worker's own sentinel — its entry module's
+   * last top-level statement, after the transform, the evaluation and the
+   * database open — not `worker.on('online')`, which fires ~40-60ms before
+   * any of that under load. `whenReady` never rejects and is itself bounded, so this can
+   * only delay a read by the worker's own deadline in the degenerate case
+   * where the thread never comes up — which is what used to happen to every
+   * cold first search.
+   */
+  void tasks.whenReady();
+  void transcripts.whenReady();
+  const current = (context: SearchReadContext) => {
+    try {
+      return (
+        !closed &&
+        !context.signal?.aborted &&
+        isSessionReadAuthority(context.authority) &&
+        context.current() === true
+      );
+    } catch {
+      return false;
+    }
+  };
+  /**
+   * Only the readers an operation actually uses. `whenReady` is bounded by
+   * the worker's own deadline, so waiting for a reader the operation never
+   * touches would let one wedged thread delay every read of the other —
+   * a `session-message` open has nothing to do with the Task worker.
+   */
+  const readiness = {
+    transcripts: () => [transcripts.whenReady()],
+    tasks: () => [tasks.whenReady()],
+    both: () => [tasks.whenReady(), transcripts.whenReady()],
+  } as const;
+
+  async function run<T>(
+    context: SearchReadContext,
+    unavailable: T,
+    read: (context: SearchReadContext) => Promise<T>,
+    ready: keyof typeof readiness = 'both',
+  ): Promise<T> {
+    if (!current(context)) return unavailable;
+    // Before the controller, and so before every downstream deadline. Asked
+    // per read rather than once: a worker retired mid-life (a read that
+    // timed out, an `error`/`exit`) is respawned by the next `whenReady`,
+    // and a promise captured at composition would report that new thread as
+    // already ready — putting the respawn back on the read budget, which is
+    // the whole defect.
+    await Promise.all(readiness[ready]());
+    if (!current(context)) return unavailable;
+    const controller = new AbortController();
+    active.add(controller);
+    const abort = () => controller.abort();
+    context.signal?.addEventListener('abort', abort, { once: true });
+    try {
+      const result = await read({
+        ...context,
+        signal: controller.signal,
+        current: () => current(context),
+      });
+      return current(context) ? result : unavailable;
+    } catch {
+      return unavailable;
+    } finally {
+      active.delete(controller);
+      context.signal?.removeEventListener('abort', abort);
+    }
+  }
+  return {
+    /**
+     * Synchronous admission fence precedes every asynchronous shutdown drain.
+     *
+     * Deliberately does NOT release the warmed workers (station#1707).
+     * `stop()` is a synchronous admission fence — `station-runtime.ts` calls
+     * it while composing routes for a runtime whose search admission is
+     * stopped — and retiring a thread is asynchronous. A stopped reader
+     * therefore holds its two idle threads until `close()`, each capped at
+     * `maxOldGenerationSizeMb: 128` and doing nothing.
+     *
+     * Nothing re-spawns them because `run()` refuses on `current()` — which
+     * reads THIS module's `closed` — before it awaits readiness, so no
+     * `whenReady()` (and therefore no `acquire()`) is reached after the
+     * fence. The owner's own early-return on close is a different flag, set
+     * only by the owner's `close()`, and is not what holds this line.
+     *
+     * The alternative — a fence that starts an async teardown — is how a
+     * `stop()` ends up racing the `close()` that follows it.
+     */
+    stop() {
+      closed = true;
+      for (const controller of active) controller.abort();
+    },
+    inspect: tasks.inspect,
+    readMessagePage(
+      request: UnifiedSearchMessagePageRequest,
+      context: SearchReadContext,
+    ): Promise<UnifiedSearchMessagePageOutcome> {
+      return run<UnifiedSearchMessagePageOutcome>(
+        context,
+        { state: 'unavailable' },
+        (bound) => transcripts.readMessagePage({ ...bound, ...request }),
+        'transcripts',
+      );
+    },
+    /** Retain the same Task owner on pending cleanup. Transcript custody belongs to Orchestration. */
+    close() {
+      this.stop();
+      return tasks.close();
+    },
+    async retireAfterFailedInitialization(): Promise<{
+      state: 'closed' | 'winding-down' | 'incomplete';
+    }> {
+      this.stop();
+      const results = await Promise.allSettled([
+        tasks.close(),
+        retireTranscripts(),
+      ]);
+      if (
+        results.every(
+          (result) =>
+            result.status === 'fulfilled' && result.value.state === 'closed',
+        )
+      )
+        return { state: 'closed' };
+      return {
+        state: results.some(
+          (result) =>
+            result.status === 'fulfilled' &&
+            result.value.state === 'winding-down',
+        )
+          ? 'winding-down'
+          : 'incomplete',
+      };
+    },
+    search(
+      request: UnifiedSearchRequest,
+      context: SearchReadContext,
+    ): Promise<UnifiedSearchOutcome> {
+      const unavailable: UnifiedSearchOutcome = {
+        version: UNIFIED_SEARCH_V1,
+        state: 'unavailable',
+        results: [],
+        sources: [],
+      };
+      // Both: the unified response carries a source row for each provider.
+      return run(context, unavailable, async (bound) => {
+        const authority = bound.authority;
+        if (authority.mode === 'hosted' && !authority.tenantExecutionContext)
+          return unavailable;
+        const taskProvider: UnifiedSearchProvider =
+          authority.mode === 'personal'
+            ? tasks.provider
+            : {
+                descriptor: {
+                  ...tasks.provider.descriptor,
+                  owner: {
+                    kind: 'station',
+                    stationId: input.stationId,
+                    tenantId: authority.tenantExecutionContext!.tenantId,
+                  },
+                },
+                async search() {
+                  return {
+                    version: UNIFIED_SEARCH_V1,
+                    state: 'restricted',
+                    reason: 'authorization-restricted',
+                  };
+                },
+              };
+        const messages = createStationMessageSearchProvider({
+          authority:
+            authority.mode === 'personal'
+              ? { mode: 'personal', stationId: input.stationId }
+              : {
+                  mode: 'hosted',
+                  stationId: input.stationId,
+                  tenantId: authority.tenantExecutionContext!.tenantId,
+                },
+          source: {
+            async searchAuthorizedMessages(request, signal) {
+              const result = await transcripts.search({
+                ...bound,
+                ...request,
+                signal,
+              });
+              if (result.state !== 'available')
+                throw new Error('Search unavailable');
+              return result.matches;
+            },
+          },
+        });
+        return new UnifiedSearchService([taskProvider, messages], {
+          logger: input.logger ?? defaultLogger,
+        }).search(request, bound.signal);
+      });
+    },
+    open(
+      locator: UnifiedSearchOpenLocator,
+      context: SearchReadContext,
+    ): Promise<UnifiedSearchOpenResolution> {
+      return run<UnifiedSearchOpenResolution>(
+        context,
+        { state: 'unavailable' },
+        async (bound) => {
+          if (locator.kind === 'task')
+            return tasks.open({ ...bound, ...locator });
+          if (locator.kind === 'session')
+            return transcripts.openSession({
+              ...bound,
+              sessionId: locator.sessionId,
+            });
+          return transcripts.open({
+            ...bound,
+            sessionId: locator.sessionId,
+            matchedEventId: locator.matchedEventId,
+          });
+        },
+        // The locator already says which reader this open reaches.
+        locator.kind === 'task' ? 'tasks' : 'transcripts',
+      );
+    },
+  };
+}
+export type RuntimeSearch = ReturnType<typeof createRuntimeSearch>;

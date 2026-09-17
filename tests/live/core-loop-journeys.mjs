@@ -5,7 +5,7 @@
  * the four things that must never break, each the regression net for a
  * Critical/High finding of the #765 fresh-home UX audit:
  *
- *  1. multi-turn-continuity — three turns in one conversation on the Claude
+ *  1. multi-turn-continuity — three turns in one conversation on the selected
  *     Code engine, including a continuation across an explicit stopSession
  *     (the exact #765 A1 path: child session resumed from a stopped
  *     predecessor's cursor, which only works because persistSession is
@@ -22,12 +22,17 @@
  *     Needs-attention item — #765 D5), the host approves via the CLI, and
  *     the request reads `confirmed`.
  *
- * Journeys that need the Claude Code CLI report NOT-EXERCISED (loudly, in
+ * Journeys that need an engine report NOT-EXERCISED (loudly, in
  * the summary and the exit report) when the engine is not ready on this
  * host — hosted CI runners have no signed-in `claude`, so there the suite
  * proves the pairing journey end-to-end and discloses the
  * rest. Set CORE_LOOP_REQUIRE_CLAUDE=1 to turn those disclosures into
  * failures on hosts where the engine is expected.
+ *
+ * Set CORE_LOOP_ENGINE=muse (or codex, opencode, etc.) to exercise another
+ * installed engine with the same assertions. CORE_LOOP_REQUIRE_ENGINE=1 makes
+ * an unavailable selected engine fail; CORE_LOOP_MODEL_OVERRIDE selects its model.
+ * No automatic fallback: each receipt identifies the engine actually exercised.
  *
  * Run with `npm run journeys:core-loop`. Nightly cadence, never per-PR —
  * see .github/workflows/fresh-home-walkthrough.yml (second job).
@@ -39,6 +44,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { foldUsageEvents } from '../../packages/shared/src/usage-fold.ts';
+import { acceptedTurnReply } from './helpers/accepted-turn-reply.mjs';
 import {
   api,
   apiOk,
@@ -61,11 +68,14 @@ const OUTPUT_ROOT = resolve(
 );
 const UI_ORIGIN = `http://localhost:${UI_PORT}`;
 const SETTLE_TIMEOUT_MS = 30_000;
-/** A real Claude Code turn on a loaded host; generous, but bounded. */
+/** A real provider turn on a loaded host; generous, but bounded. */
 const TURN_TIMEOUT_MS = Number(
   process.env.CORE_LOOP_TURN_TIMEOUT_MS ?? 240_000,
 );
-const REQUIRE_CLAUDE = process.env.CORE_LOOP_REQUIRE_CLAUDE === '1';
+const ENGINE_ID = process.env.CORE_LOOP_ENGINE?.trim() || 'claude-code';
+const REQUIRE_ENGINE =
+  process.env.CORE_LOOP_REQUIRE_ENGINE === '1' ||
+  (ENGINE_ID === 'claude-code' && process.env.CORE_LOOP_REQUIRE_CLAUDE === '1');
 
 const SESSION_NOT_FOUND_PATTERN = /No conversation found with session ID/i;
 
@@ -151,7 +161,7 @@ async function runJourney(id, title, fn) {
     results.push({ id, status: 'passed', notes });
     console.log(`=== journey ${id}: PASSED`);
   } catch (error) {
-    if (error instanceof NotExercised && !REQUIRE_CLAUDE) {
+    if (error instanceof NotExercised && !REQUIRE_ENGINE) {
       notes.push(`NOT-EXERCISED: ${error.message}`);
       results.push({ id, status: 'not-exercised', notes });
       console.error(`=== journey ${id}: NOT-EXERCISED — ${error.message}`);
@@ -187,33 +197,37 @@ function envelopeData(payload) {
 }
 
 /**
- * The Claude Code engine connection as the product reports it. Journeys that
+ * The selected engine connection as the product reports it. Journeys that
  * drive a real engine turn require `ready`; everything else must not silently
  * downgrade. An absent row is legitimate on a host with no configured model
- * connections, but inventory read failures or a host-detected Claude runtime
+ * connections, but inventory read failures or a host-detected runtime
  * missing from that inventory are failures rather than an absent CLI.
  */
-async function claudeEngineState(page) {
+function matchesSelectedEngine(connection) {
+  return (
+    connection?.engineId === ENGINE_ID ||
+    connection?.config?.engineId === ENGINE_ID ||
+    connection?.id === ENGINE_ID ||
+    (ENGINE_ID === 'claude-code' && connection?.id === 'claude')
+  );
+}
+
+async function selectedEngineState(page) {
   const payload = await apiOk(page, 'GET', '/api/connections/agents');
   const connections = envelopeData(payload);
   assert(
     Array.isArray(connections),
     `GET /api/connections/agents did not return a connection list: ${JSON.stringify(payload)?.slice(0, 300)}`,
   );
-  const claude = connections.find(
-    (connection) =>
-      connection?.engineId === 'claude-code' ||
-      connection?.config?.engineId === 'claude-code' ||
-      connection?.id === 'claude',
-  );
-  if (!claude) {
+  const connection = connections.find(matchesSelectedEngine);
+  if (!connection) {
     const failures =
       payload && typeof payload === 'object' && Array.isArray(payload.failures)
         ? payload.failures
         : [];
     assert(
       failures.length === 0,
-      `no Claude Code engine connection row exists and the runtime connection inventory reported failures: ${failures
+      `no ${ENGINE_ID} engine connection row exists and the runtime connection inventory reported failures: ${failures
         .map(
           (failure) =>
             `id=${failure?.connectionId ?? 'unknown'} name=${failure?.name ?? 'unknown'} reason=${failure?.reason ?? 'unknown'}`,
@@ -231,35 +245,34 @@ async function claudeEngineState(page) {
       Array.isArray(catalog),
       `GET /api/connections/agents/catalog did not return a connection list: ${JSON.stringify(catalogPayload)?.slice(0, 300)}`,
     );
-    const detectedClaude = catalog.find(
+    const detectedEngine = catalog.find(
       (connection) =>
-        (connection?.engineId === 'claude-code' ||
-          connection?.config?.engineId === 'claude-code' ||
-          connection?.id === 'claude') &&
+        matchesSelectedEngine(connection) &&
         connection?.setup?.detected === true,
     );
     assert(
-      !detectedClaude,
-      `no Claude Code engine connection row exists, but the runtime catalog reports ${detectedClaude?.id ?? 'claude-code'} with setup.detected=true — the runtime connection inventory is broken`,
+      !detectedEngine,
+      `no ${ENGINE_ID} engine connection row exists, but the runtime catalog reports ${detectedEngine?.id ?? ENGINE_ID} with setup.detected=true — the runtime connection inventory is broken`,
     );
     throw new NotExercised(
-      `this host reported ${connections.length} runtime connection row${connections.length === 1 ? '' : 's'}, with no claude-code row among them`,
+      `this host reported ${connections.length} runtime connection row${connections.length === 1 ? '' : 's'}, with no ${ENGINE_ID} row among them`,
     );
   }
-  const ready = claude.status === 'ready' || claude.setup?.state === 'ready';
-  return { connection: claude, ready };
+  const ready =
+    connection.status === 'ready' || connection.setup?.state === 'ready';
+  return { connection, ready };
 }
 
-function requireClaudeReady(state, journey) {
+function requireEngineReady(state, journey) {
   if (state.ready) return;
   throw new NotExercised(
-    `${journey} needs a ready Claude Code engine; this host reports status=${state.connection.status ?? 'unknown'} setup.state=${state.connection.setup?.state ?? 'unknown'} (claude CLI absent or not signed in)`,
+    `${journey} needs a ready ${ENGINE_ID} engine; this host reports status=${state.connection.status ?? 'unknown'} setup.state=${state.connection.setup?.state ?? 'unknown'}`,
   );
 }
 
 /**
- * The Agent bound to the detected Claude engine connection. A fresh home
- * with a ready `claude` CLI ADOPTS the engine into the agent registry at
+ * The Agent bound to the selected engine connection. A fresh home
+ * with a ready CLI adopts the engine into the agent registry at
  * boot ("Adopted detected native engine into the agent registry"), so the
  * ordinary path is to wait for that row — calling materialize-engine while
  * the boot adoption is still reconciling has been observed answering with
@@ -267,7 +280,7 @@ function requireClaudeReady(state, journey) {
  * suite's bring-up). materialize-engine remains the fallback for a home
  * where no adoption produced the row.
  */
-async function resolveClaudeAgentSlug(page, state) {
+async function resolveEngineAgentSlug(page, state) {
   let slug;
   const findAdopted = async () => {
     const agents = envelopeData(await apiOk(page, 'GET', '/api/agents'));
@@ -374,7 +387,13 @@ async function dumpSessionControlStates(page, label) {
   }
 }
 
-async function startConversation(page, agentSlug, message, workspace) {
+async function startConversation(
+  page,
+  agentSlug,
+  message,
+  workspace,
+  modelOverride,
+) {
   const { status, payload } = await dispatchWithCatalogSettle(
     page,
     '/api/orchestration/chat',
@@ -383,6 +402,7 @@ async function startConversation(page, agentSlug, message, workspace) {
         environment: { kind: 'current' },
         agent: agentSlug,
         ...(workspace ? { workspace } : {}),
+        ...(modelOverride ? { model: { override: modelOverride } } : {}),
       },
       message,
     },
@@ -398,7 +418,7 @@ async function startConversation(page, agentSlug, message, workspace) {
     typeof conversationId === 'string' && typeof sessionId === 'string',
     `foreground handle missing conversationId/sessionId: ${JSON.stringify(payload)?.slice(0, 400)}`,
   );
-  return { conversationId, sessionId };
+  return { conversationId, sessionId, turnId: data?.providerTurnId };
 }
 
 async function continueConversation(page, conversationId, message) {
@@ -415,6 +435,7 @@ async function continueConversation(page, conversationId, message) {
   return {
     conversationId: data?.conversationId ?? conversationId,
     sessionId: data?.sessionId,
+    turnId: data?.providerTurnId,
   };
 }
 
@@ -453,7 +474,7 @@ function messageText(message) {
  * whether the turn never started, is still streaming, or completed into a
  * projection this suite is misreading.
  */
-async function awaitAssistantReplies(page, threadId, count) {
+async function awaitAssistantReplies(page, threadId, count, turnId) {
   const deadline = Date.now() + TURN_TIMEOUT_MS;
   let lastSummary = 'no observation yet';
   while (Date.now() < deadline) {
@@ -468,10 +489,18 @@ async function awaitAssistantReplies(page, threadId, count) {
     }
     const assistants = messages.filter(
       (message) =>
-        message.role === 'assistant' && messageText(message).trim().length > 0,
+        message.role === 'assistant' && messageText(message).trim() === 'ACK',
     );
-    lastSummary = `${messages.length} message(s), ${assistants.length} non-empty assistant`;
-    if (assistants.length >= count) return;
+    lastSummary = `${messages.length} message(s), ${assistants.length} expected assistant reply`;
+    const detail = envelopeData(
+      await apiOk(
+        page,
+        'GET',
+        `/api/orchestration/sessions/${encodeURIComponent(threadId)}`,
+      ),
+    );
+    const completed = acceptedTurnReply(detail?.events ?? [], turnId, 'ACK');
+    if (assistants.length >= count && completed) return detail;
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
   }
   // Timed out — say what the event store actually holds for this session.
@@ -497,19 +526,22 @@ async function awaitAssistantReplies(page, threadId, count) {
 }
 
 // ---------------------------------------------------------------------------
-// Journey 1: multi-turn continuity (Claude Code, #765 A1/A2, PR #796)
+// Journey 1: multi-turn continuity (#765 A1/A2, PR #796)
 // ---------------------------------------------------------------------------
 
 async function journeyMultiTurnContinuity(page, note, shared) {
-  const state = await claudeEngineState(page);
-  requireClaudeReady(state, 'multi-turn continuity');
-  const agentSlug = await resolveClaudeAgentSlug(page, state);
+  const state = await selectedEngineState(page);
+  requireEngineReady(state, 'multi-turn continuity');
+  const agentSlug = await resolveEngineAgentSlug(page, state);
+  note(`selected engine: ${ENGINE_ID}`);
   note(`materialized engine agent '${agentSlug}'`);
 
   const turn1 = await startConversation(
     page,
     agentSlug,
     'Reply with the single word ACK and nothing else.',
+    undefined,
+    process.env.CORE_LOOP_MODEL_OVERRIDE ?? 'default',
   );
   note(
     `turn 1 accepted: conversation=${turn1.conversationId} session=${turn1.sessionId}`,
@@ -518,8 +550,20 @@ async function journeyMultiTurnContinuity(page, note, shared) {
   // engine session accumulate in that session's transcript; a turn that
   // lands a child session starts a fresh count there.
   const expectedBySession = new Map([[turn1.sessionId, 1]]);
-  await awaitAssistantReplies(page, turn1.sessionId, 1);
+  const firstDetail = await awaitAssistantReplies(
+    page,
+    turn1.sessionId,
+    1,
+    turn1.turnId,
+  );
   note('turn 1 answered');
+  const firstModel =
+    firstDetail?.session?.reportedModel ?? firstDetail?.session?.model;
+  assert(
+    typeof firstModel === 'string' && firstModel.length > 0,
+    'First turn model was not reported',
+  );
+  note(`turn 1 model: ${firstModel}`);
   // Published for journey 2's chat-surface assert as soon as a transcript
   // exists — the later continuity asserts refine THIS journey's verdict but
   // must not withhold a perfectly usable conversation from journey 2.
@@ -528,6 +572,69 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     sessionId: turn1.sessionId,
     agentSlug,
   };
+
+  // Observe the actual dock during the follow-up; a final reply alone cannot
+  // catch a read-only error which appears and then recovers (#1792).
+  await page.evaluate(
+    ({ conversationId, sessionId, agentSlug, provider }) => {
+      sessionStorage.setItem(
+        'activeChats',
+        JSON.stringify([
+          {
+            sessionId,
+            conversationId,
+            agentSlug,
+            title: 'Follow-up UI audit',
+            executionMode: 'external',
+            provider,
+            providerOptions: {},
+            orchestrationSessionStarted: true,
+            ephemeralMessages: [],
+            inputHistory: [],
+          },
+        ]),
+      );
+    },
+    {
+      conversationId: turn1.conversationId,
+      sessionId: turn1.sessionId,
+      agentSlug,
+      provider: state.connection.id,
+    },
+  );
+  await page.goto(
+    `${UI_ORIGIN}/?chat=${encodeURIComponent(turn1.conversationId)}&dock=open`,
+  );
+  await page
+    .locator('.chat-messages')
+    .first()
+    .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+  await page.evaluate(() => {
+    const records = [];
+    const dock = document
+      .querySelector('.chat-messages')
+      ?.closest('[aria-label="Chat dock"]');
+    if (!dock)
+      throw new Error('Follow-up audit could not find the mounted chat dock.');
+    const observe = () => {
+      const text = dock.textContent ?? '';
+      if (
+        /is read.only|available read.only|could not prove a writable|Session record missing/i.test(
+          text,
+        ) &&
+        records.length < 10
+      )
+        records.push(text.slice(-4000));
+    };
+    const observer = new MutationObserver(observe);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    window.__stationFollowupUiAudit = { records, observer };
+    observe();
+  });
 
   const turn2 = await continueConversation(
     page,
@@ -543,12 +650,81 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     turn2Session,
     (expectedBySession.get(turn2Session) ?? 0) + 1,
   );
-  await awaitAssistantReplies(
+  const secondDetail = await awaitAssistantReplies(
     page,
     turn2Session,
     expectedBySession.get(turn2Session),
+    turn2.turnId,
   );
   note('turn 2 answered in the same conversation');
+  const secondModel =
+    secondDetail?.session?.reportedModel ?? secondDetail?.session?.model;
+  note(
+    `follow-up model receipt: ${JSON.stringify({
+      firstSession: turn1.sessionId,
+      secondSession: turn2Session,
+      firstModel,
+      secondModel,
+      provider: secondDetail?.session?.provider,
+      events: (secondDetail?.events ?? [])
+        .filter((event) => event.turnId === turn2.turnId)
+        .map((event) => ({
+          type: event.type,
+          method: event.method,
+          model: event.model,
+          modelPlan: event.metadata?.modelLaunchPlan,
+        })),
+    })}`,
+  );
+  assert(
+    secondModel === firstModel,
+    `Continuation changed model without an override: ${firstModel} -> ${secondModel}`,
+  );
+  note(`turn 2 retained model: ${secondModel}`);
+  const nativeCursor = secondDetail?.session?.resumeCursor;
+  if (typeof nativeCursor === 'string' && /^[0-9a-f-]{36}$/i.test(nativeCursor))
+    note(`native session receipt: ${nativeCursor}`);
+  const usage = foldUsageEvents(
+    (secondDetail?.events ?? []).filter(
+      (event) => event.turnId === turn2.turnId,
+    ),
+  );
+  note(
+    `follow-up usage: ${JSON.stringify({
+      uncachedInput: usage.inputTokens,
+      output: usage.outputTokens,
+      cacheRead: usage.cacheReadTokens,
+      cacheWrite: usage.cacheWriteTokens,
+    })}`,
+  );
+  await poll(
+    'the follow-up composer to become writable again',
+    SETTLE_TIMEOUT_MS,
+    () =>
+      page
+        .getByPlaceholder(/^Type a message/)
+        .isEnabled()
+        .catch(() => false),
+  );
+  const transientErrors = await page.evaluate(() => {
+    const audit = window.__stationFollowupUiAudit;
+    audit.observer.disconnect();
+    delete window.__stationFollowupUiAudit;
+    return audit.records;
+  });
+  mkdirSync(join(OUTPUT_ROOT, 'gallery'), { recursive: true });
+  await page.screenshot({
+    path: join(OUTPUT_ROOT, 'gallery', 'followup-completed.png'),
+  });
+  writeFileSync(
+    join(OUTPUT_ROOT, 'followup-ui-observations.json'),
+    JSON.stringify({ transientErrors }, null, 2),
+  );
+  assert(
+    transientErrors.length === 0,
+    `Follow-up flashed a read-only error ${transientErrors.length} time(s); see followup-ui-observations.json`,
+  );
+  note('mounted dock showed no transient read-only error during turn 2');
 
   // Deterministically exercise the #765 A1 continuation path: stop the live
   // session so turn 3 must reserve a child session and resume from the
@@ -624,8 +800,9 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     page,
     turn3Session,
     expectedBySession.get(turn3Session),
+    turn3.turnId,
   );
-  note('turn 3 answered after stop/resume — cursor-backed continuation held');
+  note('turn 3 answered after stop/continue — conversation continuity held');
 
   // Continuity + no-fragmentation asserts (#765 A2): exactly one
   // conversation exists on this fresh home, the sessions the three turns
@@ -691,9 +868,10 @@ async function journeyMultiTurnContinuity(page, note, shared) {
 // ---------------------------------------------------------------------------
 
 async function journeyProjectDeepLinkReload(note, shared) {
-  const state = await claudeEngineState(shared.mainPage);
-  requireClaudeReady(state, 'project deep-link reload');
-  const agentSlug = await resolveClaudeAgentSlug(shared.mainPage, state);
+  const state = await selectedEngineState(shared.mainPage);
+  requireEngineReady(state, 'project deep-link reload');
+  const agentSlug = await resolveEngineAgentSlug(shared.mainPage, state);
+  note(`selected engine: ${ENGINE_ID}`);
   const projectSlug = 'core-loop-journey';
   // A project-bound dispatch requires a configured working directory
   // ("Project '<slug>' has no working directory configured" otherwise).
@@ -711,8 +889,9 @@ async function journeyProjectDeepLinkReload(note, shared) {
     agentSlug,
     'Reply with the single word ACK and nothing else.',
     { kind: 'project', projectSlug },
+    process.env.CORE_LOOP_MODEL_OVERRIDE ?? 'default',
   );
-  await awaitAssistantReplies(shared.mainPage, turn.sessionId, 1);
+  await awaitAssistantReplies(shared.mainPage, turn.sessionId, 1, turn.turnId);
   note(`project conversation ${turn.conversationId} answered`);
 
   const context = await shared.newMainContext();
@@ -725,7 +904,7 @@ async function journeyProjectDeepLinkReload(note, shared) {
     // a different journey — the dock prunes restored chats the conversation
     // inventory cannot vouch for, which on a fresh home includes this one.
     await page.addInitScript(
-      ({ conversationId, sessionId, agentSlug }) => {
+      ({ conversationId, sessionId, agentSlug, provider }) => {
         sessionStorage.setItem(
           'activeChats',
           JSON.stringify([
@@ -735,7 +914,7 @@ async function journeyProjectDeepLinkReload(note, shared) {
               agentSlug,
               title: 'Core Loop Journey chat',
               executionMode: 'external',
-              provider: 'claude',
+              provider,
               providerOptions: {},
               orchestrationSessionStarted: true,
               ephemeralMessages: [],
@@ -748,6 +927,7 @@ async function journeyProjectDeepLinkReload(note, shared) {
         conversationId: turn.conversationId,
         sessionId: turn.sessionId,
         agentSlug,
+        provider: state.connection.id,
       },
     );
     await pairBrowser(page, {
@@ -760,9 +940,14 @@ async function journeyProjectDeepLinkReload(note, shared) {
     const assertConversationVisible = async (phase) => {
       const settleFailure = await settlePageReason(page, SETTLE_TIMEOUT_MS);
       assert(!settleFailure, `${phase}: did not settle: ${settleFailure}`);
-      const path = new URL(page.url()).pathname;
+      // station#928 retired the `/activity` route, so a decay into the
+      // Activity inspector now shows up as the surface deep link rather than
+      // as a pathname. Both spellings are checked: the pathname assertion
+      // alone would pass through the very decay it exists to catch.
+      const decayed = new URL(page.url());
       assert(
-        !path.startsWith('/activity'),
+        !decayed.pathname.startsWith('/activity') &&
+          decayed.searchParams.get('surface') !== 'activity',
         `${phase}: decayed into the Activity inspector (${page.url()}) — #765 A5`,
       );
       assert(
@@ -1138,7 +1323,7 @@ try {
 
 writeFileSync(
   join(OUTPUT_ROOT, 'summary.json'),
-  `${JSON.stringify({ results }, null, 2)}\n`,
+  `${JSON.stringify({ engineId: ENGINE_ID, results }, null, 2)}\n`,
 );
 
 console.log('\ncore-loop journey results:');

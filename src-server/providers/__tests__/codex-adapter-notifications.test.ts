@@ -1,6 +1,14 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test, vi } from 'vitest';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
+import {
+  EventStore,
+  MAX_EVENT_STORE_INGRESS_BYTES,
+} from '../../services/orchestration/event-store.js';
 import { adapterTurnDuration } from '../../telemetry/metrics.js';
 import { handleCodexNotification } from '../adapters/codex-adapter-notifications.js';
 import type { CodexSessionRecord } from '../adapters/codex-adapter-types.js';
@@ -53,13 +61,123 @@ function buildRecord(
     lastSessionState: 'idle',
     turnOutput: new Map(),
     toolNames: new Map(),
-    toolStarted: new Set(),
+    openToolCalls: new Map(),
     stopped: false,
     ...overrides,
   };
 }
 
 describe('codex-adapter-notifications', () => {
+  test.each([
+    [
+      'commandExecution',
+      {
+        aggregatedOutput: `${'\u0000😀'.repeat(40000)}command tail`,
+        exitCode: 0,
+        durationMs: 25,
+      },
+    ],
+    [
+      'mcpToolCall',
+      {
+        result: {
+          content: Array.from({ length: 1000 }, () => ({
+            type: 'text',
+            text: 'large result'.repeat(10000),
+          })),
+        },
+      },
+    ],
+    [
+      'fileChange',
+      {
+        changes: Array.from({ length: 1000 }, () => ({
+          path: 'file.ts',
+          diff: 'diff'.repeat(10000),
+        })),
+      },
+    ],
+  ])(
+    'persists large %s output and the following terminal through the real ingress seam',
+    (type, output) => {
+      const directory = mkdtempSync(join(tmpdir(), 'codex-output-'));
+      const store = new EventStore(join(directory, 'events.sqlite'));
+      const record = buildRecord({ activeTurnId: 'turn-1' });
+      const events: any[] = [];
+      const publish = (event: any) => {
+        const projected = store.projectLiveEvent(event);
+        store.appendEvent(projected);
+        events.push(projected);
+      };
+      const notify = (method: string, params: unknown) =>
+        handleCodexNotification({
+          record,
+          notification: { method, params },
+          nowIso: () => '2026-01-02T00:00:00.000Z',
+          publish,
+        });
+      try {
+        notify('item/started', {
+          turnId: 'turn-1',
+          item: {
+            id: 'tool-1',
+            type,
+            command: 'gh pr list',
+            server: 'github',
+            tool: 'list',
+          },
+        });
+        notify('item/commandExecution/outputDelta', {
+          turnId: 'turn-1',
+          itemId: 'tool-1',
+          delta: 'progress'.repeat(20000),
+        });
+        notify('item/completed', {
+          turnId: 'turn-1',
+          item: { id: 'tool-1', type, status: 'completed', ...output },
+        });
+        notify('turn/completed', {
+          turn: { id: 'turn-1', status: 'completed' },
+        });
+        const completion = events.find(
+          (event) => event.method === 'tool.completed',
+        );
+        expect(completion).toMatchObject({
+          status: 'success',
+          outputReceipt: { truncated: true, fullOutput: 'unavailable' },
+        });
+        if (type === 'commandExecution') {
+          expect(completion.output.output).toMatch(/command tail$/);
+          expect(completion.output.exitCode).toBe(0);
+        }
+        expect(events.at(-1).method).toBe('turn.completed');
+        for (const replay of [
+          events,
+          events.filter((event) => event.method !== 'tool.started'),
+        ]) {
+          const messages = projectRuntimeEventsToMessages(replay);
+          expect(
+            messages
+              .flatMap((message) => message.parts)
+              .find((part) => part.type === 'tool-invocation'),
+          ).toMatchObject({ outputTruncated: true });
+        }
+
+        expect(store.listEvents('thread-1')).toHaveLength(4);
+        expect(
+          events.every(
+            (event) =>
+              Buffer.byteLength(JSON.stringify(event)) <
+              MAX_EVENT_STORE_INGRESS_BYTES,
+          ),
+        ).toBe(true);
+      } finally {
+        store.close();
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test('drops malformed token figures at the Codex notification boundary', () => {
     const events: any[] = [];
 
@@ -184,7 +302,7 @@ describe('codex-adapter-notifications', () => {
       publish: (event) => events.push(event),
     });
 
-    expect(record.toolStarted.has('tool-1')).toBe(false);
+    expect(record.openToolCalls.has('tool-1')).toBe(false);
     expect(record.activeTurnId).toBeUndefined();
     expect(record.session.status).toBe('ready');
     expect(record.session.resumeCursor).toEqual({

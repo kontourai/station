@@ -6,7 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { ChatPaneFileDropBoundary } from '../components/chat-dock/ChatPaneFileDropBoundary';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
-import { AmbientChatDockPaneHost } from '../workspace-panes/AmbientChatDockPaneHost';
+import { RegionPaneHost } from '../workspace-panes/RegionPaneHost';
 
 // archive#4525: `DockShell` (via `useDockShellChrome`) now reads
 // `useProjects` for its project-binding deletion cleanup — mocked here the
@@ -18,6 +18,9 @@ vi.mock('../contexts/ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 const source = readFileSync(
@@ -29,11 +32,10 @@ describe('ChatDock activity region', () => {
   test('keeps the named dock root, every passive reset modality, and shortcut focus wiring together', () => {
     const onActivity = vi.fn();
     const onFocusWithinChange = vi.fn();
-    // The ambient host publishes the slot's placement and size for whichever
-    // occupant holds it (archive#3929), so it reads navigation. Mounting the
-    // REAL provider rather than mocking it keeps this a test of the host
-    // rather than of a stand-in. Device settings need no provider — they come
-    // from a store.
+    // The ambient host publishes the slot's placement and size
+    // (archive#3929), so it reads navigation. Mounting the REAL provider
+    // rather than mocking it keeps this a test of the host rather than of a
+    // stand-in. Device settings need no provider — they come from a store.
     const { container } = render(
       // `DockShell` (archive#4460) registers `dock.toggle`/`dock.maximize`
       // through the real `useKeyboardShortcut`, which needs this provider —
@@ -41,7 +43,7 @@ describe('ChatDock activity region', () => {
       // its own.
       <KeyboardShortcutsProvider>
         <NavigationProvider>
-          <AmbientChatDockPaneHost
+          <RegionPaneHost
             renderChatPane={() => (
               <ChatPaneFileDropBoundary
                 enabled
@@ -65,7 +67,7 @@ describe('ChatDock activity region', () => {
     // The real ambient host stays chromeless, so `DockShell` (archive#4460)
     // not this boundary — is the shell's direct child, and the CSS child
     // combinators keep THAT as their target (it carries the `.chat-dock`
-    // class every occupant now shares). The boundary is a descendant of it.
+    // class). The boundary is a descendant of it.
     const shellRoot = container.firstElementChild;
     expect(shellRoot?.className).toContain('chat-dock');
     expect(shellRoot?.contains(pane)).toBe(true);
@@ -138,9 +140,9 @@ function extractBalancedBody(source: string, anchor: string): string {
 }
 
 /**
- * archive#4525/archive#4524: `AmbientChatDockProjectBinding.test.tsx`
+ * archive#4525/archive#4524: `DockShellProjectBinding.test.tsx`
  * proves the fix's foundation (DockShell-owned chrome state survives the
- * real occupant-switch/remount mechanics) through the REAL host, and
+ * real remount mechanics) through the REAL shell, and
  * `chat-dock-utils.test.ts` table-tests every piece of the actual
  * project-binding LOGIC as pure functions
  * (`resolveDockBadgeProjectName`/`resolveSessionProjectMismatchLabel`/
@@ -161,19 +163,23 @@ function extractBalancedBody(source: string, anchor: string): string {
  */
 describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site pins)', () => {
   test('the badge project name is wired from resolveDockBadgeProjectName, not a literal or the raw session', () => {
-    expect(source).toMatch(/projectName=\{dockBadgeProjectName\}/);
+    expect(source).toMatch(
+      /projectName=\{\s*importedSessionId[\s\S]*?:\s*dockBadgeProjectName\s*\}/,
+    );
     expect(source).toMatch(
       /const dockBadgeProjectName = resolveDockBadgeProjectName\(/,
     );
     // The slug prop carries the switcher's aria-current "Current" marker and
     // the directory→coding-layout link guard — nulling it breaks both while
     // every rendered-name assertion stays green.
-    expect(source).toMatch(/projectSlug=\{dockProjectSlug\}/);
+    expect(source).toMatch(
+      /projectSlug=\{\s*importedSessionId\s*\?\s*\(importedSession\?\.projectSlug\s*\?\?\s*null\)\s*:\s*dockProjectSlug\s*\}/,
+    );
   });
 
   test('the mobile header project name is wired from the SAME dockBadgeProjectName the desktop badge uses', () => {
     expect(source).toMatch(
-      /projectName:\s*dockBadgeProjectName\s*\?\?\s*'No project'/,
+      /projectName:\s*importedSessionId[\s\S]*?:\s*\(dockBadgeProjectName\s*\?\?\s*'No project'\)/,
     );
   });
 
@@ -185,14 +191,43 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     // dockProjectMatchesActiveSession") would miss the SAME suppression
     // reintroduced via an inline comparison instead of that name — this
     // does not, because any extra gating changes the matched text.
+    // #1536 G6 moved the DIRECTORY's shape out of the JSX and into
+    // `resolveDockProjectContextDirectory`, so the inline ternary this pin used
+    // to match no longer exists at the call site. The property it protected is
+    // unchanged and is pinned in two halves: the prop is the derivation and
+    // nothing else, and the derivation is fed `scopedProjectSlug` /
+    // `sessionDisplayCwd` under those names — so any re-gating either appears
+    // here (the prop stops being a bare identifier) or inside the derivation,
+    // which `chat-dock-utils.test.ts` covers behaviourally, including the
+    // discriminating case: a session that belongs to a DIFFERENT project than
+    // the badge still reports its own directory.
     expect(source).toMatch(
-      /workingDirectory=\{\s*scopedProjectSlug\s*\?\s*null\s*:\s*sessionDisplayCwd\s*\}/,
+      /workingDirectory=\{\s*importedSessionId\s*\?\s*\(importedSession\?\.cwd\s*\?\?\s*null\)\s*:\s*dockProjectContextDirectory\s*\}/,
     );
     expect(source).toMatch(
-      /codingLayoutSlug=\{\s*scopedProjectSlug\s*\?\s*null\s*:\s*\(sessionCodingLayout\?\.slug\s*\?\?\s*null\)\s*\}/,
+      /resolveDockProjectContextDirectory\(\{\s*scopedProjectSlug,\s*sessionDisplayCwd,/,
     );
+    // #1536 F: the coding layout is no longer a prop of the project-context
+    // row (its start-truncated path segment, which carried the link, left the
+    // conversation title about one character). It is an "Open code layout" row
+    // of the dock header's More menu, and BOTH halves of the retired link's gate
+    // move with it — they are different things and the row is wrong without
+    // either. The project is the SESSION's own, never the badge's (this
+    // ruling); `scopedProjectSlug` suppresses the row, exactly as it suppressed
+    // the prop, because a project chat-scope filter has never shown
+    // session-specific facts.
     expect(source).toMatch(
-      /gitStatus=\{\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
+      /!scopedProjectSlug && sessionCodingLayout && activeSession\?\.projectSlug/,
+    );
+    expect(source).toMatch(/label: 'Open code layout'/);
+    // And it navigates with the SESSION's slug, not the badge's bound project —
+    // the exact substitution station#4525 review HIGH-2 caught once already.
+    expect(source).toMatch(
+      /handleOpenLayout\(\s*activeSession\.projectSlug as string,\s*sessionCodingLayout\.slug,/,
+    );
+    expect(source).not.toMatch(/handleOpenLayout\(\s*dockProjectSlug[\s,)]/);
+    expect(source).toMatch(
+      /gitStatus=\{\s*importedSessionId\s*\|\|\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
     );
     // The pre-fix-reintroduction shape review actually caught, kept
     // as a named-regression tripwire too.
@@ -204,7 +239,7 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
       /const sessionProjectMismatchLabel = resolveSessionProjectMismatchLabel\(/,
     );
     expect(source).toMatch(
-      /sessionProjectMismatchLabel=\{sessionProjectMismatchLabel\}/,
+      /sessionProjectMismatchLabel=\{\s*importedSessionId\s*\?\s*undefined\s*:\s*sessionProjectMismatchLabel\s*\}/,
     );
   });
 

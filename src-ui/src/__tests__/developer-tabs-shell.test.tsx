@@ -13,6 +13,14 @@ import { Suspense } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PageFrame } from '../components/page-frame';
 
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   const q = { data: undefined, isLoading: false, isError: false };
@@ -56,9 +64,18 @@ vi.mock('../lib/serverHealth', () => ({
   probeServerConnection: vi.fn(),
 }));
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 vi.mock('../views/settings/BuildProvenance', () => ({
   BuildProvenance: () => null,
@@ -73,8 +90,8 @@ vi.mock('../views/KnowledgeConnectionView', () => ({
   KnowledgeConnectionView: () => <div data-testid="embedded-view" />,
   default: () => <div data-testid="embedded-view" />,
 }));
-vi.mock('../components/monitoring/MonitoringView', () => ({
-  MonitoringView: () => <div data-testid="embedded-view" />,
+vi.mock('../views/MonitoringView', () => ({
+  MonitoringViewWithBoundary: () => <div data-testid="embedded-view" />,
   default: () => <div data-testid="embedded-view" />,
 }));
 vi.mock('../views/settings/StationConfigSection', () => ({
@@ -105,13 +122,24 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
         }
       >
         <StationConfigSection
+          containerScope="station"
+          section="sources"
           config={{} as never}
           onChange={() => {}}
           embedded
         />
       </QueryClientProvider>,
     );
-    expect(screen.queryByText('Station configuration')).toBeNull();
+    // #2182: the string this used to look for ("Station configuration") no
+    // longer exists anywhere, so asserting its absence would pass for any
+    // reason at all. The contract is what it always was — an embedded mount
+    // contributes NO heading of its own — so that is what is asserted now,
+    // and a control the section does render pins that something rendered.
+    expect(screen.queryAllByRole('heading')).toEqual([]);
+    // A control the section does render, so "no heading" is not satisfied by
+    // "nothing rendered". Sources is used rather than a section whose rows
+    // are deferred composite editors, which render nothing in this harness.
+    expect(screen.getByRole('textbox', { name: 'Registry URL' })).toBeTruthy();
   });
 
   // archive#2645's contract is unchanged; its OWNER moved. The Developer
@@ -148,6 +176,8 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
       expect(h1s.length).toBe(1);
       expect(h1s[0].textContent).toBe(name);
       expect(h1s[0].classList.contains('page__title')).toBe(true);
+      if (name === 'Telemetry')
+        expect(screen.getByTestId('embedded-view')).toBeTruthy();
       // The tab body itself contributes none.
       expect(container.querySelectorAll('.page-frame__body h1').length).toBe(0);
     });

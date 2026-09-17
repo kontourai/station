@@ -2,12 +2,15 @@ import { memo, useEffect, useMemo } from 'react';
 import type { Options } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { quoteFromHref } from '../../utils/answer-quotes';
+import { ChatMarkdownAnchor } from './ChatMarkdownAnchor';
 import { markdownCodeComponents } from './HighlightedCodeBlock';
 import {
   type MarkdownBlock,
   markdownBlocksRequireWholeParse,
   splitMarkdownBlocks,
 } from './markdown-blocks';
+import { QuoteSourceLink } from './QuoteSourceLink';
 
 export type MarkdownRenderProbe = {
   onBlockMount?: (startLine: number) => void;
@@ -28,13 +31,30 @@ export type MarkdownRendererProps = Options & {
   renderProbe?: MarkdownRenderProbe;
 };
 
+const sourceAwareComponents: NonNullable<Options['components']> = {
+  ...markdownCodeComponents,
+  // The override lives HERE rather than in a caller-supplied `components`
+  // map, because that prop replaces this map entirely (see `MarkdownRenderer`
+  // below): a caller overriding `a` alone would silently lose code
+  // highlighting and the quote links.
+  a: ({ href, children, node: _node, ...props }) => {
+    const quote = quoteFromHref(href);
+    return quote ? (
+      <QuoteSourceLink quote={quote}>{children}</QuoteSourceLink>
+    ) : (
+      <ChatMarkdownAnchor {...props} href={href}>
+        {children}
+      </ChatMarkdownAnchor>
+    );
+  },
+};
 const remarkPlugins: NonNullable<Options['remarkPlugins']> = [remarkGfm];
 
 function FullMarkdown(options: Options) {
   return (
     <ReactMarkdown
       {...options}
-      components={options.components ?? markdownCodeComponents}
+      components={options.components ?? sourceAwareComponents}
       remarkPlugins={remarkPlugins}
     />
   );
@@ -134,7 +154,7 @@ function MarkdownRendererComponent({
     () => ({
       allowElement,
       allowedElements,
-      components: components ?? markdownCodeComponents,
+      components: components ?? sourceAwareComponents,
       disallowedElements,
       rehypePlugins,
       remarkRehypeOptions,

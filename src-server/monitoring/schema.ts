@@ -54,8 +54,12 @@ export interface MonitoringEvent {
   'gen_ai.tool.call.id'?: string;
   'gen_ai.tool.call.arguments'?: unknown;
   'gen_ai.tool.call.result'?: unknown;
-  /** Explicit producer-reported tool execution outcome; absent means unknown. */
-  'gen_ai.tool.call.outcome'?: 'success' | 'error';
+  /**
+   * Explicit producer-reported tool execution outcome; absent means unknown.
+   * `unresolved` (station#1558) is itself an explicit report: the session
+   * ended with the call still open, so no outcome can ever arrive.
+   */
+  'gen_ai.tool.call.outcome'?: 'success' | 'error' | 'unresolved';
 
   // ── Span lifecycle ──
   'span.kind': 'start' | 'end' | 'event' | 'log';
@@ -101,7 +105,7 @@ export interface HealthIntegration {
 
 // ── Agent telemetry v0.2.0 ingest types ─────────────────────────────
 
-export interface AgentTelemetryContext {
+interface AgentTelemetryContext {
   cwd?: string;
   tty?: string;
   os?: string;
@@ -109,7 +113,7 @@ export interface AgentTelemetryContext {
   pid?: number;
 }
 
-export interface AgentTelemetryEnrichment {
+interface AgentTelemetryEnrichment {
   system?: {
     os?: string;
     os_version?: string;
@@ -156,7 +160,7 @@ export interface AgentTelemetryIngestEvent {
 
 // ── OTLP JSON envelope types (subset for receiver) ──────────────────
 
-export interface OtlpSpan {
+interface OtlpSpan {
   traceId: string;
   spanId: string;
   parentSpanId?: string;
@@ -169,7 +173,7 @@ export interface OtlpSpan {
   status?: { code: number; message?: string };
 }
 
-export interface OtlpSpanEvent {
+interface OtlpSpanEvent {
   timeUnixNano: string;
   name: string;
   attributes: OtlpKeyValue[];
@@ -188,7 +192,7 @@ export interface OtlpAnyValue {
   arrayValue?: { values: OtlpAnyValue[] };
 }
 
-export interface OtlpLogRecord {
+interface OtlpLogRecord {
   timeUnixNano: string;
   severityNumber?: number;
   severityText?: string;

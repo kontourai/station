@@ -1,4 +1,4 @@
-export interface ProjectDirectoryEntry {
+interface ProjectDirectoryEntry {
   name: string;
   isDirectory: boolean;
 }
@@ -14,6 +14,26 @@ export function normalizeWorkingDirectory(value: string): string {
     return trimmed;
   }
   return trimmed.replace(/\/+$/, '');
+}
+
+/**
+ * Whether a typed working directory has enough shape to ask the server about
+ * it: an absolute POSIX path, a `~/`-rooted path, or a Windows drive path,
+ * with at least one segment past the root.
+ *
+ * This is a question about the STRING and nothing more. It never claims the
+ * folder exists, is readable, or is a repository — only the server answers
+ * those, and the New Project form treats a refusal from it as the verdict.
+ * Its whole job is to keep a half-typed path (`/Us`, `~`, `code/`) from
+ * becoming a request.
+ */
+export function looksLikeWorkspacePath(value: string): boolean {
+  const normalized = normalizeWorkingDirectory(value);
+  const root = /^(\/|~\/|[A-Za-z]:[\\/])/.exec(normalized);
+  if (!root) return false;
+  return (
+    normalized.slice(root[0].length).split(/[\\/]/).filter(Boolean).length > 0
+  );
 }
 
 /**

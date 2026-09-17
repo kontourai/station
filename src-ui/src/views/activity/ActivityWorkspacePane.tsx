@@ -1,4 +1,5 @@
 import { isCanonicalWorkspaceActivityPaneInstance } from '@kontourai/station-contracts/workspace-activity-pane';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import type { BuiltinWorkspacePaneProps } from '../../workspace-panes/builtinWorkspacePaneRegistry';
 import { WorkspacePaneBindingUnavailable } from '../../workspace-panes/WorkspacePaneBindingUnavailable';
 import { SessionsView } from '../SessionsView';
@@ -8,7 +9,7 @@ import { useActivityWorkspacePaneBinding } from './ActivityWorkspacePaneBinding'
  * The built-in Activity Workspace Pane renderer — the ONE mounter of the
  * sessions surface (`SessionsView`), pinned by
  * `__tests__/activity-surface-single-mounter.test.ts`. Every placement
- * (the `/activity` route, the ambient dock, the Developer archive embed)
+ * (the Activity region shell, the Developer archive embed)
  * reaches the surface through this renderer and its canonical-occurrence
  * check, so the pre-pane route/surface split cannot silently re-form.
  *
@@ -27,6 +28,7 @@ import { useActivityWorkspacePaneBinding } from './ActivityWorkspacePaneBinding'
  */
 export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const binding = useActivityWorkspacePaneBinding();
+  const showSurface = useShowSurface();
   if (!isCanonicalWorkspaceActivityPaneInstance(instance))
     return (
       <WorkspacePaneBindingUnavailable
@@ -36,9 +38,12 @@ export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   if (!binding) return null;
   return (
     <SessionsView
+      onOpenInChat={(threadId) => showSurface('chat', { session: threadId })}
       apiBase={binding.apiBase}
       sessionId={binding.sessionId}
       focusHint={binding.focusHint}
+      intentToken={binding.intentToken}
+      onFocusConsumed={binding.onFocusConsumed}
     />
   );
 }

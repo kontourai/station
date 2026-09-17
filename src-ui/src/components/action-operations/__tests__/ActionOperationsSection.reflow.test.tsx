@@ -58,6 +58,7 @@ function buildFixtureCss(): string {
 const mutate = vi.fn();
 const useActionOperationsQuery = vi.hoisted(() => vi.fn());
 const useCancelActionOperationMutation = vi.hoisted(() => vi.fn());
+const showSurface = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk/action-operations', () => ({
   useActionOperationsQuery,
@@ -65,6 +66,12 @@ vi.mock('@kontourai/station-sdk/action-operations', () => ({
 }));
 vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
+}));
+// The reflow proof renders only the error/no-data branch; it never asserts
+// surface routing. Supply the app-owned command hook so this isolated fixture
+// does not claim to mount the RegionModelProvider tree.
+vi.mock('../../../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurface,
 }));
 
 import { ActionOperationsSection } from '../ActionOperationsSection';

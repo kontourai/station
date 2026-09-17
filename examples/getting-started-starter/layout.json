@@ -1,7 +1,7 @@
 {
   "name": "Getting Started",
   "slug": "getting-started",
-  "icon": "✨",
+  "icon": "\u2728",
   "description": "A default starter workspace for learning the Station plugin SDK.",
   "tabs": [
     {
@@ -13,13 +13,6 @@
       "id": "patterns",
       "label": "SDK Patterns",
       "component": "getting-started-patterns"
-    }
-  ],
-  "actions": [
-    {
-      "type": "prompt",
-      "label": "Explain this workspace",
-      "data": "Explain how this starter plugin is structured and what I should customize first."
     }
   ]
 }

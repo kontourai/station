@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync, lstatSync, renameSync } from 'node:fs';
 import { mkdir, open, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import type {
@@ -23,6 +23,17 @@ import {
   registryEngineConnectionForDefaultSync,
   withoutReservedStationBinding,
 } from './agent-registry.js';
+import {
+  WorkflowExistsError,
+  WorkflowInvalidError,
+  WorkflowNotFoundError,
+  WorkflowUnsafeContentError,
+} from './agent-workflow-errors.js';
+import { readRegularFileNoFollow } from './home-schema-gate.js';
+import {
+  PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentOwner,
+} from './plugin-agent-ownership.js';
 import { validator } from './validator.js';
 
 const logger = createLogger({ name: 'config-loader' });
@@ -79,7 +90,7 @@ async function withAgentPersistenceLock<T>(
  * async project-service call, so it guards every save path — routes,
  * `updateAgent` materialization, plugin installs — with zero dep
  * threading). Fail-closed by construction: a nonexistent project is the
- * only way this returns false. Exported so `plugin-install-shared.ts`'s
+ * only way this returns false. Exported so `plugin-install-transaction.ts`'s
  * plugin-agent sync reuses this exact check (archive#1004 review HIGH-1)
  * instead of duplicating it.
  */
@@ -185,11 +196,91 @@ export async function loadAgentConfig(
     }
     throw error;
   }
+  return parseAgentConfigContent(content, slug);
+}
+
+function parseAgentConfigContent(content: string, slug: string): AgentSpec {
   const data = JSON.parse(content);
   dropRetiredToolAliases(slug, data);
   validator.validateAgentSpec(data, slug);
   assertSafeAgentSpec(slug, data);
   return data;
+}
+
+export class PluginAgentInvocationUnavailableError extends Error {
+  readonly code = 'plugin_agent_invocation_unavailable';
+
+  constructor() {
+    super(
+      'The exact plugin-owned Agent is unavailable or changed before invocation.',
+    );
+  }
+}
+
+/**
+ * Snapshot the canonical authored spec under its existing identity owner.
+ * All callers release before awaiting an invoked provider: the identity lock
+ * protects synchronous admission/publication, never a network operation.
+ */
+export async function capturePluginAgentInvocation(
+  projectHomeDir: string,
+  slug: string,
+  pluginName: string,
+) {
+  const cleanId = agentId(slug);
+  const agentsDir = join(projectHomeDir, 'agents');
+  const directory = join(agentsDir, cleanId);
+  const specPath = join(directory, 'agent.json');
+  const readOwnedBytes = () => {
+    try {
+      for (const path of [agentsDir, directory]) {
+        const stat = lstatSync(path);
+        if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error();
+      }
+      const specStat = lstatSync(specPath);
+      const ownerStat = lstatSync(join(directory, PLUGIN_AGENT_OWNER_FILE));
+      if (
+        !specStat.isFile() ||
+        specStat.isSymbolicLink() ||
+        specStat.size > 256 * 1024 ||
+        !ownerStat.isFile() ||
+        ownerStat.isSymbolicLink() ||
+        ownerStat.size > 1024 ||
+        pluginAgentOwner(directory, 1024) !== pluginName
+      )
+        throw new Error();
+      return readRegularFileNoFollow(projectHomeDir, specPath, {
+        maxBytes: 256 * 1024,
+      });
+    } catch {
+      throw new PluginAgentInvocationUnavailableError();
+    }
+  };
+  const release = await acquireAgentIdentityMutationLockAtHome(projectHomeDir);
+  let original: string;
+  let spec: AgentSpec;
+  try {
+    original = readOwnedBytes();
+    spec = parseAgentConfigContent(original, cleanId);
+  } finally {
+    await release();
+  }
+  return Object.freeze({
+    agentId: cleanId,
+    read: () => structuredClone(spec),
+    async invokeIfCurrent<R>(operation: () => R): Promise<R> {
+      const releaseCurrent =
+        await acquireAgentIdentityMutationLockAtHome(projectHomeDir);
+      try {
+        if (readOwnedBytes() !== original)
+          throw new PluginAgentInvocationUnavailableError();
+        // No await between the exact owner/spec check and invocation.
+        return operation();
+      } finally {
+        await releaseCurrent();
+      }
+    },
+  });
 }
 
 /**
@@ -504,6 +595,16 @@ export async function deleteAgentConfig(
 export async function listAgentConfigs(
   projectHomeDir: string,
 ): Promise<AgentMetadata[]> {
+  return (await readAgentCatalog(projectHomeDir)).map(
+    (entry) => entry.metadata,
+  );
+}
+
+export async function readAgentCatalog(
+  projectHomeDir: string,
+  readSpec: (slug: string) => Promise<AgentSpec | null> = (slug) =>
+    loadAgentConfig(projectHomeDir, slug),
+): Promise<Array<{ metadata: AgentMetadata; spec: AgentSpec }>> {
   const agentsDir = join(projectHomeDir, 'agents');
 
   if (!existsSync(agentsDir)) {
@@ -511,7 +612,7 @@ export async function listAgentConfigs(
   }
 
   const entries = await readdir(agentsDir, { withFileTypes: true });
-  const agents: AgentMetadata[] = [];
+  const agents: Array<{ metadata: AgentMetadata; spec: AgentSpec }> = [];
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -520,7 +621,8 @@ export async function listAgentConfigs(
     if (!existsSync(agentPath)) continue;
 
     try {
-      const spec = await loadAgentConfig(projectHomeDir, entry.name);
+      const spec = await readSpec(entry.name);
+      if (!spec) continue;
       const stats = await stat(agentPath);
       const workflowWarnings = await validateWorkflowShortcuts(
         projectHomeDir,
@@ -541,18 +643,21 @@ export async function listAgentConfigs(
       }
 
       agents.push({
-        slug: agentId(entry.name),
-        name: spec.name,
-        model: spec.model,
-        updatedAt: stats.mtime.toISOString(),
-        description: spec.description,
-        prompt: spec.prompt,
-        plugin: pluginName,
-        ui: spec.ui,
-        workflowWarnings:
-          workflowWarnings.length > 0 ? workflowWarnings : undefined,
-        execution: spec.execution,
-        project: spec.project,
+        spec,
+        metadata: {
+          slug: agentId(entry.name),
+          name: spec.name,
+          model: spec.model,
+          updatedAt: stats.mtime.toISOString(),
+          description: spec.description,
+          prompt: spec.prompt,
+          plugin: pluginName,
+          ui: spec.ui,
+          workflowWarnings:
+            workflowWarnings.length > 0 ? workflowWarnings : undefined,
+          execution: spec.execution,
+          project: spec.project,
+        },
       });
     } catch (error: any) {
       logger.error('Failed to load agent', {
@@ -565,13 +670,43 @@ export async function listAgentConfigs(
     }
   }
 
-  return agents.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return agents.sort((a, b) =>
+    b.metadata.updatedAt.localeCompare(a.metadata.updatedAt),
+  );
 }
+
+/**
+ * A caller-supplied id is one path segment and nothing else.
+ *
+ * `join` treats `..` and a separator as navigation, so an id carrying either
+ * one addresses a file outside the directory the caller was given. Hono
+ * percent-decodes a path parameter before the handler sees it, so `%2F` and
+ * `%2e%2e` arrive here as `/` and `..`.
+ *
+ * `basename` alone is not the check: `basename('..')` is `'..'`. The explicit
+ * cases below are what reject it; the `basename` comparison stays for
+ * platform-specific forms it catches that a separator scan does not.
+ */
+function assertSingleSegment(value: string, message: string): void {
+  if (
+    value === '' ||
+    value === '.' ||
+    value === '..' ||
+    /[/\\]/.test(value) ||
+    basename(value) !== value
+  ) {
+    throw new WorkflowInvalidError(message);
+  }
+}
+
+const INVALID_AGENT_SLUG = 'Invalid agent slug';
+const INVALID_WORKFLOW_ID = 'Invalid workflow id';
 
 export async function listAgentWorkflowMetadata(
   projectHomeDir: string,
   slug: string,
 ): Promise<WorkflowMetadata[]> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
   const workflowsDir = join(projectHomeDir, 'agents', slug, 'workflows');
 
   if (!existsSync(workflowsDir)) {
@@ -602,6 +737,35 @@ export async function listAgentWorkflowMetadata(
   return workflows.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+/**
+ * Refuse content the context-safety scanner blocks, as a caller-caused
+ * `WorkflowInvalidError` rather than the scanner's own `ContextSafetyError`.
+ *
+ * Only for content the CALLER supplied. `readAgentWorkflow` runs the same
+ * scanner over bytes already on disk, and that failure is not the reader's
+ * fault -- it stays a `ContextSafetyError` so it reaches the route's generic
+ * envelope instead of being reported to the reader as a bad request.
+ *
+ * The scanner's message is preserved verbatim, so this discloses nothing the
+ * previous 400 did not: its excerpt is a slice of the caller's own submission
+ * handed back to that same caller.
+ */
+function assertCallerSuppliedWorkflowContentIsSafe(
+  content: string,
+  workflowId: string,
+  slug: string,
+): void {
+  try {
+    assertSafeContextText(content, {
+      source: `workflow '${workflowId}' for agent '${slug}'`,
+    });
+  } catch (error) {
+    throw new WorkflowInvalidError(
+      error instanceof Error ? error.message : 'Workflow content was refused',
+    );
+  }
+}
+
 export async function createAgentWorkflow(
   projectHomeDir: string,
   slug: string,
@@ -610,12 +774,12 @@ export async function createAgentWorkflow(
 ): Promise<void> {
   const ext = extname(filename).toLowerCase();
   if (!WORKFLOW_EXTENSIONS.includes(ext)) {
-    throw new Error('Workflow filename must end with .ts, .js, .mjs, or .cjs');
+    throw new WorkflowInvalidError(
+      'Workflow filename must end with .ts, .js, .mjs, or .cjs',
+    );
   }
 
-  assertSafeContextText(content, {
-    source: `workflow '${filename}' for agent '${slug}'`,
-  });
+  assertCallerSuppliedWorkflowContentIsSafe(content, filename, slug);
   await mutateWorkflow(projectHomeDir, slug, filename, 'create', content);
 }
 
@@ -624,16 +788,29 @@ export async function readAgentWorkflow(
   slug: string,
   workflowId: string,
 ): Promise<string> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
+  assertSingleSegment(workflowId, INVALID_WORKFLOW_ID);
   const path = join(projectHomeDir, 'agents', slug, 'workflows', workflowId);
 
   if (!existsSync(path)) {
-    throw new Error(`Workflow '${workflowId}' not found`);
+    throw new WorkflowNotFoundError(workflowId);
   }
 
   const content = await readFile(path, 'utf-8');
-  assertSafeContextText(content, {
-    source: `workflow '${workflowId}' for agent '${slug}'`,
-  });
+  try {
+    assertSafeContextText(content, {
+      source: `workflow '${workflowId}' for agent '${slug}'`,
+    });
+  } catch (error) {
+    // The stored file, not the request. Typed separately from the write
+    // path's `WorkflowInvalidError` so the route can say "your file" rather
+    // than "your request" -- and so this stops reaching the boundary as an
+    // unclassified 500 with no text, which told the reader nothing about
+    // which file to fix.
+    throw new WorkflowUnsafeContentError(
+      error instanceof Error ? error.message : 'Workflow content was refused',
+    );
+  }
   return content;
 }
 
@@ -643,9 +820,7 @@ export async function updateAgentWorkflow(
   workflowId: string,
   content: string,
 ): Promise<void> {
-  assertSafeContextText(content, {
-    source: `workflow '${workflowId}' for agent '${slug}'`,
-  });
+  assertCallerSuppliedWorkflowContentIsSafe(content, workflowId, slug);
   await mutateWorkflow(projectHomeDir, slug, workflowId, 'update', content);
 }
 
@@ -719,12 +894,14 @@ async function mutateWorkflow(
   operation: 'create' | 'update' | 'delete',
   content?: string,
 ): Promise<void> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
   assertCustomAgentIdentity(slug);
-  if (basename(workflowId) !== workflowId)
-    throw new Error('Invalid workflow id');
+  assertSingleSegment(workflowId, INVALID_WORKFLOW_ID);
   const ext = extname(workflowId).toLowerCase();
   if (!WORKFLOW_EXTENSIONS.includes(ext)) {
-    throw new Error('Workflow filename must end with .ts, .js, .mjs, or .cjs');
+    throw new WorkflowInvalidError(
+      'Workflow filename must end with .ts, .js, .mjs, or .cjs',
+    );
   }
   await withAgentPersistenceLock(projectHomeDir, slug, async () => {
     assertRegistryIntegrityAtHomeSync(projectHomeDir);
@@ -733,10 +910,10 @@ async function mutateWorkflow(
     const path = join(workflowsDir, workflowId);
     const exists = existsSync(path);
     if (operation === 'create' && exists) {
-      throw new Error(`Workflow '${workflowId}' already exists`);
+      throw new WorkflowExistsError(workflowId);
     }
     if (operation !== 'create' && !exists) {
-      throw new Error(`Workflow '${workflowId}' not found`);
+      throw new WorkflowNotFoundError(workflowId);
     }
     if (operation === 'delete')
       await deleteAgentFileWithIdentityFence(projectHomeDir, slug, path);

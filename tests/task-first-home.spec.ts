@@ -1,10 +1,20 @@
-import { devices, expect, type Page, test } from '@playwright/test';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
+import { devices, expect, type Page } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
   E2E_STATION_COMPATIBILITY,
+  installE2EWorkspacePaneCatalog,
 } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  installJourneyProfile,
+  profileJourney,
+} from './helpers/journey-profile';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
 
@@ -39,6 +49,7 @@ async function mockTaskFirstHome(
   page: Page,
   options: {
     sessionEvents?: Array<Record<string, unknown>>;
+    historyCount?: number;
     commands?: Array<Record<string, unknown>>;
     workflowTasks?: Array<Record<string, unknown>>;
   } = {},
@@ -177,7 +188,70 @@ async function mockTaskFirstHome(
       return;
     }
     if (path === '/api/orchestration/sessions/read-model') {
-      await route.fulfill(json([taskSession]));
+      await route.fulfill(
+        json(
+          options.historyCount
+            ? Array.from({ length: options.historyCount }, (_, index) => ({
+                ...taskSession,
+                threadId: `history-${index}`,
+                conversationId: `conversation-${index}`,
+                displayTitle: `History session ${index}`,
+                delegation: undefined,
+                lifecycleState: 'completed',
+                status: 'closed',
+                updatedAt: new Date(Date.now() - index * 60_000).toISOString(),
+              }))
+            : [taskSession],
+        ),
+      );
+      return;
+    }
+    if (
+      path === '/api/conversations/task-first-home/open' &&
+      route.request().method() === 'GET'
+    ) {
+      const resolution: ConversationOpenResolution = {
+        status: 'resolved',
+        conversation: {
+          id: taskSession.threadId,
+          title: 'New chat',
+          agentSlug: agentId(taskSession.assignedAgentSlug),
+          source: 'runtime',
+          createdAt: taskSession.createdAt,
+          updatedAt: taskSession.updatedAt,
+          messageCount: 0,
+          mutable: false,
+          answerability: { answerable: true },
+        },
+        currentSessionId: taskSession.threadId,
+        execution: {
+          sessionId: taskSession.threadId,
+          agentId: agentId(taskSession.assignedAgentSlug),
+          provider: taskSession.provider,
+          engineConnectionId: 'codex',
+          model: taskSession.model,
+        },
+        transcript: { available: true, owner: 'runtime', messageCount: 0 },
+        canContinue: true,
+        answerability: { answerable: true },
+        recoveryActions: [],
+      };
+      await route.fulfill(json(resolution));
+      return;
+    }
+    if (
+      path === '/api/orchestration/pane-host/station/catalog' &&
+      route.request().method() === 'GET'
+    ) {
+      // This project has built-in panes and no installed package actions.
+      await route.fulfill(
+        json({
+          projectSlug: 'station',
+          support: 'supported',
+          complete: true,
+          contributions: [],
+        } satisfies WorkspacePaneHostActionCatalog),
+      );
       return;
     }
     if (path === '/api/orchestration/sessions/task-first-home') {
@@ -186,11 +260,20 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/orchestration/sessions/task-first-home/event-window') {
+    if (
+      path === '/api/orchestration/sessions/task-first-home/event-window' ||
+      path === '/api/orchestration/conversations/task-first-home/event-window'
+    ) {
       await route.fulfill(
         json({
           protocolVersion: 1,
-          session: taskSession,
+          ...(path.includes('/conversations/')
+            ? {
+                conversationId: 'task-first-home',
+                currentSessionId: 'task-first-home',
+                handoffs: [],
+              }
+            : { session: taskSession }),
           events: (options.sessionEvents ?? []).map((event, index) => ({
             sequence: index + 1,
             event,
@@ -201,7 +284,10 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/orchestration/sessions/task-first-home/flow-run') {
+    if (
+      path === '/api/orchestration/sessions/task-first-home/flow-run' ||
+      path === '/api/orchestration/sessions/task-first-home/builder-run'
+    ) {
       await route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -304,7 +390,23 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/connections/agents') {
+    if (
+      path === '/api/knowledge/status' &&
+      route.request().method() === 'GET'
+    ) {
+      await route.fulfill(
+        json({
+          vectorDb: null,
+          embedding: null,
+          stats: { totalDocuments: 0, totalChunks: 0, projectCount: 0 },
+        }),
+      );
+      return;
+    }
+    if (
+      path === '/api/connections/agents' ||
+      (path === '/api/connections' && route.request().method() === 'GET')
+    ) {
       await route.fulfill(
         json([
           agentConnectionFixture({
@@ -345,7 +447,85 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    await route.fulfill(json([]));
+    if (
+      route.request().method() === 'GET' &&
+      /^\/api\/orchestration\/(?:sessions|conversations)\/codex-agent%3A\d+\/(?:checkpoints|event-window)$/.test(
+        path,
+      )
+    ) {
+      await route.fulfill({
+        status: 404,
+        json: {
+          success: false,
+          error: 'This draft has not started an execution Session',
+        },
+      });
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/station/layouts/coding'
+    ) {
+      await route.fulfill(
+        json({
+          id: 'l1',
+          slug: 'coding',
+          name: 'Coding',
+          type: 'coding',
+          config: {},
+        }),
+      );
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/station/conversations'
+    ) {
+      await route.fulfill(json([]));
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      [
+        '/api/coding/git/log',
+        '/api/projects/station/knowledge',
+        '/api/projects/station/knowledge/namespaces',
+        '/api/projects/station/knowledge/status',
+        '/api/projects/station/operating-state/availability',
+        '/api/projects/station/work-items',
+        '/api/projects/station/flow/definitions',
+        '/api/projects/station/readiness',
+        '/api/projects/station/trust-bundles',
+        '/api/tasks/task%3Atask-first-home/room',
+        '/api/tasks/task%3Atask-first-home/room/events',
+      ].includes(path)
+    ) {
+      await route.fulfill({
+        status: 503,
+        json: {
+          success: false,
+          error: 'Optional project source unavailable in this Home fixture',
+        },
+      });
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      [
+        '/api/orchestration/sessions/task-first-home/checkpoints',
+        '/api/projects/layouts/available',
+      ].includes(path)
+    ) {
+      await route.fulfill(json([]));
+      return;
+    }
+    if (await fulfillStationShellRead(route)) return;
+    await rejectUnexpectedFixtureRequest(route);
+  });
+  await installE2EWorkspacePaneCatalog(page, {
+    projectId: project.id,
+    projectSlug: project.slug,
+    layoutSlug: 'coding',
   });
   await page.route('**/api/coding/git/status**', (route) => {
     expect(new URL(route.request().url()).searchParams.get('path')).toBe(
@@ -516,8 +696,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     // archive#1629 removed the sidebar's "Project chats" pill (and its
     // `station:open-project-chats` dispatch) — ChatDock's listener for that
-    // event stays wired for other future callers, but nothing in the UI
-    // dispatches it anymore. Reroute through the still-existing "Start
+    // event stays wired, and the project page's "New here?" CTA is now its
+    // caller (`requestProjectChat`), but nothing on THIS route dispatches
+    // it. Reroute through the still-existing "Start
     // direct chat" home action, which reaches the same New Chat dialog in its
     // intentionally task-free "No workspace" state, then drive
     // the dock's own Maximize control explicitly — proving the maximize
@@ -533,17 +714,32 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     await newChat.press('Escape');
 
-    await page.getByRole('button', { name: 'Maximize chat dock' }).click();
+    // "Maximize chat dock" / "Restore chat dock" left the UI in 6ff89e600
+    // (#928 step 2, PR #992) — `git log -S` puts that well before this lane, and
+    // both names are absent at its base — so this timed out ten lines before the
+    // help-menu line #1552 D1 had to retarget, and that retarget could not be
+    // verified until this was current. The control is the same one; only its
+    // name moved to the region vocabulary.
+    const maximize = page.getByRole('button', {
+      name: 'Expand dock region to workspace',
+    });
+    const restore = page.getByRole('button', {
+      name: 'Restore dock region size',
+    });
+    await maximize.click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
-    await page.getByRole('button', { name: 'Restore chat dock' }).click();
+    await restore.click();
     await expect(page.locator('.chat-dock')).not.toHaveClass(/is-maximized/);
-    await page.getByRole('button', { name: 'Maximize chat dock' }).click();
+    await maximize.click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    await page.getByRole('button', { name: 'Restore chat dock' }).click();
+    await restore.click();
 
     await page.goto('/projects/station');
-    await page.getByRole('button', { name: 'Ask Station for help' }).click();
+    // #1552 D1: "Ask Station for help" is a row of the avatar's menu now, not a
+    // toolbar button. The prompt list it opens is unchanged.
+    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('menuitem', { name: 'Ask Station for help' }).click();
     await page.getByRole('button', { name: 'What can you do?' }).click();
 
     await expect
@@ -633,8 +829,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.locator('.chat-dock__active-identity').getByText('New chat'),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Collapse chat dock' }),
+      page.getByRole('button', { name: 'Hide Chat', exact: true }),
     ).toBeVisible();
+    await page.locator('.chat-dock__header').hover();
     await page.getByRole('button', { name: 'Close chat' }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
     await expect
@@ -643,7 +840,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get('dock'))
       .toBe('open');
-    await expect(page.getByText('No active session')).toBeVisible();
+    await expect(page.getByText('No chat open')).toBeVisible();
 
     const advertisedIdentity = await page
       .getByRole('button', { name: /Start direct chat/i })
@@ -671,19 +868,32 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     // station#settings-revamp slice 5: the dead `/providers` alias is
     // removed — use the canonical connections/models deep link instead.
+    //
+    // #2059: Connections left the panel for Settings' Manage group, so the
+    // panel no longer highlights it — the panel lists places, and the row
+    // that used to wear `sidebar__nav-btn--active` here is gone. What this
+    // still proves is the round trip: the canonical deep link resolves, and
+    // the advertised control reaches the same route from a cold start.
     await page.goto('/connections/providers');
+    await expect(page).toHaveURL(/\/connections\/models/);
     await expect(
-      page.getByRole('button', { name: 'Customize' }),
-    ).toHaveAttribute('aria-expanded', 'true');
-    await expect(
-      page.getByRole('button', { name: 'Connections', exact: true }),
-    ).toHaveClass(/sidebar__nav-btn--active/);
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Connections', exact: true }),
+    ).toHaveCount(0);
+    // The advertised path from here is the footer's gear into Settings'
+    // Manage group. It is proven by pressing it in the two suites whose
+    // fixtures model the Settings page — project-architecture.spec.ts
+    // ("connections view renders") and registry.spec.ts — rather than here:
+    // `mockTaskFirstHome` models Home, and routing this test through Settings
+    // made it issue five API reads the fixture has no shape for, which is the
+    // audit failure this comment replaces rather than papers over.
     await page.goto('/');
-    await page.getByRole('button', { name: 'Customize' }).click();
-    await page
-      .getByRole('button', { name: 'Connections', exact: true })
-      .click();
-    await expect(page).toHaveURL(/\/connections$/);
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Settings', exact: true }),
+    ).toBeVisible();
   });
 
   test('keeps direct chat task-free until a project task is active', async ({
@@ -1001,6 +1211,67 @@ test.describe('Task-first Home (#332, mocked)', () => {
     );
   });
 
+  // #1180: the Activity surface is one of the places where `SplitPaneLayout`'s
+  // mobile detail sheet marks the frame around it `inert` (PageFrame.tsx:155)
+  // while it is open. (station#928 retired the `/activity` route; the surface
+  // is reached by its canonical deep link, which is what this navigates to.) `DelegationLauncher` is a hand-rolled overlay (no
+  // `ResponsiveDialogSurface`), rendered as a plain sibling of
+  // `SplitPaneLayout` in `SessionsView`. Its own trigger ("Delegate subtask")
+  // lives in the list pane, which a phone hides the instant a session's
+  // mobile detail sheet is showing — so opening it AFTER a session is already
+  // selected on a phone is not reachable through the UI at all. The
+  // realistic ordering is the other way around: select the session and open
+  // the launcher while both panes are still visible (desktop — `SessionsView`
+  // selection is local state, not a URL/route change, so nothing here
+  // replays the route's entrance), then cross the mobile breakpoint
+  // underneath both of them — a window resize, a foldable rotation, or a
+  // narrowed split view all flip `useIsMobile()` the same way. The launcher's
+  // own state survives that (nothing about routing changed); `PageFrame`
+  // marking the frame `inert` is what used to trap it.
+  test('the delegation launcher survives crossing the mobile breakpoint underneath it', async ({
+    page,
+  }) => {
+    await installVisualViewportFixture(page);
+    await mockTaskFirstHome(page);
+    await page.goto('/?surface=activity');
+    await page
+      .getByRole('region', { name: 'Activity', exact: true })
+      .getByRole('button', { name: 'Expand dock region to workspace' })
+      .click();
+
+    await page
+      .getByRole('button', {
+        name: /^Worker task · task first home Delegated worker/,
+      })
+      .click();
+    await expect(page.getByTestId('session-detail')).toBeVisible();
+
+    const delegate = page
+      .getByTestId('delegated-task-coordinator')
+      .getByRole('button', { name: 'Delegate subtask' });
+    await delegate.click();
+    const launcher = page.getByRole('dialog', { name: 'Delegate a task' });
+    await expect(launcher).toBeVisible();
+    await expect(launcher.getByLabel('Task')).toBeFocused();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(launcher).toBeVisible();
+
+    // `SplitPaneLayout` deliberately moves focus to its own "Back to list"
+    // button the instant its mobile sheet opens (a11y for the newly shown
+    // surface) — so focus right after the resize tells us nothing about this
+    // dialog. The real question is whether the ALREADY-OPEN launcher can
+    // still take focus back: unlike `ResponsiveDialogSurface`, this hand-rolled
+    // overlay has no effect that re-asserts focus when `isMobile` flips, so an
+    // explicit `.focus()` call is what proves (or disproves) reachability —
+    // `.focus()` on an element inside an `inert` ancestor is called and
+    // silently does nothing, exactly the symptom #1131's investigation named.
+    await launcher.getByLabel('Task').focus();
+    await expect(launcher.getByLabel('Task')).toBeFocused();
+    await launcher.getByRole('button', { name: 'Cancel' }).click();
+    await expect(launcher).toHaveCount(0);
+  });
+
   test.describe('Pixel 7', () => {
     const { defaultBrowserType: _defaultBrowserType, ...pixel7 } =
       devices['Pixel 7'];
@@ -1041,7 +1312,13 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await expect(modelButton).toBeFocused();
     });
 
-    test('groups mobile customization and system navigation without Advanced overflow', async ({
+    // #2059 (design record D3): the mobile drawer lists PLACES, and the
+    // configuration destinations it used to group under `Customize`/`System`
+    // are behind the footer's gear. This is the same accessibility contract as
+    // before — every advertised navigation control a thumb must hit clears the
+    // 44px floor, and nothing overflows the viewport horizontally — re-aimed
+    // at the surfaces that carry it now rather than deleted with the groups.
+    test('lists places in the mobile drawer and reaches configuration through a touch-safe footer', async ({
       page,
     }) => {
       await mockTaskFirstHome(page);
@@ -1054,58 +1331,52 @@ test.describe('Task-first Home (#332, mocked)', () => {
         navigation.getByRole('button', { name: 'Advanced' }),
       ).toHaveCount(0);
 
-      // RT-13 (`app-shell/surface-registry.ts`): Agents, Connections and
-      // Activity are a flat, always-visible band now, not members of a
-      // disclosure group — the loop below used to prove "Agents" visible for a
-      // reason it no longer holds. (origin/main renamed the retired
-      // "Playbooks & skills" label to Guidance in this same loop; Guidance is
-      // asserted in the Customize loop further down, where it belongs.)
-      for (const label of ['Agents', 'Connections', 'Activity']) {
-        const item = navigation.getByRole('button', { name: label });
+      // The panel's rows: Home and Activity, both at the touch floor.
+      // `exact` because the drawer header's own control is "Station home",
+      // which a substring match also resolves.
+      for (const label of ['Home', 'Activity']) {
+        const item = navigation.getByRole('button', {
+          name: label,
+          exact: true,
+        });
         await expect(item).toBeVisible();
         expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(
           MIN_TOUCH_TARGET_PX,
         );
       }
 
-      // SHELL-15 (`components/project-sidebar/ProjectSidebarNav.tsx:40-50`):
-      // both groups start EXPANDED and their open state is the user's own, so
-      // clicking a group toggle now COLLAPSES it — they are no longer
-      // route-driven, mutually exclusive accordions.
-      const customize = navigation.getByRole('button', { name: 'Customize' });
-      const system = navigation.getByRole('button', { name: 'System' });
-      await expect(customize).toHaveAttribute('aria-expanded', 'true');
-      await expect(system).toHaveAttribute('aria-expanded', 'true');
-
-      // "Playbooks & skills" is retired to a search keyword; the surface is
-      // Guidance (`surface-registry.ts` `customize(20)`).
-      for (const label of ['Guidance', 'Registry', 'Settings']) {
-        const item = navigation.getByRole('button', { name: label });
-        await expect(item).toBeVisible();
-        expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(
-          MIN_TOUCH_TARGET_PX,
-        );
+      // Neither group header survives, and neither do the rows they held.
+      for (const gone of [
+        'Customize',
+        'System',
+        'Agents',
+        'Connections',
+        'Skills',
+        'Registry',
+        'Plugins',
+        'Schedule',
+        'Developer',
+      ]) {
+        await expect(
+          navigation.getByRole('button', { name: gone, exact: true }),
+        ).toHaveCount(0);
       }
 
-      // Independent, not exclusive: collapsing one hides only its own items and
-      // leaves the other group and the primary band alone.
-      await customize.click();
-      await expect(customize).toHaveAttribute('aria-expanded', 'false');
-      await expect(
-        navigation.getByRole('button', { name: 'Guidance' }),
-      ).toBeHidden();
-      await expect(system).toHaveAttribute('aria-expanded', 'true');
-      await expect(
-        navigation.getByRole('button', { name: 'Agents' }),
-      ).toBeVisible();
-      // archive#3313 (Settings IA, option A): Settings holds the System slot;
-      // Developer is settings-gated and hidden until enabled on this device.
-      await expect(
-        navigation.getByRole('button', { name: 'Settings' }),
-      ).toBeVisible();
-      await expect(
-        navigation.getByRole('button', { name: 'Developer' }),
-      ).toHaveCount(0);
+      // The footer's two navigation controls are the drawer's only remaining
+      // destination affordances, so they carry the floor the rows used to.
+      for (const label of ['Notifications', 'Settings']) {
+        const control = navigation.getByRole('button', { name: label });
+        await expect(control).toBeVisible();
+        const box = (await control.boundingBox())!;
+        expect(box.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+        expect(box.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+      }
+
+      // The Manage group the gear lands on carries the other half of this
+      // contract — its entries are thumb-sized too — and it is asserted in
+      // settings.spec.ts, whose fixture models the Settings page. This one
+      // owns the drawer.
+
       expect(
         await page.evaluate(() =>
           Math.max(
@@ -1216,7 +1487,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
           },
         ],
       });
-      await page.goto('/activity?session=task-first-home');
+      await page.goto('/?surface=activity&session=task-first-home');
 
       const detail = page.getByTestId('session-detail');
       await expect(detail).toBeVisible();
@@ -1244,7 +1515,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       expect(geometry.overflows).toBe(false);
 
       await composer.fill('Continue from my phone');
-      const continueButton = page.getByRole('button', { name: 'Continue' });
+      const continueButton = page
+        .getByTestId('session-detail')
+        .getByRole('button', { name: 'Continue', exact: true });
       const approveButton = request.getByRole('button', { name: 'Approve' });
       const declineButton = request.getByRole('button', { name: 'Decline' });
       for (const control of [continueButton, approveButton, declineButton]) {
@@ -1301,7 +1574,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
           },
         ],
       });
-      await page.goto('/activity?session=task-first-home');
+      await page.goto('/?surface=activity&session=task-first-home');
 
       const statusLine = page
         .getByTestId('session-detail')
@@ -1328,7 +1601,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     }) => {
       const commands: Array<Record<string, unknown>> = [];
       await mockTaskFirstHome(page, { commands });
-      await page.goto('/activity');
+      await page.goto('/?surface=activity');
 
       const coordinator = page.getByTestId('delegated-task-coordinator');
       await expect(coordinator).toBeVisible();
@@ -1657,4 +1930,33 @@ test.describe('Task-first Home (#332, mocked)', () => {
       );
     });
   });
+});
+
+test('profiles Home with substantial session history', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await installJourneyProfile(page);
+  await mockTaskFirstHome(page, { historyCount: 1000 });
+  await profileJourney(
+    page,
+    testInfo,
+    'home-history',
+    { sessions: 1000 },
+    async () => {
+      const response = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+          '/api/orchestration/sessions/read-model',
+      );
+      await page.goto('/');
+      expect((await (await response).json()).data).toHaveLength(1000);
+      await expect(
+        page.getByRole('heading', { name: 'What do you want to work on?' }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('History session 0', { exact: true }).first(),
+      ).toBeVisible();
+    },
+  );
 });

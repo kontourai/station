@@ -3,6 +3,7 @@ import type {
   SkillImportResultRow,
 } from '@kontourai/station-sdk';
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonBlock } from '../state';
@@ -63,7 +64,20 @@ export function ImportSkillsModal({
 
   if (!isOpen) return null;
 
-  return (
+  // #1180: rendered where `SkillsView` places it — a plain sibling of
+  // `SplitPaneLayout`, inside the route frame `PageFrame` marks `inert`
+  // while that layout's mobile detail sheet is open (PageFrame.tsx:155).
+  // Unlike `SkillRunModal`, this dialog's OWN trigger ("Import .md") lives in
+  // the list pane, which a phone hides the instant a sheet is showing — so
+  // the exposure here needs the opposite ordering: open this dialog while
+  // the list is up, then let the URL selection (`useUrlSelection`, e.g. a
+  // deep link or Back/Forward) select a skill underneath it. That selection
+  // does not touch this dialog, but it does turn its ancestor `inert` —
+  // silently dropping it from focus and hit testing. `createPortal` to
+  // `document.body`, the same escape `ConfirmModal` and `PluginModalStack`
+  // (#1131) already use, moves the DOM node out of that ancestor; React
+  // context and event bubbling still follow the component tree.
+  return createPortal(
     <Dialog
       title="Import Skills"
       closeLabel="Close import skills"
@@ -155,6 +169,7 @@ export function ImportSkillsModal({
           </p>
         )}
       </div>
-    </Dialog>
+    </Dialog>,
+    document.body,
   );
 }

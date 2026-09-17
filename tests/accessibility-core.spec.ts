@@ -28,7 +28,21 @@ function json(data: unknown) {
 
 async function mockCoreApp(page: Page, firstRun = false) {
   await page.route('**/events', (route) => route.abort());
-  await page.route('**/config/app', (route) => route.fulfill(json({})));
+  // A stored (`source: 'file'`) setting so the Settings reset dialog is in its
+  // actionable state: its confirm is disabled when nothing is stored, and a
+  // disabled button is not what the danger-button contrast audit below is
+  // about.
+  await page.route('**/config/app', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: { terminalShell: '/bin/zsh' },
+        provenance: { terminalShell: { source: 'file' } },
+      }),
+    }),
+  );
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/system/status') {
@@ -133,10 +147,14 @@ test.describe('core journey accessibility gate', () => {
     {
       name: 'settings',
       path: '/settings',
-      // The Station-config section heading; its ⚙ span is aria-hidden, so the
-      // accessible name is the bare title.
+      // A settings section heading; the pictogram span beside it is
+      // aria-hidden, so the accessible name is the bare title. #2182 retired
+      // the "Station configuration" heading this used to wait for — and this
+      // is a READINESS GATE, so a stale name does not fail the audit, it
+      // hangs the spec until the suite deadline. "Sources" is the first card
+      // of the first group and is unconditional.
       ready: (page: Page) =>
-        page.getByRole('heading', { name: 'Station configuration', level: 2 }),
+        page.getByRole('heading', { name: 'Sources', level: 2 }),
     },
   ]) {
     test(`${surface.name} has no unaccepted serious or critical violations`, async ({
@@ -306,7 +324,7 @@ test.describe('core journey accessibility gate', () => {
     // archive#1110 not one of ConfirmModal's 22 call sites had focus coverage,
     // which is why `aria-modal="true"` sat on a dialog whose second Tab landed
     // in the app chrome behind it and whose close stranded focus on <body>.
-    // Settings' "Reset to Defaults" is a plain, hermetic instance of it.
+    // Settings' "Reset Station settings" is a plain, hermetic instance of it.
     // #1046: pin reduced motion for the same reason as the New Project
     // dialog test above — it collapses `ResponsiveDialogSurface`'s entrance
     // fade so the axe scan below can't land mid-animation. This is
@@ -318,12 +336,16 @@ test.describe('core journey accessibility gate', () => {
     await page.goto('/settings');
     await expect(page.locator('.app-toolbar')).toBeVisible();
 
-    const trigger = page.getByRole('button', { name: 'Reset to Defaults' });
+    const trigger = page.getByRole('button', {
+      name: 'Reset Station settings',
+    });
     await trigger.scrollIntoViewIfNeeded();
     await trigger.focus();
     await trigger.press('Enter');
 
-    const dialog = page.getByRole('dialog', { name: 'Reset to Defaults' });
+    const dialog = page.getByRole('dialog', {
+      name: 'Reset Station settings',
+    });
     await expect(dialog).toBeVisible();
     // Armed by archive#1125 (filed from archive#1110 rather than buried): this audit
     // used to report `.button--danger` at 2.78:1 (#ffffff on dark's
@@ -342,9 +364,10 @@ test.describe('core journey accessibility gate', () => {
     // the suite enforces rather than one the PR body asserts.
     // `exact` matters here, and only started to. Every `Dialog` now renders a
     // close button whose accessible name is `Close ${title}`
-    // (`ConfirmModal.tsx:90` → `Dialog.tsx:127`), so inside the "Reset to
-    // Defaults" dialog the substring match that `getByRole` does by default
-    // resolves BOTH `Close Reset to Defaults` and the danger button, and
+    // (`ConfirmModal.tsx:90` → `Dialog.tsx:127`), so inside the "Reset
+    // Station settings" dialog the substring match that `getByRole` does by
+    // default resolves BOTH `Close Reset Station settings` and the danger
+    // button, and
     // `contrastRatio` fails on strict mode rather than measuring anything.
     // Anchoring on the exact confirm label keeps this pointed at the button
     // whose contrast archive#1246 is about.

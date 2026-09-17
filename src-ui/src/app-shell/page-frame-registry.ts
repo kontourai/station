@@ -1,6 +1,6 @@
 import type { PageFrameSpec } from '../components/page-frame';
 import type { NavigationView } from '../types';
-import { APP_SURFACE_REGISTRY } from './surface-registry';
+import { APP_DESTINATION_REGISTRY } from './destination-registry';
 
 /**
  * Which frame each route renders inside.
@@ -85,8 +85,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     width: 'full',
     body: 'fill',
   },
-  'review-queue': SPLIT_PANE,
-  activity: SPLIT_PANE,
 
   // 'Developer' is not self-referential here — the title is the active tab
   // ('Logs'/'System'/'Telemetry'/'Memory'/'Archive'), so the eyebrow is a
@@ -100,7 +98,10 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   },
   settings: {
     title: 'Settings',
-    subtitle: 'Station configuration for this device and account',
+    // #2144: says what the page holds, not which storage tiers it spans —
+    // "Station configuration" is a banned noun on this page (the epic's
+    // naming rule), and the tiers are each box's own caption to state.
+    subtitle: 'Everything Station honors, and where each choice is saved',
     width: 'narrow',
   },
   profile: {
@@ -114,6 +115,9 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     // below are named for exactly these two halves.
     subtitle: 'Things that need you, and what happened.',
     width: 'narrow',
+    // #2065: the first-run "Decisions are part of the record" step points
+    // here now that the global review queue is retired.
+    firstRunAnchor: 'notifications',
   },
 
   'project-session-board': { width: 'full', body: 'fill' },
@@ -140,6 +144,11 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   project: null,
   task: null,
   layout: null,
+  // #2062: a Board renders through the SAME layout renderer as a project
+  // Layout, so it takes the same answer for the same reason — the renderer is
+  // handed the whole area. A different answer here would mean the identical
+  // record is framed or unframed depending on who owns it.
+  'personal-board': null,
   'workspace-pane': null,
 
   // Not a page: a route-level overlay that renders its own dialog chrome.
@@ -153,7 +162,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
 /**
  * Fallback titles for the two framed routes the sidebar has no surface for.
  *
- * Every other framed route resolves its fallback from `surface-registry.ts`
+ * Every other framed route resolves its fallback from `destination-registry.ts`
  * the SAME `label` the sidebar row and the command palette render, so the
  * word in the header while a chunk loads is by construction the word the user
  * just clicked. These two are reached from inside a project, not from the
@@ -188,13 +197,13 @@ const RESOLVED_FRAMES = ((): Record<
       resolved[type] = spec;
       continue;
     }
-    // `getSurfaceForView` reads `view.type` and nothing else (it is a lookup
+    // `getDestinationForView` reads `view.type` and nothing else (it is a lookup
     // in the registry's `managementViewTypes` index), so the type alone is
     // the whole input a fallback title can depend on.
-    const surface = APP_SURFACE_REGISTRY.getSurfaceForView({
+    const destination = APP_DESTINATION_REGISTRY.getDestinationForView({
       type,
     } as NavigationView);
-    const title = surface?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
+    const title = destination?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
     resolved[type] = title ? { ...spec, title } : spec;
   }
   return resolved;

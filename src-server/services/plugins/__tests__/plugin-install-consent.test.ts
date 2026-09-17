@@ -1,17 +1,64 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import {
   assertPluginInstallConsent,
   derivePluginConsentBasis,
+  findPluginConsentRefusedError,
   isPluginConsentRefusedError,
   type PluginConsentBasis,
   PluginConsentRefusedError,
 } from '../plugin-install-consent.js';
 
 const cleanupDirs: string[] = [];
+
+test('finds only bounded ordinary consent cause chains, never failed rollback aggregates or accessors', () => {
+  const refusal = new PluginConsentRefusedError({
+    pluginName: 'dependency',
+    reason: 'content',
+    message: 'changed',
+  });
+  expect(
+    findPluginConsentRefusedError(
+      new Error('outer', { cause: new Error('middle', { cause: refusal }) }),
+    ),
+  ).toBe(refusal);
+  expect(
+    findPluginConsentRefusedError(
+      new Error('outer', {
+        cause: new AggregateError([refusal, new Error('rollback')], 'failed', {
+          cause: refusal,
+        }),
+      }),
+    ),
+  ).toBeNull();
+  const getter = vi.fn(() => refusal);
+  expect(
+    findPluginConsentRefusedError(
+      Object.defineProperty(new Error('accessor'), 'cause', { get: getter }),
+    ),
+  ).toBeNull();
+  expect(getter).not.toHaveBeenCalled();
+  const cycle = new Error('cycle');
+  Object.defineProperty(cycle, 'cause', { value: cycle });
+  expect(findPluginConsentRefusedError(cycle)).toBeNull();
+  let deep: Error = refusal;
+  for (let index = 0; index < 33; index++)
+    deep = new Error('wrapper', { cause: deep });
+  expect(findPluginConsentRefusedError(deep)).toBeNull();
+  expect(findPluginConsentRefusedError({ cause: refusal })).toBeNull();
+  expect(
+    findPluginConsentRefusedError(
+      new Proxy(new Error('trap'), {
+        getOwnPropertyDescriptor() {
+          throw new Error('trap');
+        },
+      }),
+    ),
+  ).toBeNull();
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -45,6 +92,19 @@ function refusalOf(run: () => void): PluginConsentRefusedError {
   }
   throw new Error('expected the consent check to refuse');
 }
+
+// The staging directory below must be ABSENT for "cannot be read" to be what
+// the assertion observes. `<tmpdir>/station-absent-staging` made that absence a
+// property of the shared host (#1790); a leaf inside a directory this file owns
+// is absent by construction.
+const ABSENT_STAGING_ROOT = mkdtempSync(
+  join(tmpdir(), 'station-absent-staging-test-'),
+);
+const ABSENT_STAGING = join(ABSENT_STAGING_ROOT, 'station-absent-staging');
+
+afterAll(() => {
+  rmSync(ABSENT_STAGING_ROOT, { force: true, recursive: true });
+});
 
 describe('derivePluginConsentBasis', () => {
   test('derives the permission set, its tiers and the dependency ids from a staged copy', () => {
@@ -136,7 +196,7 @@ describe('derivePluginConsentBasis', () => {
 
   test('reports no basis when the staged tree cannot be read', () => {
     expect(
-      derivePluginConsentBasis(join(tmpdir(), 'station-absent-staging'), {
+      derivePluginConsentBasis(ABSENT_STAGING, {
         name: 'demo',
       } as any),
     ).toBeNull();

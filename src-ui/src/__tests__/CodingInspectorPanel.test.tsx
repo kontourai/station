@@ -15,6 +15,13 @@ const state = {
   flow: { data: undefined as unknown },
   readiness: { data: undefined as unknown, isLoading: false, error: null },
   bundles: { data: undefined as unknown, isLoading: false, error: null },
+  // #2064: the Reviews tab's own source. Its default here is the empty
+  // aggregate, which is what a project with no review evidence really reads.
+  reviewEvidence: {
+    data: { receipts: [], unavailableProjects: [] } as unknown,
+    isLoading: false,
+    isError: false,
+  },
   trustReport: { data: undefined as unknown, isLoading: false, error: null },
   initReadinessResult: undefined as unknown,
 };
@@ -32,6 +39,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
   }),
   useTrustBundlesQuery: () => state.bundles,
+  useReviewEvidenceQuery: () => state.reviewEvidence,
   useTrustReportQuery: () => state.trustReport,
   useInitFlowMutation: () => ({
     mutate: initFlowMutate,
@@ -59,6 +67,7 @@ function harnessTabs(): InspectorTabState[] {
     { id: 'plan', configured: false, attention: false },
     { id: 'readiness', configured: false, attention: false },
     { id: 'trust', configured: false, attention: false },
+    { id: 'reviews', configured: false, attention: false },
   ];
 }
 
@@ -344,18 +353,14 @@ describe('CodingInspectorPanel — copyable setup command', () => {
     await waitFor(() => expect(copyButton().textContent).toBe('Copied'));
   });
 
+  // ONE failure case here, not the primitive's matrix. Which clipboard states
+  // resolve `false` (absent, no `writeText`, rejected, throwing) is
+  // `copyToClipboard`'s own contract, pinned in
+  // `src-ui/src/lib/__tests__/clipboard.test.ts` -- 'resolves false when the
+  // origin has no clipboard API at all'. What is this panel's to prove is that
+  // it derives its affordance from that boolean rather than from the call.
   test('a refused write never claims a copy', async () => {
     clipboardRefuses();
-    renderNoCliCta();
-
-    fireEvent.click(copyButton());
-
-    await waitFor(() => expect(copyButton().textContent).toBe("Can't copy"));
-    expect(screen.queryByText('Copied')).toBeNull();
-  });
-
-  test('an insecure origin with no clipboard API never claims a copy', async () => {
-    clipboardAbsent();
     renderNoCliCta();
 
     fireEvent.click(copyButton());

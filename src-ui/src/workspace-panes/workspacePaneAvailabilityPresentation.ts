@@ -32,9 +32,22 @@ export interface WorkspacePaneAvailabilityCatalogEntry {
   availability: WorkspacePaneAvailability;
   /** A UI-local registry fact; it never changes the availability contract. */
   rendererGate?: 'remote-isolation';
+  /**
+   * UI-local: the client facts that decide this pane's RENDERER have not
+   * settled yet — the plugin registry is still loading its bundles, or app
+   * config has not been read. Never part of the availability contract: it says
+   * the answer is not in yet, not what the answer is.
+   *
+   * It exists because the resolver has no third value for "don't know yet". A
+   * renderer that is not registered YET is indistinguishable, to the resolver,
+   * from one that is gone — so on every cold load a plugin pane spent 3–10
+   * seconds telling the reader it was "Temporarily unavailable", which is an
+   * outage report for a page that was simply still loading.
+   */
+  rendererResolution?: 'pending';
 }
 
-export interface WorkspacePaneAvailabilityPresentation {
+interface WorkspacePaneAvailabilityPresentation {
   state: WorkspacePaneAvailabilityState;
   stateLabel: string;
   reasonCode: WorkspacePaneAvailabilityReasonCode;
@@ -42,6 +55,11 @@ export interface WorkspacePaneAvailabilityPresentation {
   action?: WorkspacePaneAvailabilityAction;
   actionLabel?: string;
   reviewInRegistry?: boolean;
+  /**
+   * This presentation reports a fact still being determined, not a verdict.
+   * A host may render a skeleton; every host at least stops saying "unavailable".
+   */
+  pending?: boolean;
 }
 
 const STATE_LABELS: Record<WorkspacePaneAvailabilityState, string> = {
@@ -57,6 +75,10 @@ const REASON_LABELS: Record<WorkspacePaneAvailabilityReasonCode, string> = {
   ready: 'This pane is ready to open.',
   'coming-soon': 'This pane has not rolled out yet.',
   'rollout-unknown': 'This pane’s rollout status has not been confirmed.',
+  'installation-pending':
+    'Plugin activation is pending. Review recovery in Plugins.',
+  'installation-unavailable':
+    'The plugin installation is unavailable. Check its status in Plugins.',
   'distribution-disabled': 'This pane is disabled by its distribution policy.',
   'distribution-policy-unknown':
     'This pane’s distribution policy has not been confirmed.',
@@ -78,6 +100,26 @@ const REASON_LABELS: Record<WorkspacePaneAvailabilityReasonCode, string> = {
   'permission-required':
     'Grant the required permission before opening this pane.',
   'permission-unknown': 'Permission for this pane has not been confirmed.',
+  // #2067. NO PRODUCER TODAY — the server drops a hidden plugin's panes
+  // from the catalogue entirely, so nothing resolves to this code and this
+  // string is currently unreachable. It is kept because the reason code is
+  // kept: see `WorkspacePaneAvailabilityInput.pluginVisibility` for the two
+  // implementations that were removed rather than shipped inert.
+  //
+  // #2090's referenced-pane placeholder deliberately does NOT reuse this
+  // string. Naming an operator and Settings is a cause and an action the
+  // layout read cannot derive — it cannot tell a hidden plugin from one
+  // that was never installed. Its sentence is
+  // `LAYOUT_TAB_UNAVAILABLE_MESSAGE` in `src-ui/src/layouts/index.tsx`.
+  //
+  // Says the pane is not available TO THIS VIEWER and stops there.
+  // It deliberately does not assert that a plugin exists, is installed, or
+  // is merely unshared: a layout can name any descriptor id, so a message
+  // that distinguished "real but hidden" from "no such pane" would be an
+  // existence oracle. An operator who wants to share something reaches
+  // Settings either way.
+  'pane-not-available-to-viewer':
+    'This pane is not available to you. An operator can share panes from Settings.',
   'health-unavailable':
     'The pane is temporarily unavailable. Try again shortly.',
   'health-unknown': 'The pane’s current health has not been confirmed.',
@@ -106,9 +148,12 @@ const ACTION_LABELS: Record<WorkspacePaneAvailabilityAction['code'], string> = {
  * Turns an authoritative, bounded availability result into shared copy. No
  * host diagnostics, paths, URLs, or renderer details enter this projection.
  */
+const WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL = 'Loading…';
+
 export function presentWorkspacePaneAvailability(
   availability: WorkspacePaneAvailability,
   rendererGate?: WorkspacePaneAvailabilityCatalogEntry['rendererGate'],
+  rendererResolution?: WorkspacePaneAvailabilityCatalogEntry['rendererResolution'],
 ): WorkspacePaneAvailabilityPresentation {
   const extensionsDisabled =
     rendererGate === 'remote-isolation' &&
@@ -122,6 +167,24 @@ export function presentWorkspacePaneAvailability(
       reasonLabel:
         'Remote extensions are off for this Station on this device — you can turn them on from the Registry, which explains the trade-off first.',
       reviewInRegistry: true,
+    };
+  }
+  // Only where the UNSETTLED fact is the one that produced the refusal. A pane
+  // refused for a permission or a missing Project is refused for a reason
+  // already known, and replacing that with "Loading…" would hide the very
+  // thing the reader can act on. Deliberately no action either: offering
+  // "Check again" for something still in flight invents work for the reader.
+  if (
+    rendererResolution === 'pending' &&
+    (availability.reason.code === 'renderer-missing' ||
+      availability.reason.code === 'renderer-unknown')
+  ) {
+    return {
+      state: availability.state,
+      stateLabel: WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL,
+      reasonCode: availability.reason.code,
+      reasonLabel: 'Checking whether this pane can open here.',
+      pending: true,
     };
   }
   return {

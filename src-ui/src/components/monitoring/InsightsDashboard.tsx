@@ -35,7 +35,13 @@ import {
 interface Insights {
   toolUsage: Record<
     string,
-    { calls: number; errors: number; outcomeUnknown?: number }
+    {
+      calls: number;
+      errors: number;
+      outcomeUnknown?: number;
+      /** station#1558; absent from a Station older than that change. */
+      unresolved?: number;
+    }
   >;
   hourlyActivity: number[];
   agentUsage: Record<string, { chats: number; tokens: number }>;
@@ -45,6 +51,8 @@ interface Insights {
   totalErrors: number;
   /** Results whose producer reported no terminal status (archive#3075). */
   totalOutcomeUnknown?: number;
+  /** station#1558; absent from a Station older than that change. */
+  totalUnresolved?: number;
   days: number;
   applied?: { agent?: string; tool?: string; engine?: string; limit?: number };
 }
@@ -221,6 +229,11 @@ function UsageTab() {
           ...(data.totalOutcomeUnknown
             ? [{ label: 'Outcome unreported', value: data.totalOutcomeUnknown }]
             : []),
+          // station#1558: separate from both. These calls WERE reported on —
+          // the report is that the session ended before any result arrived.
+          ...(data.totalUnresolved
+            ? [{ label: 'No result reported', value: data.totalUnresolved }]
+            : []),
         ].map((s) => (
           <div key={s.label} className="insights-stat-cell">
             <div className="insights-section-label">{s.label}</div>
@@ -297,6 +310,7 @@ function UsageTab() {
                     {stats.outcomeUnknown
                       ? ` (${stats.outcomeUnknown} unreported)`
                       : ''}
+                    {stats.unresolved ? ` (${stats.unresolved} no result)` : ''}
                   </span>
                 </div>
                 <div className="insights-bar-track">

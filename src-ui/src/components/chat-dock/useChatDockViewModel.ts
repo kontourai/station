@@ -22,12 +22,14 @@ import {
   connectionStatusLabel,
   resolveBindingStatus,
   resolveModelProviderLabel,
+  resolveSessionEngineConnectionId,
   resolveSessionExecutionSummary,
   runtimeCatalogVisibleModels,
 } from '../../utils/execution';
-import type {
-  ModelProviderOption,
-  SelectableModel,
+import {
+  type ModelProviderOption,
+  modelIdentityLabel,
+  type SelectableModel,
 } from '../../utils/modelCapabilities';
 
 type ModelOption = { id: string; name: string };
@@ -56,7 +58,7 @@ function ensureActiveModelOption(
   return [
     {
       id: currentModelId,
-      name: currentModelId,
+      name: modelIdentityLabel(currentModelId),
       providerId,
       providerName,
       providerType,
@@ -235,10 +237,14 @@ export function useChatDockViewModel({
     (layout: any) => layout.type === 'coding',
   );
 
-  const agentConnectionId =
-    activeSessionForHook?.agentConnectionId ??
-    agentForHook?.execution?.agentConnectionId ??
-    null;
+  // Shared with the send path so the approval chip and the dispatched
+  // posture can never be resolved off different bindings (round 2 LOW-5).
+  const agentConnectionId = resolveSessionEngineConnectionId({
+    conversationOpenState: activeSessionForHook?.conversationOpenState,
+    currentSessionId: activeSessionForHook?.currentSessionId,
+    chatStateConnectionId: activeSessionForHook?.agentConnectionId,
+    agentBoundConnectionId: agentForHook?.execution?.agentConnectionId,
+  });
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agentConnectionId,
   );
@@ -466,6 +472,7 @@ export function useChatDockViewModel({
     modelSupportsAttachments,
     modelProviderLabel,
     modelProviders,
+    modelConnections,
     modelsLoading,
     modelsStale,
     sessionCodingLayout,

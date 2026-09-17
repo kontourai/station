@@ -45,13 +45,9 @@ describe('settings utils', () => {
   });
 
   test('isSettingsSectionVisible uses section term matches', () => {
-    expect(isSettingsSectionVisible('section-agent-defaults', 'region')).toBe(
-      true,
-    );
-    expect(isSettingsSectionVisible('section-agent-defaults', 'voice')).toBe(
-      false,
-    );
-    expect(isSettingsSectionVisible('section-agent-defaults', '')).toBe(true);
+    expect(isSettingsSectionVisible('section-agent-runs', 'region')).toBe(true);
+    expect(isSettingsSectionVisible('section-agent-runs', 'voice')).toBe(false);
+    expect(isSettingsSectionVisible('section-agent-runs', '')).toBe(true);
   });
 
   describe('export/import (station#settings-revamp slice 2)', () => {

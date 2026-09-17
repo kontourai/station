@@ -1,4 +1,7 @@
-import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  PermissionUpdate,
+  SDKMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
 import { getConversationStats } from '../../runtime/conversation/conversation-manager.js';
@@ -7,14 +10,24 @@ import { buildAgentRunSummary } from '../../services/orchestration/orchestration
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import {
   CLAUDE_EXTENSION_NAMESPACE,
+  CLAUDE_UNRESOLVED_TOOL_OUTPUT,
   type ClaudeMessageState,
   claudeToolResultOutputReceipt,
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   mapClaudeSessionState,
   mapClaudeTaskStatus,
+  settleUnresolvedClaudeToolCalls,
   summarizeClaudeToolResult,
 } from '../adapters/claude-adapter-events.js';
+import {
+  CLAUDE_BASH_DEFERRED_RESULT,
+  CLAUDE_BASH_END_TURN_RESULT,
+  CLAUDE_BASH_FINAL_TEXT_ASSISTANT,
+  CLAUDE_BASH_TEXT_ASSISTANT,
+  CLAUDE_BASH_TOOL_RESULT_USER,
+  CLAUDE_BASH_TOOL_USE_ASSISTANT,
+} from './claude-adapter-tool-cycle-fixtures.js';
 
 const ANSWERABILITY: SessionAnswerabilityObservation = {
   threadAttachment: 'detached',
@@ -155,6 +168,7 @@ describe('claude-adapter-events', () => {
       publish,
       message: {
         type: 'result',
+        is_error: false,
         result: 'done',
         stop_reason: 'tool_use',
         usage: { input_tokens: 10, output_tokens: 5 },
@@ -196,6 +210,7 @@ describe('claude-adapter-events', () => {
       logInfo,
       message: {
         type: 'result',
+        is_error: false,
         result: '',
         stop_reason: null,
         usage: { input_tokens: 3, output_tokens: 0 },
@@ -250,6 +265,7 @@ describe('claude-adapter-events', () => {
       message: {
         type: 'result',
         subtype: 'success',
+        is_error: false,
         num_turns: 0,
         result: '',
         stop_reason: null,
@@ -308,6 +324,7 @@ describe('claude-adapter-events', () => {
       message: {
         type: 'result',
         subtype: 'success',
+        is_error: false,
         num_turns: 1,
         result: 'done',
         stop_reason: 'end_turn',
@@ -329,6 +346,7 @@ describe('claude-adapter-events', () => {
       message: {
         type: 'result',
         subtype: 'success',
+        is_error: false,
         num_turns: 0,
         result: '',
         stop_reason: null,
@@ -354,7 +372,7 @@ describe('claude-adapter-events', () => {
    * engine's raw error text into `turn.completed` as if it were an ordinary
    * assistant reply (the exact defect this ticket fixes).
    */
-  test('an is_error: true result publishes a terminal runtime.error instead of turn.completed, and sets terminalResultObserved', () => {
+  test('a cursor-matched missing-session result publishes a binding-dead runtime.error instead of turn.completed, and sets terminalResultObserved', () => {
     const publish = vi.fn();
     const record = {
       session: {
@@ -364,6 +382,7 @@ describe('claude-adapter-events', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
+      attemptedResumeCursor: 'd434e194-cc2e-4edc-8733-d8645c512fab',
       activeTurnId: 'turn-dead',
       dispatchedTurnId: 'turn-dead',
       lastSessionState: 'running' as const,
@@ -402,7 +421,7 @@ describe('claude-adapter-events', () => {
     expect(
       publish.mock.calls.some(([event]) => event.method === 'turn.completed'),
     ).toBe(false);
-    expect((record as any).terminalResultObserved).toBe(true);
+    expect((record as any).terminalResultObserved).toBe('binding-dead');
   });
 
   test("a requested interruption consumes Claude's null-stop-reason error result without replacing Stopped with Failed (#898)", () => {
@@ -584,7 +603,14 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
         description: 'Explore the codebase',
       }),
     });
+    // station#1877: `task_started` now publishes the live registry between
+    // the tool card and any progress, so the running subagent is renderable
+    // without waiting for the turn to go idle.
     expect(publish.mock.calls[1][0]).toMatchObject({
+      method: 'extension.notification',
+      type: 'task/registry',
+    });
+    expect(publish.mock.calls[2][0]).toMatchObject({
       method: 'tool.progress',
       toolCallId: 'toolu-1',
       message: 'Explore the codebase — Grep',
@@ -593,6 +619,389 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       toolCallId: 'toolu-1',
       subagentType: 'Explore',
     });
+  });
+
+  test('station#1892: the SDK two-terminal sequence yields one settle carrying identity AND result', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Investigate the failure',
+        subagent_type: 'general-purpose',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    // Terminal ONE: `task_updated` carries identity but no result.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_updated',
+        task_id: 'task-1',
+        patch: { status: 'completed', is_backgrounded: true },
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // Terminal TWO: `task_notification` carries the result but, in the SDK
+    // message, no identity. Before this fix it landed in the untracked branch.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'Traced it to conversationOpenController.',
+        output_file: '/tmp/agent-1.jsonl',
+        usage: { total_tokens: 5100, tool_uses: 23, duration_ms: 311000 },
+        uuid: 'u-3',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const settles = publish.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.type === 'task/settled');
+    // Exactly one settle may carry a result, and it must be attributable.
+    const withResult = settles.filter(
+      (event) => event.payload.summary || event.payload.outputFile,
+    );
+    expect(withResult).toHaveLength(1);
+    expect(withResult[0].payload).toMatchObject({
+      taskId: 'task-1',
+      toolCallId: 'toolu-1',
+      description: 'Investigate the failure',
+      backgrounded: true,
+      status: 'success',
+      summary: 'Traced it to conversationOpenController.',
+      outputFile: '/tmp/agent-1.jsonl',
+      usage: { totalTokens: 5100, toolUses: 23, durationMs: 311000 },
+    });
+  });
+
+  test('station#1892: a duplicate terminal after a settle that already had a result adds nothing', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Quick lookup',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    const notification = {
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      status: 'completed',
+      summary: 'done',
+      output_file: '/tmp/agent-x.jsonl',
+      session_id: 's-1',
+    };
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: { ...notification, uuid: 'u-2' } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: { ...notification, uuid: 'u-3' } as any,
+    });
+
+    const withResult = publish.mock.calls
+      .map(([event]) => event)
+      .filter(
+        (event) =>
+          event.type === 'task/settled' &&
+          (event.payload.summary || event.payload.outputFile),
+      );
+    expect(withResult).toHaveLength(1);
+  });
+
+  test('station#1877 follow-up: spawn_depth is tracked and published on the registry', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-nested',
+        tool_use_id: 'toolu-nested',
+        description: 'Nested investigation',
+        subagent_type: 'general-purpose',
+        spawn_depth: 2,
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+
+    expect(record.activeTasks?.get('task-nested')?.spawnDepth).toBe(2);
+    const registry = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/registry');
+    expect(registry.payload.active[0]).toMatchObject({
+      taskId: 'task-nested',
+      spawnDepth: 2,
+    });
+  });
+
+  test('station#1877 follow-up: an absent spawn_depth stays absent rather than becoming 1', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-flat',
+        tool_use_id: 'toolu-flat',
+        description: 'Top level',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+
+    expect(record.activeTasks?.get('task-flat')?.spawnDepth).toBeUndefined();
+    const registry = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/registry');
+    expect('spawnDepth' in registry.payload.active[0]).toBe(false);
+  });
+
+  test('station#1877: activeTasks membership is what a task-scoped stop keys off', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Long investigation',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    // Live: the adapter's stop path finds it and calls Query.stopTask.
+    expect(record.activeTasks?.has('task-1')).toBe(true);
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'stopped',
+        summary: 'stopped',
+        output_file: '/tmp/a.jsonl',
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // Settled: a stop arriving now is the documented `no-active-task` race,
+    // not an error — a client can render a control for a task that settles
+    // before the request lands.
+    expect(record.activeTasks?.has('task-1')).toBe(false);
+  });
+
+  test('station#1879: a settle carries the SDK output_file and usage', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Investigate the failure',
+        subagent_type: 'general-purpose',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'Now let me check the logs.',
+        output_file: '/tmp/agent-ac28dc.jsonl',
+        usage: { total_tokens: 5100, tool_uses: 23, duration_ms: 311000 },
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const settled = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/settled');
+    expect(settled).toMatchObject({
+      payload: {
+        taskId: 'task-1',
+        status: 'success',
+        // `summary` stays the agent's last utterance — which is exactly why
+        // outputFile has to travel alongside it.
+        summary: 'Now let me check the logs.',
+        outputFile: '/tmp/agent-ac28dc.jsonl',
+        usage: { totalTokens: 5100, toolUses: 23, durationMs: 311000 },
+      },
+    });
+  });
+
+  test('station#1879: a settle with no usage omits it rather than reporting zeroes', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Quick lookup',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        output_file: '/tmp/agent-x.jsonl',
+        // `usage` is OPTIONAL on SDKTaskNotificationMessage. A settle that
+        // reports none must not be rendered as a 0-token, 0-tool run.
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const settled = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/settled');
+    expect(settled.payload.outputFile).toBe('/tmp/agent-x.jsonl');
+    expect('usage' in settled.payload).toBe(false);
+  });
+
+  test('station#1877: a subagent that starts and settles inside one active turn still publishes a live registry', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Investigate the failure',
+        subagent_type: 'general-purpose',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const registries = () =>
+      publish.mock.calls
+        .map((call) => call[0])
+        .filter(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.type === 'task/registry',
+        );
+
+    // Before this fix the only registry publish hung off the transition to
+    // `idle`, so this assertion was zero and the run was invisible.
+    expect(registries()).toHaveLength(1);
+    expect(registries()[0].payload).toEqual({
+      active: [
+        {
+          taskId: 'task-1',
+          toolCallId: 'toolu-1',
+          description: 'Investigate the failure',
+          subagentType: 'general-purpose',
+          backgrounded: false,
+        },
+      ],
+    });
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+
+    // The settle republishes the set it left behind — empty here — so the
+    // client clears this task instead of inferring its absence.
+    const afterSettle = registries();
+    expect(afterSettle).toHaveLength(2);
+    expect(afterSettle[1].payload).toEqual({ active: [] });
+    expect(record.activeTasks?.size ?? 0).toBe(0);
   });
 
   test('task_started with skip_transcript is suppressed entirely', () => {
@@ -655,10 +1064,17 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       } as any,
     });
 
+    // station#1877: the settle is followed by the registry snapshot it left
+    // behind, so a client tracking siblings drops only the settled task.
     expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
       'tool.completed',
       'extension.notification',
+      'extension.notification',
     ]);
+    expect(publish.mock.calls[2][0]).toMatchObject({
+      type: 'task/registry',
+      payload: { active: [] },
+    });
     expect(publish.mock.calls[0][0]).toMatchObject({
       toolCallId: 'toolu-1',
       toolName: 'Task (general-purpose)',
@@ -965,6 +1381,155 @@ describe('claude-adapter-events — thinking/status notifications', () => {
 });
 
 describe('claude-adapter-events — top-level tool_use / tool_result mapping', () => {
+  // Turn-scoped tracking: a tool call belongs to the turn that issued it.
+  test("a stopped turn's open tool call is left tracked and its late result lands on the stopped turn", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-a', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-a-1',
+        session_id: 's-1',
+      } as any,
+    });
+    // Stop arrives, then a newer turn dispatches before A's delayed error
+    // result lands (the #921 sequence).
+    record.interruptingTurnId = 'turn-a';
+    record.activeTurnId = 'turn-b';
+    record.dispatchedTurnId = 'turn-b';
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'interrupted',
+        num_turns: 1,
+        stop_reason: null,
+        usage: { input_tokens: 1, output_tokens: 0 },
+        uuid: 'u-a-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // No synthetic completion: a backgrounded Task on the stopped turn may
+    // legitimately still finish, and the fold has no honest status for an
+    // outcome Station did not observe (station#1558).
+    expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
+      'tool.started',
+      'token-usage.updated',
+    ]);
+    expect(record.activeToolCalls?.size).toBe(1);
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-a', content: 'late' },
+          ],
+        },
+        uuid: 'u-a-3',
+        session_id: 's-1',
+      } as any,
+    });
+    expect(publish.mock.calls[2][0]).toMatchObject({
+      method: 'tool.completed',
+      turnId: 'turn-a',
+      toolCallId: 'toolu-a',
+      status: 'success',
+    });
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
+  test("an older turn's delayed real tool_result lands on the turn that issued the call", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-old',
+      dispatchedTurnId: 'turn-old',
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-old', name: 'Read', input: {} },
+          ],
+        },
+        uuid: 'u-o-1',
+        session_id: 's-1',
+      } as any,
+    });
+    record.activeTurnId = 'turn-next';
+    record.dispatchedTurnId = 'turn-next';
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        num_turns: 1,
+        stop_reason: 'end_turn',
+        result: 'done',
+        usage: { input_tokens: 1, output_tokens: 1 },
+        uuid: 'u-o-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // The next turn's completion leaves the older call alone.
+    expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
+      'tool.started',
+      'token-usage.updated',
+      'turn.completed',
+    ]);
+    expect(record.activeToolCalls?.size).toBe(1);
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-old', content: 'late' },
+          ],
+        },
+        uuid: 'u-o-3',
+        session_id: 's-1',
+      } as any,
+    });
+    expect(publish.mock.calls[3][0]).toMatchObject({
+      method: 'tool.completed',
+      turnId: 'turn-old',
+      toolCallId: 'toolu-old',
+      status: 'success',
+    });
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
   test('assistant tool_use blocks map to tool.started; matching tool_result maps to tool.completed', () => {
     const publish = vi.fn();
     const record = makeRecord();
@@ -1164,6 +1729,7 @@ describe('station#1182 — claude-adapter-events runtime-reported model', () => 
       publish,
       message: {
         type: 'result',
+        is_error: false,
         result: 'done',
         stop_reason: 'end_turn',
         usage: { input_tokens: 1, output_tokens: 1 },
@@ -1202,6 +1768,7 @@ describe('station#1182 — claude-adapter-events runtime-reported model', () => 
       publish,
       message: {
         type: 'result',
+        is_error: false,
         result: undefined,
         stop_reason: 'end_turn',
         usage: { input_tokens: 0, output_tokens: 0 },
@@ -1417,6 +1984,7 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
   const resultMessage = (usage: Record<string, unknown>, extra = {}) =>
     ({
       type: 'result',
+      is_error: false,
       result: 'done',
       stop_reason: 'end_turn',
       usage,
@@ -1551,4 +2119,351 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
       ).resolves.toMatchObject({ outputTokens: 5, totalTokens: 5 });
     },
   );
+});
+
+describe('a real Claude Bash tool cycle, replayed (#1536 finding B1)', () => {
+  // These replay CAPTURED SDK messages (claude-adapter-tool-cycle-fixtures.ts),
+  // not hand-written ones, because the defect this covers was invisible to
+  // hand-written coverage: the mapper mapped `tool.completed` correctly all
+  // along, and the engine simply never sent the `tool_result` it maps from.
+  function replay(messages: SDKMessage[]) {
+    const publish = vi.fn();
+    const record = makeRecord() as ClaudeMessageState;
+    for (const message of messages) {
+      mapClaudeSdkMessage({ provider: 'claude', record, publish, message });
+    }
+    return {
+      record,
+      events: publish.mock.calls.map(([event]) => event),
+    };
+  }
+
+  const TOOL_CALL_ID = 'toolu_01QuzhUwwwRumEUn3peJnLpw';
+
+  test('the resolved cycle maps to tool.started then tool.completed with the output', () => {
+    const { events } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      CLAUDE_BASH_TOOL_RESULT_USER,
+      CLAUDE_BASH_FINAL_TEXT_ASSISTANT,
+      CLAUDE_BASH_END_TURN_RESULT,
+    ]);
+
+    const toolEvents = events.filter((event) =>
+      String(event.method).startsWith('tool.'),
+    );
+    expect(toolEvents).toMatchObject([
+      {
+        method: 'tool.started',
+        toolCallId: TOOL_CALL_ID,
+        toolName: 'Bash',
+        arguments: { command: 'pwd' },
+      },
+      {
+        method: 'tool.completed',
+        toolCallId: TOOL_CALL_ID,
+        toolName: 'Bash',
+        status: 'success',
+        // The tool's real stdout, which is the thing the audited transcript
+        // never showed the user.
+        output: '/workspace/example',
+      },
+    ]);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'stop',
+          outputText: 'The directory is `/workspace/example`.',
+        }),
+      ]),
+    );
+  });
+
+  test('a deferred turn settles the call as an error and does NOT report a clean stop', () => {
+    // The engine ends this turn with the call unexecuted on
+    // `deferred_tool_use` and no `tool_result` — the exact shape #1536 B1
+    // rendered as "No result recorded · 1 tool call unresolved" beside a
+    // completed turn.
+    const { events, record } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      CLAUDE_BASH_DEFERRED_RESULT,
+    ]);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'tool.completed',
+          toolCallId: TOOL_CALL_ID,
+          toolName: 'Bash',
+          status: 'error',
+          error: expect.stringContaining('The tool did not run.'),
+        }),
+      ]),
+    );
+    const completed = events.find(
+      (event) => event.method === 'turn.completed',
+    ) as { finishReason?: string } | undefined;
+    // `'other'` deliberately, not `'stop'` (the bug) and not `'tool-calls'`:
+    // `PROVIDER_PROVEN_FINISH_REASONS` grants neither clear authority to
+    // `'other'` nor the claim that the turn reached its own outcome.
+    expect(completed?.finishReason).toBe('other');
+    // Settled, so a later replayed `tool_result` cannot double-report it.
+    expect(record.activeToolCalls?.has(TOOL_CALL_ID)).toBe(false);
+  });
+
+  test('terminal_reason tool_deferred_unavailable is recognised by name, without a deferred stop_reason', () => {
+    // The second deferral terminal reason in the SDK's `TerminalReason` union.
+    // Nothing guarantees it also sets `stop_reason: 'tool_deferred'`, so
+    // reading only that string would let this one report a clean stop.
+    const { events } = replay([
+      CLAUDE_BASH_TEXT_ASSISTANT,
+      CLAUDE_BASH_TOOL_USE_ASSISTANT,
+      {
+        ...(CLAUDE_BASH_DEFERRED_RESULT as unknown as Record<string, unknown>),
+        stop_reason: 'end_turn',
+        terminal_reason: 'tool_deferred_unavailable',
+        deferred_tool_use: undefined,
+      } as unknown as SDKMessage,
+    ]);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'other',
+        }),
+      ]),
+    );
+  });
+
+  test('a deferral the engine describes without a name still refuses a clean stop', () => {
+    // Version skew: `deferred_tool_use` present but nameless AND untracked.
+    // `tool.completed` requires a `toolName`, and inventing one would be a
+    // worse record than the completion's absence — so the honest signal has
+    // to survive on `finishReason` alone.
+    const { events } = replay([
+      {
+        ...(CLAUDE_BASH_DEFERRED_RESULT as unknown as Record<string, unknown>),
+        deferred_tool_use: { id: 'toolu_unknown' },
+      } as unknown as SDKMessage,
+    ]);
+
+    expect(
+      events.filter((event) => event.method === 'tool.completed'),
+    ).toHaveLength(0);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.completed',
+          finishReason: 'other',
+        }),
+      ]),
+    );
+  });
+});
+
+// station#1558: the session-end settle. `activeToolCalls` deliberately
+// outlives its turn, so this is the ONLY moment at which a still-open
+// `tool_use` is provably never going to report.
+describe('settleUnresolvedClaudeToolCalls (station#1558)', () => {
+  function recordWithOpenCalls() {
+    const record = makeRecord({
+      activeTurnId: 'turn-c',
+      dispatchedTurnId: 'turn-c',
+    }) as ClaudeMessageState;
+    record.activeToolCalls = new Map([
+      ['toolu-a', { toolName: 'Bash', turnId: 'turn-a' }],
+      ['toolu-b', { toolName: 'Read', turnId: 'turn-b' }],
+    ]);
+    return record;
+  }
+
+  test('settles every open call on the turn that ISSUED it, not the active one', () => {
+    const publish = vi.fn();
+    const record = recordWithOpenCalls();
+
+    settleUnresolvedClaudeToolCalls({
+      provider: 'claude',
+      record,
+      publish,
+      createdAt: '2026-09-05T00:00:00.000Z',
+    });
+
+    expect(publish.mock.calls.map(([event]) => event)).toEqual([
+      expect.objectContaining({
+        method: 'tool.completed',
+        turnId: 'turn-a',
+        toolCallId: 'toolu-a',
+        toolName: 'Bash',
+        status: 'unresolved',
+        output: CLAUDE_UNRESOLVED_TOOL_OUTPUT,
+      }),
+      expect.objectContaining({
+        method: 'tool.completed',
+        turnId: 'turn-b',
+        toolCallId: 'toolu-b',
+        toolName: 'Read',
+        status: 'unresolved',
+      }),
+    ]);
+    // Never the turn that happened to be active when the session ended.
+    expect(
+      publish.mock.calls.some(([event]) => event.turnId === 'turn-c'),
+    ).toBe(false);
+    expect(record.activeToolCalls?.size).toBe(0);
+  });
+
+  test('never republishes a call its own tool_result already settled', () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    }) as ClaudeMessageState;
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-done', name: 'Read', input: {} },
+            { type: 'tool_use', id: 'toolu-open', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'user',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu-done', content: 'ok' },
+          ],
+        },
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    publish.mockClear();
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0][0]).toMatchObject({
+      toolCallId: 'toolu-open',
+      status: 'unresolved',
+    });
+  });
+
+  // station#1558 fix round (H1, blocking): the Task's `tool_use` is registered
+  // in `activeToolCalls` and only its real `tool_result` removes it. A Task
+  // settled by `task_notification` whose result has not come back was still
+  // sitting there at session end, so the settle published a SECOND terminal
+  // — `unresolved` — contradicting the success the engine had already
+  // reported for the same call id.
+  test('a Task already settled by its own notification is not re-settled as unresolved', () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-a',
+      dispatchedTurnId: 'turn-a',
+    }) as ClaudeMessageState;
+    // The assistant's `tool_use` is what registers the call id — without it
+    // the entry the defect lives in never exists.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-task', name: 'Task', input: {} },
+          ],
+        },
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-task',
+        description: 'Run audit',
+        subagent_type: 'Explore',
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'audit clean',
+        uuid: 'u-3',
+        session_id: 's-1',
+      } as any,
+    });
+    // The Task reported success and its `tool_result` never came back, so the
+    // entry is still tracked — that is the point.
+    expect(record.activeToolCalls?.has('toolu-task')).toBe(true);
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    const terminals = publish.mock.calls
+      .map(([event]) => event)
+      .filter(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === 'toolu-task',
+      );
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0]).toMatchObject({ status: 'success' });
+    expect(
+      terminals.some(
+        (event: { status: string }) => event.status === 'unresolved',
+      ),
+    ).toBe(false);
+  });
+
+  test('a second settle publishes nothing (both session-end paths can run)', () => {
+    const publish = vi.fn();
+    const record = recordWithOpenCalls();
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+    const afterFirst = publish.mock.calls.length;
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(afterFirst).toBe(2);
+    expect(publish.mock.calls.length).toBe(2);
+  });
+
+  test('a session that ends with nothing open publishes nothing', () => {
+    const publish = vi.fn();
+    const record = makeRecord() as ClaudeMessageState;
+
+    settleUnresolvedClaudeToolCalls({ provider: 'claude', record, publish });
+
+    expect(publish).not.toHaveBeenCalled();
+  });
 });

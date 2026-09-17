@@ -59,7 +59,7 @@ class ConversationsStore {
    * path) is the one caller that now checks this: a fetch failure there
    * must not silently leave a live, permanently empty chat tab with no
    * error — it needs to know to undo the tab and report failure so the
-   * row-open policy falls back to `/activity` instead. Every other caller
+   * row-open policy reveals Activity instead. Every other caller
    * (`useMessages`, `useActiveChatSessionMessaging`,
    * `rehydrateChatSession`) already ignores the resolved value and reads
    * `getSnapshot.messages` directly, so this is additive, not breaking.

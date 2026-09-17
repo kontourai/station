@@ -9,6 +9,9 @@ const useChatBackgroundTasks = vi.fn();
 const interruptTask = vi.fn();
 const useOrchestrationSessionQuery = vi.fn();
 const useInterruptDelegatedTaskMutation = vi.fn();
+// station#1877: the provider card's own task-scoped stop.
+const useStopProviderTaskMutation = vi.fn();
+const stopProviderTask = vi.fn();
 vi.mock('../hooks/useBackgroundTasks', () => ({
   useChatBackgroundTasks: (...args: unknown[]) =>
     useChatBackgroundTasks(...args),
@@ -18,6 +21,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
     useInterruptDelegatedTaskMutation(...args),
+  useStopProviderTaskMutation: (...args: unknown[]) =>
+    useStopProviderTaskMutation(...args),
 }));
 
 import { BackgroundTasksSheet } from '../components/chat-dock/BackgroundTasksSheet';
@@ -90,6 +95,14 @@ describe('BackgroundTasksSheet', () => {
       isSuccess: false,
       isError: false,
     });
+    stopProviderTask.mockReset();
+    useStopProviderTaskMutation.mockReset();
+    useStopProviderTaskMutation.mockReturnValue({
+      mutate: stopProviderTask,
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+    });
   });
 
   afterEach(() => {
@@ -141,6 +154,20 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByText('Finished (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
     expect(screen.getByText('Completed')).not.toBeNull();
+  });
+
+  // station#1558: an entry whose session ended before its tool reported must
+  // not borrow "Stopped" (nobody asked it to stop) or "Failed" (nothing
+  // observed a failure).
+  test('an unresolved entry is chipped "No result", not Stopped or Failed', () => {
+    renderSheet({
+      running: [],
+      finished: [finishedEntry({ state: 'unresolved' })],
+    });
+    fireEvent.click(screen.getByText('Finished (1)'));
+    expect(screen.getByText('No result')).not.toBeNull();
+    expect(screen.queryByText('Stopped')).toBeNull();
+    expect(screen.queryByText('Failed')).toBeNull();
   });
 
   test('Finished section collapse state persists to localStorage and is honored on remount', () => {

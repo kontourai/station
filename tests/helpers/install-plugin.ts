@@ -1,4 +1,22 @@
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { authenticatedE2EFetch } from './authenticated-request';
+
+/** Build with the supported bootstrap, preserving the plugin's invocation directory. */
+export function buildExamplePlugin(directory: string, timeout = 120_000): void {
+  execFileSync(
+    process.execPath,
+    [
+      fileURLToPath(
+        new URL('../../node_modules/tsx/dist/cli.mjs', import.meta.url),
+      ),
+      fileURLToPath(new URL('../../scripts/station-cli.ts', import.meta.url)),
+      'plugin',
+      'build',
+    ],
+    { cwd: directory, timeout, windowsHide: true },
+  );
+}
 
 /**
  * Installs a plugin the way Station's own client installs one (archive#4288):
@@ -21,8 +39,19 @@ export interface PluginPreviewPayload {
   valid: boolean;
   error?: string;
   manifest?: { name?: string; version?: string };
-  dependencies?: Array<{ id: string }>;
+  dependencies?: Array<{
+    id: string;
+    consent?: {
+      contentDigest: string;
+      grantRevision?: string;
+      registryTrustRevision?: string;
+      permissions: string[];
+      dependencies: string[];
+    };
+  }>;
   contentDigest?: string;
+  grantRevision?: string;
+  registryTrustRevision?: string;
   permissions?: {
     required: string[];
     autoGranted: string[];
@@ -73,7 +102,29 @@ export async function installPluginWithConsent(
         consent: {
           permissions: preview.permissions?.required ?? [],
           contentDigest: preview.contentDigest,
+          registryTrustRevision: preview.registryTrustRevision,
+          grantRevision: preview.grantRevision,
           dependencies: (preview.dependencies ?? []).map((entry) => entry.id),
+          ...((preview.dependencies ?? []).some((entry) => entry.consent)
+            ? {
+                dependencyApprovals: (preview.dependencies ?? []).flatMap(
+                  (entry) =>
+                    entry.consent
+                      ? [
+                          {
+                            id: entry.id,
+                            permissions: entry.consent.permissions,
+                            contentDigest: entry.consent.contentDigest,
+                            registryTrustRevision:
+                              entry.consent.registryTrustRevision,
+                            grantRevision: entry.consent.grantRevision,
+                            dependencies: entry.consent.dependencies,
+                          },
+                        ]
+                      : [],
+                ),
+              }
+            : {}),
         },
       }),
     },

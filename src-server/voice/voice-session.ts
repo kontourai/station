@@ -34,7 +34,7 @@ import type {
 } from './s2s-types.js';
 import { supportsS2SCorrelatedTurnsV1 } from './s2s-types.js';
 
-export type S2SProviderFactory = (config?: any) => IS2SProvider;
+type S2SProviderFactory = (config?: any) => IS2SProvider;
 
 const VOICE_PROMPT_PREFIX =
   'You are in voice mode. Be concise — short sentences. Confirm before creating or modifying anything. When you use tools, summarize the result in one or two sentences — never read raw JSON or full tool output aloud.\n\n';
@@ -163,7 +163,7 @@ function toS2STool(tool: {
   return { name: tool.name, description: tool.description, inputSchema };
 }
 
-export interface VoiceSessionOptions {
+interface VoiceSessionOptions {
   providerFactory: S2SProviderFactory;
   /** Live reference to the runtime's agent tools map */
   agentTools: Map<string, any[]>;

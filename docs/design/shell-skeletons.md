@@ -163,7 +163,7 @@ The rule now:
 - **Every framed route still resolves a title without its view.** The frame sits above Suspense, so
   between the click and the chunk arriving there is a window in which no view has run.
   `resolvePageFrame` fills that window from the surface the sidebar highlights
-  (`surface-registry.ts`'s own `label()`, not a second copy) — so the word in the header is the word
+  (`destination-registry.ts`'s own `label()`, not a second copy) — so the word in the header is the word
   on the row the user just clicked — and the registry test refuses a framed route with no title at
   all. The two framed routes reached from inside a project rather than from a sidebar row name
   themselves in the table.

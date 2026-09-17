@@ -41,6 +41,11 @@ import {
   writeWorkspacePaneHostSelection,
 } from './workspacePaneHostNavigation';
 import {
+  WORKSPACE_PANE_OPENED,
+  type WorkspacePaneHostOpenOutcome,
+  workspacePaneOpenRefused,
+} from './workspacePaneHostOpenOutcome';
+import {
   reduceWorkspacePaneHost,
   type WorkspacePaneHostState,
 } from './workspacePaneHostReducer';
@@ -66,9 +71,25 @@ import {
   WorkspacePaneOperationalEventTracker,
 } from './workspacePaneOperationalEvents';
 
-export interface WorkspacePaneHostControllerOptions {
+interface WorkspacePaneHostControllerOptions {
   document: WorkspacePaneHostDocumentV1;
   compact: boolean;
+  /**
+   * Whether the host's selection is a NAVIGATION fact: written to the
+   * `?pane=` param (a history entry, so Back/Forward restore it) on every
+   * select, open, close and authority restore, and read back from it on
+   * popstate and deep links. The default, and the layout hosts' contract.
+   *
+   * `false` for a host whose selection authority is elsewhere (#2046 2b: a
+   * dock region's, which is the region model's `occupant`, persisted in the
+   * arrangement record). Such a host never writes `?pane=` — following the
+   * model through `select`/`focusExisting` is a state change, not a
+   * navigation, so a placement or a tab click leaves no history entry Back
+   * cannot leave — and never reads it, so a popstate that changes `?pane=`
+   * cannot pull the host away from the model and start the write loop that
+   * pushed three entries for one placement (2a review, HIGH).
+   */
+  navigationSelection?: boolean;
   runtime?: WorkspacePaneHostRuntime;
   storage?: WorkspacePaneHostStorage;
   lockManager?: WorkspacePaneHostLockManager | null;
@@ -114,13 +135,14 @@ export interface WorkspacePaneHostController {
     instance: WorkspacePaneInstance,
     preparation?: WorkspacePaneHostOpenPreparation,
     placement?: WorkspacePaneHostOpenPlacement,
-  ): boolean;
+  ): WorkspacePaneHostOpenOutcome;
 }
 
 /** Stateful controller: hydration, lifecycle and serial navigation never leak into the view tree. */
 export function useWorkspacePaneHostController({
   document,
   compact,
+  navigationSelection = true,
   runtime,
   storage,
   lockManager,
@@ -152,6 +174,18 @@ export function useWorkspacePaneHostController({
     navigationStore.subscribe,
     navigationStore.getSnapshot,
     navigationStore.getSnapshot,
+  );
+  // Every selection write goes through this: a no-op for a host whose
+  // selection is not a navigation fact (`navigationSelection`).
+  const writeSelection = useCallback(
+    (
+      document: WorkspacePaneHostDocumentV1,
+      instanceId: WorkspacePaneInstanceId | null,
+    ) => {
+      if (navigationSelection)
+        writeWorkspacePaneHostSelection(document, instanceId);
+    },
+    [navigationSelection],
   );
   const stateRef = useRef(state);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -433,7 +467,7 @@ export function useWorkspacePaneHostController({
       document: authoritativeDocument,
     });
     dispatch({ type: 'restore', document: authoritativeDocument });
-    writeWorkspacePaneHostSelection(
+    writeSelection(
       authoritativeDocument,
       authoritativeDocument.activeInstanceId,
     );
@@ -517,9 +551,11 @@ export function useWorkspacePaneHostController({
     persistenceStatus,
     runtime,
     emitCapturedOperationalEvent,
+    writeSelection,
   ]);
 
   useEffect(() => {
+    if (!navigationSelection) return;
     void navigationSnapshot.activeWorkspacePane;
     const selected = readWorkspacePaneHostSelection(state.document);
     if (selected && selected !== state.document.activeInstanceId)
@@ -527,7 +563,7 @@ export function useWorkspacePaneHostController({
         type: 'select',
         instanceId: selected as WorkspacePaneInstanceId,
       });
-  }, [navigationSnapshot, state.document]);
+  }, [navigationSelection, navigationSnapshot, state.document]);
   /**
    * Notify on a document change, never on a re-render. `onDocumentChange` used
    * to sit in this dependency list, so a consumer whose handler is rebuilt per
@@ -612,10 +648,13 @@ export function useWorkspacePaneHostController({
     },
     [],
   );
-  const select = useCallback((instanceId: WorkspacePaneInstanceId) => {
-    dispatch({ type: 'select', instanceId });
-    writeWorkspacePaneHostSelection(stateRef.current.document, instanceId);
-  }, []);
+  const select = useCallback(
+    (instanceId: WorkspacePaneInstanceId) => {
+      dispatch({ type: 'select', instanceId });
+      writeSelection(stateRef.current.document, instanceId);
+    },
+    [writeSelection],
+  );
   const focusExisting = useCallback(
     (instanceId: WorkspacePaneInstanceId) => {
       const group = workspacePaneHostGroupContaining(
@@ -635,12 +674,12 @@ export function useWorkspacePaneHostController({
       preparation?: WorkspacePaneHostOpenPreparation,
       placement?: WorkspacePaneHostOpenPlacement,
     ) => {
-      if (!hasPersistenceLease()) return false;
+      if (!hasPersistenceLease()) return workspacePaneOpenRefused('no-lease');
       if (
         openInstanceAdmissionRef.current &&
         !openInstanceAdmissionRef.current(instance)
       )
-        return false;
+        return workspacePaneOpenRefused('refused');
       const action: Extract<
         WorkspacePaneHostAction,
         { type: 'add-existing-instance' } | { type: 'split' }
@@ -652,7 +691,7 @@ export function useWorkspacePaneHostController({
               instance,
               ...(placement ? { targetGroupId: placement.targetGroupId } : {}),
             };
-      const nextState = prepareWorkspacePaneHostOpen({
+      const prepared = prepareWorkspacePaneHostOpen({
         state: stateRef.current,
         instance,
         storage: hostStorage,
@@ -660,14 +699,14 @@ export function useWorkspacePaneHostController({
         preparation,
         action,
       });
-      if (!nextState) return false;
-      stateRef.current = nextState;
+      if (!prepared.ok) return workspacePaneOpenRefused(prepared.reason);
+      stateRef.current = prepared.state;
       dispatch(action);
-      writeWorkspacePaneHostSelection(nextState.document, instance.instanceId);
+      writeSelection(prepared.state.document, instance.instanceId);
       emitOperationalEvent(instance, 'opened');
-      return true;
+      return WORKSPACE_PANE_OPENED;
     },
-    [emitOperationalEvent, hasPersistenceLease, hostStorage],
+    [emitOperationalEvent, hasPersistenceLease, hostStorage, writeSelection],
   );
   const commitClose = useCallback(
     (
@@ -688,7 +727,7 @@ export function useWorkspacePaneHostController({
       );
       stateRef.current = { ...stateRef.current, document: next };
       dispatch({ type: 'close', instanceId });
-      writeWorkspacePaneHostSelection(next, successor);
+      writeSelection(next, successor);
       if (closed && durablyPublished) {
         onInstanceRemoved?.(closed);
         emitOperationalEvent(closed, 'closed', 'user');
@@ -702,6 +741,7 @@ export function useWorkspacePaneHostController({
       hasPersistenceLease,
       hostStorage,
       onInstanceRemoved,
+      writeSelection,
     ],
   );
   const completeClose = useCallback(
@@ -793,12 +833,9 @@ export function useWorkspacePaneHostController({
       if (next === stateRef.current) return;
       stateRef.current = next;
       dispatch(action);
-      writeWorkspacePaneHostSelection(
-        next.document,
-        next.document.activeInstanceId,
-      );
+      writeSelection(next.document, next.document.activeInstanceId);
     },
-    [hasPersistenceLease],
+    [hasPersistenceLease, writeSelection],
   );
   const fail = useCallback(
     (instanceId: WorkspacePaneInstanceId) => {
@@ -862,10 +899,10 @@ export function useWorkspacePaneHostController({
       );
       stateRef.current = { ...stateRef.current, document: next };
       dispatch({ type: 'restore', document: next });
-      writeWorkspacePaneHostSelection(next, instance.instanceId);
+      writeSelection(next, instance.instanceId);
       return true;
     },
-    [hasPersistenceLease, hostStorage],
+    [hasPersistenceLease, hostStorage, writeSelection],
   );
   return {
     state,

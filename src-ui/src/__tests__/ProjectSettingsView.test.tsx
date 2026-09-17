@@ -3,6 +3,7 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { environmentId } from '@kontourai/station-contracts/execution-target';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -21,10 +22,18 @@ const sdkMocks = vi.hoisted(() => ({
     profile: { id: string; name: string; environmentId?: string };
   }>,
   environmentsError: false,
+  environmentsLoading: false,
+  modelConnections: [] as Array<Record<string, unknown>>,
+  // `undefined` is the unread config — the picker must not claim a resolved
+  // mode it has not seen.
+  stationConfig: undefined as
+    | { defaultWorkspaceIsolation?: 'shared' | 'worktree' }
+    | undefined,
 }));
 
 const navigationMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  showSurface: vi.fn(),
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -37,24 +46,40 @@ vi.mock('../contexts/NavigationContext', () => ({
   }),
 }));
 
+// #1523: the post-delete landing is the Home surface, revealed through the
+// region command hook, which needs a `RegionModelProvider` this harness does
+// not mount.
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => navigationMocks.showSurface,
+}));
+
 vi.mock('../hooks/useCloseShortcut', () => ({
   useCloseShortcut: vi.fn(),
 }));
 
 vi.mock('../components/ModelSelector', () => ({
+  // `disabled` and `models` are forwarded, not dropped: the project default
+  // only applies when a model connection is chosen too, and the picker's
+  // availability and its catalog are both derived from that choice.
   ModelSelector: ({
     value,
     onChange,
     placeholder,
+    disabled,
+    models,
   }: {
     value: string;
     onChange: (value: string) => void;
     placeholder: string;
+    disabled?: boolean;
+    models?: Array<{ id: string; name: string }>;
   }) => (
     <input
       aria-label="Default AI Model"
       value={value}
       placeholder={placeholder}
+      disabled={disabled}
+      data-model-catalog={models?.map((model) => model.id).join(',') ?? ''}
       onChange={(event) => onChange(event.target.value)}
     />
   ),
@@ -88,6 +113,10 @@ vi.mock('../views/project-settings/AgentsSection', () => ({
   ),
 }));
 
+vi.mock('../views/project-settings/AccessSection', () => ({
+  AccessSection: () => <section>People and access section</section>,
+}));
+
 vi.mock('../views/project-settings/LayoutsSection', () => ({
   LayoutsSection: () => <section>Layouts section</section>,
 }));
@@ -105,10 +134,21 @@ vi.mock('../views/project-settings/ResourcesSection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // #2144 slice 2: the workspace picker names the mode the Station default
+  // currently resolves to, so this view now reads the Station config.
+  useConfigQuery: vi.fn(() => ({
+    data: sdkMocks.stationConfig,
+    error: null,
+    dataUpdatedAt: sdkMocks.stationConfig ? 1 : 0,
+    refetch: vi.fn(),
+  })),
   useSshEnvironmentsQuery: () => ({
-    data: sdkMocks.environmentsError ? undefined : sdkMocks.environments,
-    isLoading: false,
-    isSuccess: !sdkMocks.environmentsError,
+    data:
+      sdkMocks.environmentsError || sdkMocks.environmentsLoading
+        ? undefined
+        : sdkMocks.environments,
+    isLoading: sdkMocks.environmentsLoading,
+    isSuccess: !sdkMocks.environmentsError && !sdkMocks.environmentsLoading,
     isError: sdkMocks.environmentsError,
   }),
   useProjectQuery: vi.fn(() => ({
@@ -129,6 +169,9 @@ vi.mock('@kontourai/station-sdk', () => ({
         updatedAt: '2026-07-07T23:45:00.000Z',
       };
     },
+  })),
+  useModelConnectionsQuery: vi.fn(() => ({
+    data: sdkMocks.modelConnections,
   })),
   useDeleteProjectMutation: vi.fn(() => ({
     isPending: false,
@@ -152,6 +195,55 @@ const projectFixture: ProjectConfig = {
   agents: [agentId('codex')],
   createdAt: '2026-07-07T12:00:00.000Z',
   updatedAt: '2026-07-07T12:00:00.000Z',
+};
+
+/** The shape `useModelConnectionsQuery` returns for a usable connection. */
+const READY_MODEL_CONNECTION = {
+  id: 'openai-main',
+  kind: 'model',
+  type: 'openai',
+  name: 'OpenAI (main)',
+  enabled: true,
+  status: 'ready',
+  capabilities: [],
+  prerequisites: [],
+  config: {
+    modelOptions: [
+      { id: 'openai:gpt-5', name: 'GPT-5', originalId: 'gpt-5' },
+      { id: 'openai:gpt-5-mini', name: 'GPT-5 mini', originalId: 'gpt-5-mini' },
+    ],
+  },
+};
+
+/**
+ * A second connection, declaring its default explicitly rather than leaning
+ * on catalog order — the two ways `connectionInitialModelId` can answer.
+ */
+const SECOND_MODEL_CONNECTION = {
+  ...READY_MODEL_CONNECTION,
+  id: 'anthropic-main',
+  type: 'anthropic',
+  name: 'Anthropic (main)',
+  config: {
+    defaultModel: 'anthropic:claude-sonnet',
+    modelOptions: [
+      { id: 'anthropic:claude-opus', name: 'Opus', originalId: 'opus' },
+      { id: 'anthropic:claude-sonnet', name: 'Sonnet', originalId: 'sonnet' },
+    ],
+  },
+};
+
+/**
+ * Ready, and yet there is nothing to pre-fill from: no declared
+ * `defaultModel`, no catalog. The one case where choosing a connection still
+ * leaves the pair half-set.
+ */
+const CATALOGLESS_MODEL_CONNECTION = {
+  ...READY_MODEL_CONNECTION,
+  id: 'bare-main',
+  type: 'custom',
+  name: 'Bare (main)',
+  config: {},
 };
 
 function renderProjectSettings() {
@@ -182,8 +274,16 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.deleteFailure = null;
     sdkMocks.refetch.mockClear();
     sdkMocks.environments = [];
+    sdkMocks.stationConfig = {};
     sdkMocks.environmentsError = false;
+    sdkMocks.environmentsLoading = false;
+    sdkMocks.modelConnections = [
+      READY_MODEL_CONNECTION,
+      SECOND_MODEL_CONNECTION,
+      CATALOGLESS_MODEL_CONNECTION,
+    ];
     navigationMocks.navigate.mockClear();
+    navigationMocks.showSurface.mockClear();
   });
 
   test('renders through the canonical page-layout root and keeps project settings reachable', () => {
@@ -206,11 +306,18 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(container.querySelector('#section-workspace')).toBeTruthy();
     expect(container.querySelector('#section-basic-info')).toBeTruthy();
     expect(container.querySelector('#section-model')).toBeTruthy();
+    // #2144 slice 2: the fixture project names no workspace mode, so the
+    // picker shows the inherit option rather than claiming it chose 'shared'.
     expect(
       inputValue(
         screen.getByLabelText('Execution environment') as HTMLSelectElement,
       ),
-    ).toBe('shared');
+    ).toBe('inherit');
+    expect(
+      screen.getByRole('option', {
+        name: 'Use the Station default (currently: the current checkout)',
+      }),
+    ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
   });
 
@@ -225,7 +332,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       (screen.getByLabelText('Default environment') as HTMLSelectElement).value,
     ).toBe('deleted-environment');
     expect(screen.getByRole('status').textContent).toContain(
-      'names a saved environment that no longer exists',
+      'Its selection is preserved',
     );
   });
 
@@ -244,6 +351,33 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(
       (screen.getByLabelText('Default environment') as HTMLSelectElement).value,
     ).toBe('env-unchecked');
+  });
+
+  test('shows the configured environment while the saved inventory is loading', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      defaultEnvironment: { kind: 'saved', id: environmentId('env-media') },
+    };
+    sdkMocks.environmentsLoading = true;
+    const { rerender } = renderProjectSettings();
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-media',
+    );
+    expect(screen.queryByText(/not available in the current list/)).toBeNull();
+    sdkMocks.environmentsLoading = false;
+    sdkMocks.environments = [
+      { profile: { id: 'media', name: 'Media', environmentId: 'env-media' } },
+    ];
+    rerender(<ProjectSettingsView slug="demo" />);
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-media',
+    );
+    expect(screen.getByRole('option', { name: 'Media' })).toHaveProperty(
+      'selected',
+      true,
+    );
   });
 
   test('clears a dangling saved default through a real selection change', async () => {
@@ -266,6 +400,184 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         }),
       ),
     );
+  });
+
+  // A project default only applies when BOTH `defaultProviderId` and
+  // `defaultModel` are set — `resolveProjectProviderManagedExecution` passes
+  // `allowSingleProviderDefault: false`, and `ProviderService` gates on
+  // `project?.defaultProviderId && project.defaultModel`. Before this section
+  // had a connection picker, nothing in the UI wrote the first field, so the
+  // model it persisted resolved to nothing.
+  describe('AI model section', () => {
+    test('disables the model field until a model connection is chosen', () => {
+      renderProjectSettings();
+
+      const model = screen.getByLabelText(
+        'Default AI Model',
+      ) as HTMLInputElement;
+      expect(model.disabled).toBe(true);
+      expect(
+        screen.getByText(
+          'Choose a model connection first. Without one, chats in this project use the Station default.',
+        ),
+      ).toBeTruthy();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement)
+          .disabled,
+      ).toBe(false);
+      // The catalog comes from the chosen connection, not the global list.
+      expect(
+        screen
+          .getByLabelText('Default AI Model')
+          .getAttribute('data-model-catalog'),
+      ).toBe('openai:gpt-5,openai:gpt-5-mini');
+    });
+
+    test('saves the chosen connection alongside the model', async () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            slug: 'demo',
+            defaultProviderId: 'openai-main',
+            // This connection declares no `defaultModel`, so its catalog's
+            // first entry is the committed one.
+            defaultModel: 'openai:gpt-5',
+          }),
+        ),
+      );
+    });
+
+    test('clearing the connection clears the model with it', async () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultProviderId: 'openai-main',
+      } as ProjectConfig;
+      renderProjectSettings();
+
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('openai:gpt-5');
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: '' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            defaultProviderId: '',
+            defaultModel: '',
+          }),
+        ),
+      );
+    });
+
+    test('choosing a connection pre-fills that connection’s own default model', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+
+      // Declared `config.defaultModel` wins over catalog order.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('anthropic:claude-sonnet');
+    });
+
+    test('switching connections replaces the previous connection’s model', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('openai:gpt-5');
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+
+      // Not 'openai:gpt-5': the server refuses a model id the newly chosen
+      // connection does not offer.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('anthropic:claude-sonnet');
+    });
+
+    test('a save after switching carries the new connection and its model', async () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'openai-main' },
+      });
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'anthropic-main' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            defaultProviderId: 'anthropic-main',
+            defaultModel: 'anthropic:claude-sonnet',
+          }),
+        ),
+      );
+    });
+
+    test('a connection with no declared default and no catalog leaves the model empty', () => {
+      renderProjectSettings();
+
+      fireEvent.change(screen.getByLabelText('Model connection'), {
+        target: { value: 'bare-main' },
+      });
+
+      // Nothing to commit, so the pair stays half-set — and the hint keeps
+      // saying what the server will actually do with it.
+      expect(
+        (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
+      ).toBe('');
+      expect(
+        screen.getByText(
+          'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.',
+        ),
+      ).toBeTruthy();
+    });
+
+    test('offers only enabled, ready model connections', () => {
+      sdkMocks.modelConnections = [
+        READY_MODEL_CONNECTION,
+        { ...READY_MODEL_CONNECTION, id: 'disabled-one', enabled: false },
+        {
+          ...READY_MODEL_CONNECTION,
+          id: 'unready-one',
+          status: 'needs_setup',
+        },
+      ];
+      renderProjectSettings();
+
+      const options = [
+        ...(
+          screen.getByLabelText('Model connection') as HTMLSelectElement
+        ).querySelectorAll('option'),
+      ].map((option) => option.value);
+      expect(options).toEqual(['', 'openai-main']);
+    });
   });
 
   test('keeps the active section tab fully visible in the horizontal mobile rail', async () => {
@@ -357,6 +669,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         icon: 'D',
         description: 'Demo project description',
         defaultModel: 'openai:gpt-5',
+        defaultProviderId: '',
         defaultWorkspaceIsolation: 'worktree',
         defaultEnvironment: { kind: 'current' },
         workingDirectory: '~/dev/demo',
@@ -364,6 +677,61 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     );
     expect(screen.queryByText('unsaved')).toBeNull();
+  });
+
+  /**
+   * The option answers "what will inherit actually do?" at the point of the
+   * decision. It must name the mode the Station default RESOLVES to, and it
+   * must not name one before the config has been read: `shared` is also the
+   * resolver's fallback, so an unread config and a Station genuinely on
+   * `shared` would print the same sentence from different amounts of
+   * knowledge.
+   */
+  test('the inherit option names the mode the Station default resolves to', () => {
+    sdkMocks.stationConfig = { defaultWorkspaceIsolation: 'worktree' };
+    renderProjectSettings();
+    expect(
+      screen.getByRole('option', {
+        name: 'Use the Station default (currently: a fresh git worktree)',
+      }),
+    ).toBeTruthy();
+  });
+
+  test('the inherit option claims no resolved mode before the config is read', () => {
+    sdkMocks.stationConfig = undefined;
+    renderProjectSettings();
+    expect(
+      screen.getByRole('option', { name: 'Follow the Station default' }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/currently:/)).toBeNull();
+  });
+
+  /**
+   * #2144 slice 2, the regression this option exists to stop: the fixture
+   * project names no workspace mode, the person renames it, and the save must
+   * not write a concrete mode into a project that was following the Station
+   * default. Driven through the real form and the real Save button — the
+   * payload builder's own unit test cannot see whether the VIEW seeds
+   * 'inherit'.
+   */
+  test('renaming a project that names no workspace mode does not pin one', async () => {
+    const { container } = renderProjectSettings();
+
+    fireEvent.change(
+      container.querySelector('.project-settings__name-input') as Element,
+      { target: { value: 'Renamed' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slug: 'demo',
+          name: 'Renamed',
+          defaultWorkspaceIsolation: null,
+        }),
+      ),
+    );
   });
 
   test('surfaces failed saves through the canonical ErrorState alert', async () => {
@@ -396,6 +764,22 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       'Station connection was interrupted',
     );
     expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(navigationMocks.navigate).not.toHaveBeenCalled();
+    expect(navigationMocks.showSurface).not.toHaveBeenCalled();
+  });
+
+  test('a deleted project lands on the Home surface by name, not on whatever occupies main (#1523)', async () => {
+    renderProjectSettings();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() =>
+      expect(navigationMocks.showSurface).toHaveBeenCalledWith('home'),
+    );
+    expect(sdkMocks.deleteProject).toHaveBeenCalledWith('demo');
+    // The project is gone, so there is no "back": Home is meant, and a bare
+    // `navigate('/')` would show `main`'s occupant instead.
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
   });
 

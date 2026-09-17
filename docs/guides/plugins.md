@@ -83,7 +83,7 @@ All fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | yes | Unique plugin identifier (used as install directory name) |
+| `name` | string | yes | Unique logical plugin identifier; the host owns its storage location |
 | `version` | string | yes | Semver version |
 | `sdkVersion` | string | no | Semver range of `@kontourai/station-sdk` required |
 | `displayName` | string | no | Human-readable name shown in UI |
@@ -92,12 +92,14 @@ All fields:
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
+| `commands` | PluginCommandContribution[] | no | Inert palette-command declarations; registration alone grants no execution authority |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
 | `agents` | array | no | Agent configs to install |
 | `layout` | object | no | Single layout config to install |
 | `layouts` | array | no | Multiple layout configs to install |
 | `workspacePanes` | WorkspacePaneDescriptor[] | no | Portable Pane declarations; cannot be combined with legacy `layout` or `layouts` |
+| `workspacePaneHost` | WorkspacePaneHostContributionV1 | no | Inert package-level action and Agent-selection declarations; the server owns admission and authorization |
 | `providers` | array | no | Server-side provider modules to load |
 | `operationalEventSubscriptions` | array | no | Versioned durable event observations handled by `serverModule`; Station derives identity, grants, and delivery ownership |
 | `integrations.required` | string[] | no | Integration IDs required by the plugin |
@@ -202,7 +204,7 @@ dependency-free starters, so installing one never needs the network:
 | Plugin | What it shows |
 |---|---|
 | `getting-started-starter` | Agents, chat dock control, navigation, toast feedback |
-| `coding-starter` | File browser, terminal, diff review, chat handoff |
+| `coding-starter` | Two Workspace Panes with labelled code examples and an owner-qualified review action |
 | `knowledge-docs-starter` | Project knowledge ingestion and search |
 | `minimal-layout` | The smallest useful layout surface |
 | `demo-layout` | A tour of Station capabilities, no external services |
@@ -240,8 +242,8 @@ installed-plugin management surface. On a fresh Station installation, open
 and choose **Install**. No local path is needed for a bundled item.
 
 After installation, refresh Registry or open **Plugins** to confirm the item is
-installed. Installing makes a layout contribution available; it does not add
-that layout to every project. Open the target project, choose **Add**, then
+installed and runtime activation is ready. A ready installation makes a layout
+contribution available; it does not add that layout to every project. Open the target project, choose **Add**, then
 select the installed layout and open it from the project's layout cards.
 
 Removing a plugin from Registry or Plugins removes its installed contribution
@@ -256,6 +258,21 @@ keeps the folder visible with a **Rejected** badge, the validation reason, and
 specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
 permission, or removal controls until the manifest validates again.
+
+### Recover interrupted activation
+
+An **Activation pending** plugin retains its code and data while its runtime
+contributions remain unavailable. Open **Plugins**, select it, and choose
+**Review recovery**. Review the permissions and retained dependencies, then
+choose **Recover plugin** and confirm the permission review. Recovery does not
+fetch replacement code or reset stored data. Trusted permissions still require
+the separate host approval flow.
+
+A recovery request may be accepted while runtime activation remains pending.
+Use **Refresh status** to read its current state; do not automatically replay the
+request. If a dependency must recover first, follow the server's dependency
+message, then obtain a fresh review for the parent. A changed approval or
+installation requires a new review, never reuse of an earlier decision.
 
 ## layout.json
 
@@ -799,9 +816,32 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 ```
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
+- Relative dependency sources resolve from the declaring local plugin directory
+  but must remain inside its physical sibling package root; traversal and
+  symlinked ancestors are refused
 - If no `source`, the server tries the configured registry
 - Dependencies are resolved recursively (cycle detection included)
-- `station plugin preview <source>` shows dependency resolution status before install
+- `station plugin preview <source>` shows dependency resolution status, exact content digest, and dependency-specific permissions before install
+- Every supplied dependency approval binds its staged source bytes, permissions, and dependency ids, even for declarative-only packages. Newly installed dependencies with browser entrypoints, prebuilt browser bundles, permissions, providers, or settings require that preview-bound approval; naming the dependency id alone is insufficient. Declarative-only dependencies remain supported without an individual approval for older clients. Unsupported lifecycle contributions remain refused.
+- Already-installed dependencies are adopted without granting deletion ownership or replacing their active provider/settings lifecycle. If an installed entrypoint is rebuilt, its current installed bytes must match the preview approval, checked under the content lock held through that rebuild. Read-only adoption does not claim to install the previewed source over an existing tree.
+- Provider/settings-only dependencies use the canonical plugin lifecycle. Station records which dependency trees the parent created in host-owned, digest-bound install authority beside the existing per-plugin grant state; neither the mutable parent manifest nor files in the plugin tree can mint deletion authority. Station rolls dependency grants/providers/bytes back in reverse dependency order with a failed parent install, and removes owned dependencies plus their registry aliases with the parent unless another installed plugin references them directly or transitively, or their lock-protected content changed. A dependency whose exact creation digest is unavailable is preserved rather than deleted by name. A dependency that already existed is never adopted for deletion, and a failed parent uninstall restores every dependency it already removed.
+- Removing a creator, or replacing it with a smaller graph, hands an unchanged
+  managed dependency's existing cleanup claim to a verified surviving root
+  consumer. This is custody transfer, not new grant or execution authority.
+  The recipient copy is durable before the creator's claim disappears; an
+  interrupted handoff may leave duplicate claims, but the last consumer still
+  performs one dependency cleanup. Metadata-only rollback compares the written
+  ownership revision and preserves newer grants. Unmanaged adopted plugins stay
+  unmanaged. An unverifiable successor, exhausted capacity, legacy unbound
+  recipient grants, or unsupported nested custody causes safe refusal instead
+  of orphaning authority or promoting permissions. Recipient verification and
+  the handoff use the canonical publication/content locks.
+- Trusted dependency permissions such as `providers.register` remain pending for the separate host-owned approval surface; dependency installation does not downgrade that authority.
+  Other dependency permissions (for example `network.fetch`) currently lack
+  canonical dependency lifecycle support and are rejected by preview before
+  offering approval; approving them does not expand the supported permission set.
+  The Plugins and Registry install flows route each installed dependency through
+  that existing host approval before claiming its providers are active.
 
 ## Installation Flow
 
@@ -855,7 +895,13 @@ curl -X POST "$API_BASE/api/plugins/install" \
         "consent": {
           "permissions": ["navigation.dock", "network.fetch"],
           "contentDigest": "sha256:…",
-          "dependencies": ["shared-lib"]
+          "dependencies": ["shared-lib"],
+          "dependencyApprovals": [{
+            "id": "shared-lib",
+            "permissions": ["providers.register"],
+            "contentDigest": "sha256:…",
+            "dependencies": []
+          }]
         }
       }'
 
@@ -1332,3 +1378,64 @@ module.exports = () => ({
   "providers": [{ "type": "branding", "module": "./providers/branding.js" }]
 }
 ```
+
+### Actions that belong to the workspace host
+
+Declare package-wide actions once in `plugin.json.workspacePaneHost`, using
+`version: "station.workspace-pane-host-contribution/v1"`. A Project's direct and
+placed Pane views display the same host action bar, outside the individual Pane.
+Use `agentSelection.availableAgents` and an optional explicit `defaultAgent` to
+choose the package's Agents. An `own-plugin-agent` reference contains a clean
+`agentId`; Station supplies installation ownership. `requiredAgents` only checks
+availability and never selects an Agent.
+
+An action's `intent` is either literal `prompt` data or an exact own-package
+`plugin-prompt` id. Label text is never treated as a prompt or routing address.
+An action may fix its own Agent; that binding takes precedence over the host
+selector. Grant `agents.invoke` in Library, configure the native model or external
+engine connection, and make the Agent available in the Project before running it.
+
+The host confirms that a conversation was accepted and offers **Open
+conversation**. If delivery is uncertain, inspect Activity; the host does not
+retry a possibly started action. Revoked permissions, changed packages, missing
+Agents, and unavailable execution modes remain visible failures.
+
+The demo, enterprise, coding, getting-started, and knowledge-docs examples each
+include an explicit old-to-new behavior table. Their package-global declarations
+are migrated. Enterprise tab-local **Review** buttons focus their matching host control; invocation and Agent authority remain with that control. Existing persisted Layout records
+are not rewritten, and this does not claim the entire structural Layout
+migration is complete.
+
+For an Agent Plugins 1.0 manifest, place the declaration at
+`extensions["io.kontourai.station"].workspacePaneHost` alongside
+`schemaVersion: "1.0"` and the namespace's `agents`. Station validates the host
+shape with the same contribution parser used by legacy manifests. Registered
+prompt actions read the normalized namespace's `prompts.source`; unknown
+portable root fields never supply fallback actions or Agents.
+
+Legacy plugin Layout actions never launch through an unqualified Agent fallback.
+Station can project unambiguous `inline-prompt` and `globalSkills` declarations
+from the installed artifact into the same captured host admission path, with an
+explicit available/default Agent and the current invocation permission. Ambiguous
+`prompt` declarations and unsupported action kinds remain review-only until the
+plugin is updated. Saved plugin Layout controls cannot revive execution after
+uninstall or a stale catalog response. User-authored Layouts without a plugin
+owner retain their explicit Agent actions.
+
+The five examples above retain their legacy manifest format because their
+structural Layout declarations have not yet been mapped. The remaining
+[example migration](https://github.com/kontourai/station/issues/265) work is specific; the related [authoring-default decision](https://github.com/kontourai/station/issues/346) supplies its authoring context:
+
+| Example | Required structural mapping before switching its manifest schema |
+| --- | --- |
+| `demo-layout` | Map `layout` (`demo`, `./layout.json`) and its tab component references to declared Workspace Panes and placement. Preserve its original native `assistant`. |
+| `coding-starter` | Map `layout` (`coding`, `./layout.json`) and each authored tab component to Workspace Panes and placement. Preserve the explicit `coding-starter-assistant` host default. |
+| `getting-started-starter` | Map `layout` (`getting-started`, `./layout.json`) and its tabs to Workspace Panes and placement. Preserve the explicit `getting-started-starter-assistant` host default. |
+| `knowledge-docs-starter` | Map `layout` (`knowledge-docs`, `./layout.json`) and its tabs to Workspace Panes and placement; retain its declared knowledge namespaces through their existing owner. |
+| `enterprise-layout` | Map `layout` (`enterprise`, `./layout.json`) and Calendar/CRM Review links to Workspace Panes/placement; map the required `NOTES_VAULT_PATH` install input, the two file-based CRM/calendar integration declarations, and the local `../shared-providers` dependency source without discarding any of them. Preserve its original native `enterprise-assistant`, knowledge declaration, and four authored host prompts. |
+
+For each conversion, move `displayName` to namespace `title`, make the
+`entrypoint` explicitly package-relative (`./src/index.tsx`), and move the
+supported Agent, capability, permission, and host-action declarations into the
+Station namespace. A schema-only rewrite is insufficient: installation,
+activation, each component, and real action execution must be verified together.

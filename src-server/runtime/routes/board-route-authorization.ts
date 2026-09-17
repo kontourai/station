@@ -2,7 +2,7 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import type { BoardRouteAuthorization } from '../../routes/board.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 
-export interface BoardRouteAuthorizationDeps {
+interface BoardRouteAuthorizationDeps {
   orchestrationService: Pick<OrchestrationService, 'canUserReadSession'>;
   /**
    * Intent-shaped, not `Pick<TaskGraphService, 'readTask'>`: this

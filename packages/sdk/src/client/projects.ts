@@ -9,6 +9,7 @@
  * left in `packages/sdk/src/api.ts` — it is not in the audit's triplication
  * table.
  */
+
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
 import {
@@ -37,18 +38,18 @@ import {
   readJsonBody,
   StationHttpError,
 } from './http';
-
-interface ProjectEnvelope<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
+import {
+  type ProjectEnvelope,
+  unwrapProjectResponse as unwrapOrThrow,
+} from './project-response';
 
 /** Read-only, host-produced Pane catalog projection; no renderer state is implied. */
 export interface ProjectWorkspacePaneCatalog {
   version: '1.0';
   /** Canonical Project identity; distinct from the route slug. */
   projectId: string;
+  /** Canonical slug read from the same Project record as `projectId`. */
+  projectSlug: string;
   contributions: readonly (LayoutCatalogItem & {
     disabledReason?: string;
   })[];
@@ -72,45 +73,6 @@ export interface ProjectTerminalCloseResult {
   sessionId: string;
   projectSlug: string;
   terminalId: string;
-}
-
-/**
- * The single unwrap behind every `client/projects.ts` call.
- *
- * Status FIRST (4-HOME-006): a non-2xx is a failure whatever the body looks
- * like — including the runtime's auth refusal, which carries no `success` key
- * and whose `error` is an object, and including a body that is not JSON at
- * all. Only then does an `ok` response with `success:false` count as a
- * route-level refusal. The message itself comes from `envelopeErrorMessage`,
- * the one derivation shared with every other client fetcher, so no caller
- * renders `[object Object]` again.
- *
- * A non-2xx throws `StationHttpError`, so a consumer can branch on the STATUS
- * (`LayoutView`'s 404 not-found state, `RouteViewBoundary`'s authority
- * classification) instead of sniffing the message text for 'not found'.
- */
-async function unwrapOrThrow<T = any>(
-  response: Response,
-  defaultError?: string,
-): Promise<T> {
-  const result = (await readJsonBody(response)) as
-    | ProjectEnvelope<T>
-    | undefined;
-  if (!response.ok) {
-    throw new StationHttpError(
-      response.status,
-      envelopeErrorMessage(
-        result,
-        defaultError ?? `Request failed with HTTP ${response.status}`,
-      ),
-    );
-  }
-  if (!result?.success) {
-    throw new Error(
-      envelopeErrorMessage(result, defaultError ?? 'Request failed'),
-    );
-  }
-  return result.data as T;
 }
 
 /** `GET /api/projects` — list projects. */
@@ -310,7 +272,19 @@ export async function bindProjectResource(
   return outcome;
 }
 
-/** `GET /api/projects/:slug/layouts/:layoutSlug` — get one layout. */
+/**
+ * `GET /api/projects/:slug/layouts/:layoutSlug` — get one layout.
+ *
+ * The response shape is {@link LayoutReadView} — the stored record plus the
+ * response-only `paneReferences` verdict (#2090). It is DECLARED `any` here,
+ * and that is a disclosed gap rather than a choice: four call sites read
+ * `config` members and top-level keys the stored contract does not declare,
+ * and they only compile because this is untyped. Narrowing it is a separate
+ * change. The Board twin (`client/personal-layouts.ts`) IS typed, the server
+ * builds this body as a `LayoutReadView`, and both client derivations import
+ * `LayoutPaneReferences` from the contract, so the field is named against
+ * the contract everywhere except this one return annotation.
+ */
 export async function getProjectLayout(
   apiBase: string,
   projectSlug: string,

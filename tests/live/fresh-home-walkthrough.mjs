@@ -29,12 +29,12 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { APP_DESTINATION_REGISTRY } from '../../src-ui/src/app-shell/destination-registry.ts';
 import {
   DEVELOPER_TABS,
   getPathForView,
   resolveViewFromPath,
 } from '../../src-ui/src/app-shell/routing.ts';
-import { APP_SURFACE_REGISTRY } from '../../src-ui/src/app-shell/surface-registry.ts';
 import { CONNECTION_SECTIONS } from '../../src-ui/src/views/connections-hub/connection-sections.ts';
 import { WALKTHROUGH_ALLOWLIST } from './fresh-home-walkthrough-allowlist.mjs';
 // Boot/pair/settle plumbing is shared with the core-loop journey suite
@@ -44,6 +44,7 @@ import { WALKTHROUGH_ALLOWLIST } from './fresh-home-walkthrough-allowlist.mjs';
 import {
   api,
   apiOk,
+  countVisibleLoadingMarkers,
   pairBrowser as pairBrowserForInstance,
   poll,
   runStation as runStationAt,
@@ -73,27 +74,7 @@ const SETTLE_TIMEOUT_MS = 30_000;
  * must be removed, and letting it linger would silently excuse the next
  * regression. Keep this empty unless a tracked issue names the breakage.
  */
-const EXPECTED_PLUGIN_FAILURES = new Map([
-  // kontourai/station#765 finding D1 (Critical) hit every bundled layout
-  // plugin: installed layouts rendered 'Unsupported layout tab — Plugin
-  // layout component "…" is not installed or registered.' The renderer was
-  // treating the still-loading lazy PluginRegistry as authoritative absence;
-  // with the loading-state fix in src-ui/src/layouts/index.tsx this suite
-  // reproduced getting-started-starter, coding-starter,
-  // knowledge-docs-starter, and minimal-layout all PASSING live
-  // (2026-08-29, this branch), so their entries are gone. Remove each
-  // remaining entry as its fix lands; the run FAILS when an expected
-  // failure starts passing.
-  // demo-layout shows the class one step earlier: it installs, but its
-  // declared layout never appears in the layout catalog at all.
-  [
-    'demo-layout',
-    {
-      issue: 'kontourai/station#765 D1 (same class)',
-      expectedMessageSubstring: 'none appeared in the layout catalog',
-    },
-  ],
-]);
+const EXPECTED_PLUGIN_FAILURES = new Map();
 
 // ---------------------------------------------------------------------------
 // Route derivation — imported from the real tables so the sweep cannot drift.
@@ -103,8 +84,8 @@ function deriveRoutes() {
   const routes = new Set();
   // Every registered surface's canonical route (deduped: several palette
   // entries share /settings and /guidance).
-  for (const surface of APP_SURFACE_REGISTRY.getRegistered()) {
-    routes.add(surface.route);
+  for (const destination of APP_DESTINATION_REGISTRY.getRegistered()) {
+    routes.add(destination.route);
   }
   // Developer tabs are path segments of /developer.
   for (const tab of DEVELOPER_TABS) routes.add(`/developer/${tab}`);
@@ -215,6 +196,10 @@ async function screenshot(page, name) {
     `${String(shotIndex).padStart(2, '0')}-${name}.png`,
   );
   await page.screenshot({ path: file });
+  if ((await countVisibleLoadingMarkers(page)) > 0)
+    fail(
+      `${name}: captured a loading or empty route shell instead of settled content`,
+    );
 }
 
 function routeShotName(route) {
@@ -276,7 +261,8 @@ async function dismissFirstRun(page) {
   await screenshot(page, 'first-boot');
   const steps = [
     ['button', 'Continue Without Setup'],
-    ['button', 'I understand'],
+    // #1582 A3 / #1600: both disclosure surfaces name the decision now.
+    ['button', 'Keep usage telemetry on'],
     ['button', 'Not now'],
   ];
   for (const [role, name] of steps) {
@@ -309,6 +295,26 @@ async function sweepRoutes(page, routes) {
       await assertTextAbsent(page, 'Page not found', route);
     }
     await screenshot(page, routeShotName(route));
+    // Exercise narrow regions inside desktop chrome, plus the phone layout.
+    // These are capture variants of the same route, not substitutes for the
+    // actual desktop journey above or for a physical-device check.
+    if (
+      [
+        '/',
+        '/?surface=activity',
+        '/connections',
+        '/settings',
+        '/projects/new',
+      ].includes(route)
+    ) {
+      for (const width of [830, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await settlePage(page, `${route} at ${width}px`);
+        await screenshot(page, `${routeShotName(route)}-${width}px`);
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await settlePage(page, `${route} restored desktop`);
+    }
   }
 }
 
@@ -340,6 +346,23 @@ async function installBundledPlugin(page, plugin) {
       permissions: previewed.permissions.required ?? [],
       contentDigest: previewed.contentDigest,
       dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
+      ...((previewed.dependencies ?? []).some((entry) => entry.consent)
+        ? {
+            dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+              (entry) =>
+                entry.consent
+                  ? [
+                      {
+                        id: entry.id,
+                        permissions: entry.consent.permissions,
+                        contentDigest: entry.consent.contentDigest,
+                        dependencies: entry.consent.dependencies,
+                      },
+                    ]
+                  : [],
+            ),
+          }
+        : {}),
     },
   });
 }

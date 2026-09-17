@@ -41,12 +41,20 @@ export function useAttentionInbox() {
      * archive#3214: the number the header bell badge renders, read straight
      * off the projection rather than recomputed from `items`. `HeaderActions`
      * passes this same field to the notifications surface badge
-     * (`HeaderActions.tsx` → `surface-registry.ts`'s `attentionCount`) from
+     * (`HeaderActions.tsx` → `destination-registry.ts`'s `attentionCount`) from
      * the same `['attention', apiBase]` cache entry, so any consumer of this
      * hook shows the badge's number by construction — not because a local
      * `!acknowledgedAt` filter happens to agree with the server's.
      */
     pendingCount: attentionQuery.data?.pendingCount ?? 0,
+    /**
+     * #2064 review (c): sources this attention read could not fully cover.
+     * Rendered as a notice beside the list, because a project whose review
+     * sessions Station could not read contributes zero items and would
+     * otherwise be indistinguishable from a project with nothing pending.
+     * Read off the SAME response the items and the count came from.
+     */
+    unavailableSources: attentionQuery.data?.unavailableSources ?? [],
     notifications,
     notificationsQuery,
     retry: () =>

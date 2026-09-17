@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -14,11 +15,14 @@ import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
+  PAIRING_SCOPE_HOME_CONTROL,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { skipIfCannotChmod } from '../../infra/__tests__/helpers/store-faults.js';
 import { TerminalWebSocketServer } from '../../terminal/terminal-ws-server.js';
 import {
@@ -29,6 +33,27 @@ import {
   type PairingApproval,
   type PairingRequesterPosition,
 } from '../device-pairing-service.js';
+
+// Exercise the Windows rename boundary with real files on every host.
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>();
+  return { ...actual, renameSync: vi.fn(actual.renameSync) };
+});
+vi.mock('@kontourai/station-shared/fs-windows-compat', async (original) => {
+  const actual =
+    await original<
+      typeof import('@kontourai/station-shared/fs-windows-compat')
+    >();
+  return {
+    ...actual,
+    renameFileSyncRetrying: (source: string, destination: string) =>
+      actual.renameFileSyncRetrying(source, destination, 'win32'),
+  };
+});
+const actualRename = vi.mocked(renameSync).getMockImplementation()!;
+afterEach(() => {
+  vi.mocked(renameSync).mockImplementation(actualRename).mockClear();
+});
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 /**
@@ -185,6 +210,67 @@ afterEach(() => {
 });
 
 describe('DevicePairingService', () => {
+  test('approved personal devices share conversation owners without merging device identities', () => {
+    const { service } = harness();
+    const first = pair(service, 'Phone').result;
+    const second = pair(service, 'Desktop').result;
+    const phone = humanPrincipal('device', first.device.id, 'Phone').id;
+    const desktop = humanPrincipal('device', second.device.id, 'Desktop').id;
+    expect(phone).not.toBe(desktop);
+    expect(service.canSharePersonalConversation(phone, desktop)).toBe(true);
+    expect(service.canSharePersonalConversation(desktop, phone)).toBe(true);
+    expect(
+      service.canSharePersonalConversation(LOCAL_OPERATOR_PRINCIPAL_ID, phone),
+    ).toBe(true);
+    expect(
+      service.canSharePersonalConversation(
+        'human:device:unknown-device',
+        phone,
+      ),
+    ).toBe(false);
+    expect(
+      service.canSharePersonalConversation(
+        phone,
+        'human:device:foreign-device',
+      ),
+    ).toBe(false);
+    service.revokeDevice(first.device.id, 'operator-credential');
+    expect(service.canSharePersonalConversation(phone, desktop)).toBe(false);
+    expect(service.personalConversationOwnerIds(phone)).toBeUndefined();
+    // Revoking a device revokes its access, not the operator's historical conversation.
+    expect(service.canSharePersonalConversation(desktop, phone)).toBe(true);
+    expect(service.personalConversationOwnerIds(desktop)).toContain(phone);
+    expect(service.verifyCredential(first.credential)).toBe(false);
+  });
+
+  test('delegation credentials do not inherit the personal conversation account', () => {
+    const { service } = harness();
+    const phone = pair(service).result;
+    const offer = service.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: pairingScopePresetString('delegation'),
+      kind: 'delegation',
+    });
+    const request = service.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Delegate',
+    });
+    service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
+    const delegate = service.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    expect(
+      service.canSharePersonalConversation(
+        humanPrincipal('device', delegate.device.id, 'Delegate').id,
+        humanPrincipal('device', phone.device.id, 'Phone').id,
+      ),
+    ).toBe(false);
+  });
+
   test('records durable usage shape and only a server-derived coarse peer class', () => {
     const { service, advance } = harness();
     const paired = pair(service).result;
@@ -631,6 +717,37 @@ describe('DevicePairingService', () => {
     expect(promoted.scope).toBe(
       'orchestration:read orchestration:operate consent:decide',
     );
+  });
+
+  test('home control cannot be granted at pairing time and requires operator promotion', () => {
+    const { service } = harness();
+    expect(() =>
+      service.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: PAIRING_SCOPE_HOME_CONTROL,
+      }),
+    ).toThrowError(new DevicePairingError('invalid_request'));
+    const paired = pair(service, 'Home').result;
+    const promoted = service.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read', PAIRING_SCOPE_HOME_CONTROL],
+      OPERATOR_APPROVAL,
+    );
+    expect(promoted.scope).toBe('orchestration:read home:control');
+    expect(promoted).not.toHaveProperty('homeControlGrantRevision');
+    expect(service.homeControlGrantRevision(paired.device.id)).toBe(1);
+    service.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read'],
+      OPERATOR_APPROVAL,
+    );
+    expect(service.homeControlGrantRevision(paired.device.id)).toBeUndefined();
+    service.setDeviceScope(
+      paired.device.id,
+      ['orchestration:read', PAIRING_SCOPE_HOME_CONTROL],
+      OPERATOR_APPROVAL,
+    );
+    expect(service.homeControlGrantRevision(paired.device.id)).toBe(3);
   });
 
   test('station#3816: a token with no legitimate promotion path is refused', () => {
@@ -1157,6 +1274,46 @@ describe('DevicePairingService', () => {
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.verifyCredential(paired.credential)).toBe(false);
+  });
+
+  test('transient Windows rename locks preserve exactly one durable activity increment', () => {
+    const { service, homeDir } = harness();
+    const paired = pair(service).result;
+    vi.mocked(renameSync)
+      .mockClear()
+      .mockImplementationOnce(() => {
+        throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      });
+    expect(service.recordCredentialActivity(paired.credential, 'lan')).toBe(
+      true,
+    );
+    expect(renameSync).toHaveBeenCalledTimes(2);
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(restarted.identifyDevice(paired.credential)?.usageCount).toBe(1);
+  });
+
+  test('persistent Windows rename locks remain failures without advancing memory or disk', () => {
+    const { service, homeDir } = harness();
+    const paired = pair(service).result;
+    vi.mocked(renameSync)
+      .mockClear()
+      .mockImplementation(() => {
+        throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      });
+    expect(() =>
+      service.recordCredentialActivity(paired.credential, 'lan'),
+    ).toThrow('sharing violation');
+    expect(renameSync).toHaveBeenCalledTimes(5);
+    vi.mocked(renameSync).mockImplementation(actualRename);
+    expect(service.identifyDevice(paired.credential)?.usageCount).toBe(0);
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(restarted.identifyDevice(paired.credential)?.usageCount).toBe(0);
   });
 
   test('recorded activity survives restart', () => {

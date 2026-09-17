@@ -44,6 +44,11 @@ import {
   type ValidateKnowledgeRootInput,
   validateKnowledgeRoot,
 } from '../client/knowledge';
+import {
+  type LearningSourceReference,
+  observeLearningSource,
+} from '../client/learning-source';
+import type { ApiRequestScope } from '../query-core';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
 /** Shared root-list query key, so mutations below can invalidate exactly
@@ -354,4 +359,46 @@ export function useSyncKnowledgeGraphNeo4jMutation() {
       });
     },
   });
+}
+
+/** Source-only observations never reuse old protected data during a fresh read. */
+export function useLearningSourceObservationQuery(
+  reference: LearningSourceReference,
+  scope: ApiRequestScope,
+  enabled = true,
+) {
+  const query = useApiQuery(
+    [
+      'knowledge-source',
+      scope.apiBase,
+      scope.authorityKey,
+      reference.rootIdentity,
+      reference.rootId,
+      reference.recordId,
+    ],
+    (signal) =>
+      observeLearningSource(scope.apiBase, reference, {
+        signal,
+        requestScope: scope,
+      }),
+    {
+      enabled,
+      staleTime: 0,
+      refetchOnMount: 'always',
+      retry: false,
+      cancelWhenInactive: true,
+      gcTime: 30_000,
+    },
+  );
+  return {
+    ...query,
+    data:
+      query.isFetchedAfterMount &&
+      query.status === 'success' &&
+      !query.isFetching
+        ? query.data
+        : undefined,
+    isLoading:
+      !query.isFetchedAfterMount || query.isLoading || query.isFetching,
+  };
 }

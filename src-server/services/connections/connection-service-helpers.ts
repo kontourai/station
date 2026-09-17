@@ -13,7 +13,6 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
-  type CredentialProfileRegistryState,
   type CredentialRecoveryGroupProjection,
   resolveCredentialProfileApplicationCapability,
 } from '@kontourai/station-contracts/connection-recovery';
@@ -47,6 +46,10 @@ import {
   providerCatalogModelCount,
   providerCatalogOps,
 } from '../../telemetry/metrics.js';
+import {
+  sanitizeConnectionConfigHome,
+  sanitizeConnectionEnvMap,
+} from './connection-env.js';
 
 export type RuntimeConnectionProjection = Omit<AgentConnectionView, 'id'> & {
   /** Adapter-private selector; ConnectionService brands the public projection. */
@@ -58,7 +61,7 @@ export type RuntimeConnectionProjection = Omit<AgentConnectionView, 'id'> & {
  * the same handshake now also feeds `controlPlaneObservation` below — the
  * binding/picker layer's evidence half. Still NOT the session-delivery map,
  * which stays static per matrix (agent-engine-unification.md §4.1b). */
-export type ACPConnectionCapabilitiesStatus = {
+type ACPConnectionCapabilitiesStatus = {
   loadSession?: boolean;
   mcpCapabilities?: { http?: boolean; sse?: boolean };
   promptCapabilities?: {
@@ -143,19 +146,12 @@ export function toModelConnection(
   };
 }
 
-/** Drops malformed persisted recovery state before it reaches a runtime view. */
-export function sanitizeCredentialRecoverySettings(
-  value: unknown,
-): CredentialProfileRegistryState {
-  return normalizeCredentialProfileRegistry(value);
-}
-
 export function credentialRecoveryProjectionForAdapter(
   adapter: ProviderAdapterShape,
   value: unknown,
 ): CredentialRecoveryGroupProjection {
   return projectCredentialProfileRegistry(
-    sanitizeCredentialRecoverySettings(value),
+    normalizeCredentialProfileRegistry(value),
     resolveCredentialProfileApplicationCapability(adapter.metadata.recovery),
   );
 }
@@ -276,6 +272,19 @@ export function sanitizeRuntimeConfig(
     // archive#896 wave 2: same boolean-only contract as claude; codex
     // never gains `provideSkills`.
     sanitized.useAppHome = config.useAppHome === true;
+  }
+  if (id === CLAUDE_RUNTIME_ID || id === CODEX_RUNTIME_ID) {
+    // station#2072: per-connection env + config-home overrides (proxy
+    // routing). Same drop-never-throw convention as the fields above;
+    // keys absent from the input stay absent from the output, so a
+    // connection without overrides persists today's exact config shape.
+    // Precedence (configHome wins over useAppHome; a selected credential
+    // profile wins over both) is documented on AgentConnectionSettings.config
+    // and enforced at spawn assembly, not here.
+    const env = sanitizeConnectionEnvMap(config.env);
+    if (Object.keys(env).length > 0) sanitized.env = env;
+    const configHome = sanitizeConnectionConfigHome(config.configHome);
+    if (configHome) sanitized.configHome = configHome;
   }
   return sanitized;
 }

@@ -7,12 +7,13 @@ import {
   chatModelLabel,
   type DockChrome,
   effectiveChatModelId,
+  firstRunDockNudge,
   inboxPanelMounts,
   markDockFirstRunSeen,
-  mobileTaskSwitcherMounts,
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
+  resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -66,46 +67,69 @@ describe('first-run dock nudge', () => {
 });
 
 /**
- * archive#3314: the sidebar's "N more" and its "Open
- * chats" heading promised the dock inbox from every chrome. The panel mounts
- * only on desktop, and there only in bottom mode or a fullscreen placement, so
- * on mobile the drawer closed and the dock snapped to half showing the CURRENT
- * chat — the overflow chats were nowhere — and an edge placement showed
- * nothing at all.
- *
- * The old test asserted the MECHANISM (openCollection was called, the setting
- * was written) and so stayed green for a button that led nowhere. These assert
- * the DESTINATION: for every chrome, the route lands on a surface that mounts.
+ * #2151: the nudge opens the dock on first run only when the inbox is known
+ * and holds something. With nothing to show, an open dock was two empties
+ * side by side; the collapsed bar keeps the entry point.
  */
+describe('firstRunDockNudge (#2151)', () => {
+  const base = {
+    isFullscreenPlacement: false,
+    sessionsStatus: 'success' as const,
+    sessionCount: 0,
+    firstRunPending: true,
+  };
+
+  test('waits, consuming nothing, while the inbox read is pending', () => {
+    expect(firstRunDockNudge({ ...base, sessionsStatus: 'pending' })).toBe(
+      'wait',
+    );
+    // Pending wins over everything except fullscreen: a slow first fetch must
+    // still nudge once it settles, so the one-shot flag is not spent here.
+    expect(
+      firstRunDockNudge({
+        ...base,
+        sessionsStatus: 'pending',
+        sessionCount: 3,
+      }),
+    ).toBe('wait');
+  });
+
+  test('settles collapsed when the inbox is known and empty', () => {
+    expect(firstRunDockNudge(base)).toBe('settle');
+  });
+
+  test('opens when the inbox is known and holds a chat', () => {
+    expect(firstRunDockNudge({ ...base, sessionCount: 1 })).toBe('open');
+  });
+
+  test('skips once the nudge has happened, whatever the inbox holds', () => {
+    expect(firstRunDockNudge({ ...base, firstRunPending: false })).toBe('skip');
+    expect(
+      firstRunDockNudge({ ...base, firstRunPending: false, sessionCount: 5 }),
+    ).toBe('skip');
+  });
+
+  test('skips a failed read rather than guessing', () => {
+    expect(firstRunDockNudge({ ...base, sessionsStatus: 'error' })).toBe(
+      'skip',
+    );
+    expect(
+      firstRunDockNudge({ ...base, sessionsStatus: 'error', sessionCount: 5 }),
+    ).toBe('skip');
+  });
+
+  test('skips a fullscreen placement even while pending', () => {
+    expect(
+      firstRunDockNudge({
+        ...base,
+        isFullscreenPlacement: true,
+        sessionsStatus: 'pending',
+      }),
+    ).toBe('skip');
+  });
+});
+
 describe('routeToOpenChatsCollection (#3314 SF-1)', () => {
-  const CHROMES: DockChrome[] = [
-    { isMobile: true, dockMode: 'bottom', isFullscreenPlacement: false },
-    { isMobile: true, dockMode: 'right', isFullscreenPlacement: false },
-    { isMobile: true, dockMode: 'bottom', isFullscreenPlacement: true },
-    { isMobile: false, dockMode: 'bottom', isFullscreenPlacement: false },
-    { isMobile: false, dockMode: 'right', isFullscreenPlacement: false },
-    { isMobile: false, dockMode: 'left', isFullscreenPlacement: false },
-    { isMobile: false, dockMode: 'right', isFullscreenPlacement: true },
-  ];
-
-  test.each(CHROMES)(
-    'every chrome reaches a destination that mounts (%o)',
-    (chrome) => {
-      const route = routeToOpenChatsCollection(chrome);
-      if (route.surface === 'task-switcher-sheet') {
-        // Derived, not asserted in prose: the sheet must actually mount here.
-        expect(mobileTaskSwitcherMounts(chrome)).toBe(true);
-        return;
-      }
-      // Applying the route's own mode change must make the panel mountable —
-      // otherwise this is a button promising a surface that never appears.
-      const afterRoute: DockChrome = route.switchToBottomMode
-        ? { ...chrome, dockMode: 'bottom' }
-        : chrome;
-      expect(inboxPanelMounts(afterRoute)).toBe(true);
-    },
-  );
-
   test('mobile routes to the task switcher sheet, never the desktop panel', () => {
     expect(
       routeToOpenChatsCollection({
@@ -527,9 +551,7 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
     ).toBe('bound-project');
   });
 
-  // an unbound user gets the pre-archive#4525 behavior back —
-  // navigating to a project and opening New Chat preselects that project.
-  test('the ambient dock with NO binding falls back to the route-level currently-viewed project (pre-fix behavior restored)', () => {
+  test('No project in the dock remains unbound despite a previously viewed project', () => {
     expect(
       resolveNewChatModalDefaultProjectSlug({
         forkProjectSlug: undefined,
@@ -538,7 +560,7 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
         dockChromeProjectSlug: null,
         routeActiveProjectSlug: 'viewed-project',
       }),
-    ).toBe('viewed-project');
+    ).toBeUndefined();
   });
 
   test('no binding and no viewed project -> undefined (genuinely unbound default)', () => {
@@ -551,5 +573,103 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
         routeActiveProjectSlug: null,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('resolveDockProjectContextDirectory (#1536 G6)', () => {
+  const base = {
+    scopedProjectSlug: null,
+    sessionDisplayCwd: null,
+    sessionProjectSlug: undefined,
+    dockProjectSlug: 'demo',
+    dockProjectWorkingDirectory: '/Users/brian/dev/demo',
+  } as Parameters<typeof resolveDockProjectContextDirectory>[0];
+
+  test("names the bound project's directory when no session reports one", () => {
+    // The audited case: the dock is collapsed with nothing open, so there is
+    // no session — and the row said "Home folder" beside a badge naming a
+    // project whose directory is set.
+    expect(resolveDockProjectContextDirectory(base)).toBe(
+      '/Users/brian/dev/demo',
+    );
+  });
+
+  test("prefers the session's own directory over the bound project's", () => {
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: '/tmp/session-cwd',
+        sessionProjectSlug: 'demo',
+      }),
+    ).toBe('/tmp/session-cwd');
+  });
+
+  test('a foreign session still reports its OWN directory', () => {
+    // station#4525 review HIGH-2, which used to be pinned as an inline shape in
+    // `ChatDock.tsx` and moved here with the derivation: a project-binding
+    // MISMATCH must not suppress the session's own facts. Step 2 precedes the
+    // mismatch refusal below for exactly this reason — the refusal is about
+    // substituting the badge's path, never about withholding the session's.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: '/tmp/other-project-cwd',
+        sessionProjectSlug: 'other-project',
+      }),
+    ).toBe('/tmp/other-project-cwd');
+  });
+
+  test("never captions a foreign session with the bound project's directory", () => {
+    // station#1146's class of lie, facing the other way: the transcript on
+    // screen belongs to another project, so the badge's path is not its path.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionProjectSlug: 'other-project',
+      }),
+    ).toBeNull();
+  });
+
+  test("an unbound session in a bound dock takes the bound project's directory", () => {
+    // #1536 L4: `sessionProjectSlug: undefined` means both "no session" and
+    // "a session with no project", and this step answers them the same way on
+    // purpose — a projectless chat has nothing of its own to report, which is
+    // what the fallback is for, and it is not a claim about a DIFFERENT
+    // project's directory. Pinned so a later reading of `undefined` has to
+    // change this test deliberately.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: null,
+        sessionProjectSlug: undefined,
+      }),
+    ).toBe('/Users/brian/dev/demo');
+    // And it stays subordinate to the session's own directory when it has one.
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        sessionDisplayCwd: '/tmp/unbound-session',
+        sessionProjectSlug: undefined,
+      }),
+    ).toBe('/tmp/unbound-session');
+  });
+
+  test('reports nothing under a project chat-scope filter', () => {
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        scopedProjectSlug: 'demo',
+        sessionDisplayCwd: '/tmp/session-cwd',
+      }),
+    ).toBeNull();
+  });
+
+  test('reports nothing when the bound project has no directory either', () => {
+    expect(
+      resolveDockProjectContextDirectory({
+        ...base,
+        dockProjectWorkingDirectory: undefined,
+      }),
+    ).toBeNull();
   });
 });

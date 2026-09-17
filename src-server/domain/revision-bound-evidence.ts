@@ -6,6 +6,7 @@ import {
   validateProposedChange,
 } from '@kontourai/station-contracts/proposed-change';
 import { revisionEvidenceOutcomes } from '../telemetry/metrics.js';
+import { isRecord } from '../utils/is-record.js';
 import {
   compareWorkingStateIds,
   SharedWorkingState,
@@ -58,7 +59,7 @@ export interface CommittedRevision {
 }
 
 /** Canonical public material that determines one immutable receipt identity. */
-export interface RevisionIdentityPayload {
+interface RevisionIdentityPayload {
   readonly schemaVersion: typeof REVISION_EVIDENCE_SCHEMA_VERSION;
   readonly sharedRevision: SharedWorkingStateRevisionId;
   readonly scope: WorkingStateScope;
@@ -79,27 +80,6 @@ export interface RevisionAttributionBinding {
   readonly canonicalPayload: RevisionIdentityPayload;
 }
 
-export type RevisionEvidenceState =
-  | {
-      readonly state: 'live_buffer';
-      readonly scope: WorkingStateScope;
-      readonly sharedRevision: SharedWorkingStateRevisionId;
-    }
-  | {
-      readonly state: 'locally_pending';
-      readonly scope: WorkingStateScope;
-      readonly sharedRevision: SharedWorkingStateRevisionId;
-    }
-  | {
-      readonly state: 'committed_revision';
-      readonly revision: CommittedRevision;
-    }
-  | {
-      readonly state: 'proposed_change';
-      readonly proposedChangeId: string;
-      readonly status: ProposedChange['status'];
-    };
-
 /** Station-local immutable reference, not a Surface/Flow/Veritas shape. */
 export interface ImmutableRevisionReference {
   readonly revisionId: EvidenceRevisionId;
@@ -119,16 +99,16 @@ export type RevisionReferenceResolution =
       readonly revisionId?: string;
     };
 
-export interface RevisionEvidenceExport {
+interface RevisionEvidenceExport {
   readonly schemaVersion: typeof REVISION_EVIDENCE_SCHEMA_VERSION;
   readonly revisions: readonly CommittedRevision[];
 }
 
-export type RevisionEvidenceExportOutcome =
+type RevisionEvidenceExportOutcome =
   | RevisionEvidenceExport
   | { readonly state: 'UNAVAILABLE'; readonly reason: 'revision_unavailable' };
 
-export type RevisionLookupOutcome =
+type RevisionLookupOutcome =
   | CommittedRevision
   | undefined
   | {
@@ -137,7 +117,7 @@ export type RevisionLookupOutcome =
       readonly revisionId: string;
     };
 
-export type RevisionEvidenceRejectionReason =
+type RevisionEvidenceRejectionReason =
   | 'malformed'
   | 'snapshot_invalid'
   | 'pending_state'
@@ -197,7 +177,7 @@ export interface RevisionEvidencePersistenceBounds {
   readonly maxRecordBytes: number;
 }
 
-export type FreezeOutcome =
+type FreezeOutcome =
   | { readonly outcome: 'committed'; readonly revision: CommittedRevision }
   | { readonly outcome: 'duplicate'; readonly revision: CommittedRevision }
   | {
@@ -205,7 +185,7 @@ export type FreezeOutcome =
       readonly reason: RevisionEvidenceRejectionReason;
     };
 
-export type ImportOutcome =
+type ImportOutcome =
   | { readonly outcome: 'imported'; readonly revisions: number }
   | { readonly outcome: 'duplicate'; readonly revisions: number }
   | {
@@ -213,7 +193,7 @@ export type ImportOutcome =
       readonly reason: RevisionEvidenceRejectionReason;
     };
 
-export interface RevisionDiff {
+interface RevisionDiff {
   readonly beforeRevisionId: EvidenceRevisionId;
   readonly afterRevisionId: EvidenceRevisionId;
   readonly prefix: string;
@@ -260,7 +240,7 @@ export interface ProposedChangeRevisionBinding {
   readonly afterRevisionId: EvidenceRevisionId;
 }
 
-export type ProposedChangeRevisionResolution =
+type ProposedChangeRevisionResolution =
   | {
       readonly state: 'AVAILABLE';
       readonly change: {
@@ -291,7 +271,7 @@ export type ProposedChangeRevisionResolution =
         | 'binding_mismatch';
     };
 
-export interface RevisionEvidenceModuleOptions {
+interface RevisionEvidenceModuleOptions {
   readonly maxRevisions?: number;
   readonly maxImportEntries?: number;
   readonly maxImportBytes?: number;
@@ -312,7 +292,7 @@ export interface RevisionEvidenceModuleOptions {
  * canonical shared-state snapshot and opaque attribution attestation; callers
  * receive no local path, storage, or mutable-record surface.
  */
-export interface RevisionEvidenceLinkView {
+interface RevisionEvidenceLinkView {
   readonly revisionId: EvidenceRevisionId;
   readonly scope: WorkingStateScope;
   readonly text: string;
@@ -331,7 +311,7 @@ export function revisionEvidenceLinkViewDigest(
   });
 }
 
-export type RevisionEvidenceLinkResolution =
+type RevisionEvidenceLinkResolution =
   | { readonly state: 'AVAILABLE'; readonly revision: RevisionEvidenceLinkView }
   | {
       readonly state: 'UNAVAILABLE';
@@ -344,7 +324,7 @@ export type RevisionEvidenceLinkResolution =
   | { readonly state: 'UNVERIFIED'; readonly reason: 'malformed_reference' };
 
 /** A read-only, scope-bound seam for later room/SDK link composition. */
-export interface RevisionEvidenceReader {
+interface RevisionEvidenceReader {
   resolve(input: {
     readonly scope: WorkingStateScope;
     readonly revisionId: EvidenceRevisionId;
@@ -358,10 +338,6 @@ interface Bounds {
   readonly maxSnapshotBytes: number;
   readonly maxTextBytes: number;
   readonly maxRecordBytes: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isWellFormedUnicode(value: string): boolean {
@@ -544,10 +520,6 @@ function boundedPortableJsonBytes(
   } catch {
     return null;
   }
-}
-
-function clone<T>(value: T): T {
-  return structuredClone(value);
 }
 
 function canonicalDigest(value: unknown): string {
@@ -1030,34 +1002,6 @@ export class RevisionEvidenceModule {
     return this.#active(generation) && this.#restorePersisted(generation);
   }
 
-  liveBuffer(
-    scope: WorkingStateScope,
-    sharedRevision: SharedWorkingStateRevisionId,
-  ): RevisionEvidenceState {
-    const canonical = canonicalScope(scope);
-    if (!canonical || !boundedText(sharedRevision))
-      throw new Error('live buffer state is malformed');
-    return {
-      state: 'live_buffer',
-      scope: canonical,
-      sharedRevision,
-    };
-  }
-
-  locallyPending(
-    scope: WorkingStateScope,
-    sharedRevision: SharedWorkingStateRevisionId,
-  ): RevisionEvidenceState {
-    const canonical = canonicalScope(scope);
-    if (!canonical || !boundedText(sharedRevision))
-      throw new Error('locally pending state is malformed');
-    return {
-      state: 'locally_pending',
-      scope: canonical,
-      sharedRevision,
-    };
-  }
-
   freeze(input: unknown): FreezeOutcome {
     const generation = this.#lifecycleGeneration;
     if (!this.#active(generation))
@@ -1119,14 +1063,14 @@ export class RevisionEvidenceModule {
         });
       return this.#freezeResult({
         outcome: persisted.inserted === 1 ? 'committed' : 'duplicate',
-        revision: clone(durable),
+        revision: structuredClone(durable),
       });
     }
     const existing = this.#revisions.get(parsed.record.revisionId);
     if (existing)
       return this.#freezeResult(
         this.#active(generation) && sameReceiptIdentity(existing, parsed.record)
-          ? { outcome: 'duplicate', revision: clone(existing) }
+          ? { outcome: 'duplicate', revision: structuredClone(existing) }
           : { outcome: 'rejected', reason: 'identity_collision' },
       );
     if (this.#revisions.size >= this.#bounds.maxRevisions)
@@ -1150,7 +1094,10 @@ export class RevisionEvidenceModule {
         outcome: 'rejected',
         reason: 'persistence_unavailable',
       });
-    this.#revisions.set(parsed.record.revisionId, clone(parsed.record));
+    this.#revisions.set(
+      parsed.record.revisionId,
+      structuredClone(parsed.record),
+    );
     if (!this.#active(generation)) {
       this.#revisions.delete(parsed.record.revisionId);
       return this.#freezeResult({
@@ -1160,7 +1107,7 @@ export class RevisionEvidenceModule {
     }
     return this.#freezeResult({
       outcome: 'committed',
-      revision: clone(parsed.record),
+      revision: structuredClone(parsed.record),
     });
   }
 
@@ -1182,7 +1129,7 @@ export class RevisionEvidenceModule {
         reason: 'revision_unavailable',
         revisionId,
       };
-    return record ? clone(record) : undefined;
+    return record ? structuredClone(record) : undefined;
   }
 
   /** EventStore fences retained capabilities before closing its SQLite owner. */
@@ -1358,11 +1305,11 @@ export class RevisionEvidenceModule {
         id: change.id,
         status: 'approved',
         sessionId: change.sessionId,
-        baseSnapshot: clone(change.baseSnapshot),
-        proposedSnapshot: clone(change.proposedSnapshot),
+        baseSnapshot: structuredClone(change.baseSnapshot),
+        proposedSnapshot: structuredClone(change.proposedSnapshot),
         decision,
       },
-      diff: clone(diff(before, after)),
+      diff: structuredClone(diff(before, after)),
     });
   }
 
@@ -1377,7 +1324,7 @@ export class RevisionEvidenceModule {
       return { state: 'UNAVAILABLE', reason: 'revision_unavailable' };
     return {
       schemaVersion: REVISION_EVIDENCE_SCHEMA_VERSION,
-      revisions: clone(
+      revisions: structuredClone(
         [...this.#revisions.values()].sort((left, right) =>
           compareWorkingStateIds(left.revisionId, right.revisionId),
         ),
@@ -1484,7 +1431,7 @@ export class RevisionEvidenceModule {
             outcome: 'rejected',
             reason: 'wrong_scope',
           });
-        staged.set(record.revisionId, clone(record));
+        staged.set(record.revisionId, structuredClone(record));
         remaining.delete(record.revisionId);
       }
     }
@@ -1669,7 +1616,7 @@ export class RevisionEvidenceModule {
       let persisted: ReturnType<RevisionEvidencePersistence['persist']>;
       try {
         persisted = this.#persistence.persist({
-          records: records.map(clone),
+          records: records.map((record) => structuredClone(record)),
           bounds: this.#persistenceBounds(),
           expectedWitness,
         });
@@ -1730,7 +1677,8 @@ export class RevisionEvidenceModule {
     }
     if (admitted.size !== intendedById.size) return false;
     if (!this.#active(generation)) return false;
-    for (const [id, record] of admitted) this.#revisions.set(id, clone(record));
+    for (const [id, record] of admitted)
+      this.#revisions.set(id, structuredClone(record));
     if (!this.#active(generation)) {
       for (const id of admitted.keys()) this.#revisions.delete(id);
       return false;
@@ -1795,7 +1743,7 @@ export class RevisionEvidenceModule {
     return this.#resolutionResult(
       operation,
       revision
-        ? { state: 'AVAILABLE', revision: clone(revision) }
+        ? { state: 'AVAILABLE', revision: structuredClone(revision) }
         : {
             state: 'UNAVAILABLE',
             reason: 'revision_missing',
@@ -1849,7 +1797,7 @@ export class RevisionEvidenceModule {
       };
     return {
       state: 'AVAILABLE',
-      revision: clone({
+      revision: structuredClone({
         revisionId: revision.revisionId,
         scope: revision.scope,
         text: revision.text,

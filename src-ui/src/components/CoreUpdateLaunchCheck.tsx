@@ -9,7 +9,12 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
+import {
+  coreUpdateScopeFromContext,
+  useConnectedServerUpdateContext,
+} from '../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { settingsDeepLinkUrl } from '../views/settings/settings-deep-link';
 
 interface NativeUpdateFeed {
   channel: string;
@@ -31,14 +36,19 @@ export function compareVersions(left: string, right: string) {
   );
 }
 
-export function desktopUpdateMessage(status: CoreUpdateStatus): string {
-  if (status.installKind === 'source-checkout' && status.behind) {
-    return `Station update available — ${status.behind} commit${status.behind === 1 ? '' : 's'} behind.`;
-  }
-  if (status.channel) {
-    return `A Station ${status.channel} update is available.`;
-  }
-  return 'A Station update is available.';
+/**
+ * The launch banner's source wording, derived from a source checkout's own
+ * comparison counts (S5) — never from `updateAvailable` alone and never from
+ * a stamped build's SHA inequality (S10), which is a build-stamp fact and
+ * does not establish that an installable release exists. A diverged checkout
+ * is manual work, not an offered update.
+ */
+function sourceComparisonMessage(status: CoreUpdateStatus): string | null {
+  if (status.installKind !== 'source-checkout') return null;
+  const behind = status.behind;
+  if (typeof behind !== 'number' || behind <= 0) return null;
+  if ((status.ahead ?? 0) > 0) return null;
+  return `Server checkout is ${behind} commit${behind === 1 ? '' : 's'} behind its configured upstream.`;
 }
 
 function normalizedOrigin(value: string) {
@@ -90,17 +100,42 @@ export function CoreUpdateLaunchCheck({
   installedVersion?: string;
   channel?: string;
 }) {
-  const { isMobile } = usePlatformProfile();
+  const { isMobile, isDesktop } = usePlatformProfile();
+  // A launch check that owns no desktop native correlation never needs the
+  // identity roundtrip: mobile uses the release feed below, and a browser
+  // cannot host an embedded sidecar.
+  const context = useConnectedServerUpdateContext({
+    identityEnabled: isDesktop,
+  });
   const [failure, setFailure] = useState<string | null>(null);
   const [latest, setLatest] = useState<NativeUpdateFeed | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const { data: desktopStatus } = useCoreUpdateStatusQuery(apiBase ?? '', {
-    // Mobile packages use the immutable, provenance-pinned release feed below.
-    // Every other shell asks its selected Station, sharing the exact query key
-    // that Settings consumes so opening the review surface does not re-probe.
-    enabled: !isMobile,
-    staleTime: 5 * 60 * 1000,
-  });
+  const scopeKey = coreUpdateScopeFromContext(context);
+  const { data: desktopStatus } = useCoreUpdateStatusQuery(
+    apiBase ?? '',
+    {
+      // Mobile packages use the immutable, provenance-pinned release feed below.
+      // Every other shell asks its selected Station, sharing the exact query key
+      // that Settings consumes so opening the review surface does not re-probe.
+      // On a desktop shell the source query waits for the connected-server
+      // correlation: an established embedded sidecar is updated with this
+      // desktop app and must never fire it, a pending identity or native
+      // observation knows too little to start one. A browser shell keeps its
+      // pre-correlation behavior: no sidecar is possible there, so the launch
+      // banner rests on the server's own comparison facts.
+      enabled:
+        !isMobile &&
+        (!isDesktop ||
+          (context.identityReady &&
+            !context.nativeObservationPending &&
+            !context.claimedOwnerUnresolved &&
+            context.kind !== 'embedded-sidecar')),
+      staleTime: 5 * 60 * 1000,
+    },
+    // Same scoped query as Settings: a superseded selection's comparison can
+    // neither answer for the new scope nor settle into its cache.
+    { scopeKey, assertCurrent: context.isCurrent },
+  );
 
   const retry = useCallback(() => {
     setFailure(null);
@@ -185,8 +220,13 @@ export function CoreUpdateLaunchCheck({
   }, [failure, retry]);
 
   useEffect(() => {
+    const sourceMessage = desktopStatus
+      ? sourceComparisonMessage(desktopStatus)
+      : null;
     const availableDesktopStatus =
-      !isMobile && desktopStatus?.updateAvailable ? desktopStatus : null;
+      !isMobile && context.kind !== 'embedded-sidecar' && sourceMessage
+        ? desktopStatus
+        : null;
     if (!latest && !availableDesktopStatus) {
       bannerStore.dismiss(BANNER_IDS.updateAvailable);
       return;
@@ -209,10 +249,12 @@ export function CoreUpdateLaunchCheck({
         priority: BANNER_PRIORITY.info,
         tone: 'info',
         ariaLive: 'polite',
-        message: desktopUpdateMessage(availableDesktopStatus),
+        // Explicit comparison facts only: a stamped bundle's SHA difference
+        // is a build-stamp comparison — never a released desktop update —
+        // and an established embedded sidecar has no server update at all.
+        message: sourceMessage ?? '',
         occurrence:
-          availableDesktopStatus.remoteHash ??
-          desktopUpdateMessage(availableDesktopStatus),
+          availableDesktopStatus.remoteHash ?? sourceMessage ?? undefined,
         dismissible: true,
         // Settings owns the install-specific truth: git pull, verified
         // self-update, or reinstall guidance. The launch banner only claims
@@ -220,7 +262,10 @@ export function CoreUpdateLaunchCheck({
         actions: [
           {
             label: 'Review update',
-            href: '/settings?view=system&highlight=core-app-updates',
+            href: settingsDeepLinkUrl({
+              view: 'system',
+              highlight: 'core-app-updates',
+            }),
           },
         ],
       });
@@ -228,7 +273,7 @@ export function CoreUpdateLaunchCheck({
     return () => {
       bannerStore.dismiss(BANNER_IDS.updateAvailable);
     };
-  }, [desktopStatus, isMobile, latest]);
+  }, [context.kind, desktopStatus, isMobile, latest]);
 
   return null;
 }

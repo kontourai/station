@@ -20,6 +20,7 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 import {
@@ -57,6 +58,85 @@ import {
 
 function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
+}
+
+/**
+ * A pre-#1092 `orchestration_events` table (no `global_sequence` column) with
+ * the given rows, written in ONE transaction (#1531). The multi-batch case
+ * seeds 2,050 rows; in autocommit that was 2,050 fsync-bearing commits --
+ * 864 ms on an APFS laptop and the whole of a 15 s budget on a loaded runner
+ * with a slower disk, which is how a fixture's setup, not the backfill under
+ * test, timed the test out. One transaction writes the same rows in 6 ms.
+ */
+function seedLegacyOrchestrationEvents(
+  path: string,
+  rows: ReadonlyArray<{
+    id: string;
+    threadId: string;
+    method: string;
+    createdAt: string;
+    sequence: number;
+    /**
+     * When any row carries this, the table has the `global_sequence` column
+     * and rows without it are left at 0: a store whose backfill committed
+     * some batches and then the process died.
+     */
+    globalSequence?: number;
+  }>,
+): void {
+  const partiallyBackfilled = rows.some(
+    (row) => row.globalSequence !== undefined,
+  );
+  const legacyDb = new DatabaseSync(path);
+  legacyDb.exec(`
+    CREATE TABLE orchestration_events (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      thread_id TEXT NOT NULL,
+      turn_id TEXT,
+      method TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      sequence INTEGER NOT NULL${
+        partiallyBackfilled
+          ? ',\n      global_sequence INTEGER NOT NULL DEFAULT 0'
+          : ''
+      }
+    );
+  `);
+  const insert = legacyDb.prepare(
+    partiallyBackfilled
+      ? `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
+         VALUES (?, 'claude', ?, ?, '{}', ?, ?, ?)`
+      : `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
+         VALUES (?, 'claude', ?, ?, '{}', ?, ?)`,
+  );
+  legacyDb.exec('BEGIN');
+  try {
+    for (const row of rows)
+      if (partiallyBackfilled)
+        insert.run(
+          row.id,
+          row.threadId,
+          row.method,
+          row.createdAt,
+          row.sequence,
+          row.globalSequence ?? 0,
+        );
+      else
+        insert.run(
+          row.id,
+          row.threadId,
+          row.method,
+          row.createdAt,
+          row.sequence,
+        );
+    legacyDb.exec('COMMIT');
+  } catch (error) {
+    legacyDb.exec('ROLLBACK');
+    throw error;
+  }
+  legacyDb.close();
 }
 
 const require = createRequire(import.meta.url);
@@ -331,6 +411,184 @@ describe('EventStore', () => {
   afterEach(() => {
     store.close();
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('newest chat history exposes a complete answer ahead of 9014 progress events and pages backward without losing events', () => {
+    const threadId = 'noisy-cold-chat';
+    const turnId = 'first-turn';
+    const fields = {
+      provider: 'codex' as const,
+      threadId,
+      turnId,
+      itemId: 'noisy-item',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...fields,
+      eventId: 'noisy-start',
+      method: 'turn.started',
+      prompt: 'Explain shared streaming.',
+    });
+    for (let i = 0; i < 9014; i++)
+      store.appendEvent({
+        ...fields,
+        eventId: `progress-${i}`,
+        method: 'tool.progress',
+        toolCallId: 'inspect',
+        message: 'Reading',
+      });
+    const reply = 'The complete answer is restored after reopening. '.repeat(
+      110,
+    );
+    let chunks = 0;
+    for (let i = 0; i < reply.length; i += 24)
+      store.appendEvent({
+        ...fields,
+        eventId: `delta-${chunks++}`,
+        method: 'content.text-delta',
+        delta: reply.slice(i, i + 24),
+      });
+    store.appendEvent({
+      ...fields,
+      eventId: 'noisy-complete',
+      method: 'turn.completed',
+      outputText: reply,
+      finishReason: 'stop',
+    });
+    for (const read of [
+      (cursor?: string) =>
+        store.listEventWindowByTurn(threadId, {
+          turnLimit: 1,
+          direction: 'newest',
+          cursor,
+        }),
+      (cursor?: string) =>
+        store.listConversationEventWindowByTurn([threadId], {
+          turnLimit: 1,
+          direction: 'newest',
+          cursor,
+        }),
+    ]) {
+      let page = read();
+      const terminal = page.events.find(
+        (event) => event.id === 'noisy-complete',
+      );
+      expect(terminal?.elided).toBeUndefined();
+      expect(terminal?.payload).toMatchObject({ outputText: reply });
+      expect(page.events[0].id).toBe('noisy-start');
+      const messages = projectRuntimeEventsToMessages(
+        page.events.map((event) => event.payload),
+      );
+      expect(
+        messages
+          .at(-1)
+          ?.parts.filter((part) => part.type === 'text')
+          .map((part) => part.text)
+          .join(''),
+      ).toBe(reply);
+      const ids = new Set<string>();
+      const cursors = new Set<string>();
+      for (let pages = 0; ; pages++) {
+        expect(pages).toBeLessThan(100);
+        expect(page.events.length).toBeLessThanOrEqual(150);
+        expect(
+          Buffer.byteLength(
+            JSON.stringify({
+              success: true,
+              data: {
+                ...page,
+                events: page.events.map((event) => ({
+                  sequence: event.globalSequence,
+                  event: event.payload,
+                  ...(event.elided ? { elided: event.elided } : {}),
+                })),
+              },
+            }),
+          ),
+        ).toBeLessThan(64000);
+        for (const event of page.events) ids.add(event.id);
+        if (!page.hasMore) break;
+        expect(page.nextCursor).toBeDefined();
+        expect(cursors.has(page.nextCursor!)).toBe(false);
+        cursors.add(page.nextCursor!);
+        page = read(page.nextCursor);
+      }
+      expect(ids.size).toBe(9014 + chunks + 2);
+    }
+  });
+
+  test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'pinned-parent',
+      itemId: 'pinned-item',
+      turnId: 'turn',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      eventId: 'pinned-start',
+      method: 'turn.started',
+      prompt: 'Pinned question',
+    });
+    for (let i = 0; i < 180; i++)
+      store.appendEvent({
+        ...base,
+        eventId: `pinned-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    const read = (ids: string[], cursor?: string) =>
+      store.listConversationEventWindowByTurn(ids, {
+        direction: 'newest',
+        turnLimit: 1,
+        cursor,
+      });
+    const first = read([base.threadId]);
+    expect(first.nextCursor).toBeDefined();
+    store.appendEvent({
+      ...base,
+      threadId: 'pinned-child',
+      eventId: 'child-start',
+      method: 'turn.started',
+      prompt: 'New question',
+    });
+    store.appendEvent({
+      ...base,
+      eventId: 'late-parent',
+      method: 'turn.completed',
+      outputText: 'Late completion',
+      finishReason: 'stop',
+    });
+    const second = read([base.threadId, 'pinned-child'], first.nextCursor);
+    expect(second.watermark).toBe(first.watermark);
+    expect(
+      second.events.every(
+        (event) =>
+          event.globalSequence <= first.watermark &&
+          event.threadId === base.threadId,
+      ),
+    ).toBe(true);
+    expect(() => read(['different-parent'], first.nextCursor)).toThrow();
+    const decoded = JSON.parse(
+      Buffer.from(first.nextCursor!, 'base64url').toString('utf8'),
+    );
+    for (const changed of [
+      { before: 0 },
+      { watermark: -1 },
+      { rangeStart: decoded.before },
+      { threadIds: [] },
+      { olderTurnsRemain: 'yes' },
+    ]) {
+      expect(() =>
+        read(
+          [base.threadId],
+          Buffer.from(JSON.stringify({ ...decoded, ...changed })).toString(
+            'base64url',
+          ),
+        ),
+      ).toThrow();
+    }
   });
 
   test('appends canonical events with monotonically increasing per-thread sequence numbers', () => {
@@ -5465,6 +5723,58 @@ describe('EventStore', () => {
   // superset queries grouped in memory), so agreement here is real evidence,
   // not tautology.
   describe('listSessionProjectionEventsForThreads (station#4466 batched read)', () => {
+    test('the latest-any slot seeks once per requested thread instead of ranking history', () => {
+      for (const threadId of ['seek-a', 'seek-b']) {
+        seedProjectionThread(threadId, 'ordinary');
+        for (let index = 0; index < 100; index++) {
+          store.appendEvent({
+            eventId: `${threadId}-delta-${index}`,
+            provider: 'claude',
+            threadId,
+            method: 'content.text-delta',
+            createdAt: '2026-08-20T01:00:00Z',
+            turnId: 'turn-seek',
+            itemId: `item-${index}`,
+            delta: String(index),
+          });
+        }
+      }
+      const database = (store as any).db;
+      const prepared = vi.spyOn(database, 'prepare');
+      const rows = store.listSessionProjectionEventsForThreads([
+        'seek-a',
+        'seek-b',
+        'seek-absent',
+      ]);
+      const sql = prepared.mock.calls.map(([query]) => String(query));
+      prepared.mockRestore();
+      expect(rows.get('seek-a')?.map((event) => event.id)).toContain(
+        'seek-a-delta-99',
+      );
+      expect(rows.get('seek-b')?.map((event) => event.id)).toContain(
+        'seek-b-delta-99',
+      );
+      expect(rows.get('seek-absent')).toEqual([]);
+      const latest = sql.find(
+        (query) =>
+          query.includes('requested(thread_id)') &&
+          !query.includes('methods(method)'),
+      );
+      expect(latest).toBeDefined();
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${latest}`)
+        .all('seek-a', 'seek-b', 'seek-absent') as Array<{ detail: string }>;
+      expect(
+        plan.some((row) => row.detail.includes('CORRELATED SCALAR SUBQUERY')),
+      ).toBe(true);
+      expect(
+        plan.some((row) => /COVERING INDEX.*\(thread_id=\?\)/.test(row.detail)),
+      ).toBe(true);
+      expect(plan.some((row) => row.detail.includes('USE TEMP B-TREE'))).toBe(
+        false,
+      );
+    });
+
     function seedProjectionThread(
       threadId: string,
       variant:
@@ -5888,32 +6198,6 @@ describe('EventStore', () => {
       expect(store.listSessionProjectionEvents('batch-equiv-empty')).toEqual(
         [],
       );
-    });
-
-    // archive#4466 review remediation: `id`/`thread_id`/pair lists are
-    // chunked at `EVENT_STORE_BATCH_CHUNK_SIZE` (500) so SQLite's bound-
-    // parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER, commonly 32766) can
-    // never be reached. 1200 threads crosses that boundary three times over
-    // (500 + 500 + 200) for every chunked query in this method, including
-    // the turn-scoped-pair queries (every thread here has an active turn).
-    test('a population crossing the 500-id chunk boundary is folded completely and correctly', () => {
-      const totalThreads = 1200;
-      const threadIds = Array.from(
-        { length: totalThreads },
-        (_, index) => `batch-equiv-chunk-${index}`,
-      );
-      threadIds.forEach((threadId) => {
-        seedProjectionThread(threadId, 'ordinary');
-      });
-
-      const batched = store.listSessionProjectionEventsForThreads(threadIds);
-      expect(batched.size).toBe(totalThreads);
-      // Spot-check threads landing in each of the three chunks (indices 0,
-      // 500, 999) rather than re-running the full per-thread equivalence
-      // check 1200 times over.
-      for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
-        expectBatchedMatchesIndividual(threadIds[index]!);
-      }
     });
   });
 
@@ -6635,42 +6919,22 @@ describe('EventStore', () => {
       // AND backfill it in that same order (not just default every row to 0).
       store.close();
       const legacyDbPath = join(dir, 'legacy-orchestration.sqlite');
-      const legacyDb = new DatabaseSync(legacyDbPath);
-      legacyDb.exec(`
-        CREATE TABLE orchestration_events (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          thread_id TEXT NOT NULL,
-          turn_id TEXT,
-          method TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          sequence INTEGER NOT NULL
-        );
-      `);
-      const insert = legacyDb.prepare(
-        `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      );
-      insert.run(
-        'evt-legacy-1',
-        'claude',
-        'thread-legacy',
-        'session.started',
-        '{}',
-        '2026-01-01T00:00:00.000Z',
-        1,
-      );
-      insert.run(
-        'evt-legacy-2',
-        'claude',
-        'thread-legacy',
-        'session.configured',
-        '{}',
-        '2026-01-01T00:00:01.000Z',
-        2,
-      );
-      legacyDb.close();
+      seedLegacyOrchestrationEvents(legacyDbPath, [
+        {
+          id: 'evt-legacy-1',
+          threadId: 'thread-legacy',
+          method: 'session.started',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          sequence: 1,
+        },
+        {
+          id: 'evt-legacy-2',
+          threadId: 'thread-legacy',
+          method: 'session.configured',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          sequence: 2,
+        },
+      ]);
 
       store = new EventStore(legacyDbPath);
       expect(store.readGlobalSequence('evt-legacy-1')).toBe(1);
@@ -6727,63 +6991,115 @@ describe('EventStore', () => {
       const rowCount = GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE * 2 + 50;
       store.close();
       const legacyDbPath = join(dir, 'legacy-multi-batch.sqlite');
-      const legacyDb = new DatabaseSync(legacyDbPath);
-      legacyDb.exec(`
-        CREATE TABLE orchestration_events (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          thread_id TEXT NOT NULL,
-          turn_id TEXT,
-          method TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          sequence INTEGER NOT NULL
-        );
-      `);
-      const insert = legacyDb.prepare(
-        `INSERT INTO orchestration_events (id, provider, thread_id, method, payload, created_at, sequence)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      );
       const baseMs = Date.parse('2026-01-01T00:00:00.000Z');
-      for (let index = 0; index < rowCount; index += 1) {
-        insert.run(
-          `evt-legacy-${index}`,
-          'claude',
-          'thread-legacy',
-          'content.text-delta',
-          '{}',
-          new Date(baseMs + index).toISOString(),
-          index + 1,
-        );
-      }
-      legacyDb.close();
+      // The backfill orders by `created_at ASC, sequence ASC, id ASC`. Five
+      // rows share each created_at, and within a group `sequence` runs
+      // OPPOSITE to id order, so the second key is what decides and the
+      // third cannot stand in for it (#1531: with distinct timestamps and
+      // ids that happened to sort like sequence, dropping the `sequence` key
+      // from the ORDER BY changed nothing this test could see). Seeded
+      // newest-first so insertion order cannot stand in for it either.
+      const rows = Array.from({ length: rowCount }, (_, index) => {
+        const group = Math.floor(index / 5);
+        const offset = index % 5;
+        return {
+          id: `evt-legacy-${index}`,
+          threadId: 'thread-legacy',
+          method: 'content.text-delta',
+          createdAt: new Date(baseMs + group).toISOString(),
+          sequence: group * 5 + (5 - offset),
+        };
+      });
+      seedLegacyOrchestrationEvents(legacyDbPath, rows.slice().reverse());
+      // The contract, stated once, as the comparator the migration uses.
+      const expected = rows.slice().sort((a, b) => {
+        if (a.createdAt !== b.createdAt)
+          return a.createdAt < b.createdAt ? -1 : 1;
+        if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
 
       store = new EventStore(legacyDbPath);
 
       expect(store.headGlobalSequence()).toBe(rowCount);
       // Spot-check across all three batches: start, a row inside the
       // second batch (past the first boundary), and the very last row.
-      expect(store.readGlobalSequence('evt-legacy-0')).toBe(1);
-      expect(
-        store.readGlobalSequence(
-          `evt-legacy-${GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 10}`,
-        ),
-      ).toBe(GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 11);
-      expect(store.readGlobalSequence(`evt-legacy-${rowCount - 1}`)).toBe(
-        rowCount,
-      );
+      for (const position of [
+        0,
+        GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE + 10,
+        rowCount - 1,
+      ]) {
+        expect(store.readGlobalSequence(expected[position]!.id)).toBe(
+          position + 1,
+        );
+      }
 
-      // Full-order check: every row's global_sequence matches its
-      // created_at-ascending position exactly (no batch-boundary
-      // duplication, skip, or reordering).
+      // Full-order check: every row's global_sequence matches its position
+      // under the contract exactly (no batch-boundary duplication, skip, or
+      // reordering, and the tiebreak honoured within every timestamp).
       const ordered = store.listEvents();
       expect(ordered).toHaveLength(rowCount);
       for (let index = 0; index < rowCount; index += 1) {
         expect(ordered[index]).toMatchObject({
-          id: `evt-legacy-${index}`,
+          id: expected[index]!.id,
           globalSequence: index + 1,
         });
       }
+    });
+
+    test('a backfill interrupted between batches resumes after the highest committed value (#1531)', () => {
+      // The docblock on `backfillGlobalSequence` promises numbering starts
+      // from the current max so a prior partially-completed run -- one
+      // batch committed, the process then restarted -- resumes without
+      // colliding. Nothing pinned that: an injection restarting the cursor
+      // at 1 passed the multi-batch test above, because there every row
+      // starts at 0. `global_sequence` carries no unique index, so a
+      // collision would be silent duplicate numbering, which is the worst
+      // shape for a replay cursor to have.
+      store.close();
+      const legacyDbPath = join(dir, 'legacy-partial-backfill.sqlite');
+      const baseMs = Date.parse('2026-01-01T00:00:00.000Z');
+      const committed = GLOBAL_SEQUENCE_BACKFILL_BATCH_SIZE;
+      const total = committed + 30;
+      // The committed values start well above 1: the highest committed
+      // value is not the row count (rows before it may have been pruned),
+      // and a resume that COUNTED rows, or a fixture whose pre-assigned
+      // values happened to equal what a fresh backfill would produce,
+      // could not be told apart from a restart. With the offset, "resumed"
+      // and "restarted from 1" number the tail differently.
+      const offset = 500;
+      seedLegacyOrchestrationEvents(
+        legacyDbPath,
+        Array.from({ length: total }, (_, index) => ({
+          id: `evt-legacy-${index}`,
+          threadId: 'thread-legacy',
+          method: 'content.text-delta',
+          createdAt: new Date(baseMs + index).toISOString(),
+          sequence: index + 1,
+          // The first batch landed; the rest never got numbered.
+          ...(index < committed ? { globalSequence: offset + index + 1 } : {}),
+        })),
+      );
+
+      store = new EventStore(legacyDbPath);
+
+      expect(store.headGlobalSequence()).toBe(offset + total);
+      // The first unassigned row continues after the highest committed
+      // value, not from a fresh 1 and not from the row count.
+      expect(store.readGlobalSequence(`evt-legacy-${committed}`)).toBe(
+        offset + committed + 1,
+      );
+      // Already-numbered rows are untouched.
+      expect(store.readGlobalSequence('evt-legacy-0')).toBe(offset + 1);
+      expect(store.readGlobalSequence(`evt-legacy-${committed - 1}`)).toBe(
+        offset + committed,
+      );
+      // And the numbering is a permutation of offset+1..offset+total: no
+      // duplicates, no gaps.
+      const values = store.listEvents().map((event) => event.globalSequence);
+      expect(new Set(values).size).toBe(total);
+      expect(Math.min(...values)).toBe(offset + 1);
+      expect(Math.max(...values)).toBe(offset + total);
     });
   });
 
@@ -8062,6 +8378,64 @@ describe('EventStore', () => {
     expect(() =>
       store.reserveAttachmentCapacity('thread-over-global-limit', 1),
     ).toThrow('attachment storage is full');
+  });
+
+  test('retains explicit persistence refusal after reopen and leaves legacy rows unknown', () => {
+    const databasePath = join(dir, 'orchestration.sqlite');
+    for (const [threadId, persistSession] of [
+      ['retained', true],
+      ['refused', false],
+      ['undeclared', undefined],
+      ['legacy', undefined],
+    ] as const) {
+      store.upsertSession({
+        provider: 'station-agent',
+        threadId,
+        status: 'closed',
+        ...(persistSession !== undefined ? { persistSession } : {}),
+        createdAt: '2026-09-06T00:00:00.000Z',
+        updatedAt: '2026-09-06T00:00:00.000Z',
+      });
+    }
+    store.close();
+    const database = new DatabaseSync(databasePath);
+    try {
+      // Model an existing row written before explicit false had an encoding.
+      database.exec(
+        "UPDATE provider_session_state SET persist_session = 0 WHERE thread_id = 'legacy'",
+      );
+      expect(
+        database
+          .prepare(
+            'SELECT thread_id, persist_session FROM provider_session_state ORDER BY thread_id',
+          )
+          .all(),
+      ).toEqual([
+        { thread_id: 'legacy', persist_session: 0 },
+        { thread_id: 'refused', persist_session: -1 },
+        { thread_id: 'retained', persist_session: 1 },
+        { thread_id: 'undeclared', persist_session: 0 },
+      ]);
+    } finally {
+      database.close();
+      store = new EventStore(databasePath);
+    }
+    const sessions = new Map(
+      store.readSessions().map((session) => [session.threadId, session]),
+    );
+    expect(sessions.get('retained')?.persistSession).toBe(true);
+    expect(sessions.get('refused')?.persistSession).toBe(false);
+    for (const threadId of ['legacy', 'undeclared']) {
+      expect(sessions.get(threadId)).toBeDefined();
+      expect(sessions.get(threadId)).not.toHaveProperty('persistSession');
+    }
+    // An ordinary later update must retain the explicit refusal as well.
+    store.upsertSession({ ...sessions.get('refused')!, status: 'ready' });
+    store.close();
+    store = new EventStore(databasePath);
+    expect(
+      store.readSessions().find((session) => session.threadId === 'refused'),
+    ).toMatchObject({ persistSession: false, status: 'ready' });
   });
 
   test('round-trips provider session state with resume cursors', () => {

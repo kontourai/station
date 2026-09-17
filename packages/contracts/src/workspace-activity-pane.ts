@@ -22,9 +22,8 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
 /**
  * Activity, declared as a Workspace Pane.
  *
- * "Activity" here is the SESSIONS surface — the `/activity` route's
- * canonicalized `SessionsView`: every session on this host, including
- * read-only attached external-engine ones. A proposed
+ * "Activity" here is the SESSIONS surface — `SessionsView`: every session on
+ * this host, including read-only attached external-engine ones. A proposed
  * "what happened while I was away" feed is a different product surface with
  * its own issue; it is not this pane and must not be folded into it.
  *
@@ -33,13 +32,17 @@ function descriptor(value: unknown): WorkspacePaneDescriptor {
  * - **A requirement-free default mode.** The sessions list aggregates every
  *   Project's sessions and belongs to no single one — it is projectless by
  *   nature. Declaring `project: true` would make Activity permanently
- *   unavailable on the only route it appears on.
- * - **`standalone` and `docked` placements only.** `/activity` is its
- *   standalone placement, and the shell's ambient dock slot admits its
- *   canonical occurrence — the region set states both facts and no others.
- *   `primary`/`secondary` stay excluded: a Project host must not place a
- *   Project-less aggregate of every host session beside the work it is
- *   scoped to.
+ *   unavailable in every host that places it.
+ * - **`docked` placement only.** Station #928 retired Activity's standalone
+ *   placement: `/activity` no longer mounts anything (it redirects to the
+ *   surface's canonical deep link), so the shell's dock region is the only
+ *   host that places this pane. Declaring `standalone` — worse, PREFERRING
+ *   it — would name a placement no host in this build supplies.
+ *   `primary`/`secondary` stay excluded for their own reason: a Project host
+ *   must not place a Project-less aggregate of every host session beside the
+ *   work it is scoped to. The Developer archive tab embeds the renderer
+ *   directly rather than through a region, so it neither needs nor
+ *   contradicts an entry here.
  *
  * `provenance.origin: 'builtin'` is what the contract's parser uses to refuse
  * a `pluginId` here (`parseProvenance`), so a contributed Activity can never
@@ -56,8 +59,8 @@ export const WORKSPACE_ACTIVITY_PANE_DESCRIPTOR = descriptor({
     name: WORKSPACE_ACTIVITY_PANE_RENDERER_NAME,
   },
   placement: {
-    supportedRegions: ['standalone', 'docked'],
-    preferredRegion: 'standalone',
+    supportedRegions: ['docked'],
+    preferredRegion: 'docked',
   },
   modes: [{ id: 'default' }],
   provenance: { origin: 'builtin' },
@@ -76,9 +79,9 @@ function instance(value: unknown): WorkspacePaneInstance {
  *
  * A constant rather than a factory because there is exactly one Activity per
  * Station and it binds no Project — there is no identity to parameterize it
- * with. A routed session id is PRESENTATION state of the standalone
- * placement (which row is selected), not pane identity, so it never appears
- * here. `sourceId` still records which contribution placed it, so a
+ * with. A routed session id is PRESENTATION state of the placement that
+ * delivered it (which row is selected), not pane identity, so it never
+ * appears here. `sourceId` still records which contribution placed it, so a
  * contributed Activity occurrence is distinguishable from this one by data
  * rather than by inference.
  */

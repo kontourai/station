@@ -36,16 +36,31 @@ export interface SectionNavItem {
   href: string;
   /**
    * Draws a real, presentational divider element after this item — the
-   * non-textual stand-in for a scope-group boundary (Settings' Station /
-   * Defaults / This device). A dedicated `aria-hidden` element, not a
+   * non-textual stand-in for a group boundary. A dedicated `aria-hidden`
+   * element, not a
    * border on the item itself: an earlier version put the divider on the
    * LAST item's own border, which visibly conflicted with that same item's
    * active-pill border when it was also the selected tab.
+   *
+   * `dividerAfter` and `groupLabel` are alternatives, not a pair: a labelled
+   * group already says where it begins, and Settings uses the label.
    */
   dividerAfter?: boolean;
+  /**
+   * Opens a NAMED group at this item, announced as a real heading rather than
+   * drawn as a silent separator (#2144 decision 6). A divider tells a sighted
+   * reader that the list changed subject and tells a screen-reader user
+   * nothing; a heading tells both, and puts the group in the heading rotor so
+   * the strip can be skimmed by group.
+   *
+   * The landmark stays SINGLE — one `<nav>` with headings inside it, not one
+   * landmark per group — because a reader tabbing through settings should
+   * meet one navigation, not four.
+   */
+  groupLabel?: string;
 }
 
-export interface SectionNavProps {
+interface SectionNavProps {
   items: readonly SectionNavItem[];
   activeKey: string;
   onNavigate: (key: string) => void;
@@ -69,6 +84,9 @@ export const SectionNav = forwardRef<HTMLElement, SectionNavProps>(
           const selected = item.key === activeKey;
           return (
             <Fragment key={item.key}>
+              {item.groupLabel ? (
+                <h2 className="section-nav__group-label">{item.groupLabel}</h2>
+              ) : null}
               <a
                 href={item.href}
                 aria-current={selected ? 'location' : undefined}

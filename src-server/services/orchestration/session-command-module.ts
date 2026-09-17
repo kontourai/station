@@ -9,8 +9,15 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
+import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
+import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
+import {
+  type SessionStartBoundaryClaim,
+  SessionStartIndeterminateError,
+} from './session-turn-boundary.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {
@@ -39,12 +46,13 @@ export type SessionCommandOutcome =
       code?: string;
     }
   | {
-      /** Session effects completed, but accepted-receipt durability is unknown. */
+      /** Provider creation or accepted-receipt durability is uncertain. */
       status: 'indeterminate';
       receipt: OrchestrationCommandReceipt;
       receiptStatus: 'unavailable';
-      session: ProviderSession;
+      session?: ProviderSession;
       message: string;
+      code?: string;
     };
 
 /** Closed, total command Interface shared by routes, tools, and tests. */
@@ -57,6 +65,13 @@ export interface SessionCommandModule {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Borrowed dispatch capability; provider completion cannot release its parent. */
+  sessionStartAdmission?: SessionStartBoundaryClaim;
+  /** Exact server-owned Task reservation scope; never read from public metadata. */
+  roomExecutionBinding?: { projectId: string; taskId: string };
+  /** Captured server-owned action admission; never accepted from public JSON. */
+  foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  executionWorkspace?: ExecutionWorkspaceBinding;
   /** Server-minted correlation for an exact higher-level start claim. */
   commandId?: string;
   skipModelOptionSupportCheck?: boolean;
@@ -91,7 +106,7 @@ type ExistingSession = {
  * Private composition root. Each capability owns a coherent concern; no
  * public caller can use these operations to bypass the closed command intent.
  */
-export interface SessionCommandDependencies {
+interface SessionCommandDependencies {
   receiptLedger: {
     initialize(): void;
     recordDispatch(input: OrchestrationStartSessionInput): void;
@@ -137,7 +152,7 @@ export interface SessionCommandDependencies {
       input: OrchestrationStartSessionInput,
       context: SessionCommandContext,
       internal: SessionCommandInternalOptions | undefined,
-    ): void;
+    ): void | Promise<void>;
     validateReattach(
       input: OrchestrationStartSessionInput,
       existing: Required<ExistingSession>,
@@ -164,6 +179,7 @@ export interface SessionCommandDependencies {
      */
     materializeRestoredSession?(
       threadId: string,
+      admission?: SessionStartBoundaryClaim,
     ): Promise<ProviderAdapterShape | undefined>;
     prepareStart(
       input: OrchestrationStartSessionInput,
@@ -298,9 +314,9 @@ export function createSessionCommandModule(
         receipt,
         receiptStatus: 'unavailable',
         session,
-        message: `Session started, but the accepted command receipt is unavailable: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `Session started, but the accepted command receipt is unavailable: ${errorMessage(
+          error,
+        )}`,
       };
     };
     const fail = (error: unknown, rejected = false): SessionCommandOutcome => {
@@ -321,7 +337,7 @@ export function createSessionCommandModule(
         status: terminalReceipt.status,
         receipt: readback ?? terminalReceipt,
         receiptStatus: readback ? 'persisted' : 'unavailable',
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
         ...(typeof error === 'object' &&
         error !== null &&
         typeof (error as { code?: unknown }).code === 'string'
@@ -344,27 +360,34 @@ export function createSessionCommandModule(
         return fail(error);
       }
 
-      const boundTenant = deps.sessionState.boundTenant(input.threadId);
-      if (
-        boundTenant &&
-        context.tenantExecutionContext &&
-        boundTenant.tenantId !== context.tenantExecutionContext.tenantId
-      ) {
-        deps.sessionState.recordTenantMismatch();
-        return fail(
-          `Tenant execution context does not match session: ${input.threadId}`,
-          true,
-        );
-      }
-      if (deps.sessionState.isQuarantined(input.threadId)) {
-        return fail(`Session is unavailable: ${input.threadId}`, true);
-      }
-      if (deps.sessionState.isReadOnlyAttached(input.threadId)) {
-        deps.sessionState.recordAttachedMutationRejection();
-        return fail(deps.attachedSessionReadOnlyMessage, true);
-      }
+      const checkSessionAccess = (): SessionCommandOutcome | undefined => {
+        const boundTenant = deps.sessionState.boundTenant(input.threadId);
+        if (
+          boundTenant &&
+          context.tenantExecutionContext &&
+          boundTenant.tenantId !== context.tenantExecutionContext.tenantId
+        ) {
+          deps.sessionState.recordTenantMismatch();
+          return fail(
+            `Tenant execution context does not match session: ${input.threadId}`,
+            true,
+          );
+        }
+        if (deps.sessionState.isQuarantined(input.threadId)) {
+          return fail(`Session is unavailable: ${input.threadId}`, true);
+        }
+        if (deps.sessionState.isReadOnlyAttached(input.threadId)) {
+          deps.sessionState.recordAttachedMutationRejection();
+          return fail(deps.attachedSessionReadOnlyMessage, true);
+        }
+      };
+      const beforeAdmission = checkSessionAccess();
+      if (beforeAdmission) return beforeAdmission;
+      await deps.launchPolicy.assertStartAllowed(input, context, internal);
+      // Admission may yield for a room write lock; access must still hold.
+      const afterAdmission = checkSessionAccess();
+      if (afterAdmission) return afterAdmission;
 
-      deps.launchPolicy.assertStartAllowed(input, context, internal);
       if (!deps.sessionState.claimStart(input.threadId)) {
         throw new Error(
           `Session is already starting for thread: ${input.threadId}`,
@@ -414,7 +437,10 @@ export function createSessionCommandModule(
               input,
               existing.session,
             );
-            await deps.launchPolicy.materializeRestoredSession(input.threadId);
+            await deps.launchPolicy.materializeRestoredSession(
+              input.threadId,
+              internal?.sessionStartAdmission,
+            );
             existing = deps.sessionState.existing(input.threadId);
           }
           if (
@@ -486,6 +512,14 @@ export function createSessionCommandModule(
         deps.sessionState.releaseStart(input.threadId);
       }
     } catch (error) {
+      if (error instanceof SessionStartIndeterminateError)
+        return {
+          status: 'indeterminate',
+          receipt,
+          receiptStatus: 'unavailable',
+          message: error.message,
+          code: error.code,
+        };
       return fail(error, deps.isRejectedError(error));
     }
   };

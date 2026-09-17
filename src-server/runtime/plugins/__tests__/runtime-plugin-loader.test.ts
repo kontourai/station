@@ -8,14 +8,36 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
+import {
+  capturePluginProviderGeneration,
+  loadPluginProviders,
+  preparePluginProviderGeneration,
+  preparePluginProviders,
+  publishPluginProviderGeneration,
+} from '../../../providers/plugin-provider-loader.js';
 import {
   clearAll,
   getProvider,
   getProviderAdapter,
   getProviderAdapters,
+  pluginProviderSourceGeneration,
+  replacePluginProvidersForSource,
+  retirePluginProvidersForSourceGeneration,
 } from '../../../providers/registries/registry.js';
+import { registerPluginLifecycleRoutes } from '../../../routes/plugins/plugin-lifecycle-routes.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
+import { createPluginGrantReconciliationService } from '../../../services/plugins/plugin-grant-reconciliation.js';
+import { publishGrantedPluginProviderGeneration } from '../../../services/plugins/plugin-installation-generation-fence.js';
+import {
+  getPluginGrants,
+  grantPermissions,
+  revokeGrants,
+} from '../../../services/plugins/plugin-permissions.js';
+import type { Logger } from '../../../utils/logger.js';
 import {
   loadRuntimePluginPrompts,
   loadRuntimePluginProviders,
@@ -76,6 +98,19 @@ function createLogger() {
   };
 }
 
+/**
+ * The operator composition `POST /reload` requires since #2067 made it
+ * operator-only. Without it `operatorOnly` refuses with 400
+ * `plugin visibility was not composed for this route` — which is the correct
+ * fail-closed answer, and is not what these two tests are about: their
+ * subject is that reload cannot bypass an UNAVAILABLE GRANT STORE, which
+ * lives past the authorization boundary. The refusal itself is covered by
+ * `plugin-identity-enumeration.test.ts` and `pane-visibility.routes.test.ts`.
+ */
+const operatorVisibility = {
+  resolvePrincipal: () => ({ id: LOCAL_OPERATOR_PRINCIPAL_ID }) as never,
+};
+
 describe('loadRuntimePluginProviders providerAdapter entries', () => {
   let projectHomeDir: string;
 
@@ -88,8 +123,269 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
     clearAll();
     delete (globalThis as any).__untrustedProviderImported;
     delete (globalThis as any).__ungrantedSingletonImported;
+    delete (globalThis as any).__grantPublicationProbe;
     rmSync(projectHomeDir, { recursive: true, force: true });
   });
+
+  test.each(['bootstrap', 'HTTP reload'] as const)(
+    'an absent plugin directory does not let %s bypass unavailable grant authority',
+    async (path) => {
+      const logger = createLogger();
+      const old = { retained: true };
+      await replacePluginProvidersForSource('missing-tree', [
+        { type: 'settings', source: 'missing-tree', provider: old },
+      ]);
+      const generation = pluginProviderSourceGeneration('missing-tree');
+      writeFileSync(join(projectHomeDir, 'plugin-grants.json'), 'not json');
+      if (path === 'bootstrap') {
+        await loadRuntimePluginProviders({
+          projectHomeDir,
+          logger,
+          loadPluginOverrides: async () => ({}),
+        });
+        expect(logger.error).toHaveBeenCalled();
+      } else {
+        const app = new Hono();
+        registerPluginLifecycleRoutes(app, {
+          agentsDir: join(projectHomeDir, 'agents'),
+          pluginsDir: join(projectHomeDir, 'plugins'),
+          projectHomeDir,
+          logger: logger as unknown as Logger,
+          buildPlugin: async () => {},
+          applyConfigurationMutation: async (operation) =>
+            operation(() => {}, { status: 'applied' }),
+          visibility: operatorVisibility,
+        });
+        const response = await app.request('/reload', { method: 'POST' });
+        expect(response.status).toBe(500);
+        expect(await response.json()).toMatchObject({
+          success: false,
+          error: expect.stringContaining('grants store is unavailable'),
+        });
+      }
+      expect(getProvider('settings')).toBe(old);
+      expect(pluginProviderSourceGeneration('missing-tree')).toBe(generation);
+    },
+  );
+
+  test.each(['bootstrap', 'HTTP reload'] as const)(
+    'an older %s cannot strand a newly granted source by superseding its reconciliation',
+    async (path) => {
+      const pluginsDir = join(projectHomeDir, 'plugins');
+      let entered = false;
+      let finish!: () => void;
+      const wait = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      (globalThis as any).__grantPublicationProbe = {
+        started: () => {
+          entered = true;
+        },
+        wait,
+      };
+      writePlugin(
+        pluginsDir,
+        'slow-existing',
+        `
+      globalThis.__grantPublicationProbe.started();
+      await globalThis.__grantPublicationProbe.wait;
+      export default { label: 'a' };
+    `,
+        true,
+        'branding',
+      );
+      writePlugin(
+        pluginsDir,
+        'newly-granted',
+        `
+      globalThis.__grantPublicationProbe.grantStarted();
+      await globalThis.__grantPublicationProbe.grantWait;
+      export default { label: 'new-b' };
+    `,
+        false,
+        'settings',
+      );
+      await replacePluginProvidersForSource('newly-granted', [
+        {
+          type: 'settings',
+          source: 'newly-granted',
+          provider: { label: 'old-b' },
+        },
+      ]);
+      const logger = createLogger();
+      const app = new Hono();
+      registerPluginLifecycleRoutes(app, {
+        agentsDir: join(projectHomeDir, 'agents'),
+        pluginsDir,
+        projectHomeDir,
+        logger: logger as unknown as Logger,
+        buildPlugin: async () => {},
+        applyConfigurationMutation: async (operation) =>
+          operation(() => {}, { status: 'applied' }),
+        visibility: operatorVisibility,
+      });
+      let reloadStatus: number | undefined;
+      const loading =
+        path === 'bootstrap'
+          ? loadRuntimePluginProviders({
+              projectHomeDir,
+              logger,
+              loadPluginOverrides: async () => ({}),
+            })
+          : Promise.resolve(app.request('/reload', { method: 'POST' })).then(
+              (response) => {
+                reloadStatus = response.status;
+              },
+            );
+      let releaseSnapshot!: () => void;
+      const snapshotWait = new Promise<void>((resolve) => {
+        releaseSnapshot = resolve;
+      });
+      let snapshotCaptured = false;
+      Object.assign((globalThis as any).__grantPublicationProbe, {
+        grantStarted: () => {
+          snapshotCaptured = true;
+        },
+        grantWait: snapshotWait,
+      });
+      let reconciliation: Promise<unknown> | undefined;
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true), { timeout: 3000 });
+        // This write must finish while A's real top-level await is still paused.
+        await grantPermissions(projectHomeDir, 'newly-granted', [
+          'providers.register',
+        ]);
+        const service = createPluginGrantReconciliationService({
+          snapshot: async (name) => ({
+            installed: true,
+            installationGeneration: computePluginContentDigest(
+              pluginsDir,
+              name,
+            ),
+            providerGeneration: pluginProviderSourceGeneration(name),
+            grants: getPluginGrants(projectHomeDir, name),
+          }),
+          quiesceModule: async () => ({ release() {} }),
+          quiesceSubscriptions: async () => ({ release() {} }),
+          retireProviders: retirePluginProvidersForSourceGeneration,
+          activateProviders: async (name, expected, current) => {
+            const manifest = JSON.parse(
+              readFileSync(join(pluginsDir, name, 'plugin.json'), 'utf8'),
+            );
+            const prepared = await preparePluginProviders(
+              pluginsDir,
+              name,
+              manifest,
+              logger,
+              { strict: true },
+            );
+            return publishGrantedPluginProviderGeneration({
+              projectHomeDir,
+              pluginName: name,
+              expectedProviderGeneration: expected.providerGeneration,
+              prepared,
+              isCurrent: current,
+            });
+          },
+          settleProviderAdapters: async () => {},
+          removeEngineConnections: async () => 'removed',
+          reconcileEngineConnections: async () => {},
+          reconcileSubscriptions: async () => ({ kind: 'applied' }),
+        });
+        reconciliation = service.reconcile({
+          pluginName: 'newly-granted',
+          permissions: ['providers.register'],
+        });
+        // B now pauses in its real module import after the final generation read.
+        await vi.waitFor(() => expect(snapshotCaptured).toBe(true), {
+          timeout: 3000,
+        });
+        finish();
+        await loading;
+        releaseSnapshot();
+        await expect(reconciliation).resolves.toMatchObject({
+          status: 'completed',
+        });
+        expect(getProvider('settings')).toMatchObject({ label: 'new-b' });
+        if (path === 'HTTP reload') expect(reloadStatus).toBe(500);
+      } finally {
+        finish();
+        releaseSnapshot();
+        await loading;
+        await reconciliation;
+      }
+    },
+  );
+
+  test.each([
+    'direct lifecycle loader',
+    'runtime bootstrap',
+    'full reload',
+  ] as const)(
+    'does not publish from %s after durable revocation during real module import',
+    async (path) => {
+      const pluginsDir = join(projectHomeDir, 'plugins');
+      let started!: () => void;
+      let finish!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const wait = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const stopAll = vi.fn(async () => undefined);
+      (globalThis as any).__grantPublicationProbe = { started, wait, stopAll };
+      writePlugin(
+        pluginsDir,
+        'racing-plugin',
+        `
+        globalThis.__grantPublicationProbe.started();
+        await globalThis.__grantPublicationProbe.wait;
+        export default { provider: 'custom', metadata: {displayName:'Custom',description:'Fixture adapter',capabilities:['agent-runtime'],runtimeId:'custom-runtime'}, ${ADAPTER_METHODS}, stopAll: globalThis.__grantPublicationProbe.stopAll };
+      `,
+      );
+      const manifest = JSON.parse(
+        readFileSync(join(pluginsDir, 'racing-plugin', 'plugin.json'), 'utf8'),
+      );
+      const { basis } = await capturePluginProviderGeneration(
+        projectHomeDir,
+        () => undefined,
+      );
+      const logger = createLogger();
+      const loading =
+        path === 'runtime bootstrap'
+          ? loadRuntimePluginProviders({
+              projectHomeDir,
+              logger,
+              loadPluginOverrides: async () => ({}),
+            })
+          : path === 'full reload'
+            ? preparePluginProviderGeneration(
+                pluginsDir,
+                [{ pluginName: 'racing-plugin', manifest }],
+                logger,
+              ).then((prepared) =>
+                publishPluginProviderGeneration(basis, prepared),
+              )
+            : loadPluginProviders(
+                pluginsDir,
+                'racing-plugin',
+                manifest,
+                logger,
+                { strict: true },
+              );
+      await entered;
+      await revokeGrants(projectHomeDir, 'racing-plugin', [
+        'providers.register',
+      ]);
+      finish();
+      if (path === 'full reload')
+        await expect(loading).rejects.toThrow('grant snapshot was superseded');
+      else await loading;
+      expect(getProviderAdapter('custom')).toBeUndefined();
+      expect(stopAll).toHaveBeenCalledOnce();
+    },
+  );
 
   test('registers plugin runtime adapters through the adapter registry path', async () => {
     const pluginsDir = join(projectHomeDir, 'plugins');
@@ -258,12 +554,8 @@ describe('loadRuntimePluginProviders providerAdapter entries', () => {
     expect(getProviderAdapter('corrupt-grants')).toBeUndefined();
     expect(getProviderAdapters()).toEqual([]);
     expect(logger.error).toHaveBeenCalledWith(
-      'Plugin grants store unavailable; denying permission check',
-      expect.objectContaining({
-        path: grantsPath,
-        plugin: 'corrupt-grants-runtime',
-        permission: 'providers.register',
-      }),
+      expect.stringContaining('grants store is unavailable'),
+      expect.any(Object),
     );
   });
 
@@ -327,7 +619,7 @@ export default {
     expect((globalThis as any).__ungrantedSingletonImported).toBeUndefined();
   });
 
-  test('retains the active plugin generation when replacement staging fails', async () => {
+  test('retains registration ownership but fences prior content when replacement staging fails', async () => {
     const logger = createLogger();
     const pluginsDir = join(projectHomeDir, 'plugins');
     writePlugin(
@@ -350,6 +642,8 @@ export default {
     };
     await loadRuntimePluginProviders(context);
     const stable = getProviderAdapter('custom');
+    const registeredGeneration =
+      pluginProviderSourceGeneration('custom-runtime');
     writeFileSync(
       join(pluginsDir, 'custom-runtime', 'broken.mjs'),
       `export default { provider: 'custom', metadata: { displayName: 'Broken' } };`,
@@ -365,14 +659,18 @@ export default {
 
     await loadRuntimePluginProviders(context);
 
-    expect(getProviderAdapter('custom')).toBe(stable);
+    expect(getProviderAdapter('custom')).toBeUndefined();
+    expect(pluginProviderSourceGeneration('custom-runtime')).toBe(
+      registeredGeneration,
+    );
+    expect(() => stable!.startSession({} as never)).toThrow('unavailable');
     expect(logger.error).toHaveBeenCalledWith(
       'Invalid plugin provider adapter shape',
       { plugin: 'custom-runtime', type: 'providerAdapter' },
     );
   });
 
-  test('retains the active plugin generation when a replacement factory throws', async () => {
+  test('retains registration ownership but fences prior content when a replacement factory throws', async () => {
     const logger = createLogger();
     const pluginsDir = join(projectHomeDir, 'plugins');
     writePlugin(
@@ -395,6 +693,8 @@ export default {
     };
     await loadRuntimePluginProviders(context);
     const stable = getProviderAdapter('custom');
+    const registeredGeneration =
+      pluginProviderSourceGeneration('custom-runtime');
     writeFileSync(
       join(pluginsDir, 'custom-runtime', 'adapter.mjs'),
       `export default () => { throw new Error('factory failed'); };`,
@@ -402,7 +702,11 @@ export default {
 
     await loadRuntimePluginProviders(context);
 
-    expect(getProviderAdapter('custom')).toBe(stable);
+    expect(getProviderAdapter('custom')).toBeUndefined();
+    expect(pluginProviderSourceGeneration('custom-runtime')).toBe(
+      registeredGeneration,
+    );
+    expect(() => stable!.startSession({} as never)).toThrow('unavailable');
     expect(logger.error).toHaveBeenCalledWith('Plugin provider factory threw', {
       plugin: 'custom-runtime',
       type: 'providerAdapter',

@@ -1,8 +1,10 @@
+import { hostname } from 'node:os';
 import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
+import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 
@@ -29,6 +31,7 @@ const { createConnectionRoutes } = await import(
 const {
   readBuildProvenance,
   reconcileExternalEngineReadiness,
+  resolveExternalEngineReadiness,
   STATUS_PREREQUISITES_CACHE_TTL_MS,
 } = await import('../system-status-routes.js');
 const { buildCliRuntimePrerequisites } = await import(
@@ -127,6 +130,84 @@ async function waitForStatusDiscovery(
 }
 
 describe('System Routes', () => {
+  test('projects a detected ACP registry Engine as not connected, never ready', async () => {
+    const readiness = await resolveExternalEngineReadiness(
+      [],
+      undefined,
+      () => true,
+      undefined,
+      [{ id: 'kiro', name: 'Kiro CLI' }],
+    );
+    expect(readiness).toEqual({
+      ready: false,
+      source: null,
+      engines: [
+        {
+          engineId: 'kiro',
+          name: 'Kiro CLI',
+          registryEntryId: 'kiro',
+          detected: true,
+          ready: false,
+          source: null,
+          reason: 'not_connected',
+        },
+      ],
+    });
+  });
+
+  test('GET /status projects a detected ACP registry Engine as not connected', async () => {
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        listDetectedACPRegistryEntries: async () => [
+          { id: 'kiro', name: 'Kiro CLI' },
+        ],
+      } as any,
+      mockLogger,
+    );
+    const body = await waitForStatusDiscovery(app);
+    expect(body.externalEngines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          engineId: 'kiro',
+          name: 'Kiro CLI',
+          reason: 'not_connected',
+          ready: false,
+        }),
+      ]),
+    );
+  });
+
+  test('does not duplicate a detected registry Engine already reported by an adapter', async () => {
+    // The adapter must be a real readiness candidate (a known chat-capable
+    // engine with the agent-runtime capability); an unknown provider name
+    // is filtered out before the collision can occur, and the test would
+    // pass with no dedupe at all.
+    const readiness = await resolveExternalEngineReadiness(
+      [
+        fakeExternalEngineAdapter({
+          provider: 'claude',
+          engineId: 'claude',
+          prerequisites: [{ id: 'claude-cli', status: 'installed' }],
+        }),
+      ],
+      undefined,
+      () => true,
+      undefined,
+      [
+        { id: 'claude', name: 'Claude (registry)' },
+        { id: 'kiro', name: 'Kiro CLI' },
+      ],
+    );
+    const claudeRows = readiness.engines.filter(
+      (entry) => entry.engineId === 'claude',
+    );
+    expect(claudeRows).toHaveLength(1);
+    expect(claudeRows[0]).toMatchObject({ engineConnectionId: 'claude' });
+    expect(
+      readiness.engines.filter((entry) => entry.engineId === 'kiro'),
+    ).toMatchObject([{ reason: 'not_connected' }]);
+  });
   test('GET /boot-history returns bounded records without fabricating a cause', async () => {
     const getBootHistory = vi.fn().mockResolvedValue({
       currentUptimeSeconds: 43,
@@ -162,12 +243,73 @@ describe('System Routes', () => {
         // Env-only sha: derivation labeled, never presented as the build's.
         shaSource: 'checkout',
         bootId: '11111111-1111-4111-8111-111111111111',
+        // The same request-bound projection /status serves, now repeated on
+        // the identity surface. A bare test request was bound by no auth
+        // boundary, so it fails closed to `paired` and names this machine.
+        devicePresentation: {
+          deviceClass: 'paired',
+          hostName: hostname().split('.')[0],
+        },
       });
       expect(checkBedrockCredentials).not.toHaveBeenCalled();
     } finally {
       delete process.env.STATION_BUILD_SHA;
       delete process.env.STATION_BUILD_BRANCH;
       delete process.env.STATION_BUILD_BUILT_AT;
+      delete process.env.STATION_INSTANCE_ID;
+      delete process.env.STATION_BOOT_ID;
+    }
+  });
+
+  test('GET /identity devicePresentation is request-bound, not ambient', async () => {
+    process.env.STATION_BUILD_SHA = 'abcdef0123456789abcdef0123456789abcdef01';
+    process.env.STATION_INSTANCE_ID = 'phone-dogfood';
+    process.env.STATION_BOOT_ID = '11111111-1111-4111-8111-111111111111';
+    try {
+      // Wrap the route app in the same test middleware shape the diagnostics
+      // route tests use: it performs the auth boundary's ONE local-operator
+      // write per request, keyed off a test header, so the projection's
+      // request binding is what is under test.
+      const { setRuntimeAuthenticatedRequestPrincipal } = await import(
+        '../../../security/runtime-request-security.js'
+      );
+      const { bindRuntimeLocalOperator } = await import(
+        '../../../security/runtime-request-security.js'
+      );
+      const inner = createSystemRoutes(createMockDeps() as any, mockLogger);
+      const app = new Hono();
+      app.use('*', async (c, next) => {
+        if (c.req.header('x-station-test-locality') === 'home-possession') {
+          setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+            credential: 'test-home-possession',
+            authority: 'device-credential',
+            source: 'session',
+            pairingSource: 'same-origin',
+            locality: 'home-possession',
+          });
+        }
+        bindRuntimeLocalOperator(c.req.raw);
+        return next();
+      });
+      app.route('/', inner);
+
+      const paired = await json(await app.request('/identity'));
+      expect(paired.devicePresentation).toMatchObject({
+        deviceClass: 'paired',
+      });
+      const host = await json(
+        await app.request('/identity', {
+          headers: { 'x-station-test-locality': 'home-possession' },
+        }),
+      );
+      expect(host.devicePresentation).toMatchObject({ deviceClass: 'host' });
+      // hostName comes FROM the host machine in both classes, never from
+      // the request.
+      expect(host.devicePresentation.hostName).toBe(
+        paired.devicePresentation.hostName,
+      );
+    } finally {
+      delete process.env.STATION_BUILD_SHA;
       delete process.env.STATION_INSTANCE_ID;
       delete process.env.STATION_BOOT_ID;
     }
@@ -2273,4 +2415,25 @@ describe('System Routes', () => {
     expect(aliasResponse.status).toBe(canonicalResponse.status);
     expect(await json(aliasResponse)).toEqual(await json(canonicalResponse));
   });
+});
+
+test('system status includes host recovery disclosure and preserves unavailable evidence', async () => {
+  for (const homeRecovery of [
+    { kind: 'not-restored' },
+    { kind: 'unavailable' },
+    {
+      kind: 'recovered-from-copy',
+      recoveryId: 'recovery-test',
+      snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+      authorityTransferred: false,
+    },
+  ]) {
+    const app = createSystemRoutes(
+      { ...createMockDeps(), getHomeRecovery: () => homeRecovery } as any,
+      mockLogger,
+    );
+    const response = await app.request('/status');
+    expect(response.status).toBe(200);
+    expect((await json(response)).homeRecovery).toEqual(homeRecovery);
+  }
 });

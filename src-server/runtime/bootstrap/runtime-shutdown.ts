@@ -1,3 +1,8 @@
+import {
+  type MCPLocalConnectionCustody,
+  MCPLocalCustodyError,
+} from '@kontourai/station-shared/mcp';
+import { cancelSharedDeviceCodeLogins } from '../../services/connections/device-code-login.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import {
   type OptionalNetworkShutdownTask,
@@ -15,6 +20,7 @@ export async function shutdownRuntimeServices({
   consoleBridgeService,
   voltAgent,
   mcpConfigs,
+  mcpCustody,
   retiredMcpConfigs,
   activeAgents,
   acpBridge,
@@ -41,6 +47,7 @@ export async function shutdownRuntimeServices({
   consoleBridgeService?: { stop(): Promise<void> };
   voltAgent?: { shutdown(): Promise<void> };
   mcpConfigs: Map<string, { disconnect(): Promise<void> }>;
+  mcpCustody?: MCPLocalConnectionCustody;
   retiredMcpConfigs?: Set<{ disconnect(): Promise<void> }>;
   activeAgents: Map<string, any>;
   acpBridge: { shutdown(): Promise<void> };
@@ -55,11 +62,35 @@ export async function shutdownRuntimeServices({
   terminalService: { dispose(): Promise<void> };
   monitoringEmitter?: { flush(): Promise<void> };
   sshEnvironmentService?: { shutdown(): Promise<void> };
-  configLoader: { dispose(): Promise<void> };
+  /**
+   * Optional since station#1815. Omitting it is a HANDOVER, not a skip, and
+   * the omission is logged below. That makes it RECORDED, not
+   * distinguishable: a caller who forgot the parameter emits the identical
+   * line, and two independent readers flagged an earlier version of this
+   * sentence for implying otherwise. The line is a trace to follow, not a
+   * detector.
+   *
+   * `StationRuntime` disposes its own loader after the native-engine adoption
+   * window has settled. The reason is narrower than an earlier version of
+   * this comment claimed: it is NOT that `ConfigLoader.dispose` documents a
+   * live-writer hazard — it documents the cost of its deferred watcher close,
+   * and the ordering rule for a caller that DELETES the watched tree lives on
+   * `whenWatcherClosed`, not on `dispose` — and the adoption's registry half
+   * does not reach the loader at all
+   * (`saveAgentRegistry` takes only `getProjectHomeDir()` and writes through
+   * the module-level `saveRegistry`). What the loader IS is the write handle
+   * for the other half: `materializeEngineAgent` and `materializeStationAgent`
+   * go through it. Disposing the component a live caller is still writing
+   * through is a lifecycle inversion whether or not this particular dispose
+   * tolerates it, and putting it after the window costs nothing.
+   */
+  configLoader?: { dispose(): Promise<void> };
   optionalNetworkShutdownTasks?: readonly OptionalNetworkShutdownTask[];
   optionalNetworkShutdownBudgetMs?: number;
 }): Promise<void> {
   logger.info('Shutting down Station Runtime...');
+  // Fence admissions synchronously, before any unrelated shutdown awaits.
+  const localMcpCleanup = mcpCustody?.shutdown();
 
   const failures: Error[] = [];
   const attempt = async (
@@ -83,6 +114,13 @@ export async function shutdownRuntimeServices({
 
   for (const timer of timers) clearTimeout(timer);
   timers.length = 0;
+
+  // Engine device-code logins are child processes waiting on a person. Their
+  // own deadlines bound them, but a restart must not leave them running until
+  // the code expires.
+  await attempt('deviceCodeLogins.cancelAll', async () => {
+    cancelSharedDeviceCodeLogins();
+  });
 
   await attempt(
     'schedulerService.stop',
@@ -110,41 +148,53 @@ export async function shutdownRuntimeServices({
     voltAgent ? () => voltAgent.shutdown() : undefined,
   );
 
-  for (const [key, mcpConfig] of mcpConfigs.entries()) {
-    await attempt(`mcpConfigs.${key}.disconnect`, async () => {
-      await mcpConfig.disconnect();
-      logger.info('MCP disconnected', { mcp: key });
+  if (localMcpCleanup) {
+    await attempt('mcpCustody.shutdown', async () => {
+      const cleanup = await localMcpCleanup;
+      if (cleanup.state !== 'settled')
+        throw new MCPLocalCustodyError(cleanup.state);
+      mcpConfigs.clear();
+      retiredMcpConfigs?.clear();
     });
-  }
+  } else {
+    for (const [key, mcpConfig] of mcpConfigs.entries()) {
+      await attempt(`mcpConfigs.${key}.disconnect`, async () => {
+        await mcpConfig.disconnect();
+        if (mcpConfigs.get(key) === mcpConfig) mcpConfigs.delete(key);
+        logger.info('MCP disconnected', { mcp: key });
+      });
+    }
 
-  mcpConfigs.clear();
-  if (retiredMcpConfigs) {
-    const entries = Array.from(retiredMcpConfigs);
-    const retained = new Set<{ disconnect(): Promise<void> }>();
-    await Promise.all(
-      entries.map((config, index) =>
-        attempt(`retiredMcpConfigs.${index}.disconnect`, async () => {
-          const disconnect = Promise.resolve().then(() => config.disconnect());
-          disconnect.catch(() => undefined);
-          const settled = await awaitSettlementWithin(
-            disconnect,
-            RETIRED_MCP_DISCONNECT_TIMEOUT_MS,
-          );
-          if (!settled) {
-            retained.add(config);
-            throw new Error('Retired MCP disconnect timed out.');
-          }
-          try {
-            await disconnect;
-          } catch (error) {
-            retained.add(config);
-            throw error;
-          }
-        }),
-      ),
-    );
-    retiredMcpConfigs.clear();
-    for (const config of retained) retiredMcpConfigs.add(config);
+    if (retiredMcpConfigs) {
+      const entries = Array.from(retiredMcpConfigs);
+      const retained = new Set<{ disconnect(): Promise<void> }>();
+      await Promise.all(
+        entries.map((config, index) =>
+          attempt(`retiredMcpConfigs.${index}.disconnect`, async () => {
+            const disconnect = Promise.resolve().then(() =>
+              config.disconnect(),
+            );
+            disconnect.catch(() => undefined);
+            const settled = await awaitSettlementWithin(
+              disconnect,
+              RETIRED_MCP_DISCONNECT_TIMEOUT_MS,
+            );
+            if (!settled) {
+              retained.add(config);
+              throw new Error('Retired MCP disconnect timed out.');
+            }
+            try {
+              await disconnect;
+            } catch (error) {
+              retained.add(config);
+              throw error;
+            }
+          }),
+        ),
+      );
+      retiredMcpConfigs.clear();
+      for (const config of retained) retiredMcpConfigs.add(config);
+    }
   }
   activeAgents.clear();
 
@@ -173,7 +223,32 @@ export async function shutdownRuntimeServices({
     sshEnvironmentService?.shutdown(),
   );
   await attempt('monitoringEmitter.flush', () => monitoringEmitter?.flush());
-  await attempt('configLoader.dispose', () => configLoader.dispose());
+  if (configLoader) {
+    await attempt('configLoader.dispose', () => configLoader.dispose());
+  } else {
+    // Recorded rather than skipped in silence: without this a caller that
+    // simply forgot the parameter would lose a teardown step with no compile
+    // error and no trace of it ever having been expected. It does not
+    // separate that caller from a deliberate handover, and cannot.
+    //
+    // "here", not "was not run": the only production caller omits this
+    // parameter and USUALLY disposes its loader moments later, so a line
+    // claiming the step did not run would assert something untrue on most
+    // real emissions — not all, because that dispose is itself conditional
+    // on the adoption window settling and is deliberately skipped when the
+    // budget expires, which pairs this line with the expiry warning a few
+    // seconds later. Either way the claim is not this function's to make.
+    // What it can derive is that it was given no target.
+    //
+    // The message says only what is observable here. A deliberate handover
+    // and an omission look identical from inside this function — the
+    // parameter is absent, and that is all it knows — so calling it
+    // "delegated" would tell the very reader this line exists for exactly the
+    // wrong thing.
+    logger.info('Shutdown step had no target here', {
+      step: 'configLoader.dispose',
+    });
+  }
 
   if (failures.length > 0) {
     logger.error('Shutdown completed with errors', {

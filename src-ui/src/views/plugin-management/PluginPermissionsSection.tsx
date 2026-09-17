@@ -168,17 +168,10 @@ export function PluginPermissionsSection({
       )}
 
       <p className="plugin-permissions__hint">
-        {/* Two true things, and no more. "Takes effect immediately" was the
-            first version and it was FALSE (review): a provider a plugin
-            already registered keeps serving until the plugin reloads, and
-            work already running finishes. Overclaiming here would be the
-            same defect this surface exists to fix — a sentence nothing
-            derives — so it says what withdrawal actually does and names
-            what it does not reach (station#3822). */}
-        Removing a permission stops new use of it right away. Anything the
-        plugin already started, or a provider it already registered, keeps
-        running until the plugin reloads. Granting a Trusted permission again
-        needs the separate host review page.
+        Removing a permission stops new use of it right away. Station drains
+        running module work and retires registered providers; the result says
+        when cleanup completed, is still winding down, or needs a retry.
+        Granting a Trusted permission again needs the separate host review page.
       </p>
     </div>
   );

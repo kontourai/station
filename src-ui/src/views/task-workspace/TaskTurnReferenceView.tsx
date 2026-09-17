@@ -257,7 +257,7 @@ export function TaskTurnReferenceView({
 }
 
 /** Exact reopening copy: a persisted boundary says what reached this answer. */
-export function answerContextBoundaryCopy(provenance: unknown): string | null {
+function answerContextBoundaryCopy(provenance: unknown): string | null {
   if (!isSupportedTurnProvenanceEnvelope(provenance)) return null;
   const boundary = provenance.contextBoundary;
   if (boundary?.state !== 'observed') return null;
@@ -386,7 +386,7 @@ function supportState(
 }
 
 /** Keeps execution provenance honest without contradicting the current support state. */
-export function answerSupportBoundaryCopy(
+function answerSupportBoundaryCopy(
   hasExecutionProvenance: boolean,
   support: AvailableReference['support'],
 ): string {

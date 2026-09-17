@@ -1,5 +1,34 @@
 import type { NotificationAction } from './notification.js';
+import type { RequestAnswerability } from './orchestration.js';
 import type { RequestOpenedEvent } from './runtime-events.js';
+
+/** The exact canonical open event behind one actionable approval/permission. */
+export interface AttentionRequestReference {
+  threadId: string;
+  requestId: string;
+  requestEventId: string;
+}
+
+export const ATTENTION_REQUEST_MAX_BYTES = 65_536;
+export const ATTENTION_REQUEST_ID_MAX_CHARS = 1_024;
+
+export type AttentionRequestInspection =
+  | {
+      state: 'open';
+      reference: AttentionRequestReference;
+      requestType: 'approval' | 'permission';
+      provider: string;
+      title: string;
+      body?: string;
+      openedAt: string;
+      answerability: RequestAnswerability;
+      canRespond: boolean;
+    }
+  | {
+      state: 'changed' | 'resolved' | 'unavailable';
+      reference: AttentionRequestReference;
+      message: string;
+    };
 
 export interface AttentionItemBase {
   id: string;
@@ -20,6 +49,24 @@ export interface AttentionItemBase {
    * unacknowledged again, because the stored version no longer matches.
    */
   acknowledgedAt?: string;
+  /**
+   * #2064 (D4): the project this item belongs to, when the projection could
+   * derive one from the item's own source — a session's `projectSlug`, a
+   * gate's run binding, a proposed change's `projectId`, a review session's
+   * `projectSlug`. It is the ONLY input to the per-project counts
+   * (`attentionProjectCounts`), so the sidebar's "1 needs you" and the
+   * footer bell's total are two readings of one array rather than two
+   * numbers that happen to agree.
+   *
+   * ABSENT means the projection could not derive a project, not that the
+   * item is global: an `approval` notification created through the generic
+   * `/notifications` API carries no project metadata at all, and a
+   * project-less session has no project to name. Such an item counts toward
+   * the bell and toward no project row. Nothing may fill this in on the
+   * client — a consumer-side guess about which project an item belongs to is
+   * exactly the label-nothing-derives shape this field exists to avoid.
+   */
+  projectSlug?: string;
 }
 
 /**
@@ -41,6 +88,7 @@ export type AttentionRequestType = RequestOpenedEvent['requestType'];
  */
 export interface ApprovalAttentionItem extends AttentionItemBase {
   kind: 'approval';
+  requestReference?: AttentionRequestReference;
   source: { notificationId: string; notificationSource: string };
   actions: NotificationAction[];
   openHref?: string;
@@ -70,6 +118,8 @@ export interface ApprovalAttentionItem extends AttentionItemBase {
  */
 export interface NeedsInputAttentionItem extends AttentionItemBase {
   kind: 'needs_input';
+  /** Exact input question; never an approval/permission decision. */
+  inputReference?: AttentionRequestReference;
   source: { threadId: string };
   openHref: string;
   requestType?: AttentionRequestType;
@@ -78,6 +128,7 @@ export interface NeedsInputAttentionItem extends AttentionItemBase {
 /** See `NeedsInputAttentionItem` — same request-evidence projection, review_pending kind. */
 export interface ReviewPendingAttentionItem extends AttentionItemBase {
   kind: 'review_pending';
+  requestReference?: AttentionRequestReference;
   source: { threadId: string };
   openHref: string;
   requestType?: AttentionRequestType;
@@ -239,17 +290,269 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
   openHref: string;
 }
 
+/**
+ * Station's own Agent cannot run at all — the managed engine resolves no model
+ * connection (#1536 D8).
+ *
+ * Notifications said "All caught up · Nothing needs you right now" on a fresh
+ * home whose New Chat picker, one surface away, marked the Station row
+ * "Needs: No enabled LLM provider connection is configured." Both were reading
+ * real state; only one of them was reading THIS state, because nothing
+ * projected it. `body` is that same sentence, from the same derivation
+ * (`resolveManagedAvailabilityReason`) the picker's row renders — never a
+ * second wording of the same requirement.
+ *
+ * It is a live PRECONDITION rather than an event: it stops projecting the
+ * moment a connection resolves, so `createdAt`/`updatedAt` are the time the
+ * projection observed it, and the surfaces do not offer to dismiss it —
+ * acknowledging the only row that says why chat cannot start would leave the
+ * inbox claiming nothing needs you while the same thing still does.
+ */
+export interface SetupIncompleteAttentionItem extends AttentionItemBase {
+  kind: 'setup-incomplete';
+  source: {
+    /** What is missing. One member today; a discriminator, not a label. */
+    requirement: 'model-connection';
+    /** The Agent the requirement was evaluated for. */
+    agentSlug: string;
+  };
+  openHref: string;
+}
+
+/**
+ * #2064 (D4): an AI-proposed change is pending a human approve/reject
+ * decision. It was reachable only from the global `/review-queue` page, which
+ * neither the bell badge nor any project row could see; "what needs me" had
+ * two disjoint answers.
+ *
+ * Projected from `ProposedChangeService.list({ status: ['pending'] })`, the
+ * same read `/review-queue` performs, so a decision made anywhere stops
+ * projecting on the very next read. The item carries NO decision authority:
+ * its Approve/Reject affordances call the existing
+ * `POST /api/proposed-changes/:id/approve|reject` routes — the same two the
+ * Review page calls — and the change service's own transition rules decide.
+ *
+ * `path`, `contentKind` and `sourceRuntime` are the change's own recorded
+ * fields, carried so a row can say WHICH file and WHERE it came from rather
+ * than three identical "Change pending" lines.
+ */
+export interface ProposedChangeAttentionItem extends AttentionItemBase {
+  kind: 'proposed-change';
+  source: { proposedChangeId: string; projectSlug: string };
+  /** The change's own `path`; the row's headline. */
+  path: string;
+  /** The change's recorded `contentKind` and `sourceRuntime`. */
+  contentKind: string;
+  sourceRuntime: string;
+  openHref: string;
+}
+
+/**
+ * #2064 (D4): a paused Survey/Flow gate review session with unresolved items
+ * — a human has to read and decide before the run continues.
+ *
+ * Projected from the SAME `SurveyFlowReviewService` aggregate the Review page
+ * reads, and ONLY when `summary.unresolved > 0`: a review session whose items
+ * are all resolved is finished work, not an ask. That threshold is the whole
+ * derivation — nothing in the store marks a session "needs attention", and a
+ * stored flag would be a label the count could contradict.
+ *
+ * There is no decide-here affordance, deliberately. The Review page makes no
+ * mutation for these sessions either (`ReviewQueueView` renders the session
+ * and nothing more); the continuation endpoint
+ * (`POST /api/projects/:slug/flow/runs/:runId/reviews/continue`) is driven
+ * from the review workbench, not from an inbox row. The item's action is to
+ * open the exact review.
+ *
+ * It is projected when `pendingDecisions > 0` — see that field for why the
+ * obvious-looking `summary.unresolved` is the wrong number.
+ */
+export interface GateReviewAttentionItem extends AttentionItemBase {
+  kind: 'gate-review';
+  source: {
+    /** The exact review session the open action deep-links to. */
+    reviewSessionRef: string;
+    projectSlug: string;
+    workflowSubjectRef: string;
+  };
+  /**
+   * Review items with no recorded decision — the number keeping
+   * `continuePausedGate` from running, derived by the continuation's own
+   * `deriveServerReviewSessionApplyResult` (see
+   * `SurveyFlowReviewQueueItem.pendingDecisions`).
+   *
+   * Deliberately not named or sourced from Survey's `summary.unresolved`
+   * (#2064 review MED-2): that field buckets an undecided `escalated` item
+   * under `escalated`, so a gate whose remaining items were all escalated
+   * blocked its run while reporting `unresolved: 0` and projecting no item at
+   * all.
+   */
+  pendingDecisions: number;
+  openHref: string;
+}
+
 export type AttentionItem =
   | ApprovalAttentionItem
+  | SetupIncompleteAttentionItem
   | NeedsInputAttentionItem
   | ReviewPendingAttentionItem
   | SessionFailedAttentionItem
   | GateRouteBackAttentionItem
   | GateBlockedAttentionItem
   | GateExceptionAttentionItem
+  | ProposedChangeAttentionItem
+  | GateReviewAttentionItem
   | DevicePairingAttentionItem;
+
+/**
+ * Kinds that are STANDING notices rather than per-event facts (#1536 D8; delta
+ * review DM3 moved this here from the server projection).
+ *
+ * A standing notice is continuously true until a configuration changes and has
+ * no event of its own. Two consequences follow from that one property, on two
+ * sides of the wire, and declaring it in the contract is what keeps them from
+ * drifting:
+ *
+ *  - it sorts BELOW live per-event attention, because its observation time says
+ *    only when the projection last looked. Ordering it by recency put "Station
+ *    cannot run yet" above every live approval on every read — an artefact of
+ *    the timestamp, not a priority anyone chose.
+ *  - it cannot be acknowledged, because it is still true after the dismissal.
+ *    The server refuses the acknowledgement and the surfaces offer no dismiss;
+ *    without the refusal, "Dismiss all" acked it and the row only came back
+ *    because the next read moved its `updatedAt`.
+ */
+export const STANDING_ATTENTION_KINDS: ReadonlySet<AttentionItem['kind']> =
+  new Set<AttentionItem['kind']>(['setup-incomplete']);
+
+/** See {@link STANDING_ATTENTION_KINDS}. */
+export function isStandingAttentionKind(kind: AttentionItem['kind']): boolean {
+  return STANDING_ATTENTION_KINDS.has(kind);
+}
+
+/**
+ * Kinds whose RESOLUTION IS THE DECISION (#2064 product decision (a)), so
+ * acknowledgement would be a lie rather than a dismissal.
+ *
+ * A standing notice (above) cannot be acknowledged because it stays true. These
+ * are the opposite case and reach the same refusal from the other side: a
+ * pending proposed change and a paused gate review each have exactly one way to
+ * stop being true — someone decides. Acking one would drop a live, blocking ask
+ * out of the bell and out of its project's count while the change stayed
+ * undecided and the run stayed paused, and nothing would ever bring it back,
+ * because the item is re-derived with the same `updatedAt` on every read.
+ *
+ * It is a DERIVATION of the kind, not a stored flag: the server's refusal, the
+ * per-row dismiss affordance and "Dismiss all" all read this one declaration,
+ * exactly as they read `STANDING_ATTENTION_KINDS`.
+ *
+ * Kinds NOT listed stay acknowledgeable as before — `needs_input`,
+ * `review_pending`, `gate-exception` and `device-pairing` are asks a user can
+ * legitimately set aside, and `session-failed` is the kind acknowledgement was
+ * built for.
+ */
+export const DECISION_RESOLVED_ATTENTION_KINDS: ReadonlySet<
+  AttentionItem['kind']
+> = new Set<AttentionItem['kind']>(['proposed-change', 'gate-review']);
+
+/**
+ * Whether this item can be acknowledged away — the ONE predicate the server's
+ * refusal and both client dismiss affordances read. Two disjoint reasons an
+ * item cannot be: it is still true afterwards ({@link STANDING_ATTENTION_KINDS}),
+ * or a decision is the only thing that resolves it
+ * ({@link DECISION_RESOLVED_ATTENTION_KINDS}).
+ */
+export function isAcknowledgeableAttentionKind(
+  kind: AttentionItem['kind'],
+): boolean {
+  return (
+    !isStandingAttentionKind(kind) &&
+    !DECISION_RESOLVED_ATTENTION_KINDS.has(kind)
+  );
+}
+
+/**
+ * A source this read could not fully cover (#2064 review (c)).
+ *
+ * The gate-review aggregate degrades per project: a workspace Station cannot
+ * read contributes zero items. Without this, that project's paused reviews
+ * read as "nothing needs you" — absence-as-success on the one surface whose
+ * job is saying what needs you. `projectSlug` is absent when the whole
+ * aggregate failed and no project can be named.
+ */
+export interface AttentionSourceUnavailable {
+  source: 'gate-reviews';
+  projectSlug?: string;
+  /** The source's own reported reason, never a rewording of it. */
+  reason: string;
+}
 
 export interface AttentionProjection {
   items: AttentionItem[];
   pendingCount: number;
+  /**
+   * Absent when the read covered every source, so a consumer cannot read an
+   * empty array as "nothing was reported". See {@link AttentionSourceUnavailable}.
+   */
+  unavailableSources?: AttentionSourceUnavailable[];
 }
+
+/**
+ * The ONE predicate that decides what "pending" means, in the contract so the
+ * server's `pendingCount`, the client's narrowed recount
+ * (`pendingAttentionItems`) and the per-project counts below are three
+ * readings of one declaration. An acknowledged item is history: still in
+ * `items`, out of every count (see {@link AttentionItemBase.acknowledgedAt}).
+ */
+export function isPendingAttentionItem(item: AttentionItem): boolean {
+  return !item.acknowledgedAt;
+}
+
+/**
+ * #2064 (D4): how many pending items belong to one project.
+ *
+ * DERIVED, always, from the projection's own `items` — never a number a
+ * producer wrote down. The bell's total and a project row's count are the
+ * same array counted with the same predicate under two different scopes, so
+ * they cannot disagree: a source item appearing or resolving moves both, and
+ * a project whose items all resolve returns 0 because nothing is left to
+ * count, not because anything cleared a field.
+ *
+ * Items with no `projectSlug` (a generic `/notifications` approval, a
+ * project-less session) belong to no project and are counted by no row. They
+ * still count toward the bell; the two numbers are deliberately not required
+ * to sum, and {@link AttentionItemBase.projectSlug} says why.
+ */
+export function attentionCountForProject(
+  items: readonly AttentionItem[],
+  projectSlug: string,
+): number {
+  return items.filter(
+    (item) => item.projectSlug === projectSlug && isPendingAttentionItem(item),
+  ).length;
+}
+
+/** Every project with at least one pending item. See {@link attentionCountForProject}. */
+export function attentionProjectCounts(
+  items: readonly AttentionItem[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    if (!item.projectSlug || !isPendingAttentionItem(item)) continue;
+    counts.set(item.projectSlug, (counts.get(item.projectSlug) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export type AttentionInputReplyContext =
+  | {
+      state: 'open';
+      reference: AttentionRequestReference;
+      agentId: string;
+      conversationId: string;
+      provider: string;
+      engineId: string;
+      modelId?: string;
+      capabilities: Array<'image-input' | 'file-input'>;
+    }
+  | { state: 'unavailable'; reference: AttentionRequestReference };

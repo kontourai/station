@@ -236,6 +236,50 @@ describe('ChatInputArea', () => {
     expect(props.onCancel).toHaveBeenCalled();
   });
 
+  test('steer-default busy composer offers Queue and Enter still sends', () => {
+    const onQueueFollowUp = vi.fn(async () => {});
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onQueueFollowUp,
+      onSend,
+      input: 'course correct',
+    });
+
+    expect(
+      screen.getByPlaceholderText(
+        'Steer this turn… (Enter steers; Queue waits)',
+      ),
+    ).toBeTruthy();
+    const queue = screen.getByRole('button', {
+      name: 'Queue this follow-up until the turn finishes',
+    });
+    fireEvent.click(queue);
+    expect(onQueueFollowUp).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByPlaceholderText(/Steer this turn/), {
+      key: 'Enter',
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  test('queue-only busy composer has no Queue control', () => {
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'queue',
+      input: 'later',
+    });
+
+    expect(screen.getByPlaceholderText('Queue a follow-up…')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Queue this follow-up until the turn finishes',
+      }),
+    ).toBeNull();
+  });
+
   test('opens the model picker when model selection is available', () => {
     const props = renderChatInputArea();
 
@@ -245,7 +289,7 @@ describe('ChatInputArea', () => {
     expect(props.onInputChange).not.toHaveBeenCalled();
   });
 
-  test('exposes named Agent and Model dialog controls and supports keyboard activation', () => {
+  test('shows selector values while retaining named controls and keyboard activation', () => {
     const onOpenAgentHandoff = vi.fn();
     const agentHandoffTriggerRef = createRef<HTMLButtonElement>();
     renderChatInputArea({
@@ -258,17 +302,17 @@ describe('ChatInputArea', () => {
     const agent = screen.getByRole('button', {
       name: 'Agent: Codex reviewer. Change Agent',
     });
-    expect(agent.textContent).toContain('Agent');
-    expect(agent.textContent).toContain('Codex reviewer');
-    expect(agent.textContent).toContain('⌄');
+    expect(agent.textContent).toBe('Codex reviewer');
+    expect(agent.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(agent.title).toBe('Agent: Codex reviewer. Change Agent');
     expect(agentHandoffTriggerRef.current).toBe(agent);
     expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
       screen.getByRole('button', { name: /^Model:/ }).textContent,
-    ).toContain('Model');
+    ).not.toContain('Model');
     expect(
-      screen.getByRole('button', { name: /^Model:/ }).textContent,
-    ).toContain('⌄');
+      screen.getByRole('button', { name: /^Model:/ }).getAttribute('title'),
+    ).toMatch(/^Model:/);
     agent.focus();
     // Browsers synthesize an untrusted click for keyboard activation of a
     // native button; detail=0 distinguishes that path from pointer input.
@@ -290,7 +334,9 @@ describe('ChatInputArea', () => {
     expect(agent.getAttribute('aria-disabled')).toBe('true');
     agent.focus();
     expect(document.activeElement).toBe(agent);
-    expect(agent.title).toBe('Wait for the current turn to finish.');
+    expect(agent.title).toBe(
+      'Agent: Codex reviewer. Wait for the current turn to finish.',
+    );
     fireEvent.click(agent);
     expect(document.activeElement).toBe(agent);
   });
@@ -407,12 +453,52 @@ describe('ChatInputArea', () => {
     });
     expect(modelButton.getAttribute('aria-label')).toContain('OpenCode');
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
-    expect(modelButton.textContent).toContain('OpenCode');
-    expect(modelButton.textContent).toContain('Big Pickle');
+    expect(modelButton.title).toContain('OpenCode');
+    expect(modelButton.textContent).toBe('Big Pickle');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
     expect(modelButton.getAttribute('aria-label')).toContain('agent default');
+  });
+
+  // #1536 B5: the pill is an identity surface. The engine catalog publishes
+  // its default alias as "Default (recommended)" — right on an option, and on
+  // this pill it told the owner nothing while the dock header, Home and the
+  // sidebar named the same session something else.
+  test('names the engine default "Default", keeping the catalog option copy for the accessible name', () => {
+    renderChatInputArea({
+      modelProviderLabel: 'Claude Code',
+      currentModel: 'default',
+      agentDefaultModel: 'default',
+      availableModels: [{ id: 'default', name: 'Default (recommended)' }],
+    });
+
+    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    expect(modelButton.textContent).toContain('Default');
+    expect(modelButton.textContent).not.toContain('recommended');
+    // Nothing is lost: the catalog's own option name still reaches assistive
+    // tech through the accessible name.
+    expect(modelButton.getAttribute('aria-label')).toContain(
+      'Default (recommended)',
+    );
+  });
+
+  test('shows the concrete model an engine default resolved to', () => {
+    renderChatInputArea({
+      currentModel: 'default',
+      agentDefaultModel: 'default',
+      availableModels: [
+        {
+          id: 'default',
+          name: 'Default (recommended)',
+          resolvedModel: 'claude-opus-5',
+        },
+        { id: 'claude-opus-5', name: 'Opus 5', originalId: 'claude-opus-5' },
+      ],
+    });
+
+    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    expect(modelButton.textContent).toContain('Opus 5');
   });
 
   test('offers the model and effort picker without exposing unknown telemetry or "runtime" vocabulary', () => {
@@ -707,9 +793,72 @@ describe('ChatInputArea', () => {
       screen.queryByRole('button', { name: 'Enable full access' }),
     ).toBeNull();
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Ask every time\./ }),
+      screen.getByRole('button', { name: /^Approval mode: Ask first\./ }),
     ).toBeTruthy();
     expect(onApprovalModeChange).not.toHaveBeenCalled();
+  });
+
+  test('omits the approval chip for an external engine with no native knob (station#1933)', () => {
+    render(
+      <ChatInputArea
+        {...renderProps({
+          executionMode: 'external',
+          agentConnectionId: 'acp',
+        })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
+  });
+
+  test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {
+    const onAcpSessionModeChange = vi.fn();
+    const onApprovalModeChange = vi.fn();
+    renderChatInputArea({
+      executionMode: 'external',
+      agentConnectionId: 'kiro',
+      acpSessionModes: [
+        { id: 'build', name: 'Build' },
+        { id: 'plan', name: 'Plan', description: 'Read-only planning' },
+      ],
+      acpCurrentModeId: 'build',
+      onAcpSessionModeChange,
+      onApprovalModeChange,
+    });
+
+    expect(
+      await screen.findByRole('button', { name: /^Session mode: Build\./ }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Session mode: Build\./ }),
+    );
+    await screen.findByRole('radiogroup', { name: 'Session mode' });
+    fireEvent.click(screen.getByRole('radio', { name: /Plan/ }));
+    expect(onAcpSessionModeChange).toHaveBeenCalledWith('plan');
+    expect(onApprovalModeChange).not.toHaveBeenCalled();
+  });
+
+  test('station#1945: an ACP chat with no advertised modes does not invent a session-mode picker', () => {
+    renderChatInputArea({
+      executionMode: 'external',
+      agentConnectionId: 'kiro',
+      acpSessionModes: [],
+      onAcpSessionModeChange: vi.fn(),
+    });
+    expect(screen.queryByRole('button', { name: /^Session mode:/ })).toBeNull();
+    // kiro has no native approval knob: no chip and no read-only note
+    // either (station#1933).
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
   });
 
   describe('prompt size guard (station#2807)', () => {

@@ -43,12 +43,12 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { ClientConnectionLease } from '../../services/ssh/client-connection-presence.js';
 import { sseOps } from '../../telemetry/metrics.js';
-import { streamSSE } from '../sse-response.js';
+import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
 
 export interface EventRouteDeps {
   eventBus: EventBus;
@@ -85,12 +85,31 @@ export interface EventRouteDeps {
     data: unknown,
     authority: SessionReadAuthority,
   ) => boolean;
+  /**
+   * Classifies a plugin lifecycle frame through the per-principal plugin
+   * visibility projection (#2067).
+   *
+   * Absent means DENIED, not broadcast — the same default every other scoped
+   * channel takes here. That is deliberate: a composition that forgot to
+   * supply this must withhold plugin identity rather than fall back to the
+   * behaviour this gate exists to replace.
+   */
+  canReadPluginEvent?: (event: string, data: unknown, c: Context) => boolean;
   connectPairedDevice?: (request: Request) => ClientConnectionLease | undefined;
   isPairedDeviceConnectionCurrent?: (request: Request) => boolean;
   writeSse?: (
     stream: any,
     frame: { event: string; data: string },
   ) => Promise<void>;
+}
+
+/**
+ * The plugin lifecycle channels (#2067). Recognized by their `plugins:`
+ * namespace rather than by an enumerated list, so a NEW plugin channel is
+ * covered by this gate the moment it is named — the fail-closed direction.
+ */
+function isPluginIdentityEvent(event: string): boolean {
+  return event.startsWith('plugins:');
 }
 
 export function createEventRoutes({
@@ -102,6 +121,7 @@ export function createEventRoutes({
   canReadApprovalEvent,
   canReadAnswerAssessmentEvent,
   canReadAnswerNarrativeEvent,
+  canReadPluginEvent,
   connectPairedDevice,
   isPairedDeviceConnectionCurrent,
   writeSse,
@@ -195,6 +215,10 @@ export function createEventRoutes({
           // recognized for a channel means it is denied, not broadcast; this
           // is what keeps a newly-added scoped channel safe by default without
           // any change to this file (archive#1205, archive#3525).
+          if (isPluginIdentityEvent(evt.event)) {
+            if (canReadPluginEvent?.(evt.event, evt.data, c)) relay(evt);
+            return;
+          }
           if (isNotificationEvent(evt.event)) {
             if (
               canRelayNotificationEvent(
@@ -257,8 +281,12 @@ export function createEventRoutes({
         pendingEvents.length = 0;
         replayComplete = true;
 
+        // Not `sseKeepalive`: this stream's keepalive goes through
+        // `writeFrame`, which re-checks paired-device currency and can settle
+        // the disconnect, and touches the connection lease on a successful
+        // write. Writing straight to the stream would skip both.
         keepAlive = setInterval(() => {
-          writeFrame({ event: 'ping', data: '' })
+          writeFrame({ ...SSE_KEEPALIVE_FRAME })
             .then(() => clientLease?.touch())
             .catch(() => {});
         }, SSE_KEEPALIVE_INTERVAL_MS);

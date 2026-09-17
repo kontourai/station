@@ -19,10 +19,14 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { useConfig } from '../../contexts/ConfigContext';
+import { useACPConnections } from '../../hooks/useACPConnections';
 import { useCreateChatSession } from '../../hooks/useActiveChatSessions';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
+import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
+import { sessionAdapterSupportsSteering } from '../../utils/execution';
 import {
   accountableHumanFromUser,
   ownerAttributionFromStation,
@@ -169,6 +173,18 @@ export function ACPChatPanel({
     typeof runtimeConnection?.config.approvalMode === 'string'
       ? runtimeConnection.config.approvalMode
       : undefined;
+  // #2144 slice 6: the Station-scope layer below that connection default.
+  const stationApprovalModeDefault = useConfig()?.defaultApprovalMode;
+  const { data: acpConnections = [] } = useACPConnections();
+  const advertisedAcpSession = useMemo(
+    () =>
+      advertisedAcpSessionModesFromConnection(
+        acpConnections.find(
+          (connection) => connection.id === activeSession?.agentConnectionId,
+        ),
+      ),
+    [acpConnections, activeSession?.agentConnectionId],
+  );
 
   // A panel's Project is a default for its fresh tab only. A restored or
   // already-dispatched conversation has an immutable workspace identity from
@@ -268,6 +284,20 @@ export function ACPChatPanel({
         disabled={false}
         isSending={activeSession.status === 'sending'}
         turnInFlight={isTurnInFlight(activeSession)}
+        busyFollowUp={
+          isTurnInFlight(activeSession) &&
+          sessionAdapterSupportsSteering(
+            activeSession.agentConnectionId,
+            [],
+            activeSession.orchestrationProvider,
+          ) &&
+          chatInput.attachments.length === 0
+            ? 'steer'
+            : 'queue'
+        }
+        onQueueFollowUp={() =>
+          chatInput.handleSend(undefined, undefined, { queueOnBusy: true })
+        }
         modelSupportsAttachments={composerImageSupport.attachable}
         fileAttachmentsSupported={false}
         fontSize={13}
@@ -277,9 +307,13 @@ export function ACPChatPanel({
         availableModels={[]}
         modelQuery={chatInput.modelQuery}
         agentConnectionId={activeSession.agentConnectionId}
-        modelRuntimeOptions={activeSession.providerOptions}
+        modelRuntimeOptions={
+          activeSession.requestedProviderOptions ??
+          activeSession.providerOptions
+        }
         executionMode={activeSession.executionMode}
         approvalModeConnectionDefault={connectionApprovalModeDefault}
+        approvalModeStationDefault={stationApprovalModeDefault}
         toolPolicyDelivery={
           runtimeConnection
             ? resolveEngineCapabilityMatrix(
@@ -289,6 +323,10 @@ export function ACPChatPanel({
             : undefined
         }
         lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+        acpSessionModes={advertisedAcpSession.modes}
+        acpCurrentModeId={
+          activeSession.currentModeId ?? advertisedAcpSession.currentModeId
+        }
         commandQuery={chatInput.commandQuery}
         slashCommands={chatInput.slashCommands}
         onInputChange={chatInput.handleInputChange}
@@ -310,6 +348,7 @@ export function ACPChatPanel({
         onModelOpen={chatInput.handleModelOpen}
         onModelRuntimeOptionChange={chatInput.handleModelRuntimeOptionChange}
         onApprovalModeChange={chatInput.handleApprovalModeChange}
+        onAcpSessionModeChange={chatInput.handleAcpSessionModeChange}
         onCommandSelect={chatInput.handleCommandSelect}
         onCommandClose={chatInput.handleCommandClose}
         onHistoryUp={chatInput.handleHistoryUp}

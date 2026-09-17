@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { classifyGitRange } from './classify-ci-change.mjs';
+import {
+  ALL_DEPENDENCY_SCOPES,
+  classifyGitRange,
+  DEPENDENCY_SCOPE_ROOTS,
+} from './classify-ci-change.mjs';
+import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
+import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -255,6 +262,10 @@ function parseAudit(scope, input, reachability, resolvedVersions = {}) {
   return { counts, findings };
 }
 
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+/** Days of notice before an approval expires and the floor starts failing. */
+const EXPIRY_WARNING_DAYS = 14;
+
 function exceptionKey(value) {
   return `${value.scope}\u0000${value.package}\u0000${value.advisory}`;
 }
@@ -263,7 +274,7 @@ function residualKey(value) {
   return `${value.scope}\u0000${value.package}\u0000${value.version}\u0000${value.advisory}\u0000${value.reachability}`;
 }
 
-function validateExpiry(value, label, errors, now) {
+function validateExpiry(value, label, errors, now, warnings, descriptor) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     errors.push(`${label} expires must be an ISO YYYY-MM-DD date`);
     return;
@@ -277,9 +288,22 @@ function validateExpiry(value, label, errors, now) {
     expires.toISOString().slice(0, 10) !== value
   ) {
     errors.push(`${label} expires must be a valid calendar date (${value})`);
-  } else if (expires <= today) {
-    errors.push(`${label} is expired (${value})`);
+    return;
   }
+  if (expires <= today) {
+    errors.push(`${label} is expired (${value})`);
+    return;
+  }
+  // An expiry that lands on a quiet day reds whoever gates next, with no
+  // prior signal (#1753). Warn while the record can still be renewed; the
+  // floor itself is unchanged, so this never moves the exit code.
+  const days = Math.round(
+    (expires.valueOf() - today.valueOf()) / MILLISECONDS_PER_DAY,
+  );
+  if (days > EXPIRY_WARNING_DAYS) return;
+  warnings.push(
+    `${label} (${descriptor}) expires in ${days} day${days === 1 ? '' : 's'} (${value}) \u2014 renew or remediate before ${value}`,
+  );
 }
 
 function validateExceptions(input, scopes, now) {
@@ -305,6 +329,7 @@ function validateExceptions(input, scopes, now) {
   }
 
   const errors = [];
+  const warnings = [];
   const validated = [];
   const keys = new Set();
   for (const [index, rawException] of config.exceptions.entries()) {
@@ -352,7 +377,14 @@ function validateExceptions(input, scopes, now) {
       );
     }
     if (typeof exception.expires === 'string')
-      validateExpiry(exception.expires, `exception ${index + 1}`, errors, now);
+      validateExpiry(
+        exception.expires,
+        `exception ${index + 1}`,
+        errors,
+        now,
+        warnings,
+        `${exception.package} ${exception.advisory}`,
+      );
     const key = exceptionKey(exception);
     if (keys.has(key))
       errors.push(
@@ -400,7 +432,14 @@ function validateExceptions(input, scopes, now) {
       }
     }
     if (typeof residual.expires === 'string')
-      validateExpiry(residual.expires, label, errors, now);
+      validateExpiry(
+        residual.expires,
+        label,
+        errors,
+        now,
+        warnings,
+        `${residual.package} ${residual.advisory}`,
+      );
     const key = residualKey(residual);
     if (residualKeys.has(key))
       errors.push(
@@ -409,7 +448,7 @@ function validateExceptions(input, scopes, now) {
     residualKeys.add(key);
     residuals.push(residual);
   }
-  return { errors, validated, residuals };
+  return { errors, validated, residuals, warnings };
 }
 
 export function evaluateAuditPolicy(
@@ -420,7 +459,8 @@ export function evaluateAuditPolicy(
   if (!Array.isArray(auditDocuments) || auditDocuments.length === 0) {
     throw new Error('at least one scoped audit document is required');
   }
-  const scopes = new Set();
+  const knownScopes = new Set(ALL_DEPENDENCY_SCOPES);
+  const auditedScopes = new Set();
   const documentKeys = new Set();
   const parsed = [];
   for (const document of auditDocuments) {
@@ -431,6 +471,8 @@ export function evaluateAuditPolicy(
     ) {
       throw new Error('each audit document requires a non-empty scope');
     }
+    if (!knownScopes.has(document.scope))
+      throw new Error(`unknown audit document scope: ${document.scope}`);
     const reachability = document.reachability ?? 'full';
     if (!REACHABILITY.has(reachability))
       throw new Error(
@@ -442,7 +484,7 @@ export function evaluateAuditPolicy(
         `duplicate audit document: ${document.scope}:${reachability}`,
       );
     documentKeys.add(documentKey);
-    scopes.add(document.scope);
+    auditedScopes.add(document.scope);
     parsed.push({
       scope: document.scope,
       reachability,
@@ -455,11 +497,15 @@ export function evaluateAuditPolicy(
     });
   }
   const now = options.now instanceof Date ? options.now : new Date();
+  // Partial scans still validate the entire committed policy. An unscanned
+  // scope is not unknown, and filtering its rules here would hide typos,
+  // malformed entries, or expired approvals until that scope was scanned.
   const {
     errors: exceptionErrors,
     validated: exceptions,
     residuals,
-  } = validateExceptions(exceptionConfig, scopes, now);
+    warnings: expiryWarnings,
+  } = validateExceptions(exceptionConfig, knownScopes, now);
   const allFindings = parsed.flatMap((entry) => entry.findings);
   const acceptedFindings = [];
   const blockingFindings = [];
@@ -517,14 +563,19 @@ export function evaluateAuditPolicy(
     acceptedFindings.push(finding);
   }
   for (const exception of exceptions) {
-    if (!usedExceptions.has(exception)) {
+    if (auditedScopes.has(exception.scope) && !usedExceptions.has(exception)) {
       exceptionErrors.push(
         `unused exception for ${exception.scope}:${exception.package}:${exception.advisory}`,
       );
     }
   }
   for (const residual of residuals) {
-    if (!usedResiduals.has(residual)) {
+    // A full-graph audit does not establish production reachability. Only
+    // the corresponding production document can prove a residual is unused.
+    if (
+      documentKeys.has(`${residual.scope}\u0000production`) &&
+      !usedResiduals.has(residual)
+    ) {
       exceptionErrors.push(
         `unused residual for ${residual.scope}:${residual.package}:${residual.version}:${residual.advisory}`,
       );
@@ -546,6 +597,9 @@ export function evaluateAuditPolicy(
     trackedResiduals,
     untrackedResiduals,
     exceptionErrors,
+    // Advisory only: an approaching expiry is a reminder, never a verdict.
+    // `ok` above does not read it.
+    expiryWarnings,
   };
 }
 
@@ -578,6 +632,8 @@ export function formatPolicyReport(result) {
   }
   for (const error of result.exceptionErrors)
     lines.push(`EXCEPTION ERROR: ${error}`);
+  for (const warning of result.expiryWarnings ?? [])
+    lines.push(`WARN: ${warning}`);
   lines.push(
     result.ok
       ? 'PASS: no unaccepted critical/high advisories or production residuals'
@@ -599,14 +655,41 @@ function readJson(file, label) {
 const AUDIT_TIMEOUT_MS = 4 * 60 * 1000;
 const AUDIT_ATTEMPTS = 2;
 
+/**
+ * #1430 — GitHub sets `pull_request.base.sha` to the base branch's CURRENT
+ * TIP, not the point the branch was cut from. Diffing that against the head
+ * therefore attributes every dependency change that landed on `main` after
+ * the branch started to this pull request, and drags a change with no
+ * dependency inputs of its own through a live registry scan. Those commits
+ * were audited on their own pull requests and again by `main`'s push run;
+ * this range must describe what the branch itself changed.
+ *
+ * Failing to resolve a merge base (a shallow clone, an unfetched base) is
+ * left to the caller's `catch`, which fails closed — the right answer when
+ * the range is unknown.
+ */
+function gitMergeBase({ before, after, cwd }) {
+  return execFileSync('git', ['merge-base', before, after], {
+    cwd,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
+}
+
 export function dependencyAuditDecision({
   env = process.env,
   loadEvent = (eventPath) => JSON.parse(readFileSync(eventPath, 'utf8')),
   classifyRange = classifyGitRange,
+  resolveMergeBase = gitMergeBase,
   cwd = REPO_ROOT,
 } = {}) {
   if (env.GITHUB_ACTIONS !== 'true')
-    return { required: true, reason: 'non-github execution' };
+    return {
+      required: true,
+      reason: 'non-github execution',
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+      range: null,
+    };
 
   const eventName = env.GITHUB_EVENT_NAME;
   if (
@@ -614,13 +697,29 @@ export function dependencyAuditDecision({
       eventName,
     )
   )
-    return { required: true, reason: `${eventName ?? 'unknown'} event` };
+    return {
+      required: true,
+      reason: `${eventName ?? 'unknown'} event`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+      // These events carry no range at all -- they are periodic or operator
+      // driven -- so there is nothing to report. `null` rather than a
+      // plausible placeholder: a log line that invents a range is the defect
+      // this field exists to prevent (#1442).
+      range: null,
+    };
 
   try {
     if (!env.GITHUB_EVENT_PATH) throw new Error('GITHUB_EVENT_PATH is missing');
     const event = loadEvent(env.GITHUB_EVENT_PATH);
+    // `merge_group` and `push` already carry a genuine range boundary
+    // (`base_sha` is the candidate's own base, `before` the previous tip), so
+    // only the pull-request path needs the merge base — see `gitMergeBase`.
     const before = eventName.startsWith('pull_request')
-      ? event.pull_request?.base?.sha
+      ? resolveMergeBase({
+          before: event.pull_request?.base?.sha,
+          after: event.pull_request?.head?.sha,
+          cwd,
+        })
       : eventName === 'merge_group'
         ? event.merge_group?.base_sha
         : event.before;
@@ -633,51 +732,108 @@ export function dependencyAuditDecision({
     return {
       required: classification.dependencies,
       reason: classification.classification,
+      // A classifier that does not name scopes is not a classifier that means
+      // "none": anything short of an explicit list scans everything.
+      scopes: Array.isArray(classification.dependencyScopes)
+        ? classification.dependencyScopes
+        : [...ALL_DEPENDENCY_SCOPES],
+      // The range this decision was actually made from, so the log reports
+      // the evidence rather than re-deriving it. #1430 -- every pull request
+      // reaching the registry because this range started at the base branch
+      // tip -- stayed invisible for a day because no message named it.
+      range: { before, after },
     };
   } catch (error) {
     return {
       required: true,
       reason: `range classification failed closed: ${error.message}`,
+      scopes: [...ALL_DEPENDENCY_SCOPES],
+      // The failure may be the range resolution itself, so there is no range
+      // this decision can honestly claim to have classified.
+      range: null,
     };
   }
 }
 
-function runAuditAttempt(scope, cwd, productionOnly) {
+/** @type {(command: string, args: string[], options: import('node:child_process').ExecFileOptionsWithStringEncoding, callback: (error: import('node:child_process').ExecFileException | null, stdout: string, stderr: string) => void) => import('node:child_process').ChildProcess} */
+const executeAuditFile = execFile;
+
+export function runAuditAttempt(
+  scope,
+  cwd,
+  productionOnly,
+  {
+    attempt = 1,
+    execute = executeAuditFile,
+    diagnosticsRoot = path.join(
+      REPO_ROOT,
+      '.kontourai/verification-output/dependency-audit',
+    ),
+  } = {},
+) {
   const args = ['audit', '--json'];
   if (productionOnly) args.push('--omit=dev');
   if (scope !== 'root') args.push('--workspaces=false');
+  const diagnostics = createAuditAttemptDiagnostics({
+    scope,
+    reachability: productionOnly ? 'production' : 'full',
+    attempt,
+    outputRoot: diagnosticsRoot,
+    timeoutMs: AUDIT_TIMEOUT_MS,
+  });
+  args.push(...diagnostics.args);
+  const npm = npmInvocation(args);
   return new Promise((resolveAudit, rejectAudit) => {
-    execFile(
-      'npm',
-      args,
-      {
-        cwd,
-        encoding: 'utf8',
-        maxBuffer: 50 * 1024 * 1024,
-        timeout: AUDIT_TIMEOUT_MS,
-      },
-      (error, stdout, stderr) => {
-        const status = error
-          ? typeof error.code === 'number'
-            ? error.code
-            : null
-          : 0;
-        try {
-          resolveAudit(
-            parseAuditCommandResult(scope, {
-              error:
-                error && status === null && !error.signal ? error : undefined,
-              status,
-              signal: error?.signal ?? null,
-              stdout,
-              stderr,
-            }),
-          );
-        } catch (parseError) {
-          rejectAudit(parseError);
-        }
-      },
-    );
+    diagnostics.startChild();
+    let child;
+    try {
+      child = execute(
+        npm.command,
+        npm.args,
+        {
+          cwd,
+          encoding: 'utf8',
+          maxBuffer: 50 * 1024 * 1024,
+          timeout: AUDIT_TIMEOUT_MS,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          const status = error
+            ? typeof error.code === 'number'
+              ? error.code
+              : null
+            : 0;
+          diagnostics.settle({
+            status,
+            signal: error?.signal ?? null,
+            operationalCode: error?.code,
+          });
+          try {
+            resolveAudit(
+              parseAuditCommandResult(scope, {
+                error:
+                  error && status === null && !error.signal ? error : undefined,
+                status,
+                signal: error?.signal ?? null,
+                stdout,
+                stderr,
+              }),
+            );
+          } catch (parseError) {
+            rejectAudit(parseError);
+          }
+        },
+      );
+    } catch (error) {
+      diagnostics.settle({
+        status: null,
+        signal: null,
+        operationalCode: error?.code,
+      });
+      rejectAudit(error);
+      return;
+    }
+    child.stderr?.on('data', (chunk) => diagnostics.consume(chunk));
   });
 }
 
@@ -689,17 +845,17 @@ export async function withAuditRetries(
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await operation();
+      return await operation(attempt);
     } catch (error) {
       lastError = error;
       if (attempt < attempts)
         console.warn(
-          `npm audit operational attempt ${attempt}/${attempts} failed for ${scope}; retrying: ${error.message}`,
+          `dependency audit operational attempt ${attempt}/${attempts} failed for ${scope}; retrying: ${error.message}`,
         );
     }
   }
   throw new Error(
-    `npm audit failed for ${scope} after ${attempts} attempts: ${lastError?.message ?? 'unknown error'}`,
+    `dependency audit failed for ${scope} after ${attempts} attempts: ${lastError?.message ?? 'unknown error'}`,
   );
 }
 
@@ -710,8 +866,8 @@ function runAudit(scope, cwd, productionOnly = false) {
   } catch {
     throw new Error(`committed lockfile is missing for ${scope}: ${lockfile}`);
   }
-  return withAuditRetries(scope, () =>
-    runAuditAttempt(scope, cwd, productionOnly),
+  return withAuditRetries(scope, (attempt) =>
+    runAuditAttempt(scope, cwd, productionOnly, { attempt }),
   );
 }
 
@@ -720,6 +876,18 @@ export function collectAudits(
   auditRunner = runAudit,
   versionResolver = resolvedVersions,
 ) {
+  if (
+    auditRunner === runAudit &&
+    readJson(
+      path.join(REPO_ROOT, 'package.json'),
+      'manifest',
+    ).packageManager?.startsWith('pnpm@')
+  )
+    return collectPnpmAudits(scopes, {
+      root: REPO_ROOT,
+      run: (root) =>
+        withAuditRetries('pnpm workspace', () => runPnpmAudit(root)),
+    });
   const requests = scopes.flatMap(({ scope, cwd }) => [
     { scope, cwd, reachability: 'full', productionOnly: false },
     { scope, cwd, reachability: 'production', productionOnly: true },
@@ -776,7 +944,14 @@ export function parseAuditCommandResult(scope, result) {
     parsed?.auditReportVersion !== 2 &&
     Object.hasOwn(parsed ?? {}, 'error')
   ) {
-    const detail = JSON.stringify(parsed.error).slice(0, 500);
+    // A registry failure puts its reason in a top-level `message` and leaves
+    // `error.summary`/`error.detail` empty strings, so quoting `error` alone
+    // reports an operational failure with no reason in it (#1403).
+    const reason =
+      typeof parsed.message === 'string' && parsed.message.trim() !== ''
+        ? { message: parsed.message, error: parsed.error }
+        : parsed.error;
+    const detail = JSON.stringify(reason).slice(0, 500);
     throw new Error(
       `npm audit operational response for ${scope} (exit ${result.status}): ${detail}`,
     );
@@ -784,26 +959,114 @@ export function parseAuditCommandResult(scope, result) {
   return parsed;
 }
 
-export async function runPolicyCli() {
-  const decision = dependencyAuditDecision();
+/**
+ * The scopes an audit run covers, derived from the ONE map that also decides
+ * attribution. Keeping a second list here is what would let a scope be added
+ * to the audit, never appear in any classifier's widening, and be silently
+ * filtered out of every pull request -- unscanned, reported as a clean run.
+ */
+export const AUDIT_SCOPES = ALL_DEPENDENCY_SCOPES.map((scope) => ({
+  scope,
+  // `resolve`, not `join`: the scope roots are slash-terminated prefixes
+  // because attribution compares them against a path's directory, and joining
+  // one would carry that trailing slash into the audit's cwd. Nothing
+  // downstream breaks on it -- every consumer re-joins -- but it makes the
+  // value differ from the hardcoded path it replaced for no reason.
+  cwd: path.resolve(REPO_ROOT, DEPENDENCY_SCOPE_ROOTS[scope]),
+}));
+
+/**
+ * Each scope costs TWO concurrent `npm audit` processes (full and production),
+ * and `packages/sdk`/`packages/shared` have no installed tree -- the repo
+ * installs at the root -- so npm resolves theirs from the registry. Auditing
+ * all three ran six registry-bound processes against a four-minute per-call
+ * timeout that one of them exceeds on its own; #1417 has the measurements.
+ *
+ * A decision that names no scopes at all is treated as every scope, never as
+ * none. An empty selection is a bug, not a clean run, so it throws rather than
+ * reporting success having audited nothing.
+ */
+export function selectAuditScopes(decision, allScopes = AUDIT_SCOPES) {
+  const selected = new Set(
+    decision.scopes ?? allScopes.map((entry) => entry.scope),
+  );
+  const scopes = allScopes.filter((entry) => selected.has(entry.scope));
+  if (scopes.length === 0) {
+    throw new Error(
+      `dependency advisory scan selected no scopes (decision: ${decision.reason})`,
+    );
+  }
+  return scopes;
+}
+
+/**
+ * The range a decision was made from, in a form a reader can paste into
+ * `git diff`. Decisions that have no range say so rather than print
+ * something that looks like one (#1442).
+ */
+function describeRange(range) {
+  if (!range?.before || !range?.after) return 'no range (event carries none)';
+  return `${range.before.slice(0, 8)}..${range.after.slice(0, 8)}`;
+}
+
+/**
+ * `decide` and `runAudits` are injected so BOTH log lines can be exercised by
+ * a test. The scanning message is the one this change exists to fix, and
+ * without an injection point it is only reachable by contacting the live npm
+ * registry -- which is to say, unreachable from a test, which is how a
+ * message that explained nothing survived (#1442).
+ */
+/**
+ * Render the approaching-expiry warnings as GitHub annotations. The
+ * scheduled run in .github/workflows/dependency-advisory.yml is the reader:
+ * a WARN line in a green log nobody opens is not a reminder, and the run
+ * summary is where a maintainer sees one without being blocked by it.
+ */
+export function formatExpiryAnnotations(result, env = process.env) {
+  if (env?.GITHUB_ACTIONS !== 'true') return [];
+  return (result?.expiryWarnings ?? []).map(
+    (warning) =>
+      `::warning title=Dependency advisory approval expiring::${warning}`,
+  );
+}
+
+export async function runPolicyCli({
+  decide = dependencyAuditDecision,
+  runAudits = collectAudits,
+  env = process.env,
+} = {}) {
+  const decision = decide();
   if (!decision.required) {
     console.log(
-      `Dependency advisory floor: skipped live registry scan (${decision.reason}; no dependency inputs changed)`,
+      `Dependency advisory floor: skipped live registry scan — no dependency inputs in ${describeRange(decision.range)} (${decision.reason})`,
     );
     return 0;
   }
-  const scopes = [
-    { scope: 'root', cwd: REPO_ROOT },
-    { scope: 'sdk', cwd: path.join(REPO_ROOT, 'packages', 'sdk') },
-    { scope: 'shared', cwd: path.join(REPO_ROOT, 'packages', 'shared') },
-  ];
-  const audits = await collectAudits(scopes);
+  const scopes = selectAuditScopes(decision);
+  // Name the range on this path too. `reason` is a docs-vs-runtime
+  // classification, orthogonal to whether dependencies changed, so on its own
+  // it cannot explain why the registry is being contacted.
+  //
+  // The justification has to be derived from whether a range exists, not
+  // asserted. A scheduled or dispatched run scans everything BECAUSE it is
+  // periodic, not because anything changed -- and it never sees a range at
+  // all, so "dependency inputs changed" would be a claim nothing computed
+  // (#1465). That is the failure this whole message set exists to remove.
+  const why = decision.range
+    ? `dependency inputs changed in ${describeRange(decision.range)}`
+    : 'full scan; this event carries no range to narrow by';
+  console.log(
+    `Dependency advisory floor: scanning ${scopes.map((entry) => entry.scope).join(', ')} — ${why} (${decision.reason})`,
+  );
+  const audits = await runAudits(scopes);
   const exceptions = readJson(
     path.join(SCRIPT_DIR, 'dependency-advisory-exceptions.json'),
     'exception config',
   );
   const result = evaluateAuditPolicy(audits, exceptions);
   console.log(formatPolicyReport(result));
+  for (const annotation of formatExpiryAnnotations(result, env))
+    console.log(annotation);
   return result.ok ? 0 : 1;
 }
 

@@ -5,11 +5,13 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   clearAll,
   createProviderAdapterRegistry,
+  listProviders,
   providerAdapterLaunchabilitySource,
 } from '../../../providers/registries/registry.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
 import { loadPluginProviders } from '../plugin-loader.js';
 
 describe('loadPluginProviders', () => {
@@ -18,6 +20,67 @@ describe('loadPluginProviders', () => {
   afterEach(() => {
     clearAll();
     if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+  });
+
+  test('a second-provider admission refusal disposes the first prepared instance without publishing or running the second factory', async () => {
+    projectHome = mkdtempSync(
+      join(tmpdir(), 'station-provider-admission-cleanup-'),
+    );
+    const pluginsDir = join(projectHome, 'plugins'),
+      pluginDir = join(pluginsDir, 'admission-cleanup');
+    mkdirSync(pluginDir, { recursive: true });
+    const globals = globalThis as typeof globalThis & {
+      __stationFirstPrepared?: number;
+      __stationFirstDisposed?: number;
+      __stationSecondPrepared?: number;
+    };
+    globals.__stationFirstPrepared = 0;
+    globals.__stationFirstDisposed = 0;
+    globals.__stationSecondPrepared = 0;
+    writeFileSync(
+      join(pluginDir, 'first.mjs'),
+      "export default function () { globalThis.__stationFirstPrepared++; return { provider: 'first-prepared', metadata: { displayName: 'First', description: 'Fixture', capabilities: ['agent-runtime'], runtimeId: 'first-prepared' }, startSession: async () => ({}), sendTurn: async () => ({}), interruptTurn: async () => {}, respondToRequest: async () => {}, stopSession: async () => {}, listSessions: async () => [], hasSession: async () => false, streamEvents: async function* () {}, stopAll: async () => { globalThis.__stationFirstDisposed++; } }; }",
+    );
+    writeFileSync(
+      join(pluginDir, 'second.mjs'),
+      "export default function () { globalThis.__stationSecondPrepared++; return { provider: 'second-prepared', metadata: { displayName: 'Second', description: 'Fixture', capabilities: ['agent-runtime'], runtimeId: 'second-prepared' }, startSession: async () => ({}), sendTurn: async () => ({}), interruptTurn: async () => {}, respondToRequest: async () => {}, stopSession: async () => {}, listSessions: async () => [], hasSession: async () => false, streamEvents: async function* () {}, stopAll: async () => {} }; }",
+    );
+    try {
+      await expect(
+        loadPluginProviders(
+          pluginsDir,
+          'admission-cleanup',
+          {
+            name: 'admission-cleanup',
+            version: '1.0.0',
+            providers: [
+              { type: 'providerAdapter', module: './first.mjs' },
+              { type: 'providerAdapter', module: './second.mjs' },
+            ],
+          },
+          { error: vi.fn() },
+          {
+            strict: true,
+            beforeEffect: async () => {
+              if (globals.__stationFirstPrepared)
+                throw new Error('policy admission withdrawn');
+            },
+          },
+        ),
+      ).rejects.toThrow('policy admission withdrawn');
+      expect(globals.__stationFirstPrepared).toBe(1);
+      expect(globals.__stationFirstDisposed).toBe(1);
+      expect(globals.__stationSecondPrepared).toBe(0);
+      expect(
+        listProviders('providerAdapter').some(
+          (entry) => entry.source === 'admission-cleanup',
+        ),
+      ).toBe(false);
+    } finally {
+      delete globals.__stationFirstPrepared;
+      delete globals.__stationFirstDisposed;
+      delete globals.__stationSecondPrepared;
+    }
   });
 
   test('registers plugin adapters through the revision-aware adapter API', async () => {
@@ -52,6 +115,9 @@ describe('loadPluginProviders', () => {
         streamEvents: async function* () {}
       };`,
     );
+    await grantPermissions(projectHome, 'runtime-plugin', [
+      'providers.register',
+    ]);
     const before =
       providerAdapterLaunchabilitySource.getLaunchabilityRevision();
 
@@ -113,6 +179,9 @@ describe('loadPluginProviders', () => {
           stopAll: async () => undefined, streamEvents: async function* () {}
         };`,
       );
+      await grantPermissions(projectHome, 'legacy-runtime-plugin', [
+        'providers.register',
+      ]);
       await loadPluginProviders(
         pluginsDir,
         'legacy-runtime-plugin',
@@ -245,6 +314,9 @@ describe('loadPluginProviders', () => {
     const logger = { error: vi.fn() } as any;
     const before =
       providerAdapterLaunchabilitySource.getLaunchabilityRevision();
+    await grantPermissions(projectHome, 'runtime-plugin', [
+      'providers.register',
+    ]);
     await loadPluginProviders(
       pluginsDir,
       'runtime-plugin',

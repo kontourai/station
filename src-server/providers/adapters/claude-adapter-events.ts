@@ -1,20 +1,28 @@
 import crypto from 'node:crypto';
 import type {
+  PermissionMode,
   PermissionResult,
   PermissionUpdate,
   SDKMessage,
+  TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
-import { ENGINE_SESSION_BINDING_DEAD_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
+} from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
   ToolOutputReceipt,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
+import { mapPermissionModeToApprovalMode } from './claude-approval-mode.js';
 import {
   classifyClaudeResultOutcome,
   claudeResultFailureText,
 } from './claude-result-outcome.js';
+import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
+import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** A token figure is only usable when it is a finite, non-negative count. */
 function tokenCount(value: unknown): number | undefined {
@@ -90,8 +98,80 @@ function claudeContextOccupancyField(usage: unknown): {
   };
 }
 
+/**
+ * Claude's `stop_reason` for a turn the engine handed back to its SDK host
+ * with a tool call it declined to run itself — the outcome of a `PreToolUse`
+ * hook answering `permissionDecision: 'defer'`. The call itself arrives on
+ * `result.deferred_tool_use`, and the engine will never emit a `tool_result`
+ * for it: whatever executes it is the host's problem.
+ */
+const CLAUDE_DEFERRED_TOOL_STOP_REASON = 'tool_deferred';
+
+/**
+ * The `terminal_reason` values that name a deferral BY NAME rather than
+ * leaving it to the `stop_reason` string. Typed against the SDK's own
+ * `TerminalReason` union, so dropping or renaming either member breaks the
+ * build here instead of quietly falling through to `'stop'` —
+ * `'tool_deferred_unavailable'` in particular is a deferral Station would
+ * otherwise only recognise if it happened to also set `stop_reason`.
+ */
+const CLAUDE_DEFERRED_TERMINAL_REASONS: readonly TerminalReason[] = [
+  'tool_deferred',
+  'tool_deferred_unavailable',
+];
+
+function claudeResultDeferredTurn(message: SDKMessage & { type: 'result' }) {
+  const terminalReason =
+    'terminal_reason' in message ? message.terminal_reason : undefined;
+  return (
+    (terminalReason !== undefined &&
+      CLAUDE_DEFERRED_TERMINAL_REASONS.includes(terminalReason)) ||
+    ('stop_reason' in message &&
+      message.stop_reason === CLAUDE_DEFERRED_TOOL_STOP_REASON)
+  );
+}
+
+/**
+ * What a reader is told about a deferred tool call. Station has no executor
+ * for one — it does not ask the engine to defer (`preToolPolicyHookOutput`,
+ * claude-adapter.ts) — so the honest record is that the call did not run and
+ * why, not the absence a client renders as "No result recorded".
+ */
+const CLAUDE_DEFERRED_TOOL_ERROR =
+  'The engine handed this tool call back to Station to execute, which Station cannot do. The tool did not run.';
+
+/**
+ * The deferred call off a `result` message, when the engine reported one.
+ *
+ * `deferred_tool_use` is the SDK's own structured field (`SDKDeferredToolUse`)
+ * and is the ONLY signal used here — deliberately not "every id still in
+ * `activeToolCalls` when a result arrives", which would settle a backgrounded
+ * `Task` (whose `tool_result` legitimately arrives after the turn ends, and
+ * whose lifecycle `activeTasks`/`settleClaudeTask` owns) as a failure it is
+ * not.
+ */
+function claudeDeferredToolUse(
+  message: SDKMessage & { type: 'result' },
+): { id: string; name?: string } | undefined {
+  // Narrowed off the SDK type, not off a `Record<string, unknown>` cast: an
+  // upstream rename of `deferred_tool_use` must break this compile rather than
+  // silently return `undefined` forever and restore the original defect.
+  const deferred =
+    'deferred_tool_use' in message ? message.deferred_tool_use : undefined;
+  if (!deferred || typeof deferred !== 'object') return undefined;
+  const { id, name } = deferred as { id?: unknown; name?: unknown };
+  if (typeof id !== 'string' || !id) return undefined;
+  return {
+    id,
+    ...(typeof name === 'string' && name ? { name } : {}),
+  };
+}
+
 export interface ClaudeMessageState {
   session: ProviderSession;
+  /** Live SDK permission mode; unset until Station sent one or init reported it. */
+  currentPermissionMode?: PermissionMode;
+  allowsBypassPermissions?: boolean;
   activeTurnId?: string;
   /**
    * The one local turn whose prompt has actually entered the SDK queue.
@@ -131,13 +211,79 @@ export interface ClaudeMessageState {
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
   /**
-   * `toolCallId → toolName` for top-level assistant `tool_use` blocks whose
-   * `tool_result` has not arrived yet. Doubles as the replay guard: a
-   * `tool_result` for an untracked id (e.g. resume replay) is ignored.
+   * station#1892: tasks this process already settled, retained so a SECOND
+   * terminal for the same `task_id` is recognised as a duplicate rather than
+   * misread as a task started before Station attached.
+   *
+   * The SDK routinely sends two terminals for one subagent — a `task_updated`
+   * whose patch carries a terminal status, then a `task_notification` — and
+   * they carry complementary halves: the first has the task's identity
+   * (`toolCallId`, `description`), the second has the result (`summary`,
+   * `output_file`, `usage`). Deleting on the first made the second land in
+   * the untracked branch, which publishes no identity, so neither settle was
+   * complete and the one carrying the result was the one clients dropped.
+   *
+   * `hadResult` records whether the settle already published a result, so an
+   * enrichment is emitted at most once per task and a genuinely duplicate
+   * terminal adds nothing.
    */
-  activeToolCalls?: Map<string, string>;
+  settledTasks?: Map<string, { task: ClaudeActiveTask; hadResult: boolean }>;
   /**
-   * archive#1827: set when a `result` message classified `terminal`
+   * `toolCallId → { toolName, turnId, terminalPublished }` for top-level
+   * assistant `tool_use` blocks whose `tool_result` has not arrived yet.
+   * Doubles as the replay guard: a `tool_result` for an untracked id (e.g.
+   * resume replay) is ignored. `turnId` is the dispatched turn the call
+   * belongs to, so a late result (a stopped turn's, or a backgrounded
+   * Task's) lands on the turn that issued the call rather than on whichever
+   * turn is active.
+   *
+   * Entries are settled by their own `tool_result`, by the SDK's deferral
+   * report above, or — station#1558 — by the SESSION ending
+   * (`settleUnresolvedClaudeToolCalls`), which is the one moment a still-open
+   * call is provably never going to report. Never by a TURN ending, which
+   * would falsely settle a backgrounded Task that legitimately outlives its
+   * turn.
+   *
+   * A task settled through `settleClaudeTask` (its `task_updated` /
+   * `task_notification` terminal) keeps its entry — the real `tool_result`
+   * may still arrive and is still the authoritative output — but is marked
+   * `terminalPublished` so the session-end settle does not contradict the
+   * outcome the task already reported (station#1558 fix round, H1). The
+   * deferral path is the asymmetric case: it DELETES the entry, so a later
+   * `tool_result` for a deferred id is swallowed by the replay guard — by
+   * design, since the engine handed that call back and Station's terminal
+   * already says it did not run.
+   */
+  activeToolCalls?: Map<string, ClaudeActiveToolCall>;
+  /**
+   * station#1569 (item 1): entries moved out of `activeToolCalls` by the
+   * session-end settle, kept so a `tool_result` that STILL drains afterwards
+   * is published as the real terminal instead of being dropped by the replay
+   * guard above.
+   *
+   * The settle runs either from `consumeMessages`' `finally` — after which no
+   * further message can arrive, so this map is simply never read — or from
+   * `stopSession` when its bounded grace elapses on an engine whose iterator
+   * did not end at `close()`. That second case is the whole reason this map
+   * exists: the SDK can still be holding a queued `tool_result`, and the
+   * `unresolved` Station just published is an admitted non-answer, not an
+   * observed outcome. A real result that arrives after it CORRECTS it — and
+   * is consumed as a correction rather than as a second result, because both
+   * folds supersede an `unresolved` row in place (station#1569 H1:
+   * `runtime-event-projection.ts`'s `unresolvedToolsByCallId`,
+   * `messageParts.ts`'s `toolPartSettleableBy`).
+   *
+   * Entries whose terminal a settled Task already published
+   * (`terminalPublished`) are recorded here too: their own docblock says the
+   * real `tool_result` remains the authoritative output, and the settle
+   * skipping them must not also take that away.
+   *
+   * Not a replay-guard hole: this map is only ever populated at the end of
+   * THIS record's session, and a resume builds a new record.
+   */
+  settledToolCalls?: Map<string, ClaudeActiveToolCall>;
+  /**
+   * Set when a failed result was classified independently of native binding state
    * (`classifyClaudeResultOutcome`) has already been published as a
    * `runtime.error` for this record. The SDK re-throws the SAME failure a
    * moment later as a generic wrapped Error once the underlying `claude`
@@ -146,7 +292,9 @@ export interface ClaudeMessageState {
    * near-duplicate isn't published a second time as an unrelated raw-text
    * `runtime.error`.
    */
-  terminalResultObserved?: boolean;
+  terminalResultObserved?: 'failed' | 'binding-dead';
+  /** Captured at query start, never replaced by an init/result session_id. */
+  attemptedResumeCursor?: string;
   /**
    * archive#3457: the assistant message currently streaming content blocks,
    * taken from the last `message_start` stream event's `message.id` (the
@@ -185,13 +333,21 @@ function claudeContentItemId(
   return `${message.session_id}:${turnKey}:${record.contentMessageKey}:${blockIndex}`;
 }
 
-export interface ClaudeActiveTask {
+interface ClaudeActiveTask {
   taskId: string;
   toolCallId: string;
   toolName: string;
   description: string;
   subagentType?: string;
   backgrounded?: boolean;
+  /**
+   * station#1877 follow-up: the SDK's `spawn_depth` — 1 for a top-level
+   * spawn, N+1 when spawned from inside a depth-N agent. Station tracked no
+   * nesting at all, so a subagent's own subagents were indistinguishable
+   * from its siblings. Optional because the field is only present on
+   * `task_started`.
+   */
+  spawnDepth?: number;
 }
 
 /** Namespace for Claude-Code-specific `extension.notification` events. */
@@ -216,11 +372,23 @@ export function mapClaudeSdkMessage({
   const createdAt = new Date().toISOString();
 
   if (message.type === 'system' && message.subtype === 'init') {
-    record.session.resumeCursor = message.session_id;
+    const sourceCursor = claudeSourceResumeCursor(record.session.resumeCursor);
+    record.session.resumeCursor = sourceCursor
+      ? { ...sourceCursor, claudeSessionId: message.session_id }
+      : message.session_id;
     record.session.cwd = message.cwd;
     record.session.model = message.model;
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
+    if (message.permissionMode) {
+      record.currentPermissionMode = message.permissionMode;
+      if (message.permissionMode === 'bypassPermissions') {
+        record.allowsBypassPermissions = true;
+      }
+    }
+    const appliedApprovalMode = mapPermissionModeToApprovalMode(
+      message.permissionMode,
+    );
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -230,6 +398,12 @@ export function mapClaudeSdkMessage({
       sessionId: record.session.threadId,
       model: message.model,
       cwd: message.cwd,
+      metadata: {
+        ...(message.permissionMode
+          ? { permissionMode: message.permissionMode }
+          : {}),
+        ...(appliedApprovalMode ? { approvalMode: appliedApprovalMode } : {}),
+      },
     });
     return;
   }
@@ -267,24 +441,7 @@ export function mapClaudeSdkMessage({
       reason: liveTasks.length > 0 ? 'background-tasks' : undefined,
     });
     if (liveTasks.length > 0) {
-      publish({
-        eventId: crypto.randomUUID(),
-        provider,
-        threadId: record.session.threadId,
-        createdAt,
-        method: 'extension.notification',
-        namespace: CLAUDE_EXTENSION_NAMESPACE,
-        type: 'task/registry',
-        payload: {
-          active: liveTasks.map((task) => ({
-            taskId: task.taskId,
-            toolCallId: task.toolCallId,
-            description: task.description,
-            subagentType: task.subagentType,
-            backgrounded: task.backgrounded === true,
-          })),
-        },
-      });
+      publishClaudeTaskRegistry({ provider, record, publish, createdAt });
     }
     return;
   }
@@ -306,6 +463,11 @@ export function mapClaudeSdkMessage({
       toolName,
       description: message.description ?? '',
       subagentType: message.subagent_type,
+      ...(typeof message.spawn_depth === 'number' &&
+      Number.isFinite(message.spawn_depth) &&
+      message.spawn_depth > 0
+        ? { spawnDepth: message.spawn_depth }
+        : {}),
     });
     publish({
       eventId: crypto.randomUUID(),
@@ -323,6 +485,9 @@ export function mapClaudeSdkMessage({
         ...(message.prompt ? { prompt: message.prompt } : {}),
       },
     });
+    // station#1877: the live set changed, so the client needs the snapshot
+    // now — not only if this turn later goes idle with work still running.
+    publishClaudeTaskRegistry({ provider, record, publish, createdAt });
     return;
   }
 
@@ -386,10 +551,45 @@ export function mapClaudeSdkMessage({
         task: tracked,
         status,
         summary: message.summary,
+        outputFile: message.output_file,
+        usage: readClaudeTaskUsage(message.usage),
+      });
+    } else if (record.settledTasks?.has(message.task_id)) {
+      // station#1892: the SECOND terminal for a task this process already
+      // settled. The first one carried the task's identity but no result;
+      // this one carries the result but, in the SDK message, no identity.
+      // Re-publish the settle with both, so the event carrying the subagent's
+      // actual outcome is the same event a client can attribute and announce.
+      const retained = record.settledTasks.get(message.task_id);
+      if (!retained || retained.hadResult) return;
+      const enrichedUsage = readClaudeTaskUsage(message.usage);
+      if (!message.summary && !message.output_file && !enrichedUsage) return;
+      rememberSettledClaudeTask(record.settledTasks, retained.task, {
+        hadResult: true,
+      });
+      publish({
+        eventId: crypto.randomUUID(),
+        provider,
+        threadId: record.session.threadId,
+        createdAt,
+        method: 'extension.notification',
+        namespace: CLAUDE_EXTENSION_NAMESPACE,
+        type: 'task/settled',
+        payload: {
+          taskId: retained.task.taskId,
+          toolCallId: retained.task.toolCallId,
+          description: retained.task.description,
+          backgrounded: retained.task.backgrounded === true,
+          status,
+          summary: message.summary,
+          ...(message.output_file ? { outputFile: message.output_file } : {}),
+          ...(enrichedUsage ? { usage: enrichedUsage } : {}),
+        },
       });
     } else if (message.skip_transcript !== true) {
       // Untracked settle (e.g. task started before this process attached):
       // still let the client clear any stale activity affordance.
+      const untrackedUsage = readClaudeTaskUsage(message.usage);
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -402,6 +602,8 @@ export function mapClaudeSdkMessage({
           taskId: message.task_id,
           status,
           summary: message.summary,
+          ...(message.output_file ? { outputFile: message.output_file } : {}),
+          ...(untrackedUsage ? { usage: untrackedUsage } : {}),
         },
       });
     }
@@ -554,18 +756,15 @@ export function mapClaudeSdkMessage({
         ? { reportedCostUsd: message.total_cost_usd }
         : {}),
     });
-    // archive#1827: `is_error` is the SDK's own structured protocol flag on
-    // this message — set from its message shape, never from parsing the
-    // engine's English (see `classifyClaudeResultOutcome`'s doc comment).
-    // Folding a `terminal` result into `turn.completed` (as this branch
-    // used to, unconditionally) discarded the ONE structured sighting of
-    // the failure and rendered the engine's raw error text as if it were a
-    // normal assistant reply — the STRUCTURED signal `consumeMessages`'
-    // catch (`claude-adapter.ts`) never sees, because by the time the SDK
-    // re-throws, the underlying is_error flag is gone. Publishing
-    // `runtime.error` here instead lets the caller mark this binding dead
-    // exactly once, from the exact signal that proves it.
-    if (classifyClaudeResultOutcome(message) === 'terminal') {
+    // A structured error result ends the query/turn, never a successful
+    // response. Preserve it once before the SDK throws its wrapper. Only
+    // cursor-matched missing-session evidence disproves the native binding;
+    // refusals, limits and other query failures do not make that claim.
+    const outcome = classifyClaudeResultOutcome(
+      message,
+      record.attemptedResumeCursor,
+    );
+    if (outcome !== 'ok') {
       const turnId = record.activeTurnId;
       const interruptingTurnId = record.interruptingTurnId;
       if (interruptingTurnId) {
@@ -587,7 +786,8 @@ export function mapClaudeSdkMessage({
         });
         return;
       }
-      record.terminalResultObserved = true;
+      record.terminalResultObserved = outcome;
+      record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
       clearClaudeDispatchedTurn(record);
       publish({
         eventId: crypto.randomUUID(),
@@ -597,7 +797,10 @@ export function mapClaudeSdkMessage({
         turnId,
         method: 'runtime.error',
         severity: 'error',
-        code: ENGINE_SESSION_BINDING_DEAD_CODE,
+        code:
+          outcome === 'binding-dead'
+            ? ENGINE_SESSION_BINDING_DEAD_CODE
+            : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
       });
@@ -627,6 +830,38 @@ export function mapClaudeSdkMessage({
       record.dispatchedTurnId === record.activeTurnId
     ) {
       const turnId = record.activeTurnId;
+      // A turn the engine ended by handing a tool call back to its host: the
+      // call is unresolved and will stay that way. Settle it as the error it
+      // is, before the completion, so the transcript carries a reason instead
+      // of a started call with no outcome (#1536 finding B1) — and so this
+      // class can never again read as an ordinary stop, whatever produced it.
+      const deferred = claudeDeferredToolUse(message);
+      const deferredTurn =
+        Boolean(deferred) || claudeResultDeferredTurn(message);
+      // The name comes from the tracked `tool_use` this call was started from,
+      // or from the engine's own report of it — never invented: with neither,
+      // the completion is skipped and `finishReason` below carries the signal
+      // on its own, because a `tool.completed` naming a placeholder tool is a
+      // worse record than one fewer event.
+      const deferredToolName = deferred
+        ? (record.activeToolCalls?.get(deferred.id)?.toolName ?? deferred.name)
+        : undefined;
+      if (deferred && deferredToolName) {
+        record.activeToolCalls?.delete(deferred.id);
+        publish({
+          eventId: crypto.randomUUID(),
+          provider,
+          threadId: record.session.threadId,
+          createdAt,
+          turnId,
+          itemId: deferred.id,
+          method: 'tool.completed',
+          toolCallId: deferred.id,
+          toolName: deferredToolName,
+          status: 'error',
+          error: CLAUDE_DEFERRED_TOOL_ERROR,
+        });
+      }
       clearClaudeDispatchedTurn(record);
       publish({
         eventId: crypto.randomUUID(),
@@ -635,8 +870,16 @@ export function mapClaudeSdkMessage({
         createdAt,
         turnId,
         method: 'turn.completed',
-        finishReason:
-          message.stop_reason === 'tool_use' ? 'tool-calls' : 'stop',
+        // `'other'` — not `'stop'` and not `'tool-calls'` — for a deferral:
+        // the turn did not reach a self-reported outcome, and `'other'`
+        // deliberately carries no clear authority
+        // (`PROVIDER_PROVEN_FINISH_REASONS`, finish-reason-authority.ts), so
+        // it cannot supersede a recorded runtime error or clear auth health.
+        finishReason: deferredTurn
+          ? 'other'
+          : message.stop_reason === 'tool_use'
+            ? 'tool-calls'
+            : 'stop',
         outputText:
           message.type === 'result' && 'result' in message
             ? message.result
@@ -703,7 +946,10 @@ export function mapClaudeSdkMessage({
       if (!record.activeToolCalls) {
         record.activeToolCalls = new Map();
       }
-      record.activeToolCalls.set(toolUse.id, toolUse.name);
+      record.activeToolCalls.set(toolUse.id, {
+        toolName: toolUse.name,
+        turnId: record.activeTurnId,
+      });
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -742,15 +988,46 @@ export function mapClaudeSdkMessage({
       };
       const toolCallId = toolResult.tool_use_id;
       if (typeof toolCallId !== 'string') continue;
-      const toolName = record.activeToolCalls?.get(toolCallId);
-      if (!toolName) continue;
-      record.activeToolCalls?.delete(toolCallId);
+      const tracked = record.activeToolCalls?.get(toolCallId);
+      // station#1569 (item 1): an id the session-end settle already moved to
+      // `settledToolCalls` is not an untracked id. It is a call Station told
+      // the reader it had no answer for, and this is the answer arriving late
+      // — the only authoritative outcome Station ever receives for it.
+      // Dropping it (the `continue` below) left `unresolved` standing over a
+      // result that exists. See the field's docblock for when this is
+      // reachable at all, and station#1569 H1 for the fold rule that makes
+      // this event REPLACE that row rather than add a second one.
+      const settled = tracked
+        ? undefined
+        : record.settledToolCalls?.get(toolCallId);
+      const entry = tracked ?? settled;
+      if (!entry) continue;
+      const toolName = entry.toolName;
+      if (tracked) {
+        record.activeToolCalls?.delete(toolCallId);
+      } else {
+        record.settledToolCalls?.delete(toolCallId);
+        logInfo?.('Claude tool result arrived after the session-end settle', {
+          threadId: record.session.threadId,
+          toolCallId,
+          toolName,
+          // Read off the settle record, not asserted: `terminalPublished`
+          // is why the settle skipped publishing `unresolved` for this id
+          // (a Task terminal already stood), and its absence is why it did.
+          // So this names the claim this event actually replaces.
+          supersedes: entry.terminalPublished ? 'task-terminal' : 'unresolved',
+        });
+      }
       publish({
         eventId: crypto.randomUUID(),
         provider,
         threadId: record.session.threadId,
         createdAt,
-        turnId: record.activeTurnId,
+        // The turn that issued the tool_use, not whichever turn is active
+        // now: a stopped turn's delayed result must not land on its
+        // successor (the #921 window), or the provenance fold sees a start
+        // without a completion on one turn and the reverse on the other.
+        turnId: entry.turnId ?? record.activeTurnId,
         itemId: toolCallId,
         method: 'tool.completed',
         toolCallId,
@@ -774,6 +1051,93 @@ export function mapClaudeSdkMessage({
       method: 'runtime.warning',
       severity: 'warning',
       message: message.error,
+    });
+  }
+}
+
+interface ClaudeActiveToolCall {
+  toolName: string;
+  turnId?: string;
+  /**
+   * station#1558 (fix round, H1): a terminal `tool.completed` has already
+   * been published for this call id by a path that does NOT remove the entry
+   * — today only `settleClaudeTask`, whose Task terminal arrives before (and
+   * independently of) the `tool_result` the entry is still waiting for.
+   * The session-end settle skips these: publishing `unresolved` for a call
+   * the engine already reported as succeeded would contradict it.
+   */
+  terminalPublished?: true;
+}
+
+/**
+ * station#1558: what a reader is told about a `tool_use` that was still open
+ * when its SESSION ended. Retained under the Claude name for this adapter's
+ * own consumers; station#1569 (item 4) moved the sentence itself to
+ * `unresolved-tool-output.ts` once three more adapters had to say the same
+ * thing (see that module).
+ */
+export const CLAUDE_UNRESOLVED_TOOL_OUTPUT = UNRESOLVED_TOOL_OUTPUT;
+
+/**
+ * Settle every `tool_use` still tracked in `record.activeToolCalls` as
+ * `status: 'unresolved'` (station#1558).
+ *
+ * Called ONLY when the SESSION ends — `stopSession`, and the end of
+ * `consumeMessages` (the SDK iterator finishing or throwing, i.e. the
+ * `claude` process exiting). Never on a turn ending: `activeToolCalls`
+ * deliberately outlives its turn so a backgrounded `Task`'s legitimately
+ * late `tool_result` still settles the real call (see that field's
+ * docblock), and settling at a turn boundary would fabricate a non-outcome
+ * for a call that is still perfectly capable of producing a real one.
+ *
+ * Each entry is settled on the turn that ISSUED it (`tracked.turnId`), not
+ * on whichever turn was active last — the same rule the real `tool_result`
+ * path follows. The map is cleared before publishing, so a session that ends
+ * through both paths settles each call exactly once and never touches an
+ * entry that was already settled by its own result or by the SDK's deferral
+ * report (both remove the entry) — nor one whose terminal a settled Task
+ * already published (`terminalPublished`, skipped below).
+ */
+export function settleUnresolvedClaudeToolCalls({
+  provider,
+  record,
+  publish,
+  createdAt,
+}: {
+  provider: ProviderSession['provider'];
+  record: ClaudeMessageState;
+  publish: (event: CanonicalRuntimeEvent) => void;
+  createdAt?: string;
+}): void {
+  const open = record.activeToolCalls;
+  if (!open || open.size === 0) return;
+  const settledAt = createdAt ?? new Date().toISOString();
+  const entries = [...open];
+  open.clear();
+  // station#1569 (item 1): remember what was settled. `stopSession`'s grace
+  // can elapse while the SDK still holds a queued `tool_result`, and the
+  // replay guard used to drop it — leaving `unresolved` standing over a
+  // result Station had actually received. See `settledToolCalls`.
+  const settled = (record.settledToolCalls ??= new Map());
+  for (const [toolCallId, tracked] of entries) {
+    settled.set(toolCallId, tracked);
+    // station#1558 (fix round, H1): a call whose terminal was already
+    // published (a settled backgrounded Task) is not unresolved — its outcome
+    // was reported, only its `tool_result` never came back. Publishing
+    // `unresolved` here would contradict that outcome with a second terminal.
+    if (tracked.terminalPublished) continue;
+    publish({
+      eventId: crypto.randomUUID(),
+      provider,
+      threadId: record.session.threadId,
+      createdAt: settledAt,
+      ...(tracked.turnId !== undefined ? { turnId: tracked.turnId } : {}),
+      itemId: toolCallId,
+      method: 'tool.completed',
+      toolCallId,
+      toolName: tracked.toolName,
+      status: 'unresolved',
+      output: CLAUDE_UNRESOLVED_TOOL_OUTPUT,
     });
   }
 }
@@ -817,6 +1181,109 @@ export function mapClaudeTaskStatus(
   }
 }
 
+/**
+ * Publishes the current live subagent set.
+ *
+ * station#1877: this used to be reachable only from the `session.state-changed`
+ * transition to `idle`, so a subagent that started and finished inside one
+ * active turn never produced a registry event at all — the client had no live
+ * set to render and the run was invisible until its settle. Every mutation of
+ * `record.activeTasks` publishes the snapshot now, including the empty one, so
+ * the client can clear a finished task instead of inferring its absence.
+ */
+function publishClaudeTaskRegistry(params: {
+  provider: ProviderSession['provider'];
+  record: ClaudeMessageState;
+  publish: (event: CanonicalRuntimeEvent) => void;
+  createdAt: string;
+}): void {
+  const { provider, record, publish, createdAt } = params;
+  publish({
+    eventId: crypto.randomUUID(),
+    provider,
+    threadId: record.session.threadId,
+    createdAt,
+    method: 'extension.notification',
+    namespace: CLAUDE_EXTENSION_NAMESPACE,
+    type: 'task/registry',
+    payload: {
+      active: [...(record.activeTasks?.values() ?? [])].map((task) => ({
+        taskId: task.taskId,
+        toolCallId: task.toolCallId,
+        description: task.description,
+        subagentType: task.subagentType,
+        backgrounded: task.backgrounded === true,
+        ...(task.spawnDepth !== undefined
+          ? { spawnDepth: task.spawnDepth }
+          : {}),
+      })),
+    },
+  });
+}
+
+/**
+ * station#1879: reads the SDK's optional per-task usage into Station's
+ * vocabulary. `usage` is `usage?` on `SDKTaskNotificationMessage`, so absence
+ * is ordinary and must not be reported as zeroes — a subagent that really did
+ * spend 0 tokens is not the same claim as one that never told us.
+ *
+ * Deliberately NOT summed into any session total here: Claude reports per-turn
+ * deltas while other engines report cumulative totals, and reconciling that is
+ * `foldUsageEvents`' job (see its `CUMULATIVE_USAGE_PROVIDERS` docblock).
+ */
+function readClaudeTaskUsage(
+  usage:
+    | { total_tokens?: number; tool_uses?: number; duration_ms?: number }
+    | undefined,
+):
+  | { totalTokens?: number; toolUses?: number; durationMs?: number }
+  | undefined {
+  if (!usage || typeof usage !== 'object') return undefined;
+  const read = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  const totalTokens = read(usage.total_tokens);
+  const toolUses = read(usage.tool_uses);
+  const durationMs = read(usage.duration_ms);
+  if (
+    totalTokens === undefined &&
+    toolUses === undefined &&
+    durationMs === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(toolUses !== undefined ? { toolUses } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+  };
+}
+
+/**
+ * station#1892: how many settled tasks stay addressable for enrichment.
+ *
+ * The two terminals for one task arrive milliseconds apart, so this only has
+ * to outlive that gap. It is a bound, not a policy: the map is insertion
+ * ordered, so the oldest entry is evicted once the cap is reached and a very
+ * old duplicate simply falls back to the untracked path it used before.
+ */
+const CLAUDE_SETTLED_TASK_RETENTION = 64;
+
+function rememberSettledClaudeTask(
+  settled: Map<string, { task: ClaudeActiveTask; hadResult: boolean }>,
+  task: ClaudeActiveTask,
+  entry: { hadResult: boolean },
+): void {
+  settled.delete(task.taskId);
+  settled.set(task.taskId, { task, hadResult: entry.hadResult });
+  while (settled.size > CLAUDE_SETTLED_TASK_RETENTION) {
+    const oldest = settled.keys().next();
+    if (oldest.done) break;
+    settled.delete(oldest.value);
+  }
+}
+
 function settleClaudeTask(params: {
   provider: ProviderSession['provider'];
   record: ClaudeMessageState;
@@ -825,10 +1292,51 @@ function settleClaudeTask(params: {
   task: ClaudeActiveTask;
   status: 'success' | 'error' | 'cancelled';
   summary?: string;
+  /**
+   * station#1879: the SDK's own path to the subagent's full transcript
+   * (`SDKTaskNotificationMessage.output_file`, a REQUIRED field Station was
+   * discarding). `summary` is only ever the agent's last utterance, so
+   * without this the real result of a delegated run is unreachable.
+   * Absent on the `task_updated` settle path, which carries no such field.
+   */
+  outputFile?: string;
+  /**
+   * Optional in the SDK (`usage?`), so never assume it is present — a settle
+   * with no usage is normal, not a defect.
+   */
+  usage?: {
+    totalTokens?: number;
+    toolUses?: number;
+    durationMs?: number;
+  };
 }): void {
-  const { provider, record, publish, createdAt, task, status, summary } =
-    params;
+  const {
+    provider,
+    record,
+    publish,
+    createdAt,
+    task,
+    status,
+    summary,
+    outputFile,
+    usage,
+  } = params;
   record.activeTasks?.delete(task.taskId);
+  // station#1892: remember what this settle published so a second terminal
+  // for the same task can enrich it exactly once instead of arriving as an
+  // identity-less "untracked" settle.
+  if (!record.settledTasks) record.settledTasks = new Map();
+  rememberSettledClaudeTask(record.settledTasks, task, {
+    hadResult: Boolean(summary || outputFile),
+  });
+  // station#1558 (fix round, H1): this publishes the call's terminal, but the
+  // `tool_use` entry stays — the real `tool_result` can still arrive and is
+  // still the authoritative output, and dropping the entry would make the
+  // replay guard swallow it. Marking it is what stops the session-end settle
+  // from publishing a second, contradicting `unresolved` terminal for a Task
+  // that reported success.
+  const trackedCall = record.activeToolCalls?.get(task.toolCallId);
+  if (trackedCall) trackedCall.terminalPublished = true;
   publish({
     eventId: crypto.randomUUID(),
     provider,
@@ -858,10 +1366,19 @@ function settleClaudeTask(params: {
       taskId: task.taskId,
       toolCallId: task.toolCallId,
       description: task.description,
+      // station#1892: clients gate the settle announcement on this, so it has
+      // to travel with every settle — including the enriched one below, whose
+      // own SDK message carries no identity.
+      backgrounded: task.backgrounded === true,
       status,
       summary,
+      ...(outputFile ? { outputFile } : {}),
+      ...(usage ? { usage } : {}),
     },
   });
+  // station#1877: publish the set this settle left behind, so a client that
+  // is tracking siblings drops only this one and keeps the rest live.
+  publishClaudeTaskRegistry({ provider, record, publish, createdAt });
 }
 
 const CLAUDE_TOOL_RESULT_OUTPUT_LIMIT = 2000;

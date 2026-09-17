@@ -19,6 +19,7 @@ import { selectEngineAgentAdoption } from '../../domain/agent-registry.js';
 import type { AgentMetadata } from '../../services/agents/agent-service.js';
 import { sessionAgentStartUnavailableReason } from '../../services/orchestration/session-agent-resolution.js';
 import type { Logger } from '../../utils/logger.js';
+import { sleep } from '../../utils/sleep.js';
 import { errorMessage, param } from '../schemas/schemas.js';
 
 export interface RuntimeConnectionSummary {
@@ -224,10 +225,6 @@ const CATALOG_READ_ATTEMPTS = 3;
 const CATALOG_RETRY_DELAY_MS = 150;
 export const CATALOG_REFRESHING_REASON =
   'Agent catalog is refreshing after a configuration change; retrying automatically.';
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * The catalog's two READ dependencies, bound to the service that owns the
@@ -763,9 +760,16 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
   app.get('/', async (c) => {
     try {
       const { agents, stable, catalogAsOf } = await readCatalogWithRetry({});
+      // The catalog is an inventory surface, not a policy dump. The complete
+      // delegated-child denial catalog remains on GET /:slug, where the user
+      // explicitly asks for one Agent's details. Keeping it out of every list
+      // row also avoids implying these patterns are tools the Agent owns.
+      const catalogAgents = agents.map(
+        ({ deniedCommandCatalog: _denials, ...agent }) => agent,
+      );
       return c.json({
         success: true,
-        data: agents,
+        data: catalogAgents,
         // Additive fields (typed on the SDK envelope): a mid-refresh catalog
         // names its state and, when served from cache, its capture time.
         ...(stable ? {} : { catalogState: 'reconciling' as const }),

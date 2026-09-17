@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
+import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
@@ -101,6 +102,9 @@ function runtimeContext(
       configLoader: loader,
       mcpService: service,
       logger,
+      // This fixture has no operator-installed account provider. The broad
+      // service proxy would otherwise invent one for this optional field.
+      deploymentAuthentication: undefined,
       eventBus: { emit: vi.fn() },
       environmentSecurityService,
       activeAgents: new Map(),
@@ -279,6 +283,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
   const fixture = await startOAuthFixture();
   const home = await mkdtemp(join(tmpdir(), 'station-oauth-runtime-e2e-'));
   const previousHostedRegistry = process.env[HOSTED_TENANT_REGISTRY_ENV];
+  const custody = new MCPLocalConnectionCustody();
   try {
     const loader = new ConfigLoader({ projectHomeDir: home });
     const service = new MCPService(
@@ -291,6 +296,9 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       { warn: vi.fn() },
       undefined,
       43141,
+      undefined,
+      undefined,
+      custody,
     );
     const app = new Hono();
     const logger = {
@@ -474,6 +482,8 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       runtimeLogger,
       43141,
       mcpToolProvenanceGeneration,
+      undefined,
+      custody,
     );
 
     expect(fixture.protectedRequestAuthorizations).toContain(
@@ -501,6 +511,8 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       runtimeLogger,
       43141,
       mcpToolProvenanceGeneration,
+      undefined,
+      custody,
     );
 
     expect(fixture.endpointBRequestAuthorizations).not.toContain(
@@ -515,6 +527,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
     if (previousHostedRegistry === undefined)
       delete process.env[HOSTED_TENANT_REGISTRY_ENV];
     else process.env[HOSTED_TENANT_REGISTRY_ENV] = previousHostedRegistry;
+    expect((await custody.shutdown()).state).toBe('settled');
     await fixture.close();
     vi.unstubAllGlobals();
     await rm(home, { recursive: true, force: true });

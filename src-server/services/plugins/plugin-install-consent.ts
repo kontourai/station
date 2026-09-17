@@ -24,14 +24,17 @@
  * before a single byte is written outside the staging directory. A mismatch
  * refuses there, which costs nothing to undo because nothing has happened.
  *
- * A decision names two things, and both are checked, because they fail
- * differently:
+ * A decision names the parent bytes/permissions and its dependency ids. The
+ * canonical dependency lifecycle additionally carries one byte/permission
+ * approval per executable or lifecycle-bearing dependency. Any supplied
+ * dependency approval is checked even for declarative content. They are checked
+ * separately because they fail differently:
  *
  * - `permissions` — the derived set the operator was shown. Checked because
  *   the digest cannot catch it: a client that sends the right digest and an
  *   EMPTY permission list has consented to nothing while matching bytes
  *   perfectly.
- * - `contentDigest` — the bytes the operator was shown, via
+ * - `contentDigest` — the parent bytes the operator was shown, via
  *   {@link computePluginContentDigest}. Checked because the permission set
  *   cannot catch it: a source can change between preview and install and
  *   derive exactly the same permissions. That is the laundering shape.
@@ -56,7 +59,7 @@
  *
  * It establishes NEITHER against an arbitrary credentialed API caller. The
  * values a decision carries are all readable from `POST /preview` — the
- * derived permission set, the content digest, the dependency ids — so any
+ * derived permission sets, content digests, and dependency ids — so any
  * caller holding a Station credential can call `/preview`, read them back,
  * echo them into `/install`, and install with no operator in the loop. That
  * is not only browser-resident plugin code: a server-side agent with a shell
@@ -160,12 +163,24 @@ function declaredUndisclosableContributions(
 export type PluginInstallConsent =
   | {
       kind: 'operator-decision';
+      /** Permission decision observed before preview acquisition. */
+      grantRevision?: string;
+      registryTrustRevision?: string;
       /** The derived set the operator answered for. */
       permissions: string[];
       /** The digest of the tree the operator answered about. */
       contentDigest: string;
       /** The dependency ids the operator was shown. */
       dependencies: string[];
+      /** Per-dependency bytes and permissions shown by preview. */
+      dependencyApprovals?: Array<{
+        id: string;
+        grantRevision?: string;
+        registryTrustRevision?: string;
+        permissions: string[];
+        contentDigest: string;
+        dependencies: string[];
+      }>;
     }
   | {
       kind: 'no-operator-decision';
@@ -173,7 +188,7 @@ export type PluginInstallConsent =
       caller: string;
     };
 
-export type PluginConsentRefusalReason =
+type PluginConsentRefusalReason =
   | 'undisclosed-permissions'
   | 'undisclosed-contributions'
   | 'permissions'
@@ -212,6 +227,25 @@ export function isPluginConsentRefusedError(
   error: unknown,
 ): error is PluginConsentRefusedError {
   return error instanceof PluginConsentRefusedError;
+}
+
+/** Recover a refusal through ordinary dependency wrappers, not failed rollback aggregates. */
+export function findPluginConsentRefusedError(
+  error: unknown,
+): PluginConsentRefusedError | null {
+  const seen = new Set<object>();
+  try {
+    for (let depth = 0; depth < 32 && error instanceof Error; depth++) {
+      if (error instanceof AggregateError || seen.has(error)) return null;
+      if (isPluginConsentRefusedError(error)) return error;
+      seen.add(error);
+      const cause = Object.getOwnPropertyDescriptor(error, 'cause');
+      error = cause && 'value' in cause ? cause.value : undefined;
+    }
+  } catch {
+    // A hostile reflection trap cannot prove a simple consent refusal.
+  }
+  return null;
 }
 
 /**
@@ -353,6 +387,20 @@ export function assertPluginInstallConsent(input: {
     });
   }
 
+  assertPluginOperatorDecision({ pluginName, consent, basis });
+}
+
+/** The same byte/permission/dependency decision check for a fully disclosed
+ * inert dependency preview. No missing manifest fields are invented here. */
+export function assertPluginOperatorDecision(input: {
+  pluginName: string;
+  consent: Extract<PluginInstallConsent, { kind: 'operator-decision' }>;
+  basis: Pick<
+    PluginConsentBasis,
+    'contentDigest' | 'required' | 'dependencies'
+  >;
+}): void {
+  const { pluginName, consent, basis } = input;
   const consented = [...new Set(consent.permissions)].sort();
   const required = [...basis.required].sort();
 

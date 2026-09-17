@@ -18,7 +18,6 @@ import { LazyBoundary } from '../LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
-const OPEN_NEW_CHAT_EVENT = 'station:open-new-chat';
 const SETTLED_PAGE_SIZE = 5;
 const loadSnoozeMenu = () => import('./SnoozeMenu');
 
@@ -198,7 +197,7 @@ function HomeWorkContent({
  * What each count reveals, and only where that thing is actually rendered.
  *
  * Every target is a region of THIS page. Nothing outside Home accepts these
- * populations: `/activity` takes only `?session=<id>` and its project filter
+ * populations: Activity takes only a session intent and its project filter
  * is component state with no route parameter, so linking a count there would
  * land the reader on the unfiltered global list under a heading promising a
  * filter — see `home-reveal.ts`.
@@ -270,20 +269,17 @@ function RecentWorkError({ onViewActivity }: { onViewActivity: () => void }) {
   );
 }
 
+/**
+ * #1536 C2: Home offered three ways to start a chat with no session — the
+ * "Start direct chat" action card, this button, and the dock's own "Start a
+ * chat". The card and the dock control both stay; the empty state explains
+ * what will appear without claiming an engine is ready.
+ */
 function RecentWorkEmpty() {
   return (
     <Empty
       variant="prominent"
-      label="Ready for your first direct chat"
-      description="Start a chat here, or open a local project to create a durable Task."
-      action={
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}
-        >
-          Start your first chat
-        </button>
-      }
+      label="Your chats and project work will appear here"
     />
   );
 }
@@ -305,6 +301,19 @@ function HomeWorkLanesContent({
         agents={agents}
         onOpen={onOpen}
       />
+      {controller.lanes.external?.length ? (
+        <details className="home-view__settled-tail">
+          <summary>
+            From other apps ({controller.lanes.external.length})
+          </summary>
+          <p>Conversations started in your coding apps.</p>
+          <ul className="home-view__task-list">
+            {controller.lanes.external.map((task) =>
+              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+            )}
+          </ul>
+        </details>
+      ) : null}
       <HomeSnoozeMenu controller={controller} />
       <HomeSnoozedShelf controller={controller} />
       <HomeSettledTail

@@ -1,22 +1,17 @@
 import { describe, expect, test } from 'vitest';
 import {
-  getModelDisplayName,
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from '../components/chat/message-bubble/utils';
 
-describe('message bubble utils', () => {
-  test('maps known Claude models to readable labels', () => {
-    expect(getModelDisplayName('claude-3-7-sonnet-latest')).toBe(
-      'Claude 3.7 Sonnet',
-    );
-    expect(getModelDisplayName('claude-3-opus')).toBe('Claude 3 Opus');
-  });
-
-  test('falls back to custom for unknown models', () => {
-    expect(getModelDisplayName('gpt-5.4')).toBe('Custom');
-  });
-});
+/**
+ * #1536 B5: this file used to pin `getModelDisplayName`, a private table of
+ * five Claude 3 ids that answered "Custom" for everything else. The rule that
+ * replaced it is pinned in `modelIdentityLabel.test.ts`, and the BADGE that
+ * renders it in `MessageBubble.identityComposition.test.tsx` — a second copy
+ * of the helper's own assertions here would prove nothing about this module,
+ * which no longer names a model at all.
+ */
 
 const gap = { state: 'unavailable', reason: 'not-reported-by-engine' } as const;
 const stationGap = {
@@ -176,14 +171,14 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'requested',
           label: 'Requested',
-          value: 'sonnet-latest',
-          description: 'Model requested',
+          value: 'Sonnet Latest',
+          description: 'Model requested (sonnet-latest)',
         },
         {
           slot: 'reported',
           label: 'Reported',
-          value: 'sonnet-9-20260701',
-          description: 'Model reported by engine',
+          value: 'Sonnet 9 20260701',
+          description: 'Model reported by engine (sonnet-9-20260701)',
         },
       ],
     });
@@ -203,9 +198,9 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'agreed',
           label: 'Model',
-          value: 'claude-fable-5',
+          value: 'Fable 5',
           description:
-            'Station requested this model and the engine reported it',
+            'Station requested this model and the engine reported it (claude-fable-5)',
         },
       ],
     });
@@ -225,9 +220,9 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'agreed',
           label: 'Model',
-          value: 'sonnet-9-20260701',
+          value: 'Sonnet 9 20260701',
           description:
-            'Station requested this model and the engine reported it',
+            'Station requested this model and the engine reported it (sonnet-9-20260701)',
         },
       ],
     });
@@ -244,8 +239,8 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'reported',
           label: 'Reported',
-          value: 'sonnet-9-20260701',
-          description: 'Model reported by engine',
+          value: 'Sonnet 9 20260701',
+          description: 'Model reported by engine (sonnet-9-20260701)',
         },
       ],
     });
@@ -267,8 +262,8 @@ describe('resolveTurnModelIdentity (station#1410 review finding SF5, closed in s
         {
           slot: 'requested',
           label: 'Requested',
-          value: 'sonnet',
-          description: 'Model requested',
+          value: 'Sonnet',
+          description: 'Model requested (sonnet)',
         },
       ],
     });

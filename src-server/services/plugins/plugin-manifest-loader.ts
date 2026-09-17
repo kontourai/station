@@ -1,16 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
-import { STATION_AGENT_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/agent-plugin';
+import { AGENT_PLUGIN_MANIFEST_SCHEMA_1_0 } from '@kontourai/station-contracts/agent-plugin';
 import { validateOperationalEventScopes } from '@kontourai/station-contracts/operational-event';
 import {
   isCanonicalPluginId,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { RESERVED_EVENT_SENTINEL_PLUGIN_NAMES } from '@kontourai/station-contracts/plugin-visibility';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import {
+  type AgentPluginManifestReport,
+  parseAgentPluginManifest,
+} from '@kontourai/station-shared/agent-plugin-manifest';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
-import { parsePluginCommandContributions } from './plugin-command-contributions.js';
+import { parseWorkspacePaneHostContribution } from './workspace-pane-host-contributions.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SUBSCRIPTION_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/;
@@ -18,7 +23,7 @@ const OPERATIONAL_EVENT_TYPE =
   /^(?:station|(?:plugin|kit)\.[a-z][a-z0-9-]*)\.[a-z][a-z0-9.-]*\/v[1-9][0-9]*$/;
 const MAX_PLUGIN_EVENT_SUBSCRIPTIONS = 16;
 
-export type PluginManifestValidationFailureCode =
+type PluginManifestValidationFailureCode =
   | 'invalid-plugin-name'
   | 'reserved-plugin-name'
   | 'missing-version'
@@ -40,6 +45,25 @@ export class PluginManifestValidationError extends Error {
   }
 }
 
+/**
+ * #2067, third reservation axis, reached from BOTH manifest readers.
+ *
+ * `workspace-home-role` satisfies `isCanonicalPluginId` and is not a
+ * reserved object key, so without this a plugin could take the name Station
+ * emits as its Home-role event sentinel. The relay does not depend on this
+ * alone — it also requires a payload marker no plugin frame sets — but this
+ * is the axis that exists so the other need not be load-bearing, and an axis
+ * that covers one of two manifest formats is not that.
+ */
+function assertPluginNameIsNotReserved(name: string): void {
+  if (RESERVED_EVENT_SENTINEL_PLUGIN_NAMES.has(name)) {
+    invalidManifest(
+      'reserved-plugin-name',
+      `Plugin manifest name '${name}' is reserved: Station emits it as a sentinel on its plugin event channels`,
+    );
+  }
+}
+
 function invalidManifest(
   code: PluginManifestValidationFailureCode,
   message: string,
@@ -50,18 +74,202 @@ function invalidManifest(
 export async function readPluginManifestFile(
   manifestPath: string,
 ): Promise<PluginManifest> {
+  return (await readPluginManifestFileWithFormat(manifestPath)).manifest;
+}
+
+type PluginManifestFormat = 'legacy' | 'agent-plugin-1.0';
+
+interface PluginManifestWithFormat {
+  manifest: PluginManifest;
+  format: PluginManifestFormat;
+  stationExtension?: { status: 'validated' | 'disabled'; reason?: string };
+}
+
+export async function readPluginManifestFileWithFormat(
+  manifestPath: string,
+): Promise<PluginManifestWithFormat> {
   const raw = await readFile(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
 }
 
 export function readPluginManifestFileSync(
   manifestPath: string,
 ): PluginManifest {
-  const raw = readFileSync(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return readPluginManifestFileSyncWithFormat(manifestPath).manifest;
 }
 
-export function parsePluginManifest(
+export function readPluginManifestFileSyncWithFormat(
+  manifestPath: string,
+): PluginManifestWithFormat {
+  const raw = readFileSync(manifestPath, 'utf-8');
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
+}
+
+/** Dispatches recognized Agent Plugins documents without weakening legacy reads. */
+export function parsePluginManifestDocument(
+  raw: string,
+  manifestPath: string,
+): PluginManifest {
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath).manifest;
+}
+
+export function parsePluginManifestDocumentWithFormat(
+  raw: string,
+  manifestPath: string,
+): PluginManifestWithFormat {
+  // Both manifest families enter the same hidden-content boundary. Agent
+  // Plugins dispatch must not become a way around legacy manifest safety.
+  assertSafeContextText(raw, {
+    profile: 'hidden-only',
+    source: `plugin manifest '${dirname(manifestPath)}/${basename(manifestPath)}'`,
+  });
+  const agentPlugin = readAgentPluginManifest(raw, manifestPath);
+  return agentPlugin
+    ? { ...agentPlugin, format: 'agent-plugin-1.0' }
+    : { manifest: parsePluginManifest(raw, manifestPath), format: 'legacy' };
+}
+
+function readAgentPluginManifest(
+  raw: string,
+  manifestPath: string,
+): Omit<PluginManifestWithFormat, 'format'> | null {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (
+    !candidate ||
+    typeof candidate !== 'object' ||
+    Array.isArray(candidate) ||
+    typeof (candidate as Record<string, unknown>).$schema !== 'string'
+  ) {
+    return null;
+  }
+  const schema = (candidate as Record<string, unknown>).$schema as string;
+  if (!schema.startsWith('https://agent-plugins.org/schemas/')) return null;
+
+  const reports: AgentPluginManifestReport[] = [];
+  const loaded = parseAgentPluginManifest(candidate, (report) =>
+    reports.push(report),
+  );
+  if (!loaded) {
+    const reason = reports[0]?.message ?? 'unknown validation failure';
+    throw new Error(
+      schema === AGENT_PLUGIN_MANIFEST_SCHEMA_1_0
+        ? `Agent Plugin manifest is invalid: ${reason}`
+        : `Unsupported Agent Plugins manifest schema '${schema}'`,
+    );
+  }
+  // #2067: BEFORE `base` reaches either return below. This reader has two
+  // exits that never pass through `parsePluginManifest` — the
+  // no-extension branch and the normalization catch — so checking the
+  // reservation only there certified a rule the forward manifest format
+  // skipped entirely. One call here covers every path out of this function.
+  assertPluginNameIsNotReserved(loaded.manifest.name);
+  const base: PluginManifest = {
+    name: loaded.manifest.name,
+    version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',
+    description: loaded.manifest.description,
+  };
+  const extension = loaded.stationExtension;
+  if (!extension)
+    return {
+      manifest: base,
+      ...(reports.some((report) => report.code === 'station-extension-invalid')
+        ? {
+            stationExtension: {
+              status: 'disabled' as const,
+              reason: 'Station extension does not satisfy its schema',
+            },
+          }
+        : {}),
+    };
+  try {
+    const settings = (extension.settings ?? []).map((field) => ({
+      key: field.key,
+      label: field.title,
+      type: field.type,
+      ...(field.description !== undefined
+        ? { description: field.description }
+        : {}),
+      ...(field.default !== undefined ? { default: field.default } : {}),
+      ...(field.required !== undefined ? { required: field.required } : {}),
+      ...(field.type === 'select'
+        ? {
+            options: field.options.map((option) => ({
+              label: option.title,
+              value: option.value,
+            })),
+          }
+        : {}),
+    }));
+    const settingKeys = new Set(settings.map((field) => field.key));
+    if (settingKeys.size !== settings.length)
+      throw new Error('Duplicate Station setting keys');
+    const secrets = (extension.secretReferences ?? []).map((field) => {
+      if (settingKeys.has(field.key))
+        throw new Error('Duplicate Station setting or secret-reference key');
+      settingKeys.add(field.key);
+      return {
+        key: field.key,
+        label: field.title,
+        type: 'string' as const,
+        secret: true,
+        ...(field.description ? { description: field.description } : {}),
+        ...(field.required !== undefined ? { required: field.required } : {}),
+      };
+    });
+    const normalized: Record<string, unknown> = { ...base };
+    const fields = [
+      'sdkVersion',
+      'entrypoint',
+      'serverModule',
+      'build',
+      'capabilities',
+      'permissions',
+      'commands',
+      'links',
+      'agents',
+      'workspacePanes',
+      'workspacePaneHost',
+      'operationalEventSubscriptions',
+      'providers',
+      'integrations',
+      'tools',
+      'knowledge',
+      'prompts',
+    ] as const;
+    for (const field of fields)
+      if (extension[field] !== undefined) normalized[field] = extension[field];
+    if (extension.title !== undefined) normalized.displayName = extension.title;
+    if (settings.length || secrets.length)
+      normalized.settings = [...settings, ...secrets];
+    if (extension.dependencies)
+      normalized.dependencies = extension.dependencies.map((dependency) => ({
+        id: dependency.name,
+        version: dependency.version,
+      }));
+    return {
+      manifest: parsePluginManifest(JSON.stringify(normalized), manifestPath),
+      stationExtension: { status: 'validated' },
+    };
+  } catch (error) {
+    return {
+      manifest: base,
+      stationExtension: {
+        status: 'disabled',
+        reason:
+          error instanceof PluginManifestValidationError
+            ? error.message
+            : 'Station extension could not be normalized into the host contract',
+      },
+    };
+  }
+}
+
+function parsePluginManifest(
   raw: string,
   manifestPath: string,
 ): PluginManifest {
@@ -96,7 +304,9 @@ export function parsePluginManifest(
   // read. Two independent axes, because neither covers the other:
   // `isCanonicalPluginId` refuses `__proto__` (underscores fail the pattern)
   // but `constructor` and `prototype` SATISFY it, and the reserved-key set
-  // refuses those three but not `../evil` or `Name With Spaces`.
+  // refuses those three but not `../evil` or `Name With Spaces`. A third
+  // axis — event-sentinel names — is asserted below AND in the Agent Plugins
+  // reader, which returns without reaching this function.
   if (!isCanonicalPluginId(candidate.name)) {
     invalidManifest(
       'invalid-plugin-name',
@@ -109,25 +319,31 @@ export function parsePluginManifest(
       `Plugin manifest name '${candidate.name}' is a reserved object key and cannot name a plugin`,
     );
   }
+  // #2067, third axis: names Station itself emits on a plugin event channel
+  // as a SENTINEL. `workspace-home-role` satisfies `isCanonicalPluginId` and
+  // is not a reserved object key, so a plugin could take it — and then every
+  // `plugins:*` frame Station emits for that plugin would carry the sentinel
+  // name and ride the relay exemption meant for the Home-role slot, carrying
+  // the plugin's non-secret setting VALUES to subscribers who cannot see it.
+  // Reserved here so the collision cannot exist; the relay ALSO requires a
+  // payload discriminator, because neither axis alone should be load-bearing.
+  assertPluginNameIsNotReserved(candidate.name);
   if (typeof candidate.version !== 'string' || !candidate.version.trim()) {
     invalidManifest(
       'missing-version',
       'Plugin manifest version must be a non-empty string',
     );
   }
-  const commandContributions = parsePluginCommandContributions(
-    candidate.extensions,
-    candidate.name,
-  );
-  if (commandContributions.length > 0) {
-    const extensions = candidate.extensions as Record<string, unknown>;
-    const stationExtension = extensions[
-      STATION_AGENT_PLUGIN_EXTENSION_ID
-    ] as Record<string, unknown>;
-    extensions[STATION_AGENT_PLUGIN_EXTENSION_ID] = {
-      ...stationExtension,
-      commands: commandContributions,
-    };
+  if (candidate.workspacePaneHost !== undefined) {
+    const contribution = parseWorkspacePaneHostContribution(
+      candidate.workspacePaneHost,
+    );
+    if (!contribution)
+      invalidManifest(
+        'invalid-manifest',
+        'Invalid Workspace Pane host contribution',
+      );
+    candidate.workspacePaneHost = contribution;
   }
   // archive#4307 review: a declared setting's `key` is a STORE KEY too — it is
   // written into `overrides[plugin].settings` by `PUT /:name/settings` and

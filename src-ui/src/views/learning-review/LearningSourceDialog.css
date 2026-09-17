@@ -1,0 +1,51 @@
+.learning-source-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4, 16px);
+  background: rgb(0 0 0 / 55%);
+}
+.learning-source-dialog {
+  width: min(680px, 100%);
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: var(--space-5, 20px);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg, 12px);
+}
+.learning-source-body {
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding-block: var(--space-4, 16px);
+}
+.learning-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+}
+.learning-source-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  padding-block: var(--space-3, 12px);
+}
+.learning-source-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-2, 8px);
+}
+.learning-source-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.learning-source-label,
+.learning-source-disclosure {
+  color: var(--text-secondary);
+}

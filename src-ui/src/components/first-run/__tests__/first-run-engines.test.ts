@@ -50,6 +50,32 @@ const READY_CODEX = engine({
 });
 
 describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
+  test('a detected registry Engine is selectable, pre-ticked, and labelled as a connect action', () => {
+    const [option] = buildFirstRunEngineOptions({
+      engines: [
+        engine({
+          name: 'Kiro CLI',
+          detected: true,
+          reason: 'not_connected',
+          registryEntryId: 'kiro',
+        }),
+      ],
+      agents: [],
+    });
+    expect(option).toMatchObject({
+      state: 'detected_connect',
+      registryEntryId: 'kiro',
+      defaultChecked: true,
+      selectable: true,
+    });
+    expect(firstRunEngineRowLabel(option)).toBe('Connect and set up Kiro CLI');
+    expect(option.note).toBe(
+      'Kiro CLI is available to connect on this Station.',
+    );
+    expect(buildFirstRunEnableBatch([option], [option.engineId])).toEqual([
+      expect.objectContaining({ registryEntryId: 'kiro' }),
+    ]);
+  });
   test('a ready, addressable engine is offered and pre-ticked', () => {
     const [option] = buildFirstRunEngineOptions({
       engines: [READY_CODEX],
@@ -632,7 +658,7 @@ describe('AC4 — item order and copy are stable across renders', () => {
       ]),
     );
     expect(labels.codex).toBe('Enable Codex');
-    expect(labels['claude-code']).toBe('Ready — Claude Code');
+    expect(labels['claude-code']).toBe('Set up — Claude Code');
     // Nothing Station cannot act on is dressed up as an action.
     expect(labels.kiro).toBe('Kiro');
     expect(labels.opencode).toBe('OpenCode');

@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
   parseStationAnswerNarrativeRemoveInput,
 } from '@kontourai/station-contracts/answer-narrative-binding';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
+import { ATTENTION_REQUEST_ID_MAX_CHARS } from '@kontourai/station-contracts/attention';
 import {
   CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -28,7 +31,11 @@ import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
 } from '@kontourai/station-contracts/orchestration';
-import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  type OrchestrationQuoteSource,
+  QUOTE_SOURCE_MAX_BYTES,
+} from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -39,18 +46,17 @@ import {
   parseStationSessionInventoryMcpNegotiatedInput,
   STATION_SESSION_INVENTORY_MCP_V2_VERSION,
 } from '@kontourai/station-contracts/session-inventory-mcp';
+import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
-import { SESSION_LIFECYCLE_STATES } from '../../../packages/contracts/src/session-lifecycle.js';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
-  SSE_KEEPALIVE_INTERVAL_MS,
 } from '../../constants.js';
 import {
   getTenantRequestContext,
@@ -105,7 +111,7 @@ import {
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
-import { streamSSE } from '../sse-response.js';
+import { sseKeepalive, streamSSE } from '../sse-response.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -282,6 +288,11 @@ const respondToRequestCommandSchema = z.object({
   type: z.literal('respondToRequest'),
   threadId: z.string().min(1),
   requestId: z.string().min(1),
+  expectedRequestEventId: z
+    .string()
+    .min(1)
+    .max(ATTENTION_REQUEST_ID_MAX_CHARS)
+    .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
 });
 
@@ -378,7 +389,13 @@ export const delegateTaskSchema = z.object({
   parentTaskId: z.string().min(1).max(512).optional(),
 });
 
+const inputRequestReferenceSchema = z.object({
+  threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  requestEventId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+});
 export const foregroundMessageObjectSchema = z.object({
+  expectedInputRequest: inputRequestReferenceSchema.optional(),
   target: executionTargetSchema,
   // An image-only turn is meaningful: the attachment is the prompt. Keep the
   // text bound, but let the object-level check below require either text or an
@@ -514,7 +531,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
   idempotencyKey: z.string().min(1).max(200),
 });
 
-export const conversationContextBoundarySchema = z.object({
+const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),
@@ -566,6 +583,7 @@ const sessionEventPageQuerySchema = z.object({
 });
 
 const sessionEventWindowQuerySchema = z.object({
+  direction: z.literal('newest').optional(),
   cursor: z.string().min(1).max(512).optional(),
   turnLimit: z.coerce.number().int().min(1).max(20).default(10),
 });
@@ -580,6 +598,7 @@ interface DelegateTaskRequest {
 }
 
 interface ForegroundMessageRequest {
+  expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
   conversationId?: string;
@@ -763,7 +782,7 @@ export function resolveStreamResumePlan(
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-export interface PrincipalResolutionContext {
+interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;
@@ -982,6 +1001,68 @@ export function createOrchestrationRoutes(
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
+  /**
+   * One in-flight peer-delegation reconciliation per caller.
+   *
+   * `refreshDelegatedTaskActivity` builds its own read model, takes the last
+   * 20 live peer delegations and `Promise.allSettled`s a remote HTTP read per
+   * delegation, each with a 1.5s timeout
+   * (`station-control-delegation.ts`'s `refreshPeerDelegationActivity`).
+   * `GET /sessions/read-model` is polled, so awaiting that in the response
+   * path put up to 1.5s of peer network latency plus a second full read-model
+   * build in front of data the local store already had, and a slow peer
+   * stalled every subsequent poll behind its own predecessor.
+   *
+   * Keyed by userId, never shared: a poll from one caller must not suppress
+   * another caller's reconciliation, whose peer set and authority are
+   * different. The entry is cleared once the refresh settles, so a completed
+   * (or failed) refresh does not stop the next poll from starting a fresh one.
+   */
+  const delegationActivityRefreshes = new Map<string, Promise<void>>();
+  const startDelegatedTaskActivityRefresh = (userId: string): void => {
+    const refresh = deps.refreshDelegatedTaskActivity;
+    if (!refresh) return;
+    if (delegationActivityRefreshes.has(userId)) return;
+    const settled = (async () => {
+      try {
+        await refresh({ userId });
+      } catch (error) {
+        // Never rethrown, and not because a rejection would crash anything:
+        // `crash-handlers.ts`'s `unhandledRejection` listener logs and
+        // deliberately does NOT exit. Swallowing it here keeps a peer's
+        // failure out of two places it does not belong — the response, which
+        // the poll already answered from the local store, and that
+        // process-level listener, which logs at `error` and would file an
+        // ordinary 1.5s peer timeout as a server error.
+        (deps.logger.warn ?? deps.logger.debug)(
+          'Peer delegation activity refresh failed',
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+      }
+    })();
+    // Install BEFORE arranging the cleanup. `refresh` can throw
+    // SYNCHRONOUSLY — the production binding at `runtime-routes.ts` resolves
+    // `readAuthorityForExecution(input.userId)` before its async body — and a
+    // synchronous throw runs the whole try/catch to completion before the
+    // async IIFE even returns. Clearing the entry from inside that body
+    // therefore deleted a key that had not been written yet, and the `set`
+    // below then installed an already-settled promise nothing would ever
+    // remove: peer reconciliation silently off for that user for the life of
+    // the process.
+    delegationActivityRefreshes.set(userId, settled);
+    const clearEntry = () => {
+      // Identity-checked so an older refresh settling can never evict the
+      // newer entry that replaced it.
+      if (delegationActivityRefreshes.get(userId) === settled) {
+        delegationActivityRefreshes.delete(userId);
+      }
+    };
+    // `then(clear, clear)` rather than `finally`: the returned promise
+    // fulfills on both paths, so even a logger double that throws inside the
+    // catch above cannot produce a second unhandled rejection here.
+    void settled.then(clearEntry, clearEntry);
+  };
+
   const toolResultUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json({ success: false, error: 'Tool result unavailable' }, status);
@@ -990,6 +1071,65 @@ export function createOrchestrationRoutes(
     value.length > 0 &&
     Buffer.byteLength(value) <=
       Math.min(MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES, 1_024);
+
+  app.get('/sessions/:threadId/input-requests/:requestId', (c) => {
+    const parsed = inputRequestReferenceSchema.safeParse({
+      threadId: param(c, 'threadId'),
+      requestId: param(c, 'requestId'),
+      requestEventId: c.req.query('eventId'),
+    });
+    if (!parsed.success || deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json(
+        { success: false, error: 'Input request unavailable' },
+        404,
+      );
+    const data = orchestrationService.inspectInputReplyContext(
+      parsed.data,
+      readAuthorityFor(c),
+    );
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json(
+        { success: false, error: 'Input request unavailable' },
+        404,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data });
+  });
+
+  app.get('/sessions/:threadId/requests/:requestId', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const parsed = z
+      .object({
+        threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+        requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+        requestEventId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+      })
+      .safeParse({
+        threadId: param(c, 'threadId'),
+        requestId: param(c, 'requestId'),
+        requestEventId: c.req.query('eventId'),
+      });
+    if (!parsed.success)
+      return c.json(
+        { success: false, error: 'Invalid request reference' },
+        400,
+      );
+    const authority = readAuthorityFor(c);
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Request unavailable' }, 404);
+    const data = orchestrationService.inspectAttentionRequest(
+      parsed.data,
+      authority,
+    );
+    if (
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.canUserReadSession(parsed.data.threadId, authority)
+    )
+      return c.json({ success: false, error: 'Request unavailable' }, 404);
+    if (!data)
+      return c.json({ success: false, error: 'Request not found' }, 404);
+    return c.json({ success: true, data });
+  });
 
   app.get('/providers', async (c) => {
     const data = await orchestrationService.listProviders(readAuthorityFor(c));
@@ -1022,11 +1162,12 @@ export function createOrchestrationRoutes(
 
   app.get('/sessions/read-model', async (c) => {
     const authority = readAuthorityFor(c);
-    if (deps.refreshDelegatedTaskActivity) {
-      await deps.refreshDelegatedTaskActivity({
-        userId: resolveActorPrincipal(deps, c).userId,
-      });
-    }
+    // Started under the caller's own principal, exactly as before, but no
+    // longer awaited: what the refresh learns is written to the local store
+    // and published by the NEXT read rather than this one. archive#847 asked
+    // that peer evidence reach Activity, not that a poll block on a peer's
+    // network round trip to do it.
+    startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
     const data = await orchestrationService.listSessionReadModel(authority);
     return c.json({ success: true, data });
   });
@@ -1053,6 +1194,31 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
       };
       const { principal, userId } = resolveActorPrincipal(deps, c);
+      if (body.expectedInputRequest) {
+        const context = orchestrationService.inspectInputReplyContext(
+          body.expectedInputRequest,
+          readAuthorityFor(c),
+        );
+        if (
+          deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+          context.state !== 'open' ||
+          context.conversationId !== body.conversationId ||
+          context.agentId !== body.target.agent ||
+          body.target.environment?.kind !== 'current' ||
+          body.target.workspace ||
+          body.target.model
+        ) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'The input request or its conversation binding changed. Inspect the current request.',
+              code: 'input_request_changed',
+            },
+            409,
+          );
+        }
+      }
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
@@ -1712,6 +1878,23 @@ export function createOrchestrationRoutes(
     },
   );
 
+  /**
+   * station#1877: stop ONE provider-reported subagent without ending the
+   * turn. Task-scoped by construction — there is deliberately no fallback to
+   * a turn interrupt, because that would stop every sibling subagent too.
+   */
+  app.post('/sessions/:threadId/provider-tasks/:taskId/stop', async (c) => {
+    try {
+      const data = await orchestrationService.stopProviderTask(
+        param(c, 'threadId'),
+        param(c, 'taskId'),
+      );
+      return c.json({ success: true, data });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
   app.get('/session-board/projects/:projectSlug', async (c) => {
     try {
       const data = await orchestrationService.listProjectSessionBoard(
@@ -1959,6 +2142,7 @@ export function createOrchestrationRoutes(
   app.get('/sessions/:threadId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
+      direction: c.req.query('direction'),
       turnLimit: c.req.query('turnLimit'),
     });
     if (!parsed.success)
@@ -1975,6 +2159,7 @@ export function createOrchestrationRoutes(
   app.get('/conversations/:conversationId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
+      direction: c.req.query('direction'),
       turnLimit: c.req.query('turnLimit'),
     });
     if (!parsed.success)
@@ -2276,6 +2461,52 @@ export function createOrchestrationRoutes(
   // An answer is addressed by the Session/turn tuple, never by transcript
   // position. The query Module owns both reauthorization and the one ordered
   // event replay, so a denied or missing answer is the same public 404.
+  app.get('/sessions/:threadId/turns/:turnId/quote-source', async (c) => {
+    const sessionId = param(c, 'threadId');
+    const turnId = param(c, 'turnId');
+    if (sessionId.length > 1024 || turnId.length > 1024)
+      return c.json({ success: false, error: 'Quote source unavailable' }, 404);
+    const authority = readAuthorityFor(c);
+    const current = () =>
+      deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+      orchestrationService.canUserReadSession(sessionId, authority);
+    const missing = () =>
+      c.json({ success: false, error: 'Quote source unavailable' }, 404);
+    if (!current()) return missing();
+    const outcome = await orchestrationService.sessionQueries.readAssistantTurn(
+      { type: 'assistant-turn', threadId: sessionId, turnId },
+      authority,
+    );
+    if (!current()) return missing();
+    if (outcome.status === 'unavailable')
+      return c.json({ success: false, error: 'Quote source unavailable' }, 503);
+    if (
+      outcome.status !== 'found' ||
+      outcome.sessionId !== sessionId ||
+      outcome.turnId !== turnId
+    )
+      return missing();
+    const text = outcome.message.parts
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n');
+    if (!text || Buffer.byteLength(text, 'utf8') > QUOTE_SOURCE_MAX_BYTES)
+      return c.json(
+        { success: false, error: 'Quote source exceeds the bounded text view' },
+        413,
+      );
+    const data: OrchestrationQuoteSource = {
+      version: 1,
+      sessionId,
+      turnId,
+      messageId: outcome.message.id,
+      text,
+      revision: createHash('sha256').update(text).digest('hex'),
+    };
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data });
+  });
+
   app.get('/sessions/:threadId/turns/:turnId', async (c) => {
     const outcome = await orchestrationService.sessionQueries.readAssistantTurn(
       {
@@ -2774,6 +3005,13 @@ export function createOrchestrationRoutes(
         });
         const result = await orchestrationService.dispatchWithReceipt(command, {
           userId: actorUserId,
+          ...(command.type === 'respondToRequest' &&
+          command.expectedRequestEventId !== undefined
+            ? {
+                requestCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+              }
+            : {}),
           // archive#4075 stage 2: this is the STEER path's attribution
           // seam — `dispatchWithReceipt`'s `steerTurn` case wraps
           // `adapter.steerTurn` in the same begin/settle propagation
@@ -2870,7 +3108,11 @@ export function createOrchestrationRoutes(
                 }
               : {}),
           },
-          error instanceof AdoptionContinuationInProgressError || indeterminate
+          error instanceof AdoptionContinuationInProgressError ||
+            indeterminate ||
+            (error instanceof OrchestrationCommandDispatchError &&
+              (error.code === 'request_event_changed' ||
+                error.code === 'request_verification_unavailable'))
             ? 409
             : 400,
         );
@@ -2929,7 +3171,7 @@ export function createOrchestrationRoutes(
         : () => {};
       orchestrationStreamPresenceOps.add(1, { op: 'connect' });
 
-      // archive#1225 review (HIGH): `unsub`/`keepAlive` are declared here
+      // archive#1225 review (HIGH): `unsub`/`stopKeepAlive` are declared here
       // (not `const` at their original call sites) and the whole setup below
       // through the abort-wait runs inside the `try` below, so `finally` can
       // always release this connection's presence/subscription/timer no
@@ -2944,13 +3186,24 @@ export function createOrchestrationRoutes(
       // `true` and silently disable push-on-completion for that user for
       // the rest of the process lifetime.
       let unsub: (() => void) | undefined;
-      let keepAlive: ReturnType<typeof setInterval> | undefined;
+      let stopKeepAlive: (() => void) | undefined;
       try {
         // Ordering fence (R4): subscribe and buffer live events FIRST, before
         // any `await` below can yield to an event that was appended and
         // emitted concurrently. Nothing buffered here is written until after
         // the historical (replay-or-snapshot) frames and the caught-up marker
         // are flushed, so a live event can never overtake buffered history.
+        const writeAuthorized = async (frame: {
+          event: string;
+          data: string;
+          id?: string;
+        }) => {
+          if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            stream.abort();
+            throw new Error('Orchestration stream authorization expired');
+          }
+          await stream.writeSSE(frame);
+        };
         let caughtUp = false;
         const pending: Array<{ event: string; data: string; id?: string }> = [];
         const forward = (frame: {
@@ -2959,12 +3212,16 @@ export function createOrchestrationRoutes(
           id?: string;
         }) => {
           if (caughtUp) {
-            stream.writeSSE(frame).catch(() => {});
+            writeAuthorized(frame).catch(() => {});
           } else {
             pending.push(frame);
           }
         };
         unsub = deps.eventBus.subscribe((evt) => {
+          if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            stream.abort();
+            return;
+          }
           if (
             evt.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
           ) {
@@ -2994,7 +3251,13 @@ export function createOrchestrationRoutes(
           if (!orchestrationEventMatchesThread(evt.data, threadId)) return;
           const eventPayload = (
             evt.data as
-              | { event?: { threadId?: string; eventId?: string } }
+              | {
+                  event?: {
+                    threadId?: string;
+                    eventId?: string;
+                    method?: string;
+                  };
+                }
               | undefined
           )?.event;
           const eventThreadId = eventPayload?.threadId;
@@ -3008,7 +3271,13 @@ export function createOrchestrationRoutes(
             : undefined;
           forward({
             event: SERVER_EVENTS.ORCHESTRATION_EVENT,
-            data: JSON.stringify(evt.data ?? {}),
+            data: JSON.stringify({
+              ...(evt.data ?? {}),
+              conversation: orchestrationService.conversationStreamBinding({
+                threadId: eventThreadId,
+                method: eventPayload?.method,
+              }),
+            }),
             ...(globalSequence !== undefined
               ? { id: String(globalSequence) }
               : {}),
@@ -3074,7 +3343,7 @@ export function createOrchestrationRoutes(
             const sessions =
               await orchestrationService.listSessionReadModel(authority);
             resolvedHead = orchestrationService.readEventStreamHead();
-            await stream.writeSSE({
+            await writeAuthorized({
               event: 'orchestration:snapshot',
               data: JSON.stringify({ sessions }),
               id: String(resolvedHead),
@@ -3091,11 +3360,14 @@ export function createOrchestrationRoutes(
             for (const persisted of replayed) {
               const data = JSON.stringify({
                 event: persisted.payload,
+                conversation: orchestrationService.conversationStreamBinding(
+                  persisted.payload,
+                ),
                 ...orchestrationService.replayTurnProvenanceSidecar(
                   persisted.payload,
                 ),
               });
-              await stream.writeSSE({
+              await writeAuthorized({
                 event: SERVER_EVENTS.ORCHESTRATION_EVENT,
                 // archive#1410 (D2): a turn that completed while this client
                 // was disconnected is delivered ONLY here — the live publish
@@ -3119,7 +3391,7 @@ export function createOrchestrationRoutes(
           // buffered and delivered live, see below), but an exact one gives a
           // reconnecting client a tighter future resume point.
           resolvedHead = orchestrationService.readEventStreamHead();
-          await stream.writeSSE({
+          await writeAuthorized({
             event: 'orchestration:snapshot',
             data: JSON.stringify({ sessions }),
             id: String(resolvedHead),
@@ -3129,19 +3401,17 @@ export function createOrchestrationRoutes(
         // Ordering-safe completion marker (R4): delivered through the exact
         // same `stream.writeSSE` call path as every other frame, so it cannot
         // be reordered relative to what came before or after it.
-        await stream.writeSSE({
+        await writeAuthorized({
           event: ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
           data: '{}',
           id: String(resolvedHead),
         });
         caughtUp = true;
         for (const frame of pending) {
-          await stream.writeSSE(frame);
+          await writeAuthorized(frame);
         }
 
-        keepAlive = setInterval(() => {
-          stream.writeSSE({ event: 'ping', data: '' }).catch(() => {});
-        }, SSE_KEEPALIVE_INTERVAL_MS);
+        stopKeepAlive = sseKeepalive(stream);
 
         try {
           await new Promise((_, reject) => {
@@ -3158,10 +3428,10 @@ export function createOrchestrationRoutes(
         // releases this connection's timer/subscription/presence exactly
         // once, instead of leaking them only on the happy path. `unsub`
         // being `undefined` (a throw before `deps.eventBus.subscribe` ran)
-        // or `keepAlive` being `undefined` (a throw before it was created)
-        // are both handled explicitly rather than relying on
+        // or `stopKeepAlive` being `undefined` (a throw before the keepalive
+        // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
-        if (keepAlive !== undefined) clearInterval(keepAlive);
+        stopKeepAlive?.();
         unsub?.();
         releasePresence();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });

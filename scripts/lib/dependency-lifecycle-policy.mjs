@@ -5,17 +5,23 @@ import {
   copyFileSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   statSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  readPnpmLockfile,
+  readPnpmLockfileImporters,
+} from './pnpm-lockfile.mjs';
 
-export const LIFECYCLE_LOCKS = Object.freeze([
+export const LEGACY_NPM_LIFECYCLE_LOCKS = Object.freeze([
   { scope: 'root', path: 'package-lock.json' },
   { scope: 'sdk', path: 'packages/sdk/package-lock.json' },
   { scope: 'shared', path: 'packages/shared/package-lock.json' },
+  { scope: 'root', path: 'pnpm-lock.yaml' },
 ]);
 
 const DECISIONS = new Set(['execute', 'deny']);
@@ -27,8 +33,11 @@ const ARTIFACT_PROOFS = new Set([
 ]);
 const SAFE_TOKEN = /^[A-Za-z0-9._/@+:-]+$/;
 const SHA512 = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
-const PACKAGE_PATH =
-  /^(?:node_modules\/(?:@[^/]+\/)?[^/]+)(?:\/node_modules\/(?:@[^/]+\/)?[^/]+)*$/;
+// One hoisted package directory chain: `node_modules/<pkg>` optionally nested
+// under further `node_modules/<pkg>` levels. A scope container (`@scope`)
+// alone is never a package, so a scoped name needs both segments.
+const NODE_MODULES_CHAIN =
+  /^node_modules\/(?:@[^/@]+\/[^/@]+|[^/@]+)(?:\/node_modules\/(?:@[^/@]+\/[^/@]+|[^/@]+))*$/;
 const LIFECYCLE_HOOKS = new Set(['preinstall', 'install', 'postinstall']);
 export const PTY_HANDSHAKE_MARKER = 'STATION_NODE_PTY_READY_4296';
 export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
@@ -138,8 +147,28 @@ const timeout = setTimeout(() => {
       windowsHide: true,
     });
   } catch (error) {
-    const detail = String(error?.stderr ?? error?.message ?? error).trim();
-    throw new Error(`node-pty real PTY handshake failed: ${detail}`);
+    // A present-but-empty stderr (string or Buffer) is not nullish, so a `??`
+    // chain would suppress the message fallback and log only the bare prefix.
+    // Report stderr when informative, else the message, and attach the
+    // termination facts so a timeout and a native crash stay distinguishable.
+    const facts = [];
+    if (error != null && typeof error === 'object') {
+      if (error.status != null) facts.push(`status=${String(error.status)}`);
+      if (error.signal) facts.push(`signal=${String(error.signal)}`);
+      if (typeof error.killed === 'boolean')
+        facts.push(`killed=${String(error.killed)}`);
+      if (error.code != null) facts.push(`code=${String(error.code)}`);
+    }
+    const narrative =
+      String(error?.stderr ?? '').trim() ||
+      String(error?.message ?? '').trim() ||
+      (typeof error === 'string' ? error.trim() : '');
+    const detail = [narrative, facts.join(' ')]
+      .filter((part) => part)
+      .join(' ');
+    throw new Error(
+      `node-pty real PTY handshake failed: ${detail || 'no diagnostic output'}`,
+    );
   }
   assertPtyHandshakeOutcome(output);
 }
@@ -189,12 +218,183 @@ export function readLifecycleLocks(
   root = process.cwd(),
   readFile = readFileSync,
 ) {
-  return LIFECYCLE_LOCKS.flatMap((descriptor) =>
+  if (lstatOrNull(resolve(root, 'pnpm-lock.yaml')))
+    return readPnpmLifecycleNodes(root);
+  const manifestPath = resolve(root, 'package.json');
+  if (
+    lstatOrNull(resolve(root, 'pnpm-workspace.yaml')) ||
+    (lstatOrNull(manifestPath) &&
+      JSON.parse(readFile(manifestPath, 'utf8')).packageManager?.startsWith(
+        'pnpm@',
+      ))
+  )
+    throw new Error('dependency lockfile is missing: pnpm-lock.yaml');
+  return LEGACY_NPM_LIFECYCLE_LOCKS.filter((descriptor) =>
+    descriptor.path.endsWith('.json'),
+  ).flatMap((descriptor) =>
     collectLifecycleNodes(
       JSON.parse(readFile(resolve(root, descriptor.path), 'utf8')),
       descriptor,
     ),
   );
+}
+
+/** Inventory physical hoisted packages before any reviewed hook executes.
+ * pnpm's lock does not enumerate lifecycle commands, so lock-only approval
+ * cannot discover new hooks. The inert installed manifests are authoritative
+ * for hook discovery; the lock remains authoritative for package integrity.
+ */
+export function readPnpmLifecycleNodes(root) {
+  const lock = readPnpmLockfile(root);
+  const policy = JSON.parse(
+    readFileSync(
+      resolve(root, 'config/dependency-lifecycle-allowlist.json'),
+      'utf8',
+    ),
+  );
+  const nodes = new Map();
+  const knownNative = new Set(
+    policy.entries
+      .filter((entry) => entry.hooks.length === 0)
+      .map((entry) => `${entry.name}@${entry.version}`),
+  );
+  const nodeFor = (name, version, path) => {
+    const meta = lock.packages[`${name}@${version}`];
+    if (!meta?.resolution?.integrity)
+      throw new Error(
+        `installed lifecycle package is not integrity-locked: ${name}@${version}`,
+      );
+    return {
+      scope: 'root',
+      lock: 'pnpm-lock.yaml',
+      path,
+      name,
+      version,
+      integrity: meta.resolution.integrity,
+      optional: Boolean(meta.os?.length || meta.cpu?.length),
+      platform: { os: meta.os ?? [], cpu: meta.cpu ?? [] },
+      purl: npmPurl(name, version),
+    };
+  };
+  const visited = new Set();
+  const scan = (directory) => {
+    if (!lstatOrNull(directory)) return;
+    assertNoRedirectedPath(root, directory, 'lifecycle inventory');
+    if (visited.has(directory)) return;
+    visited.add(directory);
+    for (const child of readdirSync(directory, { withFileTypes: true })) {
+      if (child.name.startsWith('.')) continue;
+      const packageRoot = join(directory, child.name);
+      if (child.name.startsWith('@')) {
+        scan(packageRoot);
+        continue;
+      }
+      // Workspace links carry Station-owned scripts and are not dependencies.
+      // Other linked dependencies are unsupported by the hoisted contract.
+      if (child.isSymbolicLink()) {
+        const target = realpathSync(packageRoot);
+        const rel = relative(realpathSync(root), target).split(sep).join('/');
+        if (Object.keys(lock.importers).includes(rel) && rel !== '.') continue;
+        throw new Error(
+          `lifecycle inventory is redirected by a symlink or junction: ${packageRoot}`,
+        );
+      }
+      if (!child.isDirectory()) continue;
+      const manifestPath = join(packageRoot, 'package.json');
+      if (!lstatOrNull(manifestPath)) continue;
+      assertNoRedirectedPath(
+        packageRoot,
+        manifestPath,
+        'installed package manifest',
+      );
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      if (
+        [...LIFECYCLE_HOOKS].some(
+          (hook) => typeof manifest.scripts?.[hook] === 'string',
+        ) ||
+        knownNative.has(`${manifest.name}@${manifest.version}`) ||
+        lstatOrNull(join(packageRoot, 'binding.gyp'))
+      ) {
+        const path = relative(root, packageRoot).split(sep).join('/');
+        const node = nodeFor(manifest.name, manifest.version, path);
+        nodes.set(path, node);
+      }
+      scan(join(packageRoot, 'node_modules'));
+    }
+  };
+  scan(resolve(root, 'node_modules'));
+  for (const importer of Object.keys(lock.importers)) {
+    if (importer === '.') continue;
+    const directory = resolve(root, importer, 'node_modules');
+    assertNoRedirectedPath(root, directory, 'workspace lifecycle inventory');
+    scan(directory);
+  }
+  // A platform-excluded approval remains checkable from lock metadata even
+  // when pnpm correctly did not materialize that package on this machine.
+  for (const entry of policy.entries) {
+    if (nodes.has(entry.path) || platformMatches(entry)) continue;
+    nodes.set(entry.path, nodeFor(entry.name, entry.version, entry.path));
+  }
+  return [...nodes.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * #1718: an allowlist path must name exactly what `readPnpmLifecycleNodes`
+ * can record — `node_modules/<pkg>(/node_modules/<pkg>)*` relative to the
+ * lock root, optionally under one pnpm workspace importer directory
+ * (`examples/builder-delivery-viewer/node_modules/<pkg>`), because the
+ * inventory scans every importer's own `node_modules`. The importer set is
+ * the lockfile's `importers` keys; any other prefix, the root importer `.`,
+ * an absolute path, `..`, `.`, or an empty segment is rejected so the
+ * validator never widens beyond the scanner's own output.
+ * @param {unknown} path
+ * @param {ReadonlySet<string>} importers
+ */
+export function isAllowlistPackagePath(path, importers) {
+  if (typeof path !== 'string' || path.length === 0 || path.length > 512)
+    return false;
+  // SAFE_TOKEN excludes backslashes, whitespace, and control characters;
+  // the segment checks below then refuse `.`/`..`/empty, which also covers
+  // the root importer `.` as a prefix.
+  if (!SAFE_TOKEN.test(path)) return false;
+  const segments = path.split('/');
+  if (
+    segments.some(
+      (segment) => segment === '' || segment === '.' || segment === '..',
+    )
+  )
+    return false;
+  const chainStart = segments.indexOf('node_modules');
+  if (chainStart === -1) return false;
+  if (!NODE_MODULES_CHAIN.test(segments.slice(chainStart).join('/')))
+    return false;
+  if (chainStart === 0) return true;
+  return importers.has(segments.slice(0, chainStart).join('/'));
+}
+
+/**
+ * The importer directories whose `node_modules` the inventory scans, read
+ * from the single dependency authority after the inert install. The cold
+ * bootstrap reads the same keys without the YAML parser; both readers must
+ * agree, otherwise an entry the bootstrap accepted could name a directory
+ * the inventory never visits (or the reverse), so disagreement fails closed.
+ * @returns {Set<string>}
+ */
+export function readLifecycleImporters(root = process.cwd()) {
+  if (!lstatOrNull(resolve(root, 'pnpm-lock.yaml'))) return new Set();
+  const parsed = new Set(Object.keys(readPnpmLockfile(root).importers));
+  const bootstrap = readPnpmLockfileImporters(root);
+  const onlyParsed = [...parsed].filter((importer) => !bootstrap.has(importer));
+  const onlyBootstrap = [...bootstrap].filter(
+    (importer) => !parsed.has(importer),
+  );
+  if (onlyParsed.length || onlyBootstrap.length)
+    throw new Error(
+      'pnpm lockfile importers differ between the bootstrap and full readers: ' +
+        `only in full parse [${onlyParsed.join(', ')}]; ` +
+        `only in bootstrap reader [${onlyBootstrap.join(', ')}]`,
+    );
+  return parsed;
 }
 
 function exactKeys(value, keys) {
@@ -213,7 +413,7 @@ function validString(value, max = 512) {
   );
 }
 
-function validateEntry(entry, index, findings) {
+function validateEntry(entry, index, findings, importers) {
   const prefix = `allowlist entries[${index}]`;
   const keys = [
     'scope',
@@ -239,13 +439,15 @@ function validateEntry(entry, index, findings) {
     return;
   }
   if (
-    !LIFECYCLE_LOCKS.some(
+    !LEGACY_NPM_LIFECYCLE_LOCKS.some(
       (lock) => lock.scope === entry.scope && lock.path === entry.lock,
     )
   )
     findings.push(`${prefix} has an unknown lock scope`);
-  if (typeof entry.path !== 'string' || !PACKAGE_PATH.test(entry.path))
-    findings.push(`${prefix} has an invalid package path`);
+  if (!isAllowlistPackagePath(entry.path, importers))
+    findings.push(
+      `${prefix} has an invalid package path: expected node_modules/<package> or <workspace importer>/node_modules/<package> where the importer is listed in pnpm-lock.yaml importers`,
+    );
   if (
     !validString(entry.name, 256) ||
     !validString(entry.version, 128) ||
@@ -348,7 +550,13 @@ function validateEntry(entry, index, findings) {
     findings.push(`${prefix} approval has expired`);
 }
 
-export function validateAllowlist(allowlist) {
+/**
+ * @param {unknown} allowlist
+ * @param {{ importers?: ReadonlySet<string> }} [options] workspace importer
+ * directories from the lockfile; absent means only root `node_modules/...`
+ * paths are accepted (fail-closed).
+ */
+export function validateAllowlist(allowlist, { importers = new Set() } = {}) {
   const findings = [];
   // This bootstrap validator intentionally has no third-party imports. It is
   // the bounded source-of-truth check used before the inert npm install, so a
@@ -363,7 +571,7 @@ export function validateAllowlist(allowlist) {
       'allowlist schema / must contain schemaVersion 1 and non-empty entries',
     ];
   allowlist.entries.forEach((entry, index) =>
-    validateEntry(entry, index, findings),
+    validateEntry(entry, index, findings, importers),
   );
   const ids = new Set();
   for (const entry of allowlist.entries) {
@@ -378,8 +586,11 @@ function nodeIdentity(node) {
   return `${node.lock}:${node.path}`;
 }
 
-export function evaluateLifecyclePolicy({ allowlist, nodes }) {
-  const findings = validateAllowlist(allowlist);
+/**
+ * @param {{ allowlist: any, nodes: any[], importers?: ReadonlySet<string> }} input
+ */
+export function evaluateLifecyclePolicy({ allowlist, nodes, importers }) {
+  const findings = validateAllowlist(allowlist, { importers });
   const byIdentity = new Map(
     allowlist.entries.map((entry) => [nodeIdentity(entry), entry]),
   );
@@ -425,7 +636,7 @@ export function platformMatches(
 export function resolvedPackagePath(root, entry) {
   const lockRoot = resolve(
     root,
-    entry.lock === 'package-lock.json'
+    entry.lock === 'package-lock.json' || entry.lock === 'pnpm-lock.yaml'
       ? '.'
       : entry.lock.slice(0, -'/package-lock.json'.length),
   );
@@ -440,7 +651,7 @@ export function installedPackagePath(root, entry) {
     );
   const lockRoot = resolve(
     root,
-    entry.lock === 'package-lock.json'
+    entry.lock === 'package-lock.json' || entry.lock === 'pnpm-lock.yaml'
       ? '.'
       : entry.lock.slice(0, -'/package-lock.json'.length),
   );
@@ -545,6 +756,18 @@ export function optionalPackageMayBeAbsent(
   platform = process.platform,
   arch = process.arch,
 ) {
+  if (entry.lock === 'pnpm-lock.yaml') {
+    const meta =
+      readPnpmLockfile(root).packages[`${entry.name}@${entry.version}`];
+    return Boolean(
+      meta &&
+        !platformMatches(
+          { platform: { os: meta.os ?? [], cpu: meta.cpu ?? [] } },
+          platform,
+          arch,
+        ),
+    );
+  }
   const node = readLifecycleLocks(root).find(
     (candidate) => nodeIdentity(candidate) === nodeIdentity(entry),
   );

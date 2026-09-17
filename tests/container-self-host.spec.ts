@@ -9,7 +9,7 @@ test.skip(
   'container self-host coverage is invoked by scripts/container-smoke.sh',
 );
 
-test('container serves one authenticated origin and reads its mounted workspace', async ({
+test('container serves one authenticated origin with writable Git workspace and persistent state', async ({
   browser,
   baseURL,
 }) => {
@@ -20,6 +20,17 @@ test('container serves one authenticated origin and reads its mounted workspace'
   if (!baseURL || !credential || !workspace) {
     throw new Error('container smoke environment is incomplete');
   }
+  const anonymous = await browser.newContext();
+  const refused = await anonymous.request.post(`${baseURL}/api/projects`, {
+    data: {
+      name: 'Must not exist',
+      slug: 'unauthorized-import',
+      workingDirectory: workspace,
+    },
+  });
+  expect([401, 403]).toContain(refused.status());
+  await anonymous.close();
+
   const context = await browser.newContext({
     extraHTTPHeaders: { Authorization: `Bearer ${credential}` },
   });
@@ -29,6 +40,9 @@ test('container serves one authenticated origin and reads its mounted workspace'
   const result = await page.evaluate(
     async ({ expectPersisted, workspace }) => {
       let projectStatus: number | null = null;
+      let createStatus: number | null = null;
+      let duplicateStatus: number | null = null;
+      let createdProjectId: string | null = null;
       if (!expectPersisted) {
         const project = await fetch('/api/projects', {
           method: 'POST',
@@ -43,6 +57,29 @@ test('container serves one authenticated origin and reads its mounted workspace'
         if (!project.ok) {
           throw new Error(`project creation failed: ${project.status}`);
         }
+        createdProjectId = (await project.json()).data.id;
+        const duplicate = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Replacement must not win',
+            slug: 'container-self-host',
+            workingDirectory: '/different-workspace',
+          }),
+        });
+        duplicateStatus = duplicate.status;
+        const created = await fetch('/api/coding/files/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: workspace,
+            target: 'container-created.txt',
+            type: 'file',
+          }),
+        });
+        createStatus = created.status;
+        if (!created.ok)
+          throw new Error(`workspace file creation failed: ${created.status}`);
       }
       const storedProject = await fetch(
         '/api/projects/container-self-host',
@@ -53,7 +90,25 @@ test('container serves one authenticated origin and reads its mounted workspace'
       const content = await fetch(
         `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=container-sentinel.txt`,
       );
+      const createdFile = await fetch(
+        `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=container-created.txt`,
+      );
+      const changes = await fetch(
+        `/api/coding/files/content?path=${encodeURIComponent(workspace)}&file=changes.txt`,
+      );
+      const gitStatus = await fetch(
+        `/api/coding/git/status?path=${encodeURIComponent(workspace)}`,
+      );
       return {
+        createStatus,
+        createdProjectId,
+        duplicateStatus,
+        changes: { status: changes.status, body: await changes.json() },
+        createdFile: {
+          status: createdFile.status,
+          body: await createdFile.json(),
+        },
+        gitStatus: { status: gitStatus.status, body: await gitStatus.json() },
         projectStatus,
         storedProject,
         status: content.status,
@@ -64,6 +119,42 @@ test('container serves one authenticated origin and reads its mounted workspace'
   );
 
   expect(result.projectStatus).toBe(expectPersisted ? null : 201);
+  expect(result.createStatus).toBe(expectPersisted ? null : 200);
+  expect(result.duplicateStatus).toBe(expectPersisted ? null : 409);
+  if (!expectPersisted) {
+    expect(result.createdProjectId).toBeTruthy();
+    expect(result.storedProject.body.data.id).toBe(result.createdProjectId);
+  }
+  expect(result.changes).toEqual({
+    status: 200,
+    body: {
+      success: true,
+      data: { path: 'changes.txt', content: 'working\n' },
+    },
+  });
+  expect(result.createdFile).toEqual({
+    status: 200,
+    body: {
+      success: true,
+      data: { path: 'container-created.txt', content: '' },
+    },
+  });
+  expect(result.gitStatus).toMatchObject({
+    status: 200,
+    body: {
+      success: true,
+      data: {
+        isRepo: true,
+        repoRoot: workspace,
+        branch: 'main',
+        lastCommit: {
+          author: 'Station smoke',
+          message: 'Seed container workspace',
+        },
+      },
+    },
+  });
+  expect(result.gitStatus.body.data.lastCommit.sha).toMatch(/^[a-f0-9]{8}$/);
   expect(result.storedProject).toEqual({
     status: 200,
     body: {

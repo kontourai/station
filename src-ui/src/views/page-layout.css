@@ -323,12 +323,17 @@
     transform var(--motion-base) var(--ease-standard);
 }
 
+/* Hover is an affordance, not a selection. The accent ring belongs to the
+   selected card alone: while hover also painted `--accent-primary`, two cards
+   read as selected at once and the pointer appeared to move the selection
+   (#1536 G8). Selection follows click and keyboard only. */
 .page__card-loose:hover {
-  border-color: var(--accent-primary);
+  border-color: var(--border-secondary);
   transform: translateY(-2px);
 }
 
-.page__card-loose--selected {
+.page__card-loose--selected,
+.page__card-loose--selected:hover {
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 1px var(--accent-primary);
   background: var(--bg-tertiary);
@@ -546,6 +551,11 @@
   margin-bottom: 1.5rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  /* UX audit 2026-09-05 D1: a tab strip is chrome, never a flex-shrink
+     candidate. Inside a `.pane-host` column (Connections) the split pane's
+     `flex: 1 1 auto` squeezed this strip to 11px and the tabs rendered as
+     clipped half-glyphs under the panel below. */
+  flex-shrink: 0;
 }
 
 .page__tab {
@@ -655,6 +665,134 @@
   background: var(--border-primary);
 }
 
+/* #2144 decision 6: named groups, which reverses archive#4463's removal of
+   Settings' inline STATION/DEFAULTS labels — and has to answer that removal's
+   reason. What collided then was two label VOCABULARIES sharing one control:
+   the group words looked like the link words. So this is styled to be
+   unmistakably not a link — no pill border, no background, muted and
+   letter-spaced small caps, and not interactive — while being a real heading
+   rather than the silent divider the removal left behind, which told a
+   screen-reader user nothing at all. */
+.section-nav__group-label {
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 0 0.15rem 0 0.55rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── SectionNav rail (#2144 slice 7) ──
+   The SAME `<nav>` of the SAME flat `<a>`/`<h2>` children the strip above
+   renders — turned on its side. `.section-nav` alone truncates: a strip that
+   scrolls horizontally shows only as many links as fit, and at 1440x900
+   Settings' own strip cut off after the second group heading, leaving three
+   of five groups (Control, This device, Knowledge) behind a horizontal scroll
+   nothing announced. A vertical rail shows the whole map at once.
+
+   Three consequences worth stating, because each of them is a rule an earlier
+   change in this family had to learn:
+
+   - It is a MODIFIER, not a replacement. Below the mobile breakpoint, and on
+     any coarse pointer, `.section-nav`'s horizontal scroller is what ships —
+     the rail would eat a phone's width, and `tests/settings.spec.ts` pins both
+     that scroller and the 44px touch floor. The condition below is the exact
+     complement of this file's `(max-width: 768px), (pointer: coarse)` block,
+     so no device matches both and none matches neither.
+   - It adds NO element inside the nav. `SettingsSectionNav.test.tsx` pins that
+     every child of the strip is a link or a heading; the rail is a flex
+     DIRECTION change plus a layout partner OUTSIDE the landmark, so the
+     landmark, its single accessible name and its heading rotor are untouched.
+   - It lives here, beside `.section-nav`, for the reason review MED-4 gave
+     when it moved the scroll affordance here: the layout of this primitive is
+     decided in one file, so a host's own copy cannot be silently outranked.
+     `.section-nav-rail`/`__body` are the rail's layout partner, not a page's
+     own responsive CSS — a host supplies only the classes. */
+.section-nav-rail__body {
+  min-width: 0;
+}
+
+@media (min-width: 769px) and (not (pointer: coarse)) {
+  .section-nav-rail {
+    display: flex;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .section-nav--rail {
+    flex: 0 0 200px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    margin-bottom: 0;
+    padding-right: 0.75rem;
+    border-right: 1px solid var(--border-primary);
+    /* The rail's own scroll, so a nav taller than the window scrolls inside
+       itself instead of pushing the page. `sticky` keeps it beside the
+       content it navigates; `max-height` is what makes the overflow
+       reachable at all when it does. */
+    position: sticky;
+    top: 0.5rem;
+    max-height: calc(100vh - 6rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  /* A rail row is a line of a list, not a pill: no border of its own, the
+     full width of the rail, and text that wraps rather than a strip's
+     `white-space: nowrap` (which would clip "Engines & Models" at 200px). */
+  .section-nav--rail > .page__tab {
+    display: block;
+    padding: 0.5rem 0.625rem;
+    border-color: transparent;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    white-space: normal;
+  }
+
+  .section-nav--rail > .page__tab:hover {
+    border-color: transparent;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  /* The established selected-row pair in this tree (`index.css` agent
+     selector, `chat.css` model row): a 14% accent TINT, not an accent fill,
+     with the accent itself as the foreground. */
+  .section-nav--rail > .page__tab--active {
+    border-color: transparent;
+    background: var(--bg-selected);
+    color: var(--accent-primary);
+    font-weight: 600;
+  }
+
+  .section-nav--rail > .section-nav__group-label {
+    align-self: stretch;
+    margin: 1rem 0 0.25rem 0.625rem;
+  }
+
+  .section-nav--rail > .section-nav__group-label:first-child {
+    margin-top: 0;
+  }
+
+  .section-nav-rail__body {
+    flex: 1 1 auto;
+    /* Station's own measure — `.page--narrow` / `.page-frame--narrow` are
+       960px — rather than a number borrowed from another product. At 1440
+       the content column is already narrower than this, so nothing moves
+       there; it caps the line length on a wide window, which is the case the
+       rail creates by taking the page's full width out of one column. */
+    max-width: 960px;
+  }
+}
+
 /* Shared Guidance/section tab-strip primitive: tabs grow to a 44px touch
    target and Tabs' (not SectionNav's) scrollbar hides on touch-sized
    screens; page surfaces must not supply their own mobile rail. */
@@ -671,22 +809,6 @@
   .section-nav > .page__tab {
     min-height: 44px;
   }
-}
-
-.guidance-navigation {
-  border-bottom: 1px solid var(--border-primary);
-  padding: 0.75rem 1rem 0.6rem;
-}
-
-.guidance-navigation .page__tabs {
-  margin-bottom: 0.45rem;
-}
-
-.guidance-navigation__description {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: 1.45;
 }
 
 /* A tab strip that is the first thing inside a FLUSH page-frame body (the

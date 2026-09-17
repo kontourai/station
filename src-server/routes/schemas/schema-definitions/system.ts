@@ -125,12 +125,61 @@ export const pluginPreviewSchema = z.object({
  * refuses a decision that does not match the staged source.
  */
 export const pluginInstallConsentSchema = z.object({
+  grantRevision: z.string().min(1).max(256).optional(),
+  registryTrustRevision: z
+    .string()
+    .regex(/^sha256:[a-f0-9]{64}$/)
+    .optional(),
   permissions: z.array(z.string()).max(256),
   contentDigest: z.string().min(1).max(256),
   dependencies: z.array(z.string()).max(256).optional(),
+  dependencyApprovals: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(128),
+        grantRevision: z.string().min(1).max(256).optional(),
+        registryTrustRevision: z
+          .string()
+          .regex(/^sha256:[a-f0-9]{64}$/)
+          .optional(),
+        permissions: z.array(z.string()).max(256),
+        contentDigest: z.string().min(1).max(256),
+        dependencies: z.array(z.string()).max(256),
+      }),
+    )
+    .max(256)
+    .optional(),
 });
 
+const pluginInstallationRevisionSchema = z
+  .object({
+    scope: z.string().uuid(),
+    installation: z.string().min(1).max(64),
+    generation: z.string().uuid(),
+    materialization: z.string().uuid(),
+    dataScope: z.string().uuid(),
+    origin: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    artifact: z
+      .object({ digest: z.string().regex(/^sha256:[0-9a-f]{64}$/) })
+      .strict(),
+  })
+  .strict();
+
+export const pluginRecoverySchema = z
+  .object({
+    recoveryRevision: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    consent: pluginInstallConsentSchema.extend({
+      grantRevision: z.string().min(1).max(256),
+    }),
+  })
+  .strict();
+
 export const pluginInstallSchema = z.object({
+  dataPolicy: z.enum(['preserve', 'retain-and-reset']).optional(),
+  expectedInstallation: pluginInstallationRevisionSchema.nullable().optional(),
   source: z.string().min(1),
   skip: z.array(z.string()).optional(),
   consent: pluginInstallConsentSchema.optional(),
@@ -146,12 +195,30 @@ export const pluginInstallSchema = z.object({
  * alone, exactly as before.
  */
 export const registryPluginInstallSchema = registryInstallSchema.extend({
+  dataPolicy: z.enum(['preserve', 'retain-and-reset']).optional(),
+  expectedInstallation: pluginInstallationRevisionSchema.nullable().optional(),
   skip: z.array(z.string()).max(256).optional(),
   consent: pluginInstallConsentSchema.optional(),
 });
 
 export const pluginGrantSchema = z.object({
   permissions: z.array(z.string()),
+});
+
+/**
+ * A per-principal plugin visibility grant or revocation (#2067).
+ *
+ * `principalId` is the TARGET of the change, never the authority for it: the
+ * route resolves the caller from the request's own authentication and refuses
+ * a non-operator before this body is read
+ * (`routes/plugins/plugin-visibility-routes.ts`). Both fields are bounded
+ * here for shape only; `PluginVisibilityService` re-validates each against
+ * the principal-id grammar and the canonical plugin-name grammar, because the
+ * store must not depend on which route reached it.
+ */
+export const pluginVisibilityGrantSchema = z.object({
+  principalId: z.string().trim().min(1).max(512),
+  plugin: z.string().trim().min(1).max(64),
 });
 
 /**
@@ -218,6 +285,11 @@ export const pluginFetchSchema = z.object({
 });
 
 // Feedback
+export const feedbackAnalyzeSchema = z.object({
+  maxReinforce: z.number().int().min(1).max(50).optional(),
+  maxAvoid: z.number().int().min(1).max(50).optional(),
+});
+
 export const feedbackDeleteSchema = z.object({
   conversationId: z.string().optional(),
   messageIndex: z.number().int().min(0),

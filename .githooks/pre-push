@@ -49,6 +49,19 @@ fi
 echo "[station pre-push] biome check (lint, formatting, organized imports)"
 npm run --silent lint:check
 
+# ~4s of source reads. The governance proof was composed ONLY by
+# `full:regression:raw`, and full-regression.yml declares no push,
+# pull_request, merge_group or schedule trigger, so until 2026-09-14 nothing
+# evaluated a candidate against it before merge and nothing evaluated main
+# against it after merge except the next Nightly. Two violations reached main
+# that way on 2026-09-14 while that Nightly was itself red on an unrelated
+# stale test. `ci:fast` now runs this on every pull request, which closes the
+# merge gap; running it here as well is the same reasoning the steps below
+# use — four seconds for whoever wrote it, a whole gate cycle for whoever
+# finds it.
+echo "[station pre-push] repository governance proof"
+npm run --silent proof:repo-governance
+
 # ~9s, and only when this push changes something the UI build reads (#3033).
 echo "[station pre-push] UI entry-bundle ceiling"
 node scripts/check-prepush-ui-bundle.mjs
@@ -57,16 +70,27 @@ echo "[station pre-push] orchestration transfer budgets"
 node scripts/check-prepush-orchestration-transfer.mjs
 
 # ~7s, and only when this push changes something these gates read (#3208).
-# The UI-contract ratchets and the content gates live in verify:static, which
-# only full:regression composes, which CI runs only on push-to-main — so
-# without this they evaluate a change after it is already on main, and the red
+# The UI-contract ratchets live in verify:static, which only full:regression
+# composes — and full-regression.yml is workflow_call only, reached from
+# nightly.yml (09:00 UTC schedule or dispatch), release.yml (tagged
+# promotion), and ci.yml's workflow_dispatch-only job. No pull_request,
+# merge_group or push-to-main run composes the whole chain.
+#
+# That does not mean nothing from the chain runs pre-merge: ci:fast, the
+# required `fast-checks` lane, composes node-runtime-contract,
+# lockfile-sync:gate, channel-ports:check, gate:workflows and the typecheck
+# aggregate. What it does NOT compose is any of the fourteen ratchets this
+# step runs. Post-merge, windows-verification.yml runs typecheck, gate:naming
+# and gate:ui-contracts on a paths-filtered push to main, which does cover
+# thirteen of the fourteen (agent-plugin-validators-gate is the exception).
+#
+# So the gap this closes is pre-merge, not absolute: without this hook these
+# ratchets first evaluate a change AFTER it is on main — and only if the push
+# touched the filtered paths, else not until the next Nightly — so the red
 # lands on whoever gates next. Three regressions reached main in one day that
 # way (two motion literals, one undeclared Coding dependency).
 echo "[station pre-push] static gates (UI contracts, content)"
 node scripts/check-prepush-static-gates.mjs
-
-echo "[station pre-push] Basis MCP app freshness"
-node scripts/check-basis-mcp-apps.mjs
 
 # ~6s, and only when this push changes the SDK's own sources (#3629). The
 # barrel invariant already exists as a test; what was missing is running it
@@ -75,6 +99,38 @@ node scripts/check-basis-mcp-apps.mjs
 # gated next.
 echo "[station pre-push] SDK public barrel"
 node scripts/check-prepush-sdk-barrel.mjs
+
+# ~15s on an idle host, ~35s typical, 75s here at load 48. This is the most
+# expensive UNCONDITIONAL step in the hook, and it earns that because until
+# 2026-09-14 nothing ran it at all: not ci:fast, not this hook, and not
+# full:regression either, while every AGENTS.md in the repo tells contributors
+# to run `veritas readiness` and address any FAIL lines. It cannot be scoped
+# by path the way the steps above are — its evidence-checks execute
+# repository-wide commands, and its artifact and instruction-file rules read
+# repository state rather than a diff — so "which paths did this push touch"
+# does not predict its verdict.
+#
+# It runs after `proof:repo-governance` and not before, because it re-executes
+# that proof as a routed evidence-check: when the proof is what broke, the
+# step above has already said so in four seconds under its own name.
+echo "[station pre-push] Veritas readiness"
+npm run --silent veritas:readiness
+
+# ~50-90s (51s wall measured here end to end, preconditions included, with
+# the thirteen lanes run concurrently; station#4273 recorded 82s for the
+# aggregate alone), and
+# only when this push changes something a tsc project reads — a .ts/.tsx/
+# .mts/.cts source, any tsconfig, a manifest, or a patch. Everything else in
+# this hook is seconds-scale; this one is not, which is why it is the only
+# step here gated on its inputs for cost rather than for relevance. A
+# docs-only, workflow-only or .mjs-only push pays nothing.
+#
+# `ci:fast` already runs the same aggregate on every pull request, so this
+# does not close a merge gap — it moves the finding to the author, before the
+# push, instead of a CI cycle later where an intervening merge-queue candidate
+# inherits the red.
+echo "[station pre-push] typecheck (scoped to TypeScript inputs)"
+node scripts/check-prepush-typecheck.mjs
 
 # Instant. The ref lines were collected during the deletion-skipping loop
 # above (stdin reads once), re-emitted verbatim in git's own four-field form

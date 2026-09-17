@@ -17,12 +17,15 @@ import {
 } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useNotificationHistory } from '../contexts/ToastContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
   countPendingAttention,
+  isAcknowledgeableAttentionItem,
   pendingAttentionItems,
 } from '../utils/attention';
 import { errorText } from '../utils/errorText';
+import { notificationCategoryLabel } from '../utils/notificationLabels';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
@@ -33,7 +36,6 @@ import {
   isNotificationHistoryDateRangeValid,
   type NotificationHistoryFilters,
   notificationHistoryCategories,
-  notificationHistoryCategoryLabel,
   readNotificationHistoryFilters,
   writeNotificationHistoryFilters,
 } from './notificationHistoryFilters';
@@ -95,6 +97,9 @@ export function NotificationsPage() {
       ? [exactApproval, ...pending]
       : pending;
   }, [exactApproval, filtered.items]);
+  const dismissibleItems = attentionItems.filter(
+    isAcknowledgeableAttentionItem,
+  );
   const activityNotifications = useMemo(
     () =>
       exactApprovalNotification &&
@@ -115,8 +120,12 @@ export function NotificationsPage() {
     // all, then report only what actually failed, with a count so the user
     // knows the batch was partial rather than lost.
     mutationFn: async () => {
+      // #1536 D8 review M1: a standing notice is not one of these. It is
+      // still true after the dismissal, the server refuses its
+      // acknowledgement, and posting one anyway would report a failure for
+      // every batch that contained it.
       const outcomes = await Promise.allSettled(
-        attentionItems.map((item) =>
+        dismissibleItems.map((item) =>
           acknowledgeAttentionItem(item.id, apiBase),
         ),
       );
@@ -182,6 +191,7 @@ export function NotificationsPage() {
             })
           }
         />
+        <RecentAppMessages />
         <SkeletonList count={4} label="Loading notifications" />
       </div>
     );
@@ -203,6 +213,7 @@ export function NotificationsPage() {
             })
           }
         />
+        <RecentAppMessages />
         <ErrorState
           title="Unable to load notifications"
           description={describeReadFailure(loadError)}
@@ -220,7 +231,7 @@ export function NotificationsPage() {
     <>
       <div className="notifications-page">
         <NotificationsHeader
-          attentionCount={attentionItems.length}
+          attentionCount={dismissibleItems.length}
           onDismissAll={() => setShowDismissConfirm(true)}
           isDismissing={dismissAllAttention.isPending}
           onOpenSettings={() =>
@@ -230,15 +241,24 @@ export function NotificationsPage() {
             })
           }
         />
+        <RecentAppMessages />
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
+        inbox.unavailableSources.length === 0 &&
         !approvalTarget ? (
           /* when BOTH regions are empty they collapse into one PROMINENT
-             empty, not a paragraph floating at the top of an empty page. */
+             empty, not a paragraph floating at the top of an empty page.
+             #2064 review (c): NOT when a source could not be read. This
+             branch does not mount AttentionSection at all, so a partial read
+             skipped the gap notice entirely and answered with the most
+             confident sentence on the page — "Nothing needs your attention
+             right now" on evidence that does not support it. An unreadable
+             source keeps the sectioned layout, which says what it could not
+             read. */
           <Empty
             variant="prominent"
             label="All caught up"
-            description="Nothing needs you right now, and there is no activity yet."
+            description="Nothing needs your attention right now."
           />
         ) : (
           <>
@@ -248,6 +268,7 @@ export function NotificationsPage() {
               pendingVisible={countPendingAttention(attentionItems)}
               filtered={filtersActive}
               focusedApprovalId={approvalTarget || undefined}
+              unavailableSources={inbox.unavailableSources}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
               <p role="status">
@@ -289,9 +310,9 @@ export function NotificationsPage() {
         isOpen={showDismissConfirm}
         title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} attention items`}
         message={`${ACKNOWLEDGE_ATTENTION_ACTION.label} ${
-          attentionItems.length
+          dismissibleItems.length
         } item${
-          attentionItems.length === 1 ? '' : 's'
+          dismissibleItems.length === 1 ? '' : 's'
         } needing attention? Activity stays.`}
         confirmLabel={`${ACKNOWLEDGE_ATTENTION_ACTION.label} all attention items`}
         variant="warning"
@@ -377,7 +398,7 @@ function NotificationHistoryFilterBar({
                     })
                   }
                 >
-                  {notificationHistoryCategoryLabel(category)}
+                  {notificationCategoryLabel(category)}
                 </button>
               );
             })}
@@ -417,6 +438,49 @@ function NotificationHistoryFilterBar({
           From date must be on or before To date.
         </p>
       )}
+    </section>
+  );
+}
+
+function RecentAppMessages() {
+  const history = useNotificationHistory();
+  const messages = history.filter((item) =>
+    ['info', 'success', 'warning', 'error'].includes(item.type ?? 'info'),
+  );
+  if (!messages.length) return null;
+  return (
+    <section
+      className="notifications-page__app-messages"
+      aria-label="Recent app messages"
+    >
+      <h2>Recent app messages</h2>
+      <p>Messages from this app session, including ones you dismissed.</p>
+      <ol>
+        {messages.map((item) => (
+          <li key={item.id}>
+            <div className="notifications-page__app-message-meta">
+              <span
+                className={`notifications-page__app-message-tone is-${item.type ?? 'info'}`}
+              >
+                {item.type === 'error'
+                  ? 'Error'
+                  : item.type === 'warning'
+                    ? 'Warning'
+                    : item.type === 'success'
+                      ? 'Success'
+                      : 'Message'}
+              </span>
+              <time dateTime={new Date(item.timestamp).toISOString()}>
+                {new Date(item.timestamp).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </time>
+            </div>
+            <p>{item.message}</p>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

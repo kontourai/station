@@ -1,7 +1,38 @@
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const read = (file: string) => readFileSync(file, 'utf8');
+
+/** Read exactly one named interface, not the text up to its next neighbour. */
+function interfaceFields(text: string, name: string): string[] {
+  const source = ts.createSourceFile(
+    'contract.ts',
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const declarations = source.statements
+    .filter(ts.isInterfaceDeclaration)
+    .filter((declaration) => declaration.name.text === name);
+  if (declarations.length !== 1)
+    throw new Error(
+      `Expected one ${name} interface${declarations.length === 0 ? ' (missing)' : ''}`,
+    );
+  return declarations[0].members.map((member) => {
+    if (
+      !ts.isPropertySignature(member) ||
+      (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name))
+    )
+      throw new Error(`Unsupported ${name} member`);
+    return member.name.text;
+  });
+}
+
+function manifestFields(contract: string): string[] {
+  return interfaceFields(contract, 'PluginManifest');
+}
 
 describe('documentation foundations', () => {
   it('binds getting-started channel facts, Starters, and review route to their current source owners', () => {
@@ -16,7 +47,12 @@ describe('documentation foundations', () => {
     const starterRegistry = read(
       'src-server/services/starter-work/starter-registry.ts',
     );
-    const surfaces = read('src-ui/src/app-shell/surface-registry.ts');
+    // #2065 retired the global `/review-queue` destination, so the review
+    // route's source owner is no longer the destination registry: Review is a
+    // layout kind, and the href the Starter mints is derived in the contract
+    // below. Binding to the registry now would bind the guide to a file that
+    // says nothing about Review.
+    const layoutContract = read('packages/contracts/src/layout.ts');
 
     expect(channels.channels.stable).toMatchObject({
       instanceDirectory: 'stable',
@@ -52,8 +88,9 @@ describe('documentation foundations', () => {
       "id: 'run-scheduled-check'",
     ])
       expect(starterRegistry).toContain(sourceFact);
-    expect(surfaces).toContain("route: '/review-queue'");
-    expect(guide).toContain('`/review-queue`');
+    expect(layoutContract).toContain("slug: 'review'");
+    expect(layoutContract).toContain('export function projectReviewLayoutHref');
+    expect(guide).toContain('`/projects/<slug>/layouts/review?receipt=...`');
     expect(guide).toContain(
       `STATION_CHANNEL=stable "\${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall`,
     );
@@ -77,13 +114,7 @@ describe('documentation foundations', () => {
 
   it('keeps the plugin manifest field reference complete against the contract', () => {
     const contract = read('packages/contracts/src/plugin.ts');
-    const manifest = contract.match(
-      /export interface PluginManifest \{([\s\S]*?)\n\}\n\nexport interface PluginOverrideConfig/,
-    )?.[1];
-    expect(manifest).toBeTruthy();
-    const contractFields = [
-      ...(manifest ?? '').matchAll(/^ {2}([A-Za-z][A-Za-z0-9]*)\??:/gm),
-    ].map((match) => match[1]);
+    const contractFields = manifestFields(contract);
 
     const guide = read('docs/guides/plugins.md');
     const fieldTable = guide.match(
@@ -97,6 +128,51 @@ describe('documentation foundations', () => {
     );
 
     expect([...documentedFields].sort()).toEqual(contractFields.sort());
+  });
+
+  it('extracts only manifest properties across nested types and intervening rejection interfaces', () => {
+    expect(
+      interfaceFields(
+        `
+      export interface PluginManifest {
+        name: string;
+        settings?: { nested: { value: string } };
+        'entrypoint'?: string;
+      }
+      export interface PluginManifestRejection { code: string; reason: string; }
+      export interface InstalledRejectedPlugin { name: string; status: 'rejected'; recovery: unknown; }
+      export interface PluginOverrideConfig { enabled: boolean; }
+    `,
+        'PluginManifest',
+      ),
+    ).toEqual(['name', 'settings', 'entrypoint']);
+  });
+
+  it('refuses missing or merged duplicate manifest declarations instead of vacuous field parity', () => {
+    expect(() =>
+      interfaceFields('export interface Other {}', 'PluginManifest'),
+    ).toThrow('Expected one');
+    expect(() =>
+      interfaceFields(
+        'interface PluginManifest { name: string } interface PluginManifest { added: string }',
+        'PluginManifest',
+      ),
+    ).toThrow('Expected one');
+  });
+
+  it('extracts only direct manifest fields across nested types and adjacent interfaces', () => {
+    const contract = `
+      export interface PluginManifest {
+        name: string;
+        configuration?: { nested: string };
+      }
+      export interface PluginManifestRejection { code: string; name: string; }
+      export interface PluginOverrideConfig { status: string; }
+    `;
+    expect(manifestFields(contract)).toEqual(['name', 'configuration']);
+    expect(() => manifestFields('export interface Other {}')).toThrow(
+      'missing',
+    );
   });
 
   it('defers shared UI explorer, manifest, tokens, themes, and accessibility to Kontour UI', () => {

@@ -1,6 +1,7 @@
 import { PROJECT_TASK_ROOM_LIVE_HEARTBEAT_INTERVAL_MS } from '@kontourai/station-contracts/project-task-room-browser';
 import {
   type ProjectTaskRoomBrowserLiveSnapshot,
+  type ProjectTaskRoomDocument,
   type ProjectTaskRoomLiveCommand,
   type ProjectTaskRoomLiveResult,
   useCommandProjectTaskRoomLiveMutation,
@@ -35,7 +36,14 @@ type RoomContextValue = {
     command: ProjectTaskRoomLiveCommand,
   ): Promise<ProjectTaskRoomLiveResult>;
   commandPending: boolean;
+  subscribeDocument(
+    listener: (document: AuthoritativeRoomDocument) => void,
+  ): () => void;
 };
+type AuthoritativeRoomDocument = Extract<
+  ProjectTaskRoomDocument,
+  { kind: 'snapshot' | 'delta' }
+>;
 const ProjectTaskRoomContext = createContext<
   ReadonlyMap<string, RoomContextValue>
 >(new Map());
@@ -102,6 +110,9 @@ export function ProjectTaskRoomProvider({
   const commandPendingRef = useRef(mutation.isPending);
   const heartbeatPendingRef = useRef(false);
   const connectionDiagnostics = useRef(new Map<string, () => void>());
+  const documentListeners = useRef(
+    new Set<(document: AuthoritativeRoomDocument) => void>(),
+  );
   streamRef.current = stream;
   liveGenerationRef.current = live?.generation;
   commandPendingRef.current = mutation.isPending;
@@ -162,6 +173,16 @@ export function ProjectTaskRoomProvider({
           receivedEpochMs: browserEpochMs(),
         });
       },
+      onAuthoritativeDocument: (document) => {
+        if (streamRef.current === 'terminal') return;
+        for (const listener of documentListeners.current) {
+          try {
+            listener(document);
+          } catch {
+            // A failing Pane observer cannot starve sibling panes or cache truth.
+          }
+        }
+      },
       onTerminal: () => {
         terminalGenerationRef.current = liveGenerationRef.current;
         streamRef.current = 'terminal';
@@ -208,6 +229,13 @@ export function ProjectTaskRoomProvider({
     (value: ProjectTaskRoomLiveCommand) => mutation.mutateAsync(value),
     [mutation.mutateAsync],
   );
+  const subscribeDocument = useCallback(
+    (listener: (document: AuthoritativeRoomDocument) => void) => {
+      documentListeners.current.add(listener);
+      return () => documentListeners.current.delete(listener);
+    },
+    [],
+  );
   const ownParticipant = ownActorId
     ? live?.participants.some(
         (participant) => participant.actor.actorId === ownActorId,
@@ -251,6 +279,7 @@ export function ProjectTaskRoomProvider({
       ...(ownActorId ? { ownActorId } : {}),
       command,
       commandPending: mutation.isPending,
+      subscribeDocument,
     });
     return rooms;
   }, [
@@ -261,6 +290,7 @@ export function ProjectTaskRoomProvider({
     ownActorId,
     parent,
     stream,
+    subscribeDocument,
     taskId,
   ]);
   return (

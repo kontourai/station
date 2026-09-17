@@ -137,6 +137,29 @@ h3 {
   margin-top: 34px;
 }
 
+.status-line,
+.section-note {
+  max-width: 720px;
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.section-note code {
+  padding: 0.1rem 0.28rem;
+  background: #eef2ed;
+  border-radius: 4px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.88em;
+}
+
+.feature-grid article a {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--accent);
+  font-weight: 650;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

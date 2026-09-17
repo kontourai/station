@@ -7,6 +7,7 @@ import {
   type WorkspacePaneInstanceId,
   type WorkspacePaneSuppliableContexts,
 } from './workspace-pane.js';
+import { structurallyEqual } from './workspace-pane-layout-adapter-helpers.js';
 import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from './workspace-pane-layout-adapter-types.js';
 
 /** Serial host state is intentionally separate from descriptor maturity and renderer lifecycle. */
@@ -14,7 +15,11 @@ import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from './workspace-pane-lay
 export const WORKSPACE_PANE_HOST_DOCUMENT_VERSION = '1.1' as const;
 export const MAX_WORKSPACE_PANE_HOST_PANES = 24;
 export const MAX_WORKSPACE_PANE_HOST_TREE_DEPTH = 6;
-const MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS = 7;
+const MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS = 10;
+// Existing catalog snapshot: contribution (object + 4 fields), source identity
+// (object + 3 fields), provenance (object + 2 mutually exclusive owner fields).
+const MAX_WORKSPACE_PANE_HOST_CONTRIBUTION_ITEMS = 5 + 4 + 3;
+const MAX_WORKSPACE_PANE_HOST_INPUT_STRING_LENGTH = 1_024;
 const MAX_WORKSPACE_PANE_HOST_DOCUMENT_PROPERTIES = 7;
 const MAX_WORKSPACE_PANE_HOST_TASK_SCOPE_PROPERTIES = 4;
 const MAX_WORKSPACE_PANE_HOST_INSTANCE_PROPERTIES = 5;
@@ -25,8 +30,9 @@ const MAX_WORKSPACE_PANE_HOST_SPLITS = MAX_WORKSPACE_PANE_HOST_TAB_GROUPS - 1;
 /**
  * Maximum object/property work of an accepted document:
  * document (8) + Task scope (5) + instances array (25) + 24 full instances
- * (24 * (instance 6 + bound context 7)) + 24 tab groups/ID arrays (168) +
- * 23 collapsed splits (184) = 702. A 24-leaf tree can still reach depth six.
+ * (24 * (instance 6 + bound context 11 + contribution graph 12)) + 24 tab
+ * groups/ID arrays (168) + 23 collapsed splits (184) = 1086.
+ * A 24-leaf tree can still reach depth six.
  */
 export const MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS =
   1 +
@@ -39,7 +45,8 @@ export const MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS =
     (1 +
       MAX_WORKSPACE_PANE_HOST_INSTANCE_PROPERTIES +
       1 +
-      MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS) +
+      MAX_WORKSPACE_PANE_HOST_BOUND_CONTEXT_FIELDS +
+      MAX_WORKSPACE_PANE_HOST_CONTRIBUTION_ITEMS) +
   MAX_WORKSPACE_PANE_HOST_TAB_GROUPS *
     (1 + MAX_WORKSPACE_PANE_HOST_TAB_GROUP_PROPERTIES) +
   MAX_WORKSPACE_PANE_HOST_TAB_GROUPS +
@@ -273,6 +280,11 @@ function hasSafeDataGraph(
   seen = new Set<object>(),
   budget = { work: 0 },
 ): boolean {
+  // Bound strings before the canonical pane parser snapshots them. Scalar
+  // identities retain their stricter 128-unit bound below; provenance may
+  // contain a source URI rather than an identity segment.
+  if (typeof value === 'string')
+    return value.length <= MAX_WORKSPACE_PANE_HOST_INPUT_STRING_LENGTH;
   if (value === null || typeof value !== 'object') return true;
   if (seen.has(value)) return false;
   seen.add(value);
@@ -299,6 +311,11 @@ function hasSafeDataGraph(
       (key) => !Array.isArray(value) || key !== 'length',
     );
     if (
+      keys.some(
+        (key) =>
+          typeof key !== 'string' ||
+          key.length > MAX_WORKSPACE_PANE_HOST_INPUT_STRING_LENGTH,
+      ) ||
       keys.length > MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS ||
       budget.work + keys.length > MAX_WORKSPACE_PANE_HOST_RECOVERY_INPUT_ITEMS
     )
@@ -505,7 +522,10 @@ export function createWorkspacePaneHostBaselineDocument(
   scope: WorkspacePaneHostScope,
   instances: readonly WorkspacePaneInstance[],
 ): WorkspacePaneHostDocumentV1 | null {
-  const accepted = instances.filter(isBoundedWorkspacePaneInstance);
+  const accepted = instances.flatMap((instance) => {
+    const canonical = canonicalKnownInstance(instance);
+    return canonical ? [canonical] : [];
+  });
   const first = accepted[0];
   if (!isWorkspacePaneHostIdentitySegment(id) || !first) return null;
   return {
@@ -527,12 +547,86 @@ function knownInstanceMap(
   instances: readonly WorkspacePaneInstance[],
 ): Map<string, WorkspacePaneInstance> {
   return new Map(
-    instances
-      .filter((instance) => isBoundedWorkspacePaneInstance(instance))
-      .map((instance) => [instance.instanceId, instance]),
+    instances.flatMap((instance) => {
+      const canonical = canonicalKnownInstance(instance);
+      return canonical ? [[canonical.instanceId, canonical] as const] : [];
+    }),
   );
 }
 
+function parseBoundedWorkspacePaneInstance(
+  value: unknown,
+): WorkspacePaneInstance | null {
+  if (!hasSafeDataGraph(value)) return null;
+  const parsed = parseWorkspacePaneInstance(value);
+  return parsed && isBoundedWorkspacePaneInstance(parsed) ? parsed : null;
+}
+
+/**
+ * Own-key equality, which `structurallyEqual` does not give: it compares
+ * ENUMERABLE STRING keys by value, so it also reports equal for a record
+ * carrying a non-enumerable own property or an own key whose value is
+ * `undefined`. `hasSafeDataGraph` admits both — it rejects only accessors and
+ * non-plain prototypes — and JSON and `Object.keys` hide both, so such a record
+ * would be retained while carrying a field the parse never produced. Comparing
+ * `Reflect.ownKeys` catches them.
+ *
+ * A null prototype is deliberately NOT rejected: `cloneData` builds every
+ * catalog record with `Object.create(null)`, so requiring `Object.prototype`
+ * would canonicalize the exact records this contract exists to hand back.
+ * Objects must therefore be plain (`Object.prototype` or null) and arrays must
+ * be ordinary arrays — the same prototype rule `hasSafeDataGraph` enforces.
+ */
+function sameOwnShape(candidate: unknown, canonical: unknown): boolean {
+  if (canonical === null || typeof canonical !== 'object')
+    return candidate === null || typeof candidate !== 'object';
+  if (candidate === null || typeof candidate !== 'object') return false;
+  const isArray = Array.isArray(canonical);
+  if (isArray !== Array.isArray(candidate)) return false;
+  const prototype = Object.getPrototypeOf(candidate);
+  if (
+    isArray
+      ? prototype !== Array.prototype
+      : prototype !== Object.prototype && prototype !== null
+  )
+    return false;
+  const ownKeys = (value: object) =>
+    Reflect.ownKeys(value).filter((key) => !isArray || key !== 'length');
+  const keys = ownKeys(candidate);
+  // Same size plus every candidate key present makes the two key sets equal,
+  // so neither side can carry a key the other lacks.
+  const canonicalKeys = new Set<PropertyKey>(ownKeys(canonical));
+  if (keys.length !== canonicalKeys.size) return false;
+  return keys.every(
+    (key) =>
+      typeof key === 'string' &&
+      canonicalKeys.has(key) &&
+      sameOwnShape(
+        (candidate as Record<string, unknown>)[key],
+        (canonical as Record<string, unknown>)[key],
+      ),
+  );
+}
+
+/**
+ * Admits a catalog-supplied record, keeping the caller's own object whenever it
+ * already is exactly what the parse would have produced. The parse stays the
+ * admission gate — a record that is not already canonical is replaced by its
+ * canonical form — but a record that is canonical is handed back by identity,
+ * not by copy, which is what this module's documented catalog contract requires
+ * of restoration ("matching IDs must retain the exact known record", below).
+ * A caller that freezes or interns its catalog records therefore still holds
+ * those same objects after restoration.
+ */
+function canonicalKnownInstance(value: unknown): WorkspacePaneInstance | null {
+  const parsed = parseBoundedWorkspacePaneInstance(value);
+  if (!parsed) return null;
+  return structurallyEqual(value, parsed) && sameOwnShape(value, parsed)
+    ? (value as WorkspacePaneInstance)
+    : parsed;
+}
+
+/** Receives the canonical parsed instance, including validated catalog provenance. */
 function isBoundedWorkspacePaneInstance(
   instance: WorkspacePaneInstance,
 ): boolean {
@@ -542,9 +636,31 @@ function isBoundedWorkspacePaneInstance(
     !isWorkspacePaneHostIdentitySegment(instance.stateKey)
   )
     return false;
-  return Object.values(instance.boundContext ?? {}).every((value) =>
-    isWorkspacePaneHostIdentitySegment(value),
+  return Object.entries(instance.boundContext ?? {}).every(
+    ([key, value]) =>
+      key === 'contribution' || isWorkspacePaneHostIdentitySegment(value),
   );
+}
+
+/**
+ * Re-seats a reconstructed document on the catalog's own records. Repair rebuilds
+ * the document through the canonical parser, which necessarily snapshots every
+ * instance; substituting afterwards keeps the catalog-identity contract uniform
+ * across the strict and repaired paths instead of holding on only one of them.
+ * Substitution is content-neutral: an instance reaches a rebuilt document only
+ * after matching its catalog record's descriptor and state key.
+ */
+function seatOnCatalog(
+  document: WorkspacePaneHostDocumentV1 | null,
+  catalog: ReadonlyMap<string, WorkspacePaneInstance>,
+): WorkspacePaneHostDocumentV1 | null {
+  if (!document || catalog.size === 0) return document;
+  return {
+    ...document,
+    instances: document.instances.map(
+      (item) => catalog.get(item.instanceId) ?? item,
+    ),
+  };
 }
 
 /**
@@ -652,9 +768,12 @@ export function restoreWorkspacePaneHostDocument(
       recoveryInstances,
     );
     return {
-      document: recoveryDocument
-        ? parseWorkspacePaneHostDocument(recoveryDocument)
-        : null,
+      document: seatOnCatalog(
+        recoveryDocument
+          ? parseWorkspacePaneHostDocument(recoveryDocument)
+          : null,
+        catalog,
+      ),
       failures,
     };
   }
@@ -792,7 +911,7 @@ export function restoreWorkspacePaneHostDocument(
     ...(maximized ? { maximizedInstanceId: maximized } : {}),
   });
   return {
-    document: recovered,
+    document: seatOnCatalog(recovered, catalog),
     failures: recovered
       ? failures
       : [...failures, { code: 'invalid-document' }],

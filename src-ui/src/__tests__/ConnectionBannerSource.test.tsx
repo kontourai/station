@@ -13,6 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BannerHost } from '../components/notifications/BannerHost';
 import { ConnectionBannerSource } from '../components/notifications/ConnectionBannerSource';
 import { BANNER_IDS, bannerStore } from '../contexts/banner-store';
+import {
+  getStreamConnectionState,
+  setStreamConnectionState,
+} from '../hooks/orchestration/streamConnectionState';
 import type { PlatformProfile } from '../platform/PlatformProfileContext';
 
 const connectionStatus = {
@@ -81,6 +85,7 @@ function renderChrome() {
 }
 
 beforeEach(() => {
+  setStreamConnectionState('https://station.example.test', 'unknown');
   globalThis.localStorage.clear();
   activeConnection = null;
   platformProfile = {
@@ -98,6 +103,23 @@ beforeEach(() => {
   connectionStatus.recheck.mockReset();
   removeConnection.mockReset();
   bannerStore.reset();
+});
+
+it('known credential rejection also blocks chat recovery until an authenticated delivery', () => {
+  connectionStatus.blocked = true;
+  connectionStatus.reason = 'authentication-failed';
+  renderChrome();
+  expect(getStreamConnectionState('https://station.example.test').phase).toBe(
+    'closed',
+  );
+  setStreamConnectionState('https://station.example.test', 'interrupted');
+  expect(getStreamConnectionState('https://station.example.test').phase).toBe(
+    'closed',
+  );
+  setStreamConnectionState('https://station.example.test', 'receiving');
+  expect(getStreamConnectionState('https://station.example.test').phase).toBe(
+    'receiving',
+  );
 });
 
 afterEach(() => {
@@ -758,7 +780,7 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.className).toMatch(/banner-host__item--blocked/);
-    expect(alert.textContent).toMatch(/Credential required/);
+    expect(alert.textContent).toMatch(/Approval needed/);
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(
       /Automatic reconnect is paused/,
@@ -779,10 +801,64 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.className).not.toMatch(/banner-host__item--blocked/);
-    expect(alert.textContent).not.toMatch(/Credential required/);
+    expect(alert.textContent).not.toMatch(/Approval needed/);
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect((await screen.findByRole('alert')).textContent).not.toMatch(
       /Automatic reconnect is paused/,
+    );
+  });
+
+  /**
+   * #1132: a maximized region covers the whole viewport and owns the layer
+   * above ordinary notices (#919), so a notice that is only reachable through
+   * its own actions has to be marked as critical chrome or it is buried —
+   * measured live, `elementFromPoint` at this banner's centre resolved to the
+   * maximized dock's own empty state.
+   *
+   * `blocked: false` on purpose. The blocked half already qualified through
+   * the `connectionBlocking` priority band, so a test written on it would
+   * stay green with the mark deleted; this half sits at `connectionTransient`
+   * and the mark is the only thing that raises it.
+   *
+   * Class names, not the store's field: `BannerHost` derives both from
+   * `requiresCriticalChrome`, and the classes are what `BannerHost.css`'s
+   * maximized rules key on. Asserting `criticalChrome === true` on the record
+   * would pin the flag while proving nothing about it reaching the selector.
+   */
+  it('marks a non-blocking connection decision as critical chrome (#1132)', async () => {
+    connectionStatus.reason = 'unexpected-response';
+    connectionStatus.failureStreak = 1;
+    connectionStatus.blocked = false;
+
+    renderChrome();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.className).toMatch(/banner-host__item--critical-chrome/);
+    expect(screen.getByTestId('banner-host').className).toMatch(
+      /banner-host--critical-chrome/,
+    );
+
+    // The other direction, in the same host: an ordinary notice presented
+    // beside it stays out of the exception, so the mark is not something the
+    // host hands to everything once one critical source exists.
+    act(() => {
+      bannerStore.present({
+        id: 'test:ordinary',
+        priority: 10,
+        tone: 'info',
+        message: 'An update is available',
+      });
+    });
+    // Collapsed, only the front card is in the DOM at all, so the stack has
+    // to be opened before there is a second card to make a claim about.
+    fireEvent.click(screen.getByTestId('banner-stack-cap'));
+    const ordinary = await waitFor(() => {
+      const node = document.querySelector('[data-banner-id="test:ordinary"]');
+      if (!node) throw new Error('ordinary banner never rendered');
+      return node;
+    });
+    expect(ordinary.className).not.toMatch(
+      /banner-host__item--critical-chrome/,
     );
   });
 

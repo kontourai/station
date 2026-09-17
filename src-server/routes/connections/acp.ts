@@ -58,6 +58,45 @@ function mergeACPConnections(
   ];
 }
 
+/**
+ * Registry entries whose command Station observed on the host but which have
+ * no ACP connection yet (neither user-authored nor plugin-provided). Keyed on
+ * the ACP connection id, because a connected ACP Engine reports the generic
+ * `engineId: 'acp'` in `listEngineConnectionStates` and can never be matched
+ * against a registry id that way (station#1548). Read-only: nothing here
+ * launches the command.
+ */
+export async function listDetectedUnconnectedACPRegistryEntries(configLoader: {
+  loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
+}): Promise<Array<{ id: string; name: string }>> {
+  return getRegistryEntries(await installedACPConnections(configLoader))
+    .filter((entry) => entry.detected === true && !entry.installed)
+    .map((entry) => ({ id: entry.id, name: entry.name }));
+}
+
+/**
+ * The connections that count as installed for every registry projection
+ * (onboarding, Add engine, GET /connections): user config plus plugin-provided
+ * connections, minus any whose engine identity is not registered. The install
+ * route saves config BEFORE the identity CAS, so a failed commit leaves a
+ * config entry that is retryable but not an installed Engine; counting it as
+ * installed hid it from every repair surface at once (station#1548 review).
+ * Transport-only contexts (no filesystem loader, test fixtures) carry no
+ * identity evidence and keep the legacy reading: every config entry counts.
+ */
+async function installedACPConnections(configLoader: {
+  loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
+}): Promise<ACPConnectionConfig[]> {
+  const config = await configLoader.loadACPConfig();
+  const registeredIds = await registeredRuntimeConnectionIds(configLoader);
+  return mergeACPConnections(
+    config.connections,
+    getProviderConnections(),
+  ).filter((connection) =>
+    isRegisteredRuntimeConnection(connection.id, registeredIds),
+  );
+}
+
 function getRegistryEntries(
   installedConnections: ACPConnectionConfig[],
 ): ACPConnectionRegistryEntry[] {
@@ -137,7 +176,7 @@ async function registerPersistedACPConnection(
   ctx: RuntimeContext,
   id: string,
   name: string = id,
-): Promise<void> {
+): Promise<Awaited<ReturnType<typeof materializeEngineAgent>> | undefined> {
   // Transport-only route fixtures do not expose a filesystem loader. Real
   // runtime contexts do, and therefore always take the durable identity path.
   if (typeof (ctx.configLoader as any).getProjectHomeDir !== 'function') return;
@@ -146,7 +185,25 @@ async function registerPersistedACPConnection(
     engineConnectionId(id),
     { kind: 'user-acp' },
   );
-  await materializeEngineAgent(ctx.configLoader as ConfigLoader, id, name);
+  return materializeEngineAgent(ctx.configLoader as ConfigLoader, id, name);
+}
+
+/**
+ * The receipt names the Agent the install materialized or adopted. The
+ * install is already committed by the time this reads the file; an adopted
+ * Agent can be selected while its file is mid-write (materializeEngineAgent
+ * tolerates that), so an unreadable file must not turn a committed install
+ * into a 500 — the slug alone is still an honest receipt.
+ */
+async function installedAgentReceipt(
+  configLoader: ConfigLoader,
+  slug: string,
+): Promise<Record<string, unknown>> {
+  try {
+    return { slug, ...(await configLoader.loadAgent(slug)) };
+  } catch {
+    return { slug };
+  }
 }
 
 async function unregisterPersistedACPConnection(
@@ -160,14 +217,22 @@ async function unregisterPersistedACPConnection(
   );
 }
 
-async function registeredRuntimeConnectionIds(
-  ctx: RuntimeContext,
-): Promise<Set<string> | null> {
-  if (typeof (ctx.configLoader as any).getProjectHomeDir !== 'function') {
+function isRegisteredRuntimeConnection(
+  id: string,
+  registeredIds: Set<string> | null,
+): boolean {
+  return registeredIds === null || registeredIds.has(id);
+}
+
+async function registeredRuntimeConnectionIds(configLoader: {
+  loadACPConfig?: unknown;
+  getProjectHomeDir?: unknown;
+}): Promise<Set<string> | null> {
+  if (typeof (configLoader as any).getProjectHomeDir !== 'function') {
     return null;
   }
   const registry = await loadOrCreateAgentRegistry(
-    ctx.configLoader as ConfigLoader,
+    configLoader as ConfigLoader,
   );
   return new Set(registry.engineConnections.map(({ id }) => String(id)));
 }
@@ -180,16 +245,7 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/connections', async (c) => {
-    const config = await ctx.configLoader.loadACPConfig();
-    const providerConns = getProviderConnections();
-    const registeredIds = await registeredRuntimeConnectionIds(ctx);
-    const allConnections = mergeACPConnections(
-      config.connections,
-      providerConns,
-    ).filter(
-      (connection) =>
-        registeredIds === null || registeredIds.has(connection.id),
-    );
+    const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
     const connections = allConnections.map((cfg) => ({
       ...cfg,
@@ -204,9 +260,8 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/registry', async (c) => {
-    const config = await ctx.configLoader.loadACPConfig();
     const entries = getRegistryEntries(
-      mergeACPConnections(config.connections, getProviderConnections()),
+      await installedACPConnections(ctx.configLoader),
     );
     return c.json({ success: true, data: entries });
   });
@@ -261,11 +316,29 @@ export function createACPRoutes(ctx: RuntimeContext) {
           // Durable ACP config first, then the identity/default CAS. A failed
           // CAS deliberately leaves retryable config that remains invisible.
           await ctx.configLoader.saveACPConfig(config);
-          await registerPersistedACPConnection(ctx, newConn.id, newConn.name);
+          const agent = await registerPersistedACPConnection(
+            ctx,
+            newConn.id,
+            newConn.name,
+          );
           beginMutation();
           await ctx.acpBridge.addConnection(newConn);
           acpOps.add(1, { op: 'create' });
-          return c.json({ success: true, data: newConn });
+          return c.json({
+            success: true,
+            data: newConn,
+            ...(agent
+              ? {
+                  agent: {
+                    data: await installedAgentReceipt(
+                      ctx.configLoader as ConfigLoader,
+                      agent.slug,
+                    ),
+                    created: agent.created,
+                  },
+                }
+              : {}),
+          });
         },
       ),
     );

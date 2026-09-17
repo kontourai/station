@@ -13,7 +13,6 @@ import {
   lstatSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -24,9 +23,11 @@ import {
   DEVICE_PAIRING_SCOPE,
   type DevicePairingOffer,
   type DevicePairingRequest,
+  type DevicePrincipalBinding,
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_GRANT_PATHS,
+  PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPES,
   type PairedDevice,
   type PairedDeviceKind,
@@ -35,6 +36,17 @@ import {
   type TailscaleServeRequester,
   type WebPushSubscription,
 } from '@kontourai/station-contracts';
+import {
+  PAIRING_SCOPE_ORCHESTRATION_READ,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
+import {
+  humanPrincipal,
+  isPrincipalRef,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
+import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 
 const REGISTRY_SCHEMA_VERSION = 2 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
@@ -115,6 +127,8 @@ const DEVICE_RECORD_KEYS = new Set([
   // field the writer persists but this set omits makes the registry
   // UNREADABLE at the next boot — the review caught exactly that.
   'mintKind',
+  'homeControlGrantRevision',
+  'principalBinding',
 ]);
 const PRE_ACTIVITY_DEVICE_RECORD_KEYS = new Set([
   'id',
@@ -158,6 +172,8 @@ interface StoredDevice extends PairedDevice {
    * Never client-supplied; never copied onto the public PairedDevice wire.
    */
   mintKind?: 'local-grant' | 'ui-bootstrap';
+  /** PRIVATE — changes whenever home-control scope membership changes. */
+  homeControlGrantRevision?: number;
 }
 
 interface DeviceRegistry {
@@ -167,6 +183,7 @@ interface DeviceRegistry {
 }
 
 interface PairingOfferState extends DevicePairingOffer {
+  principalBinding?: DevicePrincipalBinding;
   status: 'open' | 'requested' | 'confirmed' | 'used' | 'cancelled';
   request?: DevicePairingRequest;
   /** PRIVATE — binds display-name reuse to the requesting app instance. */
@@ -249,7 +266,7 @@ export type PairingApproval =
   | { readonly kind: 'ui-bootstrap' }
   | { readonly kind: 'unauthenticated' };
 
-export type DeviceRevocationActor = 'operator-credential';
+type DeviceRevocationActor = 'operator-credential';
 
 /**
  * Whether an exact Station-internal caller with no pairing credential may
@@ -298,7 +315,7 @@ function unauthenticatedApprovalAllowed(offer: PairingOfferState): boolean {
   return offer.requesterPosition === 'off-box';
 }
 
-export interface DevicePairingServiceOptions {
+interface DevicePairingServiceOptions {
   homeDir: string;
   environmentId: string;
   now?: () => number;
@@ -409,6 +426,28 @@ function manualCode(): string {
   return manualCodeFromEntropy();
 }
 
+/**
+ * The principal a paired DEVICE itself acts as, when no person binding
+ * narrows it further. One derivation, read by the personal-conversation
+ * family, by {@link DevicePairingService.listKnownPrincipals}, and by nothing
+ * that spells it out again — three copies of this expression is how two
+ * readers of the same registry end up disagreeing about who a device is.
+ */
+function devicePrincipal(device: StoredDevice): PrincipalRef {
+  return humanPrincipal('device', device.id, device.name.trim() || device.id);
+}
+
+/** The person who requested a pairing, when the approval recorded one. */
+function requesterPrincipal(device: StoredDevice): PrincipalRef | null {
+  return device.requester
+    ? humanPrincipal(
+        device.requester.provider,
+        device.requester.login,
+        device.requester.login,
+      )
+    : null;
+}
+
 function publicDevice(device: StoredDevice): PairedDevice {
   const {
     credentialHash: _credentialHash,
@@ -416,9 +455,47 @@ function publicDevice(device: StoredDevice): PairedDevice {
     pushSubscription: _pushSubscription,
     locality: _locality,
     mintKind: _mintKind,
+    homeControlGrantRevision: _homeControlGrantRevision,
     ...safe
   } = device;
-  return safe;
+  return {
+    ...safe,
+    ...(safe.requester ? { requester: { ...safe.requester } } : {}),
+    revocation: { ...safe.revocation },
+    ...(safe.principalBinding
+      ? { principalBinding: { ...safe.principalBinding } }
+      : {}),
+  };
+}
+
+function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
+  if (!value || typeof value !== 'object' || !isValidStoredRequester(requester))
+    return false;
+  const binding = value as Record<string, unknown>;
+  return (
+    hasOnlyKnownKeys(
+      binding,
+      new Set([
+        'provider',
+        'subject',
+        'approvedAt',
+        'approvalId',
+        'approvedBy',
+      ]),
+    ) &&
+    binding.provider === 'tailscale-serve' &&
+    binding.subject === (requester as TailscaleServeRequester).login &&
+    typeof binding.approvedAt === 'number' &&
+    Number.isSafeInteger(binding.approvedAt) &&
+    binding.approvedAt >= 0 &&
+    typeof binding.approvalId === 'string' &&
+    CLIENT_INSTANCE_ID_PATTERN.test(binding.approvalId) &&
+    isPrincipalRef({
+      id: binding.approvedBy,
+      kind: 'human',
+      display: 'approver',
+    })
+  );
 }
 
 function isValidPushSubscription(value: unknown): value is WebPushSubscription {
@@ -636,6 +713,13 @@ function validateRegistry(
       (device.requester !== undefined && device.source !== 'tailnet') ||
       (device.source === 'tailnet' &&
         !isValidStoredRequester(device.requester)) ||
+      (device.principalBinding !== undefined &&
+        (device.source !== 'tailnet' ||
+          device.kind !== 'device' ||
+          !isValidPrincipalBinding(
+            device.principalBinding,
+            device.requester,
+          ))) ||
       // Additive (D6 round 3): mint-time home-possession only. Absent on
       // every historical record and on every pairing/access-request mint.
       // A present value that is not the one token is corruption.
@@ -649,7 +733,11 @@ function validateRegistry(
       (device.mintKind !== undefined &&
         (device.locality !== 'home-possession' ||
           (device.mintKind !== 'local-grant' &&
-            device.mintKind !== 'ui-bootstrap')))
+            device.mintKind !== 'ui-bootstrap'))) ||
+      (device.homeControlGrantRevision !== undefined &&
+        (!Number.isSafeInteger(device.homeControlGrantRevision) ||
+          device.homeControlGrantRevision <= 0 ||
+          device.homeControlGrantRevision >= Number.MAX_SAFE_INTEGER))
     ) {
       throw new Error('Invalid paired-device record');
     }
@@ -711,6 +799,9 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
     devices: registry.devices.map((device) => ({
       ...device,
       ...(device.requester ? { requester: { ...device.requester } } : {}),
+      ...(device.principalBinding
+        ? { principalBinding: { ...device.principalBinding } }
+        : {}),
       pushSubscription: device.pushSubscription
         ? {
             ...device.pushSubscription,
@@ -833,7 +924,12 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     }
     const scope = input.scope ?? DEFAULT_GRANT_PAIRING_SCOPE;
-    if (parsePairingScope(scope) === null) {
+    const parsedScope = parsePairingScope(scope);
+    if (
+      parsedScope === null ||
+      (input.scope !== undefined &&
+        parsedScope.includes(PAIRING_SCOPE_HOME_CONTROL))
+    ) {
       throw new DevicePairingError('invalid_request');
     }
     if (
@@ -983,6 +1079,7 @@ export class DevicePairingService {
   confirmRequest(
     requestId: string,
     approval: PairingApproval,
+    personBindingApproval?: { readonly principalId: string },
   ): DevicePairingRequest {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
@@ -1003,6 +1100,28 @@ export class DevicePairingService {
       !unauthenticatedApprovalAllowed(offer)
     ) {
       throw new DevicePairingError('approval_requires_operator');
+    }
+    if (personBindingApproval) {
+      if (
+        approval.kind !== 'presented-credential' ||
+        offer.kind !== 'device' ||
+        offer.request.source !== 'tailnet' ||
+        !isValidStoredRequester(offer.request.requester) ||
+        !isPrincipalRef({
+          id: personBindingApproval.principalId,
+          kind: 'human',
+          display: 'approver',
+        })
+      ) {
+        throw new DevicePairingError('invalid_request');
+      }
+      offer.principalBinding = {
+        provider: 'tailscale-serve',
+        subject: offer.request.requester.login,
+        approvedAt: this.#now(),
+        approvalId: randomUUID(),
+        approvedBy: personBindingApproval.principalId,
+      };
     }
     offer.status = 'confirmed';
     offer.request.status = 'confirmed';
@@ -1167,6 +1286,9 @@ export class DevicePairingService {
       revocation: { state: 'not-revoked' },
       credentialHash: digest(credential).toString('base64url'),
       issuedAt,
+      ...(offer.principalBinding
+        ? { principalBinding: { ...offer.principalBinding } }
+        : {}),
       ...(input.clientInstanceId
         ? { clientInstanceId: input.clientInstanceId }
         : {}),
@@ -1217,8 +1339,112 @@ export class DevicePairingService {
     this.#offers.delete(offerId);
   }
 
+  /** Personal-home conversation membership; grants and attribution stay per device. */
+  canSharePersonalConversation(requesterId: string, ownerId: string): boolean {
+    if (!this.isPersonalConversationMember(requesterId, false)) return false;
+    return this.isPersonalConversationMember(ownerId, true);
+  }
+
+  personalConversationOwnerIds(
+    requesterId: string,
+  ): readonly string[] | undefined {
+    if (!this.isPersonalConversationMember(requesterId, false))
+      return undefined;
+    const owners = new Set<string>([LOCAL_OPERATOR_PRINCIPAL_ID]);
+    for (const device of this.#registry.devices) {
+      if (device.kind !== 'device') continue;
+      owners.add(devicePrincipal(device).id);
+      const requester = requesterPrincipal(device);
+      if (requester) owners.add(requester.id);
+    }
+    return [...owners];
+  }
+
+  private isPersonalConversationMember(
+    principalId: string,
+    historicalOwner: boolean,
+  ): boolean {
+    if (principalId === LOCAL_OPERATOR_PRINCIPAL_ID) return true;
+    return this.#registry.devices.some((device) => {
+      if (
+        device.kind !== 'device' ||
+        (!historicalOwner &&
+          (device.revokedAt !== null ||
+            !pairingScopeIncludes(
+              device.scope,
+              PAIRING_SCOPE_ORCHESTRATION_READ,
+            )))
+      )
+        return false;
+      return (
+        devicePrincipal(device).id === principalId ||
+        requesterPrincipal(device)?.id === principalId
+      );
+    });
+  }
+
   listDevices(): PairedDevice[] {
     return this.#registry.devices.map(publicDevice);
+  }
+
+  /** Private current incarnation for an explicitly promoted home-control grant. */
+  homeControlGrantRevision(deviceId: string): number | undefined {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device?.revokedAt === null &&
+      pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_CONTROL) &&
+      typeof device.homeControlGrantRevision === 'number'
+      ? device.homeControlGrantRevision
+      : undefined;
+  }
+
+  /**
+   * Every principal this instance has a PAIRING RECORD of (#2067).
+   *
+   * The trusted device registry is the only durable list of who has been
+   * admitted to this Station — there is no member table
+   * (`docs/design/principals.md` §1), so an operator UI that needs "the people
+   * this instance knows" reads this rather than inventing a directory. What it
+   * reports is exactly what was recorded: one entry per paired device, plus
+   * the requesting person where the pairing approval captured one. The
+   * operator is deliberately NOT here: it is not a pairing record, and its
+   * caller adds it from the one id `principal-resolver` owns.
+   *
+   * A REVOKED device stays listed and carries `revoked`. Its grants survive
+   * revocation of one position, and an operator reviewing grants has to see
+   * them in order to remove them.
+   *
+   * This is not a membership model and confers nothing. It answers "who could
+   * a grant name", never "who may do what". Ids only: a display string is
+   * cosmetic and `display` must never key a store
+   * (`packages/contracts/src/principal.ts`).
+   */
+  listKnownPrincipals(): { id: string; display: string; revoked: boolean }[] {
+    const known = new Map<
+      string,
+      { id: string; display: string; revoked: boolean }
+    >();
+    for (const device of this.#registry.devices) {
+      if (device.kind !== 'device') continue;
+      const revoked = device.revokedAt !== null;
+      for (const principal of [
+        devicePrincipal(device),
+        requesterPrincipal(device),
+      ]) {
+        if (!principal) continue;
+        const existing = known.get(principal.id);
+        // A person who paired two devices, one of them revoked, is not
+        // revoked: the flag describes that principal's standing across every
+        // position naming it, so an active position clears it.
+        if (existing) existing.revoked = existing.revoked && revoked;
+        else
+          known.set(principal.id, {
+            id: principal.id,
+            display: principal.display,
+            revoked,
+          });
+      }
+    }
+    return [...known.values()];
   }
 
   /** Stable environment identifier for an already-authenticated UI session. */
@@ -1358,6 +1584,17 @@ export class DevicePairingService {
     if (next.length === 0) throw new DevicePairingError('invalid_scope');
     const canonical = next.join(' ');
     if (device.scope === canonical) return publicDevice(device);
+    const hadHomeControl = pairingScopeIncludes(
+      device.scope,
+      PAIRING_SCOPE_HOME_CONTROL,
+    );
+    const hasHomeControl = next.includes(PAIRING_SCOPE_HOME_CONTROL);
+    if (hadHomeControl !== hasHomeControl) {
+      const revision = device.homeControlGrantRevision ?? 0;
+      if (revision >= Number.MAX_SAFE_INTEGER - 1)
+        throw new DevicePairingError('scope_not_grantable');
+      device.homeControlGrantRevision = revision + 1;
+    }
     device.scope = canonical;
     // Persisted before it is exposed in memory, for the same reason the
     // approval-authority setter does it: a write fault must not leave a
@@ -1787,7 +2024,7 @@ export class DevicePairingService {
       fsyncSync(descriptor);
       closeSync(descriptor);
       descriptor = undefined;
-      renameSync(temporaryPath, this.#registryPath);
+      renameFileSyncRetrying(temporaryPath, this.#registryPath);
     } finally {
       if (descriptor !== undefined) closeSync(descriptor);
       rmSync(temporaryPath, { force: true });

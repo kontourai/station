@@ -106,6 +106,13 @@ function keySegments(key: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Complete key names that are credentials even though their word segments are
+ * not. Compared against the segment-joined form, so `MYSQL_PWD`, `mysql-pwd`
+ * and `mysqlPwd` all match while a bare `pwd` does not.
+ */
+const WHOLE_NAME_SECRET_KEYS = new Set(['pgpassword', 'mysqlpwd']);
+
 export function isSecretField(key: string): boolean {
   const segments = keySegments(key);
   const joined = segments.join('');
@@ -124,6 +131,9 @@ export function isSecretField(key: string): boolean {
         'cookie',
         'credential',
         'credentials',
+        // `creds` is what a hand-written CLI flag or env var actually says
+        // (`--creds=`, `AWS_CREDS`); the long forms above never matched it.
+        'creds',
         'passphrase',
         'password',
         'secret',
@@ -132,6 +142,11 @@ export function isSecretField(key: string): boolean {
   ) {
     return true;
   }
+  // Whole-name credential vocabulary that segments into words carrying no
+  // secret signal of their own — `PGPASSWORD` is one segment, and `MYSQL_PWD`
+  // splits into `mysql` + `pwd`, neither of which should be secret alone
+  // (`pwd` is also "print working directory"). Matched as complete names only.
+  if (WHOLE_NAME_SECRET_KEYS.has(joined)) return true;
   if (
     joined.includes('privatekey') &&
     segments.includes('private') &&
@@ -182,7 +197,22 @@ function redactContextualFields(text: string): string {
   );
 
   return jsonRedacted.replace(
-    /(^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^&;\r\n]*)(?=$|[&;\r\n])/gim,
+    // The boundary group also swallows a `-`/`--` flag prefix, so
+    // `--password=hunter2` on a command line is contextually redacted the same
+    // way `password=hunter2` already was; the dashes travel in `boundary` and
+    // are re-emitted unchanged. Deliberately NOT extended to the attached form
+    // (`-phunter2`, mysql's password flag): with no separator to anchor on,
+    // a single letter followed by anything is too ambiguous to redact safely.
+    //
+    // The unquoted VALUE stops before a following flag (`(?!\s-)`, and `\s-`
+    // joins the lookahead) rather than running to the end of the line. Without
+    // that, one NON-secret pair earlier on a command line consumed the rest of
+    // it and the secret pair was never examined at all: `mysql --user=root
+    // --password=hunter2 -h db` came through verbatim, because `--user=`'s value
+    // had already eaten `--password=hunter2 -h db`. A quoted value is unaffected
+    // and still spans spaces and dashes, so `-m 'password=hunter2'` stays the
+    // single argument it is.
+    /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)("(?:\\.|[^"\\])*"|'[^']*'|(?:(?!\s-)[^&;\r\n])*)(?=$|[&;\r\n]|\s-)/gim,
     (
       match,
       boundary: string,
@@ -204,6 +234,27 @@ function redactContextualFields(text: string): string {
   );
 }
 
+/**
+ * Redacts KNOWN credential shapes from free text. Two passes:
+ *
+ * - **Contextual**, `redactContextualFields`: a `key: value` / `key=value` pair
+ *   (JSON, query string, env line, or a `--flag=value` command line) whose KEY
+ *   `isSecretField` — `apiKey`, `authorization`, `cookie`, `credential(s)`,
+ *   `creds`, `passphrase`, `password`, `secret`, `privateKey`, most `token`
+ *   spellings, and the whole names in `WHOLE_NAME_SECRET_KEYS`.
+ * - **Pattern**, `SECRET_PATTERNS`: AWS access-key ids, GitHub tokens and PATs,
+ *   `Bearer`/`Basic` authorization values, `sk-` API keys, and `user:pass@` in
+ *   a connection-string URL.
+ *
+ * It is NOT a guarantee that no secret survives. A high-entropy token in a
+ * field name this does not recognise is returned as written. Callers that
+ * present the result to a person should say "known credential shapes are
+ * redacted", not "secrets are removed".
+ *
+ * Unlike {@link sanitizeFreeText} this KEEPS URLs and absolute paths — they are
+ * operationally meaningful, and a caller that needs them gone should use that
+ * function instead.
+ */
 export function redactSecrets(text: string): string {
   const patternRedacted = SECRET_PATTERNS.reduce(
     (redacted, { pattern, replacement }) =>

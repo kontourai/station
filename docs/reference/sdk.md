@@ -10,7 +10,21 @@ The SDK wraps core app contexts and exposes them through stable React hooks, UI 
 
 ## Setup
 
-Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual setup required. For layout plugins, use `LayoutProvider` instead — it also sets the layout context for agent resolution.
+Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
+by the host, on both direct routes and placed Pane hosts. No plugin-side mock
+provider is required. Project identity comes from the server-issued Pane
+occurrence, not ambient navigation or a parsed URL.
+
+The host binds plugin header attribution to each provider boundary. It never
+installs whichever plugin rendered last as global request identity. Header
+attribution is not an authorization grant. `useSDK()` exposes that bound
+identity; the pure `getPluginHeaders` utility is available on the existing
+`@kontourai/station-sdk/client` entry. Legacy imperative calls without a bound
+identity remain unqualified.
+
+`LayoutProvider` is a compatibility wrapper over the supplied SDK context. It
+does not infer Agent prefixes or select a default Agent. Layout-global actions
+and default-Agent migration remain separately tracked by #1372.
 
 ```tsx
 // Core app wraps your plugin automatically:
@@ -18,7 +32,7 @@ Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual set
   <YourPlugin />
 </SDKProvider>
 
-// Workspace plugins use LayoutProvider:
+// Compatibility wrapper for an explicitly supplied legacy context:
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
   <YourWorkspacePlugin />
 </LayoutProvider>
@@ -49,13 +63,9 @@ Returns a single agent by slug.
 const agent = useAgent('my-agent');
 ```
 
-#### `useResolveAgent(agentSlug: string): string`
-
-Resolves a short agent name to a fully-qualified slug using the current layout context. Returns the slug unchanged if it already contains `:`.
-
-```tsx
-const resolved = useResolveAgent('my-agent'); // → 'sa-agent:my-agent'
-```
+Agent operations take explicit canonical Agent IDs. A Layout or Pane slug does
+not supply an Agent prefix or a default execution binding; the former
+`useResolveAgent` description is not a supported current hook contract.
 
 ---
 
@@ -376,6 +386,54 @@ const result = await serverFetch('https://api.example.com/data');
 
 ## Query Hooks
 
+### Unified search (backend and SDK slice)
+
+`searchStation(apiBase, request, { requestScope, signal? })` queries `POST /api/search` with the
+closed `station.unified-search/v1` request from
+`@kontourai/station-contracts/unified-search`. The response retains each source's
+owner, availability, restriction and partial-result state; unavailable does not
+mean empty. `resolveSearchOpen(apiBase, locator, { requestScope, signal? })` performs a fresh
+read-only `POST /api/search/resolve-open`, returning `resolved`, `not-found`
+(also authorization denial), or `unavailable`. It does not navigate or execute
+work. Message locators require the exact `matchedEventId`; never substitute a
+legacy navigation anchor or follow a Session's current child. Both helpers are
+available from the React-free `/client` export and declare POST transport as
+read-only. Both require a host-captured scope matching `apiBase`, rejecting absent
+or mismatched scopes before transport. Older servers return `UnifiedSearchRequestError.kind: 'unsupported'`
+on 404/405, never fabricated empty results.
+
+Import `searchStation`, `resolveSearchOpen`, and `UnifiedSearchRequestError`
+from `@kontourai/station-sdk/client`. The root `@kontourai/station-sdk` entry
+exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
+existing client entry on demand, preserving captured request scope and abort
+signal across that asynchronous boundary.
+
+`readSearchMessage(apiBase, { sessionId, matchedEventId, continuation? },
+{ requestScope, signal? })`, from `@kontourai/station-sdk/client`, reads a page
+of the exact canonical event's prompt or completed output. Every page is
+reauthorized; text is never read from the search index. Pages contain at most
+4,096 Unicode code points, with an existing 128 KiB source allowance and the
+same isolated reader deadline. The opaque continuation binds Session/event,
+content and recorded metadata; changed content refuses continuation instead of
+splicing revisions. Missing Agent identity is optional, never a default Agent.
+The read-only inspector does not adopt, resume, fork, or send to a Session.
+
+The palette's explicit **Workspace search (this Station)** mode consumes local
+Task/message results and this exact inspector. Command/legacy remote search is
+preserved as a separate mode; only the selected mode dispatches search queries.
+This is a local tracer, not completion of the broader multi-source search issue.
+
+`useUnifiedSearchQuery(request, { requestScope, enabled? })` is the protected
+React wrapper. A host-captured `ApiRequestScope` is required: no scope means no
+request and no data. Query keys include exact API base and authority epoch;
+authority changes fence delayed responses through the existing credential
+resolver. Cached snippets are hidden until a fresh successful read, and while
+refetching or after failure; they never authorize opening. `unifiedSearchQueries`
+exposes the same scoped key for explicit invalidation. Only personal Tasks and authorized indexed messages are
+searched; hosted Task reads are restricted until a tenant-owned Task store is
+composed. Files, receipts, external projections and arbitrary plugin sources
+are not supported by this initial runtime composition.
+
 React Query wrappers. Use these instead of raw `useQuery` — they handle cache keys, stale times, and API base resolution automatically.
 
 ### `useAgentsQuery(config?)`
@@ -415,6 +473,41 @@ Fetches layouts for a project.
 ### `useProjectLayoutQuery(projectSlug: string, layoutSlug: string, config?)`
 
 Fetches a single project layout.
+
+### `usePersonalLayoutsQuery(config?)`
+
+Lists the caller's own Boards — Layouts owned by a principal rather than a
+project. Cache key: `['me', 'layouts']`. No parameter names the owner, because
+no URL in this family does: the server resolves it from the request's own
+authentication.
+
+### `usePersonalLayoutQuery(layoutSlug: string | undefined, config?)`
+
+Fetches one of the caller's own Boards. Cache key:
+`['me', 'layouts', layoutSlug]`. Disabled when `layoutSlug` is undefined.
+
+### `useCreatePersonalLayoutMutation(options?)`
+
+Creates a Board. Invalidates `['me', 'layouts']` on success.
+
+### `useUpdatePersonalLayoutMutation(options?)`
+
+Patches a Board (`{ layoutSlug, update }`); omitted fields keep their stored
+values. Invalidates the list and that Board's own key.
+
+### `useDeletePersonalLayoutMutation(options?)`
+
+Deletes a Board. Invalidates the list and REMOVES that Board's own cache entry
+rather than invalidating it — refetching a record that no longer exists would
+park a 404 under a key nothing should read again.
+
+### `usePromotePersonalLayoutMutation(options?)`
+
+Moves a Board into a project (`{ layoutSlug, projectSlug }`), where it becomes
+that project's Layout under the same id. Invalidates `['me', 'layouts']`,
+removes the Board's own key, AND invalidates
+`['projects', projectSlug, 'layouts']` — the record crosses a scope boundary,
+so a cache that refreshed only one side would tell two stories about it.
 
 ### `useConversationsQuery(agentSlug: string | undefined, config?)`
 
@@ -583,6 +676,9 @@ const { data } = useApiQuery(['my-key'], () => fetch('/api/custom').then(r => r.
 ### `useApiMutation<TData, TVariables>(mutationFn, options?)`
 
 Mutation hook with optional cache invalidation on success.
+
+If the success callback throws after the request completes, the caller receives
+that error and the configured caches are still invalidated.
 
 ```tsx
 const mutation = useApiMutation(
@@ -765,9 +861,167 @@ Fetches live ACP slash-command autocomplete options.
 
 ---
 
+## Portable Project identity
+
+The React-free `@kontourai/station-sdk/project-identity` entry point exports
+`getProjectIdentity`, `prepareProjectIdentity`, and `attachProject`. Each takes
+an explicit Station API base and `ClientRequestOptions`; pass the authenticated
+request scope and credential options for that particular Station. Identity reads
+use the Project family's read permission; preparation and attachment require its
+operate permission. These operations do not grant remote access or membership.
+
+`parseProjectPortableIdentity(value)` on
+`@kontourai/station-sdk/project-identity` validates imported portable snapshots
+using the same closed rules as identity response reads. The CLI's identity and
+attachment commands consume it before calling the existing `attachProject` API.
+Unknown fields and local binding data are refused; receiver authorization and
+live checkout validation remain at the receiving Station.
+
+`getProjectIdentity(apiBase, slug, options)` reads an existing portable identity
+without writing. A legacy Project with no identity returns an error until
+`prepareProjectIdentity` explicitly derives one. The local Project ID remains
+unchanged. A `ProjectPortableIdentity` snapshot contains the portable ID,
+repository references and timestamps; it contains no checkout path or grant.
+
+```ts
+import {
+  attachProject,
+  prepareProjectIdentity,
+} from '@kontourai/station-sdk/project-identity';
+import type { ClientRequestOptions } from '@kontourai/station-sdk/client';
+
+async function attachProjectOnStation(
+  source: { apiBase: string; slug: string; options: ClientRequestOptions },
+  destination: { apiBase: string; options: ClientRequestOptions },
+) {
+  const { identity } = await prepareProjectIdentity(
+    source.apiBase, source.slug, source.options,
+  );
+  return attachProject(destination.apiBase, {
+    name: 'Example',
+    slug: 'example',
+    workingDirectory: '/srv/projects/example',
+    identity,
+  }, destination.options);
+}
+```
+
+The destination directory must already exist on that Station and satisfy the
+primary resource. Attachment does not clone, synchronize files, copy credentials
+or move a room's authority. The server publishes the new local Project and its
+identity together; the result distinguishes `created` from an unchanged
+`existing` attachment. Its association contains the shared `portableProjectId`
+and the receiver-owned `localProjectId`/`localProjectSlug`.
+
+A same-slug Project with different identity or configuration is a conflict; a
+matching Git remote never merges existing Projects or private history. Changed
+configuration needs its existing explicit update/bind operation. Multiple local
+names are not an automatic execution-selection policy. A timed-out write may
+have committed: inspect the requested local association before deciding on a new
+operation. A read cannot recreate a deleted Project.
+
+The SDK validates the returned version, resource shape and association and
+captures attachment input before asynchronous work. An incompatible or older
+server produces an error, never an ordinary local-creation fallback. The full
+portable target picker, shared-member authorization and cross-machine execution
+admission remain separate consumers of this identity API.
+
+## Project access administration and account entry
+
+For a verified virtual transport, `@kontourai/station-sdk/application-session`
+exports `createApplicationSessionKey`, `ApplicationSessionClient` and the low-level
+proof builder. Keep the non-extractable key in dedicated credential custody, never
+in a Project manifest or ordinary query cache. Pass the actual client origin, the
+verified Station id and the existing scoped Device transport:
+
+```ts
+import { ApplicationSessionClient, createApplicationSessionKey } from '@kontourai/station-sdk/application-session';
+
+const key = await createApplicationSessionKey();
+const accounts = new ApplicationSessionClient(apiBase, verifiedStationId, clientOrigin, deviceRequestOptions, key);
+const continuation = await accounts.establish({ username, password });
+const accountHeaders = await accounts.headers(continuation, { method: 'GET', url: requestUrl });
+// Send with the SAME Device request scope and authenticated encrypted transport.
+// accounts.renew(continuation) preserves authorityKey; accounts.revoke signs out.
+```
+
+Calling `establish()` without credentials uses native HTTPS cookie exchange;
+virtual-only login requires its separately advertised provider capability. The
+relay forwards headers/body and respects response backpressure; it does not own
+account cookies, proof verification or membership logic. See the
+[application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
+for expiry, origin, replay and revocation behavior.
+
+`@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
+`changeProjectAccess`. Both take the selected Station API base, local Project
+slug and explicit `ClientRequestOptions`. Reads return the acting principal,
+exact Station/local/portable Project scope, members and invitations. Commands
+enable sharing, invite or revoke invitations, change a member, or transfer
+ownership. Capture the returned scope and member revision for writes; do not
+reconstruct authority from a slug or email. Enabling requires the expected local
+Project ID and current Station operator authority.
+
+`@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
+requestScope)`. Its query keys include the selected Station and authority, and
+its mutations capture that scope before asynchronous work. Do not persist
+administrative projections or invitation tokens in application caches. Project
+administration grants no Station settings, device or compute authority.
+
+`@kontourai/station-sdk/account-authentication` exports
+`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase)` and
+`runAccountOperation(apiBase, endpoint, body, invitation?)`. These use the fixed
+account namespace with account cookies and explicitly omit ambient operator
+bearers. Use the account page's own browser origin. A session read returns
+`null` for an unauthenticated account; an unavailable or incompatible service
+remains an error. Choose operations from the provider descriptor; the optional
+invitation argument is registration eligibility, not authentication or membership.
+The [deployment authentication guide](../guides/deployment-authentication.md)
+defines the provider interface and separate invitation-acceptance operation.
+
+`getAccountAuthentication` on `@kontourai/station-sdk/account-authentication`
+may return `externalLogins` alongside the primary password or redirect login.
+Each choice supplies `id`, `displayName`, a declared Station `startPath`, and an
+optional `available` flag. A false flag means the configured choice is unavailable.
+To begin, call `runAccountOperation(apiBase, choice.startPath, {}, invitation)`;
+the successful operation returns `{ url }` for browser navigation. Keep the
+invitation in its dedicated header and validate the returned destination before
+navigation. Never attach a personal/operator credential to this account operation.
+
+Station chooses provider/callback/return parameters from operator configuration;
+clients cannot supply arbitrary OAuth parameters. See the [deployment guide](../guides/deployment-authentication.md#optional-oidc-choices-with-local-accounts)
+for configuration, callback verification and the independent Device continuation.
+
+The same account-authentication entry exports `getProjectInvitationPreview(apiBase,
+token)`. It uses a POST body, validates the minimal Project/inviter/role projection,
+and rejects incompatible role/action combinations. Keep the proof out of query
+cache keys and persisted data. Preview success does not authenticate a person,
+consume the invitation or grant membership.
+
+An invitation command's `email: null` explicitly creates a single-use link for
+any authenticated holder. A string restricts acceptance to that verified email;
+do not silently omit or clear a requested restriction. The descriptor may select
+`username-password` login so local account registration needs no email service.
+
+`@kontourai/station-sdk/local-accounts` exports `getLocalAccounts(apiBase,
+options)` and `changeLocalAccount(apiBase, accountId, action, options)` for current
+Station operators. Actions disable/enable sign-in, revoke sessions or create a
+one-time recovery link. Capture the selected Station request scope, require
+explicit confirmation and keep recovery links out of persisted caches. External
+providers return a guidance projection instead of local account controls.
+
 ## Plugin Query Hooks
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.
+
+Direct and registry install mutations return `PluginInstallResult` from
+`@kontourai/station-contracts/plugin`. The same type is returned by
+`requestPluginRegistryInstallAction` and `requestRegistryCatalogAction('plugins', ...)`;
+other catalog tabs retain their existing `InstallResult` contract.
+`result.permissions?.dependencies` is the current installed dependency permission
+status, not the preview requirement list. An absent status on an older server is
+unknown; it must not be replaced with an empty list or inferred from preview.
+Each present dependency row has an `id` and typed `pendingConsent` permission/tier
+entries. Trusted permissions still require separate host-owned approval.
 
 ### `usePluginsQuery(config?)`
 
@@ -797,6 +1051,13 @@ Fetches provider override state for a plugin. Disabled when `pluginName` is unde
 
 Installs a plugin from a source URL. Invalidates plugins, layouts, and agents caches on success.
 
+For verified registry acquisitions, carry the preview's optional
+`registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
+paths forward it; it is an opaque precondition, not caller-supplied verification.
+The server obtains the claim and signing policy from host owners and returns
+`registry-trust-refused` with a closed reason when the review or continuity no
+longer matches. See [registry trust policy](../design/registry-trust-policy.md).
+
 `consent` is required (station#4288). It is the operator's decision, taken from
 the preview they read: the permission set the preview derived, the digest of
 the bytes it staged, and the dependency ids it resolved. The server re-derives
@@ -816,9 +1077,23 @@ mutate({
   source: 'https://github.com/org/my-plugin.git',
   skip: ['agent:plugin:chat'],
   consent: {
+    registryTrustRevision: preview.registryTrustRevision,
+    grantRevision: preview.grantRevision,
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
     dependencies: preview.dependencies.map((entry) => entry.id),
+    dependencyApprovals: preview.dependencies.flatMap((entry) =>
+      entry.consent
+        ? [{
+            id: entry.id,
+            registryTrustRevision: entry.consent.registryTrustRevision,
+            grantRevision: entry.consent.grantRevision,
+            permissions: entry.consent.permissions,
+            contentDigest: entry.consent.contentDigest,
+            dependencies: entry.consent.dependencies,
+          }]
+        : [],
+    ),
   },
 });
 ```
@@ -827,13 +1102,67 @@ mutate({
 
 Previews a plugin before installing. Returns manifest, components, conflicts,
 resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
-`pendingConsent`) and the `contentDigest` of the copy it staged — everything a
-consent decision needs, without installing anything.
+`pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
+dependencies additionally carry their own `consent` object, binding their
+permissions and bytes before installation.
 
 ```tsx
 const { mutate } = usePluginPreviewMutation();
 mutate('https://github.com/org/my-plugin.git');
 ```
+
+### Retained plugin recovery
+
+`usePluginRecoveryPreviewQuery(name, config?)` reads the retained selection through
+`GET /api/plugins/:name/recovery-preview`. `requestPluginRecoveryPreview(name)`
+provides the same read without a hook. The React-free client entry exports
+`previewPluginRecovery(apiBase, name, options?)` and
+`recoverPlugin(apiBase, name, input, options?)`; use the normal Station credential
+and origin options. No local paths or internal runtime imports are required.
+
+The preview carries the exact installation, retained content digest, opaque
+`recoveryRevision`, current `grantRevision`, optional `registryTrustRevision`, permission review, skipped components,
+and dependency installation/consent rows. A signed retained package reuses its
+original journal-bound verification under the same applied policy, without
+contacting its registry/source; ready retained children carry their own trust
+revision. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
+`usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
+recovery consent requires the fresh grant revision, including each dependency
+approval. Never derive approval merely from a cached preview or retry an old
+consent automatically.
+
+```ts
+import { previewPluginRecovery, recoverPlugin } from '@kontourai/station-sdk/client';
+
+const preview = await previewPluginRecovery(apiBase, name, requestOptions);
+// Present preview.permissions and preview.dependencies in your application's
+// review UI. Continue only with the operator's explicit selected permissions.
+const result = await recoverPlugin(apiBase, name, {
+  recoveryRevision: preview.recoveryRevision,
+  consent: {
+    contentDigest: preview.contentDigest,
+    grantRevision: preview.grantRevision,
+    permissions: operatorDecision.permissions,
+    dependencies: preview.dependencies.map(({ id }) => id),
+    dependencyApprovals: preview.dependencies.map(({ id, consent }) => ({
+      ...consent, id,
+      permissions: operatorDecision.dependencies[id],
+    })),
+  },
+}, requestOptions);
+// A 202 receipt with configurationActivation.status === 'pending' is retained
+// work awaiting activation. It is not completed installation or a retry signal.
+```
+
+Recovery continues retained bytes and their data scope; it does not fetch missing
+dependencies or adopt unrelated installations. A changed selection/decision yields
+HTTP 409; unavailable grant evidence can yield 503. Surface the error and require
+a fresh preview and decision. `PluginRecoveryResult` preserves the existing
+`PluginInstallResult` plus the acceptance-time `configurationActivation` receipt.
+The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
+Project queries after an accepted response, including pending activation. A network
+failure does not prove that the server had no effect; inspect current state before
+asking for another recovery decision.
 
 ### `usePluginUpdateMutation()`
 
@@ -846,6 +1175,16 @@ Removes an installed plugin. Invalidates plugins and layouts caches on success.
 ### `usePluginSettingsMutation()`
 
 Saves plugin settings and invalidates that plugin's settings cache on success.
+
+### `useRevokePluginPermissionMutation()`
+
+Durably withdraws plugin permissions and returns the effective `granted` set
+plus runtime `reconciliation` truth. `completed` means the affected runtime
+generation retired; `winding-down` names an owned continuation; `superseded`
+means a newer grant/install generation won; and `incomplete` names stages that
+need another idempotent revoke attempt. Station's Plugins surface uses that
+same mutation for its **Check cleanup** and **Retry cleanup** actions; retrying
+preserves the complete pending lifecycle-permission vector.
 
 ### `usePluginProviderToggleMutation()`
 
@@ -1018,7 +1357,8 @@ Injects the SDK context into a plugin tree. Used by the runtime — plugins don'
 
 ### `LayoutProvider`
 
-Wraps a layout plugin with SDK context and sets the layout for agent resolution.
+Compatibility wrapper over an explicitly supplied SDK context. It does not
+publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 ```tsx
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
@@ -1549,6 +1889,14 @@ are an explicit host contract, not a global replacement for authentication.
 
 Query factory for imperative fetching (e.g. in slash commands). Returns React Query config objects.
 
+Successful Agent detail reads infer `EnrichedAgentProjection`; tool reads retain
+an `unknown[]` payload for callers to narrow. Conversation list factories accept
+the existing array or `{ items }` response forms, and provider factories infer
+`OrchestrationProviderSummary[]`. These envelope types work in Node and browser
+consumers without relying on ambient `Response.json()` returning `any`. They do
+not add payload validation; conversation statistics keep their existing runtime
+parser, and HTTP status/error handling is unchanged.
+
 ```ts
 agentQueries.agent(agentSlug)                        // GET /api/agents/:slug
 agentQueries.tools(agentSlug)                        // GET /agents/:slug/tools
@@ -1566,6 +1914,69 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 ```
 
 ---
+
+## Conversation history windows
+
+`fetchOrchestrationConversationEventWindow(conversationId, apiBase,
+{ direction: 'newest', turnLimit: 10 })` prioritizes the latest events of the
+selected turns, so a completed answer is available before a long tool-progress
+history. The returned events remain in chronological order. Pass the opaque
+`nextCursor` back to load preceding events, then preceding turns; merge by
+event id and sequence. A turn-start anchor may repeat across pages.
+
+The opt-in reader retains the existing 150-event and response-byte bounds.
+Terminal message payloads can use up to 48,000 bytes within the bounded window;
+larger payloads still carry an explicit `elided` marker and must not be presented
+as complete. Tool-result previews retain their smaller allowance. Cursor mode
+is preserved across requests; existing forward cursors keep their old behavior.
+Older servers that do not implement `direction` retain their legacy ordering.
+Live delivery remains owned by the orchestration SSE stream.
+
+The session-scoped `fetchOrchestrationSessionEventWindow` accepts the same
+option for conversations without a multi-session lineage.
+
+## Feedback analysis
+
+Use `useFeedbackRatingsQuery`, `useFeedbackGuidelinesQuery`, and
+`useFeedbackStatusQuery` to read the selected Station's feedback. Saving or
+removing a rating through the SDK invalidates all three views. Use
+`useAnalyzeFeedbackMutation` to request analysis and
+`useClearFeedbackAnalysisMutation` to clear derived results while keeping ratings.
+
+Analysis requests share one active job. Re-rating, removing feedback, clearing
+analysis, or stopping the service prevents older model results from being
+published. Existing model calls settle before queued work starts. Unchanged
+summary prompts reuse their cached result; changed inputs are not identified by
+rating count alone. Invalid model output remains an error rather than being
+saved as analyzed feedback.
+
+`POST /api/feedback/analyze` accepts an omitted body or an optional JSON object
+with `maxReinforce` and `maxAvoid`, each an integer from 1 to 50. It returns 400
+for invalid options or JSON, 413 for a body over 4 KiB, and 503 when analysis is
+not configured. The SDK's analysis mutation uses the omitted-body form.
+
+`POST /api/feedback/test` runs an isolated sample through the analyzer and
+guideline formatter. Its response includes `isolated: true`; it does not edit
+saved ratings or the profile used in conversations. It does not establish the
+integrity of the saved feedback file.
+
+## Monitoring event windows
+
+`fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
+`{ events, truncated }` from the historical monitoring route. Bounded viewers
+must disclose truncation and that local filters apply only to loaded rows.
+Narrow the time interval to inspect older activity. For older peers that omit
+the flag, a full limited window is conservatively marked truncated.
+
+`fetchMonitoringEvents(start, end, signal, filters)` retains its array return
+shape and no default limit for existing export callers. Both functions reject
+failed or malformed reads instead of reporting an empty history.
+
+API-base initialization wakes pending callers when configuration is published,
+with the existing 500 ms failure bound; later reads observe the latest configured
+base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
+and drops additional events in that interval. Flushes are single-flight with a
+five-second request timeout. It is not an accounting ledger.
 
 ## Telemetry
 
@@ -1733,3 +2144,415 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+### Package host actions
+
+Import `useWorkspacePaneHostActionsQuery` and `useWorkspacePaneHostActionMutation`
+from `@kontourai/station-sdk/workspace-pane`. The query projects a Project's
+installed package actions and exact installation-bound available/default Agents.
+The mutation accepts the package id, opaque installation generation, opaque
+action key, and an optional explicit Agent reference from that package's
+available set. Fixed action bindings always take precedence. There are no
+physical package paths in this API.
+
+The portable client exports `getWorkspacePaneHostActions`,
+`prepareWorkspacePaneHostAction`, and `executeWorkspacePaneHostAction` from
+`@kontourai/station-sdk/client`. Preparation returns a short-lived, actor- and
+Project-bound one-shot ticket. Execution consumes it before any provider work.
+Do not store or log tickets, and never retry execution automatically. An
+`indeterminate` result means work may have started; use existing Activity and
+conversation evidence to inspect it. An accepted result carries distinct
+conversation, execution-session, and provider-turn identities.
+
+For an external client, obtain the Station API credential through the deployment's
+existing authentication flow and pass it to all three calls. Keep `apiBase`,
+Project, and credential fixed for the operation. This function runs a named
+installed action using its authored default or fixed Agent; it does not select
+the first available Agent:
+
+```ts
+import {
+  getWorkspacePaneHostActions,
+  prepareWorkspacePaneHostAction,
+  executeWorkspacePaneHostAction,
+} from '@kontourai/station-sdk/client';
+
+export async function runPackageAction(
+  apiBase: string,
+  projectSlug: string,
+  credential: string,
+  pluginId: string,
+  actionId: string,
+) {
+  const options = { headers: { Authorization: `Bearer ${credential}` } };
+  const catalog = await getWorkspacePaneHostActions(apiBase, projectSlug, options);
+  const contribution = catalog.contributions.find(
+    ({ projection }) => projection.owner.pluginId === pluginId,
+  );
+  const action = contribution?.projection.actions.find(({ id }) => id === actionId);
+  if (!contribution || contribution.reason || action?.availability !== 'available') {
+    throw new Error('Review the installed package and its Project Agent configuration.');
+  }
+  const prepared = await prepareWorkspacePaneHostAction(apiBase, projectSlug, {
+    ...contribution.projection.owner,
+    actionKey: action.key,
+  }, options);
+  if (prepared.state === 'unavailable') return prepared;
+  return executeWorkspacePaneHostAction(apiBase, projectSlug, prepared.ticket, options);
+}
+```
+
+Render an `unavailable` reason for the user to resolve, and expose the returned
+Session/conversation identities for an `accepted` result. Treat a thrown catalog
+or preparation error as an unavailable operation; do not downgrade to an ordinary
+chat launch. For `indeterminate`, direct the user to Activity without calling
+this function again automatically. Catalog availability is a display snapshot;
+preparation and execution repeat authorization against the current installation.
+
+Host actions require the package's current `agents.invoke` permission. They use
+captured Project and Agent authority at provider invocation and cannot substitute
+an ambient Agent, override a fixed action, or revive a retired installation.
+Host actions support native Station Agents and externally connected Agents in shared or provisioned Project worktrees. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Canonical provisioning mints a private exact Session/Project/CWD binding. The native relay carries that Session directory into Project context, Bash children, and relative file operations; explicit MCP resource roots retain their configured meaning.
+
+A host-created Session retains server-stamped `workspacePaneHostAction` metadata:
+package id, action id, and opaque installation generation. These coordinates
+survive completion and package removal alongside the existing Session command
+receipts. Public metadata/options cannot forge this reserved field; callers
+receive the existing client-origin and principal attribution as well.
+
+Host action reads and mutations accept the standard `ApiRequestScope`/client
+request options so the preparation and execution stay on the same Station
+and authority. The mutation refreshes canonical Session and conversation
+inventory queries before exposing its result. In Station's host UI, **Open
+conversation** uses canonical resolution and hydration; **View result** stays
+anchored to the execution Session returned by this invocation. A removed Agent
+falls back to read-only evidence, never to another default Agent.
+
+## Package lifecycle results
+
+`listPlugins` also reports optional `installationReadiness`: `ready`, `pending`
+(with `recovery: "review"`), or `unavailable`. Absence preserves compatibility
+with older servers; it is not a new readiness proof. Keep pending rows visible,
+but do not load their bundles or enable their actions. The server sets
+`hasBundle: false` until readiness is established. Project Pane availability
+uses `installation-pending` or `installation-unavailable` diagnostics, separate
+from distribution-policy disablement. Readiness notifications refresh the
+Project Pane and host-action catalogs as well as the installed-plugin list.
+
+`listPlugins` includes optional `retainedOnRemoval` metadata for packages using
+retained code generations. Normal package updates keep their stable data
+scope. `usePluginInstallMutation` accepts optional `dataPolicy`: `preserve`
+is the default; an explicit `retain-and-reset` starts a new data scope while
+retaining the previous scope. The latter is a reset choice, not a claim of
+state-preserving update. The host preview exposes `existingDataScope` so the
+first-party confirmation can explain the choice before submitting it.
+
+Removal success means future contributions are withdrawn. A retained package
+returns lifecycle metadata with `reclamation: not-proven`; the UI must not say
+its bytes or external effects were deleted. See the
+[installation lifecycle](../design/plugin-installation-lifecycle.md).
+### Inspect a learning source
+
+`observeLearningSource(apiBase, reference, options?)` is available from
+`@kontourai/station-sdk/client`; `useLearningSourceObservationQuery(reference,
+requestScope, enabled?)` is available from the SDK root. The `apiBase` is the Station origin, as with other client operations. The reference carries
+`rootId`, exact `recordId`, and `rootIdentity: knowledgeRootIncarnationKey(root)`.
+The existing root identity helper remains exported by the SDK. The client sends
+its URI-encoded value in the bounded `x-station-knowledge-root-identity` header;
+it is a metadata mismatch precondition, never an authorization grant or immutable
+incarnation. Identically restored registrations can share the same key.
+
+The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
+It requires a currently authorized, middleware-bound home-possession credential,
+current route scope, single-operator deployment without tenant-scoped execution,
+and the exact registered personal `kit-default-store` root.
+Ordinary operator or paired remote credentials do not confer this capability.
+The constructor policy and route recheck authority before publishing the result.
+Other roots and credentials receive an identity-free restricted outcome.
+
+`LearningSourceObservation` (`station-contracts/learning-review`) distinguishes
+`observed` with `kind: 'source-only'` from identity-free failure states. Source
+status is generic record status, not learning activation. Content digest/time are
+Station observations; owner revision, freshness, and transaction state remain
+unknown, and the observation is non-atomic. The source read does not construct an
+adapter, repair records, or mutate the store. Ordinary recall reads retain their
+existing behavior.
+
+`KnowledgeRecallBrowser` and `KnowledgeRecordDetail` accept optional
+`renderRecordActions({ rootId, recordId })`. The slot is host-rendered and appears
+only for the exact selected loaded record. It introduces no Station UI dependency
+into the SDK. Station's Memory view uses it to open the source inspector.
+
+#### Public source-inspection integration behavior
+
+This surface is usable by any host built against the public Station packages; it
+does not require Station app internals or a particular company's filesystem
+layout. Obtain the selected root/record from the public Knowledge APIs. Use the
+[local Station launcher](cli.md#the-station-launcher) to redeem its one-time
+bootstrap link for the browser's home-possession session, or the documented
+[local grant flow](cli.md#scripted--non-interactive-use) for a local client. Do not
+substitute an operator API credential, a claimed locality field, or a loopback URL.
+A saved operator bearer takes precedence over a browser cookie; select the genuine
+local device-session connection when presenting the launch session.
+
+Hosts using Connect can capture credential evidence with its public
+`useConnections()` surface and derive the request scope with
+`requestAuthorityScopeFromCredentialEvidence`. Bind the SDK credential resolver
+to that same current evidence. The source hook accepts that public `ApiRequestScope`;
+there is no dependency on Station's private `ApiBaseContext`. The optional
+`renderRecordActions` slot lets the host supply its own source presentation.
+
+`apiBase` is the origin without `/api`. The reference must contain a selected root
+ID and exact record ID (at most 200 characters each); aliases are unsupported.
+Use the public root-key serializer, also available from
+`@kontourai/station-shared/knowledge-root-identity`. It serializes compact JSON in
+this order: root ID, scope kind, project slug or null, adapter ID, store root,
+display name, creation timestamp. Send its URI-encoded UTF-8 representation in
+`x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
+metadata comparison does not detect an identically restored registration or
+provide a revision/CAS contract.
+
+Unauthenticated ingress returns HTTP 401; missing route scope returns HTTP 403;
+invalid route references return HTTP 400. An admitted route returns the standard
+`{ success: true, data }` envelope: `observed` supplies only source fields, while
+`restricted`, `unsupported`, `missing`, `busy`, `corrupt`, `unavailable`,
+`invalid-input`, and `over-budget` contain no source identity. The reader bounds
+the complete source file to 256 KiB and refuses rather than truncating it.
+`busy` can be retried after the store operation settles. A stale registration must
+be reselected from fresh root data; retrying the old key cannot adopt its
+replacement. The SDK rejects malformed/mismatched observations and withholds
+cached source data during revalidation and failed reads.
+
+Hosted deployment and tenant-scoped execution are explicitly refused even for
+otherwise valid local credentials. Project/tenant record authorization and owner
+learning lifecycle intents are separate future contracts. Hosts should present
+these limits directly, without treating a source read as candidate approval,
+promotion, or effect evidence.
+
+### Exact attention request inspection
+
+`useAttentionRequestInspection(reference, requestScope)` reauthorizes the exact
+Session/request/opened-event tuple on every mount. Its query key includes the
+host-captured authority; cached data is withheld until the fresh read finishes.
+The imperative `inspectAttentionRequest` is also exported from the React-free
+client entry. Neither API chooses a replacement request automatically.
+
+```ts
+import { inspectAttentionRequest, respondToRequest } from '@kontourai/station-sdk/client';
+
+const inspection = await inspectAttentionRequest(requestScope.apiBase, reference, {
+  requestScope, signal,
+});
+// Only after an explicit user decision on an open, answerable inspection:
+await respondToRequest(requestScope.apiBase, {
+  threadId: reference.threadId,
+  requestId: reference.requestId,
+  expectedRequestEventId: reference.requestEventId,
+  decision,
+}, { requestScope });
+```
+
+The host captures `requestScope`; do not reconstruct it from a URL or title.
+Response commands preserve their existing receipts. An event mismatch or lost
+request authority is a refusal to act, requiring fresh inspection rather than a
+blind mutation retry. Requests without canonical approval/permission evidence
+keep their ordinary Session or notification fallback.
+
+## Cloud target observation
+
+`verifyCloudMoveTarget(apiBase, options?)` from
+`@kontourai/station-sdk/client` powers `station cloud verify-target`. Use an
+explicit Station origin and its enrolled credential resolver, or pass
+`credential` with its matching `credentialOrigin`. UI callers should also pass
+the connection's `requestScope` so an authority change invalidates the read.
+
+The function returns a `CloudMoveTargetObservation` only when discovery is
+bracketed by matching instance, boot and build identities. The observation
+contains no secrets and always reports `executionAuthorityTransferred: false`
+and `executionResumeAvailable: false`. It is process reachability evidence,
+not persistent home identity, a compatibility certification or a transfer grant.
+
+The shared GET transport supports opt-in `requireCredential`, `redirect: 'error'`
+and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
+attachment or a current authenticated native transport binding. It refuses
+redirects, limits each body to 4 KiB and uses a shared 15-second deadline. Existing callers retain their current defaults.
+
+### Restored conversation execution
+
+A resolved conversation-open response may include `execution`, an observation
+of the exact authorized current Session: Agent, engine provider, recorded
+engine connection when known, and separately reported/retained versus accepted
+model identities. This is distinct from inventory labels and mutable Agent
+defaults. The read refuses a lineage change across its awaited work instead of
+combining one child's labels with another child's transcript. No resume cursor
+or credential data is exposed.
+
+After a child changes, the composer refreshes this execution identity and drops
+predecessor model controls and local approval state. Draft text remains; queued
+messages require review. A same-child unsent model choice waits for current
+capability evidence and is retained only when supported. If an older server
+cannot establish a changed child's execution binding, the transcript remains
+available while sending stays unavailable. Open-chat labels prefer the exact
+current Session's reported/retained model rather than a persisted predecessor.
+
+For native chats, the engine observation is separate from the LLM provider
+selection. A retained unsent choice must match its own currently available model
+connection, not an engine-connection identifier or another provider's identical
+model name. The initial accepted Session launch plan is not presented as proof
+of the connection used by a later turn. Unknown current-provider provenance
+stays unknown rather than being reconstructed from Agent defaults.
+
+## Home recovery disclosure
+
+`SystemStatus.homeRecovery` is an optional, host-scoped disclosure returned by
+system-status queries. `recovered-from-copy` includes `recoveryId`,
+`snapshotCreatedAt`, and `authorityTransferred: false`. `not-restored` means
+this home has no recovery record; `unavailable` means its record could not be
+verified. Older servers may omit the field. None of these values grants
+execution authority or proves a witnessed channel transfer. Do not reuse a
+cached recovery notice across API-base changes; refresh the selected Station
+before projecting it as current. The record exposes no filesystem path or
+backup manifest contents.
+
+## Update status diagnostics
+
+`requestCoreUpdateStatus(apiBase?, signal?)` validates `GET
+/api/system/core-update` responses instead of casting them. Alongside the
+existing fields, `CoreUpdateStatus` carries four optional diagnostics:
+`serverIdentity` (the answering server's identity triple, from
+`@kontourai/station-contracts/system-status`), `provenanceIssue`
+(`'missing' | 'invalid-stamp'`, the typed reason the server's install
+provenance resolver minted), `technicalDetail` (the provenance detail or
+caught comparison diagnostic — filesystem paths live here, not in
+`message`), and `selfUpdateUnavailableReason` (why a desktop bundle refuses
+git-based self-update). The parser rejects a non-boolean `updateAvailable`
+and malformed supplied counts, normalizes a malformed identity or an unknown
+provenance code to unavailable (`null` — an unknown code never reads as
+`'missing'`), accepts responses from older servers that omit the new fields
+entirely, and never infers `applyMethod` from `updateAvailable`. A non-ok
+HTTP status throws a `StationHttpError` before the body can read as success;
+a genuine `error` field still throws a plain `Error` with the server's
+message.
+
+`requestSystemIdentity(apiBase, signal?)` reads `GET /api/system/identity`
+through the same rules: a complete identity triple is required, optional
+`shaSource` and `devicePresentation` metadata is dropped when malformed, and
+the 503 `identity_unavailable` branch surfaces as a `StationHttpError` with
+its status preserved. Every export is re-exported from
+`@kontourai/station-sdk` and `@kontourai/station-sdk/queries`.
+
+`useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
+`CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When
+`scopeKey` is present it joins the query key, so a cached comparison captured
+for one connection (or one answering boot) can never be served to another.
+`assertCurrent` is checked immediately before the request is issued and again
+after it resolves — throwing rejects the fetch, so an obsolete or superseded
+scope's completion never resolves as current data. Both fields are
+secret-free: credentials and credential-evidence objects must never enter a
+query key or these callbacks. Existing two-argument callers are unaffected.
+
+## Saved answer quotations
+
+`getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
+`@kontourai/station-sdk/quote-source` reads a bounded completed answer through
+`GET /api/orchestration/sessions/:sessionId/turns/:turnId/quote-source`.
+Pass the host-captured `requestScope` and an abort signal. The result is
+`OrchestrationQuoteSource`: exact Session/turn/message identifiers, source text,
+and a SHA-256 text revision. Reads recheck current access and do not load the
+whole Session. Missing and denied answers are indistinguishable; an oversized
+answer is refused. A text revision detects changes, not evidence standing.
+
+The Station composer retains up to three selected excerpts with its existing
+local draft. Sending serializes the user's copied text and source references
+into the ordinary user message; it creates no capability or trust grant.
+Inspecting a saved reference reads its original answer under current access
+on the selected Station. No network request is made to an origin supplied by
+an untrusted quote link. The saved quotation and a changed current source
+remain visibly distinct.
+
+## In-app pull-request review
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestReview`,
+`submitPullRequestReview`, and `mergeReviewedPullRequest`. Pass an explicit
+Station API base, a `PullRequestReviewTarget` (provider, host, repository owner
+and name, native ref, and resolving Project context), and the host-captured
+`requestScope`. Repository identity never comes from a display URL.
+
+Review reads validate the returned exact target and revision. Approvals and
+review-origin merges carry the inspected head SHA to the provider. The provider
+CLI owns forge authentication; Station does not store forge credentials.
+Confirmed review acknowledgements include the observed actor. GitLab ordinary
+comments are not commit-bound; their acknowledgements omit `headSha`.
+
+Retain a draft after an indeterminate response and inspect current provider
+state before another submission. A missing or unverifiable acknowledgement is
+not a safe automatic-retry signal. Unsupported review adapters return an
+explicit unavailable result. Diff bytes and discussion are bounded and may be
+partial; the response says which content could not be supplied.
+
+## Conversation pull-request links
+
+`@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
+unlinks exact pull-request identities for one Conversation. Each call requires
+the selected Station API base and captured `requestScope`. A link is persisted
+only after the provider resolves the exact provider, host, repository owner,
+repository name, and native ref under current authorization.
+
+Reads refresh every identity and return `observedAt` plus current,
+unsupported, or unavailable state. Clients should mark an old cached
+observation stale and require refresh before review or other actions. Explicit
+unlink changes only the Conversation association; it never changes the pull
+request or deletes Task-kept provenance.
+## Files in answers to input requests
+
+`getInputReplyContext(apiBase, reference, options)` from
+`@kontourai/station-sdk/input-reply` resolves the exact open input event to its
+Agent, Conversation and declared attachment transport capabilities. It does not
+turn an approval or permission request into a text-answer operation.
+
+Use `sendExecutionMessage` with that exact current-Station target and
+`expectedInputRequest: reference`. The foreground route checks the binding, and
+the orchestration owner checks the same open event again before adapter input.
+Opaque `attachmentRefs` use the existing current-host staging path; retries
+retain the same `clientTurnId` and payload after an uncertain response. Pass the
+captured host `requestScope` to each read, staging operation and send.
+
+## Mobile device inspection
+
+The opt-in `@kontourai/station-sdk/mobile-device` subpath exports
+`fetchMobileDeviceInventory(apiBase, options?)` and
+`captureMobileDevice(apiBase, target, options?)`, the shared inventory/target/capture
+types, and `MobileDeviceRequestError` with an HTTP status. Both use the existing
+`ClientRequestOptions` credential and origin boundary. Responses are validated;
+capture refuses mismatched targets and returns a timestamped PNG, not stream
+readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
+for host setup, access scopes, limits, and the web/desktop integration boundary.
+
+## Experimental encrypted-channel transport consumer
+
+`@kontourai/station-connect/application-channel` supplies a Fetch-shaped adapter
+for the SDK's existing host credential/transport resolver. It accepts a fixed
+Station origin, a connection lifetime signal, an owner-provided authenticated
+channel opener and a current endpoint-trust check. It does not resolve a person,
+issue a Device grant or sign an account continuation. The existing
+`ApplicationSessionClient` owns those proof headers, and the Station still
+verifies them.
+
+This adapter is opt-in and currently qualified by the
+[local SDK framing fixture](../guides/local-collaboration-lab.md#sdk-application-framing-over-the-encrypted-channel),
+with explicit request/frame bounds and a separate full-runtime acceptance gap.
+Configure the Device credential on the host resolver for channel calls. Passing
+`credential` together with `credentialOrigin` as per-call options deliberately
+bypasses that resolver and uses direct HTTP; an `ApplicationSessionClient` on
+this transport instead uses the configured resolver with `requireCredential`.
+The adapter retains explicit SDK headers separately from a browser `Request`,
+whose header guard removes `Origin` in anticipation of a later HTTP network step.
+The encrypted browser fixture checks that the original client Origin reaches
+the receiver.
+
+Connection owners must retain ordinary SDK authority guards and the selected
+account's request scope, bound channel counts/lifetimes, and close the transport
+when its endpoint trust retires. Transport readiness alone does not partition
+account or Project data. An
+uncertain dispatched mutation must not be retried automatically.
+

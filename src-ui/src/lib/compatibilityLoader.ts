@@ -12,6 +12,7 @@
  */
 
 import type { StationCompatibilityResult } from '@kontourai/station-contracts';
+import { hasTauriRuntime } from '../platform/native';
 
 let modulePromise: Promise<typeof import('./compatibility')> | null = null;
 
@@ -44,5 +45,9 @@ export async function checkHostCompatibility(
   signal?: AbortSignal,
 ): Promise<StationCompatibilityResult> {
   const module = await loadCompatibility();
-  return module.checkHostCompatibility(url, signal);
+  const transport = hasTauriRuntime()
+    ? (await import('../platform/native/publicHandshakeTransport'))
+        .nativePublicHandshakeTransport
+    : fetch;
+  return module.checkHostCompatibility(url, signal, undefined, transport);
 }

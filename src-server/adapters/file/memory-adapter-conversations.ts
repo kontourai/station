@@ -1,14 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import type { Conversation, ConversationQueryOptions } from '@voltagent/core';
 import { MemoryAdapterPaths } from './memory-adapter-paths.js';
 
@@ -166,46 +159,33 @@ export function createMemoryConversationStore(options: {
   }
 
   /**
-   * The actual disk write (temp file + atomic rename + cache update),
-   * factored out so both `persistConversation` and `updateConversation` can
-   * run it from inside their respective queued turn without duplicating the
-   * torn-write and cleanup handling.
+   * The actual disk write (atomic publish + cache update), factored out so
+   * both `persistConversation` and `updateConversation` can run it from
+   * inside their respective queued turn.
+   *
+   * The temp/fsync/rename/directory-fsync sequence belongs to the shared
+   * publisher, which emits the same two-space document this store has always
+   * written. It deliberately does NOT acquire `${path}.mutation`: the only
+   * writer discipline for a conversation document is the per-conversation
+   * in-process queue below, exactly as before this call replaced the
+   * hand-rolled block.
    */
   async function writeConversationToDisk(
     conversation: Conversation,
   ): Promise<void> {
     const conversationDir = paths.getConversationsDir(conversation.resourceId);
+    // Kept ahead of the publish because it decides the mode of a NEW
+    // directory, and this adapter owns the modes in this tree: recursive
+    // mkdir never touches an existing directory's mode, so ordering is
+    // irrelevant once the directory exists, but the seam would create a
+    // missing one 0o700 while every sibling directory the adapter creates
+    // takes the umask default.
     await mkdir(conversationDir, { recursive: true });
     const conversationPath = paths.getConversationPath(
       conversation.resourceId,
       conversation.id,
     );
-    const temporaryPath = `${conversationPath}.${process.pid}.${randomUUID()}.tmp`;
-    let persistenceError: unknown;
-    try {
-      await writeFile(
-        temporaryPath,
-        JSON.stringify(conversation, null, 2),
-        'utf-8',
-      );
-      // Readers see either the previous complete document or this complete
-      // document, never the truncate-then-write window of writeFile(path).
-      await rename(temporaryPath, conversationPath);
-    } catch (error) {
-      persistenceError = error;
-      throw error;
-    } finally {
-      await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return;
-        if (persistenceError !== undefined) {
-          throw new AggregateError(
-            [persistenceError, error],
-            'Failed to persist conversation and clean its temporary file',
-          );
-        }
-        throw error;
-      });
-    }
+    await publishJsonFileWithOwnedLock(conversationPath, conversation);
     cacheConversation(conversation);
   }
 

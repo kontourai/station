@@ -2,6 +2,9 @@ import {
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_ENGINE_LOGIN,
+  PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_PRESETS,
   type PairingScope,
   type PairingScopePreset,
@@ -22,11 +25,15 @@ import { useState } from 'react';
  *  - The BASE level reuses the pairing-time preset vocabulary (Read-only /
  *    Delegation / Standard), because that is the choice the person already
  *    made once and understands. No new taxonomy to learn for an edit.
- *  - The two ELEVATED grants — approving pairing requests and deciding
- *    consent — are separate switches, not presets, because that is what they
- *    are in the contracts: `operator-promotion` tokens, in no preset,
- *    granted deliberately to an already-paired device. The switch plus Apply
- *    is the same two-deliberate-acts weight the revoke control carries.
+ *  - The ELEVATED grants — home control, approving pairing requests, deciding
+ *    consent, and starting an engine sign-in — are separate switches, not
+ *    presets, because that is what they are in the contracts:
+ *    `operator-promotion` tokens, in no preset, granted deliberately to an
+ *    already-paired device. The switch plus Apply is the same
+ *    two-deliberate-acts weight the revoke control carries. Every
+ *    `operator-promotion` token must appear in this list, and a test enforces
+ *    it: the list is hand-written, the contracts vocabulary grows on its own,
+ *    and the two drifted the first time it did.
  *  - Narrowing and widening use the same editor. The asymmetry lives in the
  *    copy, not in friction: widening is labelled as elevated where it is
  *    offered, rather than interrogated after being chosen.
@@ -87,6 +94,21 @@ const ELEVATED_GRANTS: ReadonlyArray<{
     elevated: false,
   },
   {
+    token: PAIRING_SCOPE_HOME_TRANSFER,
+    label: 'Home transfer',
+    detail:
+      'Identifies this device for transfer setup. Moving homes and resuming agents are not available yet.',
+    // This is a dedicated pairing preset, not an operator-promotion grant.
+    elevated: false,
+  },
+  {
+    token: PAIRING_SCOPE_HOME_CONTROL,
+    label: 'Home control',
+    detail:
+      'Allows home-control sessions. Room access and Agent execution still require their own permissions.',
+    elevated: true,
+  },
+  {
     token: PAIRING_SCOPE_ACCESS_APPROVE,
     label: 'Approve pairing requests',
     detail: 'Can approve or deny other devices asking to pair.',
@@ -96,6 +118,13 @@ const ELEVATED_GRANTS: ReadonlyArray<{
     token: PAIRING_SCOPE_CONSENT_DECIDE,
     label: 'Decide consent requests',
     detail: 'Can approve or deny consent requests on the consent page.',
+    elevated: true,
+  },
+  {
+    token: PAIRING_SCOPE_ENGINE_LOGIN,
+    label: 'Start engine sign-in',
+    detail:
+      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine stores the account in this Station's credential profile, so agents using that profile run as it; Station never sees the token.",
     elevated: true,
   },
 ];

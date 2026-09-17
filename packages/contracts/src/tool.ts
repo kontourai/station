@@ -71,7 +71,11 @@ export interface ToolDef {
   transport?: 'stdio' | 'sse' | 'streamable-http';
   command?: string;
   args?: string[];
+  /** Resolved subprocess working directory for a live stdio definition. */
+  cwd?: string;
   endpoint?: string;
+  /** Literal package-declared remote headers; never a secret mechanism. */
+  headers?: Record<string, string>;
   env?: Record<string, string>;
   /**
    * Station-owned references to secret bindings for a stdio MCP child. Values
@@ -530,6 +534,34 @@ export interface AgentConnectionView extends ConnectionConfig {
 export interface AgentConnectionSettings {
   name?: string;
   enabled?: boolean;
+  /**
+   * Engine-connection runtime config. Claude and Codex connections accept
+   * two additional keys (station#2072, for routing a connection through a
+   * local model proxy):
+   *
+   * - `env`: map of environment-variable name → string value, merged into
+   *   every engine subprocess the connection spawns (sessions, model
+   *   discovery, quota probes, source-home maintenance; adoption/login
+   *   enrolment children are deliberately excluded — see below). Names must
+   *   match `/^[A-Za-z_][A-Za-z0-9_]*$/`;
+   *   Station-internal secret names and `TMPDIR` are refused (Station owns
+   *   the engine spawn tmp dir). Empty-string values are honored — they
+   *   mask an inherited variable. Oversized or malformed entries are
+   *   dropped silently at sanitize time (64 entries, 32 KiB per value) —
+   *   a value that vanishes was refused by one of those rules.
+   * - `configHome`: explicit engine config home (`~` allowed), applied as
+   *   `CLAUDE_CONFIG_DIR` (claude) / `CODEX_HOME` (codex). It wins over
+   *   `useAppHome` (the station-managed app-home profile is not applied),
+   *   but a selected credential profile still wins over both — profile
+   *   resolution order is unchanged (see `AgentExecutionConfig.credentialProfileRef`).
+   *   Changing or removing it after sessions exist does not migrate those
+   *   sessions' history: resumed threads look for their transcripts under
+   *   the home that was active when they last ran (adoption and
+   *   source-affinity resume deliberately keep the global root — archive#896).
+   *
+   * Both keys are absent by default; a connection without them keeps the
+   * engine's global config byte-identically.
+   */
   config?: Record<string, unknown>;
   /** Explicit opt-in recovery configuration; credential values never belong here. */
   credentialRecovery?: CredentialProfileRegistryState;

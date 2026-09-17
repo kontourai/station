@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { GENERATED_LEDGER_SUBJECT } from '../normalize-deploy-ledger-head.mjs';
 
 /**
  * The deploy ledger's workflow contract (station#4572), pinned the same way
@@ -23,10 +24,11 @@ import { describe, expect, it } from 'vitest';
  */
 
 const root = resolve(import.meta.dirname, '../..');
-const nightly = readFileSync(
-  resolve(root, '.github/workflows/nightly-native-cohort.yml'),
-  'utf8',
-);
+// Two reusable phases in run order (#1453): staging decides and builds, the
+// cohort promotes and records. Ordering pins across the two read them joined.
+const nightly = ['nightly-native-stage.yml', 'nightly-native-cohort.yml']
+  .map((name) => readFileSync(resolve(root, '.github/workflows', name), 'utf8'))
+  .join('\n');
 const nightlyCaller = readFileSync(
   resolve(root, '.github/workflows/nightly.yml'),
   'utf8',
@@ -72,7 +74,10 @@ function stepBlock(workflow: string, stepName: string): string {
   expect(start, `step must exist: ${stepName}`).toBeGreaterThanOrEqual(0);
   const nameLineStart = workflow.lastIndexOf('\n', start) + 1;
   const rest = workflow.slice(start + stepName.length);
-  const nextIndex = rest.match(/\n\s+- (?:name:|uses:|run:)/)?.index;
+  // A step may start with `- id:` (the cohort's ledger and marker steps do);
+  // without that marker the block ran through the next step and a pin could
+  // be satisfied by a neighbour's `if:` by accident.
+  const nextIndex = rest.match(/\n\s+- (?:name:|uses:|run:|id:)/)?.index;
   const end =
     nextIndex === undefined ? undefined : start + stepName.length + nextIndex;
   const block = workflow.slice(nameLineStart, end);
@@ -96,6 +101,32 @@ describe('the nightly workflow records what it ships', () => {
     );
   });
 
+  it('decides the cohort from the ledger at origin/main, not marker position alone (#1780)', () => {
+    const decision = stepBlock(
+      nightly,
+      'Decide one cohort rather than independent native ships',
+    );
+    // A marker at HEAD without a ledger row is a served, unverified release
+    // (macOS moves nightly-desktop before its claim step). The decision must
+    // consult the ledger, and the ledger it consults must be main's: rows
+    // land on main after the ship, so the checkout at the source SHA never
+    // contains the row for its own marker.
+    expect(decision).toContain('node scripts/nightly-cohort-decide.mjs');
+    expect(decision).toContain('--android-candidate "$normalized_android_sha"');
+    expect(decision).toContain('--desktop-candidate "$normalized_desktop_sha"');
+    expect(decision).toContain('--ledger-ref origin/main');
+    expect(decision).not.toContain(
+      '[ "$normalized_android_sha" = "$android_sha" ]',
+    );
+    expect(decision).not.toContain("echo 'build=false'");
+    // The ref the CLI reads was fetched by this job before the decision.
+    const source = stepBlock(nightly, "Re-bind the caller's exact source");
+    expect(source).toContain('git fetch --no-tags origin main');
+    expect(nightly.indexOf("Re-bind the caller's exact source")).toBeLessThan(
+      nightly.indexOf('Decide one cohort rather than independent native ships'),
+    );
+  });
+
   it('records the Android ship only after provider finality and before the final marker', () => {
     const playUpload = nightly.indexOf(
       'name: Upload the admitted AAB with its exact release name',
@@ -111,10 +142,10 @@ describe('the nightly workflow records what it ships', () => {
     expect(step).toContain('--channel nightly-android');
     // The decided ship SHA — the same one the gate verdicted and the build
     // shipped — never a re-derivation.
-    expect(step).toContain('needs.plan-cohort.outputs.source_sha');
-    expect(step).toContain(
-      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
-    );
+    // The cohort receives the staged, decided SHA as a required input from the
+    // caller (the same value plan-cohort bound), never a re-derivation.
+    expect(step).toContain('inputs.source_sha');
+    expect(step).toContain('--sha "$' + '{{ inputs.source_sha }}"');
     // LOW-2: the version is the identity step's derived version, not
     // github.ref or a re-derived one.
     expect(step).toContain('androidVersion=');
@@ -133,6 +164,16 @@ describe('the nightly workflow records what it ships', () => {
     );
     // The commit subject is what the changelog exclusion rule keys on.
     expect(step).toMatch(/docs\(ledger\):/);
+    // iOS is delivered outside the atomic chain (#1774) and has no ledger
+    // channel, so both cohort rows carry its job result as a note.
+    expect(step).toContain(
+      'IOS_DELIVERY_RESULT: $' + '{{ needs.deliver-ios.result }}',
+    );
+    expect(
+      step.match(
+        /--note "ios: TestFlight delivery \$IOS_DELIVERY_RESULT \(run \$GITHUB_RUN_ID\)"/g,
+      ),
+    ).toHaveLength(2);
     expect(
       nightly.indexOf(
         'name: Advance final Android marker with exact REST readback',
@@ -183,16 +224,17 @@ describe('the nightly workflow records what it ships', () => {
       'continue-on-error',
     );
     // Native recording is a final job after both provider receipts, so a
-    // recorder failure cannot suppress either provider effect.
-    expect(nightly).toContain('needs: [plan-cohort, protected-finalize]');
+    // recorder failure cannot suppress either provider effect. It also waits
+    // on the independent iOS delivery only to disclose its result (#1774).
+    expect(nightly).toContain('needs: [protected-finalize, deliver-ios]');
     expect(nightly).toContain("needs.protected-finalize.result == 'success'");
   });
 });
 
 describe('the desktop nightly workflow records what it ships (station#575)', () => {
-  it('records desktop only after the macOS provider receipt and protected final receipt', () => {
+  it('records desktop only after the desktop provider receipts and protected final receipt', () => {
     const publish = nightly.indexOf(
-      'name: Promote all four admitted macOS assets and bind the rolling tag',
+      'name: Upload both desktops, then publish latest.json last',
     );
     const providerReceipt = nightly.indexOf(
       'name: Record only a reported-success macOS provider state',
@@ -201,22 +243,63 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     expect(publish).toBeGreaterThanOrEqual(0);
     expect(providerReceipt).toBeGreaterThan(publish);
     expect(ledger).toBeGreaterThan(providerReceipt);
+    expect(
+      stepBlock(nightly, 'Upload both desktops, then publish latest.json last'),
+    ).toContain('node scripts/publish-nightly-desktop.mjs');
+    const provider = stepBlock(
+      nightly,
+      'Record only a reported-success macOS provider state',
+    );
+    expect(provider).toContain('provider-claim macos-claim.json');
+    expect(provider).toContain('provider-claim windows-claim.json');
+    expect(provider).toContain('group-desktop-states');
     const step = stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP);
     expect(step).toContain(COMMIT_SCRIPT);
     expect(step).toContain(LEDGER_SCRIPT);
     expect(step).toContain('--channel nightly-desktop');
     // The same decided ship SHA the gate verdicted and the build shipped —
     // this job's OWN decide step, never a re-derivation.
-    expect(step).toContain('needs.plan-cohort.outputs.source_sha');
-    expect(step).toContain(
-      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
-    );
+    // The cohort receives the staged, decided SHA as a required input from the
+    // caller (the same value plan-cohort bound), never a re-derivation.
+    expect(step).toContain('inputs.source_sha');
+    expect(step).toContain('--sha "$' + '{{ inputs.source_sha }}"');
     expect(step).not.toMatch(/git rev-parse/);
     expect(step).toContain('desktopVersion=');
     expect(step).toMatch(/docs\(ledger\):/);
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
+  });
+
+  it('records each platform only when the verified final receipt says it published (#1774)', () => {
+    // A partial night writes a row for the platform that shipped and none
+    // for the one that did not; the gate column carries the receipt state
+    // rather than a hand-written `complete`, and the Android marker moves
+    // only behind Android's own row.
+    const step = stepBlock(nightly, NIGHTLY_ANDROID_LEDGER_STEP);
+    expect(step).toContain('if [ "$android_state" = complete ]; then');
+    expect(step).toContain('if [ "$macos_state" = complete ]; then');
+    expect(step).toContain(
+      '--gate-result "native cohort final receipt $final_state"',
+    );
+    expect(step).not.toContain("'native cohort final receipt complete'");
+    // The ledger block ends at the marker's `- id:`; the marker's own block
+    // carries its gate, so a revert of either guard fails its own pin.
+    expect(step).not.toContain('git/refs/tags/nightly');
+    const marker = stepBlock(
+      nightly,
+      'Advance final Android marker with exact REST readback',
+    );
+    expect(marker).toContain(
+      'if: $' + "{{ steps.durable_ledger.outputs.android == 'complete' }}",
+    );
+    expect(marker).toContain('git/refs/tags/nightly');
+    expect(step.indexOf('if [ "$android_state" = complete ]')).toBeLessThan(
+      step.indexOf('--channel nightly-android'),
+    );
+    expect(step.indexOf('if [ "$macos_state" = complete ]')).toBeLessThan(
+      step.indexOf('--channel nightly-desktop'),
+    );
   });
 
   it('lets a ledger failure redden the job without blocking any ship', () => {
@@ -229,6 +312,40 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     expect(nightly).toContain(
       'name: Verify finalized receipt provenance before minting the ledger token',
     );
+  });
+
+  it('writes ledger commit subjects the normalizer will peel (#1802)', () => {
+    // The cohort wrote `docs(ledger): record finalized <channel> <ver>` —
+    // no `from run N` — so its commits never matched GENERATED_LEDGER_SUBJECT
+    // and an idle main rebuilt the cohort every night. The two subjects are
+    // pinned verbatim, and every `--commit-subject` in every workflow is
+    // bound to the normalizer's regex after shell substitution, so a future
+    // writer cannot drift from the peel contract without reddening this.
+    const step = stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP);
+    expect(step).toContain(
+      '--commit-subject "docs(ledger): record nightly-android $androidVersion from run $GITHUB_RUN_ID"',
+    );
+    expect(step).toContain(
+      '--commit-subject "docs(ledger): record nightly-desktop $desktopVersion from run $GITHUB_RUN_ID"',
+    );
+    expect(step).not.toContain('record finalized');
+
+    const subjects = [
+      nightly,
+      nightlyCaller,
+      publishRelease,
+      publishPackages,
+    ].flatMap((workflow) =>
+      Array.from(workflow.matchAll(/--commit-subject "([^"]+)"/g), (m) => m[1]),
+    );
+    expect(subjects).toHaveLength(5);
+    for (const subject of subjects) {
+      const substituted = subject
+        .replace(/\$GITHUB_RUN_ID\b/g, '34252063142')
+        .replace(/\$\{\{[^}]*\}\}/g, '0.6.0-nightly.2442.34252063142')
+        .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, '0.1.11-nightly.2442.5');
+      expect(substituted, subject).toMatch(GENERATED_LEDGER_SUBJECT);
+    }
   });
 
   it('uses the DEPLOY_LEDGER_CHANNELS vocabulary, not a literal string only the workflow knows', () => {

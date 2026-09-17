@@ -1,11 +1,14 @@
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
   DevicePairingAttentionItem,
   GateBlockedAttentionItem,
   GateExceptionAttentionItem,
+  GateReviewAttentionItem,
   GateRouteBackAttentionItem,
   NeedsInputAttentionItem,
+  ProposedChangeAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
@@ -23,9 +26,13 @@ import {
 } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import {
   attentionKindLabel,
+  isAcknowledgeableAttentionItem,
   isApprovalLivePending,
   sessionFailedIdentity,
   sessionFailureCause,
@@ -36,11 +43,22 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { LazyBoundary } from '../LazyBoundary';
+import { SkeletonList } from '../state';
 import './AttentionCard.css';
+import { useProposedChangeDecision } from '../review/proposedChangeDecision';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
   DISMISS_NOTIFICATION_ACTION,
 } from './notificationRowActions';
+
+/** Recorded on a decision taken from the inbox. See `proposedChangeDecision`. */
+const INBOX_DECISION_SURFACE = 'notifications';
+
+const loadNeedsInputReply = () =>
+  import('./NeedsInputReply').then((module) => ({
+    default: module.NeedsInputReply,
+  }));
 
 export function AttentionCard({
   item,
@@ -82,7 +100,13 @@ export function AttentionCard({
         </time>
       </header>
       <AttentionAction item={item} />
-      {item.kind !== 'approval' && <DismissAttentionItem item={item} />}
+      {/* #1536 D8: a standing notice is not dismissible — acknowledging the
+          only row that says why chat cannot start would leave the inbox
+          claiming nothing needs you while it still does. One predicate, shared
+          with "Dismiss all" and with the server's own refusal. */}
+      {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
+        <DismissAttentionItem item={item} />
+      )}
     </article>
   );
 }
@@ -119,11 +143,25 @@ function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
 function AttentionAction({ item }: { item: AttentionItem }) {
   switch (item.kind) {
     case 'approval':
-      return <ApprovalActions item={item} />;
+      return item.requestReference ? (
+        <ExactRequestAction
+          reference={item.requestReference}
+          openHref={item.openHref}
+        />
+      ) : (
+        <ApprovalActions item={item} />
+      );
     case 'needs_input':
       return <NeedsInputAction item={item} />;
     case 'review_pending':
-      return <OpenSessionAction item={item} />;
+      return item.requestReference ? (
+        <ExactRequestAction
+          reference={item.requestReference}
+          openHref={item.openHref}
+        />
+      ) : (
+        <OpenSessionAction item={item} />
+      );
     case 'session-failed':
       return <SessionFailedAction item={item} />;
     case 'gate-route-back':
@@ -133,7 +171,76 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <GateExceptionAction item={item} />;
     case 'device-pairing':
       return <DevicePairingActions item={item} />;
+    // #2064 D4: the two kinds that moved in from Review.
+    case 'proposed-change':
+      return <ProposedChangeActions item={item} />;
+    case 'gate-review':
+      return <GateReviewAction item={item} />;
+    // #1536 D8: the requirement's own route out. No secondary action —
+    // the item resolves by configuring a connection, not by answering here.
+    case 'setup-incomplete':
+      return <OpenModelConnectionsLink href={item.openHref} />;
   }
+}
+
+const loadRequestInspection = () =>
+  import('./RequestInspectionDialog').then((module) => ({
+    default: module.RequestInspectionDialog,
+  }));
+
+function ExactRequestAction({
+  reference,
+  openHref,
+}: {
+  reference: AttentionRequestReference;
+  openHref?: string;
+}) {
+  const authority = useHostRequestAuthorityScope();
+  const [selected, setSelected] = useState<{
+    reference: AttentionRequestReference;
+    authority: NonNullable<typeof authority>;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (
+      selected &&
+      (authority?.authorityKey !== selected.authority.authorityKey ||
+        !selected.authority.isCurrent())
+    )
+      setSelected(null);
+  }, [authority, selected]);
+  return (
+    <>
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--primary"
+        onClick={() => {
+          if (!authority?.isCurrent()) {
+            setError('Reconnect to inspect this request.');
+            return;
+          }
+          setError(null);
+          setSelected({ reference: { ...reference }, authority });
+        }}
+      >
+        Inspect request
+      </button>
+      {error ? <p role="alert">{error}</p> : null}
+      {selected ? (
+        <LazyBoundary
+          load={loadRequestInspection}
+          componentProps={{
+            ...selected,
+            openHref,
+            onClose: () => setSelected(null),
+          }}
+          pending={
+            <SkeletonList count={1} label="Opening request inspection" />
+          }
+        />
+      ) : null}
+    </>
+  );
 }
 
 /**
@@ -244,6 +351,82 @@ function describePairingActionError(
   );
 }
 
+/**
+ * #2064 (D4): decide a proposed change from the inbox.
+ *
+ * The decision goes through `useProposedChangeDecision`, the module
+ * `ReviewQueueView` also calls, so both surfaces POST to
+ * `/api/proposed-changes/:id/approve|reject` with the same payload shape and
+ * invalidate the same key. What differs is the recorded surface name, which
+ * is the point: the change's decision record says where a human decided it.
+ *
+ * No bulk affordance here, deliberately (#2064): "Approve all" over a list
+ * whose rows the reader has not opened is a decision made by a button, and
+ * the inbox is where individual asks land. Bulk stays on Review.
+ */
+function ProposedChangeActions({
+  item,
+}: {
+  item: ProposedChangeAttentionItem;
+}) {
+  const decision = useProposedChangeDecision(INBOX_DECISION_SURFACE);
+  return (
+    <>
+      <div className="attention-item__actions">
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--primary"
+          disabled={decision.pending}
+          onClick={() =>
+            decision.decide(item.source.proposedChangeId, 'approve')
+          }
+        >
+          Approve
+        </button>
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--danger"
+          disabled={decision.pending}
+          onClick={() =>
+            decision.decide(item.source.proposedChangeId, 'reject')
+          }
+        >
+          Reject
+        </button>
+      </div>
+      {/* The diff itself is not in the inbox; deciding blind is not the only
+          option offered. */}
+      <a
+        className="attention-item__action attention-item__action--secondary"
+        href={item.openHref}
+      >
+        Open in Review
+      </a>
+      <MutationError error={decision.error} />
+    </>
+  );
+}
+
+/**
+ * #2064 (D4): a paused gate review's only affordance is to go read it.
+ *
+ * There is nothing to decide from a row: the Review page makes no mutation
+ * for these sessions either, and the continuation endpoint is driven from the
+ * review workbench with the reviewer's own resolutions attached. An
+ * Approve-shaped button here would claim an authority this surface does not
+ * have.
+ */
+function GateReviewAction({ item }: { item: GateReviewAttentionItem }) {
+  return (
+    <a
+      className="attention-item__action attention-item__action--secondary"
+      href={item.openHref}
+    >
+      Open review
+    </a>
+  );
+}
+
 function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
   const mutation = useNotificationActionMutation();
   const dismissMutation = useDismissNotificationMutation();
@@ -311,6 +494,35 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
 }
 
 function NeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
+  return item.requestType === 'input' && item.inputReference ? (
+    <ScopedInputReply item={{ ...item, inputReference: item.inputReference }} />
+  ) : (
+    <LegacyNeedsInputAction item={item} />
+  );
+}
+function ScopedInputReply({
+  item,
+}: {
+  item: NeedsInputAttentionItem & { inputReference: AttentionRequestReference };
+}) {
+  const scope = useHostRequestAuthorityScope();
+  return (
+    <>
+      {scope?.isCurrent() ? (
+        <LazyBoundary
+          key={`${scope.apiBase}:${scope.authorityKey}:${item.source.threadId}`}
+          load={loadNeedsInputReply}
+          componentProps={{ item, scope }}
+          pending={<SkeletonList count={1} label="Loading answer controls" />}
+        />
+      ) : (
+        <p role="status">Connect to this Station to answer.</p>
+      )}
+      <OpenSessionLink href={item.openHref} />
+    </>
+  );
+}
+function LegacyNeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
   const [answer, setAnswer] = useState('');
   const queryClient = useQueryClient();
   const mutation = useMutation({
@@ -663,6 +875,14 @@ function OpenFlowConsoleLink({ href }: { href: string }) {
   return (
     <a className="attention-open-link" href={href}>
       Open flow console
+    </a>
+  );
+}
+
+function OpenModelConnectionsLink({ href }: { href: string }) {
+  return (
+    <a className="attention-open-link" href={href}>
+      Open model connections
     </a>
   );
 }

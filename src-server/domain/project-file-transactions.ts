@@ -67,12 +67,16 @@ export interface StoredFileRevision<T> {
 
 export interface ProjectStoredFileRevision<T> extends StoredFileRevision<T> {
   createLayout(layoutSlug: string, value: unknown): Promise<void>;
+  /** Server-only read admission under the existing Project mutation owner. */
+  withCurrentRead?<R>(operation: (value: T) => Promise<R>): Promise<R>;
 }
 
 export interface ProjectFileTransactionFaults {
   afterLockAcquired?: (projectSlug: string) => Promise<void> | void;
   afterPublish?: (path: string) => void;
   afterRemoveCommit?: (path: string) => void;
+  afterProjectCreatePrepared?: (projectSlug: string) => Promise<void> | void;
+  afterProjectCreateCommit?: (path: string) => void;
 }
 
 type Parser<T> = (value: unknown) => T;
@@ -184,6 +188,65 @@ export class ProjectFileTransactions {
     });
   }
 
+  /** Publish the complete initial Project outside the catalog, then rename once. */
+  async createProjectWithManifest(
+    projectSlug: string,
+    value: unknown,
+    manifest: unknown,
+  ): Promise<void> {
+    const projectValue = structuredClone(value);
+    const manifestValue = structuredClone(manifest);
+    const destination = this.projectDirectory(projectSlug);
+    await this.#withProjectLock(projectSlug, async () => {
+      if (existsSync(destination)) {
+        throw new FileStorageAlreadyExistsError(
+          `Project '${projectSlug}' already exists`,
+          projectSlug,
+        );
+      }
+      const staging = join(
+        this.#coordinationRoot,
+        `initial-project-${randomUUID()}`,
+      );
+      await mkdir(staging, { mode: 0o700 });
+      let published = false;
+      try {
+        await this.#publish(join(staging, 'project.json'), projectValue);
+        await this.#publish(join(staging, 'manifest.json'), manifestValue);
+        fsyncDirectorySync(staging);
+        await this.faults.afterProjectCreatePrepared?.(projectSlug);
+        await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+        await rename(staging, destination);
+        published = true;
+        fsyncDirectorySync(dirname(destination));
+        fsyncDirectorySync(this.#coordinationRoot);
+        this.faults.afterProjectCreateCommit?.(destination);
+      } catch (error) {
+        // A post-rename error cannot make a committed create look safe to replay.
+        const projectBytes = JSON.stringify(projectValue, null, 2);
+        const manifestBytes = JSON.stringify(manifestValue, null, 2);
+        try {
+          if (
+            readFileSync(join(destination, 'project.json'), 'utf8') ===
+              projectBytes &&
+            readFileSync(join(destination, 'manifest.json'), 'utf8') ===
+              manifestBytes
+          ) {
+            published = true;
+            return;
+          }
+        } catch {}
+        if (isStorageOutcomeError(error)) throw error;
+        throw new FileStorageUnavailableError(
+          'Project identity publication is unavailable',
+          error,
+        );
+      } finally {
+        if (!published) await rm(staging, { recursive: true, force: true });
+      }
+    });
+  }
+
   async createLayout(
     projectSlug: string,
     layoutSlug: string,
@@ -292,6 +355,9 @@ export class ProjectFileTransactions {
       );
     }
     const expected = snapshot.fingerprint;
+    const admissionValue = options.projectRevision
+      ? structuredClone(value)
+      : undefined;
     let intent: string | undefined;
     let pending: Promise<void> | undefined;
     let applied = false;
@@ -320,6 +386,19 @@ export class ProjectFileTransactions {
 
     const revision = {
       value,
+      ...(options.projectRevision
+        ? {
+            withCurrentRead: <R>(operation: (current: T) => Promise<R>) =>
+              this.#withProjectLock(projectSlug, async () => {
+                if (readFingerprint(path) !== expected) {
+                  throw new FileStorageConflictError(
+                    'Project changed before invocation admission',
+                  );
+                }
+                return operation(structuredClone(admissionValue as T));
+              }),
+          }
+        : {}),
       replace: (next: T): Promise<void> => {
         const serialized = JSON.stringify(next);
         const ownedNext = JSON.parse(serialized) as T;

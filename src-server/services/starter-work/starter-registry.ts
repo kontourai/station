@@ -1,4 +1,5 @@
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { SchedulerManualRunReceipt } from '@kontourai/station-contracts/scheduler';
 import type {
@@ -118,7 +119,7 @@ function scheduledCheckPrepareFailure(
   }
 }
 
-export type StarterSessionOwner = {
+type StarterSessionOwner = {
   read(sessionId: string): Promise<{
     threadId: string;
     controlMode: 'read-only-attached' | 'station-owned';
@@ -163,14 +164,12 @@ export class StarterWorkPrerequisiteError extends Error {
 function inspectionHref(reference: StarterInspectionReference): string {
   if (reference.kind === 'approval')
     return `/notifications?approval=${encodeURIComponent(reference.id)}`;
-  const params = new URLSearchParams({
-    receipt: reference.id,
-    ...(reference.owner === 'independent-review'
-      ? { project: reference.projectSlug }
-      : {}),
-  });
+  // #2065: an independent-review receipt now opens in its own Project's
+  // Review layout. The project is the PATH rather than a `project=` param,
+  // which is why the receipt id alone selects the item: the layout is already
+  // scoped to one Project and cannot show another's receipt.
   return reference.owner === 'independent-review'
-    ? `/review-queue?${params.toString()}`
+    ? projectReviewLayoutHref(reference.projectSlug, { receipt: reference.id })
     : `/schedule?run=${encodeURIComponent(reference.id)}`;
 }
 

@@ -8,38 +8,56 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const setDockState = vi.fn();
 const onNewChat = vi.fn();
-const onDockSnap = vi.fn();
+const setShowChatSettings = vi.fn();
 let isDockOpen = true;
-let isDockMaximized = true;
-let dockMode: 'left' | 'bottom' | 'right' = 'bottom';
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     isDockOpen,
-    isDockMaximized,
+    isDockMaximized: false,
     setDockState,
-    dockMode,
-    // station#520: `DockOccupantPicker` now reads `pathname` (its onChoose
-    // seam) — a real string so `resolveViewFromPath` doesn't see `undefined`.
+    dockMode: 'bottom',
     pathname: '/',
   }),
 }));
 
+// A real chord string, not '': `withShortcutHint` returns the bare label for an
+// empty display, so a stub of '' makes every tooltip assertion vacuous.
+const SHORTCUT_DISPLAY: Record<string, string> = {
+  'dock.toggle': '⌘D',
+  'dock.maximize': '⌃⌘M',
+};
 vi.mock('../hooks/useKeyboardShortcut', () => ({
-  useShortcutDisplay: () => '',
+  useShortcutDisplay: (id: string) => SHORTCUT_DISPLAY[id] ?? '',
+  useShortcutDisplayLookup: () => (id: string) => SHORTCUT_DISPLAY[id] ?? '',
 }));
 
-import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
-import { DockOccupantPicker } from '../workspace-panes/DockOccupantPicker';
+import {
+  ChatDockHeader,
+  type ChatDockWorkspaceControls,
+} from '../components/chat-dock/ChatDockHeader';
+import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
 
+/**
+ * #2046 2b: the region's controls — placement grab, maximize, visibility
+ * chevron, the click surface that collapses the bar — left this header for
+ * the region bar (`RegionChromeBar`, pinned in `RegionChromeBar.test.tsx`
+ * with the #795/#800/#1385 rules they carried). What this file still pins
+ * is Chat's OWN toolbar: the collapsed "Start a chat" affordance (#800), the
+ * folded Chat-settings command (#1536 F), the keycap-free bar, and the
+ * control set the pane contributes — rendered inline (the full-screen
+ * placement, or no region host) and into the region bar's slots (the dock).
+ */
 function renderHeader({
   fullscreen = false,
   chatIdentity,
   projectContext,
+  workspaceControls,
 }: {
   fullscreen?: boolean;
   chatIdentity?: ReactNode;
   projectContext?: ReactNode;
+  workspaceControls?: ChatDockWorkspaceControls;
 } = {}) {
   return render(
     <ChatDockHeader
@@ -50,68 +68,14 @@ function renderHeader({
         unreadCount: 0,
         focusSession: vi.fn(),
         onNewChat,
-        setShowChatSettings: vi.fn(),
+        setShowChatSettings,
       }}
-      isDragging={false}
-      onDockSnap={onDockSnap}
-      availableDockSlotPlacements={['left', 'bottom', 'right']}
-      effectiveDockSlotPlacement={dockMode}
-      onDockPlacementChange={vi.fn()}
       fullscreen={fullscreen}
       regionVisible={isDockOpen}
-      shellMaximized={isDockMaximized}
+      workspaceControls={workspaceControls}
     />,
   );
 }
-
-describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
-  beforeEach(() => {
-    setDockState.mockClear();
-    onNewChat.mockClear();
-    onDockSnap.mockClear();
-    window.localStorage.clear();
-    isDockOpen = true;
-    isDockMaximized = true;
-    dockMode = 'bottom';
-  });
-
-  // `is-collapsed` and `is-maximized` are independent classes. Carrying the
-  // maximized flag through a collapse left the dock at full height with an
-  // emptied body — a blank full-screen shell that only Restore or a reload
-  // recovered.
-  test('collapsing a maximized dock clears the maximized flag', () => {
-    renderHeader();
-
-    fireEvent.click(screen.getByTitle('Hide dock region'));
-
-    expect(onDockSnap).toHaveBeenCalledWith('collapsed');
-  });
-
-  test('expanding does not invent a maximized dock when the last size was not Full', () => {
-    isDockOpen = false;
-    isDockMaximized = false;
-    window.localStorage.setItem('station.chatDock.snap', 'half');
-    renderHeader();
-
-    fireEvent.click(screen.getByTitle('Show dock region'));
-
-    expect(onDockSnap).toHaveBeenCalledWith('half');
-  });
-
-  // archive#795: the reopened dock takes its height from the persisted snap,
-  // so expanding after a Full-height collapse used to come back full height
-  // with its own Maximize button still reading "Maximize".
-  test('expanding restores Maximized when the persisted size was Full', () => {
-    isDockOpen = false;
-    isDockMaximized = false;
-    window.localStorage.setItem('station.chatDock.snap', 'full');
-    renderHeader();
-
-    fireEvent.click(screen.getByTitle('Show dock region'));
-
-    expect(onDockSnap).toHaveBeenCalledWith('full');
-  });
-});
 
 // archive#800: this label read "Start a chat" and carried a pointer cursor, but was
 // inert text — the click it appeared to offer only toggled the dock open (the
@@ -120,16 +84,13 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
   beforeEach(() => {
     setDockState.mockClear();
     onNewChat.mockClear();
-    onDockSnap.mockClear();
+    setShowChatSettings.mockClear();
     window.localStorage.clear();
     isDockOpen = true;
-    isDockMaximized = true;
-    dockMode = 'bottom';
   });
 
   test('is a real control that starts a chat', () => {
     isDockOpen = false;
-    isDockMaximized = false;
     renderHeader();
 
     const control = screen.getByRole('button', { name: 'Start a chat' });
@@ -146,189 +107,142 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
   // resolve to both.
   test('yields to the body CTA once the dock is open', () => {
     isDockOpen = true;
-    isDockMaximized = false;
     renderHeader();
 
     expect(screen.queryByRole('button', { name: 'Start a chat' })).toBeNull();
     expect(screen.getByText('Start a chat')).toBeTruthy();
   });
 
-  test('the region visibility and settings controls carry accessible names', () => {
+  test('Chat settings is still one press', () => {
     isDockOpen = false;
     renderHeader();
 
-    expect(screen.getByLabelText('Show dock region')).toBeTruthy();
-    expect(screen.getByLabelText('Chat settings')).toBeTruthy();
-  });
-
-  test('groups the dock shortcut directly with Chat settings', () => {
-    const { container } = renderHeader();
-    const settings = screen.getByLabelText('Chat settings');
-    const shortcut = container.querySelector('.chat-dock__toggle-shortcut');
-
-    expect(shortcut?.getAttribute('data-chrome-group')).toBe('chat-settings');
-    expect(settings.nextElementSibling).toBe(shortcut);
-  });
-
-  test('mirrors the collapse direction for a left-side dock', () => {
-    dockMode = 'left';
-    isDockOpen = true;
-    renderHeader();
-
-    const collapse = screen.getByLabelText('Hide dock region');
-    expect(collapse.querySelector('svg')?.classList).toContain('is-left-open');
-  });
-
-  test('routes explicit maximize and restore through the persisted Full/Half snap owner', () => {
-    isDockOpen = true;
-    isDockMaximized = false;
-    renderHeader();
-
-    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    expect(onDockSnap).toHaveBeenCalledWith('full');
-
-    isDockMaximized = true;
-    // Re-rendering represents navigation state after the snap owner applies Full.
-    renderHeader();
-    fireEvent.click(screen.getByLabelText('Restore dock region size'));
-    expect(onDockSnap).toHaveBeenLastCalledWith('half');
-  });
-
-  test('keeps ambient dock controls out of the full-screen pane placement', () => {
-    renderHeader({ fullscreen: true });
-
+    // #1536 F: the unlabelled gear left the bar. The command did not — and with
+    // no pane open Chat settings is the ONLY folded command, so it renders as
+    // its own labelled button rather than behind a ⋯ that would open a list of
+    // one (D2).
     expect(
-      screen.queryByLabelText('Expand dock region to workspace'),
+      screen.queryByRole('button', { name: /^More dock actions/ }),
     ).toBeNull();
-    expect(screen.queryByLabelText('Restore dock region size')).toBeNull();
-    expect(screen.queryByLabelText('Hide dock region')).toBeNull();
+    const settings = screen.getByRole('button', { name: 'Chat settings' });
+    expect(settings.textContent).toBe('Chat settings');
+    fireEvent.click(settings);
+    expect(setShowChatSettings).toHaveBeenCalledTimes(1);
   });
 
-  test('names and depicts region extent separately from region visibility', () => {
-    isDockOpen = true;
-    isDockMaximized = false;
-    renderHeader();
+  /**
+   * #1536 F: the bar carried two bare keycap spans — a ⌘D beside the settings
+   * gear and a ⌘M inside Maximize — as visible chrome. Every other shortcut in
+   * this bar lives in its control's tooltip, which is where these are now.
+   */
+  test('renders no bare keycap chrome', () => {
+    const { container } = renderHeader();
 
-    const extent = screen.getByLabelText('Expand dock region to workspace');
-    const visibility = screen.getByLabelText('Hide dock region');
-    expect(extent.getAttribute('aria-label')).not.toBe(
-      visibility.getAttribute('aria-label'),
-    );
-    expect(extent.querySelector('.chat-dock__extent-svg')).not.toBeNull();
-    expect(visibility.querySelector('.chat-dock__chevron-svg')).not.toBeNull();
-  });
-
-  test('toggles from non-interactive project context and identity text', () => {
-    renderHeader({
-      chatIdentity: <span>Active conversation</span>,
-      projectContext: <span>Project context</span>,
-    });
-
-    fireEvent.click(screen.getByText('Active conversation'));
-    fireEvent.click(screen.getByText('Project context'));
-
-    expect(onDockSnap).toHaveBeenCalledTimes(2);
-    expect(onDockSnap).toHaveBeenCalledWith('collapsed');
-  });
-
-  test('does not toggle when a project-context link or identity button handles the click', () => {
-    renderHeader({
-      chatIdentity: <button type="button">Active conversation</button>,
-      projectContext: (
-        <a href="/projects/alpha" onClick={(event) => event.preventDefault()}>
-          Project context
-        </a>
-      ),
-    });
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Active conversation' }),
-    );
-    fireEvent.click(screen.getByRole('link', { name: 'Project context' }));
-
-    expect(onDockSnap).not.toHaveBeenCalled();
+    expect(container.querySelector('.chat-dock__toggle-shortcut')).toBeNull();
+    // Every keycap in the bar, not just the one the retired span carried: the
+    // activity dropdown's own ⌘1…⌘9 rows use this class too and are the only
+    // remaining consumer, so an empty count here is only meaningful because the
+    // dropdown is present but has no active sessions in this fixture.
+    expect(
+      container.querySelectorAll('.chat-dock__header .chat-dock__subtitle'),
+    ).toHaveLength(0);
   });
 });
 
-// archive#4460: Chat's header carried no occupant switcher at all — only
-// Home/Activity's `.dock-slot__header` did. `ChatDockHeader` is the SAME
-// component every ambient occupant (Chat included) now renders through, so
-// this is the direct proof that Chat gets the picker too, without needing
-// to mount the full `ChatWorkspacePane` data-fetching stack.
-describe('occupant picker (station#4460)', () => {
+/**
+ * #928 C2b deleted the dock header's occupant picker; #1536 F folded the gear
+ * and the pane commands into the More menu; #2046 2b moved the region's own
+ * controls (the placement grab, maximize and the visibility chevron) out to
+ * the region bar. This pins the control set the PANE still contributes, BY
+ * ACCESSIBLE NAME, in order, so a header that loses (or gains, or renames) a
+ * control reds here by name instead of shipping as a quiet chrome regression.
+ *
+ * Projected as aria-label OR text content, not aria-label alone: an
+ * icon-only control is named by its label and a text control by its text, and
+ * reading only the first scored the labelled text button as `''` — a set with a
+ * hole in it still "matched" as long as the hole stayed the same size.
+ */
+describe('the Chat pane toolbar control set (#928 C2b, #2046 2b)', () => {
   beforeEach(() => {
     setDockState.mockClear();
     onNewChat.mockClear();
-    onDockSnap.mockClear();
+    setShowChatSettings.mockClear();
     isDockOpen = true;
-    isDockMaximized = false;
-    dockMode = 'bottom';
   });
 
-  test('renders when supplied, naming the current occupant', () => {
-    // archive#4460: `occupantPicker` is a PRE-RENDERED node (built
-    // by the ambient host's lazy chunk), not `{current, onChoose}` data —
-    // this test constructs the real `DockOccupantPicker` element itself,
-    // the same way the host does.
-    render(
-      <ChatDockHeader
-        chatControls={{
-          sessions: [],
-          unreadCount: 0,
-          focusSession: vi.fn(),
-          onNewChat,
-          setShowChatSettings: vi.fn(),
-        }}
-        isDragging={false}
-        onDockSnap={onDockSnap}
-        availableDockSlotPlacements={['left', 'bottom', 'right']}
-        effectiveDockSlotPlacement={dockMode}
-        onDockPlacementChange={vi.fn()}
-        regionVisible={isDockOpen}
-        shellMaximized={isDockMaximized}
-        occupantPicker={
-          <DockOccupantPicker
-            current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
-            onChoose={vi.fn()}
-            onChooseAsOnlyContent={vi.fn()}
-          />
-        }
-      />,
+  const controlNames = (root: ParentNode = document) =>
+    Array.from(root.querySelectorAll('button')).map(
+      (button) => button.getAttribute('aria-label') ?? button.textContent ?? '',
     );
 
-    expect(
-      screen.getByRole('button', { name: 'Docked pane: Chat' }),
-    ).toBeTruthy();
+  test('an open dock pane offers exactly this control, by accessible name; the region controls are not its to offer', () => {
+    renderHeader();
+    expect(controlNames()).toEqual(['Chat settings']);
+    expect(screen.queryByLabelText('Move the dock')).toBeNull();
+    expect(screen.queryByLabelText(/dock region/)).toBeNull();
+    expect(screen.queryByLabelText('Hide Chat')).toBeNull();
   });
 
-  test('is absent for the full-screen placement, which has no ambient occupant to switch away from', () => {
-    render(
-      <ChatDockHeader
-        chatControls={{
-          sessions: [],
-          unreadCount: 0,
-          focusSession: vi.fn(),
-          onNewChat,
-          setShowChatSettings: vi.fn(),
-        }}
-        isDragging={false}
-        onDockSnap={onDockSnap}
-        availableDockSlotPlacements={['left', 'bottom', 'right']}
-        effectiveDockSlotPlacement={dockMode}
-        onDockPlacementChange={vi.fn()}
-        regionVisible={isDockOpen}
-        shellMaximized={isDockMaximized}
-        fullscreen
-        occupantPicker={
-          <DockOccupantPicker
-            current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
-            onChoose={vi.fn()}
-            onChooseAsOnlyContent={vi.fn()}
+  /**
+   * Inside a region host the header renders no bar of its own: its two
+   * clusters go INTO the region bar's slots. Reverting the portal (rendering
+   * the inline bar under the region bar) fails the first assertion — a second
+   * `.chat-dock__header` — and reverting the slot routing fails the second.
+   */
+  test('inside a region host it renders into the bar’s slots and no bar of its own', () => {
+    const bar = document.createElement('div');
+    bar.className = 'chat-dock__header';
+    const leading = document.createElement('span');
+    const trailing = document.createElement('span');
+    bar.append(leading, trailing);
+    document.body.append(bar);
+    try {
+      const { container } = render(
+        <RegionChromeSlotsContext.Provider value={{ leading, trailing }}>
+          <ChatDockHeader
+            chatIdentity={<span>Active conversation</span>}
+            chatControls={{
+              sessions: [],
+              unreadCount: 0,
+              focusSession: vi.fn(),
+              onNewChat,
+              setShowChatSettings,
+            }}
+            regionVisible={false}
           />
-        }
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: /^Docked pane:/ })).toBeNull();
+        </RegionChromeSlotsContext.Provider>,
+      );
+      expect(container.querySelector('.chat-dock__header')).toBeNull();
+      expect(leading.textContent).toContain('Active conversation');
+      // With an identity on screen the collapsed CTA yields to it (#800's
+      // guard), so the trailing slot holds the one folded command.
+      expect(controlNames(trailing)).toEqual(['Chat settings']);
+      // The full-screen placement has no region bar and keeps its own.
+      render(
+        <RegionChromeSlotsContext.Provider value={{ leading, trailing }}>
+          <ChatDockHeader
+            fullscreen
+            chatControls={{
+              sessions: [],
+              unreadCount: 0,
+              focusSession: vi.fn(),
+              onNewChat,
+              setShowChatSettings,
+            }}
+            regionVisible
+          />
+        </RegionChromeSlotsContext.Provider>,
+      );
+      expect(document.querySelectorAll('.chat-dock__header')).toHaveLength(2);
+    } finally {
+      bar.remove();
+    }
   });
+
+  /**
+   * The open-pane half of this set — the ⋯ replacing that single command, plus
+   * the pane's Open/New pair — lives in
+   * `ChatDockHeaderWorkspaceControls.test.tsx`, whose harness already mocks what
+   * the lazily loaded Open/New pair needs.
+   */
 });

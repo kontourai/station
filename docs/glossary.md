@@ -33,6 +33,12 @@ distinguishes them, so keep them distinct.
 > Station" is what is actually happening. Bare Station is correct only for the
 > product itself — "Station tried to restart it", "Station's local service".
 
+For the distinct machine, instance, saved-entry, environment, Project, room,
+and offer concepts, see [Station topology](design/station-topology.md). The
+technical phrase **Station client role** may describe a connection initiator in
+architecture text, but it never shortens to **Client** and never replaces the
+user-facing **Device** noun.
+
 **Host** and **client** as a topology pair are accurate and dull, and they make
 the reader think about architecture at the moment they only want their phone
 connected. The station metaphor already does that work: a station is somewhere
@@ -59,6 +65,12 @@ not a type the agent belongs to:
 The UI may describe an agent as a **Station agent** (run by Station's engine)
 or an **External agent** (run by any other engine), but engine selection is a
 property of the agent rather than a permanent type chosen from a type picker.
+
+The reserved agent named **Station** is a role, not the Station-engine category.
+It owns Station Control and Station Docs by definition, while its engine is a
+separate Station setting: Station's engine, Claude Code, Codex, or a capable
+custom engine may execute it. A label must therefore read like “Station ·
+OpenCode”, never infer the engine from the agent's name.
 
 ## Connections
 
@@ -98,6 +110,8 @@ distinction:
 - **Task workspace** — the `/tasks/:taskId` surface for one durable Task. It keeps identity, files, diffs, artifacts, receipts, and exact Session correlation in context.
 - **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver** is Builder Kit-owned; **Learn** is Knowledge Kit-owned; **Operate** is Console-owned. The labels are provisional while #495 is experimental.
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
+- **Agent run** — one agent working through a request from start to stop: the thing a step limit counts steps of, an output-token ceiling bounds, and a workspace is chosen for. It is the vocabulary the product already uses in its own settings help ("Station stops an agent run once it has taken this many steps",
+  `defaultMaxTurns` in `packages/contracts/src/settings-registry.ts`), and #2182 makes the Settings card that holds those controls say it too — **Agent runs**, not "Defaults". A run is carried by a **Session**, and where the two could both be said, Session names the execution episode Station records and Agent run names what the agent is doing inside it. **"Profile" never names this** (see Saved Stations, above), and neither does **"Agents"** — that word is the entity list at `/agents`, and a Settings strip cannot carry two rows reading "Agents" that go to different places.
 - **Direct chat** — an immediate conversation entry point. Starting a direct chat does not silently create or infer a Task.
 - **Workspace availability** — `available`, `ambiguous`, or `unavailable`. Only `available` permits local inspection; the other states preserve the captured identity without claiming the path is still safe or current.
 
@@ -124,6 +138,7 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
 > **MCP passthrough (exception 1):** an ACP-connected External agent's connection can
 > explicitly opt in to receiving Station's stdio MCP tool servers inside its own
@@ -197,29 +212,98 @@ Station on this device**, so trusting one Station never extends to another.
   Forgetting one only removes it from this device."). The glossary is the
   source of truth; the UI is where users actually learn the vocabulary.
 
-## Layout, Pane, Panel
+## Placement: Region, Surface, Layout, Pane, Pane host, Arrangement, Panel
 
-These three words describe different levels of the interface. Do not use them
-as interchangeable names for “the thing on screen.”
+Seven words for seven levels of the interface. Each names exactly one thing
+that exists in source; [`docs/design/placement.md`](design/placement.md) is the
+design record and `src-ui/src/__tests__/placement-vocabulary.test.ts` pins the
+retired names.
 
-- **Layout** — a saved or project-owned workspace composition. A Layout decides
-  which workspace regions exist and how they are arranged. Use **Layout** for
-  the product object and its chooser, editor, sources, and persistence. Ordinary
-  lowercase “layout” can still describe spatial arrangement in developer prose;
-  internal component names such as `SplitPaneLayout` describe implementation,
-  not another product object.
-- **Pane** — one renderable workspace region inside a Layout. A Pane has one
-  placement in the composition and hosts content such as chat, files, terminal,
-  or a plugin contribution. Use **Workspace Pane** when a developer contract
-  needs to distinguish this extension surface from an ordinary UI region.
+- **Region** — a fixed shell slot: `main`, `left`, `right`, `bottom`
+  (`REGION_IDS`). The shell owns regions; nothing placed in one reads which
+  region it is in.
+- **Surface** — a thing registered to occupy a region, with an id, title,
+  icon, optional keyboard chord, default region and who offers it
+  (`REGION_SURFACE_REGISTRY`; `exposure`). Chat, Activity and, since #2047,
+  the docked Terminal, Diff and Files are surfaces; the last three are
+  **catalog-only** — offered by a dock region's "+" (the **dock catalog**)
+  rather than the toolbar, and bound to the dock's active project. "Surface"
+  means this in the region model and its chrome; older prose still uses the
+  lowercase word for any page or area, and the Kontour product Surface is
+  always written with its product name. The twenty navigable places the
+  palette and sidebar send you to are **destinations**
+  (`APP_DESTINATION_REGISTRY`).
+- **Layout** — a named view the sidebar navigates between: Coding, Tasks,
+  Session board, or a plugin's (`LayoutConfig`, a server record whose `type`
+  selects the renderer). A Layout is owned by a project, a principal, or the
+  Station instance (`LayoutOwner`; derive it with `layoutOwner`, never by
+  reading `projectSlug`) — a principal-owned Layout is a **Board**
+  ([design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
+  decision D1). Use **Layout** for the product object and its
+  chooser, editor, sources and persistence. Do not use it for the map of
+  which surface sits in which region (that is the arrangement) or for the
+  split/tab tree inside a view (that is a pane host). Lowercase "layout" may
+  still describe spatial arrangement in developer prose, and internal widget
+  names such as `SplitPaneLayout` describe implementation, not another
+  product object. A project Layout may also be held by a dock region as a
+  pane (`layout:<projectId>/<layoutId>`, #2157;
+  [design/placement.md](design/placement.md)) — Coding and Chat kinds render
+  in the main region only.
+- **Board** — a Layout owned by a principal: the viewer's own, project-less
+  page, listed in the left panel's `Boards` section between Activity and
+  Projects and rendered by the same layout renderer a project Layout is
+  (#2062; [design/shell-ownership-and-boards.md](design/shell-ownership-and-boards.md),
+  decision D1). A Board can be **promoted** — MOVED into a project, where it
+  becomes that project's Layout under the same id; the personal record is gone
+  afterwards, so promote is never a copy. A Board may also be held by a dock
+  region as a pane beside Chat (`board:<layoutId>`, #2157;
+  [design/placement.md](design/placement.md)).
+
+  The word is overloaded in this codebase and the overload is deliberate to
+  name, not to resolve: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
+  a layout `type`) and the **board face** (`NavigationView`'s `board` member at
+  `/board/task/…`, archive#4079) are unrelated objects that share the English
+  word. A Board in the D1 sense routes at `/boards/:slug` and its view type is
+  `personal-board`; prefer the qualified name in code.
+- **Personal scope** — the fourth ownership scope, keyed by principal and
+  stored server-side under the Station home (`layouts/personal/<principal-key>/`),
+  so what a person owns follows them across their devices. It is the scope
+  Boards live in, and it is neither of the two things "personal" used to mean
+  in Station: not **instance** scope (which only reads as personal on a
+  single-operator Station) and not **device** scope (the arrangement, which is
+  a property of the screen you are sitting at). Reached over HTTP at
+  `/api/me/*`, where no path segment, body field or query parameter names a
+  principal — the owner comes from the request's own authentication, which is
+  what makes one person's records unaddressable by another.
+
+  Instance-owned Layouts are a sibling scope that exists in the contract
+  (`LayoutOwner`'s `{kind:'instance'}`) and in storage (`layouts/instance/`)
+  and has no route, no client and no UI: "instance-shared Boards" are designed
+  (D1) and not shipped.
+- **Pane** — the smallest addressable UI unit; what plugins contribute
+  (`WorkspacePaneDescriptor` and its instances). A pane hosts content such as
+  chat, files, terminal, or a plugin contribution, and knows nothing about
+  where it is. Use **Workspace Pane** when a developer contract needs to
+  distinguish this extension point from an ordinary UI area.
+- **Pane host** — a tree of panes arranged as `split` and `tabs` nodes, inside
+  a region or a layout (`WorkspacePaneHost`; persisted as a
+  `WorkspacePaneHostDocument`). A tab group is a container inside a pane host,
+  not a layout. The legacy plugin `layout.json` `tabs` array maps onto a pane
+  host whose root is one tab group.
+- **Arrangement** — the user's placement choices: which surface occupies
+  which region, each region's size and visibility, which region (at most one,
+  never `main`) is maximized, and each pane host's tree
+  (`RegionArrangement` for the region half). It is persisted per device (the
+  `regionArrangement` device setting): a property of the screen you are
+  sitting at, never of a project or a layout.
 - **Panel** — a bounded visual grouping of controls or information within a
-  page or Pane, such as a Trust panel or inspector panel. A Panel is not a
-  persisted Layout and is not a synonym for a Workspace Pane.
+  page or pane, such as a Trust panel or inspector panel. A Panel is not
+  persisted and is not a synonym for a pane.
 
-> **Composition:** a **Layout contains Panes; a Pane or page may contain
-> Panels**. A list/detail shell may also have lowercase left and detail panes,
-> but those implementation regions do not become saved Workspace Panes unless
-> they participate in the Layout contract.
+> **Composition:** the **shell** has regions; a region holds a **surface**;
+> a surface or a layout holds a **pane host**; a pane host holds **panes** in
+> tab groups and splits; a pane or page may hold **panels**. The user's choices
+> across all of that are the **arrangement**.
 
 ## User-facing labels
 
@@ -231,11 +315,16 @@ as interchangeable names for “the thing on screen.”
 | A configured agent CLI or custom engine | **Engine** (Connections › Engines) |
 | A selectable inference option within a connection | **Model** |
 | This device's saved binding to one Station | **Station** (verbs: Add / Edit / **Forget**) |
-| Saved workspace composition | **Layout** |
-| One renderable region in a Layout | **Pane** (developer contract: **Workspace Pane**) |
-| Visual grouping inside a page or Pane | **Panel** |
+| A project's named view | **Layout** |
+| A place at the edge of the window a surface can occupy | **Region** |
+| A thing that can occupy a region (Chat, Activity) | **Surface** |
+| The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
+| Visual grouping inside a page or pane | **Panel** |
+| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
+| One agent working through a request from start to stop | **Agent run** (the Settings card is **Agent runs**) |
+| An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 
 ## Persisted identity records
@@ -252,6 +341,13 @@ This is the current pre-release vocabulary. Station does not preserve incompatib
   connection** on the Models tab, **Engine** on the Engines tab, **Model** for
   the option selected within a connection. Station/external and model/agent
   distinctions remain execution properties.
+- **Guidance → Skills (#2144):** the page a reader reaches at `/guidance` is
+  labelled **Skills** — in the Settings navigation, in the command palette, and
+  as its own `h1`. The rename is user-facing only: the `/guidance` route, the
+  `guidance` navigation view, the `guidance` destination id and the tab memory
+  key are unchanged, `/skills` still redirects to `/guidance?tab=skills`, and
+  "guidance" survives as a palette keyword so the retired word still finds the
+  surface. Commands remains a tab on that page, not a separate label.
 - **Data model:** `ConnectionKind` is `'model' | 'agent'`; Agent execution uses
   `agentConnectionId`; execution mode is `'external' | 'station'`; and adapter
   capability derives from `engineId` plus the engine capability matrix. Agent

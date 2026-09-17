@@ -35,6 +35,15 @@ const expectedDependencies = new Map(
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',
     'src-server/routes/projects/coding.ts': 'privileged-route',
     'src-server/routes/projects/layout-working-directory.ts': 'persistence',
+    // #2062: the admission `POST /api/projects/:slug/layouts` applies before
+    // writing, extracted so promote (`/api/me/layouts/:slug/promote`) derives
+    // the same answer instead of carrying a second copy that drifts. The scan
+    // sees it because one of the two refusals is the Coding working-directory
+    // rule, which it enforces by calling this module's neighbour rather than
+    // by reimplementing it. `persistence`, alongside that neighbour: it
+    // decides what may be written and normalizes the record, and it grants
+    // nothing and renders nothing.
+    'src-server/routes/projects/project-layout-admission.ts': 'persistence',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',
@@ -42,6 +51,21 @@ const expectedDependencies = new Map(
       'pane-declaration',
     'src-server/telemetry/metrics.ts': 'operation-receipt',
     'src-ui/src/app-shell/ProjectLayoutRenderer.tsx': 'aggregate-host',
+    // #1446: the aggregate host's dispatch decision (which renderer a
+    // project layout reaches — the Coding host, a registry entry, or the
+    // declared-tabs view) extracted into a pure module so `App.tsx` can read
+    // the same derivation without importing the host or its renderers. It
+    // renders nothing and grants nothing; it is the host's own branch table.
+    'src-ui/src/app-shell/project-layout-kind.ts': 'aggregate-host',
+    // #2157: a Board or a project Layout as a dock pane. The scan sees it
+    // because it reads `project-layout-kind`'s dispatch to REFUSE the Coding
+    // kind — a Coding layout is a whole `WorkspacePaneHost` keyed on the
+    // same `(projectId, layoutId)` as the main region's, so a docked copy
+    // would share its persisted document — and renders "Open this Layout
+    // in Main" whose action is `setLayout`. `navigation`, ProjectPage's
+    // category: it chooses the host (Main) rather than being one; it mounts
+    // no Coding surface and grants nothing.
+    'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx': 'navigation',
     'src-ui/src/app-shell/codingFileCompositionTelemetry.ts':
       'operation-receipt',
     'src-ui/src/app-shell/codingDiffCompositionTelemetry.ts':
@@ -54,7 +78,14 @@ const expectedDependencies = new Map(
     // sentence per unavailable reason, not a receipt the composition emits.
     'src-ui/src/app-shell/codingEvidenceUnavailableCopy.ts': 'presentation',
     'src-ui/src/components/chat-dock/ChatDock.tsx': 'chat-handoff',
-    'src-ui/src/components/chat-dock/ChatDockProjectContext.tsx': 'navigation',
+    // `ChatDockProjectContext.tsx` was declared here for its
+    // `codingLayoutSlug` prop: the project row's directory segment doubled as
+    // a link into the session's Coding layout. #1536 F retired that segment
+    // (it was leaving the conversation title beside it about one character
+    // wide) and the route moved to `ChatDock.tsx`'s own "Open code layout"
+    // menu row, which is already declared above. The row itself now names a
+    // project and a branch and knows nothing about Coding, so it is no longer
+    // a Coding dependency to declare.
     'src-ui/src/components/chat-dock/dockSnap.ts': 'presentation',
     'src-ui/src/components/chat-dock/useChatDockViewModel.ts': 'navigation',
     'src-ui/src/components/coding-layout/CodingInspectorPanel.css':
@@ -62,6 +93,13 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/CodingInspectorPanel.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/CodingLayout.css': 'presentation',
+    // #2064: independent-review receipts moved from /review-queue into the
+    // Coding inspector's Reviews tab. This is the tab's content: it lists a
+    // project's receipts and opens the run modal. Privileged like the
+    // inspector panel that mounts it, because running a review POSTs a
+    // receipt-producing job.
+    'src-ui/src/components/coding-layout/IndependentReviewInspectorContent.tsx':
+      'privileged-renderer',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
     'src-ui/src/components/coding-layout/CodingTerminalPane.tsx':
@@ -84,6 +122,16 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/FileTreePanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.tsx': 'git-review',
+    'src-ui/src/components/coding-layout/PullRequestReviewPanel.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx':
+      'git-review',
+    'src-ui/src/components/coding-layout/PullRequestDependencyStacks.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/PullRequestDependencyStacks.tsx':
+      'git-review',
+    'src-ui/src/components/coding-layout/pull-request-dependency-stacks.ts':
+      'git-review',
     'src-ui/src/components/coding-layout/TerminalPanel.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/activeRepo.ts': 'git-review',
@@ -93,7 +141,6 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/planSession.ts': 'task-plan',
     'src-ui/src/components/coding-layout/terminalSelectionHandoff.ts':
       'chat-handoff',
-    'src-ui/src/components/coding-layout/treeSnap.ts': 'presentation',
     'src-ui/src/components/coding-layout/types.ts': 'private-contract',
     'src-ui/src/components/coding-layout/utils.ts': 'presentation',
     'src-ui/src/components/modals/NewChatModal.tsx': 'chat-handoff',
@@ -108,7 +155,21 @@ const expectedDependencies = new Map(
     // accepted layout types AND retained-LayoutTab/parser adaptation checks;
     // a UI-only field would make contributed routing metadata unverifiable.
     'src-ui/src/views/ProjectPage.tsx': 'navigation',
-    'src-ui/src/views/ReviewQueueView.tsx': 'navigation',
+    // #2047: the region model registers the three coding panes as dock
+    // surfaces (`coding:terminal`, `coding:diff`, `coding:file-browser`);
+    // the semantic scan sees the `sourceFile` paths the architecture ratchet
+    // reads. It is pure over ids — no pane contract, no renderer — and
+    // grants nothing; which pane a surface renders as is the inventory's.
+    'src-ui/src/regions/region-model.ts': 'pane-declaration',
+    // #2047: the surface → pane inventory joins those surfaces to the
+    // coding pane contracts' fixed per-project instances and canonical
+    // predicates (`workspace-coding-panels.ts`), the same contract role
+    // `builtinWorkspacePaneCanonical.ts` plays for the built-in host.
+    'src-ui/src/regions/region-surface-panes.ts': 'pane-contract',
+    // #2047: a docked coding pane's renderer, behind the region host's lazy
+    // boundary — it hands the region's project-bound instance to
+    // `getBuiltinWorkspacePaneRenderer`, the registry declared below.
+    'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.tsx': 'presentation',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',
@@ -131,6 +192,9 @@ const semantic =
 function walk(root, dir, includeTests = false) {
   const paths = [];
   for (const name of readdirSync(resolve(root, dir))) {
+    // Installed dependencies are not repository source or owned test proof.
+    // Skip before stat: pnpm links may be dangling or lead back into packages.
+    if (name === 'node_modules') continue;
     const relative = `${dir}/${name}`;
     const stat = statSync(resolve(root, relative));
     if (stat.isDirectory()) paths.push(...walk(root, relative, includeTests));

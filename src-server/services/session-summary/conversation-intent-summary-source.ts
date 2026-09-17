@@ -26,7 +26,7 @@ export type SummaryRelatedEvidenceObservation =
     }
   | { kind: 'task-turn'; authorized: false; revoked?: boolean };
 
-export interface ConversationIntentSummarySourceInput {
+interface ConversationIntentSummarySourceInput {
   messages: ConversationMessage[];
   /** Snapshot watermark from the bounded event window, not a live tail. */
   watermark?: number | string;
@@ -40,7 +40,7 @@ export interface ConversationIntentSummarySourceInput {
   relatedEvidenceObservations?: readonly SummaryRelatedEvidenceObservation[];
 }
 
-export interface ConversationIntentSummarySource {
+interface ConversationIntentSummarySource {
   messages: ConversationMessage[];
   transcript: string;
   ranges: ConversationIntentSummaryRange[];

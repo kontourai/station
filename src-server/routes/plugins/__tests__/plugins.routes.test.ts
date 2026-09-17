@@ -1,8 +1,26 @@
-import { cpSync, existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { PluginIncarnationError } from '../../../services/plugins/plugin-incarnation.js';
 import { hasGrant } from '../../../services/plugins/plugin-permissions.js';
+
+// This route unit fixture replaces the filesystem/process probes. The shared
+// lifecycle suite separately exercises real publication/content-lock ordering.
+vi.mock('@kontourai/station-shared/lifecycle-events', async (original) => ({
+  ...(await original<
+    typeof import('@kontourai/station-shared/lifecycle-events')
+  >()),
+  acquireFileMutationLockAsync: vi.fn(async () => async () => {}),
+}));
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   pluginInstalls: { add: vi.fn() },
@@ -14,6 +32,21 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const clearPluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSource = vi.hoisted(() => vi.fn());
+const replacePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'activated' as const),
+);
+const pluginProviderSourceGeneration = vi.hoisted(() => vi.fn(() => 1));
+const retirePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'retired' as const),
+);
+const withPluginProviderSourceGeneration = vi.hoisted(() =>
+  vi.fn(
+    async (_source: string, _generation: number, operation: () => unknown) => ({
+      kind: 'applied' as const,
+      value: await operation(),
+    }),
+  ),
+);
 const agentRegistryProvider = vi.hoisted(() => ({
   install: vi.fn().mockResolvedValue({ success: true }),
   listAvailable: vi.fn().mockResolvedValue([]),
@@ -35,9 +68,15 @@ const pluginRegistryProviderEntries = vi.hoisted<
   Array<{ provider: any; source: string }>
 >(() => []);
 vi.mock('../../../providers/registries/registry.js', () => ({
+  disposePreparedPluginProviders: vi.fn(async () => {}),
   clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  replacePluginProvidersForSourceGeneration,
+  pluginProviderSourceGeneration,
+  pluginProviderRegistryGeneration: vi.fn(() => 1),
+  retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
   getAgentRegistryProvider: vi.fn().mockReturnValue(agentRegistryProvider),
   getIntegrationRegistryProvider: vi
     .fn()
@@ -46,7 +85,11 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 }));
 
 const loadPluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue(0));
-vi.mock('../plugin-loader.js', () => ({ loadPluginProviders }));
+const preparePluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock('../plugin-loader.js', () => ({
+  loadPluginProviders,
+  preparePluginProviders,
+}));
 
 // The scanner the install/lifecycle routes actually call. It used to be
 // `plugin-prompt-generation.js`, which was DELETED with the copy-into-a-store
@@ -70,13 +113,31 @@ vi.mock('../../../utils/git-exec.js', () => ({ execGit }));
 
 // Spied, not replaced: everything else in this module (the content lock the
 // update route runs inside) stays real.
+//
+// `computePluginContentDigest` is the one exception. The installed-plugin
+// readers (`readPluginCatalogInstallation`, `capturePluginRuntimeArtifact`)
+// now treat a plugin whose tree has no digest as absent, and the real digest
+// walks `readdirSync(..., { encoding: 'buffer' })` — this fixture's
+// string-named dirents can never hash, so every route would read the fixture
+// plugin as "absent or not ready". The value matches the digest the mocked
+// grant derivation below already declares for the same tree.
 const forgetPluginContentDigest = vi.hoisted(() => vi.fn());
+const computePluginContentDigest = vi.hoisted(() =>
+  vi.fn().mockReturnValue('sha256:test'),
+);
 vi.mock(
   '../../../services/plugins/plugin-content-integrity.js',
   async (importOriginal) => ({
     ...(await importOriginal<
       typeof import('../../../services/plugins/plugin-content-integrity.js')
     >()),
+    computePluginContentDigest,
+    computePluginContentDigestAsync: async (...args: unknown[]) =>
+      computePluginContentDigest(...args),
+    observePluginContentAsync: async (directory: string, name: string) => ({
+      digest: computePluginContentDigest(directory, name),
+      manifestText: readFileSync(`${directory}/${name}/plugin.json`, 'utf8'),
+    }),
     forgetPluginContentDigest,
   }),
 );
@@ -88,7 +149,41 @@ const snapshotPluginGrantEntry = vi.hoisted(() =>
   vi.fn().mockReturnValue(null),
 );
 const restorePluginGrantEntry = vi.hoisted(() => vi.fn());
+// The update route opens one grant mutation scope per update and closes it
+// with `commit()` on success or `rollback()` on failure; this fixture stands
+// in for the receipt-owning scope so the suite can pin which branch ran.
+const pluginGrantScope = vi.hoisted(() => ({
+  revision: 'fixture-grant-revision',
+  run: vi.fn(async (operation: () => Promise<unknown>) => operation()),
+  commit: vi.fn(),
+  rollback: vi.fn(async () => ({ state: 'restored' as const })),
+}));
+const createPluginGrantMutationScope = vi.hoisted(() =>
+  vi.fn(() => pluginGrantScope),
+);
+// Fully replaced, never spread from the original: every grant read in this
+// unit fixture is a declared derivation, and an unmocked export that the
+// routes reach fails loudly instead of running the real grants store against
+// the mocked filesystem.
 vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
+  createPluginGrantMutationScope,
+  observePluginGrantRevisions: vi.fn(() => ({
+    revisionFor: vi.fn(() => 'fixture-grant-revision'),
+  })),
+  readPluginGrantRevision: vi.fn(() => 'fixture-grant-revision'),
+  withPluginProviderGrantSnapshot: vi.fn(
+    async (_home: string, resolve: () => unknown) => ({
+      snapshot: 'fixture-grant-snapshot',
+      value: resolve(),
+    }),
+  ),
+  withPluginProviderGrantsPublication: vi.fn(
+    async (
+      _home: string,
+      names: string[],
+      publish: (granted: Set<string>) => unknown,
+    ) => publish(new Set(names)),
+  ),
   getPermissionTier: vi.fn().mockReturnValue('standard'),
   getPluginGrants: vi.fn().mockReturnValue(['network']),
   grantPermissions: vi.fn(),
@@ -96,6 +191,26 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
   processInstallPermissions: vi.fn(),
   // archive#4288: the list route reads the derivation, not the raw entry.
   readPluginGrantState: vi.fn().mockReturnValue({
+    recorded: ['network'],
+    granted: ['network'],
+    withheld: [],
+    binding: 'bound',
+    recordedDigest: 'sha256:test',
+    currentDigest: 'sha256:test',
+  }),
+  readPluginGrantRecord: vi.fn().mockReturnValue({
+    permissions: ['network'],
+    contentDigest: 'sha256:test',
+  }),
+  describePluginGrantState: vi.fn().mockReturnValue({
+    recorded: ['network'],
+    granted: ['network'],
+    withheld: [],
+    binding: 'bound',
+    recordedDigest: 'sha256:test',
+    currentDigest: 'sha256:test',
+  }),
+  readPluginGrantStateAsync: vi.fn().mockResolvedValue({
     recorded: ['network'],
     granted: ['network'],
     withheld: [],
@@ -111,9 +226,12 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
   ]),
   restorePluginGrantEntry,
   revokeAllGrants: vi.fn(),
+  readPluginDependencyOwnership: vi.fn().mockReturnValue([]),
+  removePluginHostRecord: vi.fn().mockResolvedValue(undefined),
   snapshotPluginGrantEntry,
   PluginGrantsUnavailableError: class PluginGrantsUnavailableError extends Error {},
   PluginContentUnavailableError: class PluginContentUnavailableError extends Error {},
+  PluginGrantMutationSupersededError: class PluginGrantMutationSupersededError extends Error {},
 }));
 
 const mockManifest = vi.hoisted(() => ({
@@ -144,26 +262,60 @@ const mockManifest = vi.hoisted(() => ({
 const mockRegistryInstallAliases = vi.hoisted<
   Record<string, { pluginName: string; registryKey: string }>
 >(() => ({}));
+// What every synchronous read of the fixture plugin's plugin.json returns.
+// The list route reads the manifest more than once per request (a display
+// pass and the final projection), so a malformed manifest must stay
+// malformed for the whole request, not for one read.
+const manifestFileText = vi.hoisted(() => ({
+  override: null as string | null,
+}));
+const enoent = vi.hoisted(
+  () => (syscall: string, path: string) =>
+    Object.assign(
+      new Error(`ENOENT: no such file or directory, ${syscall} '${path}'`),
+      {
+        code: 'ENOENT',
+        syscall,
+        path,
+      },
+    ),
+);
+// `lstatSync` must agree with whatever `existsSync` a test declares: the
+// installed-root resolver lstat's a candidate path BEFORE the update route
+// resolves registry aliases, and a stat that answers "directory" for a path
+// `existsSync` calls absent captures a phantom install.
+const lstatFixture = vi.hoisted(
+  () => (exists: (path: string) => boolean) => (path: unknown) => {
+    if (!exists(String(path))) throw enoent('lstat', String(path));
+    return {
+      isSymbolicLink: () => false,
+      isDirectory: () => !String(path).endsWith('.json'),
+      isFile: () => String(path).endsWith('.json'),
+    };
+  },
+);
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
+  const existsSync = vi.fn((p: string) => {
+    if (typeof p === 'string' && p.endsWith('/config/registry-installs.json')) {
+      return Object.keys(mockRegistryInstallAliases).length > 0;
+    }
+    if (typeof p === 'string' && p.includes('nonexistent')) return false;
+    if (typeof p === 'string' && p.includes('plugins')) return true;
+    if (typeof p === 'string' && p.includes('dist/bundle')) return true;
+    return false;
+  });
   return {
     ...actual,
-    existsSync: vi.fn((p: string) => {
-      if (
-        typeof p === 'string' &&
-        p.endsWith('/config/registry-installs.json')
-      ) {
-        return Object.keys(mockRegistryInstallAliases).length > 0;
-      }
-      if (typeof p === 'string' && p.includes('nonexistent')) return false;
-      if (typeof p === 'string' && p.includes('plugins')) return true;
-      if (typeof p === 'string' && p.includes('dist/bundle')) return true;
-      return false;
-    }),
-    readdirSync: vi
-      .fn()
-      .mockReturnValue([{ name: 'test-plugin', isDirectory: () => true }]),
+    existsSync,
+    readdirSync: vi.fn().mockReturnValue([
+      {
+        name: 'test-plugin',
+        isDirectory: () => true,
+        isSymbolicLink: () => false,
+      },
+    ]),
     // Real JSON-schema reads (e.g. the domain validator's
     // `schemas/*.schema.json` singleton, transitively pulled in by
     // `config-loader-agents.js`'s `owningProjectExists` reuse — archive#1004
@@ -180,21 +332,44 @@ vi.mock('node:fs', async (importOriginal) => {
       ) {
         return JSON.stringify(mockRegistryInstallAliases);
       }
-      return JSON.stringify(mockManifest);
+      return manifestFileText.override ?? JSON.stringify(mockManifest);
     }),
-    lstatSync: vi.fn(() => ({ isSymbolicLink: () => false })),
+    lstatSync: vi.fn(lstatFixture((path) => existsSync(path))),
+    // No fixture path is a symbolic link unless a test says so through
+    // `lstatSync`; a test that does must also answer the link's target here.
+    readlinkSync: vi.fn((path: unknown) => {
+      throw enoent('readlink', String(path));
+    }),
     realpathSync: vi.fn((p: string) => p),
     mkdirSync: vi.fn(),
     rmSync: vi.fn(),
     cpSync: vi.fn(),
     writeFileSync: vi.fn(),
+    // Alias removal now uses the canonical atomic writer
+    // (`writeJsonDurably`), which stages through a descriptor rather than a
+    // path: stub the whole open/fsync/close/rename sequence, not just the
+    // rename, or the commit escapes this fixture and writes to real /tmp.
+    openSync: vi.fn(() => 3),
+    // `fsyncDirectorySync` fstats the descriptor `openSync` returned. That 3
+    // is fabricated, so without this stub the real syscall runs against
+    // whatever this worker happens to hold at fd 3 -- the test's outcome
+    // would depend on the runner's fd table, and an EBADF there would
+    // surface as an unrelated 500 from the uninstall transaction.
+    fstatSync: vi.fn(() => ({ isDirectory: () => true })),
+    fsyncSync: vi.fn(),
+    closeSync: vi.fn(),
+    renameSync: vi.fn(),
   };
 });
 
 vi.mock('node:fs/promises', () => ({
-  readdir: vi
-    .fn()
-    .mockResolvedValue([{ name: 'test-plugin', isDirectory: () => true }]),
+  readdir: vi.fn().mockResolvedValue([
+    {
+      name: 'test-plugin',
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+    },
+  ]),
   readFile: vi.fn().mockResolvedValue(JSON.stringify(mockManifest)),
 }));
 
@@ -240,6 +415,9 @@ vi.mock('../../../domain/config-loader.js', () => ({
 }));
 
 const { createPluginRoutes } = await import('../plugins.js');
+const { operatorPluginVisibility } = await import(
+  './plugin-visibility-test-support.js'
+);
 
 const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
 const eventBus = { emit: vi.fn() };
@@ -252,7 +430,10 @@ function setup(runtime?: {
     '/tmp/project',
     logger as any,
     eventBus as any,
-    runtime,
+    {
+      ...runtime,
+      visibility: operatorPluginVisibility('/tmp/project'),
+    } as any,
   );
 }
 
@@ -311,10 +492,18 @@ describe('Plugin Routes', () => {
       if (typeof p === 'string' && p.includes('dist/bundle')) return true;
       return false;
     });
-    vi.mocked(lstatSync).mockReturnValue({
-      isSymbolicLink: () => false,
-    } as any);
+    vi.mocked(lstatSync).mockImplementation(
+      lstatFixture((path) => existsSync(path)) as any,
+    );
+    vi.mocked(readlinkSync).mockImplementation((path: unknown) => {
+      throw enoent('readlink', String(path));
+    });
     vi.mocked(readFile).mockResolvedValue(JSON.stringify(mockManifest));
+    manifestFileText.override = null;
+    pluginGrantScope.run.mockClear();
+    pluginGrantScope.commit.mockClear();
+    pluginGrantScope.rollback.mockClear();
+    createPluginGrantMutationScope.mockClear();
     for (const key of Object.keys(mockOverrides)) {
       delete mockOverrides[key];
     }
@@ -330,7 +519,10 @@ describe('Plugin Routes', () => {
     const body = await json(await app.request('/reload', { method: 'POST' }));
 
     expect(body).toEqual({ success: true, loaded: 0 });
-    expect(replacePluginProviders).toHaveBeenCalledWith([]);
+    expect(replacePluginProviders).toHaveBeenCalledWith(
+      [],
+      expect.any(Function),
+    );
   });
 
   test('rejects a plugin identity change and restores the prior provider source', async () => {
@@ -340,8 +532,9 @@ describe('Plugin Routes', () => {
       .mockResolvedValueOnce(JSON.stringify(oldManifest))
       .mockResolvedValueOnce(JSON.stringify(renamedManifest));
     const beginMutation = vi.fn();
-    const applyConfigurationMutation = vi.fn(async (operation) =>
-      operation(beginMutation, { status: 'applied' }),
+    const applyConfigurationMutation = vi.fn(
+      async (operation, _options?: unknown) =>
+        operation(beginMutation, { status: 'applied' }),
     );
     const settleProviderAdapterRetirements = vi
       .fn()
@@ -360,6 +553,9 @@ describe('Plugin Routes', () => {
     expect(body).toMatchObject({
       success: false,
       error: expect.stringContaining('identity cannot change'),
+    });
+    expect(applyConfigurationMutation.mock.calls[0]?.[1]).toEqual({
+      rediscoverSkills: true,
     });
     expect(beginMutation).toHaveBeenCalledOnce();
     expect(loadPluginProviders).toHaveBeenCalledWith(
@@ -504,7 +700,7 @@ describe('Plugin Routes', () => {
     });
   });
 
-  test('station#4288: a failed update restores the grant record it snapshotted', async () => {
+  test('station#4288: a failed update rolls back the grant scope it opened, after the re-bind', async () => {
     vi.mocked(existsSync).mockImplementation((p: any) => {
       if (typeof p !== 'string') return false;
       if (p.endsWith('/.git')) return false;
@@ -516,14 +712,14 @@ describe('Plugin Routes', () => {
     pluginRegistryProvider.listInstalled.mockResolvedValue([
       { id: 'test-plugin', version: '1.0.0', installed: true },
     ]);
-    const snapshot = {
-      permissions: ['plugin.server'],
-      contentDigest: 'sha256:old',
-    };
-    snapshotPluginGrantEntry.mockReturnValue(snapshot as any);
-    rebindGrantsAfterContentChange.mockResolvedValue({
-      retained: [],
-      withdrawn: ['plugin.server'],
+    const order: string[] = [];
+    rebindGrantsAfterContentChange.mockImplementation(async () => {
+      order.push('rebind');
+      return { retained: [], withdrawn: ['plugin.server'] };
+    });
+    pluginGrantScope.rollback.mockImplementation(async () => {
+      order.push('rollback');
+      return { state: 'restored' as const };
     });
     // Fail AFTER the re-bind has already withdrawn consent.
     loadPluginProviders.mockRejectedValueOnce(new Error('provider blew up'));
@@ -540,12 +736,18 @@ describe('Plugin Routes', () => {
 
     expect(response.status).toBe(500);
     // The tree went back to the reviewed bytes, so the consent recorded
-    // against them goes back too — digest included.
-    expect(restorePluginGrantEntry).toHaveBeenCalledWith(
+    // against them goes back too: the route owns exactly one grant mutation
+    // scope for the update, opened against the revision it observed before
+    // touching anything, and it rolls that scope back (never commits it)
+    // after the re-bind withdrew consent.
+    expect(createPluginGrantMutationScope).toHaveBeenCalledWith(
       '/tmp/project',
       'test-plugin',
-      snapshot,
+      { expectedRevision: 'fixture-grant-revision' },
     );
+    expect(pluginGrantScope.rollback).toHaveBeenCalledOnce();
+    expect(pluginGrantScope.commit).not.toHaveBeenCalled();
+    expect(order).toEqual(['rebind', 'rollback']);
   });
 
   /**
@@ -1054,6 +1256,8 @@ describe('Plugin Routes', () => {
     vi.mocked(lstatSync).mockReturnValue({
       isSymbolicLink: () => true,
     } as any);
+    // A link that points anywhere but the host's own `.generations` layout.
+    vi.mocked(readlinkSync).mockReturnValue('/elsewhere/test-plugin');
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>
         operation(vi.fn(), { status: 'applied' }),
@@ -1066,10 +1270,13 @@ describe('Plugin Routes', () => {
     });
     const body = await json(response);
 
+    // Without an installation journal the update target is captured through
+    // `resolveInstalledPluginRoot`, which refuses any symlinked root that is
+    // not a Station-owned incarnation pointer.
     expect(response.status).toBe(400);
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       success: false,
-      error: expect.stringContaining('symbolic link'),
+      error: new PluginIncarnationError('unsafe-pointer').message,
     });
     expect(cpSync).not.toHaveBeenCalled();
     expect(execGit).not.toHaveBeenCalled();
@@ -1166,8 +1373,9 @@ describe('Plugin Routes', () => {
 
   test('uninstall runs inside configuration activation and waits for adapter retirement', async () => {
     const beginMutation = vi.fn();
-    const applyConfigurationMutation = vi.fn(async (operation) =>
-      operation(beginMutation, { status: 'applied' }),
+    const applyConfigurationMutation = vi.fn(
+      async (operation, _options?: unknown) =>
+        operation(beginMutation, { status: 'applied' }),
     );
     const settleProviderAdapterRetirements = vi
       .fn()
@@ -1179,9 +1387,12 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/test-plugin', { method: 'DELETE' });
 
-    await expect(json(response)).resolves.toMatchObject({ success: true });
+    await expect(json(response)).resolves.toEqual({ success: true });
     expect(response.status).toBe(200);
     expect(applyConfigurationMutation).toHaveBeenCalledOnce();
+    expect(applyConfigurationMutation.mock.calls[0]?.[1]).toEqual({
+      rediscoverSkills: true,
+    });
     expect(beginMutation).toHaveBeenCalledOnce();
     expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
       'test-plugin',
@@ -1243,7 +1454,9 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/demo', { method: 'DELETE' });
 
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await json(response.clone()))).toBe(
+      200,
+    );
     expect(vi.mocked(rmSync)).toHaveBeenCalledWith(
       '/tmp/project/plugins/actual-plugin',
       { recursive: true, force: true },
@@ -1252,6 +1465,17 @@ describe('Plugin Routes', () => {
       '/tmp/project/plugins/demo',
       expect.anything(),
     );
+    // The route's job here is to drop the alias, and nothing asserted that:
+    // the fixture proved the DIRECTORY was removed while the published
+    // document went unexamined. `writeJsonDurably` writes through the
+    // descriptor `openSync` returned, so the staged bytes are the first
+    // argument's payload.
+    const published = vi
+      .mocked(writeFileSync)
+      .mock.calls.filter((call) => call[0] === 3)
+      .at(-1);
+    expect(published, 'no alias document was published').toBeDefined();
+    expect(JSON.parse(String(published?.[1]))).toEqual({});
   });
 
   test('refuses an alias collision without deleting the rejected directory', async () => {
@@ -1342,24 +1566,6 @@ describe('Plugin Routes', () => {
   // ── GET / — SDK usePluginsQuery reads json.plugins ──
 
   test('GET / returns { plugins } with fields the UI reads', async () => {
-    vi.mocked(readFile).mockResolvedValueOnce(
-      JSON.stringify({
-        ...mockManifest,
-        extensions: {
-          'io.kontourai.station': {
-            schemaVersion: '1.0',
-            commands: [
-              {
-                version: '1.0',
-                id: 'test-plugin.open-plugins',
-                title: 'Open plugins',
-                intent: { kind: 'navigate', surfaceId: 'plugins' },
-              },
-            ],
-          },
-        },
-      }),
-    );
     const app = setup();
     const body = await json(await app.request('/'));
     expect(body.plugins).toBeDefined();
@@ -1372,16 +1578,6 @@ describe('Plugin Routes', () => {
     expect(p).toHaveProperty('description');
     expect(p).toHaveProperty('hasBundle');
     expect(p).toHaveProperty('hasSettings');
-    expect(p.commandContributions).toEqual([
-      expect.objectContaining({ id: 'test-plugin.open-plugins' }),
-    ]);
-    expect(p.commandGeneration).toMatch(/^[a-f0-9]{64}$/);
-    expect(p.commandCapabilities).toEqual({
-      invokeDeclaredOperation: {
-        available: false,
-        reason: 'This plugin does not declare a server operation module.',
-      },
-    });
     expect(p).toHaveProperty('permissions');
     expect(p.permissions).toHaveProperty('declared');
     expect(p.permissions).toHaveProperty('granted');
@@ -1395,9 +1591,7 @@ describe('Plugin Routes', () => {
   });
 
   test('GET / keeps a rejected manifest visible with exact recovery copy', async () => {
-    vi.mocked(readFileSync).mockImplementationOnce(
-      () => '{"name":"test-plugin","version":',
-    );
+    manifestFileText.override = '{"name":"test-plugin","version":';
 
     const body = await json(await setup().request('/'));
 

@@ -30,16 +30,32 @@ export const AgentGlyph = /* @__PURE__ */ glyph(
 export const ArchiveGlyph = /* @__PURE__ */ glyph(
   'M2.5 5.5h11v8h-11v-8ZM2 2.5h12v3H2v-3Zm4 6h4',
 );
-export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 6l5 5 5-5');
+export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 5.5l5 5 5-5');
 export const ArrowLeftGlyph = /* @__PURE__ */ glyph('M10.5 3 5.5 8l5 5');
 export const ArrowRightGlyph = /* @__PURE__ */ glyph('M5.5 3l5 5-5 5');
 export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');
 export const AttachmentGlyph = /* @__PURE__ */ glyph(
   'm6 8.5 3.8-3.8a2 2 0 1 1 2.8 2.8L7.4 12.7a3 3 0 0 1-4.2-4.2l5-5',
 );
+/** A notification bell — the header's Notifications control. */
+export const BellGlyph = /* @__PURE__ */ glyph(
+  'M12 5.5A4 4 0 0 0 4 5.5c0 4.7-2 6-2 6h12s-2-1.3-2-6M9.2 14a1.4 1.4 0 0 1-2.4 0',
+);
 /** Kanban columns — the Console Board pane tile. */
 export const BoardGlyph = /* @__PURE__ */ glyph(
   'M2.5 3h3.2v10H2.5V3Zm3.9 0h3.2v7H6.4V3Zm3.9 0h3.2v5h-3.2V3Z',
+);
+/**
+ * A git branch: a trunk node, a branch node, and the fork joining them.
+ *
+ * Replaces `⎇` (U+2387 ALTERNATIVE KEY SYMBOL), which four surfaces drew as
+ * the branch marker. That codepoint means "Alt"; it resembles a branch by
+ * accident, and it is outside the bundled font subsets, so on a host without
+ * a font covering Miscellaneous Technical it drew a tofu box in place of the
+ * repository's branch (#1649).
+ */
+export const BranchGlyph = /* @__PURE__ */ glyph(
+  'M4 2.5V10M2 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0M10 4a2 2 0 1 0 4 0 2 2 0 1 0-4 0M12 6a6 6 0 0 1-6 6',
 );
 export const BrainGlyph = /* @__PURE__ */ glyph(
   'M6.2 3.2A2.3 2.3 0 0 0 2.5 5a2.2 2.2 0 0 0 .7 4.2A2.4 2.4 0 0 0 6.5 12v1.5M9.8 3.2A2.3 2.3 0 0 1 13.5 5a2.2 2.2 0 0 1-.7 4.2A2.4 2.4 0 0 1 9.5 12v1.5M8 2.5v11M5.5 6H8m2.5 3H8',
@@ -107,6 +123,17 @@ export const MessageGlyph = /* @__PURE__ */ glyph(
 export const MicGlyph = /* @__PURE__ */ glyph(
   'M5.5 3.5a2.5 2.5 0 0 1 5 0V8a2.5 2.5 0 0 1-5 0V3.5ZM3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2m-2 0h4',
 );
+/**
+ * Used only by the LAZY `OverflowMenu`, and kept here anyway: relocating it to an
+ * inline SVG in that chunk was measured at 18 gzip entry bytes, against
+ * twenty-odd lines re-declaring the factory's own viewBox and stroke-width —
+ * which is the hand-rolled-SVG shape #1552 D1 exists to remove. Recorded because
+ * "a lazy-only glyph in an eager module" is normally worth relocating; here the
+ * measurement said otherwise.
+ */
+export const MonitorGlyph = /* @__PURE__ */ glyph(
+  'M2.5 3.5h11v8h-11zM6 14h4M8 11.5V14',
+);
 export const MoonGlyph = /* @__PURE__ */ glyph(
   'M13 10.5A6 6 0 0 1 5.5 3 5.5 5.5 0 1 0 13 10.5Z',
 );
@@ -120,6 +147,31 @@ export const OutboxGlyph = /* @__PURE__ */ glyph(
   'M3 3h10v10H3V3Zm0 6h3l1 1.5h2L10 9h3M8 8V2m-2 2 2-2 2 2',
 );
 export const PauseGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9m5-9v9');
+/**
+ * Two overlapping people — the panel footer's presence slot (#2059). Distinct
+ * from `AgentGlyph`'s single figure, which names one agent rather than the
+ * people sharing a workspace.
+ */
+export const PeopleGlyph = /* @__PURE__ */ glyph(
+  'M6 8.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm0 0c-2 0-3.5 1.2-3.5 2.8V13h7v-1.7c0-1.6-1.5-2.8-3.5-2.8Zm4.4-4.2a2.2 2.2 0 0 1 0 4.2m.6.6c1.5.4 2.5 1.4 2.5 2.7V13',
+);
+/**
+ * A handset — the Device pane's catalog tile (#1969). A phone outline rather
+ * than the existing `MonitorGlyph`: the pane's targets are simulators and
+ * emulators of phones, and a monitor would read as the desktop shell.
+ *
+ * The TILE is its only reader (`builtinWorkspacePaneGlyph`, which
+ * `WorkspacePaneAvailabilityList` renders). The registry entry's
+ * `icon: 'device'` draws nothing today: `SurfaceGlyph` in
+ * `RegionToolbarControls` is a three-branch `if` over `chat|activity|home`
+ * and returns null for everything else, so a placed Device pane's folded
+ * Hide/Show row has an empty glyph slot — as do Agents and all three coding
+ * panes. That is a pre-existing gap in one shared helper, not this pane's,
+ * and closing it for one surface is a visual change to five.
+ */
+export const PhoneGlyph = /* @__PURE__ */ glyph(
+  'M4.5 1.5h7v13h-7v-13Zm2.5 11h2',
+);
 export const PinGlyph = /* @__PURE__ */ glyph(
   'm5 2 6 6-2 1.2-.8 3.3-1.5-1.4-3.6 2.8 2.8-3.6L4.5 8.3 7.8 7.5 9 5.5 5 2Z',
 );

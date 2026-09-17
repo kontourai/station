@@ -2,15 +2,18 @@ import {
   appendFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { expect, type Page, test } from '@playwright/test';
+import { dirname, join } from 'node:path';
+import { expect, type Page } from '@playwright/test';
 import { claudeAttachedThreadId } from '../src-server/providers/sessions/claude-transcript-session-source.js';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
+import { buildCodexRolloutFixture } from './helpers/codex-rollout-fixture';
 import { resolveE2EApiBase } from './helpers/e2e-target';
+import { test } from './helpers/fixture-audit';
 import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
@@ -57,10 +60,152 @@ async function waitForAttachedSession(): Promise<void> {
     .toBe('read-only-attached');
 }
 
+test('enables external Codex continuation only after a completed source turn is observed', async ({
+  page,
+}) => {
+  const codexHome = process.env.CODEX_HOME;
+  if (!codexHome || process.env.STATION_E2E_RUNNER !== '1') {
+    throw new Error(
+      'The managed E2E runner must supply an isolated CODEX_HOME.',
+    );
+  }
+  const workspace = mkdtempSync(join(tmpdir(), 'station-codex-follow-ui-'));
+  const slug = 'codex-session-follow-e2e';
+  const fixtureInput = {
+    nativeSessionId: '0199a001-0000-7000-8000-000000000004',
+    cwd: workspace,
+    createdAt: '2026-09-06T12:00:00.000Z',
+    model: 'gpt-5.6-sol',
+  };
+  const firstTurn = {
+    turnId: 'first',
+    prompt: 'Inspect Codex workspace first',
+    assistantText: 'Codex activity is visible.',
+  };
+  const initialFixture = buildCodexRolloutFixture({
+    ...fixtureInput,
+    turns: [{ ...firstTurn, status: 'in-progress' }],
+  });
+  const completedFixture = buildCodexRolloutFixture({
+    ...fixtureInput,
+    turns: [
+      { ...firstTurn, status: 'completed' },
+      {
+        turnId: 'second',
+        prompt: 'Inspect Codex workspace second',
+        assistantText: 'Appended Codex activity is visible.',
+        status: 'completed',
+      },
+    ],
+  });
+  const sourcePath = join(codexHome, initialFixture.relativePath);
+  mkdirSync(dirname(sourcePath), { recursive: true });
+  const created = await authenticatedE2EFetch(`${API}/api/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Codex Session Follow E2E',
+      slug,
+      workingDirectory: workspace,
+    }),
+  });
+  try {
+    expect(created.ok).toBe(true);
+    const initial = initialFixture.content;
+    writeFileSync(sourcePath, initial);
+    let threadId = '';
+    await expect
+      .poll(
+        async () => {
+          const response = await authenticatedE2EFetch(
+            `${API}/api/orchestration/session-board/projects/${slug}`,
+          );
+          expect(response.ok).toBe(true);
+          const result = (await response.json()) as {
+            data?: Array<{ sessionId?: string; controlMode?: string }>;
+          };
+          const attached = result.data?.find((row) =>
+            row.sessionId?.startsWith('external:codex:'),
+          );
+          threadId = attached?.sessionId ?? '';
+          return attached?.controlMode;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('read-only-attached');
+    await page.goto(
+      `/?surface=activity&session=${encodeURIComponent(threadId)}`,
+    );
+    const detail = page.getByTestId('session-detail');
+    await expect(detail).toContainText('Inspect Codex workspace first');
+    await expect(detail).toContainText('Codex activity is visible.');
+    const initialAnswer = detail.getByText('Codex activity is visible.', {
+      exact: true,
+    });
+    await initialAnswer.scrollIntoViewIfNeeded();
+    await expect(initialAnswer).toBeInViewport();
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeDisabled();
+    await expect(detail).toContainText(
+      'No completed source turn is available for continuation.',
+    );
+
+    const rejected = await authenticatedE2EFetch(
+      `${API}/api/orchestration/commands`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'adoptSession',
+          sourceThreadId: threadId,
+        }),
+      },
+    );
+    expect(rejected.ok).toBe(false);
+    expect(JSON.stringify(await rejected.json())).toContain(
+      'completed turn are required for this continuation',
+    );
+    expect(completedFixture.content.startsWith(initial)).toBe(true);
+    const appended = completedFixture.content.slice(initial.length);
+    appendFileSync(sourcePath, appended);
+    await expect(detail).toContainText('Appended Codex activity is visible.', {
+      timeout: 15_000,
+    });
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeEnabled();
+    expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
+    await page.setViewportSize({ width: 320, height: 720 });
+    const mobileContinue = detail.getByRole('button', {
+      name: 'Continue in Station',
+    });
+    await mobileContinue.scrollIntoViewIfNeeded();
+    await expect(mobileContinue).toBeInViewport();
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeVisible();
+    await expect(
+      detail.getByRole('button', { name: 'Continue in Station' }),
+    ).toBeEnabled();
+  } finally {
+    await authenticatedE2EFetch(`${API}/api/projects/${slug}`, {
+      method: 'DELETE',
+    });
+    rmSync(sourcePath, { force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 async function mockMobileAdoption(page: Page) {
   const source = {
     threadId: ATTACHED_MOBILE_THREAD_ID,
     provider: 'claude',
+    attachedSource: {
+      kind: 'claude-transcript',
+      externalSessionId: 'mobile-source',
+      affinity: { kind: 'fixture-home', ref: 'verified-mobile-home' },
+    },
     controlMode: 'read-only-attached',
     status: 'ready',
     lifecycleState: 'needs_input',
@@ -93,6 +238,25 @@ async function mockMobileAdoption(page: Page) {
 
   await installMockOrchestrationSse(page);
   await seedOrchestrationRoutes(page);
+  // This fixture exercises the already-bound starter's ordinary adoption
+  // path. An unbound real starter cannot resolve this authored source.
+  await page.route('**/api/starter-work/continue-session', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          state: 'bound',
+          binding: {
+            schemaVersion: 1,
+            starterId: 'continue-session',
+            targetRef: { kind: 'session', id: ATTACHED_MOBILE_THREAD_ID },
+            operationId: 'starter-session:mobile-fixture',
+            boundAt: '2026-07-22T12:00:00.000Z',
+          },
+        },
+      },
+    }),
+  );
   await page.route('**/api/projects/dev/workflow/tasks', (route) =>
     route.fulfill({
       json: { success: true, data: [] },
@@ -248,15 +412,13 @@ test.describe
 
       // The project board is the Console work-item projection now; attached
       // runtime sessions live on the provider-neutral Sessions surface.
-      await page.goto(`/activity?session=${encodeURIComponent(THREAD_ID)}`);
-      await expect(page).toHaveURL(
-        new RegExp(`/activity\\?session=${encodeURIComponent(THREAD_ID)}$`),
+      await page.goto(
+        `/?surface=activity&session=${encodeURIComponent(THREAD_ID)}`,
       );
+      await expect(page).toHaveURL(/\/$/);
 
       const detail = page.getByTestId('session-detail');
-      await expect(detail).toContainText(
-        'Following terminal session · Read only',
-      );
+      await expect(detail).toContainText('Started in Claude Code · Read only');
       await expect(detail).toContainText('Inspect the workspace');
       await expect(detail).toContainText('The workspace is ready.');
       await expect(
@@ -317,7 +479,7 @@ test.describe
       await page.setViewportSize({ width: 320, height: 720 });
       await expect(detail).toBeVisible();
       await expect(
-        page.getByRole('button', {
+        detail.getByRole('button', {
           name: /send|approve|decline|stop|resume|retry|delegate/i,
         }),
       ).toHaveCount(0);
@@ -332,64 +494,25 @@ test.describe
     });
   });
 
-test('adopts an attached session into a linked Flow child without reopening after mobile Back', async ({
+test('opens an attached session in the normal mobile chat without adopting before Send', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   const fixture = await mockMobileAdoption(page);
-
   await page.goto(
-    `/activity?session=${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}`,
+    `/?surface=activity&session=${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}`,
   );
   const detail = page.getByTestId('session-detail');
-  await expect(detail).toContainText('Following terminal session · Read only');
-  const continueButton = page.getByRole('button', {
-    name: 'Continue in Station',
-  });
-  await continueButton.scrollIntoViewIfNeeded();
-  await expect(continueButton).toBeInViewport();
-  expect((await continueButton.boundingBox())?.width).toBeLessThanOrEqual(304);
+  await expect(detail).toContainText('Started in Claude Code · Read only');
+  await detail.getByRole('button', { name: 'Continue in Station' }).click();
+  const composer = page.getByPlaceholder('Type a message…', { exact: true });
+  await expect(composer).toBeVisible();
+  await composer.fill('UI audit draft — do not send.');
+  expect(fixture.commands).toEqual([]);
   expect(
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
+      () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-
-  await continueButton.click();
-  // Exactly one adopt, for the followed thread. The command now also carries a
-  // per-intent `idempotencyKey` (`packages/sdk/src/query-domains/
-  // chatRuntimeOrchestration.ts:314-342`), whose same-intent/new-intent
-  // semantics are owned a layer down by
-  // `packages/sdk/src/__tests__/adoptOrchestrationSession.test.ts:157-180`.
-  // Asserting it is a string keeps this red if it is ever dropped from the wire
-  // without re-asserting a shape this test does not own.
-  await expect.poll(() => fixture.commands.length).toBe(1);
-  expect(fixture.commands[0]).toMatchObject({
-    type: 'adoptSession',
-    sourceThreadId: ATTACHED_MOBILE_THREAD_ID,
-  });
-  expect(fixture.commands[0]?.idempotencyKey).toEqual(expect.any(String));
-  await expect(detail).toContainText(ADOPTED_MOBILE_THREAD_ID);
-  await expect(page.getByLabel('Continue delegated task')).toBeVisible();
-
-  await expect(detail.getByText('Linked Flow')).toBeVisible();
-  await expect(detail.getByText('execute · gates: execute-gate')).toBeVisible();
-  await expect
-    .poll(fixture.flowRequestCount, { timeout: 5_000 })
-    .toBeGreaterThanOrEqual(2);
-  await expect(detail.getByText('verify · gates: acceptance')).toBeVisible();
-
-  const back = page.getByRole('button', { name: /Back to list/ });
-  await back.click();
-  await expect(detail).toHaveCount(0);
-  const requestsAfterBack = fixture.listRequestCount();
-  await expect
-    .poll(fixture.listRequestCount, { timeout: 7_000 })
-    .toBeGreaterThan(requestsAfterBack);
-  await expect(detail).toHaveCount(0);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  await composer.fill('');
 });

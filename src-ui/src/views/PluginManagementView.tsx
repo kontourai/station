@@ -12,6 +12,7 @@ import { PluginEmptyState } from './plugin-management/PluginEmptyState';
 import { PluginModalStack } from './plugin-management/PluginModalStack';
 import { isRejectedPlugin } from './plugin-management/types';
 import { usePluginManagementViewModel } from './plugin-management/usePluginManagementViewModel';
+import { soleLayoutTargetProject } from './plugin-management/view-utils';
 
 /* ── Main View ── */
 export function PluginManagementView({
@@ -21,7 +22,7 @@ export function PluginManagementView({
 }) {
   const {
     addLayoutToProjects,
-    apiBase,
+    addPluginLayout,
     assigningLayout,
     changelogData,
     changelogExpanded,
@@ -89,6 +90,7 @@ export function PluginManagementView({
     <>
       <SplitPaneLayout
         label="plugins"
+        listClassName="plugins__list"
         title="Plugins"
         subtitle="Manage installed plugins"
         items={items}
@@ -161,6 +163,14 @@ export function PluginManagementView({
             revokingPermissions={revokingPermissions}
             onReloadRejected={() => void reloadRejectedPlugin()}
             reloadRejectedPending={reloadRejectedPending}
+            layoutTargetProjectName={
+              soleLayoutTargetProject(projects)?.name ?? null
+            }
+            addLayoutPending={assigningLayout}
+            onAddLayout={() => {
+              if (isRejectedPlugin(selected)) return;
+              void addPluginLayout(selected);
+            }}
             onRevokePermission={(entry) =>
               requestRevokePermission(
                 selected.name,
@@ -197,7 +207,7 @@ export function PluginManagementView({
         title="Remove this trusted permission?"
         message={
           revokeConfirm
-            ? `${revokeConfirm.label} will stop being usable for new work. Anything already running, or a provider already registered, continues until the plugin reloads. Granting it again needs the separate host review page.`
+            ? `${revokeConfirm.label} will stop being usable for new work immediately. Station will drain running module work and retire registered providers before reporting completion; if that takes longer, the result will say it is still winding down. Granting it again needs the separate host review page.`
             : ''
         }
         confirmLabel="Remove"
@@ -212,7 +222,6 @@ export function PluginManagementView({
       />
 
       <PluginModalStack
-        apiBase={apiBase}
         showInstallModal={showInstallModal}
         showFolderPicker={showFolderPicker}
         previewData={previewData}
@@ -223,6 +232,12 @@ export function PluginManagementView({
         installMessage={installMessage}
         message={message}
         removeConfirm={removeConfirm}
+        removalRetainsData={plugins.some(
+          (plugin) =>
+            plugin.name === removeConfirm &&
+            !('status' in plugin) &&
+            plugin.retainedOnRemoval === true,
+        )}
         layoutAssignment={layoutAssignment}
         projects={projects}
         quickProjectName={quickProjectName}
@@ -239,7 +254,9 @@ export function PluginManagementView({
         onCloseFolderPicker={() => setShowFolderPicker(false)}
         onClosePreview={() => setPreviewData(null)}
         onToggleSkip={togglePreviewSkip}
-        onConfirmInstall={() => install(Array.from(previewSkips))}
+        onConfirmInstall={(dataPolicy) =>
+          install(Array.from(previewSkips), dataPolicy)
+        }
         onCancelRemove={() => setRemoveConfirm(null)}
         onConfirmRemove={remove}
         onCloseLayoutAssignment={() => setLayoutAssignment(null)}

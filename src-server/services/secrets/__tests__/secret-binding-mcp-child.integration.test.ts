@@ -82,6 +82,11 @@ describe('Datum secret binding stdio establishment', () => {
       {
         loadIntegration: vi.fn().mockResolvedValue(def),
         saveIntegration: vi.fn(async (_id, next) => saved.push(next)),
+        updateIntegration: vi.fn(async (_id, update) => {
+          const next = update(def);
+          saved.push(next);
+          return next;
+        }),
         getProjectHomeDir: () => home,
       } as any,
       new Map(),

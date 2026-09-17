@@ -4,6 +4,8 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -24,23 +26,36 @@ import {
   GrantsStoreReservedKeyError,
   GrantsStoreUnavailableError,
 } from '../grants-file-store.js';
-import { withPluginContentLock } from '../plugin-content-integrity.js';
 import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../plugin-content-integrity.js';
+import {
+  copyPluginDependencyOwnership,
+  createPluginGrantMutationScope,
   getPermissionTier,
   getPluginGrants,
   grantPermissions,
   hasGrant,
   hasGrantOrThrow,
   needsConsent,
+  observePluginGrantRevisions,
   PluginContentUnavailableError,
   PluginGrantsUnavailableError,
+  pluginGrantsPath,
   processInstallPermissions,
+  readPluginDependencyOwnership,
   readPluginGrantRecord,
+  readPluginGrantRevision,
   readPluginGrantState,
   rebindGrantsAfterContentChange,
+  recordPluginDependencyOwnership,
+  removePluginHostRecord,
   requiredPermissionsForManifest,
+  restorePluginGrantEntry,
   revokeAllGrants,
   revokeGrants,
+  withPluginProviderGrantPublication,
 } from '../plugin-permissions.js';
 
 /**
@@ -75,6 +90,215 @@ async function mutatePluginTree(
     writeFileSync(join(pluginsDir, name, 'server.mjs'), contents);
   });
 }
+
+describe('durable dependency ownership handoff', () => {
+  const homes: string[] = [];
+  afterEach(() => {
+    for (const home of homes.splice(0))
+      rmSync(home, { recursive: true, force: true });
+  });
+  async function setupHandoff() {
+    const home = mkdtempSync(join(tmpdir(), 'station-ownership-handoff-'));
+    homes.push(home);
+    seedPluginTrees(
+      home,
+      'creator',
+      'consumer',
+      'dependency',
+      'other-creator',
+      'other-dependency',
+    );
+    const plugins = join(home, 'plugins');
+    const entry = {
+      id: 'dependency',
+      contentDigest: computePluginContentDigest(plugins, 'dependency')!,
+    };
+    await recordPluginDependencyOwnership(home, 'creator', [entry]);
+    return {
+      home,
+      plugins,
+      entry,
+      recipientDigest: computePluginContentDigest(plugins, 'consumer')!,
+    };
+  }
+
+  test('a matching digest without a source host claim cannot mint cleanup authority', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'other-creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).rejects.toThrow('no matching host-owned source claim');
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+  });
+
+  test('rollback restores authority only and preserves grants committed after handoff', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    await grantPermissions(home, 'consumer', ['network.fetch']);
+    const copied = await copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    expect(copied.kind).toBe('copied');
+    if (copied.kind !== 'copied') throw new Error('missing handoff');
+    expect(getPluginGrants(home, 'consumer')).toEqual(['network.fetch']);
+    await grantPermissions(home, 'consumer', ['ui.confirm']);
+    await copied.handoff.rollback();
+    await copied.handoff.rollback();
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+    expect(getPluginGrants(home, 'consumer')).toEqual(
+      expect.arrayContaining(['network.fetch', 'ui.confirm']),
+    );
+    expect(readPluginDependencyOwnership(home, 'creator')).toEqual([entry]);
+  });
+
+  test('a later legitimate handoff blocks stale rollback, while reverse rollback remains possible', async () => {
+    const { home, plugins, entry, recipientDigest } = await setupHandoff();
+    const other = {
+      id: 'other-dependency',
+      contentDigest: computePluginContentDigest(plugins, 'other-dependency')!,
+    };
+    await recordPluginDependencyOwnership(home, 'other-creator', [other]);
+    const first = await copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    const second = await copyPluginDependencyOwnership(
+      home,
+      'other-creator',
+      'consumer',
+      other,
+      recipientDigest,
+    );
+    if (first.kind !== 'copied' || second.kind !== 'copied')
+      throw new Error('missing handoff');
+    await expect(first.handoff.rollback()).rejects.toThrow(
+      'changed after handoff',
+    );
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([
+      entry,
+      other,
+    ]);
+    await second.handoff.rollback();
+    await first.handoff.rollback();
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+  });
+
+  test('rollback cannot discard the last claim before the creator is restored', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    const copied = await copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    if (copied.kind !== 'copied') throw new Error('missing handoff');
+    await removePluginHostRecord(home, 'creator');
+    await expect(copied.handoff.rollback()).rejects.toThrow(
+      'Original dependency custody must be restored',
+    );
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([entry]);
+  });
+
+  test('legacy unbound recipient grants are never rebound by a custody transfer', async () => {
+    const { home, entry, recipientDigest } = await setupHandoff();
+    const path = join(home, 'plugin-grants.json');
+    const stored = JSON.parse(readFileSync(path, 'utf8'));
+    stored.consumer = ['network.fetch'];
+    writeFileSync(path, JSON.stringify(stored));
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).resolves.toEqual({ kind: 'ineligible' });
+    expect(JSON.parse(readFileSync(path, 'utf8')).consumer).toEqual([
+      'network.fetch',
+    ]);
+    expect(readPluginDependencyOwnership(home, 'creator')).toEqual([entry]);
+  });
+
+  test('managed recipients and exhausted ownership capacity cannot silently absorb claims', async () => {
+    const { home, plugins, entry, recipientDigest } = await setupHandoff();
+    await recordPluginDependencyOwnership(home, 'other-creator', [
+      { id: 'consumer', contentDigest: recipientDigest },
+    ]);
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).resolves.toEqual({ kind: 'ineligible' });
+    await removePluginHostRecord(home, 'other-creator');
+    const full = Array.from({ length: 256 }, (_, index) => ({
+      id: `held-${index}`,
+      contentDigest: computePluginContentDigest(plugins, 'other-dependency')!,
+    }));
+    await recordPluginDependencyOwnership(home, 'consumer', full);
+    await expect(
+      copyPluginDependencyOwnership(
+        home,
+        'creator',
+        'consumer',
+        entry,
+        recipientDigest,
+      ),
+    ).resolves.toEqual({ kind: 'ineligible' });
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual(full);
+    expect(readPluginDependencyOwnership(home, 'creator')).toEqual([entry]);
+  });
+
+  test('recipient mutation before its lock is acquired invalidates the proposed handoff', async () => {
+    const { home, plugins, entry, recipientDigest } = await setupHandoff();
+    let release!: () => void;
+    let held = false;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const mutating = withPluginContentLock(plugins, 'consumer', async () => {
+      held = true;
+      await gate;
+      writeFileSync(
+        join(plugins, 'consumer', 'plugin.json'),
+        JSON.stringify({ name: 'consumer', version: '2.0.0' }),
+      );
+    });
+    await vi.waitFor(() => expect(held).toBe(true));
+    const copying = copyPluginDependencyOwnership(
+      home,
+      'creator',
+      'consumer',
+      entry,
+      recipientDigest,
+    );
+    try {
+      await Promise.resolve();
+      expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+    } finally {
+      release();
+      await mutating;
+    }
+    await expect(copying).resolves.toEqual({ kind: 'ineligible' });
+    expect(readPluginDependencyOwnership(home, 'consumer')).toEqual([]);
+  });
+});
 
 /** Every plugin name any fixture below records a grant for. */
 const FIXTURE_PLUGINS = [
@@ -652,6 +876,33 @@ describe('grants are bound to plugin content (station#4288)', () => {
     );
   });
 
+  test('permission revocation preserves host-owned dependency authority until uninstall completes', async () => {
+    seedPluginTrees(dir, 'owned-dependency');
+    const dependencyDigest = computePluginContentDigest(
+      join(dir, 'plugins'),
+      'owned-dependency',
+    );
+    expect(dependencyDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    if (!dependencyDigest) throw new Error('fixture dependency was unreadable');
+    await grantPermissions(dir, 'bound-plugin', ['navigation.dock']);
+    await recordPluginDependencyOwnership(dir, 'bound-plugin', [
+      {
+        id: 'owned-dependency',
+        contentDigest: dependencyDigest,
+      },
+    ]);
+
+    await revokeAllGrants(dir, 'bound-plugin');
+
+    expect(getPluginGrants(dir, 'bound-plugin')).toEqual([]);
+    expect(readPluginDependencyOwnership(dir, 'bound-plugin')).toEqual([
+      { id: 'owned-dependency', contentDigest: dependencyDigest },
+    ]);
+
+    await removePluginHostRecord(dir, 'bound-plugin');
+    expect(readPluginDependencyOwnership(dir, 'bound-plugin')).toEqual([]);
+  });
+
   test('acceptance 2: a tree that changed under a grant is detected, and EVERY permission stops applying', async () => {
     await grantPermissions(dir, 'bound-plugin', [
       'network.fetch',
@@ -802,6 +1053,82 @@ describe('grants are bound to plugin content (station#4288)', () => {
       'plugin.server',
     ]);
     expect(changed.withheld).toEqual(changed.recorded);
+  });
+
+  test('retained artifact publication and rebind use current physical bytes without an alias', async () => {
+    await grantPermissions(dir, 'bound-plugin', [
+      'navigation.dock',
+      'providers.register',
+    ]);
+    const physical = join(dir, 'retained-artifact');
+    renameSync(join(dir, 'plugins', 'bound-plugin'), physical);
+    let current = true;
+    const digest = computePluginContentDigest(dir, 'retained-artifact')!;
+    const artifact = {
+      pluginId: 'bound-plugin',
+      digest,
+      isCurrent: () =>
+        current &&
+        computePluginContentDigest(dir, 'retained-artifact') === digest,
+    };
+    const publish = vi.fn(async () => 'published');
+    await expect(
+      withPluginProviderGrantPublication(
+        dir,
+        'bound-plugin',
+        publish,
+        artifact,
+      ),
+    ).resolves.toEqual({ kind: 'applied', value: 'published' });
+    await expect(
+      rebindGrantsAfterContentChange(
+        dir,
+        'bound-plugin',
+        {
+          permissions: ['navigation.dock'],
+          providers: [{ type: 'model', module: './provider.mjs' }],
+        },
+        artifact,
+      ),
+    ).resolves.toEqual({
+      retained: ['navigation.dock'],
+      withdrawn: ['providers.register'],
+    });
+    await recordPluginDependencyOwnership(
+      dir,
+      'bound-plugin',
+      [{ id: 'dependency', contentDigest: digest }],
+      artifact,
+    );
+    await grantPermissions(
+      dir,
+      'bound-plugin',
+      ['providers.register'],
+      artifact,
+    );
+    const before = readPluginGrantRecord(dir, 'bound-plugin');
+    current = false;
+    await expect(
+      rebindGrantsAfterContentChange(
+        dir,
+        'bound-plugin',
+        { permissions: [] },
+        artifact,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      recordPluginDependencyOwnership(dir, 'bound-plugin', [], artifact),
+    ).rejects.toThrow();
+    await expect(
+      withPluginProviderGrantPublication(
+        dir,
+        'bound-plugin',
+        publish,
+        artifact,
+      ),
+    ).resolves.toEqual({ kind: 'superseded' });
+    expect(publish).toHaveBeenCalledOnce();
+    expect(readPluginGrantRecord(dir, 'bound-plugin')).toEqual(before);
   });
 
   test('acceptance 3: an update that newly derives a permission does not inherit consent for it', async () => {
@@ -982,5 +1309,175 @@ describe('grants are bound to plugin content (station#4288)', () => {
 
     expect(hasGrant(dir, 'bound-plugin', 'network.fetch')).toBe(false);
     expect(hasGrant(dir, 'legacy-plugin', 'network.fetch')).toBe(true);
+  });
+});
+
+describe('owned permission mutation receipts', () => {
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'station-grant-receipts-'));
+    seedPluginTrees(home, 'receipt-plugin', 'other-plugin');
+  });
+  afterEach(() => rmSync(home, { recursive: true, force: true }));
+  const plugin = 'receipt-plugin';
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  test.each([false, true])(
+    'revocation before the first owned write wins (initial grant=%s)',
+    async (existing) => {
+      if (existing) await grantPermissions(home, plugin, ['agents.invoke']);
+      const scope = createPluginGrantMutationScope(home, plugin);
+      await revokeAllGrants(home, plugin);
+      await expect(
+        scope.run(() => grantPermissions(home, plugin, ['agents.invoke'])),
+      ).rejects.toMatchObject({ code: 'plugin_grant_mutation_superseded' });
+      expect(getPluginGrants(home, plugin)).toEqual([]);
+      expect(await scope.rollback()).toEqual({ state: 'superseded' });
+    },
+  );
+
+  test('request-entry observation preserves a revoke while acquisition discovers an initially absent name', async () => {
+    const observed = observePluginGrantRevisions(home);
+    const before = observed.revisionFor(plugin);
+    await revokeGrants(home, plugin, ['agents.invoke']);
+    expect(readPluginGrantRevision(home, plugin)).not.toBe(before);
+    expect(() =>
+      createPluginGrantMutationScope(home, plugin, {
+        expectedRevision: before,
+      }),
+    ).toThrow('Plugin permissions changed');
+    expect(observed.revisionFor(plugin)).toBe(before);
+  });
+
+  test('revocation between owned writes prevents later permission additions', async () => {
+    await grantPermissions(home, plugin, ['navigation.dock']);
+    const scope = createPluginGrantMutationScope(home, plugin);
+    await scope.run(() => grantPermissions(home, plugin, ['agents.invoke']));
+    await revokeAllGrants(home, plugin);
+    await expect(
+      scope.run(() => grantPermissions(home, plugin, ['network.fetch'])),
+    ).rejects.toMatchObject({ code: 'plugin_grant_mutation_superseded' });
+    expect(await scope.rollback()).toEqual({ state: 'superseded' });
+    expect(getPluginGrants(home, plugin)).toEqual([]);
+  });
+
+  test('independent same-value regrant cannot be undone by an older receipt', async () => {
+    await grantPermissions(home, plugin, ['navigation.dock']);
+    const scope = createPluginGrantMutationScope(home, plugin);
+    await scope.run(() => grantPermissions(home, plugin, ['agents.invoke']));
+    const owned = readPluginGrantRevision(home, plugin);
+    await grantPermissions(home, plugin, ['agents.invoke']);
+    const independent = readPluginGrantRevision(home, plugin);
+    expect(independent).not.toBe(owned);
+    expect(await scope.rollback()).toEqual({ state: 'superseded' });
+    expect(getPluginGrants(home, plugin)).toEqual([
+      'navigation.dock',
+      'agents.invoke',
+    ]);
+    expect(readPluginGrantRevision(home, plugin)).toBe(independent);
+  });
+
+  test('owned rollback restores its permission chain while retaining another plugin and current custody', async () => {
+    await grantPermissions(home, plugin, ['navigation.dock']);
+    const scope = createPluginGrantMutationScope(home, plugin);
+    await scope.run(() =>
+      grantPermissions(realpathSync(home), plugin, ['agents.invoke']),
+    );
+    await grantPermissions(home, 'other-plugin', ['network.fetch']);
+    await scope.run(() => grantPermissions(home, plugin, ['network.fetch']));
+    const digest = computePluginContentDigest(join(home, 'plugins'), plugin)!;
+    await recordPluginDependencyOwnership(home, plugin, [
+      { id: 'child', contentDigest: digest },
+    ]);
+    const custody = readPluginDependencyOwnership(home, plugin);
+    expect(await scope.rollback()).toEqual({ state: 'restored' });
+    expect(getPluginGrants(home, plugin)).toEqual(['navigation.dock']);
+    expect(getPluginGrants(home, 'other-plugin')).toEqual(['network.fetch']);
+    expect(readPluginDependencyOwnership(home, plugin)).toEqual(custody);
+  });
+
+  test('revocation stays prompt while transaction work awaits and its rollback preserves the decision', async () => {
+    const scope = createPluginGrantMutationScope(home, plugin);
+    const entered = deferred(),
+      finish = deferred();
+    const running = scope.run(async () => {
+      await grantPermissions(home, plugin, ['agents.invoke']);
+      entered.resolve();
+      await finish.promise;
+    });
+    await entered.promise;
+    let revoked = false;
+    const revocation = revokeAllGrants(home, plugin).then(() => {
+      revoked = true;
+    });
+    try {
+      await expect.poll(() => revoked, { timeout: 1000 }).toBe(true);
+    } finally {
+      finish.resolve();
+      await running;
+      await revocation;
+    }
+    expect(await scope.rollback()).toEqual({ state: 'superseded' });
+    expect(getPluginGrants(home, plugin)).toEqual([]);
+  });
+
+  test('an unavailable rollback preserves corrupt bytes and permits explicit recovery before retry', async () => {
+    const scope = createPluginGrantMutationScope(home, plugin);
+    await scope.run(() => grantPermissions(home, plugin, ['agents.invoke']));
+    const file = pluginGrantsPath(home),
+      valid = readFileSync(file, 'utf8');
+    writeFileSync(file, '{broken');
+    expect(await scope.rollback()).toEqual({ state: 'unavailable' });
+    expect(readFileSync(file, 'utf8')).toBe('{broken');
+    writeFileSync(file, valid); // Explicit fixture/operator recovery, never automatic product repair.
+    expect(await scope.rollback()).toEqual({ state: 'restored' });
+    expect(getPluginGrants(home, plugin)).toEqual([]);
+  });
+
+  test('a failed owned phase cannot add more grants but retains its rollback receipt', async () => {
+    const scope = createPluginGrantMutationScope(home, plugin);
+    await expect(
+      scope.run(async () => {
+        await grantPermissions(home, plugin, ['agents.invoke']);
+        throw new Error('later phase failed');
+      }),
+    ).rejects.toThrow('later phase failed');
+    await expect(
+      scope.run(() => grantPermissions(home, plugin, ['network.fetch'])),
+    ).rejects.toThrow('scope is not available');
+    expect(await scope.rollback()).toEqual({ state: 'restored' });
+    expect(getPluginGrants(home, plugin)).toEqual([]);
+  });
+
+  test('a plugin scope cannot silently leave a different plugin mutation unowned', async () => {
+    const scope = createPluginGrantMutationScope(home, plugin);
+    await expect(
+      scope.run(() =>
+        grantPermissions(home, 'other-plugin', ['agents.invoke']),
+      ),
+    ).rejects.toThrow('outside its owned plugin scope');
+    expect(getPluginGrants(home, 'other-plugin')).toEqual([]);
+    expect(await scope.rollback()).toEqual({ state: 'unchanged' });
+  });
+
+  test('observed snapshots cannot authorize restoration and committed scopes cannot roll back', async () => {
+    await grantPermissions(home, plugin, ['agents.invoke']);
+    const before = readPluginGrantRecord(home, plugin);
+    await revokeAllGrants(home, plugin);
+    await expect(restorePluginGrantEntry(home, plugin, before)).rejects.toThrow(
+      'owned mutation receipt',
+    );
+    expect(getPluginGrants(home, plugin)).toEqual([]);
+    const scope = createPluginGrantMutationScope(home, plugin);
+    await scope.run(() => grantPermissions(home, plugin, ['navigation.dock']));
+    scope.commit();
+    await expect(scope.rollback()).rejects.toThrow('scope is not available');
+    expect(getPluginGrants(home, plugin)).toEqual(['navigation.dock']);
   });
 });

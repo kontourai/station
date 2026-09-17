@@ -25,6 +25,7 @@ import {
 } from '../lib/gate-scope.mjs';
 import {
   COPY_SOURCE_FILES,
+  copySourceOpener,
   SCAN_EXTENSIONS as NOUN_GATE_EXTENSIONS,
   PINNED_SCOPE_INVENTORY as NOUN_GATE_PINNED,
   SCAN_ROOTS as NOUN_GATE_ROOTS,
@@ -278,6 +279,45 @@ describe('non-JSX copy sources (station#1543)', () => {
     expect(settingsRegistry).toBe(
       'packages/contracts/src/settings-registry.ts',
     );
+  });
+
+  it('the device registry is registered too, with its own factory name', () => {
+    expect(COPY_SOURCE_FILES).toContain(
+      'packages/contracts/src/device-settings.ts',
+    );
+    expect(copySourceOpener('packages/contracts/src/device-settings.ts')).toBe(
+      'defineDeviceSetting(',
+    );
+    expect(copySourceOpener(settingsRegistry)).toBe('defineSetting(');
+  });
+
+  /**
+   * The two openers must be disjoint as substrings, or one file's blocks
+   * would be found by the other's opener and the pairing would be
+   * decorative. `defineDeviceSetting(` does not contain `defineSetting(`.
+   */
+  it('scanning a copy source with the wrong opener is a hard failure, not a clean scan', () => {
+    const source = `
+      defineDeviceSetting({
+        key: 'theme',
+        label: 'Agent runtime',
+        help: 'Playbooks are not a noun here.',
+      }),
+    `;
+    const wrong = scanCopySourceContent('fixture.ts', source, 'defineSetting(');
+    expect(wrong.findings).toEqual([]);
+    expect(wrong.unscannable).toHaveLength(1);
+
+    const right = scanCopySourceContent(
+      'fixture.ts',
+      source,
+      'defineDeviceSetting(',
+    );
+    expect(right.unscannable).toEqual([]);
+    expect(right.findings.map((finding) => finding.snippet)).toEqual([
+      'Agent runtime',
+      'Playbooks are not a noun here.',
+    ]);
   });
 
   it('finds retired nouns in defineSetting label/description/placeholder', () => {

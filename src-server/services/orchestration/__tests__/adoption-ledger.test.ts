@@ -1,6 +1,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import type { OrchestrationCommandReceipt } from '@kontourai/station-contracts/orchestration';
 import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
 
@@ -34,6 +36,133 @@ describe('AdoptionLedger', () => {
       updatedAt: '2026-07-22T00:00:00.000Z',
     };
   }
+
+  test('upgrades an existing adoption table without dropping an unresolved legacy reservation', () => {
+    const first = open();
+    const claim = first.ledger.reserve(input());
+    if (claim.kind !== 'owner') throw new Error('expected owner');
+    claim.adoption.markForking();
+    first.store.close();
+    const databasePath = join(first.directory, 'orchestration.sqlite');
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(
+      'ALTER TABLE provider_session_adoptions DROP COLUMN source_affinity',
+    );
+    legacy.exec(
+      'ALTER TABLE provider_session_adoptions DROP COLUMN source_boundary',
+    );
+    legacy.close();
+    const reopened = new EventStore(databasePath);
+    try {
+      const ledger = reopened.createAdoptionLedger();
+      expect(ledger.reservations()).toEqual([
+        expect.objectContaining({
+          sourceThreadId: input().sourceThreadId,
+          status: 'forking',
+        }),
+      ]);
+      expect(ledger.reservations()[0]?.sourceAffinity).toBeUndefined();
+      expect(
+        ledger.reserve({
+          ...input('new-source'),
+          targetThreadId: 'new-child',
+          sourceAffinity: { kind: 'remote-source', ref: 'opaque-account' },
+        }).kind,
+      ).toBe('owner');
+      expect(
+        ledger.reservations().find((row) => row.sourceThreadId === 'new-source')
+          ?.sourceAffinity,
+      ).toEqual({ kind: 'remote-source', ref: 'opaque-account' });
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('persists admitted source affinity and boundary before creation and restores immutable recovery context', () => {
+    const first = open();
+    const sourceAffinity = { kind: 'remote-source', ref: 'opaque-account' };
+    const sourceBoundary = {
+      kind: 'completed-turn' as const,
+      providerTurnId: 'turn/native:one',
+      observedEventId: 'observed-completion',
+    };
+    const reserved = first.ledger.reserve({
+      ...input(),
+      sourceAffinity,
+      sourceBoundary,
+    });
+    if (reserved.kind !== 'owner') throw new Error('expected owner');
+    sourceAffinity.ref = 'caller-mutated';
+    sourceBoundary.providerTurnId = 'caller-mutated';
+    expect(reserved.adoption.reservation).toMatchObject({
+      status: 'pending',
+      sourceAffinity: { kind: 'remote-source', ref: 'opaque-account' },
+      sourceBoundary: { providerTurnId: 'turn/native:one' },
+    });
+    expect(Object.isFrozen(reserved.adoption.reservation.sourceAffinity)).toBe(
+      true,
+    );
+    reserved.adoption.markForking();
+    first.store.close();
+    const reopened = new EventStore(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      const ledger = reopened.createAdoptionLedger();
+      const persisted = ledger.reservations()[0]!;
+      expect(persisted).toMatchObject({
+        status: 'forking',
+        sourceAffinity: { kind: 'remote-source', ref: 'opaque-account' },
+        sourceBoundary: {
+          kind: 'completed-turn',
+          providerTurnId: 'turn/native:one',
+          observedEventId: 'observed-completion',
+        },
+      });
+      const reclaimed = ledger.reclaim({
+        reservation: persisted,
+        ownerId: 'recovery-owner',
+        ownerPid: 303,
+      });
+      expect(reclaimed.kind).toBe('owner');
+      if (reclaimed.kind !== 'owner')
+        throw new Error('expected recovery owner');
+      expect(reclaimed.adoption.reservation.sourceAffinity).toEqual({
+        kind: 'remote-source',
+        ref: 'opaque-account',
+      });
+      expect(
+        reclaimed.adoption.reservation.sourceBoundary?.providerTurnId,
+      ).toBe('turn/native:one');
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('rejects malformed source context before reserving an adoption', () => {
+    const { store, ledger } = open();
+    try {
+      expect(() =>
+        ledger.reserve({
+          ...input(),
+          sourceAffinity: { kind: 'source', ref: '' },
+        }),
+      ).toThrow('source affinity');
+      expect(() =>
+        ledger.reserve({
+          ...input(),
+          sourceBoundary: {
+            kind: 'completed-turn',
+            providerTurnId: 'turn',
+            observedEventId: 'event',
+          },
+        }),
+      ).toThrow('source boundary');
+      expect(ledger.reservations()).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
 
   test('gives only the winner an owner capability and advances legal facts durably', () => {
     const { store, ledger } = open();
@@ -361,6 +490,82 @@ describe('AdoptionLedger', () => {
     );
     expect(reserved.adoption.completeCleanup().kind).toBe('applied');
     expect(ledger.reservations()).toEqual([]);
+    store.close();
+  });
+  function forkedChild() {
+    return {
+      provider: 'claude' as const,
+      threadId: 'station-child',
+      status: 'ready' as const,
+      resumeCursor: 'vendor-child',
+      continuationSourceThreadId: 'external:claude:source',
+      createdAt: '2026-07-22T00:00:01.000Z',
+      updatedAt: '2026-07-22T00:00:01.000Z',
+    };
+  }
+
+  function commandReceipt(): OrchestrationCommandReceipt {
+    return {
+      commandId: 'cmd-adopt-1',
+      threadId: 'station-child',
+      commandType: 'adoptSession',
+      status: 'accepted',
+      createdAt: '2026-07-22T00:00:01.000Z',
+    };
+  }
+
+  // The receipt is the second of the two writes `commitOwned` performs inside
+  // its own `BEGIN IMMEDIATE`, and until this test nothing exercised it: every
+  // other real-SQLite commit here passes one argument, so the receipt branch
+  // never executed and could be deleted with the suite still green.
+  test('persists the command receipt in the same commit as the child session', () => {
+    const { store, ledger } = open();
+    const reserved = ledger.reserve(input());
+    if (reserved.kind !== 'owner') throw new Error('expected owner');
+    reserved.adoption.markForking();
+    reserved.adoption.recordProviderCursor('vendor-child');
+    expect(store.readCommandReceipt('cmd-adopt-1')).toBeNull();
+
+    expect(reserved.adoption.commit(forkedChild(), commandReceipt()).kind).toBe(
+      'applied',
+    );
+
+    expect(store.readCommandReceipt('cmd-adopt-1')).toEqual(commandReceipt());
+    expect(store.readSessionByThread('station-child')).toMatchObject({
+      threadId: 'station-child',
+    });
+    expect(ledger.reservations()).toEqual([]);
+    store.close();
+  });
+
+  test('rolls back the child session too when the receipt write fails', () => {
+    const { store, ledger } = open();
+    const reserved = ledger.reserve(input());
+    if (reserved.kind !== 'owner') throw new Error('expected owner');
+    reserved.adoption.markForking();
+    reserved.adoption.recordProviderCursor('vendor-child');
+    const db = (store as unknown as { db: { prepare(sql: string): unknown } })
+      .db;
+    const prepare = db.prepare.bind(db);
+    (db as unknown as { prepare(sql: string): unknown }).prepare = (sql) => {
+      // Only the receipt INSERT fails. The child write has already landed in
+      // the transaction by then, so a surviving session row would mean the
+      // commit is not atomic across the two injected cross-group writes.
+      if (sql.includes('INTO orchestration_command_receipts')) {
+        throw new Error('injected receipt write failure');
+      }
+      return prepare(sql);
+    };
+
+    expect(() =>
+      reserved.adoption.commit(forkedChild(), commandReceipt()),
+    ).toThrow('Adoption commit rolled back');
+
+    expect(store.readSessionByThread('station-child')).toBeUndefined();
+    expect(store.readCommandReceipt('cmd-adopt-1')).toBeNull();
+    expect(ledger.reservations()).toEqual([
+      expect.objectContaining({ sourceThreadId: 'external:claude:source' }),
+    ]);
     store.close();
   });
 });

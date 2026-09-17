@@ -1,9 +1,21 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  admitCohort,
+  beginPromotion,
+  canonicalJson,
+  createCohortPlan,
+  createStageReceipt,
+  finalizeCohort,
+  recordProviderPromotion,
+} from '../release-cohort.mjs';
 import {
   assertNightlyVersionRelationship,
+  finalPlatformStates,
   ghAttestationArgs,
   parseAndroidManifestIdentity,
   parseGithubReleaseObservation,
@@ -11,6 +23,10 @@ import {
   parseLatestUpdaterManifest,
   parseMacosInfoPlist,
   parseVerifiedAttestation,
+  requiredArtifactPaths,
+  shippedPlatforms,
+  verifyAndroidAabIdentity,
+  verifyMacosArchive,
 } from '../verify-release-cohort.mjs';
 
 const sourceSha = 'a'.repeat(40);
@@ -48,7 +64,7 @@ const certificate = {
   certificateIssuer: 'CN=Fulcio',
   issuer: 'https://token.actions.githubusercontent.com',
   subjectAlternativeName:
-    'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
+    'https://github.com/kontourai/station/.github/workflows/nightly-native-stage.yml@refs/heads/main',
   runInvocationURI:
     'https://github.com/kontourai/station/actions/runs/112061/attempts/1',
 };
@@ -83,7 +99,7 @@ describe('protected release cohort verifier parsers', () => {
       '--source-digest',
       sourceSha,
       '--cert-identity',
-      'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
+      'https://github.com/kontourai/station/.github/workflows/nightly-native-stage.yml@refs/heads/main',
       '--cert-oidc-issuer',
       'https://token.actions.githubusercontent.com',
       '--deny-self-hosted-runners',
@@ -113,6 +129,8 @@ describe('protected release cohort verifier parsers', () => {
       ),
     ).toMatchObject({
       subjectDigest: `sha256:${record.sha256}`,
+      signerWorkflow:
+        'kontourai/station/.github/workflows/nightly-native-stage.yml',
       authenticatedWorkflowRunId: '112061',
       verifiedTimestampDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });
@@ -278,7 +296,7 @@ describe('protected release cohort verifier parsers', () => {
     expect(verifier).toMatch(
       /async function main[\s\S]*station\.release-cohort-final\/v1/,
     );
-    expect(verifier).toContain('defaultSpawnSync(apkanalyzer.apkanalyzerPath');
+    expect(verifier).toContain('verifyAndroidAabIdentity(');
     expect(verifier).toContain("['-xOzf', path, '--', plists[0]]");
     expect(verifier).not.toContain("['-xzf', path, '-C'");
     expect(verifier).not.toContain('mkdtempSync');
@@ -296,5 +314,340 @@ describe('protected release cohort verifier parsers', () => {
     ).toMatchObject({ CFBundleVersion: identity.desktop.bundleVersion });
     expect(() => parseMacosInfoPlist('')).toThrow('not valid JSON');
     expect(() => parseMacosInfoPlist('{}')).toThrow('required string identity');
+  });
+});
+
+test('verifies an AAB through bundletool with literal argv and rejects a mismatched identity', () => {
+  const run = vi.fn(() => ({
+    status: 0,
+    stdout:
+      '<manifest package="io.kontourai.station.nightly" android:versionCode="242800" android:versionName="0.1.3-nightly.2428"/>',
+    stderr: '',
+  }));
+  const tools = { bundletoolPath: '/fixture tools/bundletool.jar' };
+  expect(
+    verifyAndroidAabIdentity(
+      '/fixture;literal.aab',
+      identity.android,
+      tools,
+      run as unknown as typeof spawnSync,
+    ),
+  ).toEqual(identity.android);
+  expect(run).toHaveBeenCalledWith(
+    'java',
+    [
+      '-jar',
+      tools.bundletoolPath,
+      'dump',
+      'manifest',
+      '--bundle=/fixture;literal.aab',
+    ],
+    expect.objectContaining({
+      shell: false,
+      windowsHide: true,
+      timeout: 60000,
+    }),
+  );
+  expect(() =>
+    verifyAndroidAabIdentity(
+      '/fixture.aab',
+      { ...identity.android, versionCode: 242801 },
+      tools,
+      run as unknown as typeof spawnSync,
+    ),
+  ).toThrow(/AAB manifest identity/);
+  run.mockReturnValueOnce({ status: 1, stdout: '', stderr: 'invalid bundle' });
+  expect(() =>
+    verifyAndroidAabIdentity(
+      '/invalid.aab',
+      identity.android,
+      tools,
+      run as unknown as typeof spawnSync,
+    ),
+  ).toThrow(/bundletool Android identity verification/);
+});
+
+test('verifies archive listings beyond the child-process default buffer without relaxing archive safety', () => {
+  const listing = `${'Station.app/Contents/Resources/a-long-but-safe-bundled-module-path.js\n'.repeat(20000)}Station.app/Contents/Info.plist\n`;
+  const run = vi.fn((command, args, options) => {
+    let stdout =
+      args[0] === '-tzf'
+        ? listing
+        : args[0] === '-tvzf'
+          ? `-rw-r--r-- ${listing}`
+          : '<plist/>';
+    if (command === '/usr/bin/plutil')
+      stdout = JSON.stringify({
+        CFBundleIdentifier: 'io.kontourai.station.nightly',
+        CFBundleShortVersionString: identity.desktop.version,
+        CFBundleVersion: identity.desktop.bundleVersion,
+      });
+    if (Buffer.byteLength(stdout) > (options.maxBuffer ?? 1024 * 1024))
+      return { status: null, error: new Error('ENOBUFS') };
+    return { status: 0, stdout, stderr: '' };
+  });
+  expect(() =>
+    verifyMacosArchive('/fixture.app.tar.gz', identity.desktop, {
+      run: run as unknown as typeof spawnSync,
+      platform: 'darwin',
+    }),
+  ).not.toThrow();
+  run.mockImplementationOnce(() => ({
+    status: 0,
+    stdout: '../escape\n',
+    stderr: '',
+  }));
+  expect(() =>
+    verifyMacosArchive('/unsafe.app.tar.gz', identity.desktop, {
+      run: run as unknown as typeof spawnSync,
+      platform: 'darwin',
+    }),
+  ).toThrow(/unsafe/);
+});
+
+/**
+ * A real admitted cohort with the Nightly delivery inventory, so the
+ * subset verification below runs against candidates the structural state
+ * machine actually emits rather than hand-shaped objects.
+ */
+const roots: string[] = [];
+afterEach(() =>
+  roots
+    .splice(0)
+    .forEach((root) => rmSync(root, { recursive: true, force: true })),
+);
+function cohortFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'station-verify-subset-'));
+  roots.push(root);
+  const files: Record<string, Record<string, Buffer>> = {
+    android: { 'station-nightly-universal.aab': Buffer.from('aab bytes') },
+    macos: Object.fromEntries(
+      macRecords.map((record) => [record.name, Buffer.from(record.name)]),
+    ),
+  };
+  const paths: Record<string, Record<string, string>> = {};
+  for (const [platform, group] of Object.entries(files)) {
+    paths[platform] = {};
+    for (const [name, bytes] of Object.entries(group)) {
+      const path = join(root, `${platform}-${name}`);
+      writeFileSync(path, bytes);
+      paths[platform][name] = path;
+    }
+  }
+  const plan = createCohortPlan({
+    channel: 'nightly',
+    sourceSha,
+    workflowRunId: '112061',
+    versionIdentities: identity,
+    availabilityPolicy: {
+      releaseMode: 'per-platform',
+      requiredReceipt: 'provider-backed',
+      externalEvidenceAuthority: 'github-artifact-attestation',
+    },
+    requiredPlatforms: ['android', 'macos'],
+  });
+  const stage = (platform: 'android' | 'macos') => {
+    const records = Object.entries(files[platform]).map(([name, bytes]) => ({
+      name,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      size: bytes.length,
+    }));
+    return createStageReceipt(plan, {
+      platform,
+      artifacts: Object.entries(files[platform]).map(([name, bytes]) => ({
+        name,
+        bytes,
+      })),
+      artifactAttestationClaim: {
+        authority: 'github-artifact-attestation',
+        repository: 'kontourai/station',
+        workflowRef: `.github/workflows/nightly-native-stage.yml@${sourceSha}`,
+        runId: '112061',
+        subjectDigest: `sha256:${createHash('sha256').update(canonicalJson(records)).digest('hex')}`,
+        verificationReference: `github:attestation:${platform}:112061`,
+      },
+    });
+  };
+  const admission = admitCohort(
+    plan,
+    [stage('android'), stage('macos')],
+    files,
+  );
+  const claim = (
+    platform: 'android' | 'macos',
+    outcome: 'reported_success' | 'unknown' | 'not_attempted',
+  ) =>
+    recordProviderPromotion(beginPromotion(admission), {
+      platform,
+      outcome,
+      providerEvidenceClaim: {
+        provider: platform === 'android' ? 'google-play' : 'github-releases',
+        immutableReference:
+          outcome === 'reported_success'
+            ? `${platform}:receipt:1`
+            : `unresolved:run:112061:${platform}`,
+        queryReceiptDigest: `sha256:${'b'.repeat(64)}`,
+        cohortId: plan.cohortId,
+        sourceSha,
+      },
+      ...(outcome === 'reported_success' ? {} : { recoveryAction: 'inspect' }),
+    });
+  return {
+    root,
+    paths,
+    complete: finalizeCohort([
+      claim('android', 'reported_success'),
+      claim('macos', 'reported_success'),
+    ]),
+    macosOnly: finalizeCohort([
+      claim('android', 'unknown'),
+      claim('macos', 'reported_success'),
+    ]),
+    androidNeverRan: finalizeCohort([
+      claim('android', 'not_attempted'),
+      claim('macos', 'reported_success'),
+    ]),
+  };
+}
+
+describe('protected verifier verifies only the platforms that published (#1774)', () => {
+  test("reads the shipped subset from each platform's own claim and refuses a candidate with nothing to verify", () => {
+    const { complete, macosOnly } = cohortFixture();
+    expect(shippedPlatforms(complete)).toEqual(['android', 'macos']);
+    expect(shippedPlatforms(macosOnly)).toEqual(['macos']);
+    expect(() =>
+      shippedPlatforms({
+        providerClaims: [{ platform: 'android', outcome: 'unknown' }],
+      }),
+    ).toThrow('no reported-success provider claim');
+  });
+
+  test('derives complete or partial from the observed providers and refuses an unobserved or over-observed platform', () => {
+    const { complete, macosOnly, androidNeverRan } = cohortFixture();
+    const play = { provider: 'google-play' };
+    const github = { provider: 'github-releases' };
+    expect(finalPlatformStates(complete, [play, github])).toMatchObject({
+      state: 'complete',
+      platforms: {
+        android: { state: 'complete', provider: 'google-play' },
+        macos: { state: 'complete', provider: 'github-releases' },
+      },
+    });
+    // An `unknown` claim means the Android job ran and its outcome is
+    // unresolved: the Play upload precedes the claim step, so the build may
+    // already be live. That is NOT_VERIFIED, never "not published".
+    const partial = finalPlatformStates(macosOnly, [github]);
+    expect(partial).toMatchObject({
+      state: 'partial',
+      platforms: {
+        android: {
+          state: 'NOT_VERIFIED',
+          outcome: 'unknown',
+          reason:
+            'android provider outcome unknown: unresolved:run:112061:android (the provider effect may already be live)',
+        },
+        macos: { state: 'complete', provider: 'github-releases' },
+      },
+    });
+    // Only a job that never ran attempted no provider effect.
+    expect(
+      finalPlatformStates(androidNeverRan, [github]).platforms.android,
+    ).toMatchObject({
+      state: 'NOT_PUBLISHED',
+      outcome: 'not_attempted',
+      reason:
+        'android provider outcome not_attempted: unresolved:run:112061:android',
+    });
+    // The claim digest binds the disclosure to the platform's own recorded
+    // claim, so a reader can match it to that job's state artifact.
+    const androidClaim = macosOnly.providerClaims.find(
+      (claim: any) => claim.platform === 'android',
+    );
+    expect(partial.platforms.android.claimDigest).toBe(
+      `sha256:${createHash('sha256').update(canonicalJson(androidClaim)).digest('hex')}`,
+    );
+    // A shipped platform without its observation, or an unshipped one with
+    // an observation, is a receipt claiming what was not verified.
+    expect(() => finalPlatformStates(macosOnly, [])).toThrow(
+      'macos reported success but github-releases was not observed',
+    );
+    expect(() => finalPlatformStates(macosOnly, [play, github])).toThrow(
+      'android did not report success but google-play was observed',
+    );
+    expect(() => finalPlatformStates(complete, [play])).toThrow(
+      'macos reported success but github-releases was not observed',
+    );
+  });
+
+  test("byte-verifies only the shipped platforms' staged artifacts and refuses an unadmitted group", () => {
+    const { root, paths, complete, macosOnly } = cohortFixture();
+    // The input is the real `artifact-input` writer's output, so this pins
+    // the verifier to the shape the workflow actually hands it (the finalize
+    // step on main never parsed it: the reader wanted `{artifacts:{…:"path"}}`
+    // while the writer emits the admission shape `{…:{path}}`).
+    const written = join(root, 'final-artifacts.json');
+    const writer = spawnSync(
+      process.execPath,
+      [
+        join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+        'artifact-input',
+        written,
+        ...Object.entries(paths).flatMap(([platform, group]) =>
+          Object.entries(group).map(
+            ([name, path]) => `${platform}=${name}=${path}`,
+          ),
+        ),
+      ],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    expect(writer.status, writer.stderr).toBe(0);
+    const input = () => JSON.parse(readFileSync(written, 'utf8'));
+    expect(Object.keys(input()).sort()).toEqual(['android', 'macos']);
+    expect(() =>
+      requiredArtifactPaths(complete, { artifacts: input() }, [
+        'android',
+        'macos',
+      ]),
+    ).toThrow('unadmitted platform artifacts');
+    const both = requiredArtifactPaths(complete, input(), ['android', 'macos']);
+    expect(both.map((entry) => entry.platform)).toEqual([
+      'android',
+      'macos',
+      'macos',
+      'macos',
+      'macos',
+    ]);
+    // The macOS-only night still receives the Android group from the
+    // workflow; it is neither verified nor listed.
+    const drifted = join(root, 'drifted.aab');
+    writeFileSync(drifted, 'not the admitted bytes');
+    const withDriftedAndroid = input();
+    withDriftedAndroid.android['station-nightly-universal.aab'] = {
+      path: drifted,
+    };
+    expect(
+      requiredArtifactPaths(macosOnly, withDriftedAndroid, ['macos']).map(
+        (entry) => entry.platform,
+      ),
+    ).toEqual(['macos', 'macos', 'macos', 'macos']);
+    const withoutAndroid = input();
+    delete withoutAndroid.android;
+    expect(
+      requiredArtifactPaths(macosOnly, withoutAndroid, ['macos']),
+    ).toHaveLength(4);
+    // The same drift is refused the moment Android is in the shipped set.
+    expect(() =>
+      requiredArtifactPaths(complete, withDriftedAndroid, ['android', 'macos']),
+    ).toThrow(
+      'artifact bytes drifted for android/station-nightly-universal.aab',
+    );
+    expect(() =>
+      requiredArtifactPaths(complete, withoutAndroid, ['android', 'macos']),
+    ).toThrow('artifact input has no android group');
+    const unadmitted = input();
+    unadmitted.ios = { 'app.ipa': { path: drifted } };
+    expect(() =>
+      requiredArtifactPaths(macosOnly, unadmitted, ['macos']),
+    ).toThrow('unadmitted platform ios');
   });
 });

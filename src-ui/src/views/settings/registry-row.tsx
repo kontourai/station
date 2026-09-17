@@ -13,13 +13,13 @@
 import type { SettingDefinition } from '@kontourai/station-contracts/settings-registry';
 import type { ReactNode } from 'react';
 import { PageRow } from '../../components/PageRow';
-import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import { Toggle } from '../../components/Toggle';
 import {
   CUSTOM_ROW_RENDERERS,
   DEFERRED_COMPOSITE_KEYS,
 } from './composite-editors';
 import type { RegistryRowComponentProps } from './registry-row-types';
+import { SettingRowStatus } from './SettingRowStatus';
 import {
   settingsCatalogEntryForConfigKey,
   settingsRow,
@@ -39,8 +39,16 @@ import {
  */
 function effectiveDefaultPlaceholder(
   definition: SettingDefinition,
+  runtimeDefault?: string,
 ): string | undefined {
   if (definition.placeholder !== undefined) return definition.placeholder;
+  // #1582 D9: a value this HOST reports is what the runtime would actually
+  // apply, where `defaultValue` is only what it would apply everywhere, so it
+  // is preferred over that. An explicit `placeholder` still wins above: it is
+  // authored copy for the field ("no cap", "leave empty to inherit"), not a
+  // claim about a value, and a host-reported string must not overwrite it.
+  // Most fields have no runtime default and fall through unchanged.
+  if (runtimeDefault) return runtimeDefault;
   if (definition.defaultValue === undefined || definition.defaultValue === null)
     return undefined;
   return String(definition.defaultValue);
@@ -51,6 +59,13 @@ export function renderSettingRow({
   value,
   provenance,
   onChange,
+  runtimeDefault,
+  containerScope,
+  projectName,
+  projectValue,
+  stationValue,
+  pending,
+  onResetToInherited,
 }: RegistryRowComponentProps): ReactNode {
   if (definition.userFacing === false) return null;
 
@@ -58,6 +73,11 @@ export function renderSettingRow({
   const catalogEntry = settingsCatalogEntryForConfigKey(key);
   const row = catalogEntry ? settingsRow(catalogEntry.id) : undefined;
   const Custom = CUSTOM_ROW_RENDERERS[key];
+  // #2144 slice 3: the composite rows (approval guardian, distribution
+  // profile, built-in engine) get no scope badge, inheritance popover or
+  // reset affordance in this slice. Each owns its own internal layout rather
+  // than a `PageRow` status slot, so giving them the same status strip is a
+  // separate change — the epic records it as a fast-follow.
   if (Custom) {
     return (
       <div key={key} {...row} tabIndex={row ? -1 : undefined}>
@@ -76,7 +96,32 @@ export function renderSettingRow({
   }
 
   const descriptor = definition.descriptor;
-  const badge = <ProvenanceBadge provenance={provenance} />;
+  // One element for all four generic kinds: the scope badge, the unchanged
+  // provenance chip, the inheritance popover and reset-to-inherited
+  // (#2144 slice 3, `SettingRowStatus`).
+  const badge = (
+    <SettingRowStatus
+      definition={definition}
+      provenance={provenance}
+      catalogScope={catalogEntry?.scope}
+      containerScope={containerScope}
+      projectName={projectName}
+      projectValue={projectValue}
+      // On a Station-only row the rendered value IS the Station's, so it
+      // stands in. On a project-scoped row it must not: `stationValue` is
+      // supplied there (together with every other project prop, by
+      // `StationConfigSection`), and an ABSENT Station value is a fact the
+      // layer list renders as "uses the built-in default" — substituting the
+      // rendered value would print the project's override as the Station's.
+      stationValue={
+        projectName === undefined && stationValue === undefined
+          ? value
+          : stationValue
+      }
+      pending={pending}
+      onResetToInherited={onResetToInherited}
+    />
+  );
 
   switch (descriptor.kind) {
     case 'string':
@@ -93,7 +138,10 @@ export function renderSettingRow({
               className="editor-input"
               aria-label={definition.label}
               value={(value as string) ?? ''}
-              placeholder={effectiveDefaultPlaceholder(definition)}
+              placeholder={effectiveDefaultPlaceholder(
+                definition,
+                runtimeDefault,
+              )}
               maxLength={descriptor.maxLength}
               onChange={(event) => {
                 onChange(event.target.value || null);

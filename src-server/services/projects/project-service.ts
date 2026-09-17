@@ -5,14 +5,28 @@ import type {
   ProjectConfig,
   ProjectMetadata,
 } from '@kontourai/station-contracts/project';
+import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
+import {
+  PROJECT_OVERRIDE_RECORD_FIELDS,
+  type ProjectOverrideRecordField,
+} from '@kontourai/station-contracts/project-settings-overrides';
+import {
+  resolveWorkspaceIsolationMode,
+  type WorkspaceIsolationMode,
+} from '@kontourai/station-contracts/workspace-isolation';
+import { FileStorageUnavailableError } from '../../domain/project-file-transactions.js';
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import {
   projectManifestBackfills,
   projectOps,
 } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
+import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
+
+const logger = createLogger({ name: 'project-service' });
 
 export class ProjectWorktreeDirectoryError extends Error {
   readonly code = 'project_worktree_directory_invalid';
@@ -89,6 +103,37 @@ export async function raceWorktreeDirectoryCheck<T>(
 }
 
 /** Validate the persisted-directory precondition before worktree provisioning. */
+/**
+ * A `PUT /projects/:slug` body, as `updateProject` accepts it.
+ *
+ * The settings-override fields additionally accept `null`, which DROPS the
+ * override (#2144 slice 2). Null is not a stored value for any of them —
+ * `projectSchema` has no null — so "clear this" needs a spelling that is not
+ * "store this", and `undefined` cannot be it: a spread merge cannot tell an
+ * absent key from one the caller explicitly left out.
+ */
+export type ProjectUpdate = Partial<
+  Omit<ProjectConfig, 'id' | 'slug' | 'createdAt' | ProjectOverrideRecordField>
+> & {
+  [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+};
+
+/**
+ * A `POST /projects` body, as `createProject` accepts it.
+ *
+ * Carries the same `null`-means-drop allowance as {@link ProjectUpdate}, and
+ * for a reason that is not optional: `projectUpdateSchema` IS
+ * `projectCreateSchema.partial()`, so the route's validator admits `null` on
+ * create whatever this type says. Symmetric types keep the service honest
+ * about what the schema already lets through.
+ */
+export type ProjectCreate = Omit<
+  ProjectConfig,
+  'id' | 'createdAt' | 'updatedAt' | ProjectOverrideRecordField
+> & {
+  [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+};
+
 export async function assertProjectWorktreeDirectory(
   projectSlug: string,
   workingDirectory: string | undefined,
@@ -195,10 +240,39 @@ export class ProjectService {
    * (`docs/design/portable-project-identity.md` §5, and its archive#1302
    * "designed but dead" precedent).
    */
+  /**
+   * `stationDefaultWorkspaceIsolation` reads this Station's
+   * `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) so the worktree
+   * directory preflights below judge the mode a chat will ACTUALLY start in,
+   * not just the one the project record names. Optional, and absent resolves
+   * to the shared checkout — which is how every caller behaved before the
+   * Station default existed.
+   */
   constructor(
     private storageAdapter: IStorageAdapter,
     private manifests?: Pick<ProjectManifestStore, 'ensureProjectManifest'>,
+    private stationDefaultWorkspaceIsolation?: () => Promise<
+      WorkspaceIsolationMode | undefined
+    >,
   ) {}
+
+  /**
+   * The mode a new chat in this project would start in — the project's own
+   * choice, then this Station's default, then shared. The preflights below
+   * are the early, specific "this directory is not a git repository" the
+   * person gets at save time instead of a failed chat start; they have to ask
+   * the same question `execution-target-resolver.ts` asks, or a project
+   * inheriting a Station default of `worktree` skips the check entirely and
+   * finds out at the first turn.
+   */
+  private async effectiveWorkspaceIsolation(
+    projectMode: WorkspaceIsolationMode | undefined,
+  ): Promise<WorkspaceIsolationMode> {
+    return resolveWorkspaceIsolationMode(
+      projectMode,
+      await this.stationDefaultWorkspaceIsolation?.(),
+    );
+  }
 
   listProjects(): ProjectMetadata[] {
     return this.storageAdapter.listProjects();
@@ -208,51 +282,8 @@ export class ProjectService {
     return this.storageAdapter.getProject(slug);
   }
 
-  async createProject(
-    config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
-  ): Promise<ProjectConfig> {
-    // Derive name from working directory basename if not provided
-    let name = config.name;
-    if ((!name || name === 'Untitled') && config.workingDirectory) {
-      const basename = config.workingDirectory.split('/').filter(Boolean).pop();
-      if (basename) {
-        name = basename.charAt(0).toUpperCase() + basename.slice(1);
-      }
-    }
-    name = name || config.name;
-
-    // Derive slug from name when the caller omits it — the storage layer
-    // requires a slug for the on-disk project path (archive#597).
-    let slug = config.slug?.trim();
-    if (!slug) {
-      const base = slugifyProjectName(name);
-      const existingSlugs = new Set(
-        this.storageAdapter.listProjects().map((project) => project.slug),
-      );
-      slug = base;
-      let suffix = 2;
-      while (existingSlugs.has(slug)) {
-        slug = `${base}-${suffix++}`;
-      }
-    }
-
-    if (config.defaultWorkspaceIsolation === 'worktree') {
-      await assertProjectWorktreeDirectory(slug, config.workingDirectory);
-    }
-
-    const now = new Date().toISOString();
-    const project: ProjectConfig = {
-      ...config,
-      name,
-      slug,
-      id: randomUUID(),
-      knowledgeNamespaces: [...BUILTIN_KNOWLEDGE_NAMESPACES],
-      createdAt: now,
-      updatedAt: now,
-    };
-    if (project.defaultEnvironment?.kind === 'current') {
-      delete project.defaultEnvironment;
-    }
+  async createProject(config: ProjectCreate): Promise<ProjectConfig> {
+    const project = await this.prepareProjectConfig(config);
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
     // so it is created AFTER the project exists on disk. `ensureProjectManifest`
@@ -275,9 +306,9 @@ export class ProjectService {
         await this.manifests.ensureProjectManifest(project);
       } catch (error) {
         projectManifestBackfills.add(1, { outcome: 'failed' });
-        console.warn(
-          `Project "${project.slug}" was created, but writing its manifest sidecar failed; it stays on the working-directory compat path:`,
-          error,
+        logger.warn(
+          'Project was created, but writing its manifest sidecar failed; it stays on the working-directory compat path',
+          { project: project.slug, error },
         );
       }
     }
@@ -288,9 +319,107 @@ export class ProjectService {
     return project;
   }
 
+  async createAttachedProject(
+    config: Omit<ProjectConfig, 'id' | 'createdAt' | 'updatedAt'>,
+    portableIdentity: ProjectPortableIdentity,
+  ): Promise<ProjectConfig> {
+    const identity = parseProjectPortableIdentity(portableIdentity);
+    const create = this.storageAdapter.createProjectWithIdentity?.bind(
+      this.storageAdapter,
+    );
+    if (!create)
+      throw new FileStorageUnavailableError(
+        'This storage adapter cannot atomically attach a portable Project.',
+      );
+    const project = await this.prepareProjectConfig(config);
+    await create(project, identity);
+    projectOps.add(1, {
+      operation: 'create',
+      project: project.slug || project.id,
+    });
+    return project;
+  }
+
+  private async prepareProjectConfig(
+    config: ProjectCreate,
+  ): Promise<ProjectConfig> {
+    // #2144 slice 2, same rule as `updateProject`: `null` on a
+    // settings-override field means "no override", not "store null". The two
+    // schemas are one schema — `projectUpdateSchema` IS
+    // `projectCreateSchema.partial()` — so create receives the null the
+    // route's validator lets through, and `projectSchema`
+    // (file-storage-schemas.ts) admits none, which would make a brand-new
+    // record unloadable on its first read.
+    //
+    // Dropped HERE, before anything reads the fields: the worktree preflight
+    // below asks what mode this project will resolve to, and `null` is not a
+    // mode — passing it through would make "no override" look like a choice
+    // to whatever read it next.
+    const normalized = { ...config } as Omit<
+      ProjectConfig,
+      'id' | 'createdAt' | 'updatedAt'
+    >;
+    for (const field of PROJECT_OVERRIDE_RECORD_FIELDS) {
+      if ((config as Record<string, unknown>)[field] === null) {
+        delete normalized[field];
+      }
+    }
+    // Rebound, not reassigned: a reassigned parameter keeps its declared
+    // (nullable) type, and every read below must see the narrowed one.
+    const input = normalized;
+
+    // Derive name from working directory basename if not provided
+    let name = input.name;
+    if ((!name || name === 'Untitled') && input.workingDirectory) {
+      const basename = input.workingDirectory.split('/').filter(Boolean).pop();
+      if (basename) {
+        name = basename.charAt(0).toUpperCase() + basename.slice(1);
+      }
+    }
+    name = name || input.name;
+
+    // Derive slug from name when the caller omits it — the storage layer
+    // requires a slug for the on-disk project path (archive#597).
+    let slug = input.slug?.trim();
+    if (!slug) {
+      const base = slugifyProjectName(name);
+      const existingSlugs = new Set(
+        this.storageAdapter.listProjects().map((project) => project.slug),
+      );
+      slug = base;
+      let suffix = 2;
+      while (existingSlugs.has(slug)) {
+        slug = `${base}-${suffix++}`;
+      }
+    }
+
+    if (
+      (await this.effectiveWorkspaceIsolation(
+        input.defaultWorkspaceIsolation,
+      )) === 'worktree'
+    ) {
+      await assertProjectWorktreeDirectory(slug, input.workingDirectory);
+    }
+
+    const now = new Date().toISOString();
+    const project: ProjectConfig = {
+      ...input,
+      name,
+      slug,
+      id: randomUUID(),
+      knowledgeNamespaces: [...BUILTIN_KNOWLEDGE_NAMESPACES],
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (project.defaultEnvironment?.kind === 'current') {
+      delete project.defaultEnvironment;
+    }
+    return project;
+  }
+
   async updateProject(
     slug: string,
-    updates: Partial<Omit<ProjectConfig, 'id' | 'slug' | 'createdAt'>>,
+    updates: ProjectUpdate,
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
@@ -298,14 +427,33 @@ export class ProjectService {
       ...existing,
       ...updates,
       updatedAt: new Date().toISOString(),
-    };
+    } as ProjectConfig;
+    // #2144 slice 2: `null` on a settings-override field DROPS the override
+    // rather than storing it. Storing it is not an option that merely reads
+    // oddly — `projectSchema` (file-storage-schemas.ts) has no null for any
+    // of these, so a stored null makes the record unloadable on the next
+    // read. Applied after the spread so it also clears a field the existing
+    // record carried.
+    for (const field of PROJECT_OVERRIDE_RECORD_FIELDS) {
+      if ((updates as Record<string, unknown>)[field] === null) {
+        delete updated[field];
+      }
+    }
     if (updated.defaultEnvironment?.kind === 'current') {
       delete updated.defaultEnvironment;
     }
+    // The trigger list gains `null` (#2144 slice 2): dropping the project's
+    // own mode is a change of the effective mode exactly as setting it is —
+    // the project stops naming one and lands on the Station default, which
+    // may be `worktree`. Without it, "use the Station default" was the one
+    // edit that could newly require a git repository and never check for one.
     if (
-      updated.defaultWorkspaceIsolation === 'worktree' &&
       ('workingDirectory' in updates ||
-        updates.defaultWorkspaceIsolation === 'worktree')
+        updates.defaultWorkspaceIsolation === 'worktree' ||
+        updates.defaultWorkspaceIsolation === null) &&
+      (await this.effectiveWorkspaceIsolation(
+        updated.defaultWorkspaceIsolation,
+      )) === 'worktree'
     ) {
       await assertProjectWorktreeDirectory(slug, updated.workingDirectory);
     }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -249,6 +249,7 @@ describe('MuseAdapter', () => {
       'agent-runtime',
       'session-lifecycle',
       'external-process',
+      'image-input',
     ]);
     // Slice 1 proves none of these; declaring one would be a label with
     // nothing deriving it.
@@ -258,6 +259,33 @@ describe('MuseAdapter', () => {
     // Fail-closed chat readiness (`system-status-routes.ts`) skips any adapter
     // that cannot be verified, so this must be a real function.
     expect(typeof adapter.getPrerequisites).toBe('function');
+  });
+
+  test('passes validated image bytes to Muse and removes them only after process exit', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'image-turn',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'image-turn',
+      input: 'Inspect image',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'test.png',
+          mimeType: 'image/png',
+          size: 3,
+          dataUrl: 'data:image/png;base64,YWJj',
+        },
+      ],
+    });
+    const args = harness.spawnArgs[0];
+    const path = args[args.indexOf('--image') + 1];
+    expect(readFileSync(path, 'utf8')).toBe('abc');
+    harness.processes[0].exit(0);
+    await flushIo();
+    expect(existsSync(path)).toBe(false);
   });
 
   test('startSession spawns nothing and publishes the canonical lifecycle', async () => {
@@ -1205,6 +1233,12 @@ describe('MuseAdapter', () => {
 
     // A child writing without newlines. stderr was already bounded; stdout
     // was not, so this grew for the life of the turn.
+    //
+    // The bound as shipped, as a literal: every other assertion here is
+    // `MAX + 1`, which stays green at any value, so raising the ceiling on
+    // how much child-controlled memory one unterminated line may hold should
+    // be a visible decision in a diff.
+    expect(MUSE_STDOUT_BUFFER_MAX_CHARS).toBe(1_048_576);
     harness.processes[0].stdout.write(
       'x'.repeat(MUSE_STDOUT_BUFFER_MAX_CHARS + 1),
     );

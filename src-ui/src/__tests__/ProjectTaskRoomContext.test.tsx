@@ -2,6 +2,7 @@
 
 import type { ProjectTaskRoomBrowserLiveSnapshot } from '@kontourai/station-contracts/project-task-room-browser';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useLayoutEffect, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -12,6 +13,11 @@ const mocks = vi.hoisted(() => ({
     | {
         onRoom?(value: ProjectTaskRoomBrowserLiveSnapshot): void;
         onDocument?(value: unknown): void;
+        onAuthoritativeDocument?(value: {
+          kind: 'snapshot' | 'delta';
+          revision: string;
+          text: string;
+        }): void;
         onTerminal?(): void;
       }
     | undefined,
@@ -89,6 +95,28 @@ function Consumer() {
   );
 }
 
+function DocumentConsumer() {
+  const room = useProjectTaskRoomContext('task-1');
+  const [revision, setRevision] = useState('none');
+  useLayoutEffect(
+    () => room?.subscribeDocument((document) => setRevision(document.revision)),
+    [room],
+  );
+  return <span>{revision}</span>;
+}
+
+function ThrowingDocumentConsumer() {
+  const room = useProjectTaskRoomContext('task-1');
+  useLayoutEffect(
+    () =>
+      room?.subscribeDocument(() => {
+        throw new Error('pane observer failed');
+      }),
+    [room],
+  );
+  return null;
+}
+
 beforeEach(() => {
   mocks.command.mockReset();
   mocks.restart.mockReset();
@@ -129,6 +157,52 @@ test('takes viewer identity from the server even when the participant is already
   act(() => mocks.stream?.onRoom?.(snapshot('self')));
   expect(screen.getByText('actor-self')).toBeTruthy();
   expect(screen.getByText('self')).toBeTruthy();
+});
+
+test('forwards parsed documents synchronously while the stream is current', () => {
+  render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <DocumentConsumer />
+    </ProjectTaskRoomProvider>,
+  );
+
+  act(() =>
+    mocks.stream?.onAuthoritativeDocument?.({
+      kind: 'delta',
+      revision: 'revision-2',
+      text: 'two',
+    }),
+  );
+  expect(screen.getByText('revision-2')).toBeTruthy();
+  act(() => mocks.stream?.onTerminal?.());
+  act(() =>
+    mocks.stream?.onAuthoritativeDocument?.({
+      kind: 'delta',
+      revision: 'revision-3',
+      text: 'three',
+    }),
+  );
+  expect(screen.getByText('revision-2')).toBeTruthy();
+});
+
+test('isolates a throwing document listener from sibling panes', () => {
+  render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <ThrowingDocumentConsumer />
+      <DocumentConsumer />
+    </ProjectTaskRoomProvider>,
+  );
+
+  expect(() =>
+    act(() =>
+      mocks.stream?.onAuthoritativeDocument?.({
+        kind: 'delta',
+        revision: 'revision-2',
+        text: 'two',
+      }),
+    ),
+  ).not.toThrow();
+  expect(screen.getByText('revision-2')).toBeTruthy();
 });
 
 test('heartbeats a joined viewer beyond the production live TTL', async () => {

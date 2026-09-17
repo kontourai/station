@@ -9,7 +9,6 @@ const PRODUCT_MARK_TIMEOUT_MS = import.meta.env.MODE === 'test' ? 50 : 30_000;
 const REFERENCE_SAMPLE_SETTLE_MS = import.meta.env.MODE === 'test' ? 0 : 4_000;
 const COLLABORATION_SAMPLE_SETTLE_MS =
   import.meta.env.MODE === 'test' ? 0 : 4_000;
-const RECONNECT_SAMPLE_SETTLE_MS = import.meta.env.MODE === 'test' ? 0 : 4_000;
 const ONE_HOUR_REFERENCE_DURATION_MS = 60 * 60 * 1000;
 
 interface Sampling {
@@ -44,6 +43,7 @@ interface BatchTiming {
 
 interface BatchObserver {
   next(): Promise<BatchTiming>;
+  latest(): BatchTiming | undefined;
   close(): void;
 }
 interface FilePreviewFetchObserver {
@@ -103,6 +103,7 @@ interface ProductMarkObserver {
     afterEpochMs: number;
   }): Promise<RemoteCursorCommitMark>;
   latestTaskCommit(): TaskEditorCommitMark | undefined;
+  latestTaskApply(): TaskDocumentApplyMark | undefined;
   reconnectStrategy(input: {
     taskId: string;
     strategy: 'delta' | 'snapshot' | 'gap';
@@ -205,7 +206,7 @@ declare global {
   }
 }
 
-export function interactiveWorkspaceReferenceModeEnabled(): boolean {
+function interactiveWorkspaceReferenceModeEnabled(): boolean {
   return (
     import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1' &&
     new URLSearchParams(window.location.search).get(MODE_PARAM) === MODE_VALUE
@@ -287,7 +288,17 @@ export async function observeReconnectMark(
         afterEpochMs: strategy.receivedEpochMs,
       });
     } catch {
-      throw new Error('reconnect apply wait timed out');
+      const latest = marks.latestTaskApply();
+      const detail = !latest
+        ? 'no task apply observed'
+        : latest.taskId !== taskId
+          ? 'latest apply belongs to another task'
+          : latest.workingRevision !== input.expectedRevision
+            ? 'latest apply revision mismatch'
+            : latest.appliedEpochMs < strategy.receivedEpochMs
+              ? 'matching apply preceded reconnect strategy'
+              : 'matching apply was rejected unexpectedly';
+      throw new Error(`reconnect apply wait timed out; ${detail}`);
     }
     // A matching DOM revision may have been rendered before the restart. Only
     // the product-owned commit mark, emitted after this strategy event, proves
@@ -437,6 +448,16 @@ export async function measureInteractiveWorkspace(
           observations.push(await measureReconnect(fixture, input.sampling));
         else observations.push(unavailableFixture(fixture.id));
       } catch (error) {
+        // Numeric DOM diagnostics stay in the raw failure artifact; they do
+        // not become measurements or expose file paths/content in a receipt.
+        const fileSurfaces =
+          fixture.id === 'open-100k-lines'
+            ? Array.from(
+                document.querySelectorAll<HTMLElement>(
+                  '[data-station-performance-surface="workspace-file-preview"]',
+                ),
+              )
+            : [];
         observations.push({
           fixtureId: fixture.id,
           status: 'NOT_VERIFIED',
@@ -444,7 +465,43 @@ export async function measureInteractiveWorkspace(
             `PRODUCT_MARK_MEASUREMENT_FAILED_${fixture.id}`,
             productMarkFailureCode(error),
           ],
-          counts: { failures: 1, degraded: 0 },
+          ...(error instanceof ClosedCollaborationFailure
+            ? { driverFailure: error.receipt }
+            : {}),
+          ...(fixture.id === 'remote-apply'
+            ? {
+                remoteApplyFailure: {
+                  acceptedEpochMs: batches.latest()?.acceptedAt ?? null,
+                  appliedEpochMs:
+                    marks.latestTaskApply()?.appliedEpochMs ?? null,
+                  committedEpochMs:
+                    marks.latestTaskCommit()?.committedEpochMs ?? null,
+                  applyMatchesTask: marks.latestTaskApply()?.taskId === taskId,
+                  commitMatchesTask:
+                    marks.latestTaskCommit()?.taskId === taskId,
+                  applyMatchesCommitRevision:
+                    marks.latestTaskApply()?.workingRevision ===
+                    marks.latestTaskCommit()?.workingRevision,
+                },
+              }
+            : {}),
+          counts: {
+            failures: 1,
+            degraded: 0,
+            ...(fixture.id === 'open-100k-lines'
+              ? {
+                  fileSurfaceCount: fileSurfaces.length,
+                  visibleFileSurfaceCount: fileSurfaces.filter(
+                    (surface) => surface.getClientRects().length > 0,
+                  ).length,
+                  selectedSurfaceClientHeight:
+                    fileSurfaces[0]?.clientHeight ?? 0,
+                  selectedSurfaceScrollHeight:
+                    fileSurfaces[0]?.scrollHeight ?? 0,
+                  selectedSurfaceScrollTop: fileSurfaces[0]?.scrollTop ?? 0,
+                }
+              : {}),
+          },
         });
       } finally {
         const observation = observations.at(-1);
@@ -456,8 +513,8 @@ export async function measureInteractiveWorkspace(
       }
     }
   } finally {
-    batches.close();
     filePreviewFetches.close();
+    batches.close();
     marks.close();
   }
   observations.sort(
@@ -565,9 +622,6 @@ async function measureReconnect(
           },
         },
       });
-    await new Promise((resolve) =>
-      setTimeout(resolve, RECONNECT_SAMPLE_SETTLE_MS),
-    );
   }
   return {
     ...verifiedFixture(fixture, sampling, measurements),
@@ -582,14 +636,17 @@ export function reconnectDriverStage(message: string): string {
   const named = /Reconnect stage ([A-Z0-9_]+) failed/.exec(message);
   if (named) {
     if (message.includes('strategy wait')) return `${named[1]}_STRATEGY`;
+    if (message.includes('no task apply observed'))
+      return `${named[1]}_APPLY_NO_MARK`;
+    if (message.includes('latest apply belongs to another task'))
+      return `${named[1]}_APPLY_TASK_MISMATCH`;
+    if (message.includes('latest apply revision mismatch'))
+      return `${named[1]}_APPLY_REVISION_MISMATCH`;
+    if (message.includes('matching apply preceded reconnect strategy'))
+      return `${named[1]}_APPLY_BEFORE_STRATEGY`;
+    if (message.includes('matching apply was rejected unexpectedly'))
+      return `${named[1]}_APPLY_MATCH_REJECTED`;
     if (message.includes('apply wait')) return `${named[1]}_APPLY`;
-    const documentStatus = /document status ([0-9]+|none)/.exec(message);
-    if (documentStatus && documentStatus[1] !== '200')
-      return `${named[1]}_DOCUMENT_${documentStatus[1]!.toUpperCase()}`;
-    if (message.includes('editor missing after reconnect'))
-      return `${named[1]}_EDITOR_MISSING`;
-    if (/editor revision [0-9a-f]{12} expected [0-9a-f]{12}/.test(message))
-      return `${named[1]}_EDITOR_REVISION_MISMATCH`;
     if (message.includes('no task commit observed'))
       return `${named[1]}_RENDER_NO_COMMIT`;
     if (message.includes('belongs to another task'))
@@ -601,6 +658,16 @@ export function reconnectDriverStage(message: string): string {
     if (/latest task commit [0-9a-f]{12} expected [0-9a-f]{12}/.test(message))
       return `${named[1]}_RENDER_REVISION_MISMATCH`;
     if (message.includes('revision render wait')) return `${named[1]}_RENDER`;
+    // The observed failure phase takes precedence over incidental HTTP or DOM state.
+    const documentStatus = /document status ([0-9]+|none)/.exec(message);
+    if (documentStatus && documentStatus[1] !== '200')
+      return `${named[1]}_DOCUMENT_${documentStatus[1]!.toUpperCase()}`;
+    if (message.includes('editor missing after reconnect'))
+      return `${named[1]}_EDITOR_MISSING`;
+    const editorRevision =
+      /editor revision ([0-9a-f]{12}) expected ([0-9a-f]{12})/.exec(message);
+    if (editorRevision && editorRevision[1] !== editorRevision[2])
+      return `${named[1]}_EDITOR_REVISION_MISMATCH`;
     return named[1]!;
   }
   if (message.includes('old stream was not aborted')) return 'OLD_STREAM_ABORT';
@@ -634,13 +701,15 @@ async function measureCollaboration(
     try {
       return await work();
     } catch (error) {
+      const receipt = readClosedCollaborationFailure(error);
+      if (receipt) throw new ClosedCollaborationFailure(receipt);
       const message = error instanceof Error ? error.message : 'unknown';
       const diagnostic =
-        /Live command (Leave room|Join room|Announce work) status (\d{3}|UNKNOWN) outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)/.exec(
+        /Live command (Leave room|Join room|Announce work|Cursor) status (\d{3}|UNKNOWN) outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
           message,
         );
       const presence =
-        /^Collaboration presence (navigation|leave|owner-absence|join|announce) failed(?:: Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN))?$/.exec(
+        /^Collaboration presence (navigation|leave|owner-absence|join|announce) failed(?:: Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN))?$/.exec(
           message,
         );
       throw new Error(
@@ -1000,8 +1069,7 @@ async function measure100kFile(
             },
           }),
         );
-        await fetched;
-        const receipt = await commitMark;
+        const [, receipt] = await Promise.all([fetched, commitMark]);
         if (
           receipt.lineCount !== 100_000 ||
           receipt.sizeBytes < 100_000 ||
@@ -1013,7 +1081,9 @@ async function measure100kFile(
       if (phase === 'cold') coldNetworkFetched &&= true;
       else warmNetworkFetched &&= true;
       const editableAt = timeline(commit.committedEpochMs);
-      const scrollStartedAt = Math.max(performance.now(), editableAt);
+      // Product marks travel through epoch milliseconds; use the same
+      // conversion for the start so sub-millisecond rounding cannot reverse it.
+      const scrollStartedAt = Math.max(timeline(browserEpochMs()), editableAt);
       const scroll = await measure100kStage('SCROLL_FILE', async () => {
         const scrollMark = marks.filePreviewScroll({
           path: prepared.path,
@@ -1082,8 +1152,11 @@ type FileMeasurementStage =
   | 'SCROLL_FILE'
   | 'RENDER_DIFF';
 
-function fileMeasurementStageError(stage: FileMeasurementStage): Error {
-  return new Error(`100k file measurement ${stage} failed`);
+function fileMeasurementStageError(
+  stage: FileMeasurementStage,
+  cause?: unknown,
+): Error {
+  return new Error(`100k file measurement ${stage} failed`, { cause });
 }
 
 function corpusReceiptDiagnostic(
@@ -1130,10 +1203,9 @@ async function measure100kStage<T>(
       )
     )
       throw error;
-    // Preserve only the stable stage in the public reason code. Driver and DOM
-    // failures may contain volatile paths or browser text, neither of which is
-    // suitable for a durable performance receipt.
-    throw fileMeasurementStageError(stage);
+    // Keep the stage and cause locally; public receipts classify them through
+    // a closed vocabulary without retaining driver paths or browser text.
+    throw fileMeasurementStageError(stage, error);
   }
 }
 
@@ -1257,14 +1329,18 @@ async function measureRemoteApply(
     const accepted = await timing;
     if (accepted.taskId !== taskId)
       throw new Error('Batch timing Task identity changed');
-    const applied = await marks.taskApply({
-      taskId,
-      afterEpochMs: accepted.acceptedAt,
-    });
     const commit = await marks.taskCommit({
       taskId,
       text: desired,
       notWorkingRevision: workingRevision,
+      afterEpochMs: input.exitedEpochMs,
+    });
+    // Select the observed operation by revision and the browser's own clock.
+    // A server/browser clock disagreement belongs in timing validation; it
+    // must not discard an emitted mark and masquerade as a missing UI update.
+    const applied = await marks.taskApply({
+      taskId,
+      workingRevision: commit.workingRevision,
       afterEpochMs: input.exitedEpochMs,
     });
     if (commit.committedEpochMs < accepted.acceptedAt)
@@ -1338,7 +1414,8 @@ async function measureRemoteApply(
 }
 
 function observeBatchFetches(): BatchObserver {
-  const original = window.fetch.bind(window);
+  const original = window.fetch;
+  let latestTiming: BatchTiming | undefined;
   const waiters: Array<{
     resolve(timing: BatchTiming): void;
     reject(error: Error): void;
@@ -1376,6 +1453,7 @@ function observeBatchFetches(): BatchObserver {
         ingressAt: receipt.ingressEpochMs,
         acceptedAt: receipt.acceptedEpochMs,
       };
+      latestTiming = timing;
       const waiter = waiters.shift();
       if (waiter) waiter.resolve(timing);
       else queued.push(timing);
@@ -1390,6 +1468,7 @@ function observeBatchFetches(): BatchObserver {
     }
   };
   return {
+    latest: () => latestTiming,
     next: () => {
       const error = errors.shift();
       if (error) return Promise.reject(error);
@@ -1410,14 +1489,12 @@ function observeBatchFetches(): BatchObserver {
 }
 
 /** Records a real preview request. Cached query data never reaches this seam. */
-function observeFilePreviewFetches(): FilePreviewFetchObserver {
-  const original = window.fetch.bind(window);
-  const queued: string[] = [];
-  const waiters: Array<{
-    path: string;
-    resolve(): void;
-    reject(error: Error): void;
-  }> = [];
+export function observeFilePreviewFetches(): FilePreviewFetchObserver {
+  const original = window.fetch;
+  type Waiter = { path: string; resolve(): void; reject(error: Error): void };
+  const waiting: Waiter[] = [];
+  const pending = new Set<Waiter>();
+  let closed = false;
   window.fetch = async (input, init) => {
     const url =
       typeof input === 'string'
@@ -1425,47 +1502,68 @@ function observeFilePreviewFetches(): FilePreviewFetchObserver {
         : input instanceof URL
           ? input.href
           : input.url;
-    const isPreview = /\/api\/projects\/[^/]+\/file-preview(?:\?|$)/.test(url);
+    let waiter: Waiter | undefined;
+    // Bind against the waiters present at request start, including when a
+    // Request object's cloned body takes another microtask to decode.
+    const eligible = waiting.slice();
+    const method =
+      init?.method ?? (input instanceof Request ? input.method : undefined);
+    if (
+      /\/api\/projects\/[^/]+\/file-preview(?:\?|$)/.test(url) &&
+      method?.toUpperCase() === 'POST'
+    ) {
+      try {
+        const encoded =
+          typeof init?.body === 'string'
+            ? init.body
+            : init?.body === undefined && input instanceof Request
+              ? await input.clone().text()
+              : undefined;
+        const body = encoded === undefined ? undefined : JSON.parse(encoded);
+        const candidate = eligible.find((entry) => entry.path === body?.path);
+        const index = candidate ? waiting.indexOf(candidate) : -1;
+        if (index >= 0) [waiter] = waiting.splice(index, 1);
+      } catch {
+        /* An unrecognized body provides no refresh evidence. */
+      }
+    }
     try {
-      const response = await original(input, init);
-      if (isPreview && response.ok) {
-        // The exact product query key supplies the path; this observer's job
-        // is solely to reject a cache-only "refresh".
-        const waiter = waiters.shift();
-        if (waiter) waiter.resolve();
-        else queued.push(url);
+      const response = await original.call(window, input, init);
+      if (waiter) {
+        pending.delete(waiter);
+        if (response.ok) waiter.resolve();
+        else waiter.reject(new Error('File preview fetch failed'));
       }
       return response;
     } catch (error) {
-      if (isPreview) {
-        const waiter = waiters.shift();
-        if (waiter)
-          waiter.reject(
-            error instanceof Error
-              ? error
-              : new Error('File preview fetch failed'),
-          );
+      if (waiter) {
+        pending.delete(waiter);
+        waiter.reject(
+          error instanceof Error
+            ? error
+            : new Error('File preview fetch failed'),
+        );
       }
       throw error;
     }
   };
   return {
     next: (path) => {
-      if (!path)
-        return Promise.reject(new Error('File preview path is invalid'));
-      if (queued.length) {
-        queued.shift();
-        return Promise.resolve();
-      }
-      return new Promise<void>((resolve, reject) =>
-        waiters.push({ path, resolve, reject }),
-      );
+      if (!path || closed)
+        return Promise.reject(new Error('File preview observer unavailable'));
+      return new Promise<void>((resolve, reject) => {
+        const waiter = { path, resolve, reject };
+        waiting.push(waiter);
+        pending.add(waiter);
+      });
     },
     close: () => {
+      closed = true;
       window.fetch = original;
-      for (const waiter of waiters.splice(0))
+      for (const waiter of pending)
         waiter.reject(new Error('File preview observer closed'));
-      queued.splice(0);
+      pending.clear();
+      waiting.splice(0);
     },
   };
 }
@@ -1480,7 +1578,7 @@ function currentFilePreviewProjectSlug(): string {
   return projectSlug;
 }
 
-function observeProductMarks(
+export function observeProductMarks(
   journalForMark?: () => ForegroundWorkJournal | undefined,
 ): ProductMarkObserver {
   const taskInputs = markQueue<TaskInputHandlerMark>();
@@ -1613,6 +1711,8 @@ function observeProductMarks(
         filePreviewCommits.take(
           (mark) =>
             mark.path === input.path &&
+            (input.refreshNonce === undefined ||
+              mark.refreshNonce === input.refreshNonce) &&
             mark.committedEpochMs >= input.afterEpochMs,
         ),
         'file-preview-commit',
@@ -1622,6 +1722,7 @@ function observeProductMarks(
         filePreviewScrolls.take(
           (mark) =>
             mark.path === input.path &&
+            mark.scrolledEpochMs >= input.afterEpochMs &&
             mark.committedEpochMs >= input.afterEpochMs,
         ),
         'file-preview-scroll',
@@ -1649,6 +1750,7 @@ function observeProductMarks(
         'remote-cursor-commit',
       ),
     latestTaskCommit: () => taskCommits.latest(),
+    latestTaskApply: () => taskApplies.latest(),
     reconnectStrategy: (input) =>
       namedProductMark(
         reconnectStrategies.take(
@@ -1966,7 +2068,55 @@ function unavailableFixture(fixtureId: string) {
   };
 }
 
+interface ClosedCollaborationFailureReceipt {
+  readonly version: 1;
+  readonly stage: string;
+  readonly iteration: number | 'UNKNOWN';
+  readonly command: string | null;
+  readonly joinOutcome: string;
+  readonly stream: string;
+  readonly join: string;
+  readonly announce: string;
+  readonly dialog: string;
+  readonly telemetry: string;
+}
+
+// Exposed bindings serialize Error.message, not custom Error properties. Accept
+// only the complete bounded wire form; never retain the original message/cause.
+function readClosedCollaborationFailure(
+  error: unknown,
+): ClosedCollaborationFailureReceipt | undefined {
+  if (!(error instanceof Error) || error.message.length > 768) return;
+  const match =
+    /^Collaboration presence (navigation-context|navigation|task-context|identity|leave-state|leave|owner-absence|join|ingress-clock|send-clock|announce) failed(?:: (Live command (?:(?:depart|join|announce|cursor) (?:input|response) (?:TIMEOUT|TARGET_CLOSED|FAILED)|(?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (?:DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN))))?; iteration=(UNKNOWN|0|[1-9][0-9]{0,2}); joinOutcome=(NOT_OBSERVED|DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN); stream=(LIVE|CONNECTING|TERMINAL|UNKNOWN); join=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); announce=(ABSENT|HIDDEN|AMBIGUOUS|DISABLED|ENABLED|UNKNOWN); dialog=(VISIBLE|NONE|UNKNOWN); telemetry=(VISIBLE|NONE|UNKNOWN)$/.exec(
+      error.message,
+    );
+  if (!match) return;
+  const iteration = match[3] === 'UNKNOWN' ? 'UNKNOWN' : Number(match[3]);
+  if (iteration !== 'UNKNOWN' && iteration > 209) return;
+  return {
+    version: 1,
+    stage: match[1]!,
+    command: match[2] ?? null,
+    iteration,
+    joinOutcome: match[4]!,
+    stream: match[5]!,
+    join: match[6]!,
+    announce: match[7]!,
+    dialog: match[8]!,
+    telemetry: match[9]!,
+  };
+}
+
+class ClosedCollaborationFailure extends Error {
+  constructor(readonly receipt: ClosedCollaborationFailureReceipt) {
+    super(`Collaboration presence ${receipt.stage} failed`);
+  }
+}
+
 export function productMarkFailureCode(error: unknown): string {
+  if (error instanceof ClosedCollaborationFailure)
+    return `PRODUCT_COLLABORATION_PRESENCE_${error.receipt.stage.replaceAll('-', '_').toUpperCase()}_FAILED`;
   const message = error instanceof Error ? error.message : '';
   const corpusReceipt =
     /100k corpus receipt (CONTROL_TIMEOUT|CONTROL_CONNECTION|CONTROL_FRAMING|CONTROL_RECEIPT_TOO_LARGE|CONTROL_INVALID_JSON|CONTROL_UNKNOWN|UNAVAILABLE|REFUSED|UNKNOWN|CORPUS_ID_MISMATCH|DIGEST_MISMATCH|LINE_COUNT_MISMATCH)/.exec(
@@ -1975,7 +2125,7 @@ export function productMarkFailureCode(error: unknown): string {
   if (corpusReceipt)
     return `PRODUCT_FILE_100K_PREPARE_CORPUS_${corpusReceipt[1]!}`;
   const liveCommand =
-    /Collaboration (?:presence|measure) ([a-z-]+) failed: (?:Collaboration presence (?:navigation|leave|owner-absence|join|announce) failed: )?Live command (?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)/.exec(
+    /Collaboration (?:presence|measure) ([a-z-]+) failed: (?:Collaboration presence (?:navigation|leave|owner-absence|join|announce) failed: )?Live command (?:Leave room|Join room|Announce work|Cursor) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
       message,
     );
   if (liveCommand)
@@ -1983,8 +2133,15 @@ export function productMarkFailureCode(error: unknown): string {
   const fileMeasurementStage = /100k file measurement ([A-Z_]+) failed/.exec(
     message,
   );
-  if (fileMeasurementStage)
+  if (fileMeasurementStage) {
+    // Classify one underlying message through the same closed vocabulary.
+    // Never serialize driver paths, page text, or an arbitrary cause chain.
+    if (error instanceof Error && error.cause instanceof Error) {
+      const detail = productMarkFailureCode(new Error(error.cause.message));
+      if (detail !== 'PRODUCT_MARK_FAILURE_UNCLASSIFIED') return detail;
+    }
     return `PRODUCT_FILE_100K_${fileMeasurementStage[1]!}_FAILED`;
+  }
   const presenceStage =
     /Collaboration presence (navigation|leave|owner-absence|join|announce) failed/.exec(
       message,
@@ -1996,7 +2153,7 @@ export function productMarkFailureCode(error: unknown): string {
   );
   if (collaborationMeasure)
     if (
-      /Live command .* outcome (DEPARTED|JOINED|UPDATED|REFRESHED|DEGRADED|REFUSED|UNAVAILABLE|UNKNOWN)/.test(
+      /Live command .* outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.test(
         message,
       )
     )
@@ -2011,6 +2168,8 @@ export function productMarkFailureCode(error: unknown): string {
   if (reconnectDriver) return `PRODUCT_RECONNECT_DRIVER_${reconnectDriver[1]!}`;
   if (message.includes('task-input product'))
     return 'PRODUCT_TASK_INPUT_TIMEOUT';
+  if (message.includes('task-apply product'))
+    return 'PRODUCT_TASK_APPLY_TIMEOUT';
   if (message.includes('task-commit product'))
     return 'PRODUCT_TASK_COMMIT_TIMEOUT';
   if (message.includes('diff-commit product'))

@@ -67,16 +67,22 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
+import { PairingSection } from '../views/settings/PairingSection';
 import {
   NotificationsSection,
   VoiceFeaturesSection,
 } from '../views/settings/VoiceFeaturesSection';
 
+// #2182 moved mobile pairing into its own section. It is rendered here
+// alongside the others because the contract under test is the SHARED switch
+// shape (`feature-toggle.tsx`), which both sections now draw — splitting the
+// section must not split the guarantee.
 function renderRows() {
   render(
     <>
       <VoiceFeaturesSection />
-      <NotificationsSection apiBase="http://host" guard={(cb) => cb()} />
+      <PairingSection />
+      <NotificationsSection apiBase="http://host" />
     </>,
   );
 }
@@ -181,4 +187,41 @@ describe('VoiceFeaturesSection / NotificationsSection — one native switch per 
       });
     });
   }
+
+  /**
+   * Mobile pairing is the one row carrying a privacy note, and that note is
+   * a consequence of flipping the switch (this device starts probing for its
+   * own LAN address), not decoration beside it. Rendering it in a sibling
+   * <div> the toggle does not reference means a screen-reader user hears the
+   * description and never the consequence.
+   */
+  test('the mobile-pairing switch is described by its privacy note as well as its description', () => {
+    renderRows();
+    const toggle = getSwitch(/mobile pairing/i);
+    const describedBy = (toggle.getAttribute('aria-describedby') ?? '').split(
+      /\s+/,
+    );
+
+    expect(describedBy).toEqual([
+      'feature-desc-mobilePairingEnabled',
+      'feature-privacy-mobilePairingEnabled',
+    ]);
+    for (const id of describedBy) {
+      expect(document.getElementById(id)).toBeTruthy();
+    }
+    expect(
+      document.getElementById('feature-privacy-mobilePairingEnabled')
+        ?.textContent,
+    ).toBe(
+      'Detects this device’s local IP address via WebRTC while the panel is shown.',
+    );
+  });
+
+  test('a row without a privacy note is described by its description alone', () => {
+    renderRows();
+
+    expect(getSwitch(/voice pill/i).getAttribute('aria-describedby')).toBe(
+      'feature-desc-voiceS2SEnabled',
+    );
+  });
 });

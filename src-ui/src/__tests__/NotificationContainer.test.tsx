@@ -38,16 +38,25 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   }),
 }));
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     setProject,
     setLayout,
     // Must be the module-level spy, not a fresh `vi.fn` per render: the
     // navigateTo assertions below inspect `navigate`, and handing the component
     // a throwaway mock made them unfalsifiable (they asserted 0 calls forever).
     navigate,
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 
@@ -155,6 +164,57 @@ describe('NotificationContainer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
     expect(allowOnce).toHaveBeenCalledOnce();
     expect(dismissToast).toHaveBeenCalledWith('approval-1');
+  });
+
+  test('an approval card shows what the tool call will actually do (#1545)', () => {
+    // The tool name alone is not a decision: "Claude wants to use Bash" reads
+    // the same for `git status` and for the command below.
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'Claude wants to use Bash',
+        type: 'tool-approval',
+        toolPreview: 'rm -rf /var/tmp/scratch',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [
+          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          {
+            label: 'Allow Bash for this session',
+            variant: 'secondary',
+            onClick: vi.fn(),
+          },
+        ],
+      },
+    ];
+
+    render(<NotificationContainer />);
+    fireEvent.click(screen.getByRole('button', { name: '1 pending approval' }));
+
+    expect(screen.getByText('rm -rf /var/tmp/scratch')).toBeTruthy();
+    // The standing grant has to say what it grants — "Allow for Session" reads
+    // as a grant for this one call.
+    expect(
+      screen.getByRole('button', { name: 'Allow Bash for this session' }),
+    ).toBeTruthy();
+  });
+
+  test('an approval card with no derivable preview renders no empty preview row', () => {
+    notifications = [
+      {
+        id: 'approval-1',
+        message: 'Claude wants to use AskUserQuestion',
+        type: 'tool-approval',
+        timestamp: Date.now(),
+        dismissed: false,
+        actions: [],
+      },
+    ];
+
+    render(<NotificationContainer />);
+    fireEvent.click(screen.getByRole('button', { name: '1 pending approval' }));
+
+    expect(document.querySelector('.toast-card__detail--tool')).toBeNull();
   });
 
   test('collapses an open approval queue on Escape or an outside tap', async () => {

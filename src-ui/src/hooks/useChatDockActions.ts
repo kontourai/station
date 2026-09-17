@@ -29,7 +29,11 @@ interface UseChatDockActionsOptions {
   setActiveSessionId: (id: string | null) => void;
 }
 
-export interface OpenConversationOptions {
+export interface OpenConversationOptions
+  extends Pick<
+    ChatExecutionMetadata,
+    'requestedModel' | 'requestedProviderOptions'
+  > {
   projectSlug?: string;
   projectName?: string;
   model?: string;
@@ -77,7 +81,7 @@ export function useChatDockActions({
       );
       // Restore the dock's last stated maximize preference, not the
       // momentarily-live `isDockMaximized` — a round trip through a closed
-      // dock (e.g. following a delegated task into `/activity`) always
+      // dock (e.g. revealing Activity for a delegated task) always
       // clears the URL's `maximize` flag by design, so reading the live
       // value here would silently drop a maximized dock back to normal size
       // on return instead of restoring it.
@@ -130,6 +134,16 @@ export function useChatDockActions({
               ...execution,
               model: modelOverride,
               modelSource,
+              ...(modelOverride !== undefined
+                ? {
+                    requestedModel: modelOverride,
+                    requestedModelSource:
+                      modelSource ?? ('session override' as const),
+                  }
+                : {}),
+              ...(providerOptions !== undefined
+                ? { requestedProviderOptions: providerOptions }
+                : {}),
               defaultModel,
               defaultModelSource,
               providerOptions: providerOptions ?? execution.providerOptions,
@@ -250,7 +264,20 @@ export function useChatDockActions({
         agent.name,
         options.projectSlug,
         options.projectName,
-        sessionExecution,
+        {
+          ...sessionExecution,
+          ...(options.requestedModel !== undefined
+            ? {
+                requestedModel: options.requestedModel,
+                requestedModelSource: 'session override' as const,
+              }
+            : {}),
+          ...(options.requestedProviderOptions !== undefined
+            ? {
+                requestedProviderOptions: options.requestedProviderOptions,
+              }
+            : {}),
+        },
         options.conversationUpdatedAt,
         options.hydrateMessages,
       );

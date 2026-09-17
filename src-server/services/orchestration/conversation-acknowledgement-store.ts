@@ -11,7 +11,10 @@ interface AcknowledgementStoreData {
 }
 
 export interface ConversationAcknowledgementStore {
-  get(userId: string, conversationId: string): string | undefined;
+  getMany(
+    userId: string,
+    conversationIds: readonly string[],
+  ): ReadonlyMap<string, string>;
   acknowledge(input: {
     userId: string;
     conversationId: string;
@@ -41,10 +44,21 @@ export class FileConversationAcknowledgementStore
     );
   }
 
-  get(userId: string, conversationId: string): string | undefined {
+  /** One fresh snapshot per inventory read; never cache across requests. */
+  getMany(
+    userId: string,
+    conversationIds: readonly string[],
+  ): ReadonlyMap<string, string> {
+    const result = new Map<string, string>();
+    if (conversationIds.length === 0) return result;
     const data = this.store.read();
-    if (data.version !== STORE_VERSION) return undefined;
-    return data.acknowledgements[userId]?.[conversationId];
+    if (data.version !== STORE_VERSION) return result;
+    const forUser = data.acknowledgements[userId];
+    for (const id of conversationIds) {
+      const version = forUser?.[id];
+      if (version !== undefined) result.set(id, version);
+    }
+    return result;
   }
 
   acknowledge({

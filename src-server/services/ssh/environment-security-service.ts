@@ -40,13 +40,18 @@ import {
   STATION_PROOF_PROTOCOL_VERSION,
   type StationCompatibility,
 } from '@kontourai/station-contracts';
-import { admitStationRuntimeHome } from '@kontourai/station-shared/runtime-path-resolver';
 import {
-  readStationHomeSchemaVersion,
-  STATION_HOME_SCHEMA_VERSION,
-} from '@kontourai/station-shared/station-home-schema';
+  assertExistingSecurityDirectory,
+  EnvironmentSecurityRecordError,
+  readEnvironmentSecurityRecord,
+  readExistingEnvironmentSecurityRecord,
+} from '@kontourai/station-shared/environment-security-record';
+
+export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
+
 import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
+import { sleep } from '../../utils/sleep.js';
 import { DevicePairingService } from './device-pairing-service.js';
 
 const SECURITY_DIRECTORY = 'security';
@@ -86,7 +91,7 @@ const STATION_COMPATIBILITY: StationCompatibility = {
   },
 };
 
-export interface EnvironmentSecurityServiceOptions {
+interface EnvironmentSecurityServiceOptions {
   homeDir: string;
   /** Endpoint inputs are intentionally ignored: identity is endpoint-neutral. */
   hostname?: string;
@@ -107,70 +112,12 @@ interface EnvironmentSecurityLockRecord {
   host: string;
 }
 
-export class EnvironmentSecurityRecordError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'EnvironmentSecurityRecordError';
-  }
-}
-
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
 function isNodeError(error: unknown, code: string): boolean {
   return (
     error instanceof Error &&
     'code' in error &&
     (error as NodeJS.ErrnoException).code === code
   );
-}
-
-function validateRecord(value: unknown): EnvironmentSecurityRecord {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new EnvironmentSecurityRecordError(
-      'Invalid environment security record: expected an object',
-    );
-  }
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
-  if (
-    keys.length !== 3 ||
-    keys[0] !== 'credential' ||
-    keys[1] !== 'environmentId' ||
-    keys[2] !== 'schemaVersion'
-  ) {
-    throw new EnvironmentSecurityRecordError(
-      'Invalid environment security record schema',
-    );
-  }
-  if (record.schemaVersion !== ENVIRONMENT_SECURITY_SCHEMA_VERSION) {
-    throw new EnvironmentSecurityRecordError(
-      'Unsupported environment security record version',
-    );
-  }
-  if (
-    typeof record.environmentId !== 'string' ||
-    !UUID_PATTERN.test(record.environmentId)
-  ) {
-    throw new EnvironmentSecurityRecordError(
-      'Invalid environment security record environment id',
-    );
-  }
-  if (
-    typeof record.credential !== 'string' ||
-    !BASE64URL_PATTERN.test(record.credential) ||
-    Buffer.from(record.credential, 'base64url').byteLength !== 32
-  ) {
-    throw new EnvironmentSecurityRecordError(
-      'Invalid environment security record credential',
-    );
-  }
-  return {
-    schemaVersion: ENVIRONMENT_SECURITY_SCHEMA_VERSION,
-    environmentId: record.environmentId,
-    credential: record.credential,
-  };
 }
 
 function createRecord(
@@ -315,19 +262,7 @@ export class EnvironmentSecurityService {
    * home merely because they need its operator credential.
    */
   async readExistingRecord(): Promise<EnvironmentSecurityRecord> {
-    const homeDir = admitStationRuntimeHome(this.#homeDir);
-    // This is the exact, read-only schema observation used by backup/export
-    // admission. It refuses missing, malformed, or incompatible homes without
-    // acquiring the bootstrap lock or writing a schema marker.
-    const schemaVersion = readStationHomeSchemaVersion(homeDir);
-    if (schemaVersion !== STATION_HOME_SCHEMA_VERSION) {
-      throw new EnvironmentSecurityRecordError(
-        `Unsupported Station home schema version ${schemaVersion}; expected ${STATION_HOME_SCHEMA_VERSION}`,
-      );
-    }
-    const securityDir = join(homeDir, SECURITY_DIRECTORY);
-    this.#assertExistingSecurityDirectory(securityDir);
-    return this.#readRecord(join(securityDir, RECORD_FILE));
+    return readExistingEnvironmentSecurityRecord(this.#homeDir);
   }
 
   async rotateCredential(): Promise<EnvironmentSecurityRecord> {
@@ -387,6 +322,23 @@ export class EnvironmentSecurityService {
    * Web Push subscription routes require this — not verifyCredential — to
    * enforce that only a paired device can subscribe.
    */
+  canSharePersonalConversation(requesterId: string, ownerId: string): boolean {
+    return (
+      this.#devicePairingService?.canSharePersonalConversation(
+        requesterId,
+        ownerId,
+      ) ?? false
+    );
+  }
+
+  personalConversationOwnerIds(
+    requesterId: string,
+  ): readonly string[] | undefined {
+    return this.#devicePairingService?.personalConversationOwnerIds(
+      requesterId,
+    );
+  }
+
   identifyDevice(candidate: string): PairedDevice | null {
     return this.#devicePairingService?.identifyDevice(candidate) ?? null;
   }
@@ -562,6 +514,15 @@ export class EnvironmentSecurityService {
     },
   ): boolean {
     if (this.verifyOperatorCredential(candidate)) return true;
+    if (
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
+        request.method.toUpperCase(),
+      ) &&
+      (request.path === '/api/environments/peers' ||
+        request.path.startsWith('/api/environments/peers/'))
+    ) {
+      return false;
+    }
     if (request.path.startsWith('/api/pairing')) {
       // archive#1887: the family stays operator-only, with ONE narrow
       // exception. A device the operator explicitly promoted (scope carries
@@ -693,30 +654,7 @@ export class EnvironmentSecurityService {
     securityDir = this.#securityDir,
     enforcePrivateMode = true,
   ): Stats {
-    let status: Stats;
-    try {
-      status = lstatSync(securityDir);
-    } catch (error) {
-      throw new EnvironmentSecurityRecordError(
-        'Environment security directory is missing',
-        { cause: error },
-      );
-    }
-    if (!status.isDirectory() || status.isSymbolicLink()) {
-      throw new EnvironmentSecurityRecordError(
-        'Invalid environment security directory',
-      );
-    }
-    if (
-      enforcePrivateMode &&
-      process.platform !== 'win32' &&
-      (status.mode & 0o777) !== PRIVATE_DIRECTORY_MODE
-    ) {
-      throw new EnvironmentSecurityRecordError(
-        'Unsafe environment security directory permissions',
-      );
-    }
-    return status;
+    return assertExistingSecurityDirectory(securityDir, enforcePrivateMode);
   }
 
   async #withExclusiveLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -779,13 +717,30 @@ export class EnvironmentSecurityService {
     } catch (error) {
       operationError = error;
     }
-    const current = this.#readLockRecord();
+    let current: { record: EnvironmentSecurityLockRecord; status: Stats };
+    try {
+      current = this.#readLockRecord();
+    } catch (error) {
+      // Missing here means something removed the lock out from under its own
+      // owner, so this caller can no longer prove it held it. Acquisition
+      // reads ENOENT as "free"; the ownership check must not.
+      if (isNodeError(error, 'ENOENT')) {
+        throw new EnvironmentSecurityRecordError(
+          'Environment security lock disappeared while held',
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     if (current.record.nonce !== nonce) {
       throw new EnvironmentSecurityRecordError(
         'Environment security lock ownership changed unexpectedly',
       );
     }
-    await rm(this.#lockPath);
+    // Ownership was proven just above; a lock that vanished in between is
+    // the same external removal, and a raw ENOENT here would mask the
+    // operation's own error below.
+    await rm(this.#lockPath, { force: true });
     if (operationError) throw operationError;
     return result as T;
   }
@@ -807,6 +762,11 @@ export class EnvironmentSecurityService {
     try {
       parsed = JSON.parse(readFileSync(this.#lockPath, 'utf8'));
     } catch (error) {
+      // A lock that disappears between the type check above and this read is
+      // free, not invalid: its owner finished and unlinked it. Let the raw
+      // ENOENT through so #recoverStaleLockIfSafe recognizes it and lets
+      // acquisition retry. Every other read or parse failure stays closed.
+      if (isNodeError(error, 'ENOENT')) throw error;
       throw new EnvironmentSecurityRecordError(
         'Invalid environment security lock record',
         { cause: error },
@@ -831,6 +791,22 @@ export class EnvironmentSecurityService {
           candidate.ino === status.ino
         );
       });
+    if (candidates.length === 0) {
+      // An owner publishes with link-then-unlink: sampling nlink === 2 and
+      // then finding no candidate means its unlink landed in between. Prove
+      // that reading, rather than assuming it: the same inode must now have
+      // one link. Anything else stays fail-closed.
+      const settled = lstatSync(this.#lockPath);
+      if (
+        settled.dev === status.dev &&
+        settled.ino === status.ino &&
+        settled.nlink === 1
+      )
+        return;
+      throw new EnvironmentSecurityRecordError(
+        'Unsafe environment security lock type',
+      );
+    }
     if (candidates.length !== 1) {
       throw new EnvironmentSecurityRecordError(
         'Unsafe environment security lock type',
@@ -938,34 +914,7 @@ export class EnvironmentSecurityService {
   }
 
   #readRecord(recordPath = this.#recordPath): EnvironmentSecurityRecord {
-    let status: Stats;
-    try {
-      status = lstatSync(recordPath);
-    } catch (error) {
-      throw new EnvironmentSecurityRecordError(
-        'Environment security record is missing',
-        { cause: error },
-      );
-    }
-    if (!status.isFile() || status.isSymbolicLink() || status.nlink !== 1) {
-      throw new EnvironmentSecurityRecordError(
-        'Unsafe environment security record type',
-      );
-    }
-    if (process.platform !== 'win32' && (status.mode & 0o777) !== 0o600) {
-      throw new EnvironmentSecurityRecordError(
-        'Unsafe environment security record permissions',
-      );
-    }
-    try {
-      return validateRecord(JSON.parse(readFileSync(recordPath, 'utf8')));
-    } catch (error) {
-      if (error instanceof EnvironmentSecurityRecordError) throw error;
-      throw new EnvironmentSecurityRecordError(
-        'Corrupt environment security record',
-        { cause: error },
-      );
-    }
+    return readEnvironmentSecurityRecord(recordPath);
   }
 
   #writeRecordAtomically(record: EnvironmentSecurityRecord): void {

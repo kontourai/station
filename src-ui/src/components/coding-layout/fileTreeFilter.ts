@@ -1,6 +1,6 @@
 import type { CodingFileEntry } from '@kontourai/station-sdk';
 
-export interface FilteredTree {
+interface FilteredTree {
   /** Pruned tree containing only matches and their ancestor directories. */
   tree: CodingFileEntry[];
   /** Directory paths that should be force-expanded to reveal the matches. */

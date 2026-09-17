@@ -1,20 +1,15 @@
-import { useConnections } from '@kontourai/station-connect';
 import { lazy } from 'react';
 // Deep import, not the barrel: this file is in the eager shell chunk, and
 // the barrel also reaches `PageEyebrowTrail`, which only lazy route views use.
 import { PageFrame } from '../components/page-frame/PageFrame';
 import { ErrorState, SkeletonList } from '../components/state';
-import {
-  shouldRenderSetupLauncher,
-  useOnboardingSetupState,
-} from '../contexts/onboarding-setup-store';
 import type { AgentSummary, NavigationView } from '../types';
 import { resolvePageFrame } from './page-frame-registry';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
 import { routeIdentity, routeSurfaceIdentity } from './route-identity';
 import './route-transition.css';
+import { APP_DESTINATION_REGISTRY } from './destination-registry';
 import { RouteViewBoundary } from './RouteViewBoundary';
-import { APP_SURFACE_REGISTRY } from './surface-registry';
 
 // Project creation is a route-only overlay. Keeping it lazy avoids charging
 // every initial desktop load for its form, icon picker, and path autocomplete.
@@ -109,6 +104,11 @@ const WorkspacePaneRouteView = lazy(() =>
     default: module.WorkspacePaneRouteView,
   })),
 );
+const WorkspacePaneHostActionsFrame = lazy(() =>
+  import('../workspace-panes/WorkspacePaneHostActions').then((module) => ({
+    default: module.WorkspacePaneHostActionsFrame,
+  })),
+);
 const ProjectFlowConsoleView = lazy(() =>
   import('../views/ProjectFlowConsoleView').then((module) => ({
     default: module.ProjectFlowConsoleView,
@@ -129,11 +129,6 @@ const RegistryView = lazy(() =>
     default: module.RegistryView,
   })),
 );
-const ReviewQueueView = lazy(() =>
-  import('../views/ReviewQueueView').then((module) => ({
-    default: module.ReviewQueueView,
-  })),
-);
 const ScheduleView = lazy(() =>
   import('../views/ScheduleView').then((module) => ({
     default: module.ScheduleView,
@@ -142,14 +137,6 @@ const ScheduleView = lazy(() =>
 const ConsoleBoardView = lazy(() =>
   import('../views/ConsoleBoardView').then((module) => ({
     default: module.ConsoleBoardView,
-  })),
-);
-// The standalone placement of the Activity Workspace Pane (
-// archive#4142) — the pane path to the sessions surface, never the
-// surface directly.
-const ActivityView = lazy(() =>
-  import('../views/ActivityView').then((module) => ({
-    default: module.ActivityView,
   })),
 );
 const SettingsView = lazy(() =>
@@ -167,6 +154,14 @@ const BoardView = lazy(() =>
     default: module.BoardView,
   })),
 );
+// #2062. Lazy for the same reason every other view here is: a Board's host
+// pulls in the layout renderer, and the panel's Boards section must not put
+// that in the entry bundle for a Station where nobody opens one.
+const PersonalBoardView = lazy(() =>
+  import('../views/PersonalBoardView').then((module) => ({
+    default: module.PersonalBoardView,
+  })),
+);
 
 interface AppViewContentProps {
   currentView: NavigationView;
@@ -175,7 +170,17 @@ interface AppViewContentProps {
   availableModels: Array<{ id: string; name: string }>;
   defaultModel?: string;
   onNavigate: (view: NavigationView) => void;
-  onNavigateHome: () => void;
+  /**
+   * Show Home BY NAME (#1523): reveals the Home surface, placing it in `main`.
+   * For an affordance that says "home" — the not-found view's "Go home".
+   */
+  onShowHome: () => void;
+  /**
+   * Leave the routed view for `/`, whatever occupies `main` (#1523). For a
+   * dismissal — the Settings view's Escape, the New Project modal's close —
+   * which returns the user to where they were, Activity in `main` included.
+   */
+  onReturnToOutlet: () => void;
   onSettingsSaved: () => void;
   projectsLoading?: boolean;
   homeContinuation?: Extract<
@@ -191,10 +196,11 @@ export function AppViewContent(props: AppViewContentProps) {
   const routeKey = routeIdentity(props.currentView);
   const surfaceKey = routeSurfaceIdentity(props.currentView);
   // The surface the sidebar would highlight for this view — the same
-  // `getSurfaceForView` resolution `ProjectSidebarNav` uses, so the row marked
+  // `getDestinationForView` resolution `ProjectSidebarNav` uses, so the row marked
   // pending is by construction the row that will be marked active.
   const pendingSurfaceId =
-    APP_SURFACE_REGISTRY.getSurfaceForView(props.currentView)?.id ?? null;
+    APP_DESTINATION_REGISTRY.getDestinationForView(props.currentView)?.id ??
+    null;
   // Resolved ONCE and handed to both consumers: the frame that renders the
   // header, and the boundary that renders the body while the route's chunk is
   // in flight. Two calls would be two chances to disagree about what the
@@ -248,7 +254,8 @@ function AppViewContentBody({
   availableModels,
   defaultModel,
   onNavigate,
-  onNavigateHome,
+  onShowHome,
+  onReturnToOutlet,
   onSettingsSaved,
   projectsLoading,
   homeContinuation,
@@ -282,18 +289,6 @@ function AppViewContentBody({
   }
   if (currentView.type === 'registry') {
     return <RegistryView initialTab={currentView.tab} />;
-  }
-  if (currentView.type === 'review-queue') {
-    return <ReviewQueueView />;
-  }
-  if (currentView.type === 'activity') {
-    return (
-      <ActivityView
-        apiBase={apiBase}
-        sessionId={currentView.sessionId}
-        focusHint={currentView.focus}
-      />
-    );
   }
   if (currentView.type === 'plugins') {
     return <PluginManagementView onNavigate={onNavigate} />;
@@ -384,17 +379,19 @@ function AppViewContentBody({
     if (projectsLoading) {
       return <SkeletonList count={3} label="Loading your projects" />;
     }
-    return <ProjectNewViewGate onNavigateHome={onNavigateHome} />;
+    return <ProjectNewViewGate onReturnToOutlet={onReturnToOutlet} />;
   }
   if (currentView.type === 'project-edit') {
     return <ProjectSettingsView slug={currentView.slug} />;
   }
   if (currentView.type === 'layout') {
     return (
-      <ProjectLayoutRenderer
-        projectSlug={currentView.projectSlug}
-        layoutSlug={currentView.layoutSlug}
-      />
+      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
+        <ProjectLayoutRenderer
+          projectSlug={currentView.projectSlug}
+          layoutSlug={currentView.layoutSlug}
+        />
+      </WorkspacePaneHostActionsFrame>
     );
   }
   if (currentView.type === 'project') {
@@ -402,12 +399,14 @@ function AppViewContentBody({
   }
   if (currentView.type === 'workspace-pane') {
     return (
-      <WorkspacePaneRouteView
-        projectSlug={currentView.projectSlug}
-        layoutSlug={currentView.layoutSlug}
-        descriptorId={currentView.descriptorId}
-        instanceId={currentView.instanceId}
-      />
+      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
+        <WorkspacePaneRouteView
+          projectSlug={currentView.projectSlug}
+          layoutSlug={currentView.layoutSlug}
+          descriptorId={currentView.descriptorId}
+          instanceId={currentView.instanceId}
+        />
+      </WorkspacePaneHostActionsFrame>
     );
   }
   if (currentView.type === 'task') {
@@ -415,6 +414,11 @@ function AppViewContentBody({
   }
   if (currentView.type === 'board') {
     return <BoardView reference={currentView.reference} />;
+  }
+  if (currentView.type === 'personal-board') {
+    // No `WorkspacePaneHostActionsFrame`: that frame is project-scoped and
+    // takes a required `projectSlug`, which a Board has none of.
+    return <PersonalBoardView boardSlug={currentView.boardSlug} />;
   }
   if (currentView.type === 'project-session-board') {
     return <ConsoleBoardView projectSlug={currentView.slug} />;
@@ -430,7 +434,9 @@ function AppViewContentBody({
   if (currentView.type === 'settings') {
     return (
       <SettingsView
-        onBack={onNavigateHome}
+        // Escape from Settings is a dismissal, the same return as the ⌘,
+        // toggle: the outlet's occupant, not Home by name (#1523).
+        onBack={onReturnToOutlet}
         onSaved={onSettingsSaved}
         onNavigate={onNavigate}
       />
@@ -461,7 +467,8 @@ function AppViewContentBody({
           <button
             type="button"
             className="editor-btn editor-btn--primary"
-            onClick={onNavigateHome}
+            // Says "home", means Home: the Home surface, not `/`'s occupant.
+            onClick={onShowHome}
           >
             Go home
           </button>
@@ -473,39 +480,19 @@ function AppViewContentBody({
   return null;
 }
 
-/**
- * `project-new` is the one genuinely-first-run coincidence (zero connections
- * AND zero projects): the first-run `SetupLauncher` already covers the full
- * screen with its own backdrop, so stacking `NewProjectModal` behind it is a
- * second, redundant overlay (archive#191). Suppressing it here only changes
- * behavior for this view; a later, non-blocking banner (e.g. the user's only
- * connection gets disabled mid-session on some other view) is untouched and
- * still renders its normal content underneath.
- */
+/** A setup reminder is nonblocking; it cannot suppress explicit project creation. */
 function ProjectNewViewGate({
-  onNavigateHome,
+  onReturnToOutlet,
 }: {
-  onNavigateHome: () => void;
+  /** Closing the modal is a dismissal: back to `/`'s occupant (#1523). */
+  onReturnToOutlet: () => void;
 }) {
-  const { activeConnection } = useConnections();
-  const { visible, content } = useOnboardingSetupState();
-  const setupLauncherVisible = shouldRenderSetupLauncher({
-    credentialRequired: activeConnection?.credentialState === 'required',
-    setupVisible: visible,
-    setupContent: content,
-    pathname: window.location.pathname,
-  });
-
-  if (setupLauncherVisible) {
-    return null;
-  }
-
   return (
     <NewProjectModal
       isOpen
       onClose={() => {
         if (window.location.pathname === '/projects/new') {
-          onNavigateHome();
+          onReturnToOutlet();
         }
       }}
     />

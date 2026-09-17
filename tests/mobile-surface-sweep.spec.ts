@@ -1,7 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { expect, type Page } from '@playwright/test';
+import { APP_DESTINATION_REGISTRY } from '../src-ui/src/app-shell/destination-registry';
 import { deleteAgent, seedAgent } from './helpers/agents-journey';
 import {
   type AuthenticatedE2ERequest,
@@ -20,36 +18,10 @@ import {
  *     "← Back to list", and Back returns to the list — the one mobile
  *     detail contract (`SplitPaneLayout`), never a second mobile layout.
  *
- * The route list is not hand-maintained. `ROUTES` below is checked against the
- * `route:` entries `src-ui/src/app-shell/surface-registry.ts` actually
- * declares, so a surface added without a decision about its phone behaviour
- * turns this spec red instead of shipping unswept. (The registry is read as
- * TEXT rather than imported: `tsconfig.e2e.json` typechecks `tests/` under the
- * server project, and importing a `src-ui` module pulls the whole React graph
- * into a config with no `--jsx`.)
+ * The explicit visit list is checked against the runtime registry, including
+ * computed routes, so adding a surface requires a phone coverage decision.
  */
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const REGISTRY_PATH = 'src-ui/src/app-shell/surface-registry.ts';
-
-/** Every distinct `route:` the registry declares. */
-function declaredRoutes(): string[] {
-  const source = readFileSync(join(REPO_ROOT, REGISTRY_PATH), 'utf8');
-  const routes = [...source.matchAll(/^\s*route:\s*'([^']+)',$/gm)].map(
-    (match) => match[1],
-  );
-  expect(
-    routes.length,
-    `no route entries were found in ${REGISTRY_PATH}; the sweep would be vacuous`,
-  ).toBeGreaterThan(5);
-  return [...new Set(routes)].sort();
-}
-
-/**
- * The registry routes this sweep visits. Kept sorted and identical to
- * `declaredRoutes()` — the assertion below is the trip-wire, this list is what
- * a reader can see.
- */
 const ROUTES: readonly string[] = [
   '/',
   '/agents',
@@ -61,9 +33,8 @@ const ROUTES: readonly string[] = [
   '/plugins',
   '/profile',
   '/registry',
-  '/review-queue',
   '/schedule',
-  '/activity',
+  '/?surface=activity',
   '/settings',
 ];
 
@@ -81,6 +52,27 @@ const SPLIT_PANE_ROUTES: ReadonlyArray<{ path: string; item: string }> = [
 const SWEEP_AGENT_SLUG = 'e2e-sweep-agent';
 const SWEEP_SKILL = 'e2e-sweep-skill';
 
+/**
+ * #2063: the panel is chrome on every route above, and its project rows now
+ * carry a wrapping row of layout chips. A wrapping band of touch-floor
+ * controls is exactly the shape that widens a drawer, so it is swept here
+ * with the rest of the phone's floors rather than asserted only in jsdom,
+ * which computes no layout and so cannot see a wrap or a 44px box at all.
+ *
+ * Real project, real layouts: the chips are what the server returns, and
+ * enough of them, with real-length names, that a ~250px drawer column cannot
+ * hold them on one line.
+ */
+const SWEEP_PROJECT_SLUG = 'e2e-sweep-chips';
+const SWEEP_PROJECT_NAME = 'E2E Sweep Chips';
+const SWEEP_LAYOUTS = [
+  { slug: 'coding', name: 'Coding', type: 'custom' },
+  { slug: 'tasks', name: 'Tasks', type: 'custom' },
+  { slug: 'chat', name: 'Chat', type: 'chat' },
+  { slug: 'knowledge', name: 'Knowledge', type: 'custom' },
+  { slug: 'release-review', name: 'Release review', type: 'custom' },
+];
+
 async function seedSweepItems(request: AuthenticatedE2ERequest): Promise<void> {
   await deleteAgent(request, SWEEP_AGENT_SLUG);
   await seedAgent(request, {
@@ -97,6 +89,19 @@ async function seedSweepItems(request: AuthenticatedE2ERequest): Promise<void> {
     },
   });
   expect(skill.ok()).toBe(true);
+
+  await request.delete(`/api/projects/${SWEEP_PROJECT_SLUG}`);
+  const project = await request.post('/api/projects', {
+    data: { name: SWEEP_PROJECT_NAME, slug: SWEEP_PROJECT_SLUG },
+  });
+  expect(project.status(), 'seeding the chip-row project').toBe(201);
+  for (const layout of SWEEP_LAYOUTS) {
+    const created = await request.post(
+      `/api/projects/${SWEEP_PROJECT_SLUG}/layouts`,
+      { data: layout },
+    );
+    expect(created.status(), `seeding layout ${layout.slug}`).toBe(201);
+  }
 }
 
 async function tearDownSweepItems(
@@ -104,6 +109,7 @@ async function tearDownSweepItems(
 ): Promise<void> {
   await deleteAgent(request, SWEEP_AGENT_SLUG);
   await request.delete(`/api/skills/${SWEEP_SKILL}`);
+  await request.delete(`/api/projects/${SWEEP_PROJECT_SLUG}`);
 }
 
 async function assertNoHorizontalScroll(
@@ -138,12 +144,20 @@ test.describe('Mobile surface sweep at 390x844', () => {
   test('the swept route list is exactly what the surface registry declares', () => {
     // Membership, not order: the guarantee this test exists for (see the
     // header comment) is that every DECLARED route gets swept, which is a
-    // set-equality question. `declaredRoutes()` sorts alphabetically while
+    // set-equality question. The registry set sorts alphabetically while
     // `ROUTES` is ordered to match the nav for readability, so the two lists
     // legitimately disagree on position while agreeing on membership —
     // compare sorted copies so the sweep's own iteration order can't fail a
     // check it was never testing.
-    expect([...declaredRoutes()].sort()).toEqual([...ROUTES].sort());
+    expect(
+      [
+        ...new Set(
+          APP_DESTINATION_REGISTRY.getRegistered().map(
+            (destination) => destination.route,
+          ),
+        ),
+      ].sort(),
+    ).toEqual([...ROUTES].sort());
   });
 
   test('every registered route fits the phone', async ({ page }) => {
@@ -157,6 +171,42 @@ test.describe('Mobile surface sweep at 390x844', () => {
       });
       await assertNoHorizontalScroll(page, route);
     }
+  });
+
+  test('the project layout chips wrap inside the drawer and keep the 44px floor', async ({
+    page,
+  }) => {
+    await page.goto(`/projects/${SWEEP_PROJECT_SLUG}`);
+    await page.getByRole('button', { name: 'Toggle menu' }).click();
+
+    const chips = page.locator('.sidebar__layout-chips .sidebar__layout-chip');
+    await expect(chips.first()).toBeVisible({ timeout: 30_000 });
+    const boxes = await chips.evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          top: Math.round(rect.top),
+          right: rect.right,
+          width: rect.width,
+          height: rect.height,
+          text: element.textContent ?? '',
+        };
+      }),
+    );
+    expect(boxes.length).toBe(SWEEP_LAYOUTS.length);
+
+    // Wrapped, not overflowed: more than one row of chips, and none reaching
+    // past the viewport's right edge.
+    expect(new Set(boxes.map((box) => box.top)).size).toBeGreaterThan(1);
+    const undersized = boxes
+      .filter((box) => box.width < 44 || box.height < 44)
+      .map(
+        (box) => `${box.text} ${box.width.toFixed(0)}x${box.height.toFixed(0)}`,
+      );
+    expect(undersized, 'layout chips below the 44px touch floor').toEqual([]);
+    for (const box of boxes) expect(box.right).toBeLessThanOrEqual(390);
+
+    await assertNoHorizontalScroll(page, `/projects/${SWEEP_PROJECT_SLUG}`);
   });
 
   test('split-pane surfaces open the shared detail sheet and come back', async ({

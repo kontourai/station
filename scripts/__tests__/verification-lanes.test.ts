@@ -23,6 +23,7 @@ import {
   CLASS_LABELS,
   FULL_REGRESSION_PHASES,
   FULL_REGRESSION_TIMEOUT_MS,
+  INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS,
   invalidationRule,
   LANE_CLASSES,
   LANE_IDS,
@@ -86,6 +87,7 @@ describe('canonical completion lane literal', () => {
   it('keeps full-regression public while declaring bounded internal scheduling phases', () => {
     expect(resolveLane('full-regression').weight).toBe(1);
     expect(FULL_REGRESSION_PHASES).toEqual([
+      expect.objectContaining({ id: 'browser-prerequisite', weight: 20 }),
       expect.objectContaining({ id: 'repo-governance', weight: 20 }),
       expect.objectContaining({ id: 'sdk-builds', weight: 50 }),
       expect.objectContaining({ id: 'verify-static', weight: 60 }),
@@ -140,7 +142,7 @@ describe('canonical completion lane literal', () => {
         0,
       ),
     );
-    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(251 * 60_000);
+    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(252 * 60_000);
     expect(resolveLane('full-regression').timeoutMs).toBe(
       FULL_REGRESSION_TIMEOUT_MS,
     );
@@ -179,6 +181,7 @@ describe('lane catalog identity', () => {
       'test-changed',
       'prepush',
       'test-full',
+      'test-full-audit',
       'test-coverage',
       'verify-static',
       'verify-local',
@@ -361,6 +364,15 @@ describe('lane ownedOutputs truthfulness', () => {
       'packages/cli/dist/',
       'src-desktop/target/',
     ]);
+  });
+
+  it('keeps the enclosing E2E deadline longer than every reference profile', () => {
+    const deadline = resolveLane('verify-e2e-full').timeoutMs;
+    for (const reference of Object.values(
+      INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS,
+    )) {
+      expect(deadline).toBeGreaterThan(reference);
+    }
   });
 
   it('declares the mutable outputs the E2E lane creates', () => {
@@ -642,8 +654,8 @@ describe('validateLaneCatalog strictness', () => {
       entry.id === CANONICAL_COMPLETION_LANE
         ? {
             ...entry,
-            phases: entry.phases.map((phase, index) =>
-              index === 0
+            phases: entry.phases.map((phase) =>
+              phase.id === 'repo-governance'
                 ? { ...phase, command: 'npm run proof:unexpected' }
                 : phase,
             ),

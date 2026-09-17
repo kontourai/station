@@ -129,19 +129,26 @@ _Avoid_: probably, should be fine
 ### Agents And Connections
 
 **Agent**:
-The actor a user selects to perform work. Every agent is either a Station agent or an External agent, based on what runs the loop.
+The actor a user selects to perform work. Its role, capabilities, and policy
+are distinct from the engine that runs it.
 _Avoid_: runtime as a user-facing category
 
 **Station agent**:
-An agent whose loop is run by Station's engine. Station owns its prompt, model connection, skills, integrations, tools, commands, guardrails, and platform capabilities.
+The reserved built-in Agent named Station. It owns Station Control and Station
+Docs by default; a separate Station setting selects the capable engine that
+executes it.
 _Avoid_: managed agent
 
 **External agent**:
-An agent whose loop is run by an external engine such as Claude Code, Codex, or Kiro. Station owns the surrounding workspace, orchestration, and the knobs the engine exposes; the engine owns its behavior and tools.
+An Agent executed by an external engine such as Claude Code, Codex, or Kiro.
+Station owns the surrounding workspace and orchestration; the engine owns its
+loop and native behavior.
 _Avoid_: connected agent, ACP agent as a separate type, Agent app
 
 **Station's engine**:
-The agent execution machinery Station uses for Station agents. It is distinct from external engines, and it is not called a runtime in user-facing language.
+Station's native agent execution machinery over a Model connection. It can run
+the built-in Station agent or another Agent, and is distinct from external
+engines.
 _Avoid_: runtime engine
 
 **Connection**:
@@ -257,6 +264,12 @@ _Avoid_: error if the session can resume
 **Project**:
 A scoped workspace where Station associates files, layouts, agents, knowledge, runs, and receipts.
 _Avoid_: repo when the workspace may not be only a Git repository
+
+**Project home**:
+The descriptive authority/location role for a shared Project control record or
+room. It is distinct from the Home screen, plugin roles, `STATION_HOME`, and a
+local project directory or binding. See [Station topology](docs/design/station-topology.md).
+_Avoid_: `projectHomeDir` when referring to authority rather than a path
 
 **Working directory**:
 The filesystem location a project uses for file-backed work. It is project state, not necessarily the whole Station home.
@@ -669,6 +682,8 @@ An MCP integration exposes tools or resources; an MCP-UI panel is rendered conte
 
 - Station consumes Kontour primitives through published contracts only.
 - A Project has zero or more Layouts and can scope which Agents are available.
+- A Project's portable identity, local binding, room authority, and execution
+  offer are separate facts; no role label grants the others.
 - A Project has zero or more durable Tasks; a Task may correlate exact Sessions, runs, artifacts, and receipts without becoming any of them.
 - A Task workspace binding is revalidated when opened. `ambiguous` and `unavailable` bindings remain visible as identity history but cannot authorize local inspection.
 - A Layout contains Layout tabs; each tab hosts a plugin component, built-in layout surface, or MCP-UI panel.

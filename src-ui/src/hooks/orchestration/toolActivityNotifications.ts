@@ -1,6 +1,7 @@
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
 type ToolCompletedEvent = Extract<
@@ -70,6 +71,7 @@ export function notifyToolCompletion(
   event: ToolCompletedEvent,
   chat: ChatUIState,
 ): void {
+  if (isReplayThread(event.threadId)) return;
   if (!shouldNotifyForToolCompletion(event, chat)) {
     return;
   }
@@ -89,7 +91,12 @@ export function notifyToolCompletion(
         ? 'cancelled'
         : event.status === 'error'
           ? 'error'
-          : 'completed',
+          : // station#1558: an unresolved call gets a neutral note, never
+            // the error toast — Station did not observe a failure, only the
+            // absence of any result.
+            event.status === 'unresolved'
+            ? 'unresolved'
+            : 'completed',
     detail,
     onNavigate: () => {
       navigationStore.setDockState(true);

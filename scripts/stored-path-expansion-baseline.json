@@ -1,6 +1,21 @@
 {
   "unguardedReads": [
     {
+      "entry": "src-server/runtime/conversation/native-foreground-invocation.ts :: workingDirectory :: if (workspaceRoot) capturedProject.workingDirectory = workspaceRoot;",
+      "category": 2,
+      "reason": "Assignment of the private relay's server-resolved Session cwd, not a read of the stored Project path. OrchestrationService resolves session creation through resolveStartSessionCwd using resolve(expandTilde(...)), including its admitted worktree binding, before passing Session cwd to createNativeForegroundRelay. Preserve that exact execution directory; the native worktree host-action integration executes real Bash in it."
+    },
+    {
+      "entry": "packages/cli/src/commands/cloud-project-import.ts :: workingDirectory :: created.workingDirectory !== workingDirectory",
+      "category": 1,
+      "reason": "Exact comparison of authenticated remote Project metadata to the explicitly supplied target path. Never used for local filesystem access; local tilde expansion would compare the wrong host namespace."
+    },
+    {
+      "entry": "packages/cli/src/commands/cloud-project-import.ts :: workingDirectory :: observed.workingDirectory !== workingDirectory",
+      "category": 1,
+      "reason": "Exact comparison of authenticated remote Project metadata to the explicitly supplied target path. Never used for local filesystem access; local tilde expansion would compare the wrong host namespace."
+    },
+    {
       "entry": "packages/sdk/src/query-domains/pullRequests.ts :: workingDirectory :: context.workingDirectory,",
       "category": 1,
       "reason": "Same cache-key construction (usePullRequestContextQuery). Never touches a filesystem."
@@ -19,6 +34,21 @@
       "entry": "packages/sdk/src/query-domains/pullRequests.ts :: workingDirectory :: query.set('workingDirectory', context.workingDirectory);",
       "category": 1,
       "reason": "Builds a URLSearchParams value sent to the server, which re-derives and expands the value itself (see runtime-routes.ts's pull-request context resolver). The client never resolves it against a filesystem."
+    },
+    {
+      "entry": "packages/shared/src/cloud-move.ts :: workingDirectory :: (value.workingDirectory !== undefined &&",
+      "category": 1,
+      "reason": "Presence validation of selected Project metadata in previewCloudMove; never passed to path resolution or a filesystem operation."
+    },
+    {
+      "entry": "packages/shared/src/cloud-move.ts :: workingDirectory :: typeof value.workingDirectory !== 'string')",
+      "category": 1,
+      "reason": "Type validation of selected Project metadata in previewCloudMove; the workspace is deliberately not expanded, resolved, or opened."
+    },
+    {
+      "entry": "packages/shared/src/cloud-move.ts :: workingDirectory :: value.workingDirectory",
+      "category": 1,
+      "reason": "Boolean selection of the cloud-preview review message only. The stored workspace may belong to another host; its bytes are never inspected by this preview."
     },
     {
       "entry": "src-server/domain/file-storage-adapter.ts :: workingDirectory :: hasWorkingDirectory: !!config.workingDirectory,",
@@ -176,7 +206,7 @@
       "reason": "Expanded later in the same function: `const absolute = resolvePath(expandTilde(workingDirectory));` (line 384). The file\u2019s own docblock (point 8, lines 87-90) states this rule explicitly. Outside the guard\u2019s window."
     },
     {
-      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: await assertProjectWorktreeDirectory(slug, config.workingDirectory);",
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: await assertProjectWorktreeDirectory(slug, input.workingDirectory);",
       "category": 2,
       "reason": "assertProjectWorktreeDirectory() -> checkWorktreeDirectory() expands internally: `resolve(expandTilde(workingDirectory))` at line 131 (the station#3155 fix site), before the `git -C` call."
     },
@@ -186,12 +216,12 @@
       "reason": "Same call chain and expansion site as line 240 (checkWorktreeDirectory, project-service.ts:131)."
     },
     {
-      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: const basename = config.workingDirectory.split('/').filter(Boolean).pop();",
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: const basename = input.workingDirectory.split('/').filter(Boolean).pop();",
       "category": 1,
       "reason": "Derives a display name from the last path segment for a new project. A leading `~` occupies its own segment and never affects the basename result, so tilde expansion is immaterial here; the value is never used as a filesystem path."
     },
     {
-      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: if ((!name || name === 'Untitled') && config.workingDirectory) {",
+      "entry": "src-server/services/projects/project-service.ts :: workingDirectory :: if ((!name || name === 'Untitled') && input.workingDirectory) {",
       "category": 1,
       "reason": "Existence check gating the basename-derivation above. No filesystem access."
     },
@@ -299,6 +329,46 @@
       "entry": "src-server/tools/station-control-delegation.ts :: workingDirectory :: projectPath ??= project.workingDirectory;",
       "category": 4,
       "reason": "Deliberately NOT locally expanded, by design: this value names a directory on a REMOTE Station (target.apiBase), documented at lines 1119-1126 (\"this resolves a project belonging to target.apiBase, which is routinely a remote Station... The remote Station applies its own check when it starts the session\"). Applying local expandTilde()/homedir() here would resolve against the WRONG (local operator's) home directory."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: ...(input.workingDirectory === undefined",
+      "category": 1,
+      "reason": "Presence check when capturing an attachment request; no filesystem access. The following DTO preserves the authored path spelling, and verifyDirectory expands before statSync or the checkout reader."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: : { workingDirectory: input.workingDirectory }),",
+      "category": 2,
+      "reason": "Captures the authored path for persistence and exact unchanged-attachment comparison. ProjectIdentityService.verifyDirectory applies expandTilde then resolve before statSync and readRemotes. The tilde attachment regression verifies the absolute Git-reader input and unchanged stored spelling."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: await this.verifyDirectory(config.workingDirectory, identity);",
+      "category": 2,
+      "reason": "ProjectIdentityService.verifyDirectory expands this input with expandTilde, requires an absolute path, and resolves it before statSync and readRemotes. The tilde attachment regression exercises that actual caller with a real temporary directory."
+    },
+    {
+      "entry": "src-server/services/projects/project-identity-service.ts :: workingDirectory :: project.workingDirectory !== config.workingDirectory",
+      "category": 4,
+      "reason": "Deliberately exact comparison of existing and requested local configuration for unchanged attachment reuse. It does not access the filesystem. Expanding here would silently accept a different authored configuration; the tilde retry regression requires that spelling change to remain a conflict."
+    },
+    {
+      "entry": "src-server/services/projects/project-session-directory.ts :: workingDirectory :: !project.workingDirectory &&",
+      "category": 1,
+      "reason": "Presence-only classification of a directory-less organizational Project; no path is used here. ProjectResourceResolver expands and verifies all paths before returning a bound result."
+    },
+    {
+      "entry": "src-server/routes/projects/project-layout-admission.ts :: workingDirectory :: const supplied = layout.config?.workingDirectory;",
+      "category": 1,
+      "reason": "Reads the candidate layout's own value, only to compare it by equality against the derived working directory in refuseConflictingWorkingDirectory(). This module makes no filesystem call at all."
+    },
+    {
+      "entry": "src-server/routes/projects/project-layout-admission.ts :: workingDirectory :: error: `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derivedWorkingDirectory ? `'${derivedWorkingDirectory}'` : 'no working directory'}; change the project's working directory instead.`,",
+      "category": 1,
+      "reason": "Error-message template text. Never reaches the filesystem."
+    },
+    {
+      "entry": "src-server/services/layouts/personal-layout-service.ts :: workingDirectory :: projectWorkingDirectory: project.workingDirectory,",
+      "category": 1,
+      "reason": "Passes the project's stored value into deriveProjectLayoutWorkingDirectory(), which either returns it unchanged or delegates to resolveWorkspacePath; neither opens it. Expansion belongs to whoever later uses the persisted record as a path."
     }
   ]
 }

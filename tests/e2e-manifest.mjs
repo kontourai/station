@@ -243,7 +243,21 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
+  requiredObservations: [320, 390, 412].map((width) => ({
+    path: 'tests/cross-runtime-chat-switching.spec.ts',
+    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+  })),
   journeys: [
+    {
+      path: 'tests/connect-modal.spec.ts',
+      journey:
+        'manual connection consent, keyboard access, and saved host management',
+    },
+    {
+      path: 'tests/connect-remote-auth-recovery.spec.ts',
+      journey:
+        'phone connection access and authenticated recovery before protected bootstrap',
+    },
     {
       path: 'tests/csp-shell.spec.ts',
       journey: 'built shell startup and connection recovery navigation',
@@ -279,6 +293,8 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
 export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelWorkers: 2,
   parallelSafetyExceptions: {
+    'tests/chat-history-reopen.spec.ts':
+      'Owns a unique temporary SQLite directory; shell requests are page-scoped fixtures and the store is closed and removed in finally.',
     'tests/sidebar-geometry.spec.ts':
       'read-only layout measurements against the isolated temp-home instance',
     'tests/mobile-dock-clearance.spec.ts':
@@ -292,16 +308,26 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/daily-driver-switching.spec.ts':
       'browser-local page.route mocks installed through tests/helpers/daily-driver-shell.ts; no live-instance or child-process resources',
     'tests/activity-pane.spec.ts':
-      'read-only against the isolated temp-home instance; the only write is this browser context’s own ambient dock document in localStorage, and every journey ends with the slot returned to Chat',
-    'tests/dock-occupant-picker.spec.ts':
-      'read-only against the isolated temp-home instance; the only writes are this browser context’s own ambient dock document in localStorage and a browser-local config/app route mock pinning the first-run fact',
+      'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
+    'tests/project-architecture.spec.ts':
+      'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
   },
   parallelSafe: [
+    'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
+    'tests/sidebar-file-intake.spec.ts',
+    'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
+    'tests/answer-quoting.spec.ts',
+    'tests/code-block-actions.spec.ts',
+    'tests/model-visibility.spec.ts',
+    'tests/pull-request-review.spec.ts',
+    'tests/conversation-pull-request-links.spec.ts',
+    'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
+    'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
     'tests/project-lifecycle.spec.ts',
@@ -310,10 +336,13 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
     'tests/mobile-chat-composer.spec.ts',
+    'tests/chat-replay.spec.ts',
+    'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
     'tests/text-ramp-contrast.spec.ts',
+    'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
     'tests/skills.spec.ts',
@@ -346,13 +375,12 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/daily-driver-switching.spec.ts',
     'tests/coding-git-toolbar.spec.ts',
     'tests/diff-review-annotations.spec.ts',
-    'tests/review-queue-comments.spec.ts',
     'tests/first-run-zero-provider.spec.ts',
     'tests/knowledge-onboarding.spec.ts',
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
     'tests/activity-pane.spec.ts',
-    'tests/dock-occupant-picker.spec.ts',
+    'tests/device-pane.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
@@ -379,13 +407,17 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Creates and repairs one invalid plugin directory in the runner-owned
     // temporary home, then removes it and reloads before yielding the server.
     'tests/plugin-rejection-visibility.spec.ts',
+    // Seeds exact historical/current-child events only in the managed temporary home.
+    'tests/workspace-search-exact-message.spec.ts',
     'tests/plugin-system.spec.ts',
+    'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
     'tests/plugin-dev-hot-reload.spec.ts',
     'tests/external-session-follow.spec.ts',
     'tests/builder-delivery-viewer.spec.ts',
     'tests/meeting-notes.spec.ts',
+    'tests/learning-source.spec.ts',
     'tests/knowledge-library.spec.ts',
     // Both drive the REAL API and mutate shared instance state — the agents
     // lane disables every LLM connection to prove the empty case, the skills
@@ -402,6 +434,13 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
     'tests/work-board.spec.ts',
+    // #2144 slice 4 promotion (#2146). Settings SAVES: its persistence
+    // journeys drive real PUT /config/app writes and read the value back. The
+    // reset journey only opens the confirmation and cancels, so it is the
+    // writes that carry this. The instance's app configuration is
+    // exactly the state every other product journey reads at boot, so this
+    // spec cannot run beside one.
+    'tests/settings.spec.ts',
   ],
 };
 
@@ -467,15 +506,24 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
-    path: 'tests/chat-multi-turn-context.spec.ts',
-    bucket: 'quarantine',
+    path: 'tests/native-conversation-restart.spec.ts',
+    bucket: 'smoke-live',
     surface: 'Chat / Orchestration',
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#4537 item 3: multi-turn context retention, UNCOVERED anywhere per the flow-coverage audit. RED BY DESIGN, not spec rot — the source of truth here is the spec itself, and the spec disproves coverage rather than proving it: it sends two real turns through POST /api/orchestration/chat into a real local model server and reads the ollama-fixture onChat capture hook, and turn 2's own captured request body is missing turn 1's prompt and reply entirely (a server-side context read, not a client-side replay — the fixture answers identically both times, so the discriminating evidence is the captured request, not the response text). Quarantined rather than left in a running bucket: a spec that is supposed to fail cannot sit in smoke-live/verify:e2e:full without permanently redding the gate. It re-enters a running bucket once #574 (the defect it proves) is fixed.",
+      'Regression #574: four legitimate restart journeys across VoltAgent/Strands and foreground/delegated origins. Two completed native turns precede actual same-home restart; foreground resumes through CLI chat and delegated Tasks through CLI delegate. Independently owned temporary instances use real readiness, and captured model requests must retain ordered user/assistant exchanges and original Conversation/Project/cwd binding.',
     exceptions: [],
-    replacement: '#574',
+  },
+  {
+    path: 'tests/chat-multi-turn-context.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Regression #574: two real Station-native turns reach a local model server. The first turn must have a persisted terminal event; the second model request must contain the original user message and assistant reply, not merely render a client-side transcript. Uses ordinary Agent/Chat controls and retains actual model-request evidence.',
+    exceptions: [],
   },
   {
     path: 'tests/agents-new-cli-turn.spec.ts',
@@ -518,6 +566,46 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/answer-quoting.spec.ts',
+    bucket: 'product',
+    surface: 'Answer quotation and source inspection',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production selection toolbar, draft store, Markdown renderer and source-inspection UI with captured authority and exact HTTP source fixtures; ordinary pointer selection and keyboard activation, no live server or shared writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/code-block-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Long transcript code blocks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production code-block frame and styles bundled in memory; browser layout drives the long-block boundary. Clipboard success/refusal is a browser-local fixture, with no OS clipboard or live Station writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/model-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Provider model preferences',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production provider form and device preference store bundled in memory with one unused SDK query stub. Browser-local interactions prove provider bulk visibility, preserved default model, keyboard operation and phone-sized light/dark controls. No live instance or shared outputs.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/image-preview-inspection.spec.ts',
+    bucket: 'product',
+    surface: 'Chat and workspace image previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/agent-editor-geometry.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -530,7 +618,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-surface.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -544,7 +632,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/surface-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
+      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/destination-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
     exceptions: [],
   },
   {
@@ -578,6 +666,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/workspace-search-exact-message.spec.ts',
+    bucket: 'product',
+    surface: 'Workspace search',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real runner-owned EventStore, authenticated runtime and browser: exact historical Session/event selection, old target outside newest history window, canonical text pagination and keyboard focus without current-child substitution or parallel legacy search.',
+    exceptions: [],
+  },
+  {
     path: 'tests/dialog-return-focus.spec.ts',
     bucket: 'product',
     surface: 'Core accessibility',
@@ -588,6 +686,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/sidebar-file-intake.spec.ts',
+    bucket: 'product',
+    surface: 'Sidebar file intake',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/attention-file-replies.spec.ts',
+    bucket: 'product',
+    surface: 'Attention input replies',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real input-reply, file normalization, staging and SDK clients with exact browser-local HTTP and model-observation fixtures; covers upload failure, immutable send retry, separate drafts and request/authority changes, with no live service writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/diagnostics-bundle.spec.ts',
     bucket: 'product',
     surface: 'Settings',
@@ -595,6 +713,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Diagnostics bundle download, dated filename, canonical failure state, and retry behavior.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/monitoring-and-chrome.spec.ts',
+    bucket: 'product',
+    surface: 'Monitoring',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Mounted payload work and real responsive chrome geometry; replaces source-string layout claims.',
     exceptions: [],
   },
   {
@@ -652,17 +780,17 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "Epic station#4142 M3 (station#3193): /activity is the STANDALONE PLACEMENT of the Activity Workspace Pane — the sessions surface reached through the pane path, which is what puts a real 'Dock this pane' in the page header's actions slot. The journey docks Activity into the ambient slot (the dock-slot section labeled 'Activity dock'), proves the choice survives a reload through the persisted ambient document (localStorage carries pane:builtin:activity), and returns the slot to Chat from the dock-slot header, with Chat back as a direct shell child. Every assertion names an affordance that must exist, so the route silently ceasing to produce the pane occurrence fails by name. Desktop plus a 390x844 isMobile variant asserting no horizontal document scroll before and after docking and a 44px return-to-Chat target.",
+      "#928: /?surface=activity is the canonical DEEP LINK to the Activity surface, and #928 changed what it means — the link is a REVEAL and the region model decides where the revealed surface lands, so there is no /activity route and no surface-owned 'Dock this pane' any more (the redirect that keeps stored links working stays unit-covered; this journey drives the destination). Desktop: the link reveals Activity in its declared defaultRegion 'right' with its own region chrome (Resize Activity, Hide Activity), leaving Chat's region and the Home primary area untouched. Activity is the only registered surface that declares every region, so this is also the only browser journey that crosses the dock/primary-area boundary: placed in 'main' through the header's Layout picker it is rendered by the route outlet through a PageFrame (an h1 only a main occupant produces) with no DockShell at all and no dock panel spawned for what it displaced, the placement survives a reload through the regionArrangement device setting, and returning it to 'right' hands the primary area back to Home. 390x844 isMobile variant: the coarse fold gives the phone one dock slot, so the reveal shows Activity ALONE in it — asserted inside the viewport with no horizontal document scroll, its own 44px Hide control giving the slot back to Chat. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the surface fails by name. The dock's slot-return journeys live in project-architecture.spec.ts.",
     exceptions: [],
   },
   {
-    path: 'tests/dock-occupant-picker.spec.ts',
+    path: 'tests/device-pane.spec.ts',
     bucket: 'product',
-    surface: 'Activity',
+    surface: 'Device',
     tierTarget: 'full',
     primary: true,
     rationale:
-      "Epic station#4142 M5 (station#4090): the dock-slot header's fixed return-to-Chat action is replaced by an occupant picker whose menu is the ambient admission DERIVATION ({Chat, Home, Activity}, by descriptor name, current occupant checked), and route placements render an away state while their pane occupies the dock. The journeys pin the transition most likely to be wrong (choosing Activity clears the Home away state on `/`), the 'Bring it back here' return path (route pane back, dock back to Chat), the menu opening UPWARD within the viewport on a bottom dock (measured box — Playwright calls an off-screen menu visible), and a 390x844 isMobile variant asserting no horizontal scroll and 44px trigger/menu-item tap targets. Every assertion names an affordance that must exist, so a curated menu, a resurrected fixed Chat action, or a stuck away state fails by name.",
+      "#1969: the Device pane had five jsdom suites and no browser journey, so its aspect-ratio assertions read a CSS custom property off an inline style and NOTHING had observed the pane lay out — which is why docs/ui/responsive-action-surfaces.txt listed it as an exception. This is the render. The setup state is un-intercepted: the suite instance runs with STATION_MOBILE_DEVICE_HUB_URL unset, so the real LocalMobileDeviceHost answers not-configured through the real route and the pane's first-run card is the pane's own reading of it — asserted to offer no retry and to render no device list, so an unconfigured Station can never read as 'no devices'. The populated states need a booted simulator and a booted emulator no runner has, so they are supplied through page.route in the exact envelope mobile-device-host.ts emits (a UDID iOS row and an emulator-<n> Android row, the only spellings that host admits for booted devices) with REAL PNGs built in the spec — valid signature/IHDR/IEND, so the SDK client's base64 check and the host's own reader both accept them. Desktop: both native app targets selectable and captured in turn; the frame's ratio read from getBoundingClientRect rather than getComputedStyle, because the computed property is the declaration echoed back and only the laid out box can fail; a second iOS capture with swapped dimensions relayouts the frame from taller-than-wide to wider-than-tall; caption and image alt both carry 'Snapshot' and the browser's rendering of the capture's own capturedAt, stamped ten seconds in the past so a time taken from Date.now() would differ; switching devices drops the frame rather than hiding it. A 403 on capture renders the access-denied copy and leaves Capture ENABLED — the amended decision on the issue, because a changed sign-in is repairable in place and Capture is the retry — while adding no second button. 390x844 isMobile variant measures the picker rows and Capture against the 44px floor from their laid out boxes, with one hundredth of a pixel of slack because a composited min-height:44px row reports 43.99999237060547 (#2086) and an exact integer comparison would encode the compositor's rounding rather than the CSS. It reaches no device helper and proves nothing about expo-device-hub or the capture route's own authorization; tests/tauri-shell/device-pane.e2e.ts is the lane that drives the real service against a real hub.",
     exceptions: [],
   },
   {
@@ -706,12 +834,82 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/plugin-pane-sdk-context.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/coding-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Actual portable coding example with both Project renderers and one captured native model action through a controlled HTTP provider into the owned worktree Session receipt.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/minimal-workspace-example.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Installs the actual portable minimal example, opens an explicit Project-bound Pane through the public SDK, proves local dock navigation without a chat mutation, and refuses the occurrence after uninstall.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser host action through SDK, HTTP and captured permission/Agent admission into the external Muse echo provider, with exact turn completion read from EventStore and displayed in conversation. Requires ready Muse; no paid model or route interception.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted default agent workflow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-history-reopen.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Cold mobile hydration uses the real bounded SQLite history reader and canonical projector before paging backward within a noisy turn.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-replay.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Replay runtime, history, connection, timing, tool, error and multi-turn scenarios through the real mobile transcript, with frame-bound screenshots and loading animation evidence.',
     exceptions: [],
   },
   {
@@ -722,6 +920,24 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/toolbar-reachability.spec.ts',
+    bucket: 'product',
+    surface: 'App toolbar',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Toolbar occlusion (#917, #1384) reproduces only at phone widths in a ' +
+      'news-carrying connection state. It declares its own Pixel 7 emulation ' +
+      'rather than living in tests/android/, whose lane a src-ui change never ' +
+      'triggers (build-android.yml is path-filtered to src-desktop and six ' +
+      'named scripts), so the guard would never have run where it is needed.',
+    // No exception any more: the 390 and 360 cases were skipped with the fix
+    // that would un-skip each named in its own reason, and both have landed
+    // (#1401/#1424 for 390, #1132 for 360). All four widths are enforced, so
+    // the file carries no `test.skip` for this to exempt.
     exceptions: [],
   },
   {
@@ -762,6 +978,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Composited two-theme contrast for the neutral text ramp (primary/secondary/tertiary) and the two shared chrome rules that carry it — .engine-chip__pill, which failed 1.4.3 at 10px in both themes (station#3140), and .button--link, pinned while passing because its 0.17 light-theme margin rests on a vendor brand token this repo does not own. Each probe mounts the real shipped class against a sentinel host colour, so a rule that stops matching fails instead of passing by inheriting body copy.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/overlay-elevation-tokens.spec.ts',
+    bucket: 'product',
+    surface: 'Core accessibility',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Resolves --radius-overlay / --elevation-overlay on the real data-theme="dark" document main.tsx stamps before first render, and mounts the three entry-stylesheet rules that read them and have live surfaces. #1637 declared both inside [data-theme="light"] under a comment saying no per-theme override was needed, so a dark root matched no declaration at all, both resolved to the empty string, and every Dialog panel, the command palette, .modal-dialog, .agent-selector__menu and the ACP add dialog rendered square and flat. Light and the unstamped pre-script frame are covered too, and they are what catches the other half of the class: the fix lives in a `:root, [data-theme="dark"]` block, and dropping the `:root` half (measured live) leaves dark correct while returning the empty string under light — the same defect mirrored into the theme fewer people develop in. One assertion pins that the app really does stamp the attribute, so the primary case cannot drift into testing a state no user occupies. Each alias is compared against the kit token as resolved in the same document — every write and read in one round-trip, so nothing can re-stamp the attribute between them — so the kit stays free to retune the value while an alias that resolves to nothing still fails; each probe carries a painted-surface guard so a renamed class cannot pass by reporting the same 0px/none the defect produced.',
     exceptions: [],
   },
   {
@@ -818,7 +1044,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Live bundled Registry install, persisted installed state, project Add Layout/use, unavailable-component recovery after uninstall, reinstall, and 390x844 overflow proof.',
+      'Live bundled Registry install through the UI, persisted installed state, project Add pane/use of the Minimal Workspace occurrence, pane withdrawal after uninstall, reinstall, and 390x844 overflow proof.',
     exceptions: [],
   },
   {
@@ -874,7 +1100,7 @@ export const e2eManifest = [
   {
     path: 'tests/skills-command-routes.spec.ts',
     bucket: 'product',
-    surface: 'Guidance',
+    surface: 'Skills',
     tierTarget: 'full',
     primary: true,
     rationale:
@@ -997,6 +1223,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/plugin-dependency-lifecycle.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Test-only managed API fixture proves preview-bound dependency consent, pending provider-permission/settings projection, and individual owned-plugin cleanup. It is not provider non-execution, Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
+    exceptions: [],
+  },
+  {
     path: 'tests/survey-review-workbench.spec.ts',
     bucket: 'product',
     surface: 'Plugins',
@@ -1089,7 +1325,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Isolated Claude JSONL follow: discover after startup, open the canonical read-only transcript, observe an append without reload, reject direct mutation, and prove 320px containment.',
+      'Isolated Claude and Codex JSONL follow: discover after startup, open read-only activity, observe appends, reject unsupported continuation or direct mutation, and retain controls at 320px.',
     exceptions: [],
   },
   {
@@ -1299,6 +1535,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/pull-request-review.spec.ts',
+    bucket: 'product',
+    surface: 'In-app pull request review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production review panel, shared diff renderer, SDK and confirmation dialog; exact provider HTTP fixtures verify revision-bound writes, uncertainty and retained drafts in desktop dark and phone light presentations. No live forge or shared writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-pull-request-links.spec.ts',
+    bucket: 'product',
+    surface: 'Conversation pull request links and dependency stacks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production link and stack surfaces with exact current-Station HTTP fixtures; verifies same-number cross-host identity, explicit/derived/Task provenance, partial failure, unlink, provider-branch order and narrow-pane overflow. No live forge writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/coding-git-toolbar.spec.ts',
     bucket: 'product',
     surface: 'Coding',
@@ -1328,16 +1584,15 @@ export const e2eManifest = [
       'Diff review annotations: DiffPanel renders a parsed diff, fetches project diff-comments, and renders a seeded comment inline via the @pierre/diffs annotation slot.',
     exceptions: [],
   },
-  {
-    path: 'tests/review-queue-comments.spec.ts',
-    bucket: 'product',
-    surface: 'Review Queue',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Review queue surfaces diff comments: the queue fetches the cross-project /api/diff-comments feed, lists a seeded comment, and opens its detail with a Resolve action.',
-    exceptions: [],
-  },
+  // #2065: `tests/review-queue-comments.spec.ts` was retired with the global
+  // `/review-queue` page. Not retargeted, because its subject no longer
+  // exists anywhere: D4 dropped cross-project diff-comment DISCOVERY (a
+  // comment now resolves inside the diff it annotates), and with it the
+  // comment detail, its Resolve action, and its "Open in coding" jump. The
+  // one action that survived — deleting a comment — lives on the diff pane's
+  // own Delete and is pinned by "the diff pane deletes the comment its own
+  // Delete names, in its own Project" in src-ui/src/__tests__/DiffPanel.test.tsx.
+  // Inline comment rendering keeps its own spec (diff-review-annotations).
   {
     path: 'tests/core-update.spec.ts',
     bucket: 'extended',
@@ -1355,7 +1610,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#304 regression guard: the dock project-context path's rtl start-truncation must not bidi-reorder leading `~`/`/` glyphs; asserts per-character visual order via Range rects, which only a real browser can see.",
+      "#304 successor guard: the dock project-context row's start-truncated path segment is retired (#1536 F), so its rtl bidi-reordering failure mode is unreachable; this now proves the working directory arrives whole and in its resolved form (`~` or absolute) in the channel that carries it — the project badge's tooltip — and that the retired segment is absent rather than hidden, neither of which a jsdom test can see.",
     exceptions: [],
   },
   {
@@ -1485,7 +1740,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, a real scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
+      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, explicit opt-in to developer tools for the scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
     exceptions: [],
   },
   {
@@ -1506,6 +1761,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'K5 meeting-notes plugin (mocked /api/knowledge/* routes, mirroring knowledge-onboarding.spec.ts): capture writes a raw transcript record then a provenance-linked compiled record, the Library graph pane renders fixture nodes/edges with a selection detail panel, and the Ask pane returns provenance-linked answer cards plus the honest NO_EMBEDDER_ERROR state.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/learning-source.spec.ts',
+    bucket: 'product',
+    surface: 'Knowledge',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real managed personal root and canonical record APIs, local UI-credential source inspection on desktop/mobile, source-only semantics, and replacement-root refusal; no route mocks or external provider.',
     exceptions: [],
   },
   {
@@ -1570,12 +1835,12 @@ export const e2eManifest = [
   },
   {
     path: 'tests/settings.spec.ts',
-    bucket: 'extended',
+    bucket: 'product',
     surface: 'Settings',
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Settings is a routed surface pending product-bucket promotion review.',
+      "#2144 slice 4 promotion (#2146). The move is not about how often the spec runs: `product` and `extended` are both weighted buckets of `scripts/run-e2e-coverage.mjs`, which `verify:e2e:full` drives, so the same lane executes either one. It is about isolation being DECLARED. Settings SAVES — its journeys drive real PUT /config/app writes and read the value back — so it must not share its instance with a concurrent sibling. `product` is the only bucket where that requirement is written down and enforced: `PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive` above, checked by `validateE2EManifest`, which refuses a product spec carrying no execution class. In `extended` the same isolation happens to hold, because `scripts/run-e2e-suite.mjs` runs every non-product suite as a single `workers: 1` phase — but nothing declares it, nothing validates it, and no test pins that worker count, so a later parallelization of `extended` would withdraw it silently. This spec did carry a stale 'Review' assertion naming a Manage-group destination #2065 had retired; that is a grep-every-bucket failure of the change that retired it — `docs/guides/testing.md` records the same thing happening to this same file at #190/#205 — and the bucket it sits in does not fix that. The assertions themselves are ones only a browser can make — the section navigation's rows measured against the 44px touch floor at 390x844 with no horizontal document scroll, a nav-only row really leaving /settings for its destination's route, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — and they are made against an instance no sibling spec is writing to.",
     exceptions: [],
   },
   {
@@ -1609,15 +1874,6 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/app-load.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android app-load coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/desktop-regression.spec.ts',
     bucket: 'android',
     surface: 'Android',
@@ -1625,7 +1881,7 @@ export const e2eManifest = [
     primary: false,
     rationale:
       'Android desktop-regression coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
+    exceptions: [],
   },
   {
     path: 'tests/android/landscape-chrome.spec.ts',
@@ -1646,31 +1902,12 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/navigation.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android navigation coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/split-pane-mobile.spec.ts',
     bucket: 'android',
     surface: 'Android',
     tierTarget: 'partial',
     primary: false,
     rationale: 'Android split-pane coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
-    path: 'tests/android/webview-compat.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale:
-      'Android webview compatibility coverage runs in the Android matrix.',
     exceptions: ['waitForTimeout'],
   },
 ];

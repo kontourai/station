@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
   DONE_TTL_MS,
   RUNNING_TTL_MS,
@@ -90,7 +91,7 @@ describe('composeWebPushPayload', () => {
       metadata: { sessionId: 'thread-1', sessionKind: 'runtime' },
     });
     expect(composeWebPushPayload(n)?.payload.url).toBe(
-      '/activity?session=thread-1',
+      activityDeepLink({ sessionId: 'thread-1' }),
     );
   });
 
@@ -124,6 +125,8 @@ describe('composeWebPushPayload', () => {
       updatedAt: '2026-07-28T09:00:00Z',
     });
     const composed = composeWebPushPayload(approval, [failed, approval]);
-    expect(composed?.payload.url).toBe('/activity?session=thread-approval');
+    expect(composed?.payload.url).toBe(
+      activityDeepLink({ sessionId: 'thread-approval' }),
+    );
   });
 });

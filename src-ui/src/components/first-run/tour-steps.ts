@@ -24,13 +24,20 @@
 import { getPathForView } from '../../app-shell/routing';
 import type { NavigationView } from '../../types';
 
-export interface FirstRunTourStep {
+interface FirstRunTourStep {
   id: string;
   title: string;
   /** One sentence. Why the evidence is here, not what the button does. */
   body: string;
-  /** The canonical surface this step is about. */
-  view: NavigationView;
+  /**
+   * The canonical route this step is about. Absent for a step whose surface
+   * is shell-owned (`surface` below): #928 retired Activity's standalone
+   * placement, so there is no `NavigationView` for it to name — and naming a
+   * neighbouring one instead would be a declaration nothing derives.
+   */
+  view?: NavigationView;
+  /** Shell-owned region to reveal instead of navigating. */
+  surface?: string;
   /** `data-first-run-anchor` value on that surface. */
   anchor: string;
 }
@@ -39,22 +46,28 @@ export const FIRST_RUN_ANCHOR_ATTRIBUTE = 'data-first-run-anchor';
 
 export const FIRST_RUN_TOUR_STEPS = [
   {
-    id: 'review-queue',
+    // #2065 retired the global review queue: Review is a layout kind a
+    // Project places, so there is no cross-Project decision page left for a
+    // tour that cannot know which Project to open. The attention inbox is
+    // where a decision is now made — it carries Approve/Reject itself (#2064)
+    // — so the step teaches the surface that still holds the whole claim.
+    id: 'decisions',
     title: 'Decisions are part of the record',
     body: 'Work that needs your approval stops here, and the decision you make is kept with the run that asked for it — so later you can see not just what happened, but who let it.',
-    view: { type: 'review-queue' },
-    anchor: 'review-queue',
+    view: { type: 'notifications' },
+    anchor: 'notifications',
   },
   {
     id: 'activity',
     title: 'Every run keeps its own evidence',
     body: 'Each session holds the events that produced its result, so an answer can be traced back to the work behind it instead of being taken on trust.',
-    view: { type: 'activity' },
+    surface: 'activity',
     // The Activity page root, via `SplitPaneLayout`'s `firstRunAnchor` prop:
-    // the surface no longer has a sidebar entry (it moved under Home), and
     // `SessionsView` renders a bare `SplitPaneLayout` with no root element of
     // its own to hang the attribute on. The layout root is present whether or
-    // not any session exists yet.
+    // not any session exists yet. Not the sidebar's `nav-activity` row: that
+    // row reveals the region rather than navigating (#928), so the coachmark
+    // would point at the way in rather than at the surface it is teaching.
     anchor: 'activity',
   },
   {
@@ -68,6 +81,8 @@ export const FIRST_RUN_TOUR_STEPS = [
     id: 'command-palette',
     title: 'Everything is one keystroke away',
     body: 'The command palette reaches every surface here, including this tour — press it whenever you want to come back and look at the evidence again.',
+    // `/` and whatever occupies `main`: a return to the outlet, since the
+    // anchor is the palette, not Home (#1523; `FirstRunFlow` navigates).
     view: { type: 'home' },
     anchor: 'command-palette',
   },
@@ -78,11 +93,13 @@ export type FirstRunTourStepId = (typeof FIRST_RUN_TOUR_STEPS)[number]['id'];
 /**
  * The canonical path for a step's surface, derived — never spelled here.
  *
- * `null` only for a view type `getPathForView` cannot serialize (`not-found`),
+ * `null` for a shell-owned surface step (it is revealed, not navigated to),
+ * and for a view type `getPathForView` cannot serialize (`not-found`) —
  * which is a step-authoring mistake the test suite fails on rather than a
  * runtime state to paper over with a fallback route.
  */
 export function tourStepPath(step: FirstRunTourStep): string | null {
+  if (step.surface || !step.view) return null;
   return getPathForView(step.view);
 }
 

@@ -206,4 +206,78 @@ describe('Surface Basis SDK boundary', () => {
       status: 0,
     } satisfies Partial<AnswerBasisRequestError>);
   });
+  /**
+   * #1536 B3 review M3. The affordance tells a deliberate 404 apart from a
+   * read that failed, which only works if the status survives the client. It
+   * did not: the parse ran before the status check, so a refusal whose body
+   * was not JSON threw out of `response.json()` and arrived as status 0.
+   */
+  describe('the answer-basis 404 keeps its status', () => {
+    function stubResponse(response: Response) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => response),
+      );
+    }
+
+    async function statusFor(response: Response): Promise<number> {
+      stubResponse(response);
+      try {
+        await getAnswerBasis('http://station.test', 'session-a', 'turn-a');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AnswerBasisRequestError);
+        return (error as AnswerBasisRequestError).status;
+      }
+      throw new Error('expected getAnswerBasis to refuse');
+    }
+
+    test('a JSON 404 body arrives as 404', async () => {
+      expect(
+        await statusFor(
+          new Response(
+            JSON.stringify({ success: false, error: 'Basis not found' }),
+            { status: 404 },
+          ),
+        ),
+      ).toBe(404);
+    });
+
+    test('a non-JSON 404 body still arrives as 404', async () => {
+      expect(
+        await statusFor(
+          new Response('<html>not found</html>', {
+            status: 404,
+            headers: { 'content-type': 'text/html' },
+          }),
+        ),
+      ).toBe(404);
+    });
+
+    test('an empty 404 body still arrives as 404', async () => {
+      expect(await statusFor(new Response(null, { status: 404 }))).toBe(404);
+    });
+
+    test('an unavailable read keeps its own status, never 404', async () => {
+      expect(
+        await statusFor(
+          new Response(
+            JSON.stringify({ success: false, error: 'Basis unavailable' }),
+            { status: 503 },
+          ),
+        ),
+      ).toBe(503);
+    });
+
+    test('a malformed 200 is a fault, not an absence', async () => {
+      // 200 with a projection this build cannot parse: not the route saying
+      // "nothing to show", so it must not read as one.
+      expect(
+        await statusFor(
+          new Response(JSON.stringify({ success: true, data: { nope: 1 } }), {
+            status: 200,
+          }),
+        ),
+      ).not.toBe(404);
+    });
+  });
 });

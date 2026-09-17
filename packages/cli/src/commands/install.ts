@@ -92,8 +92,21 @@ interface PluginPreviewResult {
   error?: string;
   manifest?: PluginManifest;
   components: Array<{ type: string; id: string; conflict?: unknown }>;
-  dependencies?: Array<{ id: string; status?: string }>;
+  dependencies?: Array<{
+    id: string;
+    status?: string;
+    consent?: {
+      contentDigest: string;
+      grantRevision?: string;
+      registryTrustRevision?: string;
+      permissions: string[];
+      dependencies: string[];
+      pendingConsent: Array<{ permission: string; tier: string }>;
+    };
+  }>;
   contentDigest?: string;
+  grantRevision?: string;
+  registryTrustRevision?: string;
   permissions?: {
     required: string[];
     autoGranted: string[];
@@ -169,6 +182,12 @@ function describeInstall(
     lines.push(
       `  installs  ${dependencies.map((entry) => entry.id).join(', ')} alongside it`,
     );
+    for (const dependency of dependencies) {
+      const required = dependency.consent?.permissions ?? [];
+      lines.push(
+        `    ${dependency.id} requires ${required.length > 0 ? required.join(', ') : 'no permissions'}`,
+      );
+    }
   }
   // Contribution kinds no permission expresses. Named from the manifest the
   // server returned, for the same reason the server refuses them for callers
@@ -214,6 +233,20 @@ export async function install(
     );
   }
 
+  const revisionPresent = (value: unknown) =>
+    typeof value === 'string' && value.length > 0;
+  if (
+    !revisionPresent(previewed.grantRevision) ||
+    (previewed.dependencies ?? []).some(
+      (dependency) =>
+        dependency.consent &&
+        !revisionPresent(dependency.consent.grantRevision),
+    )
+  )
+    throw new Error(
+      'Station preview omitted a current permission revision. Upgrade Station and preview again; no installation was sent.',
+    );
+
   for (const line of describeInstall(source, previewed)) console.log(line);
   // `--yes` is an approval the operator typed, with the source in the same
   // command line. Everything else has to be answered interactively — and a
@@ -236,6 +269,13 @@ export async function install(
   const result = await pluginRequest<{
     success: boolean;
     plugin: { name: string; version: string };
+    permissions?: {
+      pendingConsent?: Array<{ permission: string; tier: string }>;
+      dependencies?: Array<{
+        id: string;
+        pendingConsent: Array<{ permission: string; tier: string }>;
+      }>;
+    };
   }>(
     parsed,
     '/install',
@@ -247,17 +287,77 @@ export async function install(
         consent: {
           permissions: previewed.permissions.required,
           contentDigest: previewed.contentDigest,
+          registryTrustRevision: previewed.registryTrustRevision,
+          grantRevision: previewed.grantRevision,
           dependencies: (previewed.dependencies ?? []).map(
             (dependency) => dependency.id,
           ),
+          ...((previewed.dependencies ?? []).some(
+            (dependency) => dependency.consent,
+          )
+            ? {
+                dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+                  (dependency) =>
+                    dependency.consent
+                      ? [
+                          {
+                            id: dependency.id,
+                            permissions: dependency.consent.permissions,
+                            contentDigest: dependency.consent.contentDigest,
+                            registryTrustRevision:
+                              dependency.consent.registryTrustRevision,
+                            grantRevision: dependency.consent.grantRevision,
+                            dependencies: dependency.consent.dependencies,
+                          },
+                        ]
+                      : [],
+                ),
+              }
+            : {}),
         },
       }),
     },
     target,
   );
-  console.log(
-    `✅ Installed ${result.plugin.name}@${result.plugin.version} through Station`,
-  );
+  const pendingHostApprovals = [
+    ...(result.permissions?.pendingConsent ?? []).map((entry) => ({
+      plugin: result.plugin.name,
+      ...entry,
+    })),
+    ...(result.permissions?.dependencies ?? []).flatMap((dependency) =>
+      dependency.pendingConsent
+        .filter((entry) => entry.tier === 'trusted')
+        .map((entry) => ({ plugin: dependency.id, ...entry })),
+    ),
+  ];
+  if (pendingHostApprovals.length > 0) {
+    console.log(
+      `⚠️ Installed ${result.plugin.name}@${result.plugin.version}, but activation is incomplete.`,
+    );
+    for (const pending of pendingHostApprovals) {
+      console.log(
+        `  ${pending.plugin} requires host approval for ${pending.permission}.`,
+      );
+    }
+    console.log(
+      '  Finish these reviews on the Station host in the Plugins page.',
+    );
+  } else if (
+    result.permissions?.dependencies === undefined &&
+    (previewed.dependencies ?? []).some((dependency) =>
+      dependency.consent?.pendingConsent.some(
+        (entry) => entry.tier === 'trusted',
+      ),
+    )
+  ) {
+    console.log(
+      `Installed ${result.plugin.name}@${result.plugin.version}, but Station did not report current dependency approval status. Check the Plugins page on the Station host.`,
+    );
+  } else {
+    console.log(
+      `✅ Installed ${result.plugin.name}@${result.plugin.version} through Station`,
+    );
+  }
   return {
     pluginName: result.plugin.name,
     version: result.plugin.version,

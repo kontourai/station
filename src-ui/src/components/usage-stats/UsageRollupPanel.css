@@ -21,7 +21,7 @@
   margin-top: 0.25rem;
 }
 .usage-rollup__coverage--gap {
-  border-color: var(--warning, #c88800);
+  border-color: var(--warning-text);
 }
 .usage-rollup__controls fieldset {
   border: 0;

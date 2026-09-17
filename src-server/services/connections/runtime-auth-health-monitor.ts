@@ -3,10 +3,10 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import type { EventBus, ServerEvent } from '../orchestration/event-bus.js';
 
-export const DEFAULT_AUTH_FAILURE_TTL_MS = 60_000;
-export const MAX_AUTH_FAILURE_TTL_MS = 15 * 60 * 1000;
+const DEFAULT_AUTH_FAILURE_TTL_MS = 60_000;
+const MAX_AUTH_FAILURE_TTL_MS = 15 * 60 * 1000;
 /** Provider names are external event data; retain a fixed, bounded key set. */
-export const MAX_AUTH_FAILURE_PROVIDERS = 64;
+const MAX_AUTH_FAILURE_PROVIDERS = 64;
 
 export interface RuntimeAuthenticationFailure {
   observedAt: string;

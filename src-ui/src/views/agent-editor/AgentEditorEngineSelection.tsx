@@ -12,6 +12,7 @@ import {
   connectionStatusLabel,
   isAgentConnectionSelectable,
 } from '../../utils/execution';
+import { settingsDeepLinkUrl } from '../settings/settings-deep-link';
 import type { AgentEditorFormProps, AgentFormData } from './types';
 
 /** Creation-only branch state: Station, or an external engine not named yet. */
@@ -149,7 +150,13 @@ export function AgentEditorEngineSelection({
             className="agent-editor__capability-banner-action"
             onClick={() =>
               navigationStore.navigate(
-                '/settings?view=station-config&highlight=builtin-agent-engine',
+                settingsDeepLinkUrl({
+                  // #2182: the row moved to Agent runs. The highlight is what
+                  // makes this link self-healing, but the view is stated
+                  // correctly anyway — a bare stale view is NOT healed.
+                  view: 'agent-runs',
+                  highlight: 'builtin-agent-engine',
+                }),
               )
             }
           >

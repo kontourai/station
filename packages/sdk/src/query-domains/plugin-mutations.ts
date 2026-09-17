@@ -1,4 +1,7 @@
-import type { InstallResult } from '@kontourai/station-contracts/catalog';
+import type {
+  PluginInstallationRevision,
+  PluginInstallResult,
+} from '@kontourai/station-contracts/plugin';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase, addProjectLayoutFromPlugin } from '../api';
 import type { MutationOptions } from '../query-core';
@@ -37,17 +40,13 @@ export async function reloadPlugins(): Promise<{
   return result;
 }
 
-/**
- * The operator's pre-install decision (station#4288), taken from the preview
- * the operator actually read. `contentDigest` is what makes it a decision
- * about BYTES rather than about a name: the server re-derives it from its own
- * staged copy and refuses — before writing anything — if the two differ.
- */
-export interface PluginInstallConsent {
-  permissions: string[];
-  contentDigest: string;
-  dependencies: string[];
-}
+export type { PluginInstallConsent } from '../client/plugins';
+
+import {
+  type PluginInstallConsent,
+  type PluginRecoveryInput,
+  recoverPlugin,
+} from '../client/plugins';
 
 export function usePluginInstallMutation() {
   const queryClient = useQueryClient();
@@ -56,18 +55,28 @@ export function usePluginInstallMutation() {
       source,
       skip,
       consent,
+      dataPolicy,
+      expectedInstallation,
     }: {
       source: string;
       skip?: string[];
       consent: PluginInstallConsent;
-    }) => {
+      dataPolicy?: 'preserve' | 'retain-and-reset';
+      expectedInstallation?: PluginInstallationRevision | null;
+    }): Promise<PluginInstallResult> => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
         `${apiBase}/api/plugins/install`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source, skip, consent }),
+          body: JSON.stringify({
+            source,
+            skip,
+            consent,
+            dataPolicy,
+            expectedInstallation,
+          }),
         },
       );
       const result = await response.json();
@@ -168,6 +177,7 @@ export function usePluginRemoveMutation() {
 export function usePluginProviderToggleMutation() {
   const queryClient = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: async ({
       pluginName,
       disabled,
@@ -184,7 +194,24 @@ export function usePluginProviderToggleMutation() {
           body: JSON.stringify({ disabled }),
         },
       );
-      return response.json();
+      const result = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.success)
+        throw new Error(
+          apiErrorMessage(
+            result,
+            'Plugin provider settings may have changed. Refresh before retrying.',
+          ),
+        );
+      return result;
+    },
+    onError: (_error, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['plugin-providers', variables.pluginName],
+      });
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
@@ -202,38 +229,17 @@ export function usePluginProviderToggleMutation() {
  */
 export function useRevokePluginPermissionMutation(
   options?: MutationOptions<
-    { granted: string[] },
+    PluginPermissionRevocationResult,
     { name: string; permissions: string[] }
   >,
 ) {
   const queryClient = useQueryClient();
   return useMutation<
-    { granted: string[] },
+    PluginPermissionRevocationResult,
     Error,
     { name: string; permissions: string[] }
   >({
-    mutationFn: async ({ name, permissions }) => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/api/plugins/${encodeURIComponent(name)}/grant`,
-        {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ permissions }),
-        },
-      );
-      const result = (await response.json()) as {
-        success: boolean;
-        granted?: string[];
-        error?: string;
-      };
-      if (!response.ok || !result.success) {
-        throw new Error(
-          apiErrorMessage(result, 'Could not remove the permission'),
-        );
-      }
-      return { granted: result.granted ?? [] };
-    },
+    mutationFn: revokePluginPermissions,
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] });
       options?.onSuccess?.(data, variables);
@@ -242,6 +248,59 @@ export function useRevokePluginPermissionMutation(
       options?.onError?.(error, variables);
     },
   });
+}
+
+export interface PluginPermissionRevocationResult {
+  granted: string[];
+  reconciliation:
+    | {
+        status: 'completed';
+        operationId?: string;
+        generation?: number;
+        effects: readonly string[];
+      }
+    | {
+        status: 'winding-down' | 'superseded';
+        operationId: string;
+        generation: number;
+      }
+    | {
+        status: 'incomplete';
+        operationId?: string;
+        generation?: number;
+        failures: readonly string[];
+      };
+}
+
+export async function revokePluginPermissions(input: {
+  name: string;
+  permissions: string[];
+}): Promise<PluginPermissionRevocationResult> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/api/plugins/${encodeURIComponent(input.name)}/grant`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissions: input.permissions }),
+    },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    granted?: string[];
+    reconciliation?: PluginPermissionRevocationResult['reconciliation'];
+    error?: string;
+  };
+  if (!response.ok || !result.success) {
+    throw new Error(apiErrorMessage(result, 'Could not remove the permission'));
+  }
+  return {
+    granted: result.granted ?? [],
+    reconciliation: result.reconciliation ?? {
+      status: 'incomplete',
+      failures: ['runtime-unavailable'],
+    },
+  };
 }
 
 export function usePluginSettingsMutation(
@@ -256,6 +315,7 @@ export function usePluginSettingsMutation(
     Error,
     { name: string; settings: Record<string, unknown> }
   >({
+    retry: false,
     mutationFn: async ({ name, settings }) => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
@@ -270,7 +330,7 @@ export function usePluginSettingsMutation(
         success: boolean;
         error?: string;
       };
-      if (!result.success) {
+      if (!response.ok || !result.success) {
         throw new Error(
           apiErrorMessage(result, 'Failed to save plugin settings'),
         );
@@ -284,6 +344,9 @@ export function usePluginSettingsMutation(
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['plugin-settings', variables.name],
+      });
       options?.onError?.(error, variables);
     },
   });
@@ -321,7 +384,7 @@ export async function requestPluginRegistryInstallAction(
     /** Preview conflict components to skip, as `type:id` keys. */
     skip?: string[];
   },
-): Promise<InstallResult> {
+): Promise<PluginInstallResult> {
   const apiBase = await _getApiBase();
   const response =
     action === 'install'
@@ -346,13 +409,13 @@ export async function requestPluginRegistryInstallAction(
       apiErrorMessage(result, result.message || `${action} failed`),
     );
   }
-  return result as InstallResult;
+  return result as PluginInstallResult;
 }
 
 export function usePluginRegistryInstallMutation() {
   const queryClient = useQueryClient();
   return useMutation<
-    InstallResult,
+    PluginInstallResult,
     Error,
     {
       id: string;
@@ -441,5 +504,23 @@ export function useRevokeWorkspaceHomeRoleMutation() {
         queryKey: [...WORKSPACE_HOME_ROLE_QUERY_KEY],
       });
     },
+  });
+}
+
+export function usePluginRecoveryMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      name,
+      ...input
+    }: PluginRecoveryInput & { name: string }) =>
+      recoverPlugin(await _getApiBase(), name, input),
+    // Pending activation is an accepted outcome too; refresh all derived views.
+    onSuccess: () => {
+      invalidatePluginQueries(queryClient);
+      invalidatePluginGraphQueries(queryClient);
+      queryClient.invalidateQueries({ queryKey: ['plugin-recovery-preview'] });
+    },
+    retry: false,
   });
 }

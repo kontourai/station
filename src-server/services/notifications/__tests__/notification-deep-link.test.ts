@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test } from 'vitest';
 import { resolveNotificationOpenHref } from '../notification-deep-link.js';
 
@@ -14,10 +15,10 @@ describe('resolveNotificationOpenHref', () => {
     ).toBe('/projects/my%20project?chat=thread-1&dock=open');
   });
 
-  test('falls back to /activity for a runtime session with no project', () => {
-    // /activity is not a dock target — no dock=open here (archive#1284).
+  test('falls back to Activity for a runtime session with no project', () => {
+    // Activity is not a dock target — no dock=open here (archive#1284).
     expect(resolveNotificationOpenHref({}, 'thread/one', 'runtime')).toBe(
-      '/activity?session=thread%2Fone',
+      activityDeepLink({ sessionId: 'thread/one' }),
     );
   });
 

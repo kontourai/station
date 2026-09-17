@@ -185,17 +185,19 @@ describe('desktop startup readiness static boundary', () => {
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
     ]).toHaveLength(1);
-    expect(lib).not.toMatch(
-      /deep_link\(\)\.on_open_url[\s\S]{0,900}with_native_startup_cover/,
+    const deepLinkActivation = rustBlock(
+      lib,
+      'app.handle().deep_link().on_open_url',
     );
+    expect(deepLinkActivation).not.toContain('with_native_startup_cover');
     const trayFocus = rustBlock(tray, 'fn focus_station_window');
     expect(trayFocus).toContain('crate::ensure_main_window(app)?');
     expect(trayFocus).toContain('crate::request_main_window_activation(app)');
     expect(lib).toMatch(
       /single_instance::init[\s\S]{0,1800}request_main_window_activation\(app\)/,
     );
-    expect(lib).toMatch(
-      /deep_link\(\)\.on_open_url[\s\S]{0,700}request_or_defer_main_window_activation/,
+    expect(deepLinkActivation).toContain(
+      'request_or_defer_main_window_activation',
     );
     const reopen = rustBlock(
       lib,

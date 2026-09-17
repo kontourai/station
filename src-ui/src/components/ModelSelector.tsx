@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useModelCapabilities } from '../contexts/ModelCapabilitiesContext';
 import { useModels } from '../contexts/ModelsContext';
 import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
@@ -41,6 +41,7 @@ interface ModelSelectorAutocompleteProps {
   onSelect: (model: Model) => void;
   onClose: () => void;
   maxHeight?: string;
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
 export function ModelSelectorAutocomplete({
@@ -51,6 +52,7 @@ export function ModelSelectorAutocomplete({
   onSelect,
   onClose,
   maxHeight,
+  anchorRef,
 }: ModelSelectorAutocompleteProps) {
   const capabilities = useModelCapabilities();
 
@@ -131,6 +133,7 @@ export function ModelSelectorAutocomplete({
       onClose={onClose}
       emptyMessage="No models found"
       maxHeight={maxHeight}
+      anchorRef={anchorRef}
     />
   );
 }
@@ -143,6 +146,8 @@ interface ModelSelectorProps {
   defaultModel?: string; // Global default model to show as option
   models?: Model[];
   id?: string; // associate a <label htmlFor> with the input (a11y + testing)
+  /** Refuse edits while a prerequisite selection is missing. */
+  disabled?: boolean;
 }
 
 export function ModelSelector({
@@ -152,6 +157,7 @@ export function ModelSelector({
   defaultModel,
   models: providedModels,
   id,
+  disabled = false,
 }: ModelSelectorProps) {
   const globalModels = useModels();
   const models = providedModels ?? globalModels;
@@ -259,7 +265,9 @@ export function ModelSelector({
         type="text"
         value={isOpen ? search : displayValue}
         onChange={(e) => setSearch(e.target.value)}
+        disabled={disabled}
         onFocus={() => {
+          if (disabled) return;
           setIsOpen(true);
           setSearch('');
           setSelectedIndex(0);

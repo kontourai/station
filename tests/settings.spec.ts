@@ -1,40 +1,33 @@
 import { expect, test } from '@playwright/test';
+import {
+  dismissSetupLauncher,
+  openHeaderSettings,
+} from './helpers/orchestration';
 
 async function goToSettings(page: import('@playwright/test').Page) {
   await page.goto('/');
-  // archive#1009: the header gear is an SVG glyph now — target the accessible name.
-  await page.waitForSelector('button[aria-label="Open settings"]', {
-    timeout: 10_000,
-  });
-  await forceClick(page, 'button[aria-label="Open settings"]');
+  await dismissSetupLauncher(page);
+  // archive#1009 targeted the gear's accessible name directly. #1552 D1 moved
+  // that command into the avatar's menu on a fine pointer, and this suite runs
+  // at the default desktop viewport where the gear is `display: none` — so the
+  // route, not the control, is what this asks for.
+  await openHeaderSettings(page);
   await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
 }
 
-/** ChatDock overlay intercepts pointer events on bottom elements — use dispatchEvent */
-async function forceClick(
-  page: import('@playwright/test').Page,
-  selector: string,
-) {
-  await page
-    .locator(selector)
-    .first()
-    .evaluate((el) =>
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
-}
-
 /**
- * Default Model, Default Region, Default Agent Instructions, and Template
- * Variables are de-emphasized fallback values behind a closed <details>
- * disclosure in "Defaults" (formerly "Agent defaults") — open it before interacting with any of
- * those fields.
+ * Navigate to "Agent runs", where Default Model, Default Region, Default Agent
+ * Instructions, and Template Variables live. They used to sit behind a closed
+ * <details> disclosure that had to be opened first; they now render directly
+ * under the section intro, so navigating is the whole step.
  */
 async function openAgentDefaults(page: import('@playwright/test').Page) {
-  // station#settings-revamp slice 3: "Agent defaults" was renamed "Defaults"
-  // when it was promoted to its own top-level scope section; the leaf DOM id
-  // (#section-agent-defaults) is unchanged.
-  await page.getByRole('link', { name: 'Defaults', exact: true }).click();
-  await page.locator('#section-agent-defaults summary').click();
+  // #2182: the section was "Agent defaults", then "Defaults" when it was
+  // promoted to its own top-level scope, and is now "Agent runs" — a name for
+  // the thing the values apply to rather than for the precedence rule. The
+  // leaf DOM id follows the section id (`section-<id>`), so it moved too.
+  await page.getByRole('link', { name: 'Agent runs', exact: true }).click();
+  await page.locator('#section-agent-runs .agent-defaults__panel').waitFor();
 }
 
 /**
@@ -64,7 +57,7 @@ async function saveSettingsAndVerifyPersistence(
         { timeout: 10_000 },
       )
     : undefined;
-  await forceClick(page, '.settings__save-pill-btn');
+  await page.locator('.settings__save-pill-btn').first().click();
   const saved = await putResponse;
   expect(saved.ok()).toBe(true);
   if (logLevelPut) expect((await logLevelPut).ok()).toBe(true);
@@ -127,72 +120,137 @@ test.describe('Settings', () => {
     await goToSettings(page);
   });
 
+  // #2059 (design record D3): the configuration destinations that used to take
+  // rows in the left panel are reached from this page. #2144 slice 4 removed
+  // the separate Manage GRID that held them and made each one a row in the
+  // section navigation itself, so one list answers "what can I change here?".
+  // This is the touch-target half of the contract those panel rows used to
+  // carry — task-first-home.spec.ts owns the drawer's own rows and its footer
+  // — and it lives here because this suite's fixture models the Settings page.
+  //
+  // The labels are the rows a reader sees, not destination ids: Guidance is
+  // listed as 'Skills' and Connections as 'Engines & Models' (#2144 decisions
+  // 1 and 7), and Registry has no row because it folds into Plugins
+  // (decision 4, proven end to end in registry.spec.ts).
+  test('the section navigation lists the moved destinations at a thumb-sized target', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const sections = page.getByRole('navigation', {
+      name: 'Settings sections',
+    });
+    await expect(sections).toBeVisible({ timeout: 10_000 });
+    for (const label of [
+      'Agents',
+      'Skills',
+      'Engines & Models',
+      'Plugins',
+      'Schedule',
+    ]) {
+      const entry = sections.getByRole('link', { name: label, exact: true });
+      await expect(entry).toBeVisible();
+      expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(
+      sections.getByRole('link', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+    // archive#3313 (Settings IA, option A): Developer is settings-gated and
+    // hidden until enabled on this device. The gate followed the entry out of
+    // the panel; it did not stay behind with the row, and it did not stay
+    // behind with the grid either.
+    await expect(
+      sections.getByRole('link', { name: 'Developer', exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(() =>
+        Math.max(
+          document.documentElement.scrollWidth,
+          document.body.scrollWidth,
+        ),
+      ),
+    ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  });
+
+  // #2144 slice 7: at a fine-pointer desktop width the section navigation is
+  // a vertical rail, and every group heading is on screen without scrolling.
+  // Before this, the strip scrolled sideways at every width and at 1440x900
+  // cut off after the second group heading — three of five groups sat
+  // behind a horizontal scroll nothing announced. The mobile test above
+  // keeps the strip; this pins the other half of the modifier, and both
+  // would go red together if the breakpoint stopped being a complement.
+  test('at desktop width the section navigation is a rail that shows every group', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const nav = page.getByRole('navigation', { name: 'Settings sections' });
+    await expect(nav).toBeVisible({ timeout: 10_000 });
+    expect(
+      await nav.evaluate((element) => getComputedStyle(element).flexDirection),
+    ).toBe('column');
+    // Nothing hides behind a horizontal scroll inside the rail.
+    expect(
+      await nav.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    const headings = nav.getByRole('heading');
+    expect(await headings.count()).toBeGreaterThanOrEqual(4);
+    const width = page.viewportSize()!.width;
+    for (const heading of await headings.all()) {
+      const box = (await heading.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+  });
+
+  test('a nav-only row leaves Settings for the destination it names', async ({
+    page,
+  }) => {
+    await page
+      .getByRole('navigation', { name: 'Settings sections' })
+      .getByRole('link', { name: 'Plugins', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/plugins$/);
+  });
+
   test('page load shows the primary settings sections', async ({ page }) => {
     for (const title of [
       'Appearance',
       'Keyboard shortcuts',
       'Notifications',
-      'Voice & Features',
+      'Voice',
+      'Pairing',
       'My knowledge store',
       'Diagnostics',
       'System',
-      'Station configuration',
-      'Defaults',
+      'Sources',
+      // The SECTION heading. Its first ROW is "Usage telemetry" (#2182 L8).
+      'Telemetry',
+      'Permissions',
+      'Agent runs',
     ]) {
+      // `exact`: a substring match lets "Usage telemetry" (a row) satisfy
+      // "Telemetry" (the section), so reverting the section title would stay
+      // green — the one change this assertion exists to catch (#2182 L-f).
       await expect(
-        page.getByRole('heading', { name: title }).first(),
+        page.getByRole('heading', { name: title, exact: true }).first(),
       ).toBeVisible();
     }
   });
 
-  test('overview summarizes status and drills into URL-backed settings views', async ({
+  test('section navigation exposes the settings persistence scopes', async ({
     page,
   }) => {
+    const nav = page.getByRole('navigation', { name: 'Settings sections' });
     await expect(
-      page.getByRole('heading', { name: 'Your settings are ready' }),
-    ).toBeVisible();
-    await expect(page.getByText('No issues', { exact: true })).toBeVisible();
-    const deviceCard = page.locator(
-      '.settings-overview__card[href*="view=appearance"]',
-    );
-    await expect(deviceCard).toContainText('Personal experience');
-    await expect(deviceCard).toHaveAttribute('href', /[?&]view=appearance/);
-    await deviceCard.click();
-    await expect(page).toHaveURL(/[?&]view=appearance/);
-    await expect(page.locator('#section-appearance')).toBeInViewport();
-  });
-
-  // station#settings-revamp slice 3: the /settings IA restructure — three
-  // registry-driven scope groups (Station / Defaults / This device) with a
-  // persistence-tier caption each, replacing the flat nav. archive#1826
-  // dropped the three-card scope legend (it restated this grouping) and
-  // reworded the Defaults/device captions in product terms; the captions are
-  // now the only place the persistence tiers are explained, so this test
-  // pins them. It also pins that the Station group leads with Station
-  // configuration — controls before diagnostics.
-  test('nav groups sections under Station / Defaults / This device, each with a persistence-tier caption', async ({
-    page,
-  }) => {
-    const nav = page.locator('.settings__section-nav');
-    await expect(
-      nav.locator('.settings__nav-group-title', { hasText: 'Station' }),
+      nav.getByRole('link', { name: 'Sources', exact: true }),
     ).toBeVisible();
     await expect(
-      nav.locator('.settings__nav-group-title', { hasText: 'Defaults' }),
+      nav.getByRole('link', { name: 'Agent runs', exact: true }),
     ).toBeVisible();
     await expect(
-      nav.locator('.settings__nav-group-title', { hasText: 'This device' }),
+      nav.getByRole('link', { name: 'Appearance', exact: true }),
     ).toBeVisible();
-
-    // The Station group's nav leads with what a person changes (archive#1826).
-    await expect(
-      nav
-        .locator('.settings__nav-group')
-        .first()
-        .locator('.page__section-link')
-        .first(),
-    ).toHaveText('Station configuration');
-
     await expect(
       page.getByText(
         'Saved to this Station — every client sees the same values.',
@@ -200,7 +258,7 @@ test.describe('Settings', () => {
     ).toBeVisible();
     await expect(
       page.getByText(
-        'Saved to this Station — used when a chat, project, or agent doesn’t set its own value.',
+        'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.',
       ),
     ).toBeVisible();
     await expect(
@@ -235,8 +293,8 @@ test.describe('Settings', () => {
     await page.reload();
     await expect(page.locator('#section-system')).toBeInViewport();
 
-    await page.getByRole('link', { name: 'Defaults', exact: true }).click();
-    await expect(page).toHaveURL(/[?&]view=agent-defaults/);
+    await page.getByRole('link', { name: 'Agent runs', exact: true }).click();
+    await expect(page).toHaveURL(/[?&]view=agent-runs/);
     await page.goBack();
     await expect(page).toHaveURL(/[?&]view=system/);
     await expect(page.locator('#section-system')).toBeInViewport();
@@ -248,7 +306,12 @@ test.describe('Settings', () => {
     await page.goto('/settings?keep=1&view=unknown');
     await page.waitForSelector('.settings__section-nav');
     await expect(page).toHaveURL('/settings?keep=1');
-    await expect(page.locator('#section-overview')).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Overview', exact: true }),
+    ).toHaveAttribute('aria-current', 'location');
+    await expect(
+      page.getByRole('heading', { name: 'System', exact: true }),
+    ).toBeVisible();
   });
 
   test('legacy section deep links remain supported', async ({ page }) => {
@@ -277,7 +340,7 @@ test.describe('Settings', () => {
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
     // Clean up
-    await forceClick(page, '.settings__save-pill-discard');
+    await page.locator('.settings__save-pill-discard').first().click();
   });
 
   // Regression: the settings form must load saved server values into its fields
@@ -315,16 +378,19 @@ test.describe('Settings', () => {
     const original = await page.inputValue('#systemPrompt');
     await page.getByRole('link', { name: 'System', exact: true }).click();
     const originalLogLevel = await page.inputValue('#logLevel');
-    await page.selectOption('#logLevel', 'debug');
+    const targetLogLevel = originalLogLevel === 'debug' ? 'trace' : 'debug';
+    await page.selectOption('#logLevel', targetLogLevel);
     await openAgentDefaults(page);
     const edited = `${original} [test-edit]`;
     await page.fill('#systemPrompt', edited);
     await expect(
       page.getByText('Unsaved changes', { exact: true }),
     ).toBeVisible();
-    await saveSettingsAndVerifyPersistence(page, edited, 'debug');
+    await saveSettingsAndVerifyPersistence(page, edited, targetLogLevel);
     await page.reload();
-    await expect(page.locator('#logLevel')).toHaveValue('debug');
+    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await expect(page.locator('#logLevel')).toHaveValue(targetLogLevel);
+    await openAgentDefaults(page);
     // Restore the original through the same proven persistence path; the
     // causal readback inside the helper asserts the server again matches the
     // original, so restoration is verified rather than assumed.
@@ -343,7 +409,9 @@ test.describe('Settings', () => {
     const edited = `${original} [partial-save]`;
     await page.fill('#systemPrompt', edited);
     await page.getByRole('link', { name: 'System', exact: true }).click();
-    await page.selectOption('#logLevel', 'debug');
+    const originalLogLevel = await page.inputValue('#logLevel');
+    const targetLogLevel = originalLogLevel === 'debug' ? 'trace' : 'debug';
+    await page.selectOption('#logLevel', targetLogLevel);
     await page.route('**/config/app/log-level', (route) => {
       if (route.request().method() === 'PUT') {
         return route.fulfill({
@@ -359,18 +427,23 @@ test.describe('Settings', () => {
         response.request().method() === 'PUT' &&
         new URL(response.url()).pathname === '/config/app',
     );
-    await forceClick(page, '.settings__save-pill-btn');
+    await page.locator('.settings__save-pill-btn').first().click();
     expect((await plainPut).ok()).toBe(true);
     await expect(
       page.getByText(
         /Log Level could not be saved\. Other settings were saved/,
       ),
     ).toBeVisible();
-    await expect(page.locator('#logLevel')).toHaveValue('debug');
+    await expect(page.locator('#logLevel')).toHaveValue(targetLogLevel);
     const readback = await page.request.get(
       new URL('/config/app', page.url()).toString(),
     );
     expect((await readback.json()).data?.systemPrompt).toBe(edited);
+    await page.unroute('**/config/app/log-level');
+    await page.selectOption('#logLevel', originalLogLevel);
+    await openAgentDefaults(page);
+    await page.fill('#systemPrompt', original);
+    await saveSettingsAndVerifyPersistence(page, original);
   });
 
   test('discard reverts changes', async ({ page }) => {
@@ -383,41 +456,33 @@ test.describe('Settings', () => {
     await expect(
       page.getByText('Unsaved changes', { exact: true }),
     ).toBeVisible();
-    await forceClick(page, '.settings__save-pill-discard');
+    await page.locator('.settings__save-pill-discard').first().click();
     await expect(page.locator('#systemPrompt')).toHaveValue(original);
     await expect(
       page.getByText('Unsaved changes', { exact: true }),
     ).not.toBeVisible();
   });
 
-  test('reset to defaults shows confirm modal', async ({ page }) => {
+  test('reset shows a confirm modal that states what it does and does not touch', async ({
+    page,
+  }) => {
     await page.getByRole('link', { name: 'System', exact: true }).click();
-    await page.getByRole('button', { name: 'Reset to Defaults' }).click();
+    await page.getByRole('button', { name: 'Reset Station settings' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Reset Station settings' });
+    await expect(dialog).toBeVisible();
+    // The one sentence that holds whatever this Station currently stores: the
+    // list of cleared labels varies with the instance, the device-scope
+    // carve-out does not.
     await expect(
-      page.getByText('Are you sure you want to reset'),
+      dialog.getByText('Settings on this device are not affected.', {
+        exact: false,
+      }),
     ).toBeVisible();
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Cancel', exact: true })
-      .click();
-    await expect(
-      page.getByText('Are you sure you want to reset'),
-    ).not.toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
   });
 
-  test('routes provider, service, and computer setup to Connections', async ({
-    page,
-  }) => {
-    await expect(
-      page.getByText('Providers, developer services, and computers'),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Open Connections' }).click();
-    await expect(page).toHaveURL(/\/connections$/);
-  });
-
-  test('Agent defaults shows the generic region field behind the disclosure', async ({
-    page,
-  }) => {
+  test('Agent runs shows the generic region field', async ({ page }) => {
     await openAgentDefaults(page);
     await expect(
       page.getByText(
@@ -443,7 +508,7 @@ test.describe('Settings', () => {
     // Discard if needed
     const pill = page.getByText('Unsaved changes', { exact: true });
     if (await pill.isVisible()) {
-      await forceClick(page, '.settings__save-pill-discard');
+      await page.locator('.settings__save-pill-discard').first().click();
     }
   });
 
@@ -529,11 +594,11 @@ test.describe('Settings', () => {
   test('search filters sections', async ({ page }) => {
     await page.fill('.settings__search', 'theme');
     await expect(page.locator('#section-appearance')).toBeVisible();
-    await expect(page.locator('#section-agent-defaults')).not.toBeVisible();
+    await expect(page.locator('#section-agent-runs')).not.toBeVisible();
     await expect(page.locator('#section-system')).not.toBeVisible();
     // Clear restores all
     await page.fill('.settings__search', '');
-    await expect(page.locator('#section-agent-defaults')).toBeVisible();
+    await expect(page.locator('#section-agent-runs')).toBeVisible();
     await expect(page.locator('#section-system')).toBeVisible();
   });
 
@@ -581,24 +646,11 @@ test.describe('Settings', () => {
       page.getByText('Unsaved changes', { exact: true }),
     ).toBeVisible();
 
-    // useCloseShortcut listens for keydown on `window`; a genuine
-    // `keyboard.press('Control+x')`/`Meta+x` risks being swallowed by the
-    // browser's native cut binding before our handler sees it, so dispatch
-    // the same keydown directly (mirrors tests/command-palette.spec.ts's
-    // ⌘K dispatch for the same reason).
     async function pressCloseShortcut() {
-      await page.evaluate(() => {
-        const isMac = navigator.platform.toUpperCase().includes('MAC');
-        window.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: 'x',
-            metaKey: isMac,
-            ctrlKey: !isMac,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      });
+      await page
+        .getByRole('heading', { name: 'Settings', exact: true })
+        .click();
+      await page.keyboard.press('ControlOrMeta+x');
     }
 
     await pressCloseShortcut();
@@ -634,4 +686,59 @@ test.describe('Settings', () => {
     expect(describedBy).toBe('notif-desc');
     await expect(page.locator('#notif-desc')).toBeVisible();
   });
+});
+
+test('Save remains clickable above an open resized dock', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/settings?dock=open');
+  await dismissSetupLauncher(page);
+  await openAgentDefaults(page);
+  const prompt = page.locator('#systemPrompt');
+  await prompt.fill(`${await prompt.inputValue()}\nDock occlusion check`);
+  const save = page.locator('.settings__save-pill-btn');
+  const dock = page.locator('.chat-dock');
+  const resize = page.getByRole('separator', { name: 'Resize chat dock' });
+  await expect(save).toBeVisible();
+  await expect(dock).toBeVisible();
+  await expect(resize).toBeVisible();
+  for (const delta of [80, -40]) {
+    const before = (await dock.boundingBox())!;
+    const handle = (await resize.boundingBox())!;
+    await page.mouse.move(
+      handle.x + handle.width / 2,
+      handle.y + handle.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      handle.x + handle.width / 2,
+      handle.y + handle.height / 2 - delta,
+      { steps: 4 },
+    );
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await dock.boundingBox())?.height)
+      .not.toBe(before.height);
+    const saveBox = (await save.boundingBox())!;
+    const dockBox = (await dock.boundingBox())!;
+    expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(dockBox.y);
+    expect(
+      await save.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return element.contains(
+          document.elementFromPoint(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          ),
+        );
+      }),
+    ).toBe(true);
+  }
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PUT' &&
+      new URL(response.url()).pathname === '/config/app',
+  );
+  await save.click();
+  expect((await saved).ok()).toBe(true);
+  await expect(page.locator('.settings__save-pill')).toBeHidden();
 });

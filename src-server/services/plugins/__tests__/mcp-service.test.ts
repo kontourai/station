@@ -1,13 +1,36 @@
+import { mkdtempSync, rmSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
   loadIntegrationConfig,
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
+
+// These project homes were fixed paths in a directory shared with every other
+// process on the host, so anything else could occupy or replace either name.
+//
+// Only the secret-binding home has ever been observed on disk
+// (`/tmp/station-secret-binding-management`, observed 2026-09-08, dated Sep 4
+// -- since reaped by the host's /tmp cleaner, so it is not reproducible now).
+// Whether `station-stored-env-migration` is ever created is UNVERIFIED: that
+// one is converted for consistency, not on evidence of a write.
+//
+// `afterAll` removes THIS root; other `mkdtempSync` roots in this file are
+// pre-existing and still uncleaned.
+const MCP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-mcp-service-home-'));
+const STORED_ENV_HOME = join(MCP_TEMP_ROOT, 'station-stored-env-migration');
+const SECRET_BINDING_HOME = join(
+  MCP_TEMP_ROOT,
+  'station-secret-binding-management',
+);
+
+afterAll(() => {
+  rmSync(MCP_TEMP_ROOT, { force: true, recursive: true });
+});
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   mcpLifecycle: { add: vi.fn() },
@@ -22,7 +45,22 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 // MCP-UI reads use Station's raw adapter connection, never the lossy VoltAgent
 // client. When no agent currently owns the integration, the service opens a
 // transient adapter connection; mock it so that fallback is deterministic.
-vi.mock('@kontourai/station-shared/mcp', () => ({ connectMCP: vi.fn() }));
+vi.mock('@kontourai/station-shared/mcp', async (original) => {
+  const actual =
+    await original<typeof import('@kontourai/station-shared/mcp')>();
+  const { fixtureMCPCustody } = await import(
+    '../../../test-support/mcp-custody-fixture.js'
+  );
+  const connectMCP = vi.fn();
+  return {
+    ...actual,
+    connectMCP,
+    MCPLocalConnectionCustody: fixtureMCPCustody(
+      actual.MCPLocalConnectionCustody,
+      connectMCP,
+    ),
+  };
+});
 
 const { MCPService, StoredEnvMigrationError, openSystemBrowser } = await import(
   '../mcp-service.js'
@@ -37,7 +75,7 @@ const { connectMCP } = await import('@kontourai/station-shared/mcp');
 const connectMCPMock = vi.mocked(connectMCP);
 
 function createMockConfigLoader() {
-  return withAtomicUpdate({
+  const loader = withAtomicUpdate({
     listIntegrations: vi
       .fn()
       .mockResolvedValue([{ id: 'mcp-1', name: 'Test' }]),
@@ -51,6 +89,12 @@ function createMockConfigLoader() {
       tools: { mcpServers: ['mcp-1'], available: ['*'] },
     }),
     updateAgent: vi.fn().mockResolvedValue(undefined),
+  });
+  return Object.assign(loader, {
+    loadIntegrationWithOwnership: vi.fn(async (id: string) => ({
+      definition: await loader.loadIntegration(id),
+      contributed: false,
+    })),
   });
 }
 
@@ -79,6 +123,167 @@ const mockLogger = {
 };
 
 describe('MCPService', () => {
+  test('probes live package integrations without snapshotting and refuses definition mutations', async () => {
+    connectMCPMock.mockReset();
+    connectMCPMock.mockResolvedValue({ tools: [], disconnect: vi.fn() } as any);
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'agent-plugin-live',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+    });
+    Object.assign(loader, {
+      isLiveContributedIntegration: vi.fn(() => true),
+      loadIntegrationWithOwnership: vi.fn(async () => ({
+        definition: await loader.loadIntegration('agent-plugin-live'),
+        contributed: true,
+      })),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+
+    await expect(svc.probeIntegration('agent-plugin-live')).resolves.toEqual(
+      expect.objectContaining({ probe: expect.objectContaining({ ok: true }) }),
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    await expect(svc.setEnabled('agent-plugin-live', false)).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    await expect(
+      svc.applyDisabledTools('agent-plugin-live', ['tool']),
+    ).rejects.toThrow(/Package-supplied integration definitions are read-only/);
+    await expect(svc.startOAuth('agent-plugin-live', 'remote')).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    expect(connectMCPMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('never persists a probed package definition after its owner disappears', async () => {
+    connectMCPMock.mockReset();
+    connectMCPMock.mockResolvedValue({ tools: [], disconnect: vi.fn() } as any);
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'removed-package-tool',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'removed-package-command',
+    });
+    loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+      definition: await loader.loadIntegration('removed-package-tool'),
+      contributed: true,
+    }));
+    Object.assign(loader, {
+      // The package disappears after its definition was returned.
+      isLiveContributedIntegration: vi.fn(() => false),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+
+    await expect(svc.probeIntegration('removed-package-tool')).resolves.toEqual(
+      expect.objectContaining({ probe: expect.objectContaining({ ok: true }) }),
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      'setEnabled',
+      (svc: InstanceType<typeof MCPService>) =>
+        svc.setEnabled('removed-package-tool', false),
+    ],
+    [
+      'applyDisabledTools',
+      (svc: InstanceType<typeof MCPService>) =>
+        svc.applyDisabledTools('removed-package-tool', ['write']),
+    ],
+  ] as const)(
+    'never persists a package definition through %s after its owner disappears',
+    async (_operation, mutate) => {
+      const loader = createMockConfigLoader();
+      loader.loadIntegration.mockResolvedValue({
+        id: 'removed-package-tool',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'removed-package-command',
+      });
+      loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+        definition: await loader.loadIntegration('removed-package-tool'),
+        contributed: true,
+      }));
+      Object.assign(loader, {
+        // The initial live check has already raced with uninstall. Provenance
+        // from the definition read must still forbid persisting its snapshot.
+        isLiveContributedIntegration: vi.fn(() => false),
+      });
+      const svc = new MCPService(
+        loader as any,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        mockLogger,
+      );
+
+      await expect(mutate(svc)).rejects.toThrow(
+        /Package-supplied integration definitions are read-only/,
+      );
+      expect(loader.saveIntegration).not.toHaveBeenCalled();
+    },
+  );
+
+  test('generic edits retain package ownership after uninstall wins the read-to-save race', async () => {
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'removed-package-tool',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'removed-package-command',
+    });
+    loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+      definition: await loader.loadIntegration('removed-package-tool'),
+      contributed: true,
+    }));
+    Object.assign(loader, {
+      isLiveContributedIntegration: vi.fn(() => false),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+    const packageDefinition = await svc.getIntegration('removed-package-tool');
+    const genericPutMerge = { ...packageDefinition, enabled: false };
+
+    await expect(svc.saveIntegration(genericPutMerge)).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    expect(JSON.stringify(genericPutMerge)).not.toContain(
+      'contributed-integration-definition',
+    );
+  });
+
   test('migrates stored env only after a fresh bound child succeeds and retries a safe partial grant', async () => {
     let current: any = {
       id: 'github',
@@ -95,7 +300,7 @@ describe('MCPService', () => {
         current = next;
         saved.push(next);
       }),
-      getProjectHomeDir: () => '/tmp/station-stored-env-migration',
+      getProjectHomeDir: () => STORED_ENV_HOME,
     });
     const grants = new Set<string>();
     let failOther = true;
@@ -602,7 +807,7 @@ describe('MCPService', () => {
     const loader = withAtomicUpdate({
       loadIntegration: vi.fn().mockResolvedValue(def),
       saveIntegration: vi.fn().mockResolvedValue(undefined),
-      getProjectHomeDir: () => '/tmp/station-secret-binding-management',
+      getProjectHomeDir: () => SECRET_BINDING_HOME,
     });
     const resolver = { resolveForIntegration: vi.fn() };
     const svc = new MCPService(
@@ -1265,9 +1470,14 @@ describe('MCPService', () => {
           'mcp-1',
           `http://127.0.0.1:4130/integrations/mcp-1/oauth/callback?code=one&state=${issuedState}`,
         ),
-      ).rejects.toThrow(
-        'OAuth tool server endpoint changed during authorization exchange',
-      );
+      ).rejects.toThrow('MCP local connection custody is pending');
+      // The awaited reentrant write cannot outlive the tracked continuation.
+      // It is refused before mutation; retry succeeds after that scope settles.
+      expect((await loader.loadIntegration('mcp-1')).endpoint).toBe(endpointA);
+      await svc.saveIntegration({
+        ...(await loader.loadIntegration('mcp-1')),
+        endpoint: endpointB,
+      });
       expect((await loader.loadIntegration('mcp-1')).endpoint).toBe(endpointB);
       expect((await loader.loadIntegration('mcp-1')).probe).toMatchObject({
         authorization: { state: 'never-authorized' },
@@ -1329,7 +1539,7 @@ describe('MCPService', () => {
           'mcp-1',
           `http://127.0.0.1:4131/integrations/mcp-1/oauth/callback?code=one&state=${issuedState}`,
         ),
-      ).resolves.toMatchObject({ endpoint: endpointA });
+      ).rejects.toMatchObject({ state: 'stale' });
       await endpointMutation;
 
       const persisted = await loader.loadIntegration('mcp-1');

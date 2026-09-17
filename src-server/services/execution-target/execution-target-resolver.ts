@@ -26,7 +26,10 @@ import {
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
-import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
+import {
+  resolveWorkspaceIsolationMode,
+  type WorkspaceIsolationMode,
+} from '@kontourai/station-contracts/workspace-isolation';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { expandTilde } from '../../utils/paths.js';
 
@@ -75,6 +78,24 @@ export interface ExecutionTargetResolverDependencies {
     slug: string,
   ) => Promise<ResolvedProjectView | undefined>;
   /**
+   * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) —
+   * the fallback a project that names no workspace mode of its own lands on,
+   * ahead of `'shared'`.
+   *
+   * Takes `access` because the project it qualifies comes from `getProject`,
+   * which reads the SELECTED Station. A wiring that answered from the local
+   * config for a remote Environment would describe the wrong host's setting,
+   * so the production wirings answer only for `access.kind === 'current'`
+   * and leave a remote Environment on `'shared'` unless its own project
+   * record names a mode — which is exactly today's behavior there.
+   *
+   * Optional: absent is indistinguishable from "this Station has no default",
+   * and both resolve to `'shared'`.
+   */
+  getStationDefaultWorkspaceIsolation?: (
+    access: EnvironmentAccess,
+  ) => Promise<WorkspaceIsolationMode | undefined>;
+  /**
    * Registered adapter lookup on the selected Station. Model-launch support
    * belongs to the adapter declaration; it is not a provider-name policy.
    */
@@ -82,7 +103,7 @@ export interface ExecutionTargetResolverDependencies {
   now?: () => Date;
 }
 
-export interface ResolvedExecutionTarget {
+interface ResolvedExecutionTarget {
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;
@@ -90,9 +111,11 @@ export interface ResolvedExecutionTarget {
   provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
   /**
-   * The model this turn actually launches with: the caller's per-turn override
+   * The resolved new-session model request: the caller's per-turn override
    * when there is one, otherwise the Agent's own `execution.modelId`. archive#3406:
-   * only the override used to reach the adapter, so an Agent that named a model
+   * Same-engine cursor continuations retain their observed model unless the
+   * caller supplies an override. Previously only the override reached the
+   * adapter, so an Agent that named a model
    * ran on the engine's default and said nothing -- and the ACP adapter's
    * apply-and-verify block (acp-adapter.ts) was skipped entirely, because it is
    * reached only when a model is requested. Resolve it here, once, so every
@@ -106,7 +129,7 @@ export interface ResolvedExecutionTarget {
   receipt: ExecutionResolutionReceipt;
 }
 
-function assertConnectionReady(connection: ConnectionConfig): void {
+export function assertConnectionReady(connection: ConnectionConfig): void {
   if (connection.kind !== 'agent') {
     throw new Error(
       `Agent binding '${connection.id}' does not resolve to an engine connection`,
@@ -156,7 +179,7 @@ function assertModelOptionsSupported(
   }
 }
 
-export const REMOTE_HOME_UNVERIFIED_REASON =
+const REMOTE_HOME_UNVERIFIED_REASON =
   'remote home unverified — re-verify the environment';
 
 type RemoteProjectPathMatch =
@@ -320,8 +343,15 @@ async function resolveWorkspace(
       projectSlug: slug,
       cwd,
       workspaceIsolation: workspace.workspaceIsolation ?? {
-        // An unset project record preserves today's shared-checkout launch.
-        mode: project.defaultWorkspaceIsolation ?? 'shared',
+        // A project that names no mode falls through to this Station's
+        // default, then to the shared checkout (#2144 slice 2). Resolved by
+        // the shared helper, not inline: the plugin foreground-invocation
+        // admission re-checks this same question as a provisioning
+        // precondition, and the two must not be able to disagree.
+        mode: resolveWorkspaceIsolationMode(
+          project.defaultWorkspaceIsolation,
+          await deps.getStationDefaultWorkspaceIsolation?.(access),
+        ),
       },
     },
     ...(access.verifiedProjectPath

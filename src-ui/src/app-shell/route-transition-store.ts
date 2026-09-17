@@ -10,9 +10,9 @@
  * ~1.4 s while the route chunk downloads. The nav row the user clicked showed
  * nothing at all for that window; this store is what lets it say so.
  *
- * The value is a SURFACE ID from `APP_SURFACE_REGISTRY`, not a pathname. The
+ * The value is a DESTINATION ID from `APP_DESTINATION_REGISTRY`, not a pathname. The
  * sidebar already resolves the row it highlights through
- * `getSurfaceForView`, so publishing the same id makes "the pending row" and
+ * `getDestinationForView`, so publishing the same id makes "the pending row" and
  * "the active row" two readings of one derivation — and a deep route
  * (`/registry/agents`, `/connections/providers/x`) marks its owning row,
  * which a pathname equality check silently never did.

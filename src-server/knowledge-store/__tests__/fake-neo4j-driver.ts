@@ -50,7 +50,7 @@ class FakeNeo4jRecord {
   }
 }
 
-export interface FakeNeo4jRunCall {
+interface FakeNeo4jRunCall {
   cypher: string;
   params: Record<string, unknown>;
 }

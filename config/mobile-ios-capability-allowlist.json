@@ -1,10 +1,10 @@
 {
-  "signedBundlePaths": ["Station.app"],
-  "machOPaths": ["Station.app/Station"],
+  "signedBundlePaths": ["."],
+  "machOPaths": ["{executable}"],
   "embeddedRpathTargets": [],
   "privacyManifestPaths": [
-    "Station.app/PrivacyInfo.xcprivacy",
-    "Station.app/Resources/PrivacyInfo.xcprivacy"
+    "PrivacyInfo.xcprivacy",
+    "Resources/PrivacyInfo.xcprivacy"
   ],
   "privacyKeys": [
     "NSPrivacyTracking",

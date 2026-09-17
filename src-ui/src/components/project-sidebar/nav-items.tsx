@@ -1,8 +1,5 @@
 import type { ReactNode } from 'react';
-import type {
-  SurfaceIconId,
-  SurfaceSection,
-} from '../../app-shell/surface-registry';
+import type { DestinationIconId } from '../../app-shell/destination-registry';
 
 function sidebarIcon(children: ReactNode): ReactNode {
   return (
@@ -22,7 +19,7 @@ function sidebarIcon(children: ReactNode): ReactNode {
   );
 }
 
-const SURFACE_ICONS: Readonly<Record<SurfaceIconId, ReactNode>> = {
+const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
   agents: sidebarIcon(
     <>
       <circle cx="12" cy="8" r="4" />
@@ -39,12 +36,6 @@ const SURFACE_ICONS: Readonly<Record<SurfaceIconId, ReactNode>> = {
     <>
       <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-    </>,
-  ),
-  review: sidebarIcon(
-    <>
-      <path d="M9 11l3 3L22 4" />
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
     </>,
   ),
   connections: sidebarIcon(
@@ -86,33 +77,6 @@ const SURFACE_ICONS: Readonly<Record<SurfaceIconId, ReactNode>> = {
   ),
 };
 
-export function surfaceIcon(icon: SurfaceIconId): ReactNode {
-  return SURFACE_ICONS[icon];
+export function destinationIcon(icon: DestinationIconId): ReactNode {
+  return DESTINATION_ICONS[icon];
 }
-
-export const PROJECT_SIDEBAR_NAV_GROUPS: ReadonlyArray<{
-  id: SurfaceSection;
-  label: string;
-  icon: ReactNode;
-}> = [
-  {
-    id: 'customize',
-    label: 'Customize',
-    icon: sidebarIcon(
-      <>
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-      </>,
-    ),
-  },
-  {
-    id: 'system',
-    label: 'System',
-    icon: sidebarIcon(
-      <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l-2.8 2.8a1.7 1.7 0 0 0-1.9-.3A1.7 1.7 0 0 0 14 21h-4a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-2.8-2.8a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14v-4a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l2.8-2.8A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3h4a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l2.8 2.8a1.7 1.7 0 0 0-.3 1.9A1.7 1.7 0 0 0 21 10v4a1.7 1.7 0 0 0-1.6 1Z" />
-      </>,
-    ),
-  },
-];

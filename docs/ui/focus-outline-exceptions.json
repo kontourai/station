@@ -42,11 +42,6 @@
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },
     {
-      "path": "src-ui/src/components/chat/chat.css",
-      "selector": ".workspace-modal__search:focus",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
       "path": "src-ui/src/components/chat/share-target-picker.css",
       "selector": ".share-target-picker__search:focus",
       "reason": "Search field draws its own focus border; the global keyboard-focus floor still supplies the keyboard outline."
@@ -104,17 +99,12 @@
     {
       "path": "src-ui/src/index.css",
       "selector": ".chat-input textarea:focus",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+      "reason": "The containing chat-input__capsule draws the visible 2px focus ring while its textarea is focused; composer browser tests verify that replacement indicator."
     },
     {
       "path": "src-ui/src/index.css",
       "selector": ".form-group input:focus, .form-group textarea:focus, .form-group select:focus",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
-      "path": "src-ui/src/index.css",
-      "selector": ".image-preview-modal",
-      "reason": "Programmatic modal container focus is not a visible control."
     },
     {
       "path": "src-ui/src/index.css",

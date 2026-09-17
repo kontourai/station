@@ -24,6 +24,14 @@ import { render } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+
 vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: [], isLoading: false }),
 }));
@@ -33,14 +41,23 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useAllActiveChats: () => [],
 }));
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     selectedProject: null,
     selectedProjectLayout: null,
     navigate: vi.fn(),
     pathname: '/',
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 vi.mock('../hooks/useBranding', () => ({
   useBranding: () => ({ appName: 'Station' }),
 }));

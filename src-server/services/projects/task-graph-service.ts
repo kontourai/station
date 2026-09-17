@@ -42,7 +42,10 @@ import type {
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 import { looksLikeWorkflowTaskSlugRef } from '@kontourai/station-contracts/workflow';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import {
   graphLinkCreatedTotal,
@@ -54,6 +57,7 @@ import {
   taskWorkspaceBindingTotal,
   taskWorkspaceOpenTotal,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
 import type {
@@ -63,12 +67,15 @@ import type {
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
+import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
 import { ProjectResourceResolver } from './project-resource-resolver.js';
 import type { ProjectService } from './project-service.js';
 import {
   resolveProjectWorkspaceOutcome,
   type WorkspacePathResolver,
 } from './project-workspace-path.js';
+import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
   type TaskDispatchAssociation,
@@ -110,7 +117,7 @@ type PersistedTaskAnswerNarrativePin = {
 };
 
 /** Internal only: routes obtain this from the association owner, never clients. */
-export type TaskAnswerNarrativePinCapture = {
+type TaskAnswerNarrativePinCapture = {
   associationRevision?: number;
   isCurrent(): boolean;
 };
@@ -194,20 +201,13 @@ class TaskDispatchAdmissionError extends Error {
   }
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type TaskGraphMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 /**
  * The graph is an authoritative lifecycle record. A syntactically valid JSON
  * value with an invented field or a missing dispatch invariant is not an older
  * shape to repair: it is an unreadable graph and must remain untouched for
  * inspection.
  */
-export class TaskGraphStoreShapeError extends Error {
+class TaskGraphStoreShapeError extends Error {
   constructor(
     readonly filePath: string,
     readonly problems: readonly string[],
@@ -221,11 +221,14 @@ interface TaskGraphServiceLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
+type TaskDispatchOrchestration = Pick<
+  OrchestrationService,
+  'dispatch' | 'seedSessionRecord'
+> &
+  Partial<Pick<OrchestrationService, 'claimTaskDispatchBoundary'>>;
+
 interface TaskGraphServiceDeps {
-  orchestrationService?: Pick<
-    OrchestrationService,
-    'dispatch' | 'seedSessionRecord'
-  >;
+  orchestrationService?: TaskDispatchOrchestration;
   projectService?: Pick<ProjectService, 'getProject'>;
   execGit?: typeof execGit;
   /** AssignmentProvider claim/release/status backend (roadmap archive#584). When
@@ -255,15 +258,12 @@ interface TaskGraphServiceDeps {
   workflowSidecarReader?: Pick<WorkflowSidecarService, 'readState'>;
   logger?: TaskGraphServiceLogger;
   /** Injectable only to make cross-instance contention deterministic in tests. */
-  acquireMutationLock?: TaskGraphMutationLock;
+  acquireMutationLock?: FileMutationLock;
 }
 
 /** Concrete integrations captured at the TaskDispatcher composition Seam. */
 export interface TaskDispatchAdapterDeps {
-  orchestrationService?: Pick<
-    OrchestrationService,
-    'dispatch' | 'seedSessionRecord'
-  >;
+  orchestrationService?: TaskDispatchOrchestration;
   assignmentClaimService?: Pick<
     AssignmentClaimService,
     'claim' | 'release' | 'status'
@@ -1373,10 +1373,37 @@ function buildProjectResourceResolver(
   });
 }
 
+function createTaskGraphStore(storePath: string, maxReadBytes?: number) {
+  return new JsonFileStore<TaskGraphStoreData>(
+    storePath,
+    {
+      tasks: [],
+      links: [],
+      dispatches: [],
+      answerNarrativePins: [],
+      declaredPullRequestKeeps: [],
+      declaredPullRequestKeepTombstones: [],
+    },
+    { onCorruption: 'throw', durableAtomicWrite: true, maxReadBytes },
+  );
+}
+
+/** Owner-private worker read: the same canonical parser and recovery as TaskGraph. */
+export function readTaskGraphForIsolatedSearch(
+  storePath: string,
+  maxReadBytes: number,
+): TaskRecord[] {
+  const data = validateTaskGraphStoreData(
+    createTaskGraphStore(storePath, maxReadBytes).read(),
+    storePath,
+  );
+  return data.tasks.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export class TaskGraphService {
   private readonly storePath: string;
   private readonly store: JsonFileStore<TaskGraphStoreData>;
-  private readonly acquireMutationLock: TaskGraphMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
   private readonly projectService?: Pick<ProjectService, 'getProject'>;
   /**
    * archive#1501, seam S4. Captured with `projectService` at this
@@ -1385,9 +1412,7 @@ export class TaskGraphService {
    */
   private readonly projectResourceResolver?: ProjectResourceResolver;
   private readonly runGit: typeof execGit;
-  private readonly orchestrationService:
-    | Pick<OrchestrationService, 'dispatch' | 'seedSessionRecord'>
-    | undefined;
+  private readonly orchestrationService: TaskDispatchOrchestration | undefined;
   private readonly assignmentClaimService:
     | Pick<AssignmentClaimService, 'claim' | 'release' | 'status'>
     | undefined;
@@ -1410,18 +1435,7 @@ export class TaskGraphService {
     this.workflowSidecarReader = deps.workflowSidecarReader;
     this.logger = deps.logger;
     this.storePath = join(projectHomeDir, 'task-graph.json');
-    this.store = new JsonFileStore<TaskGraphStoreData>(
-      this.storePath,
-      {
-        tasks: [],
-        links: [],
-        dispatches: [],
-        answerNarrativePins: [],
-        declaredPullRequestKeeps: [],
-        declaredPullRequestKeepTombstones: [],
-      },
-      { onCorruption: 'throw', durableAtomicWrite: true },
-    );
+    this.store = createTaskGraphStore(this.storePath);
     this.acquireMutationLock =
       deps.acquireMutationLock ?? acquireFileMutationLockAsync;
   }
@@ -1482,7 +1496,7 @@ export class TaskGraphService {
       this.logger?.warn('Could not read workflow sidecar for dispatch', {
         taskId: task.id,
         taskSlug: ref,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return undefined;
     }
@@ -1562,6 +1576,15 @@ export class TaskGraphService {
     return tasks
       .filter((task) => !projectId || task.projectId === projectId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  /**
+   * Personal-only, explicit lifecycle. Composition owns one reader per runtime
+   * and must close it; this does not authorize a hosted or external caller.
+   * No route/runtime caller is installed by the Task search tracer (#1413).
+   */
+  createPersonalSearchReader(stationId: string) {
+    return createIsolatedTaskSearch({ storePath: this.storePath, stationId });
   }
 
   readTask(taskId: string): TaskRecord | null {
@@ -2175,6 +2198,34 @@ export class TaskGraphService {
     });
   }
 
+  /** Read-only proof of a completed association, never a reservation or retry. */
+  readCompletedDispatchForRecovery(sessionId: string):
+    | {
+        task: TaskRecord;
+        dispatch: TaskDispatchRecord;
+        links: RelationGraphLink[];
+      }
+    | undefined {
+    const data = this.readStoreView();
+    const matches = data.dispatches.filter(
+      (dispatch) => dispatch.sessionId === sessionId,
+    );
+    if (matches.length !== 1) return undefined;
+    const dispatch = matches[0];
+    const task = data.tasks.find((task) => task.id === dispatch.taskId);
+    if (!task || task.dispatchReservation || task.sessionId !== sessionId)
+      return undefined;
+    return structuredClone({
+      task,
+      dispatch,
+      links: data.links.filter(
+        (link) =>
+          (link.sourceType === 'task' && link.sourceId === task.id) ||
+          (link.targetType === 'task' && link.targetId === task.id),
+      ),
+    });
+  }
+
   async readTaskGraph(taskId: string): Promise<TaskGraph | null> {
     const data = this.readStore();
     const task = data.tasks.find((item) => item.id === taskId);
@@ -2647,6 +2698,7 @@ export class TaskGraphService {
     claims: TaskDispatchClaims;
     remoteSessions: TaskDispatchRemoteSessions;
     telemetry: TaskDispatchTelemetry;
+    execution?: TaskDispatchExecutionAuthority;
   } {
     const orchestrationService =
       deps.orchestrationService ?? this.orchestrationService;
@@ -2723,6 +2775,7 @@ export class TaskGraphService {
       startOrSeed: async (
         reservation: DispatcherReservation,
         input: TaskDispatchInput,
+        admission?: SessionStartBoundaryClaim,
       ) => {
         if (reservation.provider !== 'task-dispatch' && orchestrationService) {
           const taskSlug = this.resolveDispatchTaskSlug(
@@ -2745,9 +2798,16 @@ export class TaskGraphService {
               },
             },
             undefined,
-            taskSlug
-              ? { workflowSidecarAttachMode: 'read-only-join' as const }
-              : undefined,
+            {
+              roomExecutionBinding: {
+                projectId: reservation.task.projectId,
+                taskId: reservation.task.id,
+              },
+              ...(admission ? { sessionStartAdmission: admission } : {}),
+              ...(taskSlug
+                ? { workflowSidecarAttachMode: 'read-only-join' as const }
+                : {}),
+            },
           )) as ProviderSession;
           return { session, outcome: 'started' as const };
         }
@@ -2791,7 +2851,24 @@ export class TaskGraphService {
         });
       },
     };
-    return { graph, claims, remoteSessions, telemetry };
+    const execution: TaskDispatchExecutionAuthority | undefined =
+      orchestrationService?.claimTaskDispatchBoundary
+        ? {
+            claim: async (reservation) =>
+              orchestrationService.claimTaskDispatchBoundary!({
+                projectId: reservation.task.projectId,
+                taskId: reservation.task.id,
+                sessionId: reservation.sessionId,
+              }),
+          }
+        : undefined;
+    return {
+      graph,
+      claims,
+      remoteSessions,
+      telemetry,
+      ...(execution ? { execution } : {}),
+    };
   }
 
   /**
@@ -3300,11 +3377,7 @@ export class TaskGraphService {
         artifactRoot: context.artifactRoot,
         subjectId: context.subjectId,
         actor: context.actor,
-        reason: `dispatch failed after claim: ${
-          originalError instanceof Error
-            ? originalError.message
-            : String(originalError)
-        }`,
+        reason: `dispatch failed after claim: ${errorMessage(originalError)}`,
       });
       taskAssignmentClaimTotal.add(1, {
         operation: 'release',
@@ -3324,10 +3397,7 @@ export class TaskGraphService {
       );
       return { kind: 'indeterminate', reason: result.reason };
     } catch (releaseError) {
-      const reason =
-        releaseError instanceof Error
-          ? releaseError.message
-          : String(releaseError);
+      const reason = errorMessage(releaseError);
       this.logger?.warn('compensateFailedDispatchClaim threw unexpectedly', {
         taskId: task.id,
         sessionId,
@@ -3457,7 +3527,7 @@ export class TaskGraphService {
     } catch (error) {
       this.logger?.warn('releaseClaimForSession failed unexpectedly', {
         sessionId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -3482,7 +3552,7 @@ export class TaskGraphService {
     } catch (error) {
       this.logger?.warn('releaseClaimForTask failed unexpectedly', {
         taskId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -3614,7 +3684,7 @@ export class TaskGraphService {
       }
     } catch (error) {
       this.logger?.warn('reconcileStaleAssignmentClaims failed unexpectedly', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     return { releasedSubjects: released };

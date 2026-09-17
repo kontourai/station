@@ -1,6 +1,10 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
+import { contrastRatio } from './helpers/color-contrast';
+import { openChooserFromToggle } from './helpers/region-placement';
+import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
  * Build gallery — an at-a-glance contact sheet of what the current build looks
@@ -86,6 +90,10 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
               id: connectionId,
             },
             credentialState: 'saved',
+            // This fixture represents an already verified saved Station.
+            // Do not race a successful probe to decide whether the mismatch
+            // disclosure includes the cached-context explanation.
+            lastSuccessAt: 1_700_000_000_000,
           },
         ]),
       );
@@ -159,19 +167,33 @@ function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   });
 }
 
+/**
+ * #1536 F: the gallery seeds exactly ONE Station and reaches it, which is the
+ * state whose chip collapsed to its status dot — a fact that does not change
+ * while you work, in the row that runs out of width first. So the state and the
+ * identity are no longer visible text HERE; they are the accessible name and
+ * the tooltip, which is the only channel a dot leaves for the identity.
+ *
+ * Both are asserted, not just one: the name is what the product's own E2E
+ * selectors key on (`/^Manage Stations/`), and the title is what a pointer user
+ * can actually read. A chip that dropped either would still pass a class check.
+ */
 async function assertGalleryConnectionChrome(page: Page): Promise<void> {
   const chip = page.getByTestId('app-toolbar-connection');
   await expect(chip).toHaveClass(/app-toolbar__conn--connected/, {
     timeout: 10_000,
   });
-  await expect(chip.locator('.app-toolbar__conn-state')).toHaveText(
-    'Connected',
-  );
-  await expect(chip.locator('.app-toolbar__conn-name')).toHaveText(
-    GALLERY_CONNECTION_NAME,
-  );
+  await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
+  const named = `Manage Stations — Connected · ${GALLERY_CONNECTION_NAME}`;
+  await expect(chip).toHaveAttribute('aria-label', named);
+  await expect(chip).toHaveAttribute('title', named);
+  // Collapsed means collapsed: neither text span renders, which is the width
+  // this change reclaims.
+  await expect(chip.locator('.app-toolbar__conn-state')).toHaveCount(0);
+  await expect(chip.locator('.app-toolbar__conn-name')).toHaveCount(0);
   // The gallery is a browser E2E instance, never a supervised desktop
-  // sidecar; pin the absence of HeaderActions' only remaining optional text.
+  // sidecar — and a sidecar's "App only" is news, so it would have kept the
+  // full chip. Pinning its absence is also the premise for the compact form.
   await expect(chip.getByTestId('desktop-sidecar-indicator')).toHaveCount(0);
 }
 
@@ -204,12 +226,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * test, so re-capturing the identical build never perturbs the gallery
  * pixel-for-pixel (archive#4464):
  *
- *  - `.sidebar__status-version` (ProjectSidebarStatus.tsx, via
- *    `buildLabel` in src-ui/src/build-info.ts): the `v<version> ·
- *    <commit>` build stamp rendered in the persistent project sidebar on
- *    every route. Comparing it pixel-for-pixel would invalidate a
- *    committed baseline on every version/commit bump even when nothing
- *    about the screen itself changed.
  *  - `.time-filter-wrapper` (MonitoringTimeControls.tsx, Developer →
  *    Telemetry): the whole relative/absolute time-window control —
  *    `.time-range-sublabel` alone (the absolute "Aug 26, 11:30 PM -> now"
@@ -243,9 +259,13 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * CSS-hidden (not Playwright's screenshot `mask` option), so the gallery
  * itself stays clean for a human/design reviewer instead of getting an
  * opaque box stamped over it that a reviewer has to mentally discount on
- * every tile. The build-stamp label's text is fixed per build (no live state
- * to vary its width), so `visibility: hidden` preserves the sidebar footer's
- * row height exactly as authored.
+ * every tile. Each label's text is fixed for the shot (no live state to vary
+ * its width), so `visibility: hidden` preserves the row height exactly as
+ * authored.
+ *
+ * #2059 removed the `.sidebar__footer-version` build stamp from the sidebar
+ * footer, and its rule with it: the volatile text is no longer on screen, so
+ * hiding it is not a thing this helper has to do.
  *
  * Must be called AFTER `page.goto` (a fresh navigation drops any
  * previously injected style tag) and as close to the shot as practical.
@@ -253,7 +273,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
 async function hideVolatileChrome(page: Page) {
   await page.addStyleTag({
     content: `
-      .sidebar__status-version { visibility: hidden !important; }
       .time-filter-wrapper { visibility: hidden !important; }
       .monitoring-summary { visibility: hidden !important; }
       .status-badge { visibility: hidden !important; }
@@ -1152,12 +1171,20 @@ function overlayDockProjectMismatchHooks(): Pick<
           page.locator('.chat-dock-inbox__item').first(),
         ).toContainText('Mismatch demo chat', { timeout: 10_000 });
         // The active session (project-b) renders first with no binding
-        // bound yet — badge reads "No project" (archive#4525: the badge no
-        // longer follows the active session at all). Binding to Project A
-        // through the real picker interaction is what produces the
-        // mismatch, exactly as a user reaching this state would.
+        // bound yet (archive#4525: the badge no longer follows the active
+        // session at all). Binding to Project A through the real picker
+        // interaction is what produces the mismatch, exactly as a user
+        // reaching this state would.
+        //
+        // #1552 D3 dropped the visible "No project" label — the unbound chip is
+        // the folder glyph alone, named for what pressing it does — so the
+        // unbound state is the accessible NAME now, and the empty text is
+        // asserted beside it so this cannot pass on a chip that renders nothing.
         const badge = page.locator('.chat-dock__project-badge');
-        await expect(badge).toHaveText('No project', { timeout: 10_000 });
+        await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
+          timeout: 10_000,
+        });
+        await expect(badge).toHaveText('');
         await badge.click();
         await expect(
           page.getByRole('dialog', { name: 'Switch project' }),
@@ -1251,6 +1278,109 @@ interface Screen {
 
 const SCREENS: Screen[] = [
   {
+    name: 'mobile-activity-compact',
+    title: 'Mobile — Activity controls in a short dock',
+    path: '/?surface=activity',
+    viewport: MOBILE,
+    waitFor: '.sessions-axis-tabs',
+    afterGoto: async (page) => {
+      const tab = page.getByRole('tab', { name: 'By app', exact: true });
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      for (const control of [
+        tab,
+        page.getByRole('button', { name: 'Start a task', exact: true }),
+      ]) {
+        await expect(control).toBeVisible();
+        expect(
+          await control.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            return (
+              box.top >= 0 &&
+              box.bottom <= window.innerHeight &&
+              node.contains(
+                document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                ),
+              )
+            );
+          }),
+        ).toBe(true);
+      }
+    },
+  },
+  ...[320, 390].flatMap((width): Screen[] => [
+    {
+      name: `mobile-http-consent-${width}`,
+      title: `Mobile — explicit HTTP development exception (${width}px)`,
+      path: '/settings?view=overview',
+      viewport: { width, height: 844 },
+      waitFor: '[data-testid="app-toolbar-connection"]',
+      afterGoto: async (page) => {
+        await page.getByTestId('app-toolbar-connection').click();
+        const dialog = page.getByRole('dialog');
+        await dialog
+          .getByRole('button', { name: 'Add a Station address', exact: true })
+          .click();
+        await dialog
+          .getByRole('textbox', { name: 'Station address', exact: true })
+          .fill('http://100.64.0.20:3492');
+        await expect(
+          dialog.getByRole('checkbox', {
+            name: 'Allow an unencrypted connection',
+          }),
+        ).not.toBeChecked();
+        await expect(
+          dialog.getByRole('button', { name: 'Add', exact: true }),
+        ).toBeDisabled();
+      },
+    },
+    {
+      name: `mobile-access-request-error-${width}`,
+      title: `Mobile — failed access request and retry (${width}px)`,
+      path: '/settings?view=overview',
+      viewport: { width, height: 844 },
+      waitFor: '[data-testid="app-toolbar-connection"]',
+      afterGoto: async (page) => {
+        const cleanup = await withRoute(
+          page,
+          '**/.well-known/station/v1/pairing/access-request',
+          (route) =>
+            route.fulfill({
+              status: 503,
+              contentType: 'application/json',
+              body: JSON.stringify({ error: 'temporarily_unavailable' }),
+            }),
+        );
+        try {
+          await page.getByTestId('app-toolbar-connection').click();
+          const dialog = page.getByRole('dialog');
+          await dialog
+            .getByRole('button', { name: 'Request access', exact: true })
+            .click();
+          await dialog
+            .getByRole('button', { name: 'Request access', exact: true })
+            .click();
+          await expect(dialog.getByRole('alert')).toHaveCount(1);
+          await expect(dialog.getByRole('alert')).toContainText(
+            'Connection request failed',
+          );
+          await expect(
+            dialog.getByRole('button', { name: 'Try again', exact: true }),
+          ).toBeVisible();
+          expect(
+            await contrastRatio(
+              dialog.getByRole('button', { name: 'Try again', exact: true }),
+            ),
+          ).toBeGreaterThanOrEqual(4.5);
+        } finally {
+          await cleanup();
+        }
+      },
+    },
+  ]),
+  {
     name: 'home',
     title: 'Home / Coding layout',
     path: '/',
@@ -1260,7 +1390,7 @@ const SCREENS: Screen[] = [
   { name: 'agents', title: 'Agents', path: '/agents', viewport: DESKTOP },
   {
     name: 'skills',
-    title: 'Guidance — Skills',
+    title: 'Skills',
     path: '/guidance?tab=skills',
     viewport: DESKTOP,
   },
@@ -1300,16 +1430,17 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
-  {
-    name: 'review',
-    title: 'Review',
-    path: '/review-queue',
-    viewport: DESKTOP,
-  },
+
+  // #2065 retired the `review` capture with the global `/review-queue` page it
+  // photographed. Not retargeted to `/projects/<slug>/layouts/review`: that
+  // surface is Project-scoped and reads three seeded stores (proposed changes,
+  // Flow reviews, review evidence) this spec does not stub, so pointing the
+  // same entry at it would photograph an empty state under a name that claims
+  // otherwise. A real capture is new work with its own fixtures.
   {
     name: 'sessions',
     title: 'Activity',
-    path: '/activity',
+    path: '/?surface=activity',
     viewport: DESKTOP,
   },
   { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
@@ -1334,6 +1465,15 @@ const SCREENS: Screen[] = [
     title: 'Developer telemetry',
     path: '/developer/telemetry',
     viewport: DESKTOP,
+    afterGoto: async (page) => {
+      const toggles = page.locator(
+        '.event-filter.active, .live-mode-toggle.active',
+      );
+      await expect(toggles).toHaveCount(6);
+      for (const toggle of await toggles.all()) {
+        expect(await contrastRatio(toggle)).toBeGreaterThanOrEqual(4.5);
+      }
+    },
   },
   { name: 'profile', title: 'Profile', path: '/profile', viewport: DESKTOP },
   {
@@ -1345,7 +1485,7 @@ const SCREENS: Screen[] = [
   {
     name: 'settings-info-tip',
     title: 'Settings — Approval guardian explanation',
-    path: '/settings?view=station-config',
+    path: '/settings?view=permissions',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await page
@@ -1418,6 +1558,38 @@ const SCREENS: Screen[] = [
     },
   },
   {
+    name: 'mobile-agent-editor-project-control',
+    title: 'Mobile — Project control above the save footer',
+    path: `/agents/${GALLERY_NOT_RUNNABLE_AGENT_SLUG}`,
+    viewport: MOBILE,
+    beforeGoto: seedNotRunnableAgentApi,
+    waitFor: '.detail-header__mobile-footer',
+    afterGoto: async (page) => {
+      try {
+        await page.mouse.move(200, 600);
+        await page.mouse.wheel(0, 350);
+        const project = page.locator('#ae-project');
+        await project.click({ trial: true });
+        await expect
+          .poll(async () => {
+            const control = await project.boundingBox();
+            const footer = await page
+              .locator('.detail-header__mobile-footer')
+              .boundingBox();
+            return (
+              !!control &&
+              !!footer &&
+              control.y >= 0 &&
+              control.y + control.height <= footer.y
+            );
+          })
+          .toBe(true);
+      } finally {
+        await cleanupNotRunnableAgentApi(page);
+      }
+    },
+  },
+  {
     name: 'mobile-settings-overview',
     title: 'Mobile — Settings overview',
     path: '/settings?view=overview',
@@ -1433,7 +1605,7 @@ const SCREENS: Screen[] = [
   {
     name: 'sessions-filtered-empty',
     title: 'Activity — filtered empty',
-    path: '/activity',
+    path: '/?surface=activity',
     viewport: DESKTOP,
     // archive#4501 ("the honest FilteredEmpty derivation"): `SplitPaneLayout`
     // gained `collectionEmpty` so a typed search over a collection that was
@@ -1459,7 +1631,9 @@ const SCREENS: Screen[] = [
     },
     afterGoto: async (page) => {
       try {
-        await page.getByPlaceholder('Search sessions…').fill('missing-session');
+        await page
+          .getByPlaceholder('Search conversations…')
+          .fill('missing-session');
         // The margin here covers the read-model fetch's own latency (>6s
         // wall-clock has been observed under host load — that signal is
         // archive#4466, not something this timeout fixes); a repeat-500
@@ -1723,22 +1897,39 @@ const SCREENS: Screen[] = [
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
   {
-    name: 'overlay-dock-picker',
-    title: 'Overlay — Dock occupant picker menu',
+    // Renamed three times: `overlay-dock-picker` (#1541, the dock's own
+    // occupant picker, deleted in #928 C2b) became `overlay-layout-picker`
+    // (#1552 D2's per-surface placement picker), which #2143 retired for one
+    // toggle per region and an empty region's offer menu
+    // (`overlay-region-offer-menu`). #2155 retires that too: the toggles only
+    // show and hide, and the panel they open is #2154's chooser — the same
+    // rows the region's own body and its "+" carry. This shot is that panel,
+    // opened the way the toolbar opens it.
+    name: 'overlay-region-chooser-from-toggle',
+    title: 'Overlay — region chooser, held open from its toggle',
     path: '/?dock=open',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // DockOccupantPicker's trigger names the current occupant
-      // ("Docked pane: Chat") — archive#4484 made DockShell own the chrome
-      // for every occupant, so this is present whenever the dock is open
-      // and not placed fullscreen (`?dock=open` is neither).
-      const trigger = page.getByRole('button', { name: /^Docked pane:/ });
-      await trigger.waitFor({ timeout: 10_000 });
-      await trigger.click();
-      await expect(page.locator('.dock-occupant-menu')).toBeVisible({
-        timeout: 10_000,
+      // A fresh home holds Chat in Bottom; Right is empty and hidden, and its
+      // toggle is a toggle — so the panel is behind the HOLD, not the click.
+      const trigger = page.getByRole('button', {
+        name: 'Right region',
+        exact: true,
       });
+      await trigger.waitFor({ timeout: 10_000 });
+      await expect(trigger).toHaveAttribute('aria-pressed', 'false');
+      const menu = await openChooserFromToggle(page, 'Right');
+      // Rows, not just the panel: an empty panel would still be "visible"
+      // and would capture a shot of nothing. Chat is placed (in Bottom) and
+      // lists as a MOVE; the coding rows list disabled without a project —
+      // both of which the retired offer menu could not show at all.
+      await expect(menu.getByRole('menuitem', { name: /^Chat/ })).toBeVisible();
+      await expect(
+        menu.getByRole('menuitem', { name: /^Activity/ }),
+      ).toBeVisible();
+      // The hold must not ALSO have toggled the region under the panel.
+      await expect(trigger).toHaveAttribute('aria-pressed', 'false');
     },
   },
   {
@@ -1918,6 +2109,24 @@ const SCREENS: Screen[] = [
     } satisfies Screen;
   })(),
   {
+    name: 'overlay-new-project-layout-control',
+    title: 'Overlay — New Project scrolled to layout choices',
+    path: '/',
+    viewport: DESKTOP,
+    afterGoto: async (page) => {
+      await assertNoStrayProjectModal(page);
+      await page.locator('[data-new-project-trigger]').click();
+      await expect(newProjectOverlay(page)).toBeVisible();
+      await page.mouse.move(700, 650);
+      await page.mouse.wheel(0, 700);
+      const starter = page.getByRole('button', {
+        name: /Start without a layout/,
+      });
+      await starter.click();
+      await expect(starter).toHaveAttribute('aria-pressed', 'true');
+    },
+  },
+  {
     name: 'overlay-new-project-modal',
     title: 'Overlay — New Project modal',
     path: '/',
@@ -1951,6 +2160,9 @@ const SCREENS: Screen[] = [
             timeout: 10_000,
           });
           await expect(page.locator('.schedule__modal')).toBeVisible();
+          await expect(
+            page.getByRole('button', { name: 'Add Job', exact: true }),
+          ).toBeDisabled();
         } finally {
           await cleanup();
         }
@@ -2006,9 +2218,10 @@ const SCREENS: Screen[] = [
     viewport: MOBILE,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // archive#793: always rendered (bound project or not — "No project"
-      // is a valid, always-reachable switcher state), so this needs no
-      // project/session seeding to be deterministic.
+      // archive#793: always rendered (bound project or not — unbound is a
+      // valid, always-reachable switcher state), so this needs no
+      // project/session seeding to be deterministic. This screen is the MOBILE
+      // header's own trigger, which #1552 D3 did not touch.
       const trigger = page.getByRole('button', { name: /^Switch project/ });
       await trigger.waitFor({ timeout: 10_000 });
       await trigger.click();
@@ -2041,8 +2254,12 @@ const SCREENS: Screen[] = [
         // exercises the exact fixed code path
         // (`ChatDock.handleSwitchProject` -> `chrome.setActiveProjectSlug`),
         // not a hand-written substitute for its effect.
+        // #1552 D3: unbound is the chip's accessible name, not its text.
         const badge = page.locator('.chat-dock__project-badge');
-        await expect(badge).toHaveText('No project', { timeout: 10_000 });
+        await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
+          timeout: 10_000,
+        });
+        await expect(badge).toHaveText('');
         await badge.click();
         await expect(
           page.getByRole('dialog', { name: 'Switch project' }),
@@ -2083,7 +2300,9 @@ const SCREENS: Screen[] = [
         // archive#4524: the row's action is "Switch to <project>" (rebinds
         // the dock, no chat creation) — not the retired "Continue in
         // <project>" (which always opened the New Chat modal).
-        const trigger = page.getByRole('button', { name: 'No project' });
+        // #1552 D3: the unbound chip is named for its action, not for the
+        // absence it used to print.
+        const trigger = page.getByRole('button', { name: 'Choose a project' });
         await trigger.waitFor({ timeout: 10_000 });
         await trigger.click();
         await expect(
@@ -2268,6 +2487,8 @@ interface Shot {
   file: string;
   ok: boolean;
   error?: string;
+  sha256?: string;
+  controls?: Array<{ label: string; disabled: boolean }>;
 }
 
 function escapeHtml(value: string): string {
@@ -2381,6 +2602,17 @@ test('build gallery — capture key screens', async ({ page }) => {
   // banner fixture intentionally overrides only the handshake while that one
   // named screen is active, then unregisters itself via `withRoute`.
   await seedGalleryConnectionProfile(page);
+  // Each navigation starts with the same device placement. Closing a lazy
+  // Activity pane after mount races its restoration from the previous shot.
+  // Intentional region scenarios still open their surface through the URL.
+  await page.addInitScript(() => {
+    const key = 'station-device-settings-v1';
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const envelope = JSON.parse(raw);
+    if (envelope.values) delete envelope.values.regionArrangement;
+    localStorage.setItem(key, JSON.stringify(envelope));
+  });
   await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
 
@@ -2502,51 +2734,131 @@ test('build gallery — capture key screens', async ({ page }) => {
         if (screen.beforeGoto) {
           await screen.beforeGoto(page);
         }
-        await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
-        // Wait past the "Warming up" splash for the real app shell.
-        await page.waitForFunction(
-          () =>
-            !!document.querySelector('.app') &&
-            !document.body.textContent?.includes('Warming up'),
-          undefined,
-          { timeout: 20_000 },
-        );
-        if (screen.waitFor) {
-          await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
-        }
-        // Let async panels settle so the shot reflects loaded data.
-        await page.waitForTimeout(1200);
-        // archive#4464: a web-font swap (FOUT/FOIT) landing mid-shot is a
-        // well-known source of exactly the kind of tiny, isolated
-        // text/border-edge pixel noise this feature's own
-        // two-consecutive-runs acceptance check was still catching after
-        // every other identified source was fixed — one capture can race the
-        // fallback-to-real-font swap and the next can miss it entirely.
-        await page.evaluate(() => document.fonts.ready);
-        if (!screen.expectSkeleton) {
-          await assertNoLoadingSkeleton(page);
-        }
-        if (screen.afterGoto) {
-          await screen.afterGoto(page);
-        }
-        // The identity-mismatch tile deliberately overrides the global healthy
-        // handshake and waits for its own deterministic blocked state. Every
-        // other screen must prove the gallery-wide route has reached the fixed
-        // healthy posture before capture rather than racing the opening probe.
-        if (screen.name !== 'overlay-connection-banner') {
-          await assertGalleryConnectionChrome(page);
-        }
-        await hideVolatileChrome(page);
-        await page.screenshot({
-          path: join(GALLERY_DIR, file),
-          fullPage: true,
-          // archive#4464: freeze CSS animations/transitions at their end state
-          // instead of racing them — `reducedMotion` above only sets the OS
-          // media-query preference, it does not itself stop an in-flight
-          // transition from being mid-frame at capture time.
-          animations: 'disabled',
+        // #1650: the ORDER of everything below lives in
+        // `runScreenshotCaptureSequence` so it is a unit a test can execute —
+        // a passing gallery run compares pixels and can never report a step
+        // having moved to the wrong side of another one. Each step's own
+        // reason stays here, next to the mechanic it performs. The web-font
+        // settle is the one step that module performs itself, against the page
+        // passed here, so the STEP MAP cannot wire in a settle that reads
+        // nothing. That the object passed here is the real page is checked by
+        // `typecheck:e2e` (the structural assignment on this line) and by
+        // reading the diff, like the other six steps.
+        await runScreenshotCaptureSequence(page, {
+          reachScreen: async () => {
+            await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
+            // Wait past the "Warming up" splash for the real app shell.
+            await page.waitForFunction(
+              () =>
+                !!document.querySelector('.app') &&
+                !document.body.textContent?.includes('Warming up'),
+              undefined,
+              { timeout: 20_000 },
+            );
+            // Route-only captures must not inherit a drawer opened by an
+            // earlier scenario. Surface stress cases opt in through their URL.
+            const requestedState = new URL(
+              screen.path,
+              'http://gallery.invalid',
+            );
+            if (requestedState.searchParams.get('surface') !== 'activity') {
+              const hideActivity = page.getByRole('button', {
+                name: 'Hide Activity',
+                exact: true,
+              });
+              if (await hideActivity.count()) await hideActivity.click();
+            }
+            if (requestedState.searchParams.get('dock') !== 'open') {
+              const collapseChat = page.getByRole('button', {
+                name: 'Collapse chat',
+                exact: true,
+              });
+              if (await collapseChat.count()) await collapseChat.click();
+            }
+            if (screen.waitFor) {
+              await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
+            }
+            // Let async panels settle so the shot reflects loaded data.
+            await page.waitForTimeout(1200);
+          },
+          assertNoLoadingSkeleton: screen.expectSkeleton
+            ? null
+            : () => assertNoLoadingSkeleton(page),
+          // Called as a method on `screen`, not as a bare extracted function:
+          // no declared hook uses `this` today, and this keeps that from being
+          // a precondition of the refactor rather than a property of the file.
+          afterGoto: screen.afterGoto
+            ? async () => {
+                await screen.afterGoto?.(page);
+              }
+            : null,
+          // The identity-mismatch tile deliberately overrides the global
+          // healthy handshake and waits for its own deterministic blocked
+          // state. Every other screen must prove the gallery-wide route has
+          // reached the fixed healthy posture before capture rather than
+          // racing the opening probe.
+          assertConnectionChrome:
+            screen.name === 'overlay-connection-banner'
+              ? null
+              : () => assertGalleryConnectionChrome(page),
+          hideVolatileChrome: () => hideVolatileChrome(page),
+          screenshot: async () => {
+            if (screen.name !== 'settings-info-tip') {
+              await page.mouse.move(0, 0);
+            }
+            await page.screenshot({
+              path: join(GALLERY_DIR, file),
+              fullPage: true,
+              // archive#4464: freeze CSS animations/transitions at their end
+              // state instead of racing them — `reducedMotion` above only sets
+              // the OS media-query preference, it does not itself stop an
+              // in-flight transition from being mid-frame at capture time.
+              animations: 'disabled',
+            });
+          },
         });
-        shots.push({ screen, file, ok: true });
+        const controls = await page
+          .locator('button, [role="button"], input[type="submit"]')
+          .evaluateAll((elements) =>
+            elements
+              .filter((element) => {
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return (
+                  rect.width > 0 &&
+                  rect.height > 0 &&
+                  rect.top < innerHeight &&
+                  rect.bottom > 0 &&
+                  rect.left < innerWidth &&
+                  rect.right > 0 &&
+                  style.visibility !== 'hidden' &&
+                  style.display !== 'none'
+                );
+              })
+              .slice(0, 100)
+              .map((element) => ({
+                label: (
+                  element.getAttribute('aria-label') ||
+                  element.textContent ||
+                  element.getAttribute('value') ||
+                  ''
+                )
+                  .trim()
+                  .slice(0, 160),
+                disabled:
+                  element.matches(':disabled') ||
+                  element.getAttribute('aria-disabled') === 'true',
+              })),
+          );
+        shots.push({
+          screen,
+          file,
+          ok: true,
+          controls,
+          sha256: createHash('sha256')
+            .update(readFileSync(join(GALLERY_DIR, file)))
+            .digest('hex'),
+        });
       } catch (error) {
         // Capture whatever rendered so the broken state is still inspectable.
         try {
@@ -2589,12 +2901,16 @@ test('build gallery — capture key screens', async ({ page }) => {
           // (scripts/screenshot-diff.mjs) can never mistake a partial
           // gallery for full coverage.
           selection: requestedScreens,
-          screens: shots.map(({ file, ok, screen, error }) => ({
-            file,
-            ok,
-            name: screen.name,
-            error: error ?? null,
-          })),
+          screens: shots.map(
+            ({ file, ok, screen, error, sha256, controls }) => ({
+              file,
+              ok,
+              name: screen.name,
+              error: error ?? null,
+              sha256,
+              controls,
+            }),
+          ),
         },
         null,
         2,

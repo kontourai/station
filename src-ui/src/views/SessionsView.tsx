@@ -1,11 +1,5 @@
-import type {
-  AdoptedSessionResult,
-  OrchestrationSessionSummary,
-} from '@kontourai/station-sdk';
-import {
-  useOrchestrationSessionsQuery,
-  usePairedDevicesQuery,
-} from '@kontourai/station-sdk';
+import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import {
   captureReturnFocus,
   restoreReturnFocus,
@@ -20,25 +14,18 @@ import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { SessionEvidenceButton } from '../components/session/SessionEvidenceButton';
 import { SessionProjectPill } from '../components/session/SessionProjectPill';
 import { SessionPullRequestConflictChip } from '../components/session/SessionPullRequestConflictChip';
-import { AttachedSessionDetail } from '../components/session-detail/AttachedSessionDetail';
 import {
   DelegatedTaskCoordinator,
   DelegatedTaskStarter,
 } from '../components/session-detail/DelegatedTaskCoordinator';
-import {
-  MutableSessionDetail,
-  type SessionEvidenceReveal,
-} from '../components/session-detail/MutableSessionDetail';
+import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
+import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { StatusGlyph } from '../components/status/StatusGlyph';
 import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
 import { useAgents } from '../contexts/AgentsContext';
-import { useNavigation } from '../contexts/NavigationContext';
 import { useOpenChats } from '../contexts/open-chats-store';
-import { useSessionEventStream } from '../hooks/orchestration/useSessionEventStream';
-import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
-import { resolveClientOriginActor } from '../utils/clientOrigin';
-import { elidedHistoryNoticeText } from '../utils/elidedHistory';
-import { modelDisplayLabel } from '../utils/modelCapabilities';
+import { clientOriginSummary } from '../utils/clientOrigin';
+import { modelIdentityLabel } from '../utils/modelCapabilities';
 import { relativeTimeAgo } from '../utils/relativeTime';
 import {
   activeTurnProgress,
@@ -75,16 +62,16 @@ const SESSION_LIST_REFRESH_MS = 5000;
 type ActivityAxis = 'task' | 'origin';
 const ACTIVITY_AXIS_TABS = [
   { key: 'task', label: 'By task' },
-  { key: 'origin', label: 'By origin' },
+  { key: 'origin', label: 'By app' },
 ] as const;
 
-function originSection(
-  session: OrchestrationSessionSummary,
-  devices: readonly { id: string; name: string }[],
-): string {
+function originSection(session: OrchestrationSessionSummary): string {
   const origin = session.turnOrigin?.latest;
-  if (!origin) return 'Origin not recorded';
-  return resolveClientOriginActor(origin.actor, devices).label;
+  if (!origin)
+    return session.controlMode === 'read-only-attached'
+      ? `Started in ${session.provider === 'claude' ? 'Claude Code' : session.provider}`
+      : 'Origin not recorded';
+  return clientOriginSummary(origin);
 }
 
 // Keep the archive#4072 observation on the same lazy-boundary rail as Home. The
@@ -191,7 +178,10 @@ function sessionMemberStatusLine(
       <span className="session-member-status__identity">
         <StatusGlyph state={state} />
         <span>
-          {agent.name} · {modelDisplayLabel(model)}
+          {/* #1536 review M5: a row naming what a session RUNS takes the
+              shared identity rule, so an unresolved engine default reads
+              "Default" here and not the catalog's "Default (recommended)". */}
+          {agent.name} · {modelIdentityLabel(model)}
         </span>
       </span>
       {turnProgress?.lastProgressEventAt && (
@@ -218,147 +208,18 @@ function sessionMemberStatusLine(
   );
 }
 
-function SessionDetail({
-  apiBase,
-  session,
-  onTaskChanged,
-  onAdopted,
-  getSelectionIntent,
-  evidenceReveal,
-}: {
-  apiBase: string;
-  session: OrchestrationSessionSummary;
-  onTaskChanged: () => void;
-  onAdopted: (session: AdoptedSessionResult, intent: number) => void;
-  getSelectionIntent: () => number;
-  evidenceReveal?: SessionEvidenceReveal | null;
-}) {
-  const {
-    events,
-    connected,
-    hasMore,
-    loadOlder,
-    upgradeRequired,
-    error,
-    historyRetrying,
-    elidedHistory,
-    liveStreamStoppedTerminal,
-    historyStoppedTerminal,
-    capabilityRecoveryExhausted,
-    retryCapabilityRecovery,
-  } = useSessionEventStream(apiBase, session.threadId);
-  // archive#3386: the same bounded read feeds this surface and
-  // the chat dock. The dock disclosed what its budget withheld and this one
-  // rendered the identical amputated turn in silence, because both readers in
-  // `useSessionEventStream` unwrapped `item.event` and dropped the envelope.
-  const elidedHistoryText = elidedHistoryNoticeText(elidedHistory);
-  const elidedHistoryNotice = elidedHistoryText ? (
-    <p
-      className="history-elided"
-      role="status"
-      data-testid="session-history-elided"
-    >
-      {elidedHistoryText}
-    </p>
-  ) : null;
-  const visualViewport = useMobileVisualViewport();
-  const historyControls = (
-    <div className="session-history-controls">
-      {hasMore && (
-        <button
-          type="button"
-          className="button button--secondary session-history-controls__more"
-          onClick={() => void loadOlder()}
-        >
-          Load earlier events
-        </button>
-      )}
-      {upgradeRequired && (
-        <p role="alert">Update Station to view this session history.</p>
-      )}
-      {elidedHistoryNotice}
-      {error && !upgradeRequired && (
-        <p role="alert">
-          {/* archive#3378: the two outcomes read identically before this —
-              a history read that is coming back and one that has stopped
-              both printed the raw cause and nothing else. */}
-          {historyRetrying
-            ? `${error.message} Retrying session history…`
-            : error.message}
-        </p>
-      )}
-    </div>
-  );
-
-  if (isReadOnlyAttachedSession(session)) {
-    return (
-      <>
-        {/* Upgrade/error stories render INSIDE the detail for attached
-            sessions — only the pagination control and the elision notice
-            belong up here, or the update requirement renders twice (sol delta
-            review, #2630). The notice is safe in both places precisely
-            because it is NOT among the props handed to
-            `AttachedSessionDetail`: nothing downstream can render it a second
-            time, and these two branches are mutually exclusive anyway. */}
-        {(hasMore || elidedHistoryNotice) && (
-          <div className="session-history-controls">
-            {hasMore && (
-              <button
-                type="button"
-                className="button button--secondary session-history-controls__more"
-                onClick={() => void loadOlder()}
-              >
-                Load earlier events
-              </button>
-            )}
-            {elidedHistoryNotice}
-          </div>
-        )}
-        <AttachedSessionDetail
-          key={session.threadId}
-          apiBase={apiBase}
-          session={session}
-          onAdopted={onAdopted}
-          getSelectionIntent={getSelectionIntent}
-          events={events}
-          connected={connected}
-          upgradeRequired={upgradeRequired}
-          streamError={error}
-          liveStreamStoppedTerminal={liveStreamStoppedTerminal}
-          historyStoppedTerminal={historyStoppedTerminal}
-          capabilityRecoveryExhausted={capabilityRecoveryExhausted}
-          onRetryCapabilityRecovery={retryCapabilityRecovery}
-          visualViewport={visualViewport}
-        />
-      </>
-    );
-  }
-
-  return (
-    <>
-      {historyControls}
-      <MutableSessionDetail
-        apiBase={apiBase}
-        session={session}
-        onTaskChanged={onTaskChanged}
-        events={events}
-        connected={connected}
-        visualViewport={visualViewport}
-        evidenceReveal={evidenceReveal}
-      />
-    </>
-  );
-}
-
 export function SessionsView({
   apiBase,
   sessionId,
   focusHint,
+  intentToken,
+  onFocusConsumed,
+  onOpenInChat,
 }: {
   apiBase: string;
   sessionId?: string;
   /**
-   * Route-owned one-shot intent (`/activity?session=<id>&focus=evidence`):
+   * Region-owned one-shot intent for a selected session's evidence:
    * once the routed session is selected, bring its evidence region into
    * view. Consumed and cleared here after adoption, the same way
    * `openFilePreviewIntent` is cleared after host admission
@@ -368,13 +229,22 @@ export function SessionsView({
    * same-path navigation.
    */
   focusHint?: 'evidence';
+  intentToken?: number;
+  onFocusConsumed?: () => void;
+  onOpenInChat?: (threadId: string) => void;
 }) {
+  // The SSE feed is per-session, so the list itself is kept fresh by polling.
+  // The query owns that poll: an interval beside it calling `refetch()` was a
+  // second scheduler over the same cache entry, and it kept running through
+  // every state React Query already pauses a `refetchInterval` for.
   const {
     data: sessions = [],
     isLoading,
     error: sessionsError,
     refetch,
-  } = useOrchestrationSessionsQuery();
+  } = useOrchestrationSessionsQuery({
+    refetchInterval: SESSION_LIST_REFRESH_MS,
+  });
   const agents = useAgents();
   const openChats = useOpenChats(agents, sessions);
   const openConversationIds = useMemo(
@@ -390,26 +260,19 @@ export function SessionsView({
   } | null>(null);
   const routedSessionIdRef = useRef<string | undefined>(undefined);
   const routedFocusRef = useRef<'evidence' | undefined>(undefined);
+  const routedIntentTokenRef = useRef<number | undefined>(undefined);
   const pendingRouteSelectionRef = useRef<{
     sessionId: string;
     intent: number;
     focus?: 'evidence';
   } | null>(null);
-  const { navigate, updateParams } = useNavigation();
   const evidenceRevealTokenRef = useRef(0);
   const [evidenceReveal, setEvidenceReveal] =
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
   const [axis, setAxis] = useState<ActivityAxis>('task');
-  // The device inventory is operator-only on the server
-  // (`/api/pairing/devices` answers 401 to a paired device's own session), and
-  // this view only needs it to name the groups of the origin axis. Reading it
-  // eagerly made every fresh-home Activity visit poll a refused route every
-  // 15 s, which the release walkthrough counts as a request-error. Read it
-  // only while the origin axis is the one being looked at.
-  const { data: pairedDevices = [] } = usePairedDevicesQuery(apiBase, {
-    enabled: axis === 'origin',
-  });
+  // Group from recorded session provenance. The device management registry is
+  // operator-only; reading it here can invalidate a valid browser session.
   /** Active project filter, set by clicking a row's project pill. */
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [delegationParent, setDelegationParent] =
@@ -446,17 +309,33 @@ export function SessionsView({
   );
 
   /**
-   * Mint a fresh one-shot reveal token for the detail, then clear the
-   * consumed `focus` param from the URL (the `openFilePreviewIntent` idiom:
-   * route-owned intents are cleared by their consumer after admission).
+   * Mint a fresh one-shot reveal token for the detail, then report the routed
+   * focus consumed to whichever placement delivered it (the
+   * `openFilePreviewIntent` idiom: one-shot intents are cleared by their
+   * consumer after admission).
+   *
+   * #928: this used to fall back to clearing `focus` from the URL when no
+   * `onFocusConsumed` was supplied, which was the standalone `/activity`
+   * placement's way of consuming its own routed param. That placement is
+   * gone. The two placements left cannot reach the fallback: the region
+   * shell always supplies `onFocusConsumed`, and the Developer archive embed
+   * supplies no `sessionId` at all, so the guard below returns first on every
+   * activation. The deep link's own params are cleared where they are adopted
+   * (`RegionModelContext`'s `clearSurfaceDeepLinkParams`), not from inside
+   * the surface — this hook has no business writing the URL.
    */
   const armEvidenceReveal = useCallback(
     (threadId: string) => {
       evidenceRevealTokenRef.current += 1;
       setEvidenceReveal({ threadId, token: evidenceRevealTokenRef.current });
-      updateParams({ focus: null });
+      // Only the routed session's own activation consumes the routed focus.
+      // Another row's Evidence click is that row's reveal; reporting it would
+      // discard a `focus=evidence` that was never delivered, and the pending
+      // route selection is rebuilt without it.
+      if (threadId !== sessionId) return;
+      onFocusConsumed?.();
     },
-    [updateParams],
+    [onFocusConsumed, sessionId],
   );
 
   useEffect(() => {
@@ -467,11 +346,13 @@ export function SessionsView({
     // activation from the route the reader is already on.
     if (
       sessionId !== routedSessionIdRef.current ||
-      focusHint !== routedFocusRef.current
+      focusHint !== routedFocusRef.current ||
+      intentToken !== routedIntentTokenRef.current
     ) {
       const intent = ++selectionIntentRef.current;
       routedSessionIdRef.current = sessionId;
       routedFocusRef.current = focusHint;
+      routedIntentTokenRef.current = intentToken;
       if (!sessionId) {
         pendingRouteSelectionRef.current = null;
         // a route without a session is never an evidence arm —
@@ -539,16 +420,11 @@ export function SessionsView({
     isLoading,
     sessionId,
     focusHint,
+    intentToken,
     sessions,
     setSelection,
     armEvidenceReveal,
   ]);
-
-  // The SSE feed is per-session; keep the list itself fresh by polling.
-  useEffect(() => {
-    const timer = setInterval(() => refetch(), SESSION_LIST_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [refetch]);
 
   const toggleProjectFilter = useCallback((filterKey: string) => {
     setProjectFilter((current) => (current === filterKey ? null : filterKey));
@@ -721,12 +597,11 @@ export function SessionsView({
                 {showEvidence && (
                   <SessionEvidenceButton
                     sessionTitle={sessionTitle(s)}
-                    onActivate={() =>
-                      navigate('/activity', {
-                        session: s.threadId,
-                        focus: 'evidence',
-                      })
-                    }
+                    onActivate={() => {
+                      selectionIntentRef.current += 1;
+                      setSelection(s.threadId);
+                      armEvidenceReveal(s.threadId);
+                    }}
                   />
                 )}
                 {projectLabel ? (
@@ -758,16 +633,13 @@ export function SessionsView({
     const isDelegated = row.members.some((member) => member.delegation);
     const section = isDelegated
       ? `Delegated/background work · ${delegatedCount}`
-      : `Operator sessions · ${operatorCount}`;
+      : `Conversations · ${operatorCount}`;
     for (const member of row.members) {
       taskSectionById.set(member.threadId, section);
     }
   }
   const originSectionById = new Map(
-    sessions.map((session) => [
-      session.threadId,
-      originSection(session, pairedDevices),
-    ]),
+    sessions.map((session) => [session.threadId, originSection(session)]),
   );
   const items = laneItems
     .map((item) => ({
@@ -783,16 +655,9 @@ export function SessionsView({
         const rightDelegated = right.section?.startsWith('Delegated/') ? 0 : 1;
         return leftDelegated - rightDelegated;
       }
-      const deviceOrder = new Map(
-        pairedDevices.map((device, index) => [device.name, index]),
-      );
-      return (
-        (deviceOrder.get(left.section ?? '') ?? Number.MAX_SAFE_INTEGER) -
-        (deviceOrder.get(right.section ?? '') ?? Number.MAX_SAFE_INTEGER)
-      );
+      return (left.section ?? '').localeCompare(right.section ?? '');
     });
-  const emptySections =
-    axis === 'origin' ? pairedDevices.map((device) => device.name) : [];
+  const emptySections: string[] = [];
 
   const selected = sessions.find((s) => s.threadId === selectedId) ?? null;
   const delegatedTasks = useMemo(
@@ -835,6 +700,7 @@ export function SessionsView({
     <>
       {/* empty-state action: delegation starter and filter reset are adjacent */}
       <SplitPaneLayout
+        heightResponsive
         items={items}
         emptySections={emptySections}
         selectedId={selectedId}
@@ -842,12 +708,12 @@ export function SessionsView({
         onDeselect={() => selectWithIntent(null)}
         onSearch={setSearch}
         searchValue={search}
-        searchPlaceholder="Search sessions…"
+        searchPlaceholder="Search conversations…"
         loading={isLoading}
         error={sessionsError}
         onRetry={() => void refetch()}
         listEmptyTitle="Nothing has run yet"
-        listEmptyDescription="Agent sessions appear here as they run on this host."
+        listEmptyDescription="Your conversations and tasks will appear here."
         listFilteredEmptyNoun="sessions"
         collectionEmpty={projectFiltered.length === 0}
         /* The only thing above the rows is the active project filter, and only
@@ -871,8 +737,8 @@ export function SessionsView({
               className="sessions-axis-description"
             >
               {axis === 'task'
-                ? 'Delegated work is separated from sessions you are driving directly.'
-                : 'Sessions are grouped by their recorded origin; paired devices remain listed when empty.'}
+                ? 'Tasks and conversations, grouped by what you are working on.'
+                : 'Conversations grouped by the app or client where they were started.'}
             </div>
             <ActionOperationsSection />
             <LiveCollaboratorsSection />
@@ -925,8 +791,8 @@ export function SessionsView({
            read-only attached external-engine ones). */
         label="Activity"
         title="Activity"
-        subtitle="Watch and talk to AI sessions across this host"
-        emptyDescription="Select a session to watch its live events and send input."
+        subtitle="Conversations and work across your AI apps"
+        emptyDescription="Select a conversation to read messages and review its activity."
         firstRunAnchor="activity"
       >
         {selected && (
@@ -935,6 +801,9 @@ export function SessionsView({
             session={selected}
             evidenceReveal={evidenceReveal}
             onTaskChanged={() => void refetch()}
+            onOpenInChat={
+              onOpenInChat ? () => onOpenInChat(selected.threadId) : undefined
+            }
             onAdopted={(child, intent) => {
               adoptedSelectionRef.current = {
                 threadId: child.threadId,

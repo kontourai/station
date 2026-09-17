@@ -40,9 +40,19 @@ interface RegistryActionInput {
    * source and carries the answer here. Ignored for plain agent installs.
    */
   consent?: {
+    grantRevision?: string;
+    registryTrustRevision?: string;
     permissions: string[];
     contentDigest: string;
     dependencies: string[];
+    dependencyApprovals?: Array<{
+      id: string;
+      grantRevision?: string;
+      registryTrustRevision?: string;
+      permissions: string[];
+      contentDigest: string;
+      dependencies: string[];
+    }>;
   };
   /** Preview conflict components to skip, as `type:id` keys. */
   skip?: string[];

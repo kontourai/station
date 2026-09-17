@@ -8,6 +8,10 @@ import {
   test,
 } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
+import {
+  FIRST_RENDER_TIMEOUT_MS,
+  openPillInRegionThroughMenu,
+} from './helpers/region-placement';
 
 /**
  * D8 (`reports/board-notifications-lane/DESIGN.md`): a project shows a Board
@@ -24,10 +28,10 @@ import { resolveE2EApiBase } from './helpers/e2e-target';
  * a real project through `POST /api/projects`.
  *
  * The two projects are IDENTICAL except for that one file. Both carry a
- * non-board layout, because the sidebar only renders its layout strip for an
- * expanded project that has at least one layout — without that, "no Board
- * entry" would be true of every project on the instance and the assertion
- * would prove nothing about the predicate.
+ * non-board layout, because the sidebar only renders its layout chips for the
+ * SELECTED project and only when that project has at least one layout
+ * (#2063) — without that, "no Board entry" would be true of every project on
+ * the instance and the assertion would prove nothing about the predicate.
  */
 
 const API = resolveE2EApiBase();
@@ -103,7 +107,7 @@ async function createProject(
     data: { name, slug, workingDirectory },
   });
   expect(created.status(), `creating ${slug}`).toBe(201);
-  // The sidebar's layout strip — and therefore the Board entry that lives
+  // The sidebar's layout chip row — and therefore the Board chip that lives
   // inside it — only renders when the project has at least one layout.
   const layout = await request.post(`${API}/api/projects/${slug}/layouts`, {
     data: { slug: 'notes', name: 'Notes', type: 'custom' },
@@ -153,17 +157,20 @@ async function gotoAndClearPassiveChrome(page: Page, path: string) {
 }
 
 /**
- * Expand one project row in the sidebar and return its layout strip. The row's
- * own button carries the project avatar's initials as well as its name, so it
- * is reached by the name element inside it rather than by an exact accessible
- * name; `handleClick` sets expanded unconditionally, so this is idempotent on
- * a row the active route already opened.
+ * Return one project row's layout chip row. #2063 replaced the nested tree and
+ * its expand chevron with chips that belong to the SELECTED project, so being
+ * on the project's own route is what puts them on screen; a row that is not
+ * selected is selected by clicking its name. The row's own button carries the
+ * project avatar's initials as well as its name, so it is reached by the name
+ * element inside it rather than by an exact accessible name.
  */
-async function expandProject(page: Page, name: string) {
+async function projectLayoutChips(page: Page, name: string) {
   const row = page.locator('.sidebar__project-row', { hasText: name }).first();
   await expect(row).toBeVisible({ timeout: 20_000 });
-  await row.locator('.sidebar__project-name').click();
-  const strip = row.locator('.sidebar__layouts');
+  const strip = row.locator('.sidebar__layout-chips');
+  if ((await strip.count()) === 0) {
+    await row.locator('.sidebar__project-name').click();
+  }
   await expect(strip).toBeVisible({ timeout: 20_000 });
   return { row, strip };
 }
@@ -226,7 +233,7 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
     // The nav offers no Board for this project. The strip itself must be
     // present (the project's other layout is in it) or this assertion would
     // be satisfied by an unrendered sidebar.
-    const { strip } = await expandProject(page, NO_RUN_NAME);
+    const { strip } = await projectLayoutChips(page, NO_RUN_NAME);
     await expect(strip.getByText('Notes')).toBeVisible({ timeout: 20_000 });
     await expect(strip.getByRole('button', { name: 'Board' })).toHaveCount(0);
   });
@@ -267,10 +274,70 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
     await expect(page.getByText(REDIRECT_NOTICE)).toHaveCount(0);
 
     // And the nav offers the Board entry the other project does not get.
-    const { strip } = await expandProject(page, WITH_RUN_NAME);
+    const { strip } = await projectLayoutChips(page, WITH_RUN_NAME);
     await expect(strip.getByRole('button', { name: 'Board' })).toBeVisible({
       timeout: 20_000,
     });
+  });
+
+  /**
+   * #2158: a Layout chip is a pill the reader can SEND somewhere, not only a
+   * destination to follow.
+   *
+   * Driven here rather than against a mocked fixture because the pane id is
+   * `layout:<projectId>/<layoutId>` and both halves must be the lowercase
+   * UUIDs the SERVER mints — `POST /api/projects` and `POST
+   * /api/projects/:slug/layouts` are what produce them, and a fixture that
+   * invented the ids would be asserting against its own spelling. The `Notes`
+   * layout these projects already carry is the subject.
+   *
+   * The Session Board chip beside it is deliberately excluded: it is a route,
+   * not a pane (#2157), and this asserts that difference is visible to a user
+   * rather than only to a unit test.
+   */
+  test('a Layout chip opens into the Right region, and the reload keeps it', async ({
+    page,
+  }) => {
+    await gotoAndClearPassiveChrome(page, `/projects/${WITH_RUN_SLUG}`);
+    const { strip } = await projectLayoutChips(page, WITH_RUN_NAME);
+    const notes = strip.getByRole('button', { name: 'Notes', exact: true });
+    await expect(notes).toBeVisible({ timeout: 20_000 });
+
+    await openPillInRegionThroughMenu(page, notes, 'Notes', 'Right');
+
+    // The region holds it: a dock shell rendered in `right`, carrying the
+    // Layout's own name — the title `RegionPaneHost` resolves from the
+    // project's layout list, not the `layout:` prefix fallback.
+    const right = page.locator('.chat-dock--right');
+    await expect(right).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    await expect(
+      page.getByRole('button', { name: 'Move Notes', exact: true }),
+      'the right region must hold a pane the model calls Notes',
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+
+    // The Board chip beside it offers no such menu — asserted AFTER the open
+    // above, deliberately. The chip menu is behind a lazy boundary, so a
+    // `toHaveCount(0)` taken before anything had fetched that chunk would be
+    // satisfied by a menu that simply had not arrived yet. The journey above
+    // has loaded it in this document, so the absence is now a decision.
+    await strip
+      .getByRole('button', { name: 'Board', exact: true })
+      .click({ button: 'right' });
+    await expect(
+      page.getByRole('menu'),
+      'the Session Board chip is a route, not a pane: it offers no menu',
+    ).toHaveCount(0);
+
+    // …and it is a placement, not a render: the arrangement is persisted, so
+    // the reader finds it there again. A tab that only survived until the next
+    // navigation would make the menu a preview rather than an open.
+    await page.reload();
+    await expect(page.locator('.chat-dock--right')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(
+      page.getByRole('button', { name: 'Move Notes', exact: true }),
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
   });
 });
 

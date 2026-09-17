@@ -28,6 +28,11 @@ export interface ChatFocusTarget {
 }
 
 export interface OpenChatsNavigation {
+  /** Canonical Conversation resolution/hydration, without inventing an Agent. */
+  openConversation?: (
+    conversationId: string,
+    isCurrent?: () => boolean,
+  ) => Promise<boolean>;
   focus: (target: ChatFocusTarget) => void | Promise<void>;
   focusRemote?: (
     target: Required<
@@ -74,6 +79,16 @@ class OpenChatsStore {
       return;
     }
     void this.navigation.focus(target);
+  }
+
+  async openConversation(
+    conversationId: string,
+    isCurrent?: () => boolean,
+  ): Promise<boolean> {
+    return (
+      (await this.navigation?.openConversation?.(conversationId, isCurrent)) ??
+      false
+    );
   }
 
   openCollection() {
@@ -166,6 +181,40 @@ export function countOpenChatAttention(
   chats: ReadonlyArray<{ hasUnread?: boolean }>,
 ): number {
   return chats.reduce((count, chat) => count + (chat.hasUnread ? 1 : 0), 0);
+}
+
+/**
+ * #1582 B9: the chats that are WORK — what "Continue most recent work" and
+ * Home's Recent work may name. A chat created and never typed into produced a
+ * "Continue most recent work → New chat" card that a reload erased; the store
+ * never writes such a chat, so it was never work.
+ *
+ * Deliberately a second hook rather than a filter inside `useOpenChats`: the
+ * dock inbox and the sidebar's mini-inbox list the chats OPEN IN THIS TAB, and
+ * a chat the user is looking at belongs in both whatever its contents. Two
+ * questions, two selectors, one shared predicate.
+ */
+export function useOpenWorkChats(
+  agents: AgentSummary[],
+  sessions: OrchestrationSessionSummary[] = [],
+  resolveModelLabel?: ResolveModelLabel,
+): HomeWorkItem[] {
+  const chats = useSyncExternalStore(
+    openChatsStore.subscribe,
+    openChatsStore.getSnapshot,
+    openChatsStore.getSnapshot,
+  );
+  return useMemo(
+    () =>
+      buildActiveChatTaskItems({
+        chats,
+        agents,
+        sessions,
+        onlyWork: true,
+        ...(resolveModelLabel ? { resolveModelLabel } : {}),
+      }),
+    [agents, chats, sessions, resolveModelLabel],
+  );
 }
 
 export function useOpenChats(

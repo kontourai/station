@@ -1,11 +1,21 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { loadStrandsTools } from '../../frameworks/strands-tool-loader.js';
+import type { ForegroundInvocationAdmission } from '../../../services/orchestration/foreground-invocation-admission.js';
+import {
+  createNativeForegroundRelay,
+  runWithNativeForegroundRelay,
+} from '../../conversation/native-foreground-invocation.js';
+import {
+  loadStrandsTools,
+  type StrandsToolLoadOptions,
+} from '../../frameworks/strands-tool-loader.js';
+import type { CreateAgentOptions } from '../../frameworks/voltagent-adapter.js';
 import { createBuiltinTool } from '../../mcp/mcp-manager.js';
 import {
   createBuiltinVendedToolDef,
@@ -275,6 +285,29 @@ describe('vended tool compatibility', () => {
 
   test('Strands loader pulls built-in tools through the shared implementation path', async () => {
     const toolDef = createBuiltinVendedToolDef('notebook');
+    const mcpConnectionStatus: CreateAgentOptions['mcpConnectionStatus'] =
+      new Map();
+    const integrationMetadata: CreateAgentOptions['integrationMetadata'] =
+      new Map();
+    const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn() };
+    // The loader claims local connection custody for every configured
+    // integration before it reads the definition, so a live claim on the id
+    // is superseded before the kind is even known. The built-in branch runs
+    // inside that fence and therefore needs a real custody owner, exactly as
+    // the runtime supplies one. Typed against StrandsToolLoadOptions rather
+    // than cast to `any`, so the next required option reddens the compiler
+    // instead of routing this test through the loader's failure path.
+    const opts: StrandsToolLoadOptions = {
+      configLoader: {
+        loadIntegration: vi.fn().mockResolvedValue(toolDef),
+      } as any,
+      mcpCustody: new MCPLocalConnectionCustody(),
+      mcpConnectionStatus,
+      integrationMetadata,
+      toolNameMapping: new Map(),
+      toolNameReverseMapping: new Map(),
+      logger,
+    };
     const tools = await loadStrandsTools({
       slug: 'agent-b',
       spec: {
@@ -282,22 +315,23 @@ describe('vended tool compatibility', () => {
         prompt: 'Test',
         tools: { mcpServers: ['notebook'] },
       },
-      opts: {
-        configLoader: {
-          loadIntegration: vi.fn().mockResolvedValue(toolDef),
-        },
-        mcpConnectionStatus: new Map(),
-        integrationMetadata: new Map(),
-        toolNameMapping: new Map(),
-        toolNameReverseMapping: new Map(),
-        logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
-      } as any,
+      opts,
       state: {
         mcpClients: new Map(),
         agentMcpClients: new Map(),
       },
     });
 
+    // An empty list is how this path failed before: the loader's per-tool
+    // catch redacts any throw — a missing option included — into a generic
+    // "Tool server connection failed". Assert what the built-in branch is
+    // supposed to have published, so a regression names its own cause.
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(mcpConnectionStatus.get('notebook')).toEqual({ connected: true });
+    expect(integrationMetadata.get('notebook')).toEqual({
+      type: 'builtin',
+      toolCount: 1,
+    });
     expect(tools).toHaveLength(1);
     expect(tools[0]?.name).toBe('notebook');
     await expect(
@@ -306,6 +340,103 @@ describe('vended tool compatibility', () => {
     await expect(
       tools[0]?.execute({ mode: 'read', name: 'checklist' }),
     ).resolves.toContain('- one');
+  });
+
+  test('concurrent captured workspaces isolate real Bash children for the same Agent', async () => {
+    const roots = [0, 1].map(() =>
+      mkdtempSync(join(tmpdir(), 'station-native-workspace-')),
+    );
+    cleanupDirs.push(...roots);
+    const tool = createBuiltinTool(
+      'same-agent',
+      createBuiltinVendedToolDef('bash')!,
+      {} as any,
+    )!;
+    const scopes = roots.map((workspaceRoot, index) =>
+      createNativeForegroundRelay(
+        {
+          agentId: 'same-agent',
+          agentSpec: {},
+          project: { slug: 'project' },
+          message: 'run',
+          invoke: async (
+            _phase: unknown,
+            _actual: unknown,
+            effect: () => Promise<unknown>,
+          ) => effect(),
+        } as ForegroundInvocationAdmission,
+        { threadId: `thread-${index}`, userId: 'owner', workspaceRoot },
+      ),
+    );
+    try {
+      const results = await Promise.all(
+        scopes.map((scope, index) =>
+          runWithNativeForegroundRelay(scope, async () => {
+            await tool.execute!({
+              mode: 'execute',
+              command: `export STATION_SCOPE=${index}`,
+            });
+            return tool.execute!({
+              mode: 'execute',
+              command: 'pwd -P; echo "$STATION_SCOPE"',
+            });
+          }),
+        ),
+      );
+      for (let index = 0; index < roots.length; index++)
+        expect(results[index]).toMatchObject({
+          output: `${realpathSync(roots[index]!)}\n${index}`,
+        });
+    } finally {
+      scopes.forEach((scope) => scope.close());
+    }
+  });
+
+  test('closed native relay refuses late file and Bash effects and drains every disposer', async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'station-native-closed-'));
+    cleanupDirs.push(workspaceRoot);
+    const scope = createNativeForegroundRelay(
+      {
+        agentId: 'closed-agent',
+        agentSpec: {},
+        project: { slug: 'project' },
+        message: 'run',
+      } as ForegroundInvocationAdmission,
+      { threadId: 'closed-thread', userId: 'owner', workspaceRoot },
+    );
+    const file = createBuiltinTool(
+      'closed-agent',
+      createBuiltinVendedToolDef('file-editor')!,
+      {} as any,
+    )!;
+    const bash = createBuiltinTool(
+      'closed-agent',
+      createBuiltinVendedToolDef('bash')!,
+      {} as any,
+    )!;
+    const disposed = vi.fn();
+    scope.onClose(() => {
+      throw new Error('cleanup fixture');
+    });
+    scope.onClose(disposed);
+    await runWithNativeForegroundRelay(scope, async () => {
+      expect(() => scope.close()).toThrow('Native workspace cleanup failed');
+      expect(disposed).toHaveBeenCalledOnce();
+      await expect(
+        file.execute!({
+          command: 'create',
+          path: 'late.txt',
+          file_text: 'late',
+        }),
+      ).rejects.toThrow();
+      await expect(
+        bash.execute!({ mode: 'execute', command: 'touch late-shell.txt' }),
+      ).rejects.toThrow();
+      await expect(readFile(join(workspaceRoot, 'late.txt'))).rejects.toThrow();
+      await expect(
+        readFile(join(workspaceRoot, 'late-shell.txt')),
+      ).rejects.toThrow();
+    });
   });
 
   test('bash preserves shell session state across calls', async () => {

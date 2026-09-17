@@ -1,0 +1,330 @@
+import { isAbsolute } from 'node:path';
+import { Worker } from 'node:worker_threads';
+
+type Phase = 'idle' | 'running' | 'retiring' | 'incomplete' | 'closed';
+export interface OwnedSearchReadWorker {
+  /** Only fixed built-in adapters supply these bounded encoders/decoders; neither crosses the port. */
+  execute<T>(
+    encode: (id: number) => string | null,
+    decode: (value: unknown) => T | null,
+    signal?: AbortSignal,
+  ): Promise<T | null>;
+  /**
+   * Start the worker if it is not started, and resolve once it has posted the
+   * `ready` sentinel its entry module sends as its last top-level statement —
+   * or once it has failed or exited, which is equally "no longer booting".
+   * Never rejects, and never resolves later than `deadlineMs`, so a caller
+   * can wait for readiness without inheriting an unbounded wait from a thread
+   * that never comes up.
+   *
+   * It exists so the SPAWN is not billed to a read budget. What that covers
+   * is exactly what each worker's sentinel position derives — for both:
+   * thread creation, entry module transform and evaluation, and whatever
+   * that module does before its last statement. Concretely, the transcript
+   * worker opens its read-only database there; the Task worker validates its
+   * owner-bound store path, constructs its provider and registers its
+   * handler, and reads the TaskGraph per request instead. It is deliberately
+   * NOT `worker.on('online')`, which Node emits when the thread begins
+   * executing JS — measured on a dev host at load ~20, `online` lands at
+   * 16-20ms and the entry module's first signal at 56-78ms, so settling on
+   * `online` would leave that contended 40-60ms billed to the read
+   * (station#1707).
+   */
+  whenReady(): Promise<void>;
+  /** No queue. Retiring/incomplete custody continues occupying the sole slot. */
+  inspect(): { phase: Phase };
+  /** Bounded truthful result; repeated close joins pending cleanup or retries a rejection. */
+  close(): Promise<{ state: 'closed' | 'winding-down' | 'incomplete' }>;
+}
+
+/** Implementation-only fault seams. Not a runtime/plugin module selection API. */
+export interface OwnedSearchReadWorkerTestOptions {
+  workerSourceUrl?: URL;
+  deadlineMs?: number;
+  terminate?: (worker: Worker) => Promise<number>;
+}
+
+/**
+ * Private lifecycle shared by two fixed first-party read operations. This is
+ * not a plugin executor: kind selects a compiled worker, never caller code.
+ */
+export function createOwnedSearchReadWorker(
+  owner: { kind: 'task' | 'transcript'; path: string },
+  test: OwnedSearchReadWorkerTestOptions = {},
+): OwnedSearchReadWorker {
+  if (!isAbsolute(owner.path) || owner.path.length > 4096)
+    throw new TypeError('Invalid read owner');
+  const path = owner.path;
+  const kind = owner.kind;
+  if (kind !== 'task' && kind !== 'transcript')
+    throw new TypeError('Unknown read operation');
+  const requestBytes = 2048;
+  const responseBytes = kind === 'task' ? 20 * 1024 : 64 * 1024;
+  const resultKey = kind === 'task' ? 'page' : 'result';
+  const deadlineMs = test.deadlineMs ?? 2000;
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 1)
+    throw new TypeError('Invalid read deadline');
+  const terminate = test.terminate ?? ((worker: Worker) => worker.terminate());
+  let closed = false;
+  let sequence = 0;
+  type Flight = {
+    id: number;
+    deadline: number;
+    decode: (value: unknown) => unknown | null;
+    signal?: AbortSignal;
+    finish: (page: unknown) => void;
+  };
+  type OwnedWorker = {
+    worker: Worker;
+    /** Settles on the worker's `ready` sentinel, or on failure/exit. Never rejects. */
+    ready: Promise<void>;
+    phase: 'idle' | 'running' | 'retiring' | 'incomplete';
+    flight?: Flight;
+    termination?: Promise<void>;
+    exited: boolean;
+  };
+  let owned: OwnedWorker | undefined;
+
+  function retire(record: OwnedWorker) {
+    if (record.exited) return Promise.resolve();
+    if (record.termination) return record.termination;
+    record.phase = 'retiring';
+    record.flight?.finish(null);
+    // Capture the single cleanup promise before invoking an injected terminator.
+    const settlement = Promise.resolve()
+      .then(() => terminate(record.worker))
+      .then(
+        () => {
+          record.exited = true;
+          if (owned === record) owned = undefined;
+        },
+        () => {
+          if (!record.exited) record.phase = 'incomplete';
+          record.termination = undefined; // Only a genuinely settled rejection may retry.
+        },
+      );
+    record.termination = settlement;
+    return settlement;
+  }
+
+  function acquire(): OwnedWorker {
+    if (owned) return owned;
+    const source =
+      test.workerSourceUrl ??
+      new URL(
+        `./${kind === 'task' ? 'task' : 'transcript'}-search-worker.${import.meta.url.endsWith('.ts') ? 'ts' : 'js'}`,
+        import.meta.url,
+      );
+    const worker = new Worker(source, {
+      workerData:
+        kind === 'task' ? { storePath: path } : { databasePath: path },
+      resourceLimits: {
+        maxOldGenerationSizeMb: 128,
+      },
+      // Do not inherit eval/debug flags (e.g. --input-type) into a file entry.
+      execArgv: source.pathname.endsWith('.ts') ? ['--import', 'tsx'] : [],
+    });
+    let settleReady: () => void = () => {};
+    const record: OwnedWorker = {
+      worker,
+      // Resolved by the `ready` sentinel handled in the 'message' listener
+      // below, and by the 'error'/'exit' listeners: a worker that died is not
+      // going to become ready, and a waiter must not hang for one.
+      ready: new Promise<void>((resolve) => {
+        settleReady = resolve;
+      }),
+      phase: 'idle',
+      exited: false,
+    };
+    owned = record;
+    worker.on('message', (wire: unknown) => {
+      // Before every other check, including the flight guard: the readiness
+      // sentinel is posted by the entry module's last top-level statement and
+      // therefore arrives while the worker is idle, with no flight to match.
+      // It is the only non-string message the protocol has, so it can never
+      // be confused with a reply. `'online'` is deliberately NOT the signal —
+      // Node emits it when the thread starts executing JS, which is before
+      // the entry module is transformed, evaluated, and its database opened.
+      if (
+        wire !== null &&
+        typeof wire === 'object' &&
+        (wire as { type?: unknown }).type === 'ready'
+      ) {
+        if (owned === record) settleReady();
+        return;
+      }
+      if (owned !== record || record.phase !== 'running' || !record.flight)
+        return;
+      const flight = record.flight;
+      if (flight.signal?.aborted || performance.now() >= flight.deadline) {
+        void retire(record);
+        return;
+      }
+      try {
+        if (typeof wire !== 'string' || Buffer.byteLength(wire) > responseBytes)
+          throw new TypeError('Invalid Task response');
+        const reply = JSON.parse(wire);
+        if (
+          !reply ||
+          typeof reply !== 'object' ||
+          Array.isArray(reply) ||
+          Object.keys(reply).length !== 2 ||
+          !Object.hasOwn(reply, 'id') ||
+          !Object.hasOwn(reply, resultKey)
+        )
+          throw new TypeError('Invalid Task response');
+        // An out-of-generation reply never completes another request.
+        if (reply.id !== flight.id) {
+          void retire(record);
+          return;
+        }
+        const page = flight.decode(reply[resultKey]);
+        if (page === null) throw new TypeError('Invalid read result');
+        if (flight.signal?.aborted || performance.now() >= flight.deadline) {
+          void retire(record);
+          return;
+        }
+        flight.finish(page);
+      } catch {
+        void retire(record);
+      }
+    });
+    worker.on('error', () => {
+      settleReady();
+      void retire(record);
+    });
+    worker.on('exit', () => {
+      settleReady();
+      record.exited = true;
+      record.flight?.finish(null);
+      if (owned === record) owned = undefined;
+    });
+    return record;
+  }
+
+  async function execute<T>(
+    encode: (id: number) => string | null,
+    decode: (value: unknown) => T | null,
+    signal?: AbortSignal,
+  ): Promise<T | null> {
+    if (closed || signal?.aborted || (owned && owned.phase !== 'idle'))
+      return null;
+    const id = ++sequence;
+    let wire: string | null;
+    try {
+      wire = encode(id);
+    } catch {
+      return null;
+    }
+    if (wire === null || Buffer.byteLength(wire) > requestBytes) return null;
+    let record: OwnedWorker;
+    try {
+      record = acquire();
+    } catch {
+      return null;
+    }
+    // AFTER `acquire()`, which excludes exactly one thing: the synchronous
+    // `new Worker(...)` constructor call. It does NOT mean a ready worker —
+    // `acquire()` hands back a thread that may still be booting.
+    //
+    // Waiting for that boot here would be wrong: `execute` cannot know
+    // whether its worker implements the `ready` sentinel — the fault fixtures
+    // in `__tests__/fixtures` do not, by design — and awaiting it
+    // unconditionally costs every such worker a full deadline per read
+    // (proven: three existing custody/termination tests reddened). Taking the
+    // boot off the budget is the CALLER's job, via `whenReady()`, which
+    // `runtime-search`'s `run()` awaits ahead of every deadline, and which
+    // every production caller reaches this module through.
+    //
+    // RESIDUAL, named rather than argued away: if the worker exits between
+    // that `whenReady()` and this `acquire()`, the `acquire()` above spawns a
+    // replacement and its boot does land on this read's budget. `run()` asks
+    // per read, which narrows the window to that gap; it does not close it.
+    const deadline = performance.now() + deadlineMs;
+    return new Promise((resolve) => {
+      record.phase = 'running';
+      let settled = false;
+      const abort = () => {
+        void retire(record);
+      };
+      const timer = setTimeout(
+        abort,
+        Math.max(0, deadline - performance.now()),
+      );
+      const finish = (page: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
+        record.flight = undefined;
+        if (record.phase === 'running') record.phase = 'idle';
+        resolve(page as T | null);
+      };
+      record.flight = {
+        id,
+        deadline,
+        decode,
+        signal,
+        finish,
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted || performance.now() >= deadline) {
+        abort();
+        return;
+      }
+      try {
+        record.worker.postMessage(wire);
+      } catch {
+        abort();
+      }
+    });
+  }
+
+  async function waitForReady(record: OwnedWorker): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      record.ready,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, deadlineMs);
+      }),
+    ]);
+    clearTimeout(timer);
+  }
+
+  async function whenReady(): Promise<void> {
+    if (closed) return;
+    let record: OwnedWorker;
+    try {
+      record = acquire();
+    } catch {
+      return; // A worker that cannot be constructed is not going to be ready.
+    }
+    await waitForReady(record);
+  }
+
+  return {
+    execute,
+    whenReady,
+    inspect: () => ({ phase: owned?.phase ?? (closed ? 'closed' : 'idle') }),
+    async close() {
+      closed = true;
+      if (!owned) return { state: 'closed' };
+      const record = owned;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        retire(record),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, 100);
+        }),
+      ]);
+      clearTimeout(timer);
+      return {
+        state: !owned
+          ? 'closed'
+          : owned.phase === 'incomplete'
+            ? 'incomplete'
+            : 'winding-down',
+      };
+    },
+  };
+}

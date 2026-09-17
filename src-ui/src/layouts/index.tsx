@@ -22,6 +22,16 @@ export interface AgentLayoutProps {
   agent?: AgentSummary;
   layout?: LayoutDefinition;
   activeTab?: LayoutTab;
+  /**
+   * The Project a HOST bound this layout to, independently of the route
+   * (#2157: a project Layout docked beside Chat while the route shows another
+   * project). Plugin tabs already read the bound project through
+   * `SDKAdapter`'s rewritten navigation; this exists for the built-in tabs
+   * that read the UI's own `NavigationContext` instead — `flow-run-console`
+   * is the one that does. Absent for the route-bound hosts (`LayoutView`,
+   * `PersonalBoardView`), whose tabs keep reading the route.
+   */
+  boundProjectSlug?: string;
   onLaunchPrompt?: (prompt: AgentQuickPrompt) => void;
   onLaunchWorkflow?: (workflowId: string) => void;
   onShowChat?: () => void;
@@ -87,6 +97,34 @@ const DefaultLayout: AgentLayoutComponent = ({ layout, onShowChat }) => (
           Open Chat
         </button>
       }
+    />
+  </div>
+);
+
+/**
+ * The one sentence a tab gets when the server would not say what it holds
+ * (#2090).
+ *
+ * It names no plugin, no operator, no installation, no Builder run, and
+ * offers no action — because the server cannot tell a plugin this person
+ * cannot see from one that was never installed, and re-acquiring that
+ * distinction is exactly the existence oracle #2103 closed. The register is
+ * `WorkspacePaneRouteView`'s descriptor-free answer ("This Project doesn't
+ * have that pane"), NOT
+ * `workspacePaneAvailabilityPresentation.ts`'s `pane-not-available-to-viewer`
+ * string, which names an operator and a place to go.
+ */
+const LAYOUT_TAB_UNAVAILABLE_MESSAGE = 'This tab is not available.';
+
+// No `role="status"`: this is the slot's permanent content for this reader,
+// not something that becomes true while they are looking at it, and a live
+// region announces on mount.
+const UnavailableLayoutTab: AgentLayoutComponent = () => (
+  <div className="workspace-default">
+    <Empty
+      variant="prominent"
+      label="Tab not available"
+      description={LAYOUT_TAB_UNAVAILABLE_MESSAGE}
     />
   </div>
 );
@@ -283,7 +321,11 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 builtinRegistry.default = DefaultLayout;
 // Project-wide Flow run console: include in a layout via
 // { kind: 'builtin-component', name: 'flow-run-console' }.
-builtinRegistry['flow-run-console'] = () => <FlowRunConsole />;
+// The bound project where a host supplies one (#2157); the route's otherwise,
+// which is `FlowRunConsole`'s own fallback for an absent prop.
+builtinRegistry['flow-run-console'] = ({ boundProjectSlug }) => (
+  <FlowRunConsole projectSlug={boundProjectSlug} />
+);
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;
 
 /**
@@ -327,6 +369,17 @@ function resolvePluginLayoutComponent(
   return UnsupportedLayoutComponent;
 }
 
+/**
+ * Whether this tab carries the read verdict from #2090.
+ *
+ * The flag is set by `layoutWorkspaceShape` from the RESPONSE's
+ * `paneReferences`, never copied from a stored tab, so it is not part of the
+ * persisted `LayoutTab` contract and is read structurally here.
+ */
+function layoutTabUnavailable(tab: LayoutTab): boolean {
+  return (tab as { unavailable?: unknown }).unavailable === true;
+}
+
 function resolveLayoutComponent(
   component?: string | LayoutComponentRef,
 ): AgentLayoutComponent {
@@ -360,6 +413,31 @@ interface LayoutRendererProps extends AgentLayoutProps {
   refreshKey?: number;
   /** Exact direct-pane plugin component already authorized by its occurrence. */
   trustedPluginLayout?: AgentLayoutComponent;
+  /**
+   * The host declaring whether it can run a layout's prompt (#2171). Absent
+   * means it can, which is what every host passed before this existed.
+   *
+   * `false` is the docked host (`LayoutWorkspacePane`): it has no chat
+   * launcher, and the SDK header used to render the layout's prompt buttons
+   * anyway, so a docked Layout carrying prompts showed controls that did
+   * nothing. The flag reaches the header, which renders no control that would
+   * need a launcher, and it withholds `onLaunchPrompt` from the tabs below —
+   * one declaration enforced everywhere the launcher flows, rather than a flag
+   * the header honours while a tab is handed a launcher regardless.
+   *
+   * Why a flag and not a derivation. Every host without a launcher is a host
+   * passing no `onLaunchPrompt`, so `hostLaunchPrompt !== undefined` would
+   * say the same thing with no prop and no precedence rule — and it was
+   * weighed (#2171 review L1). It was not taken because it would change what
+   * two hosts this change must leave alone render: `WorkspacePaneRouteView`
+   * and `ProjectLayoutRenderer`'s synthetic single-tab layouts pass no
+   * launcher and carry pane-DESCRIPTOR `actions`, and whether a descriptor's
+   * `prompt` action should ever be launchable from a route-bound pane is an
+   * open decision, not this change's to make by side effect (#2195). The flag
+   * is opt-in so that the decision is made per host, on purpose; #2195 may
+   * well replace the flag with the derivation.
+   */
+  canLaunchPrompts?: boolean;
 }
 
 export function LayoutRenderer({
@@ -370,11 +448,17 @@ export function LayoutRenderer({
   loading,
   activeTabId,
   onTabChange,
-  onLaunchPrompt,
+  onLaunchPrompt: hostLaunchPrompt,
+  canLaunchPrompts,
   refreshKey = 0,
   trustedPluginLayout,
   ...props
 }: LayoutRendererProps) {
+  // A host that declares it cannot launch does not get to hand one over by
+  // passing a handler as well; the declaration wins for the header and the
+  // tabs alike.
+  const onLaunchPrompt =
+    canLaunchPrompts === false ? undefined : hostLaunchPrompt;
   // Re-resolve the component when the plugin registry's status changes: a
   // live registry reload (e.g. consent granted without a page reload) must
   // swap a mounted fallback for the newly registered layout instead of
@@ -393,6 +477,7 @@ export function LayoutRenderer({
             }))}
             activeTabId={activeTabId}
             onTabChange={onTabChange}
+            canLaunchPrompts={canLaunchPrompts}
             actions={layout.actions}
             layoutPrompts={layout.globalSkills}
             onLayoutPromptSelect={onLaunchPrompt}
@@ -435,8 +520,20 @@ export function LayoutRenderer({
             layout.tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               if (!isActive) return null;
-              const Component =
-                trustedPluginLayout ?? resolveLayoutComponent(tab.component);
+              // #2090 — ahead of every resolution, including the trusted
+              // direct-pane component, because this is not a question about
+              // which renderer exists. Without it the bundle never loads,
+              // `resolveLayoutComponent` returns the unsupported placeholder,
+              // and the region asserts a cause the server never derived and
+              // that is false: `Plugin layout component "X" is not installed
+              // or registered.` — sending the reader to reinstall a plugin
+              // this Station already has. Same shape as the remote-isolation
+              // branch in `UnsupportedLayoutComponent`, which exists for
+              // exactly this reason and says so.
+              const Component = layoutTabUnavailable(tab)
+                ? UnavailableLayoutTab
+                : (trustedPluginLayout ??
+                  resolveLayoutComponent(tab.component));
               return (
                 <div key={tab.id} className="workspace-tab-content">
                   <Component

@@ -222,3 +222,152 @@ describe('Workspace Pane catalog availability resolver', () => {
     });
   });
 });
+
+/**
+ * #2067. The projection reaches a pane through its DESCRIPTOR PROVENANCE, and
+ * nothing a declaration says about itself can move it.
+ */
+describe('per-principal plugin visibility', () => {
+  const pluginDescriptor = {
+    ...descriptor,
+    id: 'pane:plugin-fixture',
+    provenance: { origin: 'plugin', pluginId: 'notes' },
+  } as unknown as WorkspacePaneDescriptor;
+  const pluginInstance = {
+    ...instance,
+    descriptorId: pluginDescriptor.id,
+    instanceId: 'instance:plugin-fixture',
+  } as WorkspacePaneInstance;
+
+  const resolveFor = (
+    canSeePlugin: ((pluginId: string) => boolean) | undefined,
+    availabilityInput?: Record<string, unknown>,
+  ) =>
+    resolveWorkspacePaneCatalogAvailability(
+      [
+        {
+          descriptor: pluginDescriptor,
+          instance: pluginInstance,
+          contribution: { id: 'notes', enabled: true },
+          ...(availabilityInput
+            ? { availabilityInput: availabilityInput as never }
+            : {}),
+        },
+      ],
+      canSeePlugin ? { canSeePlugin } : {},
+    )[0]!;
+
+  test('a plugin the caller cannot see resolves to a reason, not to an absence', () => {
+    const resolved = resolveFor(() => false);
+    expect(resolved.input.pluginVisibility).toBe('hidden');
+    expect(resolved.availability).toEqual({
+      state: 'permission-required',
+      reason: { code: 'pane-not-available-to-viewer', source: 'visibility' },
+      action: { type: 'learn-more', code: 'view-permission-requirements' },
+    });
+  });
+
+  test('the refusal conceals every lower fact about the plugin', () => {
+    // Without the projection this candidate reports `renderer-unknown`: the
+    // resolver's renderer branch. A person who cannot see the plugin must not
+    // be able to tell those two apart, which is why the visibility branch is
+    // ahead of rollout rather than beside the permission branch.
+    expect(resolveFor(undefined).availability.reason.code).toBe(
+      'renderer-unknown',
+    );
+    expect(resolveFor(() => false).availability.reason.code).toBe(
+      'pane-not-available-to-viewer',
+    );
+  });
+
+  test('a declaration cannot declare itself visible', () => {
+    // `availabilityInput` is the last mergeable input and normally wins.
+    // Visibility is applied after the merge precisely so a manifest-supplied
+    // declaration cannot assert the one fact only the grant record produces.
+    const resolved = resolveFor(() => false, { pluginVisibility: 'visible' });
+    expect(resolved.input.pluginVisibility).toBe('hidden');
+    expect(resolved.availability.reason.code).toBe(
+      'pane-not-available-to-viewer',
+    );
+  });
+
+  /**
+   * A CONTRACT test with NO live producer behind it.
+   * `readCurrentWorkspacePaneCatalog` drops a hidden plugin's panes before
+   * availability runs, and the referenced-pane path that used to reach this
+   * resolver with `pluginVisibility: 'hidden'` was REMOVED — see the
+   * `'visibility'` reason-code docblock in
+   * `packages/contracts/src/workspace-pane-availability.ts` for the two
+   * implementations and why neither shipped. Nothing in production sets
+   * `'hidden'` today; #2067's second acceptance criterion is unmet.
+   *
+   * These rows are kept because the ORDERING is the security property and it
+   * took three rounds to get right; the Board slice will need it. Read them
+   * as a contract, not as evidence that anything exercises it.
+   *
+   * The precedence IS the security property, so it needs cases where a lower
+   * branch would otherwise WIN. Without these, the visibility block could be
+   * moved below rollout/installation/distribution and every test still passes,
+   * because the base fixture is `available`/`ready`/`enabled` and no lower
+   * branch fires — which is exactly what an independent reviewer proved by
+   * reordering the block and watching 27/27 stay green.
+   */
+  test.each([
+    [
+      'a rollout the caller would otherwise be told about',
+      { rollout: 'coming-soon' },
+    ],
+    [
+      'an installation state the caller would otherwise be told about',
+      { installation: 'pending' },
+    ],
+    [
+      'a distribution policy the caller would otherwise be told about',
+      { distribution: 'disabled' },
+    ],
+    // `permission: 'required'` is deliberately NOT a row here. Its branch sits
+    // below the renderer branch, so for this fixture (whose renderer is
+    // unknown) it never fires, and the precondition assertion below correctly
+    // refused it. A row that cannot reach the branch it names proves nothing
+    // about precedence — it only makes the table look longer.
+  ])('the refusal outranks %s', (_label, lowerFact) => {
+    // First prove the lower fact really does win on its own. An injection
+    // that lands on an unreachable branch proves nothing, and a fixture that
+    // never triggers the branch is the same failure in fixture form.
+    const withoutProjection = resolveFor(undefined, lowerFact);
+    expect(withoutProjection.availability.reason.code).not.toBe(
+      'pane-not-available-to-viewer',
+    );
+    expect(withoutProjection.availability.reason.code).not.toBe(
+      'renderer-unknown',
+    );
+    // Now the same candidate, hidden: the lower fact must be unreachable.
+    const hidden = resolveFor(() => false, lowerFact);
+    expect(hidden.availability.reason.code).toBe(
+      'pane-not-available-to-viewer',
+    );
+    expect(hidden.availability.reason.source).toBe('visibility');
+  });
+
+  test('a visible plugin carries the fact and resolves on its merits', () => {
+    const resolved = resolveFor((pluginId) => pluginId === 'notes');
+    expect(resolved.input.pluginVisibility).toBe('visible');
+    expect(resolved.availability.reason.code).toBe('renderer-unknown');
+  });
+
+  test('a built-in pane never consults the projection', () => {
+    const canSeePlugin = vi.fn(() => false);
+    const resolved = resolveWorkspacePaneCatalogAvailability(
+      [
+        {
+          descriptor,
+          instance,
+          contribution: { id: 'builtin', enabled: true },
+        },
+      ],
+      { canSeePlugin },
+    )[0]!;
+    expect(canSeePlugin).not.toHaveBeenCalled();
+    expect(resolved.input.pluginVisibility).toBeUndefined();
+  });
+});

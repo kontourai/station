@@ -14,37 +14,50 @@ import { describe, expect, it } from 'vitest';
  *
  * These assertions exist so a tidying pass cannot restore the equality check.
  */
-const workflow = readFileSync(
-  join(
-    resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
-    '.github/workflows/publish-packages.yml',
-  ),
-  'utf8',
-);
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const exchangeBlock = workflow.slice(
-  workflow.indexOf('oidc/token/exchange/package/'),
-  workflow.indexOf('Trusted publisher confirmed'),
-);
+function exchangeBlock(workflowName: string, endMarker: string): string {
+  const workflow = readFileSync(
+    join(root, '.github/workflows', workflowName),
+    'utf8',
+  );
+  return workflow.slice(
+    workflow.indexOf('oidc/token/exchange/package/'),
+    workflow.indexOf(endMarker),
+  );
+}
 
-describe('publish-packages OIDC exchange preflight (station#1744)', () => {
+const workflows = [
+  {
+    name: 'publish-packages',
+    block: exchangeBlock('publish-packages.yml', 'Trusted publisher confirmed'),
+  },
+  {
+    name: 'nightly CLI',
+    block: exchangeBlock('nightly.yml', "echo 'trusted_publisher=true'"),
+  },
+] as const;
+
+describe('npm OIDC exchange preflight (station#1744)', () => {
   it('accepts any 2xx from the npm token exchange, not only 200', () => {
-    expect(
-      exchangeBlock,
-      'the OIDC exchange preflight must accept 2xx: npm returns 201 Created, and pinning 200 fails every publish against a working trusted publisher',
-    ).toMatch(/2\[0-9\]\[0-9\]\)/);
+    for (const workflow of workflows)
+      expect(
+        workflow.block,
+        `${workflow.name} must accept 2xx: npm returns 201 Created, and pinning 200 fails a working trusted publisher`,
+      ).toMatch(/2\[0-9\]\[0-9\]\)/);
   });
 
   it('does not gate the exchange on equality with 200', () => {
-    expect(
-      exchangeBlock,
-      'the OIDC exchange preflight regressed to an equality check on HTTP 200 (station#1744)',
-    ).not.toMatch(/\[ "\$status" != "200" \]/);
+    for (const workflow of workflows)
+      expect(
+        workflow.block,
+        `${workflow.name} regressed to an equality check on HTTP 200 (station#1744)`,
+      ).not.toMatch(/\[ "\$status" != "200" \]/);
   });
 
   it('still proves a usable token came back, which is the real precondition', () => {
     expect(
-      exchangeBlock,
+      workflows[0].block,
       'the structural token check is what makes the preflight meaningful; a status alone proves nothing about the publish',
     ).toContain('returned no token; the publish would proceed unauthenticated');
   });

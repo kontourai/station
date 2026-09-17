@@ -120,6 +120,65 @@ describe('coding content routes — real git project (no mocks)', () => {
     expect(res.json.data.staged + res.json.data.unstaged).toBeGreaterThan(0);
   });
 
+  /**
+   * #1536 G5: Push had no fact to gate on, so it was live in a checkout with
+   * nowhere to push and the only way to find that out was to press it.
+   */
+  test('observes whether the checkout has a remote to push to', async () => {
+    const before = await get(`/git/status?path=${encodeURIComponent(repo)}`);
+    expect(before.json.data.remote).toBe('absent');
+
+    execGitSync(['remote', 'add', 'origin', 'https://example.test/a/b.git'], {
+      cwd: repo,
+    });
+    const after = await get(`/git/status?path=${encodeURIComponent(repo)}`);
+    expect(after.json.data.remote).toBe('present');
+
+    execGitSync(['remote', 'remove', 'origin'], { cwd: repo });
+  });
+
+  /**
+   * Review L10: the third state. `unknown` means the read could not answer, and
+   * folding it into `absent` would disable Push on no evidence — the
+   * distinction `checkout-remote-reader.ts` exists to keep.
+   *
+   * Driven through the injected reader, because no filesystem state reaches it
+   * from here: every way of breaking `.git/config` (a directory in its place,
+   * a syntax error, mode 000) also fails `git rev-parse
+   * --is-inside-work-tree`, so this route's own `isInsideWorkTree` gate answers
+   * `isRepo: false` before the remote read happens. The refusal path is still
+   * live — a timeout, a git binary that goes away between the two calls — it
+   * just is not reachable by breaking the config.
+   */
+  test('reports a refused remote read as unknown, never absent', async () => {
+    const refusing = createCodingRoutes(new FileTreeService(), {
+      readRemotes: async () => ({
+        ok: false as const,
+        reason: 'git could not be run',
+      }),
+    });
+    const res = await refusing.request(
+      `/git/status?path=${encodeURIComponent(repo)}`,
+    );
+    const json = (await res.json()) as any;
+
+    expect(res.status).toBe(200);
+    expect(json.data.isRepo).toBe(true);
+    expect(json.data.remote).toBe('unknown');
+  });
+
+  test('a successful read of zero remotes is absent, not unknown', async () => {
+    const empty = createCodingRoutes(new FileTreeService(), {
+      readRemotes: async () => ({ ok: true as const, remotes: [] }),
+    });
+    const res = await empty.request(
+      `/git/status?path=${encodeURIComponent(repo)}`,
+    );
+    const json = (await res.json()) as any;
+
+    expect(json.data.remote).toBe('absent');
+  });
+
   test('REGRESSION: a `~` path expands to $HOME, not `<cwd>/~/...`', async () => {
     const tilde = `~/${relative(homedir(), homeProject)}`;
     const res = await get(`/files?path=${encodeURIComponent(tilde)}`);

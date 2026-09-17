@@ -1,13 +1,16 @@
+import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type { DeveloperTab, NavigationView } from '../types';
 import {
   CONNECTION_SECTIONS,
   canonicalConnectionPath,
 } from '../views/connections-hub/connection-sections';
+import { boardPath, parseBoardPath } from './board-route';
 import {
-  APP_SURFACE_REGISTRY,
-  type ManagementSurfaceId,
-} from './surface-registry';
+  APP_DESTINATION_REGISTRY,
+  type ManagementDestinationId,
+} from './destination-registry';
 
 export const DEVELOPER_TABS = [
   'logs',
@@ -24,9 +27,28 @@ type DeveloperTabsExhaustive =
         Exclude<DeveloperTab, (typeof DEVELOPER_TABS)[number]>,
       ];
 true satisfies DeveloperTabsExhaustive;
-export function isDeveloperTab(value: string): value is DeveloperTab {
+function isDeveloperTab(value: string): value is DeveloperTab {
   return (DEVELOPER_TABS as readonly string[]).includes(value);
 }
+
+/**
+ * The spellings that used to mount Activity's standalone placement. Retired
+ * as a route (#928), permanent as a URL.
+ */
+const RETIRED_ACTIVITY_PATHS = new Set([
+  '/activity',
+  '/activity/',
+  '/sessions',
+  '/sessions/',
+]);
+
+/**
+ * The spellings that used to mount the global Review queue. Retired as a
+ * route (#2065), permanent as a URL — both spellings, like the retired
+ * Activity paths above, because an exact-lookup table 404s the copy-mangled
+ * one otherwise.
+ */
+const RETIRED_REVIEW_QUEUE_PATHS = new Set(['/review-queue', '/review-queue/']);
 
 export function getLegacyPathRedirect(path: string): string | null {
   const queryIndex = path.indexOf('?');
@@ -74,11 +96,15 @@ export function getLegacyPathRedirect(path: string): string | null {
   };
 
   if (pathname === '/developer/config') {
+    // #2182 dissolved the `station-config` section this used to name, and a
+    // redirect cannot choose one of the six sections its rows went to. It
+    // lands on Settings' overview, which shows every section — the same
+    // place a bare stale `?view=` lands. Any other query state is preserved,
+    // as it was before; only the `view` this route used to assert is gone.
     const params = new URLSearchParams(search);
     params.delete('view');
-    const canonicalParams = new URLSearchParams({ view: 'station-config' });
-    for (const [key, value] of params) canonicalParams.append(key, value);
-    return `/settings?${canonicalParams.toString()}`;
+    const remaining = params.toString();
+    return remaining ? `/settings?${remaining}` : '/settings';
   }
   // archive#3313 (Settings IA, option A): Feature Previews is a Settings
   // section now; the standalone route redirects into it, same pattern as
@@ -134,13 +160,70 @@ export function getLegacyPathRedirect(path: string): string | null {
     if (redirect) return redirect;
   }
 
+  // #928: Activity has no standalone placement any more — it is a region
+  // surface, revealed by the shell rather than rendered by a route. The URL
+  // still has to work (`docs/design/pane-or-shell.md`: converting a surface
+  // must not break a URL), so both retired spellings land on the surface's
+  // canonical deep link instead of 404ing. `/sessions` was already a
+  // permanent redirect boundary for persisted notifications and old Discord
+  // messages (archive#3280); it now points one hop further rather than at a
+  // route that no longer resolves.
+  //
+  // The target is MINTED by the contracts builder that every producer uses
+  // (`activityDeepLink`, also the source of a notification's `openHref`, the
+  // web-push click target and Discord's completion line), so the redirect
+  // cannot drift from the shape those links already carry — including its
+  // rule that `focus` without a session means nothing and is dropped.
+  //
+  // Only `session` and `focus` survive: those are the whole payload the
+  // retired route ever read, and the canonical deep link has no place to put
+  // anything else. This narrows what a stored link can carry through, and
+  // the narrowing is unobserved rather than free: no producer has ever put
+  // another param on these two paths (`dock`/`chat` are minted only on
+  // `/projects/<slug>` and `/`, and the service worker appends nothing), so
+  // there is no live link this drops anything from. `dock` in particular
+  // WOULD survive a plain navigation — it is shell-scoped
+  // (`SHELL_SCOPED_QUERY_PARAMS`) and deliberately outlives a route change —
+  // so if a producer ever starts minting it here, this is the line to widen.
+  //
+  // Trailing slash for the same reason `/tasks/` and `/review/` carry one:
+  // an exact-lookup table 404s the copy-mangled spelling otherwise.
+  if (RETIRED_ACTIVITY_PATHS.has(pathname)) {
+    const params = new URLSearchParams(search);
+    const sessionId = params.get('session')?.trim();
+    if (!sessionId) return activityDeepLink();
+    return activityDeepLink({
+      sessionId,
+      ...(params.get('focus') === 'evidence'
+        ? { focus: 'evidence' as const }
+        : {}),
+    });
+  }
+
+  // #2065: the global `/review-queue` is retired — Review is a layout kind a
+  // Project places, and a review item belongs to exactly one Project. A stored
+  // link that names its project resolves into that Project's Review layout
+  // with its item selector intact; one that cannot (the pre-#2065 inbox minted
+  // `?change=`/`?review=` with no project, and those links live in stored
+  // notification history) goes to the attention inbox, which lists the same
+  // work across Projects and can route on from there. It deliberately does not
+  // guess a Project: opening someone else's review item is worse than landing
+  // one step away from the right one.
+  if (RETIRED_REVIEW_QUEUE_PATHS.has(pathname)) {
+    const params = new URLSearchParams(search);
+    const projectSlug = params.get('project')?.trim();
+    if (!projectSlug) return '/notifications';
+    params.delete('project');
+    const selector = ['receipt', 'change', 'review'].find((key) =>
+      params.get(key)?.trim(),
+    );
+    return projectReviewLayoutHref(
+      projectSlug,
+      selector ? { [selector]: params.get(selector) as string } : undefined,
+    );
+  }
+
   const exactRedirects: Readonly<Record<string, string>> = {
-    // archive#3280: Activity is canonical before v1. Existing notification
-    // and Discord deep links remain valid through this permanent redirect.
-    // Both spellings: hand-typed and copy-mangled links commonly carry a
-    // trailing slash, and an exact-lookup table would 404 it
-    '/sessions': '/activity',
-    '/sessions/': '/activity',
     '/monitoring': '/developer/telemetry',
     '/sys/monitoring': '/developer/telemetry',
     '/sys/schedule': '/schedule',
@@ -148,18 +231,20 @@ export function getLegacyPathRedirect(path: string): string | null {
     '/tools': '/connections/tools',
     // #765 D2: there is no task-collection view — a Task is only ever opened
     // by id (`/tasks/:id`), and task lists live inside their project surfaces
-    // and on Home. Redirecting the bare path (both spellings, like
-    // '/sessions' above) sends a hand-typed or truncated URL to the surface
+    // and on Home. Redirecting the bare path (both spellings, like the
+    // retired Activity paths above) sends a hand-typed or truncated URL to the surface
     // that does list tasks instead of a "No view matches /tasks" 404. Task
     // deep links are exact-lookup-safe: `/tasks/<id>` never matches here.
     '/tasks': '/',
     '/tasks/': '/',
-    // #765 residue (D2 class): the nav item says "Review" but the canonical
-    // route is '/review-queue', so the hand-typed short spelling 404'd.
-    // Both spellings, like '/sessions' above. Exact-only is safe: no view
-    // ever mounts under a '/review/<id>' deep link.
-    '/review': '/review-queue',
-    '/review/': '/review-queue',
+    // #2065 retired the global Review queue: Review is a layout kind a
+    // Project places, so there is no collection view left to send these to.
+    // The attention inbox is the surface that still lists review work across
+    // Projects, so the bare spellings land there rather than 404ing. Handled
+    // here rather than in `RETIRED_REVIEW_QUEUE_PATHS` below because these two
+    // never carried an item selector.
+    '/review': '/notifications',
+    '/review/': '/notifications',
   };
   const exactRedirect = exactRedirects[pathname];
   if (exactRedirect) return preserveSearch(exactRedirect);
@@ -218,8 +303,8 @@ export function resolveViewFromPath(
   const queryIndex = path.indexOf('?');
   const search = queryIndex >= 0 ? path.slice(queryIndex + 1) : '';
   path = queryIndex >= 0 ? path.slice(0, queryIndex) : path;
-  const exactSurface = APP_SURFACE_REGISTRY.resolveExactRoute(path);
-  if (exactSurface) return exactSurface;
+  const exactDestination = APP_DESTINATION_REGISTRY.resolveExactRoute(path);
+  if (exactDestination) return exactDestination;
 
   if (path.startsWith('/agents/')) {
     // Preserve the historically accepted trailing-slash spelling while the
@@ -261,16 +346,6 @@ export function resolveViewFromPath(
       return { type: 'registry', tab: tabSegment };
     }
     return { type: 'registry' };
-  }
-  if (path === '/activity') {
-    const params = new URLSearchParams(search);
-    const sessionId = params.get('session')?.trim();
-    if (!sessionId) return { type: 'activity' };
-    // `focus=evidence` is a one-shot intent that only means anything when it
-    // names a session; any other value is ignored rather than carried.
-    return params.get('focus') === 'evidence'
-      ? { type: 'activity', sessionId, focus: 'evidence' }
-      : { type: 'activity', sessionId };
   }
   if (path.startsWith('/plugins/')) {
     return { type: 'plugins' };
@@ -460,6 +535,19 @@ export function resolveViewFromPath(
       ...(tab ? { tab } : {}),
     };
   }
+
+  // #2062: a Board is addressed by slug alone — it has no project segment,
+  // which is the whole point of the personal scope. The matcher is exact for
+  // the same reason the project matcher is.
+  //
+  // Placed AFTER the layout-tab match rather than before it: the long comment
+  // above belongs to that regex, and inserting this between the two made the
+  // rationale read as documentation for the Board matcher (#2062 review
+  // LOW-11). The two patterns are disjoint — `/boards/...` can never match a
+  // `/projects/...` path — so the order is a readability choice, not a
+  // precedence one.
+  const boardSlug = parseBoardPath(path);
+  if (boardSlug) return { type: 'personal-board', boardSlug };
   // 4-HOME-012: EXACT, so `/projects/<slug>/<anything-else>` falls through to
   // the not-found below instead of silently rendering the project dashboard.
   // The old `startsWith('/projects/')` catch-all took the second segment and
@@ -493,12 +581,6 @@ export function getPathForView(view: NavigationView): string | null {
       return '/plugins';
     case 'registry':
       return view.tab ? `/registry/${view.tab}` : '/registry';
-    case 'review-queue':
-      return '/review-queue';
-    case 'activity':
-      return view.sessionId
-        ? `/activity?session=${encodeURIComponent(view.sessionId)}${view.focus === 'evidence' ? '&focus=evidence' : ''}`
-        : '/activity';
     case 'connections':
       return '/connections';
     case 'connections-models':
@@ -555,6 +637,8 @@ export function getPathForView(view: NavigationView): string | null {
       return view.layoutSlug
         ? `/projects/${encodeURIComponent(view.projectSlug)}/layouts/${encodeURIComponent(view.layoutSlug)}/panes/${encodeURIComponent(view.descriptorId)}/${encodeURIComponent(view.instanceId)}`
         : `/projects/${encodeURIComponent(view.projectSlug)}/panes/${encodeURIComponent(view.descriptorId)}/${encodeURIComponent(view.instanceId)}`;
+    case 'personal-board':
+      return boardPath(view.boardSlug);
     case 'layout':
       return `/projects/${view.projectSlug}/layouts/${view.layoutSlug}${
         view.tab ? `/${view.tab}` : ''
@@ -564,10 +648,32 @@ export function getPathForView(view: NavigationView): string | null {
   }
 }
 
-/** Returns Station's semantic parent, independent of browser arrival history. */
+/**
+ * Returns Station's semantic parent, independent of browser arrival history.
+ *
+ * A parent is DECLARED here, never assumed. The fallback used to be
+ * `{ type: 'home' }`, which handed every unlisted view a parent it does not
+ * have: a top-level sidebar destination is not below anything, so the single
+ * consumer of this — `app.escapeUp` in App.tsx — was armed on those pages and
+ * Escape navigated away from them. #1582 H3 measured it on Schedule (open Add
+ * Job, Escape closes the dialog, Escape again lands on Home), but the dialog
+ * was never involved: one Escape on the resting page did the same, and so did
+ * Agents, Connections, Plugins, Guidance, Review, Notifications, Developer and
+ * Profile. `null` means "no level up", which is what those pages are.
+ */
 export function getParentView(view: NavigationView): NavigationView | null {
   switch (view.type) {
     case 'home':
+      return null;
+    // Top-level destinations: nothing above them to go up to.
+    case 'agents':
+    case 'connections':
+    case 'guidance':
+    case 'plugins':
+    case 'developer':
+    case 'schedule':
+    case 'notifications':
+    case 'profile':
       return null;
     case 'agent-edit':
     case 'agent-new':
@@ -575,7 +681,10 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'connections-model-edit':
       return { type: 'connections-models' };
     case 'connections-engine-edit':
+    case 'connections-engine-new':
       return { type: 'connections-engines' };
+    case 'connections-computers':
+      return { type: 'connections' };
     case 'connections-tool-edit':
       return { type: 'connections-tools' };
     case 'connections-models':
@@ -597,28 +706,38 @@ export function getParentView(view: NavigationView): NavigationView | null {
         : { type: 'project', slug: view.projectSlug };
     case 'layout':
       return { type: 'project', slug: view.projectSlug };
+    // #2062: a Board is a top-level place of its own — the panel lists it
+    // beside Activity, not under anything — so there is no level up. Declared
+    // rather than left to the `default`, which is what this switch's own
+    // docblock asks for.
+    case 'personal-board':
     case 'task':
+    // Settings behaves as a full-page overlay of Home rather than a sibling
+    // destination, and its Escape has always closed back to Home.
+    case 'settings':
+    case 'project':
+    case 'project-new':
+    case 'board':
+    case 'not-found':
       return { type: 'home' };
-    case 'activity':
-      return view.sessionId ? { type: 'activity' } : { type: 'home' };
     case 'registry':
-      return view.tab ? { type: 'registry' } : { type: 'home' };
+      return view.tab ? { type: 'registry' } : null;
     default:
-      return { type: 'home' };
+      return null;
   }
 }
 
-export type ManagementNavigationGroup = ManagementSurfaceId;
+type ManagementNavigationGroup = ManagementDestinationId;
 
 export function getManagementNavigationGroup(
   view: NavigationView,
 ): ManagementNavigationGroup | null {
-  const surface = APP_SURFACE_REGISTRY.getSurfaceForView(view);
-  return surface?.managementGroup ?? null;
+  const destination = APP_DESTINATION_REGISTRY.getDestinationForView(view);
+  return destination?.managementGroup ?? null;
 }
 
 export function getPathForManagementNavigationGroup(
   group: ManagementNavigationGroup,
 ): string {
-  return APP_SURFACE_REGISTRY.get(group)?.route ?? '/';
+  return APP_DESTINATION_REGISTRY.get(group)?.route ?? '/';
 }

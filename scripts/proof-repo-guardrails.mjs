@@ -559,7 +559,7 @@ if (!configContext.includes('useUpdateConfigMutation')) {
 const agentsContext = readRequiredSource(
   '../src-ui/src/contexts/AgentsContext.tsx',
 );
-if (agentsContext.includes('fetch(')) {
+if (hasRawFetchCall(agentsContext)) {
   errors.push('AgentsContext must not issue raw fetch() calls.');
 }
 for (const requiredHook of [
@@ -683,7 +683,7 @@ if (monitoringContext.includes('fetch(')) {
   errors.push('MonitoringContext must not issue raw fetch() calls.');
 }
 for (const requiredHook of [
-  'fetchMonitoringEvents',
+  'fetchMonitoringEventWindow',
   'useMonitoringStatsQuery',
 ]) {
   if (!monitoringContext.includes(requiredHook)) {
@@ -1340,7 +1340,9 @@ const knowledgeSearch = readRequiredSource(
 for (const requiredHelper of [
   'export async function searchKnowledgeDocuments',
   "candidate.behavior === 'rag'",
-  'allResults.sort((left, right) => right.score - left.score);',
+  // #1546 chained the sort onto the merged candidates; the helper still
+  // ranks by descending score, which is the property this proof pins.
+  '.sort((left, right) => right.score - left.score)',
 ]) {
   if (!knowledgeSearch.includes(requiredHelper)) {
     errors.push(`knowledge-search.ts must include ${requiredHelper}.`);
@@ -1790,21 +1792,11 @@ for (const requiredHelper of ['export function isAutoApproved']) {
   }
 }
 
-const toolExecutionUsage = readRequiredSource(
-  '../src-server/runtime/tools/tool-execution-usage.ts',
-);
-for (const requiredHelper of [
-  'export async function recordToolExecutionUsage',
-  "logger.info('[Usage Stats]'",
-  "logger.info('[Token Breakdown]'",
-  'await memory.updateConversation(',
-  'otelContextTokens.add(',
-  "logger.error('Failed to enrich message with model metadata'",
-]) {
-  if (!toolExecutionUsage.includes(requiredHelper)) {
-    errors.push(`tool-execution-usage.ts must include ${requiredHelper}.`);
-  }
-}
+// tool-execution-usage.ts is DELETED. The extraction it held was orphaned when
+// the only call site was removed from tool-executor.ts, so the "must include"
+// half of this pair guarded a module nothing imported. The half that carries
+// the real rule survives above: tool-executor.ts must not inline those usage
+// helpers, asserted directly against tool-executor.ts.
 
 const agentHooks = readRequiredSource(
   '../src-server/runtime/agents/agent-hooks.ts',
@@ -1952,10 +1944,12 @@ for (const requiredHelper of [
 const strandsMessageSync = readRequiredSource(
   '../src-server/runtime/frameworks/strands-message-sync.ts',
 );
+// This checks the extracted helper boundary, not its delta algorithm. Native
+// history uses SDK tracking identities; strands-native-history.test.ts proves
+// inherited rows are excluded and fresh rows persist once after compaction.
 for (const requiredHelper of [
   'export function mapStrandsContentBlocksToParts',
   'export async function syncStrandsMessagesToMemory',
-  'const delta = agentMessages.slice(existing?.length || 0);',
   'await memoryAdapter.addMessage(',
 ]) {
   if (!strandsMessageSync.includes(requiredHelper)) {
@@ -1971,11 +1965,37 @@ for (const requiredHelper of [
   'export function applyStrandsAvailableToolFilter',
   'export async function loadStrandsTools',
   'export async function destroyStrandsAgentTools',
-  'new McpClient({',
-  'new StdioClientTransport({',
+  // #1428 moved MCP client construction behind the local-connection custody
+  // owner so a client cannot exist without a current custody claim. The
+  // loader must obtain every client through that owner, never construct one.
+  "from './strands-mcp-custody.js'",
+  'createCustodiedStrandsClient(',
 ]) {
   if (!strandsToolLoader.includes(requiredHelper)) {
     errors.push(`strands-tool-loader.ts must include ${requiredHelper}.`);
+  }
+}
+for (const retiredLoaderSnippet of [
+  'new McpClient({',
+  'new StdioClientTransport(',
+]) {
+  if (strandsToolLoader.includes(retiredLoaderSnippet)) {
+    errors.push(
+      `strands-tool-loader.ts must not construct MCP clients directly (${retiredLoaderSnippet}); the custody owner does.`,
+    );
+  }
+}
+
+const strandsMcpCustody = readRequiredSource(
+  '../src-server/runtime/frameworks/strands-mcp-custody.ts',
+);
+for (const requiredHelper of [
+  'export function createCustodiedStrandsClient',
+  'new StdioClientTransport(',
+  'new McpClient({',
+]) {
+  if (!strandsMcpCustody.includes(requiredHelper)) {
+    errors.push(`strands-mcp-custody.ts must include ${requiredHelper}.`);
   }
 }
 
@@ -2019,7 +2039,14 @@ for (const requiredHelper of [
   '../bootstrap/runtime-http.js',
   './runtime-route-support.js',
   'createRuntimeSystemRouteDeps(context)',
-  'configureRuntimeSupportServices(context, flowRunService)',
+  // No closing paren: the property is that runtime-routes DELEGATES support
+  // service construction to the extracted helper, handing it the context and
+  // the flow run service -- not that the call has exactly two arguments.
+  // #2080 added a third (the gate-review reader) and this literal stopped
+  // matching, so a green tree reported "runtime-routes.ts must define or
+  // include configureRuntimeSupportServices(context, flowRunService)" for a
+  // call that was right there.
+  'configureRuntimeSupportServices(context, flowRunService',
   'createPluginRoutes(',
   'createConversationRoutes(',
 ]) {
@@ -2563,10 +2590,7 @@ for (const [relativePath, requiredImport] of [
     '../src-server/services/scheduling/scheduler-service.ts',
     '../providers/provider-interfaces.js',
   ],
-  [
-    '../src-server/services/plugins/template-service.ts',
-    '../providers/provider-interfaces.js',
-  ],
+  // template-service.ts is DELETED: nothing outside its own test imported it.
   [
     '../src-server/services/scheduling/builtin-scheduler.ts',
     '../providers/provider-interfaces.js',
@@ -3116,17 +3140,8 @@ for (const retiredInlineCliDevSnippet of [
 const cliLifecycle = readRequiredSource(
   '../packages/cli/src/commands/lifecycle.ts',
 );
-for (const requiredImport of [
-  './lifecycle-doctor.js',
-  'collectDoctorReport,',
-]) {
-  if (!cliLifecycle.includes(requiredImport)) {
-    errors.push(
-      `packages/cli/src/commands/lifecycle.ts must include ${requiredImport}.`,
-    );
-  }
-}
 for (const retiredLifecycleSnippet of [
+  './lifecycle-doctor.js',
   'function execVersion(',
   'async function detectOllama(',
   'function doctorStatusSymbol(',
@@ -3645,10 +3660,25 @@ for (const requiredHelper of [
   'export function _resolveAgent',
   'export function _getPluginName',
   'export async function _getApiBase',
-  'export function getPluginHeaders',
+  // #1451 moved the implementation to client/plugin-headers.ts; api-core.ts
+  // keeps the public re-export so every consumer path stays unchanged.
+  "export { getPluginHeaders } from './client/plugin-headers';",
 ]) {
   if (!sdkApiCore.includes(requiredHelper)) {
     errors.push(`packages/sdk/src/api-core.ts must include ${requiredHelper}.`);
+  }
+}
+const sdkPluginHeaders = readRequiredSource(
+  '../packages/sdk/src/client/plugin-headers.ts',
+);
+// Presence only: the spoof-resistance of the header itself is a behavioural
+// property, pinned by packages/sdk/src/__tests__/api-core-layout-context.test.ts,
+// which a source scan cannot express without pretending to.
+for (const requiredHelper of ['export function getPluginHeaders(']) {
+  if (!sdkPluginHeaders.includes(requiredHelper)) {
+    errors.push(
+      `packages/sdk/src/client/plugin-headers.ts must include ${requiredHelper}.`,
+    );
   }
 }
 
@@ -4242,34 +4272,17 @@ if (!activeChatsContext.includes('../hooks/usePruneActiveChats')) {
   );
 }
 
-const orchestrationHook = readRequiredSource(
-  '../src-ui/src/hooks/useOrchestration.ts',
+const foregroundDispatch = readRequiredSource(
+  '../src-ui/src/lib/foregroundMessageDispatch.ts',
 );
-for (const requiredHelper of [
-  './orchestration/ensureOrchestrationEventStream',
-  'sendExecutionMessageRequest',
-  'useOrchestrationProvidersQuery',
-]) {
-  if (!orchestrationHook.includes(requiredHelper)) {
-    errors.push(`useOrchestration must use ${requiredHelper}.`);
-  }
+if (
+  !foregroundDispatch.includes('@kontourai/station-sdk/client') ||
+  !foregroundDispatch.includes('sendExecutionMessage(')
+) {
+  errors.push(
+    'Foreground dispatch must use the portable SDK execution request.',
+  );
 }
-for (const retiredInlineOrchestrationSnippet of [
-  'type OrchestrationEvent =',
-  'function upsertTextPart(',
-  'function upsertToolPart(',
-  'function finalizeAssistantTurn(',
-  'async function resolveApproval(',
-  'function handleEvent(',
-  'const activeSources = new Map<string, EventSource>();',
-]) {
-  if (orchestrationHook.includes(retiredInlineOrchestrationSnippet)) {
-    errors.push(
-      `useOrchestration must not inline extracted orchestration helper ${retiredInlineOrchestrationSnippet}.`,
-    );
-  }
-}
-
 const orchestrationDirChecks = [
   [
     '../src-ui/src/hooks/orchestration/types.ts',
@@ -5012,28 +5025,11 @@ for (const retiredInlineConnectionsHubSnippet of [
   }
 }
 
-const connectionsHubUtils = readRequiredSource(
-  '../src-ui/src/views/connections-hub/utils.tsx',
-);
-for (const requiredHelper of [
-  'export function getProviderIcon',
-  'export function getConnectionStatusClass',
-  'export function describeConnection',
-  // station#3879: `getConnectionTypeText` no longer exists in the repo.
-  'export function IconDatabase',
-  'export function IconTool',
-]) {
-  if (!connectionsHubUtils.includes(requiredHelper)) {
-    errors.push(`connections-hub/utils.tsx must include ${requiredHelper}.`);
-  }
-}
-
-const connectionsHubSection = readRequiredSource(
-  '../src-ui/src/views/connections-hub/ConnectionsHubSection.tsx',
-);
-if (!connectionsHubSection.includes('export function ConnectionsHubSection')) {
-  errors.push('ConnectionsHubSection.tsx must export ConnectionsHubSection.');
-}
+// The extraction target itself is gone: `connections-hub/utils.tsx` held the
+// helpers lifted out of the old ConnectionsHub page, and once #3733 turned
+// that page into a redirect resolver nothing rendered them again. The
+// invariant that still has a subject is the "must not inline" list above —
+// ConnectionsHub may not grow its own copies back.
 
 const systemStatusHook = readRequiredSource(
   '../src-ui/src/hooks/useSystemStatus.ts',
@@ -5628,58 +5624,73 @@ for (const legacyHelper of [
 const pluginConfigRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-config-routes.ts',
 );
-for (const requiredHelper of [
+// A route pin names a registration, not its line layout: once a handler
+// gains a middleware argument the formatter wraps `app.put(` onto its own
+// line, and a byte-literal `includes` reads that as the route being gone.
+// Compare with the whitespace after `(` and `,` collapsed on both sides so
+// the pin still fails when the registration is removed or renamed.
+//
+// This was written for plugin-config-routes and applied only there, while
+// three sibling blocks below pinned the same `app.<method>('…'` shape
+// byte-literally. #2067 made `GET /check-updates` and `POST /reload`
+// operator-only, which wrapped both onto their own lines, and the lifecycle
+// block reported two routes "missing" that are registered five lines away —
+// red on main, and only the full-regression corpus runs this. Every block
+// that pins a call shape now compares layout-free.
+const collapseCallLayout = (text) => text.replace(/([(,])\s+/g, '$1');
+/** Does `source` register everything `pins` names, ignoring call layout? */
+const missingCallPins = (source, pins) => {
+  const layoutFree = collapseCallLayout(source);
+  return pins.filter((pin) => !layoutFree.includes(collapseCallLayout(pin)));
+};
+for (const requiredHelper of missingCallPins(pluginConfigRoutes, [
   'export function registerPluginConfigRoutes',
   'pluginSettingsUpdates.add',
   "app.get('/:name/changelog'",
-  "app.put('/:name/overrides'",
-]) {
-  if (!pluginConfigRoutes.includes(requiredHelper)) {
-    errors.push(`plugin-config-routes.ts must include ${requiredHelper}.`);
-  }
+  "'/:name/overrides',",
+])) {
+  errors.push(`plugin-config-routes.ts must include ${requiredHelper}.`);
 }
 
 const pluginLifecycleRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-lifecycle-routes.ts',
 );
-for (const requiredHelper of [
+for (const requiredHelper of missingCallPins(pluginLifecycleRoutes, [
   'export function registerPluginLifecycleRoutes',
   "app.get('/check-updates'",
   "app.post('/:name/update'",
   "app.delete('/:name'",
   "app.post('/reload'",
-]) {
-  if (!pluginLifecycleRoutes.includes(requiredHelper)) {
-    errors.push(`plugin-lifecycle-routes.ts must include ${requiredHelper}.`);
-  }
+])) {
+  errors.push(`plugin-lifecycle-routes.ts must include ${requiredHelper}.`);
 }
 
 const pluginInstallRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-install-routes.ts',
 );
-for (const requiredHelper of [
+for (const requiredHelper of missingCallPins(pluginInstallRoutes, [
   'export function registerPluginInstallRoutes',
   "app.get('/',",
   "app.post('/preview'",
   "app.post('/install'",
-  './plugin-install-shared.js',
-  './plugin-source.js',
+  '../../services/plugins/plugin-install-transaction.js',
+  '../../services/plugins/plugin-source.js',
   './plugin-bundles.js',
-]) {
-  if (!pluginInstallRoutes.includes(requiredHelper)) {
-    errors.push(`plugin-install-routes.ts must include ${requiredHelper}.`);
-  }
+])) {
+  errors.push(`plugin-install-routes.ts must include ${requiredHelper}.`);
 }
 
 const pluginPublicRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-public-routes.ts',
 );
-if (!pluginPublicRoutes.includes('./plugin-public-server.js')) {
+if (
+  !pluginPublicRoutes.includes('../../services/plugins/plugin-public-server.js')
+) {
   errors.push(
     'plugin-public-routes.ts must delegate server module request/context helpers to plugin-public-server.ts.',
   );
 }
-for (const requiredHelper of [
+for (const requiredHelper of missingCallPins(pluginPublicRoutes, [
   'export function registerPluginPublicRoutes',
   "app.get('/:name/bundle.js'",
   "app.get('/:name/bundle.css'",
@@ -5687,10 +5698,8 @@ for (const requiredHelper of [
   "app.post('/:name/grant'",
   "app.post('/:name/fetch'",
   "app.post('/fetch'",
-]) {
-  if (!pluginPublicRoutes.includes(requiredHelper)) {
-    errors.push(`plugin-public-routes.ts must include ${requiredHelper}.`);
-  }
+])) {
+  errors.push(`plugin-public-routes.ts must include ${requiredHelper}.`);
 }
 for (const retiredPluginPublicSnippet of [
   'function buildRequestContext(',
@@ -5707,7 +5716,7 @@ for (const retiredPluginPublicSnippet of [
 }
 
 const pluginPublicServer = readRequiredSource(
-  '../src-server/routes/plugins/plugin-public-server.ts',
+  '../src-server/services/plugins/plugin-public-server.ts',
 );
 for (const requiredHelper of [
   'export function buildPluginRequestContext',
@@ -5725,7 +5734,7 @@ const pluginBundles = readRequiredSource(
   '../src-server/routes/plugins/plugin-bundles.ts',
 );
 for (const requiredHelper of [
-  'export function resolvePluginBundle',
+  'export async function readPluginBundle',
   'export async function buildPlugin',
   '@kontourai/station-shared/build',
 ]) {
@@ -6589,8 +6598,54 @@ for (const retiredInlineMessageBubbleSnippet of [
 const messageBubbleUtils = readRequiredSource(
   '../src-ui/src/components/chat/message-bubble/utils.ts',
 );
-if (!messageBubbleUtils.includes('export function getModelDisplayName')) {
-  errors.push('message-bubble/utils.ts must export getModelDisplayName.');
+// #1536 B5: `getModelDisplayName` was a private table of five Claude 3 ids
+// that answered "Custom" for everything newer, so a row running claude-opus-5
+// named it "Custom" while Home named the same session "Opus 5". The assertion
+// that has to hold now is the DELEGATION that replaced it: this module names
+// no model itself, it asks the one shared identity rule. The negative
+// assertion above keeps the table from growing back inside MessageBubble.
+//
+// Delta review DL6: the import check is a regex rather than an exact string, so
+// adding a second symbol to that import statement cannot silently retire this
+// assertion; and a `const getModelDisplayName =` is the same table under an
+// expression, so it is refused too.
+if (
+  /function\s+getModelDisplayName\s*\(/.test(messageBubbleUtils) ||
+  /const\s+getModelDisplayName\s*=/.test(messageBubbleUtils)
+) {
+  errors.push(
+    'message-bubble/utils.ts must not re-declare getModelDisplayName; use modelIdentityLabel.',
+  );
+} else if (
+  !/import\s*\{[^}]*\bmodelIdentityLabel\b[^}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/utils\/modelCapabilities'/.test(
+    messageBubbleUtils,
+  )
+) {
+  errors.push(
+    'message-bubble/utils.ts must resolve model names through modelIdentityLabel.',
+  );
+}
+
+/**
+ * #1536 D8 delta review DM2: every availability surface reads
+ * `createStationEngineAvailabilityReader`, never `resolveManagedAvailabilityReason`
+ * directly. Six callers built that call themselves and had drifted — three onto
+ * the app config the process BOOTED with, one of those also dropping the
+ * check-gated connection receipts, and `/chat` last of all — so fixing the
+ * default model connection at runtime cleared the picker and the inbox while
+ * chat went on refusing until restart. A hand-rolled call cannot come back
+ * green; the reader's own module is where the call belongs.
+ */
+for (const availabilityConsumer of [
+  '../src-server/runtime/routes/runtime-routes.ts',
+  '../src-server/routes/chat/chat.ts',
+]) {
+  const source = readRequiredSource(availabilityConsumer);
+  if (/\bresolveManagedAvailabilityReason\s*\(/.test(source)) {
+    errors.push(
+      `${availabilityConsumer} must resolve Agent availability through createStationEngineAvailabilityReader, not resolveManagedAvailabilityReason directly.`,
+    );
+  }
 }
 const messageBubbleRating = readRequiredSource(
   '../src-ui/src/components/chat/message-bubble/MessageRating.tsx',

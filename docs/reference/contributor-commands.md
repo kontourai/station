@@ -12,13 +12,13 @@ Run: `just setup`
 ### macOS and Linux
 
 ```sh
-npm ci
+npm run dependencies:ci
 ```
 
 ### Windows Command Prompt
 
 ```bat
-@call npm ci
+@call npm run dependencies:ci
 @exit /b %ERRORLEVEL%
 ```
 

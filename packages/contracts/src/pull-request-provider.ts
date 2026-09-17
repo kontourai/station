@@ -60,6 +60,18 @@ export interface PullRequestAvailability {
   effectiveMergeMethods: PullRequestMergeMethod[];
   mergeMethodsSource: PullRequestMergeMethodsSource;
 }
+/**
+ * Machine-readable cause behind an unavailable pull-request context (#1536 G5).
+ *
+ * `reason` is a sentence for a reader; a surface deciding HOW to present the
+ * state cannot classify by prose. `no-remote` is the ordinary local repository
+ * — nothing is broken and nothing is missing that the operator asked for — and
+ * the panel rendered it as a warning-triangle error card, indistinguishable
+ * from a forge that refused. Absent means "no cause was reported", never
+ * "some other cause".
+ */
+export type PullRequestUnavailableCause = 'no-remote';
+
 export type PullRequestClientContext =
   | {
       available: true;
@@ -69,7 +81,11 @@ export type PullRequestClientContext =
       /** Branch observed from this request's recorded checkout/session worktree. */
       branch: string;
     }
-  | { available: false; reason: string };
+  | {
+      available: false;
+      reason: string;
+      cause?: PullRequestUnavailableCause;
+    };
 export interface PullRequest {
   provider: string;
   /**
@@ -86,6 +102,9 @@ export interface PullRequest {
   author: { login: string; url?: string };
   sourceBranch: string;
   targetBranch: string;
+  /** Exact provider-observed revisions when the forge reports them. */
+  headSha?: string;
+  baseSha?: string;
   commits: number;
   reviewStatus: string;
   comments: number;
@@ -111,6 +130,7 @@ export interface PullRequestApproveInput {
 export interface PullRequestMergeInput {
   method: PullRequestMergeMethod;
   autoMerge?: boolean;
+  expectedHeadSha?: string;
 }
 export type PullRequestMergeResult =
   | { status: 'merged' }
@@ -125,9 +145,51 @@ export interface PullRequestResult<T> {
   effectiveMergeMethods: PullRequestMergeMethod[];
   mergeMethodsSource: PullRequestMergeMethodsSource;
 }
+/** A bounded provider observation, not a local checkout diff or gate verdict. */
+export interface PullRequestReviewSnapshot {
+  pullRequest: PullRequest;
+  headSha: string;
+  baseSha: string;
+  observedAt: string;
+  diff:
+    | { state: 'available'; patch: string; completeness: 'provider-output' }
+    | { state: 'unavailable'; reason: string };
+  discussion: Array<{
+    id: string;
+    author: string;
+    body: string;
+    createdAt: string;
+    kind: 'comment' | 'review';
+    state?: string;
+    headSha?: string;
+  }>;
+  discussionPartial: boolean;
+}
+export interface PullRequestReviewInput {
+  action: 'comment' | 'approve';
+  expectedHeadSha: string;
+  body?: string;
+}
+export type PullRequestReviewOutcome =
+  | { status: 'confirmed'; nativeId: string; actor: string; headSha?: string }
+  | { status: 'refused' | 'indeterminate'; reason: string };
+/** Server-owned current authority check; never supplied in an HTTP input. */
+export interface PullRequestWriteAdmission {
+  isCurrent: () => boolean;
+}
 export interface IPullRequestProvider {
   readonly id: string;
   readonly displayName: string;
+  getReviewSnapshot?(
+    context: PullRequestRepositoryContext,
+    ref: string,
+  ): Promise<PullRequestResult<PullRequestReviewSnapshot>>;
+  submitReview?(
+    context: PullRequestRepositoryContext,
+    ref: string,
+    input: PullRequestReviewInput,
+    admission?: PullRequestWriteAdmission,
+  ): Promise<PullRequestResult<PullRequestReviewOutcome>>;
   readonly offeredCapabilities: PullRequestCapabilities;
   readonly offeredMergeMethods: PullRequestMergeMethod[];
   canServeHost(host: string): boolean;
@@ -166,5 +228,6 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryContext,
     ref: string,
     input: PullRequestMergeInput,
+    admission?: PullRequestWriteAdmission,
   ): Promise<PullRequestResult<PullRequestMergeResult>>;
 }

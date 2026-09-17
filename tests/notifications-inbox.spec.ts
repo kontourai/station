@@ -36,7 +36,7 @@ test.describe('Notifications hierarchy', () => {
         body: 'Workspace Agent wants to use fs.read.',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-approval',
+        openHref: '/?surface=activity&session=thread-approval',
         source: {
           notificationId: 'notif-1',
           notificationSource: 'approval-inbox',
@@ -52,7 +52,7 @@ test.describe('Notifications hierarchy', () => {
         title: 'Input needed',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-input',
+        openHref: '/?surface=activity&session=thread-input',
         source: { threadId: 'thread-input' },
       },
       {
@@ -62,7 +62,7 @@ test.describe('Notifications hierarchy', () => {
         body: 'Workspace Agent wants to use git.status.',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-approval-two',
+        openHref: '/?surface=activity&session=thread-approval-two',
         source: {
           notificationId: 'notif-2',
           notificationSource: 'approval-inbox',
@@ -75,14 +75,12 @@ test.describe('Notifications hierarchy', () => {
         title: 'Review pending',
         createdAt: now,
         updatedAt: now,
-        openHref: '/activity?session=thread-review',
+        openHref: '/?surface=activity&session=thread-review',
         source: { threadId: 'thread-review' },
       },
     ];
     const continuedTurnBodies: unknown[] = [];
     const approvalActions: string[] = [];
-    const dismissedNotificationIds: string[] = [];
-    let ordinaryDismissed = false;
     const approvalStatuses = new Map([
       ['notif-1', 'delivered'],
       ['notif-2', 'delivered'],
@@ -105,19 +103,6 @@ test.describe('Notifications hierarchy', () => {
         }),
       }),
     );
-    await page.route('**/notifications/activity', (route) => {
-      if (route.request().method() !== 'DELETE') return route.fallback();
-      dismissedNotificationIds.push('activity-bulk');
-      ordinaryDismissed = true;
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: { clearedCount: 1 },
-        }),
-      });
-    });
     await page.route('**/notifications', (route) => {
       if (route.request().resourceType() === 'document') {
         return route.fallback();
@@ -148,20 +133,16 @@ test.describe('Notifications hierarchy', () => {
               createdAt: now,
               updatedAt: now,
             },
-            ...(!ordinaryDismissed
-              ? [
-                  {
-                    id: 'ordinary',
-                    source: 'scheduler',
-                    category: 'job',
-                    title: 'Job failed',
-                    priority: 'normal',
-                    status: 'delivered',
-                    createdAt: now,
-                    updatedAt: now,
-                  },
-                ]
-              : []),
+            {
+              id: 'ordinary',
+              source: 'scheduler',
+              category: 'job',
+              title: 'Job failed',
+              priority: 'normal',
+              status: 'delivered',
+              createdAt: now,
+              updatedAt: now,
+            },
           ],
         }),
       });
@@ -209,7 +190,7 @@ test.describe('Notifications hierarchy', () => {
     ).toBeVisible();
     await expect(page.getByText('Needs attention (4)')).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Recent activity', level: 2 }),
+      page.getByRole('heading', { name: 'Activity', level: 2 }),
     ).toBeVisible();
     const notificationsButton = page.getByRole('button', {
       name: 'Notifications (4 need attention)',
@@ -230,7 +211,7 @@ test.describe('Notifications hierarchy', () => {
     ).toBeVisible();
     await expect(
       compactNotifications.getByRole('heading', {
-        name: 'Recent activity',
+        name: 'Activity',
         level: 2,
       }),
     ).toBeVisible();
@@ -274,10 +255,10 @@ test.describe('Notifications hierarchy', () => {
       .filter({ hasText: 'Input needed' });
     await expect(
       reviewCard.getByRole('link', { name: 'Open session' }),
-    ).toHaveAttribute('href', '/activity?session=thread-review');
+    ).toHaveAttribute('href', '/?surface=activity&session=thread-review');
     await expect(
       inputCard.getByRole('link', { name: 'Open session' }),
-    ).toHaveAttribute('href', '/activity?session=thread-input');
+    ).toHaveAttribute('href', '/?surface=activity&session=thread-input');
     expect(
       await page
         .locator('body')
@@ -288,18 +269,7 @@ test.describe('Notifications hierarchy', () => {
       fullPage: true,
     });
 
-    await page.getByRole('button', { name: 'Clear notifications' }).click();
-    const clearDialog = page.getByRole('dialog');
-    await expect(clearDialog).toContainText(
-      'Active attention stays until its source changes.',
-    );
-    await clearDialog
-      .getByRole('button', { name: 'Clear notifications' })
-      .click();
-    await expect
-      .poll(() => dismissedNotificationIds)
-      .toEqual(['activity-bulk']);
-    await expect(page.getByText('Job failed')).toHaveCount(0);
+    await expect(page.getByText('Job failed')).toBeVisible();
     await expect(page.getByText('Needs attention (4)')).toBeVisible();
     await expect(
       page.getByText('Approval needed', { exact: true }),
@@ -344,7 +314,7 @@ test.describe('Notifications hierarchy', () => {
       fullPage: true,
     });
     await reviewCard.getByRole('link', { name: 'Open session' }).click();
-    await expect(page).toHaveURL(/\/activity\?session=thread-review$/);
+    await expect(page).toHaveURL(/\/$/);
   });
 });
 
@@ -384,7 +354,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
         title: LONG_TITLE,
         body: LONG_REASON,
         sessionId: 'thread-a',
-        openHref: '/activity?session=thread-a',
+        openHref: '/?surface=activity&session=thread-a',
         source: { threadId: 'thread-a' },
         engine: 'claude',
         agent: 'staging-release-reviewer',
@@ -394,7 +364,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
         title: 'Migrate the invoice table',
         body: 'Engine exited with code 1',
         sessionId: 'thread-b',
-        openHref: '/activity?session=thread-b',
+        openHref: '/?surface=activity&session=thread-b',
         source: { threadId: 'thread-b' },
         engine: 'codex',
       }),
@@ -402,7 +372,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
         id: 'session-failed:thread-c',
         title: 'Draft the release notes',
         sessionId: 'thread-c',
-        openHref: '/activity?session=thread-c',
+        openHref: '/?surface=activity&session=thread-c',
         source: { threadId: 'thread-c' },
         engine: 'claude',
       }),

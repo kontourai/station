@@ -13,6 +13,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
+  ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
@@ -104,15 +105,37 @@ export interface ProviderAdapterModelCatalog {
 }
 
 export interface ProviderAdoptionHooks {
+  /** Persist the creation boundary immediately before an external child may be created. */
+  onProviderChildCreationStarted?(): void | Promise<void>;
   onProviderChildCreated(resumeCursor: unknown): void | Promise<void>;
 }
 
+/** Provider-owned native identity projected from an opaque resume cursor. */
+export interface ProviderNativeSessionIdentity {
+  sessionId: string;
+  affinity?: ProviderSessionSourceAffinity;
+}
+
 export interface ProviderDiscardSessionRecovery {
+  sourceAffinity?: ProviderSessionSourceAffinity;
+  sourceSessionId?: string;
+  sourceKind?: string;
   adoptionKey?: string;
   createdAt?: string;
   cwd?: string;
   resumeCursor?: unknown;
 }
+
+/**
+ * Outcome of a task-scoped stop.
+ *
+ * `no-active-task` is a normal race, not a failure: a subagent can settle
+ * between a client rendering its stop control and the request arriving.
+ */
+export type ProviderTaskStopResult =
+  | { outcome: 'stopped'; taskId: string }
+  | { outcome: 'no-active-task'; taskId: string }
+  | { outcome: 'unsupported' };
 
 /** Target-specific result of an interrupt request. */
 export type ProviderInterruptTurnResult =
@@ -152,8 +175,15 @@ export function isProviderInterruptTurnResult(
 }
 
 export interface ProviderAdapterShape {
+  /** Positive declaration that adoption calls the creation-start hook before its first child effect. */
+  readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
+
+  /** Read-only projection used to suppress duplicate attached-session aliases. */
+  nativeSessionIdentity?(
+    resumeCursor: unknown,
+  ): ProviderNativeSessionIdentity | undefined;
 
   startSession(input: ProviderSessionStartInput): Promise<ProviderSession>;
   /** Optional independent-continuation capability for attached sessions. */
@@ -173,6 +203,20 @@ export interface ProviderAdapterShape {
   ): Promise<ProviderInterruptTurnResult>;
   /** Present only when the adapter has a real additive-input channel for a running turn. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
+  /**
+   * Stop ONE provider-reported subagent without ending the turn or its
+   * siblings.
+   *
+   * Present only where the engine exposes a task-scoped stop. Absent is the
+   * honest answer for an engine whose only stop is turn-scoped: the caller
+   * must not fall back to interrupting the turn, because that ends every
+   * other running subagent too — the precise outcome this seam exists to
+   * avoid.
+   */
+  stopProviderTask?(
+    threadId: string,
+    taskId: string,
+  ): Promise<ProviderTaskStopResult>;
   respondToRequest(
     threadId: string,
     requestId: string,
@@ -283,7 +327,7 @@ export function isProviderAdapterShape(
   );
 }
 
-export type ProviderAdapterRegistrationProvenance = 'builtin' | 'plugin';
+type ProviderAdapterRegistrationProvenance = 'builtin' | 'plugin';
 
 const providerAdapterProvenance = new WeakMap<
   ProviderAdapterShape,

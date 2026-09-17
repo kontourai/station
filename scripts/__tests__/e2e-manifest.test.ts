@@ -152,10 +152,15 @@ describe('e2e manifest', () => {
       'tests/agents-new-model-turn.spec.ts',
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
+      'tests/native-conversation-restart.spec.ts',
+      'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',
       'tests/csp-shell.spec.ts',
       'tests/plugin-bundle-csp.spec.ts',
+      'tests/coding-workspace-example.spec.ts',
+      'tests/minimal-workspace-example.spec.ts',
+      'tests/workspace-pane-host-actions-live.spec.ts',
       'tests/bundled-plugin-registry-lifecycle.spec.ts',
       'tests/ui-crud-smoke.spec.ts',
       'tests/knowledge-onboarding-smoke.spec.ts',
@@ -163,7 +168,18 @@ describe('e2e manifest', () => {
       'tests/project-task-room-collaboration.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
     ]);
-    expect(getSpecsForSuite('extended')).toContain('tests/settings.spec.ts');
+    // #2144 slice 4 (#2146): Settings left `extended` for `product` so that
+    // its shared-instance exclusivity is DECLARED. Both buckets run in the
+    // same lane (`scripts/run-e2e-coverage.mjs` via `verify:e2e:full`), so the
+    // move buys no extra execution; what it buys is the classification
+    // asserted below, which `validateE2EManifest` requires of every product
+    // spec. `extended` would serialize this spec too — `run-e2e-suite.mjs`
+    // gives every non-product suite one `workers: 1` phase — but nothing
+    // there records the requirement or would notice it being withdrawn.
+    expect(getSpecsForSuite('extended')).not.toContain(
+      'tests/settings.spec.ts',
+    );
+    expect(getSpecsForSuite('product')).toContain('tests/settings.spec.ts');
     expect(getSpecsForSuite('starter-clean-install')).toEqual([
       'tests/starter-clean-install.spec.ts',
     ]);
@@ -181,18 +197,19 @@ describe('e2e manifest', () => {
 
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelWorkers).toBe(2);
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelSafetyExceptions).toEqual({
+      'tests/chat-history-reopen.spec.ts': expect.any(String),
       'tests/sidebar-geometry.spec.ts': expect.any(String),
       'tests/mobile-dock-clearance.spec.ts': expect.any(String),
       'tests/flow-gate-verdicts.spec.ts': expect.any(String),
       'tests/cross-runtime-chat-switching.spec.ts': expect.any(String),
       'tests/daily-driver-scenarios.spec.ts': expect.any(String),
       'tests/daily-driver-switching.spec.ts': expect.any(String),
-      // M3: read-only against the shared instance; its only write is the
-      // browser context's own ambient dock document in localStorage.
+      // #1541: the two placement specs are read-only against the shared
+      // instance; their only writes are their own browser context's
+      // localStorage — the `regionArrangement` device setting and the
+      // dock-chrome settings a region write mirrors.
       'tests/activity-pane.spec.ts': expect.any(String),
-      // The picker also writes only its browser-local dock/config fixture;
-      // retain exact enumeration of the already-reviewed manifest exception.
-      'tests/dock-occupant-picker.spec.ts': expect.any(String),
+      'tests/project-architecture.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
@@ -209,13 +226,16 @@ describe('e2e manifest', () => {
       'tests/connection-lost-access-request.spec.ts',
       'tests/plugin-preview.spec.ts',
       'tests/plugin-rejection-visibility.spec.ts',
+      'tests/workspace-search-exact-message.spec.ts',
       'tests/plugin-system.spec.ts',
+      'tests/plugin-dependency-lifecycle.spec.ts',
       'tests/survey-review-workbench.spec.ts',
       'tests/fieldwork-review.spec.ts',
       'tests/plugin-dev-hot-reload.spec.ts',
       'tests/external-session-follow.spec.ts',
       'tests/builder-delivery-viewer.spec.ts',
       'tests/meeting-notes.spec.ts',
+      'tests/learning-source.spec.ts',
       'tests/knowledge-library.spec.ts',
       // Both mutate shared instance state through the real API rather than
       // isolating with `page.route` (station#3736/#3743 both hid behind a
@@ -229,6 +249,10 @@ describe('e2e manifest', () => {
       // Creates and revision-checks a real personal Board through the shared
       // instance API, so it cannot run beside another stateful product spec.
       'tests/work-board.spec.ts',
+      // #2144 slice 4 (#2146): Settings' persistence journeys PUT /config/app
+      // on the shared instance and read the value back — the boot
+      // configuration every sibling journey reads.
+      'tests/settings.spec.ts',
     ]);
   });
 
@@ -265,6 +289,10 @@ describe('e2e manifest', () => {
       flakePolicy: 'fail-and-fix-no-retry',
     });
     expect(PR_BROWSER_SMOKE_CONTRACT.journeys).toEqual([
+      expect.objectContaining({ path: 'tests/connect-modal.spec.ts' }),
+      expect.objectContaining({
+        path: 'tests/connect-remote-auth-recovery.spec.ts',
+      }),
       expect.objectContaining({ path: 'tests/csp-shell.spec.ts' }),
       expect.objectContaining({ path: 'tests/ui-crud-smoke.spec.ts' }),
       expect.objectContaining({
@@ -287,17 +315,7 @@ describe('e2e manifest', () => {
       (entry) => entry.bucket === 'quarantine',
     );
 
-    // #574: chat-multi-turn-context.spec.ts is RED BY DESIGN — it
-    // proves a real multi-turn context-retention defect, not spec rot — so it
-    // cannot sit in a running bucket (smoke-live / verify:e2e:full) without
-    // permanently redding the gate. Quarantine is the manifest's own home for
-    // exactly this; `replacement` must still name the tracking issue.
-    expect(quarantined).toEqual([
-      expect.objectContaining({
-        path: 'tests/chat-multi-turn-context.spec.ts',
-        replacement: '#574',
-      }),
-    ]);
+    expect(quarantined).toEqual([]);
   });
 
   it('lets the runner list supported suites without starting Station', () => {
@@ -313,7 +331,7 @@ describe('e2e manifest', () => {
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout);
     expect(parsed.suite).toBe('extended');
-    expect(parsed.specs).toContain('tests/settings.spec.ts');
+    expect(parsed.specs).toContain('tests/ui-blocks.spec.ts');
   });
 
   it('lists the isolated PR smoke suite without starting Station', () => {

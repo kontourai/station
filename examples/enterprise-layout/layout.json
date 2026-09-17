@@ -1,11 +1,9 @@
 {
   "name": "Enterprise",
   "slug": "enterprise",
-  "icon": "🏢",
+  "icon": "\ud83c\udfe2",
   "description": "Integrated calendar and CRM workspace with flexible agent support",
   "requiredProviders": ["calendar", "crm", "user"],
-  "availableAgents": ["enterprise-layout:enterprise-assistant"],
-  "defaultAgent": "enterprise-layout:enterprise-assistant",
   "tabs": [
     {
       "id": "dashboard",
@@ -19,12 +17,12 @@
       "actions": [
         {
           "type": "prompt",
-          "label": "Log Activity",
+          "label": "Review Log Activity",
           "data": "enterprise-layout:activity"
         },
         {
           "type": "prompt",
-          "label": "Customer Outreach",
+          "label": "Review Customer Outreach",
           "data": "enterprise-layout:outreach"
         }
       ]
@@ -36,12 +34,12 @@
       "actions": [
         {
           "type": "prompt",
-          "label": "Log Activity",
+          "label": "Review Log Activity",
           "data": "enterprise-layout:activity"
         },
         {
           "type": "prompt",
-          "label": "Generate Report",
+          "label": "Review Generate Report",
           "data": "enterprise-layout:report"
         }
       ]
@@ -50,14 +48,6 @@
       "id": "notes",
       "label": "Notes",
       "component": "enterprise-notes"
-    }
-  ],
-  "actions": [
-    {
-      "type": "prompt",
-      "label": "Daily Overview",
-      "icon": "📅",
-      "data": "enterprise-layout:daily"
     }
   ]
 }

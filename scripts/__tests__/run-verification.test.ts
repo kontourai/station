@@ -1,11 +1,23 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { coordinateVerification } from '../lib/verification-coordinator.mjs';
 import { createOwnedRunner } from '../lib/verification-execution-lifecycle.mjs';
+import { buildHostPressureSample } from '../lib/verification-host-pressure.mjs';
 import {
+  DEFAULT_OUTPUT_BYTE_CAP,
   persistPlaywrightAttachments,
   persistVerificationOutput,
+  summarizeVerificationOutput,
 } from '../lib/verification-reporter.mjs';
 import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
 import {
@@ -18,8 +30,199 @@ import {
   renderBounded,
   runVerificationCli,
 } from '../run-verification.mjs';
+import {
+  ORDINARY_SHARD_FAILING_TEST_FILE,
+  ORDINARY_SHARD_PHASE_ID,
+  ORDINARY_SHARD_STDERR,
+  ORDINARY_SHARD_STDOUT,
+} from './fixtures/full-regression-shard-capture.mjs';
+import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
+
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
+const EARLIER_PASSING_PHASE_ID = 'test-full-ordinary-1-of-8';
+const INNOCENT_PASSING_PHASE_TEST_FILE =
+  'src-ui/src/__tests__/EchoesABanner.test.tsx';
+/**
+ * A PASSING phase whose own output happens to contain a vitest FAIL banner --
+ * a test that prints one, or a runner echoing a captured tail. Coloured
+ * exactly as a runner writes it.
+ */
+const PASSING_PHASE_ECHOED_FAIL_STDERR = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_PASSING_PHASE_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
 
 describe('verification status projection', () => {
+  test('keeps owned Windows settlement evidence separate from captured streams', async () => {
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const evidence = {
+      kind: 'windows-owned-settlement',
+      barriers: { stderrEof: false, acknowledged: false },
+    };
+    const runner = createOwnedRunner({
+      lane: { id: 'test-prepush' },
+      worktree: '/fixture',
+      outputLock: '/fixture/output',
+      owner: {},
+      outputOwned: false,
+      now: Date.now,
+      currentLease: () => ({}),
+      updateLease: () => true,
+      privateCommand: () => ['fixture', []],
+      processIdentity: () => null,
+      writeOwnedLease: () => true,
+      env: {},
+      executeCommand: (() => ({
+        child: { stdout, stderr },
+        promise: new Promise((resolve) => {
+          setImmediate(() => {
+            stderr.emit('data', Buffer.from('child stderr'));
+            stdout.emit('end');
+            stderr.emit('end');
+            resolve({ status: 0 });
+          });
+        }),
+        isAlive: () => false,
+        settlementEvidence: () => evidence,
+      })) as never,
+    });
+
+    const raw = await runner();
+    expect(raw.output.stderr.text).toBe('child stderr');
+    expect(raw.windowsSettlementEvidence).toEqual(evidence);
+  });
+
+  test('keeps complete near-cap stderr passing while retaining separate Windows settlement evidence', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-windows-evidence-'));
+    const key = '9'.repeat(64);
+    try {
+      const secret = `ghp_${'a'.repeat(40)}`;
+      const stderrText = 'x'.repeat(DEFAULT_OUTPUT_BYTE_CAP);
+      const reported = reportExecution({
+        raw: {
+          output: {
+            stdout: { text: '' },
+            stderr: { text: stderrText },
+          },
+          windowsSettlementEvidence: {
+            kind: 'windows-owned-settlement',
+            barriers: { stderrEof: false, acknowledged: false },
+            note: secret,
+          },
+        },
+        result: {
+          status: 'completed',
+          exitCode: 0,
+          counts: {
+            executed: 1,
+            passed: 1,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+        },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        worktree,
+        request: { key },
+      });
+      const stderr = reported.artifacts.find((artifact) =>
+        artifact.path.includes('/stderr-'),
+      );
+      expect(stderr).toBeDefined();
+      const retained = readFileSync(join(worktree, stderr!.path), 'utf8');
+      expect(retained).toBe(stderrText);
+      expect(Buffer.byteLength(retained)).toBe(DEFAULT_OUTPUT_BYTE_CAP);
+      const attachment = reported.artifacts.find((artifact) =>
+        artifact.path.includes('/attachment-'),
+      );
+      expect(attachment).toBeDefined();
+      const diagnostic = readFileSync(join(worktree, attachment!.path), 'utf8');
+      expect(diagnostic).toContain('[station-windows-owned-settlement]');
+      expect(diagnostic).toContain('[REDACTED]');
+      expect(diagnostic).not.toContain(secret);
+      expect(reported.outputTruncated).toBe(false);
+      expect(reported.result.status).toBe('completed');
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps an original stderr overflow nonpassing with separate settlement evidence', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-windows-overflow-'));
+    try {
+      const reported = reportExecution({
+        raw: {
+          output: {
+            stdout: { text: '' },
+            stderr: { text: 'x'.repeat(DEFAULT_OUTPUT_BYTE_CAP + 1) },
+          },
+          windowsSettlementEvidence: {
+            kind: 'windows-owned-settlement',
+            barriers: { stderrEof: true, acknowledged: true },
+          },
+        },
+        result: {
+          status: 'completed',
+          exitCode: 0,
+          counts: {
+            executed: 1,
+            passed: 1,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+        },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        worktree,
+        request: { key: '8'.repeat(64) },
+      });
+      expect(reported.outputTruncated).toBe(true);
+      expect(reported.result.status).toBe('infrastructure_error');
+      expect(
+        reported.artifacts.some((artifact) =>
+          artifact.path.includes('/attachment-'),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps diagnostic attachment serialization best-effort', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-windows-diag-'));
+    const evidence: Record<string, unknown> = {
+      kind: 'windows-owned-settlement',
+    };
+    evidence.cycle = evidence;
+    try {
+      const reported = reportExecution({
+        raw: {
+          output: { stdout: { text: '' }, stderr: { text: 'complete' } },
+          windowsSettlementEvidence: evidence,
+        },
+        result: {
+          status: 'completed',
+          exitCode: 0,
+          counts: {
+            executed: 1,
+            passed: 1,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+        },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        worktree,
+        request: { key: '7'.repeat(64) },
+      });
+      expect(reported.result.status).toBe('completed');
+      expect(reported.outputTruncated).toBe(false);
+      expect(reported.attachmentOmissions).toContainEqual({
+        name: 'windows-owned-settlement',
+        reason: 'diagnostic_unavailable',
+      });
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
   test('overrides a forged owner marker for a normal nested ci-fast exit 80 through lifecycle and receipt reporting', async () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-exit-'));
     try {
@@ -75,6 +278,196 @@ describe('verification status projection', () => {
       expect(reported.summary).toMatchObject({
         firstCausalExcerpt: `verification execution infrastructure error: ${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}`,
       });
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test('surfaces a failing phase FAIL line from its stderr in the parent verdict (#1471)', async () => {
+    // Drives the REAL fold: `coordinateVerification` runs the canonical
+    // full-regression phase sequence, the completion collector folds each
+    // phase's two streams into the parent capture, `reportExecution` persists
+    // and summarizes them, and `renderBounded` prints the verdict document the
+    // hosted gate step reads. The only seam is `phaseRunner`, which replays a
+    // real Nightly shard capture instead of executing the corpus.
+    //
+    // The captures are the discriminating part. Vitest's `FAIL <file> > <test>`
+    // banner is on STDERR; STDOUT ends at the totals and carries an ambient
+    // `SyntaxError` a PASSING test in the same shard logged. In Nightly
+    // 33904147780 that ambient line outranked the runner's own verdict and the
+    // annotation rail reported no causal excerpt at all.
+    const root = mkdtempSync(join(tmpdir(), 'station-1471-parent-'));
+    const worktree = join(root, 'worktree');
+    mkdirSync(worktree);
+    const phaseCalls: string[] = [];
+    try {
+      // station#1471 review: an EARLIER, PASSING phase that echoes a FAIL
+      // banner of its own. `runCompletionPhaseSequence` stops at the first
+      // non-passing phase, so this region is always upstream of the failing
+      // one in the folded capture -- and a plain `.find` over the parent's
+      // stderr reaches it first and attributes the run to an innocent file.
+      //
+      // These option NAMES are not checked. `coordinateVerification` is `.mjs`
+      // under `checkJs: false`, so tsc infers nothing useful about its
+      // parameter and a typo here compiles clean -- verified by probing a
+      // misspelled `root`, which raised no error. That matters most for
+      // `phaseRunner`: misspell it and the coordinator executes the REAL phase
+      // commands. The `phaseCalls` assertions below are what actually prove
+      // the seam was taken, so keep them.
+      const result = await coordinateVerification({
+        laneId: 'full-regression',
+        root,
+        cwd: worktree,
+        collectProvenance: () => ({
+          repositoryId: 'a'.repeat(64),
+          worktree,
+          headSha: 'b'.repeat(40),
+          workspaceDigest: createHash('sha256')
+            .update('fold-phase-stderr')
+            .digest('hex'),
+          environmentDigest: 'e'.repeat(64),
+          dependencyDigest: 'c'.repeat(64),
+          nodeVersion: process.version,
+          toolchain: 'npm@fixture',
+          toolchainIdentity: FIXTURE_TOOLCHAIN_IDENTITY,
+          platform: process.platform,
+          arch: process.arch,
+        }),
+        hostCpuSampler: async () =>
+          buildHostPressureSample({
+            busyPercent: 40,
+            cpuCount: 4,
+            sampleMs: 500,
+            sampledAt: Date.now(),
+            threshold: 85,
+            source: 'override',
+            load1: 4,
+            loadPerCpu: 1,
+          }),
+        phaseRunner: async ({ phase }: { phase: { id: string } }) => {
+          phaseCalls.push(phase.id);
+          if (phase.id === ORDINARY_SHARD_PHASE_ID)
+            return {
+              status: 1,
+              output: {
+                stdout: { text: ORDINARY_SHARD_STDOUT },
+                stderr: { text: ORDINARY_SHARD_STDERR },
+              },
+            };
+          if (phase.id === EARLIER_PASSING_PHASE_ID)
+            return {
+              status: 0,
+              output: { stderr: { text: PASSING_PHASE_ECHOED_FAIL_STDERR } },
+            };
+          return { status: 0 };
+        },
+      });
+      // Both regions really are in the parent capture, in this order.
+      expect(
+        phaseCalls.indexOf(EARLIER_PASSING_PHASE_ID),
+      ).toBeGreaterThanOrEqual(0);
+      expect(phaseCalls.indexOf(EARLIER_PASSING_PHASE_ID)).toBeLessThan(
+        phaseCalls.indexOf(ORDINARY_SHARD_PHASE_ID),
+      );
+      expect(result.receipt.terminal.passed).toBe(false);
+
+      const document = JSON.parse(renderBounded(result));
+      expect(document.summary.firstCausalExcerpt).toMatch(
+        /FAIL\s+scripts\/__tests__\/android-channel-release-generation\.test\.ts/,
+      );
+      // The passing phase's banner is upstream in the same stream and must
+      // reach neither field: naming it sends a reader to innocent code.
+      expect(document.summary.firstCausalExcerpt).not.toContain(
+        INNOCENT_PASSING_PHASE_TEST_FILE,
+      );
+      expect(document.summary.failedCheckTestFiles).toContain(
+        ORDINARY_SHARD_FAILING_TEST_FILE,
+      );
+      expect(document.summary.failedCheckTestFiles).not.toContain(
+        INNOCENT_PASSING_PHASE_TEST_FILE,
+      );
+      // station#1471 review: the excerpt was picked off a stream with no step
+      // marker attributing it to the failing step, and the document has to say
+      // so -- an absent caveat reads as the stronger claim.
+      expect(document.summary.causeStream).toBe('stderr');
+      // Why the stderr fold is load-bearing rather than a nicety: the stdout
+      // tail, which is all the document carried before, never held the block.
+      expect(document.summary.failedCheckRedactedStdoutTail).not.toMatch(
+        /FAIL\s+scripts\//,
+      );
+      // The document the hosted step prints is capped whatever else changes.
+      expect(Buffer.byteLength(renderBounded(result))).toBeLessThanOrEqual(
+        8 * 1024,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the causal excerpt when the verdict envelope overflows its cap (#1471)', () => {
+    // The hosted nightly's document was over cap, and the over-cap envelope
+    // carried the tail and the counts but dropped `firstCausalExcerpt` — so
+    // the gate step annotated "no causal excerpt" for a run whose cause the
+    // summary had correctly identified. The overflow is driven here by a long
+    // real-shaped `slowItems` set, which is what pushed the real one over.
+    const worktree = mkdtempSync(join(tmpdir(), 'station-1471-cap-'));
+    const key = 'e'.repeat(64);
+    try {
+      const duration = ORDINARY_SHARD_STDOUT.split('\n').find((line) =>
+        line.includes('Duration'),
+      );
+      const stdout = [
+        ORDINARY_SHARD_STDOUT,
+        ...Array.from({ length: 40 }, (_, index) =>
+          String(duration).replace('100.38s', `${100 + index}.38s`),
+        ),
+      ].join('\n');
+      const counts = {
+        executed: 1,
+        passed: 0,
+        failed: 1,
+        infrastructureErrors: 0,
+      };
+      const cleanup = { status: 'passed', survivingOwnedChildren: 0 };
+      const persisted = persistVerificationOutput({
+        root: worktree,
+        requestKey: key,
+        stdout,
+        stderr: ORDINARY_SHARD_STDERR,
+      });
+      const rendered = renderBounded({
+        disposition: 'executed',
+        request: { key, laneId: 'full-regression' },
+        // The real producer, not a hand-written idea of its shape.
+        summary: summarizeVerificationOutput({
+          stdout,
+          stderr: ORDINARY_SHARD_STDERR,
+          terminal: { status: 'failed', exitCode: 1, truncated: false },
+          counts,
+          cleanup,
+        }),
+        receipt: {
+          request: { key, worktree },
+          terminal: { status: 'failed', exitCode: 1, passed: false },
+          counts,
+          cleanup,
+          artifacts: persisted.artifacts,
+        },
+      });
+      expect(Buffer.byteLength(rendered)).toBeLessThanOrEqual(8 * 1024);
+      const document = JSON.parse(rendered);
+      // Only meaningful while this really is the over-cap path.
+      expect(document.truncated).toBe(true);
+      expect(document.summary.firstCausalExcerpt).toMatch(
+        /FAIL\s+scripts\/__tests__\/android-channel-release-generation\.test\.ts/,
+      );
+      expect(document.summary.failedCheckTestFiles).toContain(
+        ORDINARY_SHARD_FAILING_TEST_FILE,
+      );
+      // The caveat is carried by the over-cap envelope too. Carrying the
+      // excerpt while dropping the note that it came off an unattributed
+      // stream would make the truncated document claim MORE than the full one.
+      expect(document.summary.causeStream).toBe('stderr');
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }
@@ -337,6 +730,74 @@ describe('verification status projection', () => {
     }
   });
 
+  // station#1827 round-4 review, L1: the previous verifier specified this and
+  // it was still uncovered. `tailFallback` is a SECOND envelope builder, with
+  // its own allow-list, reached only when the ordinary rendering is over the
+  // 8 KiB control cap -- exactly the largest, least readable runs, where a
+  // reader is least able to go and look for themselves. A marker carried in
+  // the ordinary path and dropped here would say "scanned" on those runs.
+  test('carries the declared-cause marker into the over-cap tail fallback (station#1827)', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-1827-overcap-'));
+    const key = 'e'.repeat(64);
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    try {
+      const persisted = persistVerificationOutput({
+        root: worktree,
+        requestKey: key,
+        // Escaped to eight bytes each in JSON, so the ordinary envelope is
+        // comfortably past the cap and the fallback is the path taken.
+        stdout: '\u0000'.repeat(8 * 1024),
+      });
+      const rendered = renderBounded({
+        disposition: 'executed',
+        request: { key, laneId: 'ci-fast' },
+        receipt: {
+          request: { key, worktree },
+          terminal: {
+            status: 'infrastructure_error',
+            exitCode: null,
+            passed: false,
+            infrastructureCause: cause,
+          },
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+          artifacts: persisted.artifacts,
+        },
+        summary: {
+          terminal: 'infrastructure_error',
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          firstCausalExcerpt: cause,
+          infrastructureCause: cause,
+        },
+      });
+
+      expect(Buffer.byteLength(rendered)).toBeLessThanOrEqual(8 * 1024);
+      const parsed = JSON.parse(rendered);
+      // The fallback really was taken -- otherwise this asserts nothing about
+      // that builder's allow-list.
+      expect(parsed.truncated).toBe(true);
+      expect(typeof parsed.summary.failedCheckRedactedStdoutTail).toBe(
+        'string',
+      );
+      // The excerpt and the field that says how it was selected travel
+      // together or not at all.
+      expect(parsed.summary.firstCausalExcerpt).toBe(cause);
+      expect(parsed.summary.infrastructureCause).toBe(cause);
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
   test('keeps submit limited to the non-evidence full-regression surface', () => {
     expect(parseVerificationCommand(['submit', 'full-regression'])).toEqual({
       command: 'submit',
@@ -527,6 +988,85 @@ describe('verification status projection', () => {
       disposition: 'executed',
       summary: { terminal: 'completed', passed: false, indeterminate: true },
     });
+  });
+
+  // station#1827 fix round 2. The first round stamped this from the RECEIPT,
+  // alongside `passed` and `indeterminate`, and the delta review measured what
+  // that produced: because the `...result.summary` spread comes first, the
+  // receipt's full-length copy overwrote the summarizer's truncation-aligned
+  // one, so a rendered document held a 67-byte excerpt beside a 347-byte
+  // marker of the same declaration. The first round's test could not see it
+  // because it put identical text on both sides. This one does not.
+  //
+  // `passed` and `indeterminate` are verdict facts no summary shape carries,
+  // so the receipt is their only source. This is a claim ABOUT the excerpt
+  // beside it, so the summary is its only honest source.
+  test('renders the summary marker, never the receipt copy that would outrun its excerpt (station#1827)', () => {
+    const declaration = `ci:fast exceeded its budget ${'x'.repeat(300)}`;
+    const excerpt = declaration.slice(0, 67);
+    const stopped = {
+      terminal: {
+        status: 'infrastructure_error',
+        exitCode: null,
+        passed: false,
+        // The durable full-length record.
+        infrastructureCause: declaration,
+      },
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      artifacts: [],
+      request: { key: 'k' },
+    };
+
+    const bounded = boundedControlResult({
+      disposition: 'executed',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+      // What the summarizer produced under its own byte budget: the marker is
+      // the truncated excerpt, not the whole declaration.
+      summary: {
+        terminal: 'infrastructure_error',
+        counts: stopped.counts,
+        firstCausalExcerpt: excerpt,
+        infrastructureCause: excerpt,
+      },
+    });
+    expect(bounded.summary.infrastructureCause).toBe(excerpt);
+    expect(bounded.summary.infrastructureCause).toBe(
+      bounded.summary.firstCausalExcerpt,
+    );
+    expect(bounded.summary.passed).toBe(false);
+
+    // A summary the summarizer gave no marker does not gain one from the
+    // receipt: the byte budget dropped it deliberately, and re-adding it here
+    // would restore the very divergence above.
+    const dropped = boundedControlResult({
+      disposition: 'executed',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+      summary: {
+        terminal: 'infrastructure_error',
+        counts: stopped.counts,
+        firstCausalExcerpt: excerpt,
+      },
+    });
+    expect(dropped.summary.infrastructureCause).toBeUndefined();
+
+    // station#1827 fix round 2, L5: a `reused` or `joined` disposition has no
+    // summary at all, so `boundedControlResult` synthesizes one from the
+    // receipt -- with ZERO causal excerpts. A marker there qualifies nothing
+    // and contradicts its own documented meaning.
+    const reused = boundedControlResult({
+      disposition: 'reused',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+    });
+    expect(reused.summary.causalExcerpts).toBeUndefined();
+    expect(reused.summary.firstCausalExcerpt).toBeUndefined();
+    expect(reused.summary.infrastructureCause).toBeUndefined();
+    // The verdict facts ARE still stamped there, which is what makes the
+    // absence above a decision rather than an oversight.
+    expect(reused.summary.passed).toBe(false);
   });
 
   // station#3584 review item 1: summarizeVerificationOutput

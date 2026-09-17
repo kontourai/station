@@ -446,3 +446,37 @@ describe('SshEnvironmentService alias admission', () => {
     ).rejects.toThrow('SSH host alias');
   });
 });
+
+test.each(['attach', 'managed'] as const)(
+  'authentication refusal in %s mode never launches another Station',
+  async (launchMode) => {
+    const tunnel = fakeTunnel();
+    tunnel.probeWorker.mockRejectedValue(
+      new Error(
+        'Remote Station worker failed: station-authentication-required',
+      ),
+    );
+    const service = new SshEnvironmentService(home(), {
+      adapter: {
+        createTunnel: () => tunnel,
+      } as unknown as OpenSshEnvironmentAdapter,
+    });
+    await service.initialize();
+    const profile = await service.add({
+      hostAlias: HOST.alias,
+      remoteProjectPath: WORKER.remoteProjectPath,
+      launchMode,
+    });
+    const result = await service.connect(profile.profile.id);
+    expect(result.state).toMatchObject({
+      phase: 'error',
+      reason: 'station-authentication-required',
+      action: expect.stringContaining(
+        'SSH worker credential enrollment is not supported yet',
+      ),
+    });
+    expect(tunnel.runLaunchBootstrap).not.toHaveBeenCalled();
+    expect(tunnel.retarget).not.toHaveBeenCalled();
+    expect(tunnel.stop).toHaveBeenCalled();
+  },
+);

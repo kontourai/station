@@ -1,20 +1,21 @@
 # Connections Guide
 
-Providers power Station's chats and agents. A provider can be a hosted service, a local
-model server, or an agent app such as Codex or Claude Code. They all appear together under
-**Connections → Providers**, with one clear readiness label and one next action.
+Connections power Station's chats and agents. A **Model connection** is a hosted service or
+local model server that Station's engine runs inference on; an **Engine** is an agent app such
+as Codex or Claude Code that runs its own loop. They appear under **Connections** on the
+**Models** and **Engines** tabs, each with one clear readiness label and one next action.
 
 For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 ---
 
-## Read the provider list
+## Read the connection list
 
-Each provider shows exactly one state:
+Each Model connection or Engine shows exactly one state:
 
 - **Ready** — usable now.
 - **Sign in required** — authenticate to finish connecting.
-- **Found, not connected** — Station observed a provider-specific setup signal; connect it to Station.
+- **Found, not connected** — Station observed a service-specific setup signal; connect it to Station.
 - **Setup required** — finish the remaining setup.
 - **Limited** — usable with reduced capabilities; review the details.
 - **Disabled** — configured but turned off.
@@ -24,6 +25,24 @@ Select the action on the row. Station keeps transport, process, and connection-k
 out of the overview; they remain available only where setup or diagnosis needs them.
 
 ---
+
+## Saved Station addresses
+
+Open **Manage Stations** in the header to inspect the computers this client
+connects to. Each address wraps on narrow screens so its port stays visible.
+The row's **More actions** menu provides **Copy address** and **Edit Station**.
+
+Native clients save edits through the shared profile store. A name change
+preserves pairing and updates references to that profile, including its default
+and project selections. Changing the address requires connecting the device
+again: the previous credential is never sent to the new origin. Concurrent
+changes to the same name or address are rejected for review rather than
+overwritten. The app-managed local Station is not editable through this form.
+
+Clients without the profile owner's editing capability keep shared profiles
+read-only; they can still display and copy the complete address. Ordinary
+browser-local saved Stations retain their existing edit and endpoint-verification
+flow.
 
 ## Local first: Ollama (no credentials)
 
@@ -46,15 +65,15 @@ Any chat-capable model Ollama supports works. Smaller models start faster; large
 ### 3. Let Station suggest it
 
 If Station finds Ollama at `http://localhost:11434`, it can show it as a detected suggestion.
-Detection is read-only: it does not create a provider or read credentials.
+Detection is read-only: it does not create a connection or read credentials.
 
 If Ollama was not running when you opened Connections, start it and return to add or verify the
-provider in the next section.
+connection in the next section.
 
 ### 4. Add or verify an Ollama connection in the UI
 
 1. Open the **Connections** view.
-2. Find **Ollama** under **Providers**. If it says **Setup required**, select **Set up**. If it is absent, select **Add provider** and choose Ollama. Its default server URL is `http://localhost:11434`.
+2. On the **Models** tab, find **Ollama**. If it says **Setup required**, select **Set up**. If it is absent, select **Add model connection** and choose Ollama. Its default server URL is `http://localhost:11434`.
 3. The connection lists the models Ollama has pulled. If a model you expect is missing, run `ollama pull <model>` and refresh.
 
 ### 5. Pick a model
@@ -63,29 +82,103 @@ When editing a Station agent, choose your Ollama model from the agent's model pi
 
 ---
 
-## Add an agent app
+## Add an engine
 
-Codex, Claude Code, OpenCode, Kiro, and similar agent apps are Providers too. Use
-**Connections → Providers → Add provider** to add one.
+Codex, Claude Code, OpenCode, Kiro, and similar agent apps are Engines. Use
+**Connections → Engines → Add engine** to add one.
 
-1. Select a detected or supported provider, or choose the custom option.
+1. Select a detected or supported engine, or choose the custom option.
 2. For custom setup, enter a name and command. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.
 3. Keep the same dialog or sheet open while Station shows **Checking**.
 4. Read the single result: **Ready**, **Setup needed**, **Unavailable**, or **Off**. If it is
-   not Ready, use the offered retry, edit, or choose-another-provider action before closing.
+   not Ready, use the offered retry, edit, or choose-another-engine action before closing.
 
-Detection only says that Station observed a possible local provider; it does not configure it,
-read its secrets, or guarantee that it is ready. The UI names the concrete provider, such as
+Detection only says that Station observed a possible local engine; it does not configure it,
+read its secrets, or guarantee that it is ready. The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
+
+The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
+one there explicitly connects the Engine and creates its External agent together; detection itself
+remains read-only until that action.
+
+For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
+installed on your machine and the Claude Code bundled with the Claude Agent SDK:
+
+- The installed executable runs when it reports a version that is not older than the bundled one.
+- The bundled copy runs when the installed executable is older.
+- The bundled copy also runs when the installed executable does not report a version — Station
+  cannot confirm that such a copy runs at all, let alone that it is current.
+- The installed executable runs when Station cannot read the bundled version, so an unreadable
+  Agent SDK never silently downgrades a working installation.
+
+The Engine's readiness detail names the executable Station will launch and whichever versions it
+was able to read.
+
+---
+
+## Route an engine through a model proxy
+
+A Claude Code or Codex Engine connection can send its traffic through a local
+model proxy (CLIProxyAPI, VibeProxy, or any Anthropic/OpenAI-compatible
+router) instead of logging in directly. Set this in the connection's runtime
+config (`agentConnections.<engine>.config` in `config/app.json`):
+
+- `env` — environment variables merged into every engine subprocess the
+  connection spawns. Names must be valid env-var names; Station-internal
+  secret names and `TMPDIR` are refused. An empty-string value masks an
+  inherited variable.
+- `configHome` — an explicit engine config home (`~` allowed), applied as
+  `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
+  station-managed app-home opt-in (`useAppHome`); a selected credential
+  profile still wins over both.
+
+For example, to route the Claude Code connection through a keyless local
+proxy that pools your subscriptions:
+
+```json
+{
+  "agentConnections": {
+    "claude": {
+      "config": {
+        "env": {
+          "ANTHROPIC_BASE_URL": "http://127.0.0.1:8318",
+          "ANTHROPIC_AUTH_TOKEN": "local-proxy",
+          "ANTHROPIC_API_KEY": ""
+        }
+      }
+    }
+  }
+}
+```
+
+For Codex, prefer `configHome` pointing at a dedicated home whose
+`config.toml` sets `model_provider` to the proxy's provider entry, so model
+discovery lists what the proxy serves.
+
+Two boundaries to know: credential login/enrolment children do not receive
+`env` (they always run against the engine's normal config root), and changing
+`configHome` after sessions exist does not migrate their history — a resumed
+thread looks for its transcripts under the home that was active when it last
+ran. Malformed or oversized `env` entries (more than 64 entries or a value
+over 32 KiB) are dropped silently at save time.
+
+One failure mode to expect: most proxies re-identify requests to the provider
+with their own client identity and capability flags, not your engine's. A
+proxy build that lags the provider's current client can be refused for models
+that require a newer client — with an error telling you to update your local
+engine, which is already current — or have newer request fields rejected as
+unknown. If a proxied connection fails with a client-version error, update
+the proxy first; Station cannot rewrite what the proxy sends upstream, and
+unproxied connections are unaffected.
 
 ---
 
 ## OpenAI-compatible endpoints
 
-Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`). Station connects to these as an **OpenAI-compatible** provider.
+Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`). Station connects to these as an **OpenAI-compatible** Model connection.
 
-1. In **Connections → Providers**, select **Add provider** and choose a named service such as **LiteLLM** or **OpenRouter**, or choose **Other OpenAI-compatible**.
+1. On **Connections → Models**, select **Add model connection** and choose a named service such as **LiteLLM** or **OpenRouter**, or choose **Other OpenAI-compatible**.
 2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`).
 3. Provide an **API key** if the endpoint requires one. Endpoints that need no auth can leave it blank.
 4. Verify the connection, then pick a model when editing a Station agent.
@@ -94,12 +187,12 @@ Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`
 
 ## AWS Bedrock (optional)
 
-Bedrock is one Provider option among several — it is **not required** to run Station. It needs valid **AWS credentials** in your environment (see [docs/reference/env-vars.md](../reference/env-vars.md) for the AWS variables and the minimum IAM policy).
+Bedrock is one Model connection option among several — it is **not required** to run Station. It needs valid **AWS credentials** in your environment (see [docs/reference/env-vars.md](../reference/env-vars.md) for the AWS variables and the minimum IAM policy).
 
 1. Make AWS credentials and a region available to Station (e.g. via `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or a configured AWS profile).
 2. If Station observes the required AWS environment, it can show Bedrock as a suggestion. That
-   observation does not read credential material or create a provider.
-3. Select **Add provider**, choose **Amazon Bedrock**, then choose the region and one of the supported authentication modes: default AWS credentials, a named AWS profile, or a Bedrock API key.
+   observation does not read credential material or create a connection.
+3. Select **Add model connection**, choose **Amazon Bedrock**, then choose the region and one of the supported authentication modes: default AWS credentials, a named AWS profile, or a Bedrock API key.
 4. Pick a Bedrock model when editing a Station agent.
 
 Bedrock-specific configuration (the AWS `region` and a Bedrock `defaultModel`) is documented in [docs/reference/config.md](../reference/config.md). These fields apply only when you run Bedrock.
@@ -115,15 +208,16 @@ Bedrock-specific configuration (the AWS `region` and a Bedrock `defaultModel`) i
 
 See [docs/reference/config.md](../reference/config.md) for the full `app.json` reference and an Ollama-first example.
 
-The chat composer always names the active Provider instance and model. Open it
-to search across ready Providers, filter by Provider or Favorites, and choose
-the exact model for this chat. Providers that still need setup remain visible
-with their status, but cannot create an invalid selection.
+The chat composer always names the active connection and model. Open it to
+search across ready Model connections and Engines, filter by connection or
+Favorites, and choose the exact model for this chat. Connections that still
+need setup remain visible with their status, but cannot create an invalid
+selection.
 
 Favorites, recent choices, hidden models, and model order are saved on this
-device. Manage a Provider's model list from its detail page. **Use project
+device. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
-restores both the default Provider instance and model.
+restores both the default connection and model.
 
 ---
 

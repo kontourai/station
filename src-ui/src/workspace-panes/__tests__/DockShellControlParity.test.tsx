@@ -2,22 +2,12 @@
 
 /**
  * archive#4460: before the fix, only Chat's dock chrome had a resize handle,
- * maximize/collapse and a placement control, and only Home/Activity had an
- * occupant switcher — nobody had all four. These tests drive the REAL
- * `NavigationProvider` (unlike `AmbientChatDockPaneHost.test.tsx`'s static
+ * maximize/collapse and a placement control. These tests drive the REAL
+ * `NavigationProvider` (unlike `RegionPaneHost.test.tsx`'s static
  * navigation mock) so maximize/collapse genuinely round-trip through the
- * shared navigation store, which is what an occupant switch needs to prove
- * anything about surviving state.
+ * shared navigation store.
  */
 
-import {
-  createWorkspaceChatPaneInstance,
-  WORKSPACE_CHAT_PANE_DESCRIPTOR,
-} from '@kontourai/station-contracts/workspace-chat-pane';
-import {
-  WORKSPACE_HOME_PANE_DESCRIPTOR,
-  WORKSPACE_HOME_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-home-pane';
 import {
   act,
   cleanup,
@@ -25,6 +15,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -40,35 +31,26 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
-import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
-import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
+import { RegionPaneHost } from '../RegionPaneHost';
 
-vi.mock('../../views/home/useHomeViewModel', () => ({
-  useHomeViewModel: () => ({}),
-}));
-vi.mock('../../views/home/HomeSurface', () => ({
-  HomeSurface: () => <p data-testid="ambient-home-occupant">Home surface</p>,
-}));
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => (
-    <p data-testid="ambient-activity-occupant">Sessions surface</p>
-  ),
-}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
 
 // archive#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects`
 // for its project-binding deletion cleanup. Mocked here the same way every
-// other unrelated context in this file is — this suite is about control
-// parity across occupants, not project binding (see
-// `AmbientChatDockProjectBinding.test.tsx` for that).
+// other unrelated context in this file is — this suite is about the shell's
+// control set, not project binding (see `DockShellProjectBinding.test.tsx`
+// for that).
 vi.mock('../../contexts/ProjectsContext', () => ({
   useProjects: () => ({
     projects: [],
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+  // #2047: the region host resolves the dock's project through this read;
+  // no project here, so the panes that need one derive none.
+  useProject: () => ({ project: undefined, isLoading: false }),
 }));
 
 const AMBIENT_DOCK_STORAGE_KEY =
@@ -124,9 +106,7 @@ function resetDockPlacementState(
   deviceSettingsStore.reloadFromStorage();
 }
 
-function renderHost(
-  onDockActionChange?: (action: WorkspacePaneDockAction | null) => void,
-) {
+function renderHost() {
   return render(
     <KeyboardShortcutsProvider>
       <NavigationProvider>
@@ -138,13 +118,12 @@ function renderHost(
           />
           <RegionModelProbe />
           <RegionToolbarControls />
-          <AmbientChatDockPaneHost
+          <RegionPaneHost
             renderChatPane={(instance) => (
               <p data-testid="ambient-chat-occupant">
                 Chat pane {instance.instanceId}
               </p>
             )}
-            onDockActionChange={onDockActionChange}
           />
         </RegionModelProvider>
       </NavigationProvider>
@@ -176,25 +155,36 @@ function dockParam(): string | null {
   return new URLSearchParams(window.location.search).get('dock');
 }
 
+/** Press a region's toggle: the region shows or hides, every pane with it. */
+function pressRegionToggle(regionLabel: string) {
+  fireEvent.click(
+    screen.getByRole('button', { name: `${regionLabel} region` }),
+  );
+}
+
 async function placeChatRight() {
   renderHost();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock')).not.toBeNull(),
   );
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
-  );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
+  chooseChatForEmptyRight();
   await waitFor(() =>
     expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
   );
 }
 
+/**
+ * The retired "Place Chat here", then #2143's "Show Chat here" offer row
+ * under an empty region's toolbar button. Since #2155 the toolbar places
+ * nothing at all — its toggles only show and hide, and what goes in a region
+ * is the region's own chooser (#2154) — so the placement these tests need as
+ * a fixture is issued through the model, the same command every surviving
+ * route (a tab's move menu, the chooser, a link's `openInRegion`) reaches.
+ * What this file pins is the MIRROR a placement produces, not which chrome
+ * sent it; `RegionToolbarControls.test.tsx` owns the toolbar's own behaviour.
+ */
 function chooseChatForEmptyRight() {
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
-  );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Place Chat here' }));
+  act(() => currentRegionModel().placeSurface('chat', 'right'));
 }
 
 function dockToggle(): () => void {
@@ -205,45 +195,11 @@ function dockToggle(): () => void {
   return toggle.handler;
 }
 
-async function dockedAction(): Promise<WorkspacePaneDockAction> {
-  const published: (WorkspacePaneDockAction | null)[] = [];
-  renderHost((action) => published.push(action));
+async function mountedChatDock() {
+  renderHost();
   await waitFor(() => {
-    expect(published.some((action) => action !== null)).toBe(true);
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
   });
-  const latest = [...published].reverse().find((action) => action !== null);
-  if (!latest) throw new Error('no dock action published');
-  return latest;
-}
-
-/**
- * The full control-parity assertion: resize handle (`DockShell`'s job for
- * every occupant), maximize, collapse, placement control and occupant
- * picker. `occupantName` is the picker's expected current-occupant label.
- */
-function expectFullDockControls(occupantName: string) {
-  expect(
-    document.querySelector('hr.chat-dock__resize-handle'),
-    'the bottom-dock resize handle must be present regardless of occupant',
-  ).not.toBeNull();
-  expect(
-    screen.getByLabelText(
-      /^(Expand dock region to workspace|Restore dock region size)$/,
-    ),
-    'a maximize/restore control must be present regardless of occupant',
-  ).toBeTruthy();
-  expect(
-    screen.getByLabelText(new RegExp(`^(Show|Hide) ${occupantName}$`)),
-    'a collapse/expand control must be present regardless of occupant',
-  ).toBeTruthy();
-  expect(
-    screen.getByLabelText('Move the dock'),
-    'the placement control must be present regardless of occupant',
-  ).toBeTruthy();
-  expect(
-    screen.getByRole('button', { name: `Docked pane: ${occupantName}` }),
-    'the occupant picker must be present regardless of occupant',
-  ).toBeTruthy();
 }
 
 /**
@@ -417,15 +373,83 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
+  // #928 slice iii: the chord writes the REGION; navigation's `maximize`
+  // param and `lastDockMaximized` follow as its mirror. The collapse-on-
+  // navigate seam (archive#1298) restores the region without forgetting the
+  // preference, and a `focusSession`-style restore is inbound to the region.
+  test('dock.maximize maximizes the region, mirrors navigation, and survives collapse-on-navigate as memory', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    const maximize = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.maximize',
+    );
+    if (!maximize) throw new Error('dock.maximize is not registered');
+    const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
+
+    act(() => maximize.handler());
+
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+    expect(currentRegionModel().regions.bottom.maximized).toBe(true);
+    expect(dockStateWrite).toHaveBeenCalledTimes(1);
+    expect(dockStateWrite).toHaveBeenCalledWith(true, true);
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    // Navigating elsewhere restores the dock to its docked size (archive#869)
+    // WITHOUT touching the memory (archive#1298): the region clears, the URL
+    // param clears, `lastDockMaximized` stays.
+    dockStateWrite.mockClear();
+    act(() => navigationStore.navigate('/projects'));
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.maximized).toBe(false),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).toBeNull(),
+    );
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
+    expect(dockStateWrite).not.toHaveBeenCalled();
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    // The `focusSession` restore still speaks navigation; the region follows.
+    act(() =>
+      navigationStore.setDockState(true, navigationStore.lastDockMaximized),
+    );
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.maximized).toBe(true),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+  });
+
   test('placing chat while the dock is hidden reveals it there', async () => {
     renderHost();
     await waitFor(() =>
       expect(document.querySelector('.chat-dock')).not.toBeNull(),
     );
+    // Hide from Full so the close leaves a memory worth keeping: a docked
+    // close forwards `false`, which any show would then preserve trivially.
+    const maximize = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.maximize',
+    );
+    if (!maximize) throw new Error('dock.maximize is not registered');
+    act(() => maximize.handler());
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
     act(() => dockToggle()());
     await waitFor(() =>
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
     );
+    expect(navigationStore.lastDockMaximized).toBe(true);
     const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
 
     chooseChatForEmptyRight();
@@ -436,7 +460,14 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
     expect(dockParam()).toBe('open');
     expect(dockStateWrite).toHaveBeenCalledTimes(1);
-    expect(dockStateWrite).toHaveBeenCalledWith(true, false);
+    // A placement into a hidden empty region is placement + show in one diff
+    // with `maximized` cleared (#1385): a plain show, so it forwards no
+    // maximize and the memory the close kept survives (#1563). The
+    // `setRegion({ visible: true })` re-show is pinned in
+    // `RegionModelContext.reshowKeepsMaximizeMemory.test.tsx`.
+    expect(dockStateWrite).toHaveBeenCalledWith(true, undefined);
+    expect(document.querySelector('.chat-dock.is-maximized')).toBeNull();
+    expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
   test('a placement arriving through the device setting is not replayed as a choice', async () => {
@@ -484,7 +515,7 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
   });
 });
 
-describe('every ambient occupant gets the full dock chrome (station#4460)', () => {
+describe('the docked Chat gets the full dock chrome (station#4460)', () => {
   test('the dock.toggle shortcut (cmd+D) collapses the real dock shell', async () => {
     renderHost();
     await waitFor(() => {
@@ -516,11 +547,9 @@ describe('every ambient occupant gets the full dock chrome (station#4460)', () =
     await waitFor(() => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
     });
-    const control = screen.getByRole('button', {
-      name: 'Hide Chat Bottom region',
-    });
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
-    fireEvent.click(control);
+    // The retired "Hide Chat" row: the Bottom region's toggle (#2143).
+    pressRegionToggle('Bottom');
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
     });
@@ -529,123 +558,72 @@ describe('every ambient occupant gets the full dock chrome (station#4460)', () =
   // Chat's OWN header content is rendered by the real `ChatWorkspacePane`
   // (a heavy component with its own large context/data-fetching surface),
   // not by this test's mocked `renderChatPane` — so this file cannot mount
-  // Chat's real maximize/collapse/placement/picker controls without also
-  // mounting all of `ChatWorkspacePane`. What it CAN prove for Chat, with
-  // the mock, is `DockShell`'s own always-present piece: the resize handle.
-  // The rest of parity for Chat is covered where the real `ChatDockHeader`
-  // (the SAME shared component Home/Activity use below) is unit-tested with
-  // `chatControls`/`occupantPicker` supplied:
-  // `ChatDockHeaderCollapse.test.tsx` (maximize/collapse/placement) and the
-  // occupant-picker rendering test added there for this archive#4460 fix.
+  // Chat's real maximize/collapse/placement controls without also mounting
+  // all of `ChatWorkspacePane`. What it CAN prove for Chat, with the mock,
+  // is `DockShell`'s own always-present piece: the resize handle. The rest
+  // of the control set is covered where the real `ChatDockHeader` (the SAME
+  // shared component the Activity region shell uses) is unit-tested with
+  // `chatControls` supplied: `ChatDockHeaderCollapse.test.tsx`
+  // (maximize/collapse/placement and the header's accessible-name pin).
   test('Chat, docked by default, gets the shell resize handle', async () => {
-    await dockedAction();
+    await mountedChatDock();
     expect(
       document.querySelector('hr.chat-dock__resize-handle'),
       'the bottom-dock resize handle must be present regardless of occupant',
     ).not.toBeNull();
   });
 
-  test('Home, docked, has the SAME controls the shared ChatDockHeader gives Chat', async () => {
-    const action = await dockedAction();
-    act(() => {
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
+  /**
+   * #2153, through the REAL `useDockShellChrome`: a visible EMPTY region has
+   * no occupant to be named after, so the chrome names the REGION and every
+   * control that reads `surfaceTitle` follows — the chevron ("Hide Right
+   * region"), the landmark and the resize grip.
+   *
+   * Reverting `surfaceTitle`'s empty-region branch in `useDockShellChrome.ts`
+   * to the bare `'Chat'` fallback reds all three: the shell would offer
+   * "Hide Chat" on a region holding no Chat, which is #1386's defect
+   * relocated. `canMaximize` stays false for an empty region (it reads
+   * `shellOccupant !== null`), which is why no maximize control is here.
+   */
+  test('an empty region names ITSELF in the chevron, the landmark and the grip', async () => {
+    render(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <RegionModelProbe />
+            <RegionPaneHost
+              regionId="right"
+              renderChatPane={() => <p>unused</p>}
+            />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    const empty = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        'section[aria-label="Right region"]',
       );
+      if (!element) throw new Error('the empty region shell never rendered');
+      return element;
     });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+    expect(currentRegionModel().regions.right).toMatchObject({
+      panes: [],
+      occupant: null,
+      visible: false,
     });
-    expectFullDockControls('Home');
-  });
-});
-
-describe('maximize state survives a Chat and Home occupant switch (archive#4460)', () => {
-  test('a maximized Home remains maximized through Chat and exposes restore when Home returns', async () => {
-    const action = await dockedAction();
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
+    // Hidden to start: the chevron offers to SHOW it, under the region's own
+    // name. Pressing it is the real model write — an empty region can be
+    // shown (#2153) — and the name follows the new state.
+    fireEvent.click(within(empty).getByLabelText('Show Right region'));
     await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
+      expect(currentRegionModel().regions.right.visible).toBe(true),
     );
-    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    await waitFor(() =>
-      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
-    );
-
-    act(() =>
-      action.dockPane(
-        WORKSPACE_CHAT_PANE_DESCRIPTOR,
-        createWorkspaceChatPaneInstance()!,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
-    );
-    expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
-
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    const restore = await screen.findByLabelText('Restore dock region size');
-    fireEvent.click(restore);
-    await waitFor(() =>
-      expect(document.querySelector('.chat-dock.is-maximized')).toBeNull(),
-    );
-  });
-});
-
-describe('dock-slot geometry is stable across a Chat and Home occupant switch (archive#4460)', () => {
-  test('a maximized height survives Home to Chat to Home without a settings-derived jump', async () => {
-    const action = await dockedAction();
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
-    );
-    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    await waitFor(() =>
-      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
-    );
-    const maximizedSize =
-      document.documentElement.style.getPropertyValue('--dock-slot-size');
-    expect(maximizedSize).not.toBe('');
-    expect(maximizedSize).not.toBe('320px');
-
-    act(() =>
-      action.dockPane(
-        WORKSPACE_CHAT_PANE_DESCRIPTOR,
-        createWorkspaceChatPaneInstance()!,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
-    );
+    expect(within(empty).getByLabelText('Hide Right region')).toBeTruthy();
+    expect(within(empty).getByLabelText('Resize Right region')).toBeTruthy();
+    // No maximize for an empty region, and no tabs.
     expect(
-      document.documentElement.style.getPropertyValue('--dock-slot-size'),
-    ).toBe(maximizedSize);
-    act(() =>
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull(),
-    );
-    expect(
-      document.documentElement.style.getPropertyValue('--dock-slot-size'),
-    ).toBe(maximizedSize);
+      within(empty).queryByLabelText(/^Expand .* to workspace$/),
+    ).toBeNull();
+    expect(within(empty).queryAllByRole('tab')).toHaveLength(0);
   });
 });

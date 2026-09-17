@@ -1,44 +1,34 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type {
   InboundWebhookConfiguration,
   InboundWebhookStartGrant,
   InboundWebhookToken,
 } from '@kontourai/station-contracts/inbound-webhook';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
+import { isNonEmptyString } from '../../utils/non-empty-string.js';
 
 const CONFIG_FILE = 'inbound-webhooks.json';
 const REPLAY_FILE = 'inbound-webhook-replays.json';
 const AUDIT_FILE = 'inbound-webhook-audit.json';
 
 /** Enough recent failures for operator diagnosis without creating an attacker-owned log. */
-export const INBOUND_WEBHOOK_AUDIT_MAX_ENTRIES = 256;
+const INBOUND_WEBHOOK_AUDIT_MAX_ENTRIES = 256;
 /** Bounded durable replay keys; at five minutes this accommodates 2,000 requests/minute. */
-export const INBOUND_WEBHOOK_REPLAY_MAX_ENTRIES = 10_000;
+const INBOUND_WEBHOOK_REPLAY_MAX_ENTRIES = 10_000;
 /**
  * Review L2: an HMAC secret shorter than this is brute-forceable within the
  * cost of the requests it's meant to gate. Enforced at both `read()` and
  * `write()` so a hand-authored config with a weak secret fails closed rather
  * than being silently accepted the first time it's read.
  */
-export const INBOUND_WEBHOOK_MIN_SECRET_LENGTH = 32;
+const INBOUND_WEBHOOK_MIN_SECRET_LENGTH = 32;
 
 export class InboundWebhookConfigurationError extends Error {
   constructor(message = 'Inbound webhook configuration is unavailable.') {
     super(message);
     this.name = 'InboundWebhookConfigurationError';
   }
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function isStartGrant(value: unknown): value is InboundWebhookStartGrant {
@@ -82,24 +72,12 @@ function writePrivateJson(path: string, value: unknown): void {
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   chmodSync(directory, 0o700);
-  const temporaryPath = `${path}.${process.pid}.tmp`;
-  try {
-    writeFileSync(temporaryPath, JSON.stringify(value, null, 2), {
-      encoding: 'utf8',
-      mode: 0o600,
-      flag: 'w',
-    });
-    renameSync(temporaryPath, path);
-    chmodSync(path, 0o600);
-  } finally {
-    if (existsSync(temporaryPath)) {
-      try {
-        rmSync(temporaryPath, { force: true });
-      } catch {
-        // Do not hide the original write failure.
-      }
-    }
-  }
+  // The shared durable writer owns the temporary (created O_EXCL, removed on
+  // failure so no secret-bearing scratch file survives), the data fsync and
+  // the directory fsync. `trailingNewline: false` keeps this file's existing
+  // two-space document byte for byte.
+  writeJsonDurably(path, value, { trailingNewline: false });
+  chmodSync(path, 0o600);
 }
 
 /**
@@ -217,7 +195,7 @@ export type InboundWebhookAuditReason =
  * unauthenticated-attempt budget trips (M2) — see
  * `InboundWebhookNoiseAggregator` in `inbound-webhooks.ts`.
  */
-export type InboundWebhookAuditOutcome =
+type InboundWebhookAuditOutcome =
   | InboundWebhookAuditReason
   | 'accepted'
   | 'unauthenticated_flood';

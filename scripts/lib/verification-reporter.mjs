@@ -17,13 +17,17 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../../schemas/verification-receipt.schema.json' with {
   type: 'json',
 };
+import { withoutAnsi } from './ansi-escape.mjs';
 import { writeReceiptSecurely } from './test-reliability.mjs';
 import {
   releaseVerificationArtifactMutation,
   tryAcquireVerificationArtifactMutation,
 } from './verification-artifact-mutation.mjs';
 import { assertReceiptSemantics } from './verification-receipt.mjs';
-import { redactVerificationOutput } from './verification-redaction.mjs';
+import {
+  REDACTED,
+  redactVerificationOutput,
+} from './verification-redaction.mjs';
 
 // Two streams consume at most 6MiB, leaving the independently bounded 2MiB
 // attachment allowance inside MAX_ARTIFACT_TOTAL_BYTES.
@@ -239,6 +243,334 @@ function longestUtf8Prefix(text, maxBytes) {
   return result;
 }
 
+/**
+ * The maximum size of a runner-declared stop cause, in BYTES. The receipt
+ * schema's `maxLength: 512` counts code points, so a value bounded here can
+ * never exceed it (every code point costs at least one byte); the byte bound
+ * is the binding one and the schema is a looser outer wall.
+ */
+export const DECLARED_CAUSE_BYTE_CAP = 512;
+
+/**
+ * `text` without a trailing PARTIAL `[REDACTED]` marker.
+ *
+ * A byte cut landing inside the replacement leaves `…[REDACT`, which reads as
+ * content rather than as a redaction and is the one shape a bound must never
+ * emit. A complete marker is left alone: it ends in `]`, so no proper prefix
+ * of the token can match it.
+ */
+function withoutPartialRedactionMarker(text) {
+  for (let length = REDACTED.length - 1; length > 0; length -= 1)
+    if (text.endsWith(REDACTED.slice(0, length)))
+      return text.slice(0, text.length - length);
+  return text;
+}
+
+/**
+ * `text` trimmed, with any trailing partial `[REDACTED]` spelling removed --
+ * repeatedly, to a fixed point.
+ *
+ * One strip can uncover another, and so can the trim between them (round-6
+ * review, M3). A cut landing one byte inside `... [REDACTED [REDACTED]` leaves
+ * `... [REDACTED [REDACTED`; stripping once gives `... [REDACTED ` and the
+ * trim then exposes `... [REDACTED`, which is a partial marker again. Doing
+ * each step once left that shape on 30 of 483 straddling inputs, persisted
+ * into the canonical receipt as text that reads like a redaction and is not
+ * one -- the exact thing this file's docblock calls the one shape a bound must
+ * never emit. Every iteration strictly shortens, so this terminates.
+ */
+function withoutTrailingMarkerFragments(text) {
+  let result = text.trim();
+  for (;;) {
+    const stripped = withoutPartialRedactionMarker(result).trim();
+    if (stripped === result) return result;
+    result = stripped;
+  }
+}
+
+/**
+ * `text` with every run of redaction-marker spelling collapsed to one marker,
+ * for COMPARISON only -- never for anything that is stored.
+ *
+ * `[REDACTED]`, `[REDACTED]]`, `[REDACTED]]]` all become `[REDACTED]`, so two
+ * strings that differ only in how many closing brackets trail a marker compare
+ * equal. Nothing else is touched, which is what makes the comparison safe:
+ * removing a secret changes text OUTSIDE a marker run, so a value that lost
+ * one can never compare equal to the value that still has it.
+ */
+function withMarkerRunsCollapsed(text) {
+  return text.replaceAll(/\[REDACTED\]\]*/g, REDACTED);
+}
+
+/**
+ * The most passes `normalizeDeclaredCause` will run before it refuses to
+ * record a cause at all.
+ *
+ * This cap is a backstop, and the reason it is not also a claim is that round
+ * 4 made that claim and was wrong. It said each pass shrinks unredacted
+ * content monotonically, so only an unconstructed shape could spin -- and the
+ * first sweep of the next review constructed one, at every cap including the
+ * production one, on 11 of 621 offsets: a period-1 cycle between two spellings
+ * of a redaction marker, shrinking nothing. Round 5 removed that cycle by
+ * changing the exit condition rather than by raising this number, and every
+ * corpus swept since converges in one pass or two (12,271 and 149 of 12,420).
+ *
+ * What is claimed here is only that: no corpus has reached this cap. Not that
+ * none can. Exhaustion is a REFUSAL rather than a best effort -- a value still
+ * being rewritten is not one to persist into a receipt CI uploads as an
+ * artifact -- and a refusal is silent, so it costs the run its declared cause
+ * and returns the receipt to naming a scanned excerpt.
+ */
+const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
+
+/**
+ * The one derivation of a runner-declared stop cause. Every consumer is handed
+ * the string this returns; nothing recomputes it (station#1827 fix round 2).
+ *
+ * Returns null for anything that is not a non-empty declaration, so a caller
+ * can use it as the whole admission test as well as the transform. A blank
+ * declaration is not a cause: promoting one would displace the scanned excerpt
+ * with nothing at all, which is worse than the wrong excerpt this change
+ * exists to remove.
+ *
+ * ## This function is the redaction boundary for this value
+ *
+ * Neither channel feeding it is redacted upstream -- not the lifecycle's
+ * owner-final extraction, not `raw.error.message` -- and the result lands in
+ * the canonical receipt, which CI uploads as an artifact and nothing redacts
+ * downstream. Every guarantee below exists because there is no second chance.
+ *
+ * ## Called once, and unsafe to re-apply
+ *
+ * Two different statements, which earlier rounds ran together (round-5 review,
+ * L1).
+ *
+ * The DESIGN does not rely on idempotence: `reportExecution` calls this once
+ * and threads the result to the summarizer and to the receipt, so there is no
+ * second derivation to agree with. Round 1 shipped two derivations of one
+ * declaration and they disagreed. Do not reintroduce one.
+ *
+ * Re-applying it to its own output is NOT identity, and cannot be made so
+ * while the second exit arm below exists. That arm returns the candidate at
+ * the moment the redactor still wants to append to it -- which is exactly the
+ * moment the value is not a fixed point -- so a second call starts from the
+ * appended form and returns that instead. At the production cap 2,453 of
+ * 8,415 accepted values leave by that arm and all 2,453 move under a second
+ * call (round-7 review, H1).
+ *
+ * Rounds 5 and 6 each claimed the opposite and each let a consumer re-derive
+ * on the strength of it, and each time the rendering ended up carrying marker
+ * bytes the receipt did not have. There is one derivation. Nothing downstream
+ * re-applies this -- not as a safety net, not as a bound, not as a no-op --
+ * because a transform that is a no-op on today's outputs is a defect waiting
+ * for the next change to the exit condition.
+ *
+ * ## The order, and which class each step is for
+ *
+ * 1. **Strip escapes**, before anything else. A secret SPLIT by an escape
+ *    sequence is not a token the redactor can recognise while the escape sits
+ *    in the middle of it, so redacting first would reconstitute it. (This is
+ *    also why the receipt cannot reuse `boundedText` in
+ *    `verification-terminal-receipt.mjs`, which redacts without stripping.)
+ * 2. **Redact the COMPLETE text**, before any bound. This pass is for the
+ *    classes that need a whole structure to match: an encoded JSON layer
+ *    (`redactEncodedJsonStrings` has to parse it, and the key matchers stop at
+ *    a backslash, so half a layer matches nothing), a PEM block, a full-length
+ *    token. Round 3 bounded first and leaked a complete `apiKey` value out of
+ *    a JSON layer the cut had halved -- into the receipt.
+ * 3. **Bound**, then trim, then **redact again**. The second pass is for the
+ *    class the first cannot see: whatever the CUT created. Those `$`-anchored
+ *    partial-token rules only fire on the string's real end, so a token the
+ *    bound left partial is invisible until after the cut. Round 1 had only
+ *    this pass and leaked partial tokens; round 3 had only the other and
+ *    leaked whole ones. Both are needed; neither order alone dominates.
+ * 4. **Repeat 3 until the redactor has nothing left to remove.** That is not
+ *    the same as until the value stops changing -- see the exit condition
+ *    below, whose second arm stops on a value the redactor would still append
+ *    a marker byte to.
+ *
+ *    Redaction can lengthen what it rewrites, so a value that grows past the
+ *    bound is cut again -- and that cut, plus the trim that follows it, can
+ *    expose a token the previous pass never saw. Round 3 cut once and did not re-scan, which is how a
+ *    trailing `ghp_...` survived 92 inputs in a structured sweep. Re-scanning
+ *    after every cut is the only form that closes it, because each cut makes
+ *    a new end.
+ *
+ * ## The exit condition, and why it is not "redaction changes nothing"
+ *
+ * The loop stops on either of two conditions, and they are not the same one.
+ *
+ * ARM ONE: redacting AND re-bounding leaves the value untouched -- a fixed
+ * point of the whole step, not of the redactor alone.
+ *
+ * ARM TWO: redacting changes nothing OUTSIDE a redaction marker. This one
+ * stops on a value that is deliberately NOT a fixed point, which is why this
+ * function is not idempotent and why no consumer may re-apply it. It exists
+ * because growth no bound cancels -- `{"apiKey":123}` at fourteen bytes --
+ * would otherwise spin to a silent refusal (round-6 review, M2).
+ *
+ * Round 4 tested the redactor alone and did not converge on a shape three of
+ * its own comments said could not exist (round-5 review, H1): once a value
+ * ends `{"apiKey":[REDACTED]]`, the JSON-key rule's value class stops at the
+ * first `]`, so redaction appends one byte, the bound removes it, and the next
+ * pass is byte-identical. Eleven of 621 offsets per cap, at every cap
+ * including the production one, refused a cause whose secret had already been
+ * removed -- and a refusal is silent, so the receipt went back to naming a
+ * scanned excerpt. The instability there is between two spellings of a
+ * redaction marker, not between a secret and its replacement.
+ *
+ * The weaker-looking condition is safe, for a reason about the redactor's
+ * replacements rather than about this loop.
+ *
+ * Round 5 justified it by claiming every replacement differs from the matched
+ * text at its FIRST byte, and offered `Bearer x` against `Bearer [REDACTED]`
+ * as the example -- which agrees on seven (round-6 review, M1). Most rules are
+ * prefix-preserving by construction: the JSON-key rule re-emits the key, the
+ * nested rule re-emits key and separator, the contextual rule re-emits the
+ * boundary, the trailing-URL rule keeps the scheme. The paragraph cited a
+ * counterexample to itself as evidence.
+ *
+ * The property that does carry the argument is weaker and holds: a
+ * replacement is never a STRICT EXTENSION of the text it matched unless what
+ * it matched was a prefix of the redaction marker -- which carries nothing.
+ * Enumerating 114,399 strings over an alphabet built from marker, JSON and
+ * token characters finds exactly three distinct prefix-preserving appended
+ * suffixes (`REDACTED]`, `EDACTED]`, `[REDACTED]"`), every one of them
+ * completing a marker the redactor had already begun. So growth that leaves
+ * the earlier text intact is always bracket accounting, never a secret being
+ * taken out: removing a secret rewrites it IN PLACE, and the outputs diverge
+ * at that offset.
+ *
+ * Bounding and marker-stripping remove a suffix. Trimming can also remove a
+ * leading prefix, so "only a suffix" is not universal -- 500,000 fuzz inputs
+ * found no way to exploit that and the leading whitespace is gone before the
+ * loop begins, but the sentence should not be read as an invariant.
+ *
+ * ## What it guarantees, what it does not, and what it refuses
+ *
+ * At most `maxBytes` bytes, codepoint-aligned. A value the redactor, run on
+ * exactly it, changes only inside a redaction marker -- which by the argument
+ * above means there was nothing left for it to remove.
+ *
+ * And no trailing partial `[REDACTED]` marker THAT THE BOUND CREATED, however
+ * many strips and trims it takes to reach that. Scoped deliberately, and the
+ * scope matters: the strip runs only on a value the bound actually cut, so a
+ * declaration the runner itself ended in `[REDACTED` or `[` keeps it. Round 6
+ * stated this guarantee unscoped while the same file's implementation comment
+ * explained why it is scoped -- two halves of one commit contradicting each
+ * other (round-7 review). Editing a runner's own words is the worse failure of
+ * the two, so the scope stays and the sentence is corrected.
+ *
+ * One real transform survives downstream, and it is exotic enough to scope
+ * rather than to chase: the plain-text redaction pass strips control
+ * characters the escape stripper does not, so a cause containing one is not
+ * copied byte-for-byte by a surface that re-redacts. Every surface that
+ * carries the DECLARED cause takes it verbatim; the caveat applies to the
+ * other excerpt entries beside it.
+ *
+ * That is a statement about the REDACTOR'S RECALL, not about the value being
+ * free of credentials. Anything `verification-redaction.mjs` does not match,
+ * this does not remove -- and one such gap is known: the plain-text matcher
+ * shields a nested key behind a non-secret outer key, because the outer key's
+ * value match consumes it (station#1835, pre-existing and shared with the
+ * stdout/stderr redaction on `main`). Step 2 also widens what is ELIGIBLE for
+ * the receipt: redaction shortens what it rewrites, so bytes past `maxBytes`
+ * in the input can be pulled inside the bound, where bounding first would have
+ * discarded them. That is a real regression against a bound-first order for
+ * the #1835 class, accepted because in aggregate this order leaks less (3,421
+ * against 4,153 in the reviewer's sweep) and closes the encoded-JSON classes
+ * entirely. It is a trade, not an absence of one.
+ *
+ * ## Three ways this returns null, and only one of them loses anything
+ *
+ * 1. **Not a declaration.** A non-string or an empty one never was a cause.
+ * 2. **Nothing survived normalization.** An input that is entirely escape
+ *    sequences or whitespace converges to the empty string. Also not a cause.
+ * 3. **The loop ran out of passes.** This is the only exit that discards
+ *    something a runner said. It is deliberately fail-closed -- a value still
+ *    being rewritten is not one to persist -- but it is silent: the resolver
+ *    falls through and the receipt goes back to naming a scanned excerpt,
+ *    which is the outcome this whole change exists to remove. That is why the
+ *    exit condition above accepts marker-spelling instability rather than
+ *    treating it as a reason to refuse.
+ *
+ *    No corpus swept now reaches it: 20,640 JSON-shaped inputs across five
+ *    caps refuse none, where round 5 refused 72 of them and round 6's first
+ *    two attempts at the fix refused 31 and 22. If this exit fires again it
+ *    will be on a shape nobody here has seen, and it should be read as a
+ *    defect in this function rather than as the system working.
+ *
+ * An independent verification of the round-4 tree traced every intermediate of
+ * all 22 oscillating cases it found and confirmed no secret appears in any of
+ * them, and that the refusal's fallback is exactly `main`'s behaviour. So the
+ * class this now accepts was measured safe by someone who was not looking for
+ * a reason to accept it.
+ */
+export function normalizeDeclaredCause(
+  value,
+  {
+    maxBytes = DECLARED_CAUSE_BYTE_CAP,
+    // Overridable so the refusal path is reachable by a test with a real
+    // input rather than a synthetic one. No corpus swept has reached the
+    // production cap, which is not the same as no input being able to -- see
+    // the constant's own comment for what happened last time that was stated
+    // as a certainty.
+    maxPasses = MAX_DECLARED_CAUSE_REDACTION_PASSES,
+  } = {},
+) {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  // The partial-marker strip runs ONLY when the bound actually cut something
+  // (round-5 review, L3). Applied unconditionally it edits a declaration the
+  // runner made -- a cause legitimately ending in `[` lost it -- and it was
+  // the sole remaining source of this function's non-idempotence.
+  const boundAndTrim = (text) => {
+    const bounded = longestUtf8Prefix(text, maxBytes);
+    return bounded === text
+      ? bounded.trim()
+      : withoutTrailingMarkerFragments(bounded);
+  };
+  let candidate = boundAndTrim(
+    redactVerificationOutput(withoutAnsi(value).trim()),
+  );
+  for (let attempt = 0; attempt < maxPasses; attempt += 1) {
+    const redacted = redactVerificationOutput(candidate);
+    const next = boundAndTrim(redacted);
+    // Two arms, and both are load-bearing. Each closes a period-1 cycle the
+    // other cannot see, and every one of these was a silent refusal before it
+    // was closed -- the resolver falling through and the receipt going back to
+    // naming a scanned excerpt.
+    //
+    // The first is round 5's: the whole STEP is a fixed point. That covers a
+    // marker whose growth the bound cancels exactly, including the dangling
+    // `{"apiKey":"` an at-cap cut leaves, which the redactor fills with a
+    // marker and the bound removes again.
+    //
+    // The second compares the candidate against its own redaction, BEFORE
+    // re-bounding, with marker runs collapsed. That covers growth no bound
+    // ever cancels: an UNQUOTED JSON value redacts to a marker, after which
+    // the JSON-key rule's value class stops at the closing bracket and every
+    // pass appends one more. `{"apiKey":123}` is fourteen bytes, so the first
+    // arm never fires and round 5 refused it forever (round-6 review, M2).
+    //
+    // Two weaker forms of the second arm were tried and rejected first.
+    // Comparing the RE-BOUNDED value and allowing a prefix relation accepted
+    // 23 values ending in an unredacted `ghp_ABC` -- round 1's leak,
+    // readmitted, because a tail losing a byte per pass looks like
+    // convergence. Gating that on "this pass cut nothing" removed the leak but
+    // left 31 refusals at the production cap, where growth and cut coincide.
+    // Comparing before the bound keeps the bound out of the question entirely:
+    // a secret still to be removed shows up as a difference OUTSIDE a marker
+    // run, and collapsing cannot hide it.
+    if (
+      next === candidate ||
+      withMarkerRunsCollapsed(redacted) === withMarkerRunsCollapsed(candidate)
+    )
+      return candidate.length > 0 ? candidate : null;
+    candidate = next;
+  }
+  return null;
+}
+
 function semanticCandidate(summary, semantic, value) {
   return semantic.key === 'slowItems'
     ? { ...summary, slowItems: [value] }
@@ -351,8 +683,24 @@ function diagnosticSeverity(lines, index) {
  * station#1871, where a `suppressions/unused` warning on line 41 was reported
  * as the cause of a failure a genuine error further down had produced. Falls
  * back to first-match so a capture containing only warnings still reports one.
+ *
+ * `allowWarningFallback: false` withdraws exactly that fallback, and nothing
+ * else. A PASSING run has no cause -- yet a repo whose lint gate tolerates
+ * warnings emits warning-shaped diagnostics on every green run, so the
+ * fallback that rescues a failed warnings-only capture also stamped a
+ * `firstCausalExcerpt` onto passes (station#1459: a green hosted run reported
+ * `scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions`
+ * as its cause). The caller withdraws it only for a run that passed, so the
+ * failed-run behaviour every other test pins is byte-identical.
  */
-function findCausalDiagnostic(lines, { preferLast = false } = {}) {
+function findCausalDiagnostic(
+  lines,
+  {
+    preferLast = false,
+    allowWarningFallback = true,
+    allowFailShaped = true,
+  } = {},
+) {
   // `preferLast` is for STDERR, which carries no step markers. The chain
   // short-circuits, so the failing step's output is the tail; scanning from
   // the end is what keeps an earlier PASSING step's diagnostic-shaped noise
@@ -362,14 +710,81 @@ function findCausalDiagnostic(lines, { preferLast = false } = {}) {
   const order = preferLast ? [...lines.keys()].reverse() : [...lines.keys()];
   let fallback;
   for (const i of order) {
-    if (!isCausalDiagnostic(lines[i])) continue;
+    if (!isCausalDiagnostic(lines[i], { allowFailShaped })) continue;
     if (fallback === undefined) fallback = lines[i];
     if (diagnosticSeverity(lines, i) !== 'warning') return lines[i];
   }
-  return fallback;
+  return allowWarningFallback ? fallback : undefined;
 }
 
 const FAIL_LINE = /^\s*(?:❯\s*)?FAIL\s+\S+/;
+
+/**
+ * The marker `createCompletionOutputCollector` writes in front of each phase's
+ * captured output when it folds a completion lane's phases into ONE parent
+ * capture (verification-completion-phases.mjs).
+ */
+const COMPLETION_PHASE_MARKER = /^\[completion:[^\]]+\]$/;
+
+/**
+ * The last phase region of a folded completion capture, or the whole capture
+ * when it is not one.
+ *
+ * `runCompletionPhaseSequence` returns at the FIRST non-passing phase, so in a
+ * parent capture the failing phase is always the LAST region: every region
+ * before it belongs to a phase that passed. Without this scope, a `FAIL`-shaped
+ * line a PASSING phase happened to echo is found first and reported as the
+ * cause -- the same wrong-phase attribution the npm step boundary already
+ * prevents on stdout.
+ */
+function lastCompletionPhaseRegion(lines) {
+  const index = lines.findLastIndex((line) =>
+    COMPLETION_PHASE_MARKER.test(line),
+  );
+  return index >= 0
+    ? { lines: lines.slice(index), scoped: true }
+    : { lines, scoped: false };
+}
+
+/**
+ * The `FAIL` line a stderr capture attributes to the failing work, or
+ * undefined.
+ *
+ * Two regimes, because stderr has two shapes. A folded completion capture DOES
+ * carry step markers, so the failing phase is identified and first-match
+ * within it is the first failure that phase reported. Everything else carries
+ * none, so position is the only signal there is: the chain short-circuits on
+ * `&&`, making the tail the failing step -- the same `preferLast` bias the
+ * stderr diagnostic scan already applies.
+ */
+function stderrFailLine(stderrLines) {
+  const { lines, scoped } = lastCompletionPhaseRegion(stderrLines);
+  return scoped ? lines.find(isFailLine) : lines.findLast(isFailLine);
+}
+
+/**
+ * Every `FAIL` line in the same scope `stderrFailLine` chose from, with that
+ * winner at index 0 -- the ordering discipline `findAllCausalDiagnostics`
+ * already uses, so this list's head is the same excerpt the singular scan
+ * would have chosen from the same evidence.
+ *
+ * That is a statement about the SCAN, not about the summary's final head
+ * (station#1827). Since #1827 `firstCausalExcerpt` can be a runner-declared
+ * cause that no scan tier here ever returns, so the agreement of
+ * `causalExcerpts[0]` with `firstCausalExcerpt` is maintained by the assembly
+ * site in `summarizeVerificationOutput`, which seeds the list from
+ * `summary.firstCausalExcerpt` itself -- not by this function's ordering.
+ */
+function stderrFailLines(stderrLines) {
+  const winner = stderrFailLine(stderrLines);
+  if (winner === undefined) return [];
+  const { lines } = lastCompletionPhaseRegion(stderrLines);
+  return [winner, ...allFailLines(lines).filter((line) => line !== winner)];
+}
+
+function isFailLine(line) {
+  return FAIL_LINE.test(withoutAnsi(line));
+}
 
 /**
  * Every line in `lines` that names a failing check (a vitest `FAIL <file>`
@@ -384,11 +799,52 @@ function allFailLines(lines) {
   const seen = new Set();
   const matches = [];
   for (const line of lines) {
-    if (!FAIL_LINE.test(line) || seen.has(line)) continue;
+    if (!isFailLine(line) || seen.has(line)) continue;
     seen.add(line);
     matches.push(line);
   }
   return matches;
+}
+
+/** A vitest/playwright test file, never a `FAIL <lane>` aggregate marker. */
+const FAIL_LINE_TEST_FILE =
+  /^\s*(?:❯\s*)?FAIL\s+(\S*\/\S*\.(?:test|spec)\.[cm]?[jt]sx?)\b/;
+
+/**
+ * The test FILES named by the `FAIL <file> > <test>` lines in a captured
+ * stream, in document order, deduplicated.
+ *
+ * Exported because `run-verification.mjs` needs the same extraction against
+ * the persisted stdout/stderr artifacts: a completion-phase parent's receipt
+ * carries phase records, not the per-execution diagnostics attachment that
+ * `failedCheckTestFiles` is otherwise derived from, so without this the one
+ * field that says WHERE to look was empty on exactly the runs that most
+ * needed it (station#1471).
+ *
+ * Deliberately no per-file count: a capture is a bounded prefix and a
+ * persisted stream can be a tail, so a count derived from it would be a
+ * number nothing guarantees. The names are what end the investigation.
+ *
+ * Scoped to the last completion phase region for the same reason
+ * `stderrFailLine` is: naming a file a PASSING phase merely mentioned sends a
+ * reader to innocent code, which is the defect `failedCheckTestFiles` exists
+ * to prevent, not one it may commit.
+ */
+export function failedTestFilesFromCapture(text) {
+  const seen = new Set();
+  const files = [];
+  const { lines } = lastCompletionPhaseRegion(
+    String(text ?? '')
+      .split(/\r?\n/)
+      .map(withoutAnsi),
+  );
+  for (const line of lines) {
+    const match = FAIL_LINE_TEST_FILE.exec(line);
+    if (!match || seen.has(match[1])) continue;
+    seen.add(match[1]);
+    files.push(match[1]);
+  }
+  return files;
 }
 
 /**
@@ -401,17 +857,32 @@ function allFailLines(lines) {
  * itself to `findCausalDiagnostic` rather than reimplementing it, so the two
  * can never disagree about which excerpt is "first".
  */
-function findAllCausalDiagnostics(lines, { preferLast = false } = {}) {
-  const winner = findCausalDiagnostic(lines, { preferLast });
+function findAllCausalDiagnostics(
+  lines,
+  {
+    preferLast = false,
+    allowWarningFallback = true,
+    allowFailShaped = true,
+  } = {},
+) {
+  const winner = findCausalDiagnostic(lines, {
+    preferLast,
+    allowWarningFallback,
+    allowFailShaped,
+  });
+  // Withdrawing the warning fallback above is enough for this function too:
+  // with no winner there is no tier, and when a winner exists under
+  // `allowWarningFallback: false` it is non-warning by construction, so
+  // `hasNonWarning` is true and the tier below excludes warnings anyway.
   if (winner === undefined) return [];
   const hasNonWarning = lines.some(
     (line, index) =>
-      isCausalDiagnostic(line) &&
+      isCausalDiagnostic(line, { allowFailShaped }) &&
       diagnosticSeverity(lines, index) !== 'warning',
   );
   const tier = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (!isCausalDiagnostic(lines[index])) continue;
+    if (!isCausalDiagnostic(lines[index], { allowFailShaped })) continue;
     const severity = diagnosticSeverity(lines, index);
     const inTier = hasNonWarning
       ? severity !== 'warning'
@@ -435,9 +906,18 @@ function findAllCausalDiagnostics(lines, { preferLast = false } = {}) {
  * before a generic diagnostic) and, at whichever tier wins, returns every
  * excerpt that tier observed rather than only the first. Because each branch
  * here calls the exact singular helper the caller also calls, branch
- * selection can never diverge from `firstCausalExcerpt`'s own -- the two are
- * derived from the same evidence, so `causalExcerpts[0]` and
- * `firstCausalExcerpt` describe the same excerpt whenever both exist.
+ * selection can never diverge from the SCANNED half of `firstCausalExcerpt`'s
+ * chain -- the two are derived from the same evidence.
+ *
+ * That is now the whole of the claim (station#1827 review item 6). It used to
+ * conclude that `causalExcerpts[0]` and `firstCausalExcerpt` therefore
+ * describe the same excerpt, and invited a caller to build `causalExcerpts`
+ * straight from this list. Both stopped being safe when a runner-declared
+ * stop cause was allowed to outrank the scan: on an `infrastructure_error`
+ * that carried one, `firstCausalExcerpt` is a value NO tier here returns.
+ * The head agreement is preserved by the assembly site, which seeds the list
+ * with `summary.firstCausalExcerpt` and then appends from this one. A caller
+ * that takes this list's own head instead would silently drop the cause.
  *
  * Deliberately returns only what this one execution's captured output
  * actually contains. It cannot see -- and does not guess at -- a check that
@@ -450,29 +930,56 @@ function allCausalExcerpts({
   failureSection,
   terminal,
   lines,
+  allowWarningFallback = true,
+  reportsCause = true,
 }) {
-  const scopedFailLines = allFailLines(scopedStdout);
+  // Both FAIL tiers are gated by `reportsCause` for the same reason the
+  // warning fallback is: a run this function's inputs all say passed has no
+  // cause to report, and a coloured FAIL line is the ordinary CI shape, so a
+  // passing test that prints one would otherwise become a cause.
+  const scopedFailLines = reportsCause ? allFailLines(scopedStdout) : [];
   if (scopedFailLines.length) return scopedFailLines;
+  // Mirrors the singular chain's station#1471 ordering: a runner's own FAIL
+  // lines, on whichever stream carried them, before any generic diagnostic.
+  const stderrFails = reportsCause ? stderrFailLines(stderrLines) : [];
+  if (stderrFails.length) return stderrFails;
   if (failureSection >= 0) {
     const scoped = findAllCausalDiagnostics(
       scopedStdout.slice(failureSection + 1),
+      { allowWarningFallback, allowFailShaped: reportsCause },
     );
     if (scoped.length) return scoped;
   }
-  const unscoped = findAllCausalDiagnostics(scopedStdout);
+  const unscoped = findAllCausalDiagnostics(scopedStdout, {
+    allowWarningFallback,
+    allowFailShaped: reportsCause,
+  });
   if (unscoped.length) return unscoped;
-  const stderrFailLines = allFailLines(stderrLines);
-  if (stderrFailLines.length) return stderrFailLines;
   const stderrDiagnostics = findAllCausalDiagnostics(stderrLines, {
     preferLast: true,
+    allowWarningFallback,
+    allowFailShaped: reportsCause,
   });
   if (stderrDiagnostics.length) return stderrDiagnostics;
   if (lines.length === 1 && /parser/i.test(terminal.status)) return [lines[0]];
   return [];
 }
 
-function isCausalDiagnostic(line) {
+/**
+ * The `FAIL`-shaped alternative, split out of the interrupted-run shapes below
+ * it so a clean pass can withdraw it alone (station#1471 review).
+ *
+ * It is the one shape in `isCausalDiagnostic` that a PASSING run legitimately
+ * produces: a passing test that prints a FAIL banner of its own. The siblings
+ * it used to share an alternation with (`Process … SIGTERM`, `cleanup failed`,
+ * `No test files`) contradict a clean pass rather than accompanying one, so
+ * they are never withdrawn.
+ */
+const FAIL_SHAPED_DIAGNOSTIC = /^\s*FAIL\b/i;
+
+function isCausalDiagnostic(line, { allowFailShaped = true } = {}) {
   return (
+    (allowFailShaped && FAIL_SHAPED_DIAGNOSTIC.test(line)) ||
     /\b(?:AssertionError|TypeError|ReferenceError|SyntaxError|RangeError|TimeoutError)\b/.test(
       line,
     ) ||
@@ -486,7 +993,7 @@ function isCausalDiagnostic(line) {
     // reported a `noUselessFragments` WARNING from an untouched file as the
     // cause. Same defect as the FIXABLE blind spot, a different header shape.
     /^\S+\s+format\s+━/.test(line) ||
-    /^\s*(?:FAIL\b|Process\b.*\bSIGTERM\b|cleanup failed\b|No test files\b)/i.test(
+    /^\s*(?:Process\b.*\bSIGTERM\b|cleanup failed\b|No test files\b)/i.test(
       line,
     ) ||
     /^\s*\d+\)\s+\[[^\]]+\]\s+›\s+\S+\.spec\.[jt]s\b/.test(line)
@@ -521,12 +1028,34 @@ export function captureBoundedOutput(
   };
 }
 
+/**
+ * @param {{
+ *   stdout?: string,
+ *   stderr?: string,
+ *   terminal: { status: string, exitCode?: number | null, truncated?: boolean },
+ *   counts: Record<string, number>,
+ *   cleanup: { status: string, survivingOwnedChildren?: number },
+ *   infrastructureCause?: string,
+ *   maxBytes?: number,
+ * }} options
+ *   `infrastructureCause` must ALREADY have been through
+ *   `normalizeDeclaredCause`; this function uses it verbatim and does not
+ *   redact, trim or bound it (station#1827 fix round 2 -- one derivation, not
+ *   two that agree).
+ *   `terminal`, `counts` and `cleanup` are required at runtime (the function
+ *   throws without each of them). This annotation exists for the same reason
+ *   `persistVerificationOutput`'s does: tsconfig.scripts.json runs with
+ *   checkJs:false, where tsc otherwise infers the parameter type from
+ *   initialized properties only, so a .ts importer sees a shape missing every
+ *   required field (TS2353 on every correct call site).
+ */
 export function summarizeVerificationOutput({
   stdout = '',
   stderr = '',
   terminal,
   counts,
   cleanup,
+  infrastructureCause,
   maxBytes = DEFAULT_SUMMARY_BYTE_CAP,
 } = {}) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 64)
@@ -547,10 +1076,28 @@ export function summarizeVerificationOutput({
   // TypeError logged by a PASSING test could be reported as the cause of a
   // failure in a later step while `failingStep` correctly named that later
   // step. Two fields contradicting each other, with nothing to reconcile them.
-  const stdoutLines = redactVerificationOutput(String(stdout))
+  //
+  // station#1471: the terminal escape bytes come off BEFORE the redaction
+  // boundary, and for two independent reasons.
+  //
+  //  - Every `^`-anchored matcher below reads these lines: the `FAIL <file>`
+  //    banner, biome's `path:line:col rule ━` header and the `×`/`!` severity
+  //    markers under it, tsc's `(l,c): error TSxxxx`. CI colours all of them,
+  //    so an escape sequence sits in front of the first visible character and
+  //    the anchor never matches — silently, and only on hosted runs, because
+  //    every fixture here is plain text.
+  //  - A secret SPLIT by an escape sequence (`ghp_` + 20 chars, `ESC[0m`, 20
+  //    more) is not a token the redactor can recognise while the escape is in
+  //    the middle of it. Stripping AFTER redaction would reconstitute exactly
+  //    that secret into the excerpt. Stripping first means the redactor sees
+  //    the same text the matchers do.
+  //
+  // The persisted artifacts are untouched: `persistVerificationOutput` redacts
+  // and stores the capture as it arrived, colour and all.
+  const stdoutLines = redactVerificationOutput(withoutAnsi(String(stdout)))
     .split(/\r?\n/)
     .filter(Boolean);
-  const stderrLines = redactVerificationOutput(String(stderr))
+  const stderrLines = redactVerificationOutput(withoutAnsi(String(stderr)))
     .split(/\r?\n/)
     .filter(Boolean);
   const lines = [...stdoutLines, ...stderrLines];
@@ -560,11 +1107,19 @@ export function summarizeVerificationOutput({
   const scopedStdout = stepBoundary
     ? stdoutLines.slice(stepBoundary.index)
     : stdoutLines;
-  // STDERR cannot be attributed the same way -- it carries no step markers at
-  // all. What IS structurally true is the ORDER: the chain short-circuits on
-  // `&&`, so the failing step's stderr is the TAIL. Among equally-ranked
-  // candidates the last one is therefore the one most likely to belong to the
-  // step that failed, which is why stderr is searched from the end.
+  // STDERR usually cannot be attributed the same way: npm writes its `> pkg
+  // script` headers to stdout only, so a chained `a && b` capture carries no
+  // step markers on stderr at all. What IS structurally true there is the
+  // ORDER: the chain short-circuits on `&&`, so the failing step's stderr is
+  // the TAIL. Among equally-ranked candidates the last one is therefore the
+  // one most likely to belong to the step that failed, which is why stderr is
+  // searched from the end.
+  //
+  // station#1471 corrects that as a blanket claim. A COMPLETION lane's parent
+  // capture is folded by `createCompletionOutputCollector`, which writes a
+  // `[completion:<phase-id>]` marker in front of each phase's stderr — so that
+  // shape is attributable after all, and `lastCompletionPhaseRegion` uses it.
+  // The position heuristic remains the rule for every other capture.
   const failureSection = scopedStdout.findLastIndex((line) =>
     /(?:Failed Tests|Test Failures|Failures\s+\d+)/i.test(line),
   );
@@ -572,19 +1127,134 @@ export function summarizeVerificationOutput({
   // excerpt when present. Ambient stderr (app logs) previously matched the
   // generic diagnostic pattern first and masked the real failure
   // (station#2591).
-  const failLineIn = (candidates) =>
-    candidates.find((line) => FAIL_LINE.test(line));
+  const failLineIn = (candidates) => candidates.find(isFailLine);
+  // Hoisted above the causal scan (it also gates `failingStep` further down,
+  // where it was originally computed) because a PASSING run must not report a
+  // cause at all. It is one conjunct of `observedClean` below; `failingStep`
+  // reads it alone. The two fields can therefore disagree, by design, in
+  // exactly the under-approximated cases: a run that `completed` with exit 0
+  // but failed cleanup or counts names no failing step yet still reports its
+  // causal excerpt.
+  const exitedNonZero =
+    typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
+  // station#1459: the fallback that rescues a FAILED warnings-only capture is
+  // withdrawn on a pass, and only there. Station's lint gate tolerates
+  // warnings, so a green hosted run emits warning-shaped diagnostics every
+  // time; the fallback turned one of them into `firstCausalExcerpt` on runs
+  // that had no cause to report. An ERROR-tier diagnostic is still reported
+  // if one is somehow present on a pass -- that is a genuine contradiction
+  // worth surfacing, not noise to suppress.
+  //
+  // What follows is NOT the receipt's verdict and must not be read as one.
+  // `classifyTerminal` (verification-receipt.mjs) additionally requires stable
+  // provenance and the full counts identity (`executed > 0`, `passed ===
+  // executed`), neither of which this function is given. It is deliberately a
+  // conservative UNDER-approximation of that pass predicate: every input it
+  // can see must be clean before the fallback is withdrawn, so anything it
+  // cannot see can only leave the fallback in place. A run this thinks is
+  // clean but the receipt fails therefore still reports its warning; a run
+  // with a failed count, a failed cleanup, or a surviving owned child keeps
+  // its cause even though the status says `completed`.
+  const cleanupStatus =
+    typeof cleanup.status === 'string' ? cleanup.status : null;
+  const observedClean =
+    terminal.status === 'completed' &&
+    !exitedNonZero &&
+    counts.failed === 0 &&
+    counts.infrastructureErrors === 0 &&
+    (cleanupStatus === 'passed' || cleanupStatus === 'not_required') &&
+    (cleanup.survivingOwnedChildren ?? 0) === 0;
+  const allowWarningFallback = !observedClean;
+  // The SAME observation as `allowWarningFallback`, named for the other job it
+  // does. station#1471 review: the FAIL tiers below bypassed the pass check
+  // entirely, and a coloured FAIL line is the ordinary CI shape — so once FAIL
+  // matching stopped being defeated by colour, a GREEN run containing a
+  // passing test that PRINTS a FAIL-shaped line would have reported a cause
+  // and rendered a "Causal excerpts" block for it. A passing run reports no
+  // cause, on either stream.
+  //
+  // Withdrawn here for the FAIL tiers only. `findCausalDiagnostic`'s
+  // error-tier behaviour on a claimed pass is deliberately untouched: an
+  // error-tier diagnostic on a run that claims success is a contradiction a
+  // reader needs to see, and a test pins it (station#1459).
+  const reportsCause = !observedClean;
   // Attributable evidence outranks unattributable evidence. A candidate from
   // the scoped stdout provably came from the failing step; a stderr candidate
   // only probably did.
+  //
+  // station#1471 moves the STDERR fail-line probe up here, directly behind
+  // stdout's, ahead of every generic diagnostic. A `FAIL <file> > <test>`
+  // line is not unattributable evidence that merely correlates with the
+  // failure: it IS the failure, named by the runner that observed it. Leaving
+  // it below `findCausalDiagnostic(scopedStdout)` meant a hosted shard whose
+  // FAIL block goes to stderr (vitest writes its failure banner there)
+  // reported an ambient `SyntaxError` log line emitted by a PASSING test in
+  // the same shard as the cause. Attributability still orders everything
+  // else; it does not outrank a runner's own verdict.
+  //
+  // station#1827: one thing does outrank attributability, and it is not a
+  // scan result at all. When the RUNNER ITSELF stops a lane it prints a
+  // structured owner-final line naming its own reason (`ci:fast exceeded its
+  // 12-minute feedback budget`), and `ciFastInfrastructureCause` in
+  // `verification-execution-lifecycle.mjs` recovers exactly that line's
+  // payload. On the ordinary reporting path that value was computed and then
+  // discarded, so a budget kill reported whichever `Error:`-shaped line the
+  // scan happened to reach -- on PR #1787 that was `Error: observer failed`,
+  // a string a PASSING knowledge-store test prints on purpose, named as the
+  // cause of a lane nothing in that test had stopped.
+  //
+  // It wins because it is not evidence that CORRELATES with the stop: it is
+  // the stopping component naming its own reason. Deliberately admitted for
+  // exactly one terminal, `infrastructure_error` -- the one it describes.
+  // An ordinary `failed` lane's cause is still the scanned diagnostic, and
+  // every branch below it is byte-identical for every other status.
+  //
+  // It is not matched out of the capture by `isCausalDiagnostic`, and must
+  // not be: the prefix is a contract the runner owns, so reading it as one
+  // more incidental log shape would make a scan the only mechanism holding
+  // up a structured claim. The scan stays the second line, never the only
+  // one -- the excerpts it found are still reported, ranked below this.
+  //
+  // Used EXACTLY as given, never re-derived (station#1827 fix round 2). The
+  // caller normalizes once through `normalizeDeclaredCause` and hands the same
+  // string here and to the receipt writer, so the two artifacts hold one
+  // value rather than two derivations that have to agree. Re-normalizing here
+  // is what made them disagree, and it still would: the function is not
+  // idempotent -- its second exit arm returns a value the redactor would
+  // still append to -- so re-running it here would move the summary's copy
+  // away from the receipt's. One derivation is the design, and it does not
+  // rest on the function having any particular behaviour under a second
+  // application.
+  //
+  // The admission test is deliberately shape-only. A `.trim()` or a redaction
+  // pass here would be a second derivation wearing the clothes of a safety
+  // net -- the safety net is that `normalizeDeclaredCause` is the only way a
+  // value reaches this parameter in production.
+  const ownerFinalCause =
+    terminal.status === 'infrastructure_error' &&
+    typeof infrastructureCause === 'string' &&
+    infrastructureCause.length > 0
+      ? infrastructureCause
+      : null;
   const firstCausalExcerpt =
-    failLineIn(scopedStdout) ??
+    ownerFinalCause ??
+    (reportsCause ? failLineIn(scopedStdout) : undefined) ??
+    (reportsCause ? stderrFailLine(stderrLines) : undefined) ??
     (failureSection >= 0
-      ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1))
+      ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1), {
+          allowWarningFallback,
+          allowFailShaped: reportsCause,
+        })
       : null) ??
-    findCausalDiagnostic(scopedStdout) ??
-    failLineIn(stderrLines) ??
-    findCausalDiagnostic(stderrLines, { preferLast: true }) ??
+    findCausalDiagnostic(scopedStdout, {
+      allowWarningFallback,
+      allowFailShaped: reportsCause,
+    }) ??
+    findCausalDiagnostic(stderrLines, {
+      preferLast: true,
+      allowWarningFallback,
+      allowFailShaped: reportsCause,
+    }) ??
     (lines.length === 1 && /parser/i.test(terminal.status) ? lines[0] : null);
   // station#4249: the plural companion, derived from the SAME branch that won
   // above (see `allCausalExcerpts`'s doc comment for why the two can never
@@ -598,6 +1268,8 @@ export function summarizeVerificationOutput({
     failureSection,
     terminal,
     lines,
+    allowWarningFallback,
+    reportsCause,
   });
   // Emitted ONLY when the excerpt came from stderr, which is the case a reader
   // needs warning about: stderr carries no step markers, so that excerpt was
@@ -609,45 +1281,38 @@ export function summarizeVerificationOutput({
   // follows. It also keeps the field out of the byte budget on a tight cap,
   // where carrying it cost the run its `finalTally`: a caveat that displaces
   // measured truth is a bad trade.
+  //
+  // station#1827: withheld for the owner-final cause even though that line
+  // did arrive on stderr, because this field is not a provenance stamp -- it
+  // is a caveat about HOW the excerpt was chosen, and the sentence
+  // `verification-gate-summary.mjs` renders for it says the excerpt "was
+  // picked by severity and position". Nothing picked the owner cause: the
+  // runner declared it. Stamping the caveat would print a false sentence;
+  // absence says the excerpt was not chosen off an unattributed stream,
+  // which is exactly true of a cause its own runner named.
   const causeStream =
-    firstCausalExcerpt && !scopedStdout.includes(firstCausalExcerpt)
+    !ownerFinalCause &&
+    firstCausalExcerpt &&
+    !scopedStdout.includes(firstCausalExcerpt)
       ? 'stderr'
       : null;
-  // What this computes, stated as narrowly as it is true: the last npm step
-  // header present in the capture is the step that was still RUNNING when the
-  // process exited. For a chain of `&&` (every script in this repo is one --
-  // checked for `;`, `||`, background `&`, concurrently and --if-present) a
-  // non-zero exit means that step is also the one that failed. Under
-  // `canceled` or `timed_out` nothing failed at all; the field still names the
-  // step that was in flight, which is the useful thing to know, but a reader
-  // must not read it as blame.
-  //
-  // Two cases where it would be a false claim, both suppressed rather than
-  // qualified (review of station#1871):
-  //
-  //  - TRUNCATED captures. On overflow the retained text is the first 3 MiB
-  //    PREFIX and the child keeps running, so the last header in that prefix
-  //    belongs to a step that completed fine -- it is simply where the tape
-  //    ran out. Naming it would accuse a passing step.
-  //  - A terminal status of `completed` carrying a non-zero exit code. That
-  //    is a real non-pass, and testing `status !== 'completed'` alone would
-  //    stay silent on exactly the run a reader needs the field for.
-  const exitedNonZero =
-    typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
-  // The step is reported under a name that matches what the status actually
-  // claims. Under `timed_out` or `canceled` nothing failed -- the note above
-  // says as much, and asked the reader not to read `failingStep` as blame.
-  // A field named `failingStep` cannot carry that instruction: the name IS the
-  // claim, and readers acted on it. It is now `inFlightStep` for those
-  // statuses, which says the true and still-useful thing (this is the step
-  // that was running when the clock ran out) without accusing it.
-  //
-  // The carve-out is exactly the two statuses that mean the run was STOPPED.
-  // `failed` and `infrastructure_error` are non-passing terminal states that
-  // did reach a verdict, so they keep naming a failing step as before; only a
-  // clock or a signal produces a step that was merely in flight.
+  // A final npm header identifies a failed leaf only in a short-circuit
+  // chain. Completed keep-going summaries supersede that inference: their
+  // final child may have passed. Preserve the declared causal excerpts, and
+  // omit leaf attribution until a later independent npm step starts.
+  const aggregateSummaryIndex = stdoutLines.findLastIndex(
+    (line) =>
+      line === '════ Playwright coverage summary ════' ||
+      /^(?:OK: \S+ -- all \d+ lane\(s\) passed\.|FAIL: \S+ -- \d+ of \d+ lane\(s\) failed:)/.test(
+        line,
+      ),
+  );
   const attributableStep =
-    stepBoundary && !terminal.truncated ? stepBoundary.step : null;
+    stepBoundary &&
+    !terminal.truncated &&
+    stepBoundary.index > aggregateSummaryIndex
+      ? stepBoundary.step
+      : null;
   const stopped = STOPPED_TERMINAL_STATUSES.has(terminal.status);
   const failingStep =
     attributableStep &&
@@ -742,6 +1407,45 @@ export function summarizeVerificationOutput({
     if (!fitsSummary(candidate, maxBytes)) break;
     summary.slowItems = candidate.slowItems;
   }
+  // station#1827 review item 7: the marker that says HOW the head excerpt was
+  // selected. `causeStream` is withheld for a runner-declared cause (its
+  // rendered sentence would be false), and withholding it left nothing at all
+  // -- a declared cause rendered byte-identically to a scanned one in the CI
+  // annotation and the printed verdict.
+  //
+  // Additive and lowest-priority, like `causalExcerpts` below: it never
+  // displaces the excerpt it qualifies. That direction is deliberate and is
+  // the OPPOSITE of `causeStream`'s. Dropping `causeStream` under a tight cap
+  // manufactured the stronger claim, so it takes its budget first; dropping
+  // this one leaves a reader assuming the excerpt was scanned, which is the
+  // weaker claim. An understated diagnostic is a safe cut; an overstated one
+  // is not. The receipt's own `terminal.infrastructureCause` is never subject
+  // to this budget and keeps the full-length record; nothing re-stamps this
+  // field from there, because a marker is a claim about the excerpt beside it
+  // and a rendering without that excerpt has nothing to qualify.
+  //
+  // Its value is deliberately `summary.firstCausalExcerpt` -- the
+  // ALREADY-TRUNCATED field, not the raw cause -- for the same reason
+  // `causalExcerpts` seeds its head from it below: two fields in one summary
+  // describing the same declaration must not hold different text.
+  //
+  // Stated honestly, that last part is a guarantee by construction and not one
+  // this suite can observe, even after the round-2 fix that stopped
+  // `boundedControlResult` overwriting it. Sweeping every cap from 180 to 3000
+  // bytes finds NO cap at which the marker is present while the excerpt was
+  // cut -- `promoteSemantic` spends the remaining budget on the excerpt, so a
+  // cap tight enough to truncate it is already too tight for this field.
+  // Written this way anyway: the alternative depends on that allocation order
+  // staying as it is, and a field added above could make the two diverge
+  // silently.
+  if (ownerFinalCause && summary.firstCausalExcerpt) {
+    const candidate = {
+      ...summary,
+      infrastructureCause: summary.firstCausalExcerpt,
+    };
+    if (fitsSummary(candidate, maxBytes))
+      summary.infrastructureCause = summary.firstCausalExcerpt;
+  }
   // station#4249: `causalExcerpts` is additive and strictly lower-priority
   // than every field above -- it is appended last and never displaces an
   // existing field's budget, which is what keeps `firstCausalExcerpt` (and
@@ -826,6 +1530,37 @@ export function persistVerificationOutput({
     streams,
     truncated: streams.stdout.truncated || streams.stderr.truncated,
   };
+}
+
+/** Persists one bounded redacted diagnostic through the receipt attachment path. */
+export function persistVerificationDiagnosticAttachment({
+  root,
+  requestKey,
+  contents,
+  artifacts = [],
+  maxBytes = 8 * 1024,
+} = {}) {
+  if (!root || !REQUEST_KEY.test(requestKey ?? ''))
+    throw new Error('root and lowercase sha256 requestKey are required');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+    throw new Error('diagnostic attachment maxBytes must be positive');
+  const redacted = redactVerificationOutput(String(contents ?? ''));
+  const redactedBytes = Buffer.byteLength(redacted);
+  if (redactedBytes > maxBytes)
+    throw new Error('diagnostic attachment exceeds byte cap');
+  let attachmentBytes = 0;
+  for (const artifact of artifacts) {
+    if (!artifact?.path?.includes('/attachment-')) continue;
+    attachmentBytes += readVerifiedVerificationArtifact({
+      root,
+      artifact,
+    }).length;
+  }
+  if (attachmentBytes + redactedBytes > MAX_ATTACHMENT_TOTAL_BYTES)
+    throw new Error('diagnostic attachment exceeds total attachment cap');
+  const path = artifactPath(requestKey, 'attachment', redacted);
+  writeReceiptSecurely(path, redacted, root);
+  return { path, sha256: digest(redacted) };
 }
 
 export function persistPlaywrightAttachments({

@@ -1,7 +1,9 @@
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import type { ComponentType } from 'react';
 import {
+  AgentGlyph,
   BoardGlyph,
+  BranchGlyph,
   ChartGlyph,
   CheckGlyph,
   CodeGlyph,
@@ -13,6 +15,7 @@ import {
   GlobeGlyph,
   HomeGlyph,
   MessageGlyph,
+  PhoneGlyph,
   PinGlyph,
   PlayGlyph,
   ShieldGlyph,
@@ -34,8 +37,12 @@ type PaneGlyphComponent = ComponentType<{ className?: string }>;
  * renderer-name union means registering a new built-in renderer without
  * choosing its tile glyph fails to typecheck.
  *
- * Plugin/MCP panes are untouched: their descriptors carry their own `icon`
- * or `previewImage`, which the card prefers over anything here.
+ * Plugin/MCP panes are not keyed here: their descriptors carry their own
+ * `icon` or `previewImage`, which the card prefers over anything in this map.
+ * One that carries NEITHER is not left to spell a letter either — #1536 E8
+ * gave the card a contributed-pane glyph for that case, so `null` from
+ * `builtinWorkspacePaneGlyph` now means "not a built-in tile", never "render
+ * the name's first character".
  */
 const BUILTIN_PANE_GLYPHS = {
   'flow-run-console': PlayGlyph,
@@ -50,8 +57,18 @@ const BUILTIN_PANE_GLYPHS = {
   'workspace-trust': ShieldGlyph,
   'workspace-browser-preview': GlobeGlyph,
   'workspace-file-preview': DocumentGlyph,
+  // A branch, not the Diff pane's glyph: a pull-request pane and the Diff
+  // pane are two tiles a reader chooses between (#2049).
+  'workspace-pull-request': BranchGlyph,
+  // The sidebar's Boards glyph: a docked Board or project Layout is the
+  // same object the sidebar's pill names (#2157).
+  'workspace-layout': BoardGlyph,
   'workspace-home': HomeGlyph,
   'workspace-activity': ChartGlyph,
+  'workspace-agents': AgentGlyph,
+  // A handset, not the Browser Preview globe: the tile names a simulator
+  // or emulator screen, not a page (#1969).
+  'workspace-device': PhoneGlyph,
   'workspace-spatial-board': PinGlyph,
   'workspace-board': BoardGlyph,
   'workspace-basis': DatabaseGlyph,
@@ -60,7 +77,7 @@ const BUILTIN_PANE_GLYPHS = {
 /**
  * The tile glyph for a built-in pane renderer, or `null` for anything this
  * build does not positively recognise (plugin/MCP renderers, unknown names) —
- * callers keep their existing fallback for those.
+ * callers own the fallback for those.
  */
 export function builtinWorkspacePaneGlyph(
   renderer: WorkspacePaneDescriptor['renderer'] | undefined,

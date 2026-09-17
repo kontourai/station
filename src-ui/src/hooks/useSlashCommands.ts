@@ -9,6 +9,10 @@ import { useAgents } from '../contexts/AgentsContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import type { BindingStatus } from '../utils/execution';
 import {
+  modelIdentityLabel,
+  type SelectableModel,
+} from '../utils/modelCapabilities';
+import {
   agentCommandSkills,
   declaredSkillCommandWord,
 } from '../utils/skill-commands';
@@ -62,16 +66,6 @@ export function mergeSlashCommandSources(
   });
 }
 
-function getModelDisplayName(modelId: string): string {
-  if (modelId.includes('claude-3-7-sonnet')) return 'Claude 3.7 Sonnet';
-  if (modelId.includes('claude-3-5-sonnet-20241022'))
-    return 'Claude 3.5 Sonnet v2';
-  if (modelId.includes('claude-3-5-sonnet')) return 'Claude 3.5 Sonnet';
-  if (modelId.includes('claude-3-opus')) return 'Claude 3 Opus';
-  if (modelId.includes('claude-3-haiku')) return 'Claude 3 Haiku';
-  return modelId;
-}
-
 export function useSlashCommands(
   agentSlug: string | null,
   // Only `.model` is read below — accept any object shaped like a slice of
@@ -79,6 +73,14 @@ export function useSlashCommands(
   // satisfies this structurally without widening back to the full session).
   chatState?: Pick<ChatUIState, 'model'> | null,
   bindingStatus?: BindingStatus,
+  /**
+   * The model catalog this chat can select from (#1536 review M5). Without it
+   * the `/model` row named an unresolved engine default "Default" while the
+   * composer pill and the dock header, reading the same rule WITH the catalog,
+   * named the concrete model it resolves to — one rule, two answers, because
+   * one caller withheld an input.
+   */
+  availableModels: readonly SelectableModel[] = [],
 ) {
   const agents = useAgents();
   const { data: skills } = useSkillsQuery();
@@ -105,7 +107,13 @@ export function useSlashCommands(
 
   const catalog = useMemo(() => {
     const currentModelId = chatState?.model || currentAgent?.model || '';
-    const modelDisplayName = getModelDisplayName(currentModelId);
+    // #1536 B5: the shared identity rule, not a fourth private table — this
+    // one hardcoded five Claude 3 ids and handed back the raw id for
+    // everything else.
+    const modelDisplayName = modelIdentityLabel(
+      currentModelId,
+      availableModels,
+    );
     const modelSource = chatState?.model
       ? chatState.model !== currentAgent?.model
         ? 'session override'
@@ -159,8 +167,11 @@ export function useSlashCommands(
     const builtinModel: SlashCommand[] = [
       {
         cmd: '/model',
-        description: `Select session model (${modelDisplayName || 'Model not reported'} · ${modelSource})`,
-        currentModel: modelDisplayName || 'Model not reported',
+        // `modelIdentityLabel` never returns empty — it answers "Model not
+        // reported" for an absent id itself — so the old `|| 'Model not
+        // reported'` fallbacks were unreachable.
+        description: `Select session model (${modelDisplayName} · ${modelSource})`,
+        currentModel: modelDisplayName,
       },
     ];
 
@@ -261,6 +272,7 @@ export function useSlashCommands(
   }, [
     agentSlug,
     acpCommands,
+    availableModels,
     currentAgent,
     isAcp,
     skills,

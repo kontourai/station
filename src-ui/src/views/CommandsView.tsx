@@ -64,6 +64,7 @@ export function CommandsView() {
     activeAgent?.slug ?? null,
     activeChat,
     bindingStatus,
+    models,
   );
 
   function stageInChat(command: string) {

@@ -1,3 +1,18 @@
+import type {
+  PluginInstallationRevision,
+  PluginManifest,
+} from '@kontourai/station-contracts/plugin';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
+import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
+import {
+  isRegistryAcquisitionRefusal,
+  registryAcquisitionRefusalDetails,
+} from '../../services/plugins/registry-acquisition.js';
+import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import { isRecord } from '../../utils/is-record.js';
+import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
  * from pluggable registry providers.
@@ -28,6 +43,13 @@ import {
   isPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
+import {
+  installPluginFromSource,
+  type PluginLifecycleEventBus,
+  readRegistryPluginAvailability,
+  resolvePluginRegistryInstall,
+  uninstallInstalledPlugin,
+} from '../../services/plugins/plugin-install-transaction.js';
 import { registryOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -45,14 +67,28 @@ import {
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
 import {
-  installPluginFromSource,
-  type PluginLifecycleEventBus,
-  readRegistryPluginAvailability,
-  resolvePluginRegistryInstall,
-  uninstallInstalledPlugin,
-} from './plugin-install-shared.js';
+  operatorOnly,
+  type PluginPrincipalResolution,
+  projectLayoutCatalogItems,
+} from './plugin-identity-enumeration.js';
 
 interface RegistryRouteDeps {
+  /**
+   * Caller resolution for the operator-only plugin-catalog routes (#2067).
+   * Absent means this composition is not serving authenticated HTTP callers,
+   * and those routes refuse rather than enumerate.
+   */
+  visibility?: PluginPrincipalResolution;
+  /**
+   * Whether the request's caller may see a named plugin (#2067), for the
+   * PROJECTED members of this file (the layout catalog). Absent means this
+   * composition has no caller to project onto and nothing is narrowed — the
+   * same convention the Pane catalogue uses.
+   */
+  canSeePlugin?: (c: Context, pluginId: string) => boolean;
+  installationHost?: PluginInstallationHost;
+  registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   applyConfigurationMutation?: AgentConfigurationMutationRunner;
   approveKitOperatorAction?: (
     candidate: StationKitMutationCandidate,
@@ -103,10 +139,17 @@ export function createRegistryRoutes(
     deps?.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
   const pluginInstallDeps = deps
     ? {
+        registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
+        packageMcpJournal: deps.packageMcpJournal,
+        installationHost: deps.installationHost,
         agentsDir: join(projectHomeDir, 'agents'),
-        buildPlugin: async (pluginDir: string, name: string) => {
+        buildPlugin: async (
+          pluginDir: string,
+          name: string,
+          manifest?: PluginManifest,
+        ) => {
           const { buildPlugin } = await import('./plugin-bundles.js');
-          return buildPlugin(pluginDir, name, deps.logger);
+          return buildPlugin(pluginDir, name, deps.logger, manifest);
         },
         eventBus: deps.eventBus,
         logger: deps.logger,
@@ -208,9 +251,24 @@ export function createRegistryRoutes(
   // ── Layout Catalog ─────────────────────────────────────
   // Listing is local-only. Registry sources are policy declarations and never
   // authorize a fetch, install, or plugin execution merely by being visible.
+  // #2067: projected. A plugin-contributed layout carries the plugin's name,
+  // its `plugins/<name>` source and its contribution provenance, so an
+  // unprojected catalog is the plugin inventory wearing a layout shape.
+  // Narrowed rather than refused because applying a layout is something a
+  // collaborator legitimately does.
+  const seeableLayouts = (c: Context) =>
+    deps?.canSeePlugin
+      ? (pluginId: string) => deps.canSeePlugin!(c, pluginId)
+      : undefined;
   app.get('/layouts', (c) => {
     registryOps.add(1, { operation: 'list-layouts', outcome: 'success' });
-    return c.json({ success: true, data: layoutCatalog.listLayouts() });
+    return c.json({
+      success: true,
+      data: projectLayoutCatalogItems(
+        layoutCatalog.listLayouts(),
+        seeableLayouts(c),
+      ),
+    });
   });
 
   app.get('/layouts/installed', (c) => {
@@ -220,7 +278,10 @@ export function createRegistryRoutes(
     });
     return c.json({
       success: true,
-      data: layoutCatalog.listInstalledLayouts(),
+      data: projectLayoutCatalogItems(
+        layoutCatalog.listInstalledLayouts(),
+        seeableLayouts(c),
+      ),
     });
   });
 
@@ -304,16 +365,28 @@ export function createRegistryRoutes(
           500,
         );
       }
-      const removed = await uninstallInstalledPlugin(
-        item.plugin,
-        pluginInstallDeps,
+      const mutation = await captureConfigurationMutation(
+        deps?.applyConfigurationMutation,
+        async (beginMutation) =>
+          uninstallInstalledPlugin(item.plugin!, {
+            ...pluginInstallDeps,
+            beginConfigurationMutation: beginMutation,
+          }),
+        { rediscoverSkills: true },
       );
       registryOps.add(1, {
         operation: 'remove-layout',
         source: 'plugin',
-        outcome: removed.success ? 'success' : 'failed',
+        outcome: mutation.value.success ? 'success' : 'failed',
       });
-      return c.json(removed, removed.success ? 200 : 500);
+      return c.json(
+        {
+          ...mutation.value,
+          success: mutation.activation?.status !== 'pending',
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
     } catch (error: unknown) {
       registryOps.add(1, { operation: 'remove-layout', outcome: 'rejected' });
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -328,11 +401,19 @@ export function createRegistryRoutes(
     return c.json({ success: true, data: items });
   });
 
-  app.get('/agents/installed', async (c) => {
-    registryOps.add(1, { operation: 'list-agents-installed' });
-    const items = await getAgentRegistryProvider().listInstalled();
-    return c.json({ success: true, data: items });
-  });
+  // #2067: operator-only. Rows carry `installedPluginName` — the installed
+  // plugin inventory keyed by agent rather than by plugin.
+  app.get(
+    '/agents/installed',
+    operatorOnly(
+      deps?.visibility,
+      'list installed registry agents',
+    )(async (c) => {
+      registryOps.add(1, { operation: 'list-agents-installed' });
+      const items = await getAgentRegistryProvider().listInstalled();
+      return c.json({ success: true, data: items });
+    }),
+  );
 
   app.post(
     '/agents/install',
@@ -400,6 +481,7 @@ export function createRegistryRoutes(
               await deps?.settleProviderAdapterRetirements?.();
               return removed;
             },
+            { rediscoverSkills: true },
           );
           if (mutation.value.success) {
             try {
@@ -465,11 +547,18 @@ export function createRegistryRoutes(
     return c.json({ success: true, data: items });
   });
 
-  app.get('/integrations/installed', async (c) => {
-    registryOps.add(1, { operation: 'list-integrations-installed' });
-    const items = await getIntegrationRegistryProvider().listInstalled();
-    return c.json({ success: true, data: items });
-  });
+  // #2067: operator-only, same shape and same reason as the agent twin.
+  app.get(
+    '/integrations/installed',
+    operatorOnly(
+      deps?.visibility,
+      'list installed registry integrations',
+    )(async (c) => {
+      registryOps.add(1, { operation: 'list-integrations-installed' });
+      const items = await getIntegrationRegistryProvider().listInstalled();
+      return c.json({ success: true, data: items });
+    }),
+  );
 
   app.post(
     '/integrations/install',
@@ -617,21 +706,36 @@ export function createRegistryRoutes(
 
   // ── Plugin Registry ──────────────────────────────────────
 
-  app.get('/plugins', async (c) => {
-    registryOps.add(1, { operation: 'list-plugins' });
-    const items = await readRegistryPluginAvailability(
-      configLoader.getProjectHomeDir(),
-    );
-    return c.json({ success: true, data: items });
-  });
+  // #2067: both are operator-only. Each row carries an `installed` flag, so
+  // the catalog face is the instance's plugin inventory restated against a
+  // registry, and `/installed` is that inventory with nothing around it.
+  // Installing is operator work, so there is no projected half-answer worth
+  // giving — see PLUGIN_IDENTITY_ROUTES.
+  const asOperator = operatorOnly(
+    deps?.visibility,
+    'browse the plugin registry',
+  );
+  app.get(
+    '/plugins',
+    asOperator(async (c) => {
+      registryOps.add(1, { operation: 'list-plugins' });
+      const items = await readRegistryPluginAvailability(
+        configLoader.getProjectHomeDir(),
+      );
+      return c.json({ success: true, data: items });
+    }),
+  );
 
-  app.get('/plugins/installed', async (c) => {
-    registryOps.add(1, { operation: 'list-plugins-installed' });
-    const items = (
-      await readRegistryPluginAvailability(configLoader.getProjectHomeDir())
-    ).filter((item: any) => item.installed);
-    return c.json({ success: true, data: items });
-  });
+  app.get(
+    '/plugins/installed',
+    asOperator(async (c) => {
+      registryOps.add(1, { operation: 'list-plugins-installed' });
+      const items = (
+        await readRegistryPluginAvailability(configLoader.getProjectHomeDir())
+      ).filter((item: any) => item.installed);
+      return c.json({ success: true, data: items });
+    }),
+  );
 
   /**
    * The one registry install path for PLUGINS, whichever catalog face listed
@@ -649,15 +753,34 @@ export function createRegistryRoutes(
     c: Context,
     body: {
       id: string;
+      dataPolicy?: 'preserve' | 'retain-and-reset';
+      expectedInstallation?: PluginInstallationRevision | null;
       skip?: string[];
       consent?: {
+        grantRevision?: string;
+        registryTrustRevision?: string;
         permissions: string[];
         contentDigest: string;
         dependencies?: string[];
+        dependencyApprovals?: Array<{
+          id: string;
+          grantRevision?: string;
+          registryTrustRevision?: string;
+          permissions: string[];
+          contentDigest: string;
+          dependencies: string[];
+        }>;
       };
     },
   ) => {
-    const { id, skip, consent: consentBody } = body;
+    const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
+    const {
+      id,
+      skip,
+      consent: consentBody,
+      dataPolicy,
+      expectedInstallation,
+    } = body;
     if (!pluginInstallDeps) {
       return c.json(
         { success: false, message: 'Plugin install dependencies unavailable' },
@@ -674,9 +797,14 @@ export function createRegistryRoutes(
     const consent: PluginInstallConsent = consentBody
       ? {
           kind: 'operator-decision',
+          registryTrustRevision: consentBody.registryTrustRevision,
+          grantRevision: consentBody.grantRevision,
           permissions: consentBody.permissions,
           contentDigest: consentBody.contentDigest,
           dependencies: consentBody.dependencies ?? [],
+          ...(consentBody.dependencyApprovals
+            ? { dependencyApprovals: consentBody.dependencyApprovals }
+            : {}),
         }
       : {
           kind: 'no-operator-decision',
@@ -690,22 +818,27 @@ export function createRegistryRoutes(
           404,
         );
       }
-      const mutation = await captureConfigurationMutation(
+      const mutation = await capturePluginConfigurationMutation(
         deps?.applyConfigurationMutation,
-        async (beginMutation) => {
+        async (beginMutation, _activation, activationSession) => {
           const installed = await installPluginFromSource(
             registryInstall.source,
             skip ?? [],
             { ...pluginInstallDeps, beginConfigurationMutation: beginMutation },
             {
+              grantSnapshot: requestGrantRevisions,
+              activationSession,
               registryId: id,
               registryKey: registryInstall.registryKey,
               consent,
+              dataPolicy,
+              expectedInstallation,
             },
           );
           await deps?.settleProviderAdapterRetirements?.();
           return installed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {
@@ -735,9 +868,31 @@ export function createRegistryRoutes(
           : 500,
       );
     } catch (error: unknown) {
+      if (isRegistryAcquisitionRefusal(error))
+        return c.json(
+          {
+            success: false,
+            ...registryAcquisitionRefusalDetails(error),
+          },
+          409,
+        );
+      if (error instanceof PluginInstallationPending)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            lifecycle: {
+              status: 'pending',
+              selected: error.selected,
+              code: error.code,
+            },
+          },
+          202,
+        );
+
       // Same refusal, same shape as the direct install route: the request and
-      // the plugin disagree about what was approved, and nothing was written
-      // when it refused (archive#4288).
+      // the plugin disagree about what was approved. Earlier dependency effects
+      // may have been compensated; failed rollback is not a simple consent 400.
       if (isPluginConsentRefusedError(error)) {
         deps?.logger?.warn(
           'Registry plugin install refused: consent did not cover the source',
@@ -817,6 +972,7 @@ export function createRegistryRoutes(
           await deps?.settleProviderAdapterRetirements?.();
           return removed;
         },
+        { rediscoverSkills: true },
       );
       if (mutation.value.success) {
         try {
@@ -851,8 +1007,4 @@ export function createRegistryRoutes(
   });
 
   return app;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }

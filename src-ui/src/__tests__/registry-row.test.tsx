@@ -364,6 +364,47 @@ describe('renderSettingRow', () => {
       expect(onChange).toHaveBeenCalledWith('warn');
     });
 
+    /**
+     * #2144 slice 3: a project-scoped row must never hand the layer list the
+     * PROJECT's value as the Station's.
+     *
+     * `renderSettingRow` substitutes the rendered `value` for an absent
+     * `stationValue` — correct on a Station-only row, where they are the same
+     * value, and a falsehood on a project-scoped one, where the rendered
+     * value IS the override. Reproduced live as "This Station: worktree" on a
+     * Station whose unscoped provenance said `default`.
+     */
+    test('a project-scoped row with nothing stored on the Station says so', async () => {
+      render(
+        renderSettingRow({
+          definition: stringDef({
+            key: 'defaultWorkspaceIsolation' as any,
+            descriptor: { kind: 'enum', values: ['shared', 'worktree'] },
+            label: 'New chat workspace',
+            help: 'New chats in a project that names no workspace run in this one.',
+            defaultValue: 'shared',
+          }),
+          // What the control shows: the project's override.
+          value: 'worktree',
+          provenance: { source: 'file', scope: 'project' },
+          projectName: 'Atlas',
+          projectValue: 'worktree',
+          // What the Station stores: nothing.
+          stationValue: undefined,
+          onChange: vi.fn(),
+        }),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Where New chat workspace comes from',
+        }),
+      );
+      const station = (await screen.findByText('This Station')).closest('li')!;
+      expect(station.textContent).toContain('uses the built-in default');
+      expect(station.textContent).not.toContain('worktree');
+    });
+
     test('a row whose value comes from the environment still forwards an edit', () => {
       // The user-visible consequence of archive#1557: storing a value is how you
       // take over from the environment fallback, so the edit must land.

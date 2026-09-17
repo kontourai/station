@@ -9,8 +9,9 @@ takes in the chat dock has a documented, scriptable equivalent here
 There is one execution surface: `POST /api/orchestration/chat` accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
 model, and workspace binding on the target Environment. A bound continuation
-uses `POST /api/orchestration/chat/:conversationId/continue`; it cannot select a
-provider, connection, Agent, or replacement model. Two separate read paths show
+uses `POST /api/orchestration/chat/:conversationId/continue`; it preserves the
+Environment, workspace and current Agent/engine binding. Supported per-turn model
+overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
 
 ---
@@ -54,7 +55,7 @@ Agent, engine kind, provider, and honest model launch plan.
 
 ## Continue a conversation
 
-Continuation retains the original Environment + Agent + model binding:
+Continuation retains the original Environment/workspace and follows the current linked Session:
 
 ```jsonc
 POST /api/orchestration/chat/<conversationId>/continue
@@ -66,9 +67,20 @@ POST /api/orchestration/chat/<conversationId>/continue
 }
 ```
 
-There is deliberately no target or model field on continuation. Station loads the
-persisted binding, verifies the caller and current Environment, re-resolves the Agent,
-and only then sends the turn.
+There is no replacement target on continuation. Station loads the persisted
+binding, verifies the caller and current Environment, resolves the current Agent,
+and only then sends the turn. Optional `model.override` and `model.options` apply
+only when that engine supports them; omission retains the current model choice.
+
+A completed turn does not discard the conversation. If the next turn needs a new
+execution Session, it remains linked beneath the same Conversation. Station-native
+prompt history reads existing authorized native memory segments across that
+lineage. This preserves structured messages without copying earlier records into
+the new Session or changing its approval/write identity. Earlier harness or Agent
+legs contribute their authorized user/assistant transcript, not provider-private
+tool state. An explicit empty-context boundary excludes earlier model context even
+while the historical transcript remains visible. Callers never supply native
+memory paths or another Session's memory identity.
 
 ## Lifecycle control commands
 
@@ -97,12 +109,66 @@ by `requestId`.
 
 Three more command types exist on the same union but are outside this doc's session-lifecycle
 scope — see the zod schemas in `orchestration.ts` for their exact shapes: `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, take over a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
 `alreadyAdopted: true`),
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
+
+External transcript observation does not grant control of the original terminal
+process. The engine capability matrix declares independent continuation support;
+known unsupported and unknown engines retain a disabled **Continue in Station**
+control with a reason. The adoption owner enforces the same declaration before
+invoking an adapter, then checks current source, Project, ownership, and runtime
+requirements. A native continuation declaration does not guarantee readiness of
+any particular source.
+
+Codex rollout observation reads the local `CODEX_HOME/sessions` directory
+(`~/.codex/sessions` by default) through bounded, read-only pages. It imports
+supported turn boundaries, user messages, assistant text, public reasoning
+summaries, tool activity, cumulative token snapshots, and compaction markers.
+Only transcripts attributed to configured Projects enter the shared follower.
+Encrypted content and subagent sidechain traversal are outside this importer.
+Additional user input after observed assistant or tool activity keeps the same
+native turn identity and is marked as steering. When the rollout does not
+establish that phase, the text remains in a bounded diagnostic without a guessed
+initial-input or steering classification.
+A tool-output body alone does not establish success or failure; it is retained
+as observed progress without inventing a verdict. Discovery and parser limits
+are reported as incomplete observations. Cursor progress is saved after the
+page's events, so an interrupted import replays through durable event-id
+deduplication.
+
+Claude and Codex continuation require a verified source configuration identity.
+The local sources expose an opaque reference to the configured home; the native
+adapter resolves that reference again before use. A replaced or mismatched home
+refuses continuation instead of falling back to another account. Source identity
+is a provider-neutral contract: remote sources can supply their own connection
+identity without exposing a filesystem path.
+
+Codex continuation forks an independent native thread at a completed turn
+observed in Station's durable history. The original terminal session remains
+read-only in Station and can keep running independently. Until a completed
+boundary exists, **Continue in Station** stays disabled with a reason. Claude
+uses its SDK's independent session snapshot; it does not claim the same native
+turn-cutoff semantics. Both paths retain the source binding in the adoption
+ledger before native child creation and retain unresolved cleanup for recovery
+rather than blindly retrying an ambiguous fork.
+
+Codex continuation requires an available, authenticated local Codex adapter;
+native fork conformance is verified against Codex CLI 0.146.1. Forked Codex
+sessions can replay inherited cumulative usage. Station marks continuation
+usage unavailable until it can establish a durable child-only baseline, rather
+than reporting inherited tokens as new spending. This limitation does not
+prevent transcript observation or continuation.
+
+`STATION_EXTERNAL_CODEX_SOURCE_ROOT` and `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`
+can select separate read-only history roots. Each root contains the engine's
+`sessions` or `projects` directory, respectively. These overrides affect
+transcript observation only; they do not change the CLI's authentication or
+execution configuration. Without an override, observation uses `CODEX_HOME`
+or `CLAUDE_CONFIG_DIR`, then the engine's default home directory.
 
 ### The receipt envelope
 
@@ -148,7 +214,8 @@ GET /api/orchestration/commands/receipts/:commandId            # single receipt,
 There is no separate "select model" command. A new execution request may include
 `target.model.override` and `target.model.options`. The target Agent's engine binding
 decides whether those controls are supported; unsupported controls fail before
-dispatch. A continuation has no model selector and retains the original binding.
+dispatch. Continuation accepts the corresponding `model.override` and `model.options`
+without changing the Conversation's Environment/workspace or Agent/engine binding.
 
 ---
 
@@ -321,3 +388,91 @@ curl -sS -X POST "${BASE}/api/orchestration/commands" \
     \"decision\": \"accept\"
   }"
 ```
+
+
+## Review work in the attention inbox
+
+`/api/attention` carries every item whose meaning is "a human must decide",
+including the two that used to be reachable only from `/review-queue`:
+
+- `kind: 'proposed-change'` — one pending proposed change, derived from
+  `status: 'pending'` on the proposed-change store. Its `source.proposedChangeId`
+  is what the existing `POST /api/proposed-changes/:id/approve|reject` routes
+  act on; the projection itself decides nothing.
+- `kind: 'gate-review'` — one paused Survey/Flow gate review session with
+  unresolved items, derived from `summary.unresolved > 0` on the same aggregate
+  `GET /api/survey-flow-reviews` serves. It carries no decision affordance:
+  continuation runs through the review workbench
+  (`POST /api/projects/:slug/flow/runs/:runId/reviews/continue`).
+
+Neither is projected for a hosted tenant read. The proposed-change store and
+the review aggregate carry no tenancy predicate, so a tenant-scoped read has no
+standing to see them.
+
+Items carry `projectSlug` when the projection could derive one from the item's
+own source. It is absent, never guessed, for a generic notification-backed
+approval or a project-less session. Per-project counts are derived from
+`items` by counting that field under the same pending predicate as
+`pendingCount` (`attentionCountForProject`, `@kontourai/station-contracts/attention`);
+the server publishes no per-project number for a client to trust.
+
+Both kinds link into the item's own Project Review layout at the exact item —
+`/projects/<projectSlug>/layouts/review?change=<id>` and
+`?review=<reviewSessionRef>`, alongside Starter work's
+`?receipt=<receiptId>`. All three are minted by one derivation,
+`projectReviewLayoutHref` (`@kontourai/station-contracts/layout`); the Project
+is the path, so the layout is already scoped to it and the selector names only
+the item. The retired `/review-queue?…&project=<p>` spellings redirect there,
+and one naming no Project goes to `/notifications`. A stale link shows a
+notice; Station does not open a different item in its place.
+
+## Inspect an exact attention request
+
+Request-backed approval and permission items in `/api/attention` may carry
+`requestReference: { threadId, requestId, requestEventId }`. Preserve that exact
+reference when opening an inspector:
+
+```text
+GET /api/orchestration/sessions/:threadId/requests/:requestId?eventId=:requestEventId
+```
+
+This protected read returns `open`, `changed`, `resolved`, or `unavailable`.
+Only `open` includes bounded, redacted presentation, engine identity, current
+answerability, and `canRespond`. The route rechecks request-principal and Session
+read authority and uses private/no-store caching. It reads the indexed current
+request event and canonical lifecycle facts instead of replaying Session history.
+An oversized or inconsistent stored request is unavailable, not partially trusted.
+
+After an explicit decision, use the existing response command and include the
+inspected event identity:
+
+```json
+{
+  "type": "respondToRequest",
+  "threadId": "session-id",
+  "requestId": "request-id",
+  "expectedRequestEventId": "opened-event-id",
+  "decision": "accept"
+}
+```
+
+`expectedRequestEventId` is optional for existing clients. Exact inspectors always
+send it. The server rechecks it after adapter resolution, immediately before the
+response effect. A replaced or reopened request returns HTTP 409 with
+`request_event_changed`; an unverifiable request or lost authority returns 409
+with `request_verification_unavailable`. Both retain a rejected command receipt
+and cause no adapter response. The comparison identity is not an authorization
+grant. Freeform input and lifecycle-only attention retain their existing surfaces.
+
+An event comparison prevents answering a replaced request; it is not an
+idempotency key for provider effects. A transport failure after dispatch can leave
+the decision outcome uncertain. The inspector never retries a decision. It retains
+uncertain exact-event attempts in its existing QueryClient mutation cache across
+closing and reopening the dialog. A fresh same-open inspection cannot re-enable
+decisions; a resolved or changed event releases the uncertainty. Expired authority
+records are pruned when another inspector opens. Successful decisions use ordinary
+cache expiry. At 64 uncertain attempts for one Station authority, further inspector
+decisions are refused rather than evicting uncertainty into permission to retry.
+Open the session to confirm an uncertain outcome. A client restart clears this
+in-memory history; cross-client or restart-safe effect deduplication remains the
+adapter's responsibility.

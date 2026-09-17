@@ -14,13 +14,15 @@ export interface UIBlockFormSubmission {
   values: Array<{ name: string; label: string; value: string | boolean }>;
 }
 
-export interface UIBlockActions {
+interface UIBlockActions {
+  readOnly?: boolean;
   submitForm: (submission: UIBlockFormSubmission) => void;
   /** Block keys already submitted this session — used to lock a form after submit. */
   submittedBlockIds: ReadonlySet<string>;
 }
 
 const noop: UIBlockActions = {
+  readOnly: true,
   submitForm: () => {},
   submittedBlockIds: new Set(),
 };

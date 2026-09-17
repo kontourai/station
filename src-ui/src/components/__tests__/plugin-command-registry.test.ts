@@ -1,5 +1,4 @@
 import type { PluginCommandContribution } from '@kontourai/station-contracts/agent-plugin';
-import { PLUGIN_COMMAND_VERSION_MAX_LENGTH } from '@kontourai/station-contracts/plugin';
 import { describe, expect, test } from 'vitest';
 import {
   type InstalledPluginCommandSource,
@@ -19,11 +18,9 @@ function plugin(
   return {
     name: 'demo',
     version: '2.0.0',
-    commandGeneration: 'a'.repeat(64),
-    commandContributions: [command],
-    commandCapabilities: {
-      invokeDeclaredOperation: { available: true },
-    },
+    installationGeneration: '["incarnation-1","digest-1"]',
+    commands: [command],
+    permissions: { granted: [] },
   };
 }
 
@@ -36,50 +33,19 @@ function context(
     hasSession: true,
     hasTask: true,
     occupiedCommandIds: new Set<string>(),
-    surfaceIds: new Set(['plugins']),
+    destinationIds: new Set(['plugins']),
     ...overrides,
   };
 }
 
 describe('plugin command registry', () => {
-  test('uses the execution request version boundary without hiding a legacy plugin', () => {
-    const [accepted] = projectPluginPaletteCommands(
-      [{ ...plugin(), version: 'v'.repeat(PLUGIN_COMMAND_VERSION_MAX_LENGTH) }],
-      context(),
-    );
-    const [unavailable] = projectPluginPaletteCommands(
-      [
-        {
-          ...plugin(),
-          version: 'v'.repeat(PLUGIN_COMMAND_VERSION_MAX_LENGTH + 1),
-        },
-      ],
-      context(),
-    );
-    expect(accepted.unavailableReason).toBeNull();
-    expect(unavailable.unavailableReason).toBe(
-      'The plugin version is not supported for command requests.',
-    );
-  });
-  test.each(['', '   ', 'release\n1', 'release\u007f1'])(
-    'does not advertise a version the execution boundary refuses: %j',
-    (version) => {
-      const [row] = projectPluginPaletteCommands(
-        [{ ...plugin(), version }],
-        context(),
-      );
-      expect(row.unavailableReason).toBe(
-        'The plugin version is not supported for command requests.',
-      );
-    },
-  );
   test('projects a manifest-only command into the canonical palette identity', () => {
     expect(projectPluginPaletteCommands([plugin()], context())).toEqual([
       expect.objectContaining({
         paletteId: 'plugin:demo.open-plugins',
         pluginName: 'demo',
         pluginVersion: '2.0.0',
-        commandGeneration: 'a'.repeat(64),
+        installationGeneration: '["incarnation-1","digest-1"]',
         unavailableReason: null,
       }),
     ]);
@@ -87,7 +53,7 @@ describe('plugin command registry', () => {
 
   test('keeps a command unavailable when its installed generation is absent', () => {
     const [row] = projectPluginPaletteCommands(
-      [{ ...plugin(), commandGeneration: undefined }],
+      [{ ...plugin(), installationGeneration: undefined }],
       context(),
     );
     expect(row.unavailableReason).toBe(
@@ -127,10 +93,29 @@ describe('plugin command registry', () => {
     },
   );
 
+  test('derives plugin-server availability from the granted permission', () => {
+    const command = {
+      ...navigate,
+      requires: ['plugin-server'],
+    } satisfies PluginCommandContribution;
+    const [withheld] = projectPluginPaletteCommands(
+      [plugin(command)],
+      context(),
+    );
+    const [granted] = projectPluginPaletteCommands(
+      [{ ...plugin(command), permissions: { granted: ['plugin.server'] } }],
+      context(),
+    );
+    expect(withheld.unavailableReason).toBe(
+      'This command needs the plugin server permission.',
+    );
+    expect(granted.unavailableReason).toBeNull();
+  });
+
   test('refuses an unknown host destination without interpreting it as a route', () => {
     const [row] = projectPluginPaletteCommands(
       [plugin()],
-      context({ surfaceIds: new Set() }),
+      context({ destinationIds: new Set() }),
     );
     expect(row.unavailableReason).toBe(
       "Station does not expose the 'plugins' destination.",
@@ -162,14 +147,14 @@ describe('plugin command registry', () => {
       [
         {
           ...plugin(argumentCommand),
-          commandContributions: [argumentCommand, operationCommand],
+          commands: [argumentCommand, operationCommand],
         },
       ],
       context(),
     );
     expect(rows.map((row) => row.unavailableReason)).toEqual([
       'This command needs a search term; argument entry is not available in the command palette yet.',
-      'Audited plugin operation invocation is not available in the command palette yet.',
+      'Plugin operation commands are not available in the command palette yet.',
     ]);
   });
 });

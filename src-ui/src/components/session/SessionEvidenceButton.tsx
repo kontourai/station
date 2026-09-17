@@ -12,7 +12,7 @@ import './SessionEvidenceButton.css';
  * lifecycle fold, never a private re-derivation, and on the detail shape
  * (`revealHomeRegion`'s rule: never offer a control whose target may be
  * absent). Activation is a navigation, not a scroll-by-hand: the caller
- * routes through the same `/activity?session=<id>` deep-link path every
+ * activates the same Activity-region intent path every
  * other surface uses, plus the one-shot `focus=evidence` intent the session
  * detail honors once.
  */

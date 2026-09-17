@@ -138,3 +138,24 @@ describe('a disowned plugin bundle that executes late', () => {
     expect(registry.getLayout('live-pane')).toBe(LivePane);
   });
 });
+
+test('does not request pending bundle assets even when a stale inventory bit says hasBundle', async () => {
+  const fetch = vi.fn(async () =>
+    Response.json({
+      plugins: [
+        {
+          name: PLUGIN,
+          version: '1.0.0',
+          hasBundle: true,
+          installationReadiness: { state: 'pending', recovery: 'review' },
+        },
+      ],
+    }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const registry = new PluginRegistry();
+  registry.setApiBase(SAME_ORIGIN);
+  expect(await registry.reload()).toBe('ready');
+  expect(fetch.mock.calls).toHaveLength(1);
+  expect(pluginScript()).toBeNull();
+});

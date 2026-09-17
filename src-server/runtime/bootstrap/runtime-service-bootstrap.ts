@@ -2,6 +2,7 @@ import type { EventEmitter } from 'node:events';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
@@ -12,6 +13,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { createLocalKnowledgeSourceObservationPolicy } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { MonitoringEmitter } from '../../monitoring/emitter.js';
 import {
@@ -35,6 +37,7 @@ import { resolveCanonicalSkillSources } from '../../services/flow/flow-agents-sk
 import { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
+import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import { MCPService } from '../../services/plugins/mcp-service.js';
 import { scanPluginCommandSkills } from '../../services/plugins/plugin-command-skill-source.js';
 import { FileTreeService } from '../../services/projects/file-tree-service.js';
@@ -56,6 +59,7 @@ import {
 import { NovaSonicProvider } from '../../voice/providers/nova-sonic.js';
 import { VoiceSessionService } from '../../voice/voice-session.js';
 import type { IAgentHooks } from '../types.js';
+import { createPersonalRuntimeRequestGuard } from './runtime-tenant-context.js';
 
 type ToolNameMapping = Map<
   string,
@@ -73,12 +77,16 @@ interface RuntimeServiceBootstrapContext {
   host?: string;
   logger: any;
   configLoader: ConfigLoader;
+  agentPluginLoader?: AgentPluginLoader;
   approvalRegistry: ApprovalRegistry;
   eventBus: EventBus;
   orchestrationEventStore: EventStore;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'authorizeCredential'
+    | 'credentialLocality'
   >;
   monitoringEvents: EventEmitter;
   memoryAdapters: Map<string, FileMemoryAdapter>;
@@ -88,6 +96,7 @@ interface RuntimeServiceBootstrapContext {
   agentTools: Map<string, any[]>;
   agentHooks: Map<string, IAgentHooks>;
   mcpConfigs: Map<string, any>;
+  mcpCustody: MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: Map<
     string,
@@ -137,6 +146,7 @@ export function createRuntimeServiceBundle(
   const storageAdapter =
     factories.createStorageAdapter?.(context.projectHomeDir) ??
     new FileStorageAdapter(context.configLoader.getProjectHomeDir());
+  const agentPluginLoader = context.agentPluginLoader;
   let connectionService: ConnectionService | undefined;
   // The default ConnectionService owns this monitor and disposes it with the
   // runtime. A custom factory owns any monitor it chooses to construct.
@@ -195,7 +205,10 @@ export function createRuntimeServiceBundle(
       // Canonical Flow Agents skills (deliver, plan-work, verify-work, …)
       // from the installed package become browsable/assignable Station
       // skills — a read-only source adapter, no copied content (S3 item 3).
-      canonicalSources: resolveCanonicalSkillSources(),
+      canonicalSources: (composition) => [
+        ...resolveCanonicalSkillSources(),
+        ...(agentPluginLoader?.skillSources(composition) ?? []),
+      ],
       pluginCommandSource: (projectHomeDir, takenNames) =>
         scanPluginCommandSkills(projectHomeDir, context.logger, takenNames).map(
           (skill) => ({ ...skill, resources: [] }),
@@ -211,6 +224,11 @@ export function createRuntimeServiceBundle(
       secretBindingAdministration,
       context.configLoader,
       context.logger,
+      async (id, operation) => {
+        const result = await context.mcpCustody.mutate(id, operation);
+        context.mcpConfigs.delete(id);
+        return result;
+      },
     );
 
   const mcpService =
@@ -235,6 +253,7 @@ export function createRuntimeServiceBundle(
       context.port,
       secretBindingAdministration,
       secretBindingAdministration,
+      context.mcpCustody,
     );
 
   const layoutService =
@@ -249,6 +268,12 @@ export function createRuntimeServiceBundle(
       // `workingDirectory`-only path shrinks monotonically instead of becoming
       // a permanent second mode (portable-project-identity.md §5).
       new ProjectManifestStore(context.projectHomeDir, storageAdapter),
+      // #2144 slice 2: the worktree directory preflights judge the mode a
+      // chat will actually start in, so they need this Station's default.
+      // Loaded per call, not captured, for the same reason the resolver's
+      // wiring is: an operator's edit applies to the next save.
+      async () =>
+        (await context.configLoader.loadAppConfig()).defaultWorkspaceIsolation,
     );
 
   const providerService =
@@ -297,7 +322,15 @@ export function createRuntimeServiceBundle(
   // calls this provider or `projectNamespacesToRoots`.
   const knowledgeStoreProvider =
     factories.createKnowledgeStoreProvider?.(storageAdapter) ??
-    new KnowledgeStoreProvider(storageAdapter);
+    new KnowledgeStoreProvider(
+      storageAdapter,
+      createLocalKnowledgeSourceObservationPolicy({
+        stationHome: context.configLoader.getProjectHomeDir(),
+        persistence: storageAdapter,
+        security: context.environmentSecurityService,
+        isPersonalRequest: createPersonalRuntimeRequestGuard(),
+      }),
+    );
 
   const fileTreeService =
     factories.createFileTreeService?.() ?? new FileTreeService();

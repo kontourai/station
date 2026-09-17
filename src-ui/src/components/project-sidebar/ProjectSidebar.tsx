@@ -7,7 +7,7 @@ import {
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { buildInfo } from '../../build-info';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
@@ -16,9 +16,14 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import {
+  useNavigation,
+  useNavigationActions,
+} from '../../contexts/NavigationContext';
 import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
@@ -38,13 +43,25 @@ import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
 import './ProjectSidebar.css';
 
-const loadProjectSidebarStatus = () =>
-  import('./ProjectSidebarStatus').then((module) => ({
-    default: module.ProjectSidebarStatus,
+const loadProjectSidebarFooter = () =>
+  import('./ProjectSidebarFooter').then((module) => ({
+    default: module.ProjectSidebarFooter,
   }));
 
 /** archive#3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
  *  stays out of the entry chunk this sidebar belongs to. */
+/**
+ * #2062. Lazy for the reason the entry-bundle ceiling exists: the Boards
+ * section costs ~1.2 kB gzip of entry JS, and it renders NOTHING for a viewer
+ * with no Boards — which is every viewer until they make one. Behind a
+ * boundary it loads with the panel, off the critical path, and the ceiling
+ * stays where the last lane left it.
+ */
+const loadProjectSidebarBoards = () =>
+  import('./ProjectSidebarBoards').then((module) => ({
+    default: module.ProjectSidebarBoards,
+  }));
+
 const loadSidebarOpenChats = () =>
   import('./SidebarOpenChats').then((module) => ({
     default: module.SidebarOpenChats,
@@ -57,10 +74,38 @@ const loadSidebarOpenChats = () =>
  */
 export const OPEN_CHATS_SIDEBAR_CAP = 3;
 
-export function ProjectSidebar() {
+function ProjectSidebarImpl() {
   const { projects, isLoading } = useProjects();
-  const { selectedProject, selectedProjectLayout, navigate, pathname } =
-    useNavigation();
+  // The rows under this component are not memoized, so this subscription is
+  // what decides whether they re-render: a whole-snapshot read re-rendered
+  // every mounted row on every dock toggle, font-size write and
+  // workspace-pane change. These three fields are all the sidebar reads.
+  const { selectedProject, selectedProjectLayout, pathname } = useNavigation(
+    (state) => ({
+      selectedProject: state.selectedProject,
+      selectedProjectLayout: state.selectedProjectLayout,
+      pathname: state.pathname,
+    }),
+  );
+  const { navigate } = useNavigationActions();
+  // #928 C2a: Home is a region surface whose only placement is `main`, so
+  // "go Home" REVEALS it — `showSurface('home')` places it in `main` and the
+  // model navigates to `/` — rather than navigating to `/` and showing
+  // whatever surface currently occupies `main`. Same seam the palette and
+  // `ProjectSidebarNav` use for a `regionSurface` destination.
+  const showSurface = useShowSurface();
+  const goHome = () => {
+    showSurface('home');
+    if (isMobile) setMobileOpen(false);
+  };
+  const mainOccupant = useRegionModelOptional()?.regions.main.occupant;
+  // Active when `/` is showing Home, not merely when the route is `/`: with
+  // another surface in `main`, `/` is not Home.
+  const isHomeActive =
+    pathname === '/' &&
+    (mainOccupant === undefined ||
+      mainOccupant === null ||
+      mainOccupant === 'home');
   const branding = useBranding();
   const platformProfile = usePlatformProfile();
   // The sidebar is the primary installed-app chrome. Native package identity
@@ -77,8 +122,6 @@ export function ProjectSidebar() {
     platformProfile.clientBuild?.builtAt,
     { development: platformProfile.isDevBuild },
   );
-  const clientBuildLabel =
-    clientBuild.state === 'available' ? `Built ${clientBuild.age}` : undefined;
   const homeLabel = platformProfile.isTauri
     ? [
         appName,
@@ -267,15 +310,10 @@ export function ProjectSidebar() {
           appName={appName}
           homeLabel={homeLabel}
           channelBadge={releaseChannelBadge}
-          buildLabel={clientBuildLabel}
-          buildDescription={clientBuild.description}
           collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}
-          onGoHome={() => {
-            navigate('/');
-            if (isMobile) setMobileOpen(false);
-          }}
+          onGoHome={goHome}
           onToggleCollapse={toggleCollapse}
         />
 
@@ -304,18 +342,51 @@ export function ProjectSidebar() {
               </svg>
             </button>
           )}
-          <div className="sidebar__section-label">Work</div>
+          {/* No "Work" header above Home and Activity (#2150). The panel
+              lists places, and a category label over its two unlabelled
+              places reintroduced the taxonomy #2059 removed. It was the one
+              header the design record (D3) does not draw. */}
           <button
             type="button"
-            className={`sidebar__project-btn${pathname === '/' ? ' sidebar__project-btn--active' : ''}`}
-            onClick={() => {
-              navigate('/');
-              if (isMobile) setMobileOpen(false);
-            }}
+            className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
+            // #1582 D4: exactly one sidebar row may claim to be the current
+            // location. `isHomeActive` already derives that from `main`'s
+            // occupant rather than the route alone, so it is the honest place
+            // to say it; the region-surface rows say `aria-pressed` instead.
+            aria-current={isHomeActive ? 'page' : undefined}
+            onClick={goHome}
           >
             <span aria-hidden="true">⌂</span>
             <span className="sidebar__project-name">Home</span>
           </button>
+          {/* #2059 (D3): Activity sits directly under Home as the panel's
+              other place. The destination rows used to be a band at the
+              BOTTOM of the panel, below the projects, because that band was
+              mostly configuration; with the configuration gone the one row
+              left belongs beside the place it is a peer of. */}
+          <ProjectSidebarNav
+            collapsed={effectiveCollapsed}
+            isMobile={isMobile}
+            navigate={navigate}
+            activePath={pathname}
+            onAfterNavigate={() => setMobileOpen(false)}
+          />
+          {/* #2062 (D3): Boards sit between Activity and Projects — the
+              project-less places, above the projects they are a peer scope
+              of. The section renders itself away when the viewer has none,
+              so a Station where nobody has made a Board looks exactly as it
+              did before this shipped. */}
+          <LazyBoundary
+            load={loadProjectSidebarBoards}
+            pending={null}
+            componentProps={{
+              collapsed: effectiveCollapsed,
+              isMobile,
+              navigate,
+              activePath: pathname,
+              onAfterNavigate: () => setMobileOpen(false),
+            }}
+          />
           {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
               variant), collapsible with the nav groups' disclosure anatomy
               (aria-expanded + aria-controls + hidden), and removable
@@ -517,19 +588,28 @@ export function ProjectSidebar() {
           </span>
         </div>
 
-        <ProjectSidebarNav
-          collapsed={effectiveCollapsed}
-          isMobile={isMobile}
-          navigate={navigate}
-          activePath={pathname}
-          onAfterNavigate={() => setMobileOpen(false)}
-        />
         <LazyBoundary
-          load={loadProjectSidebarStatus}
-          componentProps={{}}
+          load={loadProjectSidebarFooter}
+          componentProps={{
+            activePath: pathname,
+            navigate,
+            isMobile,
+            onAfterNavigate: () => setMobileOpen(false),
+          }}
           pending={null}
         />
       </nav>
     </>
   );
 }
+
+/**
+ * The sidebar takes no props, so this boundary is total: it re-renders for
+ * its own subscriptions (navigation selector, projects, chats, device
+ * settings — context and store reads reach a memoized component unchanged)
+ * and for nothing its parent does. `App` reads the whole navigation snapshot,
+ * including the `lastProject` memory a selector cannot see, so without this
+ * every mounted row still re-rendered on every dock toggle through App's
+ * re-render, whatever this component subscribed to.
+ */
+export const ProjectSidebar = memo(ProjectSidebarImpl);
