@@ -847,6 +847,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setPairingLinkError(undefined);
         }}
         originIsStation={!profile.isTauri}
+        hasLocalStation={!profile.isTauri || !profile.isMobile}
         hostAppName={
           profile.isTauri ? profile.productName || 'Station' : undefined
         }

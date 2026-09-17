@@ -203,6 +203,58 @@ describe('ConnectionListPanel', () => {
     expect(screen.queryByRole('button', { name: /advanced/i })).toBeNull();
   });
 
+  it('hides the host-only Station-access section on a client-only device', () => {
+    render(
+      <ConnectionListPanel
+        connections={[connection]}
+        activeConnectionId={connection.id}
+        hasLocalStation={false}
+        editingId={null}
+        editName=""
+        editUrl=""
+        credentialEntry=""
+        getStatus={() => 'connected'}
+        onSelect={() => {}}
+        onCheck={() => {}}
+        onStartEdit={() => {}}
+        onRemove={() => {}}
+        onEditNameChange={() => {}}
+        onEditUrlChange={() => {}}
+        onCredentialEntryChange={() => {}}
+        onRemoveCredential={() => {}}
+        onConfirmEndpoint={() => {}}
+        onSaveEdit={() => {}}
+        onCancelEdit={() => {}}
+        onAddManual={() => {}}
+        onRequestAccess={() => {}}
+        onScanQr={() => {}}
+        onEnterPairingCode={() => {}}
+        onViewDevices={() => {}}
+        discoveryAvailable={false}
+        onDiscover={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByText('Connect another device to this Station'),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Paired devices' })).toBeNull();
+    // The client-side sections stay: joining another Station and requesting
+    // access to one are the phone's real capabilities (station#2205).
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Enter a pairing code' }),
+    ).toBeTruthy();
+  });
+
+  it('renders the Station-access section by default so host surfaces are unchanged', () => {
+    renderPanel();
+    expect(
+      screen.getByText('Connect another device to this Station'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Paired devices' })).toBeTruthy();
+  });
+
   it('uses a dedicated native selection button beside the row actions', () => {
     const onSelect = renderPanel();
     const selectButton = screen.getByRole('button', {
