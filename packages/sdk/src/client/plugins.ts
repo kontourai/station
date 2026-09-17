@@ -18,6 +18,11 @@ export type InstalledPluginRecord =
       hasBundle?: boolean;
       retainedOnRemoval?: boolean;
       installationReadiness?: PluginInstallationReadiness;
+      /**
+       * Opaque generation a plugin command request echoes back. Present, with
+       * `commands`, only while the installation is ready; it is not authority.
+       */
+      installationGeneration?: string;
     })
   | RejectedInstalledPluginRecord;
 
@@ -179,7 +184,10 @@ export async function listPlugins(
         (record.installationReadiness !== undefined &&
           !isPluginInstallationReadiness(record.installationReadiness)) ||
         (record.retainedOnRemoval !== undefined &&
-          typeof record.retainedOnRemoval !== 'boolean')
+          typeof record.retainedOnRemoval !== 'boolean') ||
+        (record.installationGeneration !== undefined &&
+          !boundedText(record.installationGeneration, 1024)) ||
+        (record.commands !== undefined && !Array.isArray(record.commands))
       );
     })
   ) {

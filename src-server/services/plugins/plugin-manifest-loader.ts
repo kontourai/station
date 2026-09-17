@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-shared/agent-plugin-manifest';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
+import { parsePluginCommandDeclarations } from './plugin-command-declarations.js';
 import { parseWorkspacePaneHostContribution } from './workspace-pane-host-contributions.js';
 
 const SUBSCRIPTION_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
@@ -333,6 +334,22 @@ function parsePluginManifest(
       'missing-version',
       'Plugin manifest version must be a non-empty string',
     );
+  }
+  if (candidate.commands !== undefined) {
+    // Both formats reach here (Agent Plugins via normalization), so both get
+    // the owner-qualified id, uniqueness and argument checks the schema
+    // cannot express — and legacy manifests get the schema's shape as well.
+    try {
+      candidate.commands = parsePluginCommandDeclarations(
+        candidate.commands,
+        candidate.name,
+      );
+    } catch (error) {
+      invalidManifest(
+        'invalid-manifest',
+        error instanceof Error ? error.message : 'Plugin commands are invalid',
+      );
+    }
   }
   if (candidate.workspacePaneHost !== undefined) {
     const contribution = parseWorkspacePaneHostContribution(

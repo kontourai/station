@@ -2453,6 +2453,12 @@ flag, because a flag would be a second copy of the projection that a client
 could reassemble an inventory from. A caller this Station cannot attribute to a
 principal gets `400` with the principal-unresolved code, never a default list.
 
+A record whose `installationReadiness.state` is `ready` also carries
+`commands` (the validated command declarations, possibly empty) and an opaque
+`installationGeneration`. A plugin command request echoes that generation; it
+identifies the exact installed content and grants nothing. A pending or
+unavailable installation omits both fields.
+
 **Response**:
 ```json
 {
@@ -2463,6 +2469,16 @@ principal gets `400` with the principal-unresolved code, never a default list.
       "version": "1.0.0",
       "description": "A plugin",
       "hasBundle": true,
+      "installationReadiness": { "state": "ready" },
+      "commands": [
+        {
+          "version": "1.0",
+          "id": "my-plugin.open-plugins",
+          "title": "Open plugins",
+          "intent": { "kind": "navigate", "surfaceId": "plugins" }
+        }
+      ],
+      "installationGeneration": "[\"incarnation-id\",\"content-digest\"]",
       "layout": { "slug": "my-layout" },
       "agents": [{ "slug": "assistant" }],
       "providers": [],

@@ -47,6 +47,7 @@ import {
   readPluginGrantRecord,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
+import { pluginInstallationGeneration } from '../../services/plugins/plugin-runtime-artifact.js';
 import {
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
@@ -260,6 +261,17 @@ export function registerPluginInstallRoutes(
               Array.isArray(manifest.settings) &&
               manifest.settings.length > 0,
             layout: manifest.layout,
+            // Command declarations and the generation a command request must
+            // echo are published only for a ready installation: a pending or
+            // unavailable one has no generation that admission would accept.
+            ...(catalog.readiness.state === 'ready'
+              ? {
+                  commands: manifest.commands ?? [],
+                  installationGeneration: pluginInstallationGeneration(
+                    catalog.artifact,
+                  ),
+                }
+              : {}),
             workspacePanes: manifest.workspacePanes,
             agents: manifest.agents,
             providers: manifest.providers,
@@ -542,6 +554,15 @@ export function registerPluginInstallRoutes(
             id: pane.id,
             detail: `${pane.renderer.kind}:${pane.rendererId}`,
             conflict,
+            skippable: false,
+          });
+        }
+
+        for (const command of manifest.commands ?? []) {
+          components.push({
+            type: 'command',
+            id: command.id,
+            detail: command.intent.kind,
             skippable: false,
           });
         }

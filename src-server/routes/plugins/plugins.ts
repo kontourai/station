@@ -31,6 +31,7 @@ import { quiescePluginPublicServerModule } from '../../services/plugins/plugin-p
 import {
   capturePluginRuntimeArtifact,
   capturePluginRuntimeArtifactAsync,
+  pluginInstallationGeneration,
 } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { buildPlugin } from './plugin-bundles.js';
@@ -120,7 +121,7 @@ export function createPluginRoutes(
     return {
       installed: !!artifact,
       installationGeneration: artifact
-        ? JSON.stringify([artifact.generation ?? null, artifact.digest])
+        ? pluginInstallationGeneration(artifact)
         : null,
     };
   };

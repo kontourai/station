@@ -7,6 +7,7 @@ import { isReservedObjectKey } from '../../../utils/reserved-object-keys.js';
 import { ContextSafetyError } from '../../orchestration/context-safety.js';
 import { DistributionProfileService } from '../distribution-profile-service.js';
 import {
+  PluginManifestValidationError,
   readPluginManifestFile,
   readPluginManifestFileWithFormat,
 } from '../plugin-manifest-loader.js';
@@ -755,5 +756,135 @@ describe('plugin-manifest-loader', () => {
     await expect(readPluginManifestFile(manifestPath)).rejects.toThrow(
       "duplicate id 'runtime-ready'",
     );
+  });
+
+  describe('plugin command declarations (station#1418)', () => {
+    const navigate = {
+      version: '1.0',
+      id: 'demo.open-plugins',
+      title: 'Open plugins',
+      intent: { kind: 'navigate', surfaceId: 'plugins' },
+    };
+    const seed = {
+      version: '1.0',
+      id: 'demo.draft',
+      title: 'Draft a note',
+      keywords: ['note'],
+      requires: ['active-chat'],
+      intent: { kind: 'seed-composer', text: 'Summarize this chat' },
+    };
+
+    const writeLegacy = (commands: unknown) => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({ name: 'demo', version: '1.0.0', commands }),
+      );
+      return manifestPath;
+    };
+
+    test('a legacy manifest keeps valid declarations, normalized', async () => {
+      const manifest = await readPluginManifestFile(
+        writeLegacy([navigate, seed]),
+      );
+      expect(manifest.commands).toEqual([navigate, seed]);
+    });
+
+    test.each([
+      [
+        'an id outside the plugin namespace',
+        [{ ...navigate, id: 'other.open' }],
+      ],
+      ['a bare plugin-name id', [{ ...navigate, id: 'demo.' }]],
+      ['a duplicate id', [navigate, { ...seed, id: navigate.id }]],
+      ['an unknown field', [{ ...navigate, route: '/plugins' }]],
+      [
+        'a destination id that is not an id',
+        [{ ...navigate, intent: { kind: 'navigate', surfaceId: '/plugins' } }],
+      ],
+      [
+        'an argument its intent never consumes',
+        [{ ...navigate, argument: { kind: 'text', label: 'term' } }],
+      ],
+      [
+        'an argument mode with no argument',
+        [
+          {
+            ...seed,
+            intent: {
+              kind: 'seed-composer',
+              text: 'Find',
+              argumentMode: 'append',
+            },
+          },
+        ],
+      ],
+      [
+        'a wildcard allowed host',
+        [
+          {
+            ...seed,
+            argument: {
+              kind: 'url',
+              label: 'link',
+              allowedHosts: ['*.example.com'],
+            },
+            intent: {
+              kind: 'seed-composer',
+              text: 'Open',
+              argumentMode: 'append',
+            },
+          },
+        ],
+      ],
+      ['an untrimmed title', [{ ...navigate, title: ' Open ' }]],
+      [
+        'more than 32 commands',
+        Array.from({ length: 33 }, (_, index) => ({
+          ...navigate,
+          id: `demo.c${index}`,
+        })),
+      ],
+      ['a non-array', { open: navigate }],
+    ])('a legacy manifest with %s is refused', async (_label, commands) => {
+      const refusal = await readPluginManifestFile(writeLegacy(commands)).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(refusal).toBeInstanceOf(PluginManifestValidationError);
+      expect((refusal as PluginManifestValidationError).code).toBe(
+        'invalid-manifest',
+      );
+    });
+
+    test('an Agent Plugins manifest gets the same semantic checks; a violation disables its extension', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      const write = (commands: unknown[]) =>
+        writeFileSync(
+          manifestPath,
+          JSON.stringify({
+            $schema:
+              'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+            name: 'portable.example',
+            version: '2.0',
+            extensions: {
+              'io.kontourai.station': { schemaVersion: '1.0', commands },
+            },
+          }),
+        );
+      const valid = { ...navigate, id: 'portable.example.open' };
+      write([valid]);
+      await expect(
+        readPluginManifestFileWithFormat(manifestPath),
+      ).resolves.toMatchObject({
+        stationExtension: { status: 'validated' },
+        manifest: { commands: [valid] },
+      });
+      // Schema-valid (3-127 chars, closed shape) but owned by another plugin.
+      write([{ ...navigate, id: 'someone-else.open' }]);
+      const loaded = await readPluginManifestFileWithFormat(manifestPath);
+      expect(loaded.stationExtension).toMatchObject({ status: 'disabled' });
+      expect(loaded.manifest.commands).toBeUndefined();
+    });
   });
 });

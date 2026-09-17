@@ -293,7 +293,7 @@ export interface ConflictInfo {
 }
 
 export interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   detail?: string;
   conflict?: ConflictInfo;
