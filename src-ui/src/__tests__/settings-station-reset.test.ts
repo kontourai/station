@@ -119,30 +119,67 @@ describe('buildStationResetPlan', () => {
   });
 
   test('the candidate list covers the rows the page actually renders', () => {
-    // Pinned literally: derived-from-the-registry is what keeps this list
-    // honest, but a filter that silently stopped matching would still read
-    // "derived". These are the rows Station and Defaults render today.
+    // Pinned literally, and this is the assertion #2182 turns on. The list is
+    // derived from the settings CATALOG, which spans every card the page
+    // draws; it used to be derived from one card's own key list, so moving a
+    // row to a different card would have dropped it from the reset with
+    // nothing red — the dialog names only the keys that are currently stored,
+    // so a shorter list still reads as plausible. A literal expectation is
+    // the only thing that can see that, because "derived" keeps reading as
+    // derived while the thing it derives from shrinks.
+    //
+    // Order is catalog order, which moved when #2182 redistributed the rows
+    // across six sections. That it is ALSO the order the page renders these
+    // rows in is a separate claim, checked against the DOM in
+    // `settings-catalog-completeness.test.tsx` — it is not something this
+    // file can see. The SET is asserted below and is unchanged across the
+    // whole slice; that is the property a reset depends on.
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
-      'approvalGuardian',
-      'defaultMaxTurns',
-      'defaultMaxOutputTokens',
-      'defaultChatFontSize',
+      // Station host
       'terminalShell',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
-      'disableDefaultSkillRegistries',
-      'workspaceCheckpoints',
-      // #2144 slice 2 — the new Station-scope row; a reset clears it back to
-      // the registry default, which is the shared checkout.
-      'defaultWorkspaceIsolation',
-      // #2144 slice 6: a clearable Station-scope enum.
-      'defaultApprovalMode',
+      // Sources
       'registryUrl',
+      'disableDefaultSkillRegistries',
       'distributionProfile',
-      'systemPrompt',
+      // Permissions
+      'approvalGuardian',
+      'defaultApprovalMode',
+      // Agent runs
       'region',
+      'systemPrompt',
       'templateVariables',
+      'defaultMaxTurns',
+      'defaultMaxOutputTokens',
+      'defaultWorkspaceIsolation',
+      'workspaceCheckpoints',
+      // Chat
+      'defaultChatFontSize',
     ]);
+    // The SET is what a reset actually clears, and #2182 must not have
+    // changed it. Sixteen keys before the split across six sections,
+    // sixteen after; only the order follows the page.
+    expect([...RESETTABLE_STATION_SETTING_KEYS].sort()).toEqual(
+      [
+        'approvalGuardian',
+        'defaultApprovalMode',
+        'defaultChatFontSize',
+        'defaultMaxOutputTokens',
+        'defaultMaxTurns',
+        'defaultWorkspaceIsolation',
+        'disableDefaultSkillRegistries',
+        'distributionProfile',
+        'mcpUiHost',
+        'region',
+        'registryUrl',
+        'surfaceTrustFromVeritasEvidence',
+        'systemPrompt',
+        'templateVariables',
+        'terminalShell',
+        'workspaceCheckpoints',
+      ].sort(),
+    );
   });
 });
 

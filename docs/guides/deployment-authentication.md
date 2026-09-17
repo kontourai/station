@@ -44,7 +44,7 @@ records or SDK responses. Account subjects are opaque persisted IDs, qualified b
 this Station's issuer. Better Auth's required internal email column uses a
 reserved `.invalid` address; it is never emitted as contact or identity evidence.
 
-**Settings → Station configuration → Accounts and sign-in** lets an operator
+**Settings → System → Accounts and sign-in** lets an operator
 disable sign-in, revoke account sessions or create a password-recovery link.
 Confirm the person's identity before sharing that recovery link privately. The
 link expires after 20 minutes and can reset the password once; reset revokes old

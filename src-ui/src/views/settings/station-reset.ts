@@ -10,7 +10,14 @@
  *
  * The candidate list is DERIVED from what the Settings page renders at
  * Station and Defaults scope, then filtered through the registry itself, so
- * it cannot drift into a second hand-written inventory:
+ * it cannot drift into a second hand-written inventory. The inventory is the
+ * SETTINGS CATALOG — the one list that says which rows the page renders and
+ * what each one writes — rather than any single section's key list (#2182).
+ * It used to be `StationConfigSection`'s own `STATION_CONFIG_KEYS` plus a
+ * hand-written defaults list, which tied "what a reset clears" to "what one
+ * card happens to render": splitting that card across several cards would
+ * have shrunk the reset silently, since the dialog names only the keys that
+ * are actually stored and a shorter list still reads as plausible.
  *
  * - `required` keys (`defaultModel`, `invokeModel`, `structureModel`) are
  *   excluded: the sanitizer refuses `null` for them and would reject the
@@ -42,19 +49,7 @@ import type {
 } from '@kontourai/station-contracts/settings-registry';
 import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import type { AppConfig } from '../../types';
-import { STATION_CONFIG_KEYS } from './StationConfigSection';
-
-/**
- * The Defaults-scope fields `AgentDefaultsSection` renders. `defaultModel` is
- * rendered there too and is deliberately absent: it is a registry `required`
- * key, and the filter below would drop it anyway — listing it here would only
- * suggest the exclusion is accidental.
- */
-const DEFAULTS_RENDERED_KEYS: readonly (keyof AppConfig)[] = [
-  'systemPrompt',
-  'region',
-  'templateVariables',
-];
+import { SETTINGS_CATALOG } from './settings-catalog';
 
 /** Written through its own revisioned endpoint; `PUT /config/app` refuses it. */
 const SEPARATELY_WRITTEN_KEYS: ReadonlySet<keyof AppConfig> = new Set([
@@ -68,7 +63,7 @@ const SEPARATELY_WRITTEN_KEYS: ReadonlySet<keyof AppConfig> = new Set([
  * `telemetryEnabled` defaults to `true`. A stored `false` is the only
  * artifact of someone turning telemetry off, and clearing it would turn it
  * back on — a reset silently widening what leaves this Station. The toggle
- * stays where it is (Station configuration, and the telemetry disclosure);
+ * stays where it is (the Telemetry section, beside the disclosure);
  * the dialog says a reset does not touch it.
  */
 const PRIVACY_PRESERVED_KEYS: ReadonlySet<keyof AppConfig> = new Set([
@@ -84,20 +79,47 @@ const REGISTRY_BY_KEY: ReadonlyMap<keyof AppConfig, SettingDefinition> =
   );
 
 /**
+ * Every Settings row that writes the Station document, in catalog order.
+ *
+ * That is also the order the page renders them, and the dialog's label list
+ * is the reason it has to be: a reader compares the names in the
+ * confirmation against the rows they were just looking at. The agreement is
+ * not automatic — it holds because `SettingsView` mounts its sections in
+ * `SETTINGS_SECTIONS` order and each section renders its rows in catalog
+ * order. Both halves are asserted against the DOM in
+ * `settings-catalog-completeness.test.tsx` ("the page body mounts its
+ * sections in the order the nav lists them" and "the reset key order is the
+ * order those rows appear on the page") rather than restated here, because
+ * this sentence was true, then briefly false when #2182 mounted two new
+ * cards out of order, and nothing said so.
+ *
+ * A row's FIRST config key, matching what `scripts/gen-settings-registry.ts`
+ * publishes as the row's key: a row with several keys is one control over one
+ * primary value. `scope` is the row's own declared write authority
+ * (`settings-catalog.ts`), so device rows and derived status readings drop out
+ * here rather than having to be listed as exclusions.
+ */
+const RENDERED_STATION_SETTING_KEYS: readonly (keyof AppConfig)[] = [
+  ...new Set(
+    SETTINGS_CATALOG.filter(
+      (entry) => entry.scope === 'station' || entry.scope === 'defaults',
+    ).flatMap((entry) => entry.configKeys?.slice(0, 1) ?? []),
+  ),
+] as (keyof AppConfig)[];
+
+/**
  * Every rendered Station/Defaults key this Station can honestly clear, in the
  * order the page renders them.
  */
-export const RESETTABLE_STATION_SETTING_KEYS: readonly (keyof AppConfig)[] = [
-  ...STATION_CONFIG_KEYS,
-  ...DEFAULTS_RENDERED_KEYS,
-].filter((key) => {
-  const definition = REGISTRY_BY_KEY.get(key);
-  if (!definition) return false;
-  if (definition.required) return false;
-  if (definition.nullable) return false;
-  if (PRIVACY_PRESERVED_KEYS.has(key)) return false;
-  return !SEPARATELY_WRITTEN_KEYS.has(key);
-});
+export const RESETTABLE_STATION_SETTING_KEYS: readonly (keyof AppConfig)[] =
+  RENDERED_STATION_SETTING_KEYS.filter((key) => {
+    const definition = REGISTRY_BY_KEY.get(key);
+    if (!definition) return false;
+    if (definition.required) return false;
+    if (definition.nullable) return false;
+    if (PRIVACY_PRESERVED_KEYS.has(key)) return false;
+    return !SEPARATELY_WRITTEN_KEYS.has(key);
+  });
 
 export interface StationResetPlan {
   /** Keys that currently hold a stored value and would be cleared. */

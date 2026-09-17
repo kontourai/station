@@ -122,13 +122,24 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
         }
       >
         <StationConfigSection
+          containerScope="station"
+          section="sources"
           config={{} as never}
           onChange={() => {}}
           embedded
         />
       </QueryClientProvider>,
     );
-    expect(screen.queryByText('Station configuration')).toBeNull();
+    // #2182: the string this used to look for ("Station configuration") no
+    // longer exists anywhere, so asserting its absence would pass for any
+    // reason at all. The contract is what it always was — an embedded mount
+    // contributes NO heading of its own — so that is what is asserted now,
+    // and a control the section does render pins that something rendered.
+    expect(screen.queryAllByRole('heading')).toEqual([]);
+    // A control the section does render, so "no heading" is not satisfied by
+    // "nothing rendered". Sources is used rather than a section whose rows
+    // are deferred composite editors, which render nothing in this harness.
+    expect(screen.getByRole('textbox', { name: 'Registry URL' })).toBeTruthy();
   });
 
   // archive#2645's contract is unchanged; its OWNER moved. The Developer

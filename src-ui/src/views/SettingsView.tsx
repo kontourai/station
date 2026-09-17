@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/project-settings-overrides';
 import {
   authenticatedFetch,
+  isPluginVisibilityForbidden,
   StationReadOnlyError,
   useConfigProvenanceQuery,
   useInvalidateQuery,
@@ -69,6 +70,7 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { PairingSection } from './settings/PairingSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -108,18 +110,26 @@ import {
  * Station, Defaults, This device. Leaf section DOM ids are
  * unchanged from pre-slice-3 (`useSectionNavigation` deep links and
  * existing tests key off them); only the top-level nav/page grouping
- * restructures. `station-config` is the one new leaf (the previously
- * hidden Station fields — see StationConfigSection.tsx). "My knowledge
+ * restructures. #2182 then dissolved `station-config` — the card those
+ * hidden Station fields landed in — into the sections named for what each
+ * row decides; `StationConfigSection.tsx` is now the shared renderer for
+ * those registry-driven rows rather than a section of its own. "My knowledge
  * store" (archive#settings-revamp: renamed from "Knowledge Store" to
  * disambiguate from the project-scoped and infrastructure-scoped Knowledge
  * surfaces, docs/design/settings-architecture.md §3) stays its own
  * top-level card outside every scope group.
  */
-// Ordered by what a person came here to do (archive#1826): the sections with
-// controls first (Station configuration, System, Shared answers), then the
-// read-mostly surfaces (Station host status, the Diagnostics bundle). A
-// settings page should open with what you change, not what an engineer
-// collects.
+// The nav strip lists sections in `SETTINGS_SECTIONS` order (archive#1826
+// ordered that list by what a person came here to do: the sections with
+// controls first — System, Shared answers — then the read-mostly surfaces,
+// the Station host report and the Diagnostics bundle), and the page body
+// below must mount them in the SAME order. That is two statements, not one:
+// the nav derives its order from the catalog, but the body's order is the
+// sequence of JSX blocks in this file, written by hand. Nothing forces them
+// to agree — #2182 briefly mounted its two new cards at the top of This
+// Station while the nav listed them near the bottom — so
+// `settings-catalog-completeness.test.tsx` holds them together, comparing the
+// rendered anchors against what `settingsSectionNavItems` actually lists.
 const ALL_LEAF_SECTION_IDS = SETTINGS_SECTIONS.map(({ id }) => id);
 const ALL_SETTINGS_VIEWS = ['overview', ...ALL_LEAF_SECTION_IDS];
 
@@ -325,22 +335,77 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   // direction, and matches the section, which renders nothing until then.
   const pluginVisibilityDirectory = usePluginVisibilityQuery();
   const isOperator = pluginVisibilityDirectory.data !== undefined;
+  // What the PAGE may select is not the same question as `isOperator`: it
+  // mirrors what `PluginVisibilitySection` itself renders. The section draws
+  // nothing while pending and nothing on the server's refusal, but on any
+  // OTHER failure it draws its own error with a Retry — the only way an
+  // operator whose one request failed (the query does not retry) gets back.
+  // Gating on `data` alone filtered that operator out into a blank body with
+  // no error and no Retry (#2182 delta review). So a settled non-forbidden
+  // error still selects the section; a refusal and the pending interval do
+  // not.
+  const operatorSectionsSelectable =
+    isOperator ||
+    (pluginVisibilityDirectory.isError &&
+      !isPluginVisibilityForbidden(pluginVisibilityDirectory.error));
+  // Keyed on the CONDITIONAL, not on one section id: a second
+  // operator-conditional section would otherwise leak the day somebody adds
+  // it.
+  const operatorMayView = (section: string) =>
+    operatorSectionsSelectable || !OPERATOR_ONLY_SECTION_IDS.has(section);
   const visibleSections = new Set(
     searchQuery.trim()
       ? matchingSettingsRows(searchQuery, { isOperator }).map(
           (entry) => entry.section,
         )
       : activeSection === 'overview'
-        ? ALL_LEAF_SECTION_IDS.filter(
-            // Keyed on the CONDITIONAL, not on one section id: a second
-            // operator-conditional section would otherwise leak into the
-            // overview the day somebody adds it.
-            (section) => isOperator || !OPERATOR_ONLY_SECTION_IDS.has(section),
-          )
-        : [activeSection],
+        ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
+        : // #2182 review M-b: the SAME gate on the direct-view path. It used
+          // to select `[activeSection]` unconditionally, so a non-operator on
+          // `?view=plugin-visibility` had the section "selected" while
+          // `PluginVisibilitySection` rendered nothing for them — and the
+          // This Station caption printed over the empty box. With the gate the
+          // view selects nothing: the body is empty, which is what the
+          // section's own refusal already rendered, and no caption claims a
+          // box that is not there.
+          //
+          // Operator status is not known synchronously: nothing is selectable
+          // until the directory query settles. For an OPERATOR landing here
+          // that interval now renders no section and no caption, then the
+          // section once the answer arrives (or its error, with Retry). It rendered no section before this fix
+          // either (the section returns null while pending), so the only
+          // change in the interval is that the caption no longer precedes
+          // content that may never come. Fail-closed, and no content flashes.
+          [activeSection].filter(operatorMayView),
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
+  /**
+   * Whether a scope group has anything to show (#2182, review L7).
+   *
+   * Each `.settings__scope-group` opens with the storage rule its sections
+   * are saved under. Three of the four rendered that caption unconditionally,
+   * so a `?view=` naming one section — or a search matching rows in one
+   * group — printed "Saved to this Station", "Saved to this Station — what
+   * agents may do…" and "Saved to this device only" over nothing at all: a
+   * promise about a box with no contents, twice over.
+   *
+   * Derived from the catalog rather than listed, so a new section joins its
+   * group's visibility the day it is added. It can be a plain `some` over
+   * `sectionVisible` because that set already carries the search filter, the
+   * active `?view=`, and the operator gate on all three paths (search,
+   * overview, direct view — the last since review M-b).
+   *
+   * What it does NOT know is whether a selected section will render anything.
+   * It counts SELECTION, not content: a selected section whose component
+   * returns null (for instance while its own data loads) still makes its
+   * group visible, so the caption can precede it for that interval. That
+   * transient is accepted; this function claims only what it computes.
+   */
+  const groupVisible = (group: SettingsNavGroup) =>
+    SETTINGS_SECTIONS.some(
+      (section) => section.group === group && sectionVisible(section.id),
+    );
 
   const [highlightRequest, setHighlightRequest] = useState(() => ({
     id: new URLSearchParams(window.location.search).get('highlight'),
@@ -908,17 +973,81 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             </div>
 
             {/* ── Station scope ── */}
-            <section
-              aria-label="This Station settings"
-              className="settings__scope-group"
-            >
-              <p className="settings__scope-caption">
-                Saved to this Station — every client sees the same values.
-              </p>
+            {groupVisible('this-station') && (
+              <section
+                aria-label="This Station settings"
+                className="settings__scope-group"
+              >
+                <p className="settings__scope-caption">
+                  Saved to this Station — every client sees the same values.
+                </p>
 
-              {sectionVisible('station-config') && (
-                <>
+                {sectionVisible('system') && (
+                  <>
+                    <SystemSection
+                      apiBase={currentApiBase}
+                      config={config}
+                      onChange={setConfig}
+                      onExport={exportSettings}
+                      onImport={importSettings}
+                      onResetToDefaults={() => setShowResetModal(true)}
+                      hasUnsavedChanges={hasChanges}
+                    />
+                    <ExistingSetupImportStepper />
+                    {/* #2182: who may sign in to this Station. It has no
+                  catalog row of its own (giving it one is out of scope —
+                  see the epic), so it had to be placed by hand when the card
+                  it used to sit in was dissolved. System is where this page
+                  already keeps Station administration: updates, log level,
+                  export and import, and the two resets. */}
+                    <LocalAccountsSection />
+                  </>
+                )}
+
+                {/* archive#3313: previews persist on the Station (PUT
+              /api/feature-previews/:id), so the section lives in this scope. */}
+                {sectionVisible('feature-previews') && (
+                  <FeaturePreviewsSection />
+                )}
+
+                {/* archive#1423: answer permalinks the operator has minted. Station
+              scope because the shares live on this Station and every client
+              of it sees the same list. */}
+                {sectionVisible('answer-shares') && <AnswerSharesSection />}
+
+                {/* #2067: per-principal plugin visibility. Station scope — the
+              grants live on this Station — and the section renders nothing
+              for a caller the route refuses as a non-operator. */}
+                {sectionVisible('plugin-visibility') && (
+                  <PluginVisibilitySection />
+                )}
+                {sectionVisible('host-runtime') && (
+                  <EnvironmentStatus apiBase={currentApiBase}>
+                    {/* #2182: three settings whose subject is the machine,
+                  inside the card that reports on it. Embedded rather than a
+                  second card, because `section-host-runtime` is one anchor
+                  and one heading. */}
+                    <StationConfigSection
+                      section="host-runtime"
+                      embedded
+                      config={config}
+                      provenance={provenance}
+                      onChange={setConfig}
+                      containerScope="station"
+                      projectOverride={projectOverride}
+                    />
+                  </EnvironmentStatus>
+                )}
+
+                {/* #2182: two of the cards the dissolved "Station
+              configuration" section's rows moved to. Their position here is
+              `SETTINGS_SECTIONS`' — the nav strip and the page body must
+              scroll in the same order, which `settings-catalog-completeness`
+              now asserts from the catalog rather than from a list. */}
+                {sectionVisible('sources') && (
                   <StationConfigSection
+                    section="sources"
+                    icon="⚙"
                     config={config}
                     provenance={provenance}
                     onChange={setConfig}
@@ -927,233 +1056,272 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     containerScope="station"
                     projectOverride={projectOverride}
                   />
-                  {/* #2144 slice 6 item D: whether anything CAN be sent, beside
+                )}
+
+                {/* Glyphs already on `ui-glyph-coverage-allowlist.json`, not
+              new ones: that list is recorded debt (#1704 is shrinking it),
+              and a section arriving with its own pictogram would grow it for
+              decoration. ⚙ is the dissolved card's own glyph, kept for
+              Sources; ◉ and ◆ were already carried. */}
+                {sectionVisible('telemetry') && (
+                  <Section icon="◉" title="Telemetry" id="section-telemetry">
+                    <StationConfigSection
+                      section="telemetry"
+                      embedded
+                      config={config}
+                      provenance={provenance}
+                      onChange={setConfig}
+                      containerScope="station"
+                      projectOverride={projectOverride}
+                    />
+                    {/* #2144 slice 6 item D: whether anything CAN be sent, beside
                   the toggle that decides whether it is. Derived from the
                   boolean the disclosure query already holds — React Query
                   dedupes on the key, so this is the same request the
                   disclosure below makes, not a second one. The host is not
                   exposed (see `usageTelemetryDestinationSummary`). */}
-                  <PageRow
-                    {...settingsRow('telemetry-destination')}
-                    description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
-                    control={(() => {
-                      // `null` is the in-flight read: the row keeps its place
-                      // (and its catalog identity) while saying nothing, rather
-                      // than asserting the host reported nothing.
-                      const summary = usageTelemetryDestinationSummary({
-                        endpointConfigured:
-                          telemetryDisclosure.data?.endpointConfigured,
-                        settled: telemetryDisclosure.settled,
-                        isError: telemetryDisclosure.isError,
-                      });
-                      return summary === null ? null : (
-                        <span className="settings__field-hint">{summary}</span>
-                      );
-                    })()}
-                  />
-                  <UsageTelemetryDisclosure />
-                  <LocalAccountsSection />
-                </>
-              )}
+                    <PageRow
+                      {...settingsRow('telemetry-destination')}
+                      description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
+                      control={(() => {
+                        // `null` is the in-flight read: the row keeps its place
+                        // (and its catalog identity) while saying nothing, rather
+                        // than asserting the host reported nothing.
+                        const summary = usageTelemetryDestinationSummary({
+                          endpointConfigured:
+                            telemetryDisclosure.data?.endpointConfigured,
+                          settled: telemetryDisclosure.settled,
+                          isError: telemetryDisclosure.isError,
+                        });
+                        return summary === null ? null : (
+                          <span className="settings__field-hint">
+                            {summary}
+                          </span>
+                        );
+                      })()}
+                    />
+                    <UsageTelemetryDisclosure />
+                  </Section>
+                )}
 
-              {sectionVisible('system') && (
-                <>
-                  <SystemSection
-                    apiBase={currentApiBase}
-                    config={config}
-                    onChange={setConfig}
-                    onExport={exportSettings}
-                    onImport={importSettings}
-                    onResetToDefaults={() => setShowResetModal(true)}
-                    hasUnsavedChanges={hasChanges}
-                  />
-                  <ExistingSetupImportStepper />
-                </>
-              )}
-
-              {/* archive#3313: previews persist on the Station (PUT
-              /api/feature-previews/:id), so the section lives in this scope. */}
-              {sectionVisible('feature-previews') && <FeaturePreviewsSection />}
-
-              {/* archive#1423: answer permalinks the operator has minted. Station
-              scope because the shares live on this Station and every client
-              of it sees the same list. */}
-              {sectionVisible('answer-shares') && <AnswerSharesSection />}
-
-              {/* #2067: per-principal plugin visibility. Station scope — the
-              grants live on this Station — and the section renders nothing
-              for a caller the route refuses as a non-operator. */}
-              {sectionVisible('plugin-visibility') && (
-                <PluginVisibilitySection />
-              )}
-              {sectionVisible('host-runtime') && (
-                <EnvironmentStatus apiBase={currentApiBase} />
-              )}
-
-              {sectionVisible('diagnostics') && (
-                <Section icon="◫" title="Diagnostics" id="section-diagnostics">
-                  <PageRow
-                    {...settingsRow('diagnostics-bundle')}
-                    description="Download a redacted snapshot of Station health and configuration. It includes recent server logs when logging is enabled."
-                    control={
-                      <button
-                        type="button"
-                        className="settings__secondary-btn settings__diagnostics-download"
-                        disabled={diagnosticsBundle.isPending}
-                        onClick={() => diagnosticsBundle.mutate(undefined)}
-                      >
-                        Download diagnostics bundle
-                      </button>
-                    }
-                  />
-                  {diagnosticsBundle.isPending && (
-                    <div
-                      className="settings__diagnostics-status"
-                      role="status"
-                      aria-label="Generating diagnostics bundle"
-                    >
-                      <Skeleton variant="line" />
-                    </div>
-                  )}
-                  {diagnosticsBundle.isError && (
-                    <ErrorState
-                      className="settings__diagnostics-status"
-                      variant="compact"
-                      title="Diagnostics bundle failed"
-                      description="Station could not prepare the diagnostics bundle."
-                      action={
+                {sectionVisible('diagnostics') && (
+                  <Section
+                    icon="◫"
+                    title="Diagnostics"
+                    id="section-diagnostics"
+                  >
+                    <PageRow
+                      {...settingsRow('diagnostics-bundle')}
+                      description="Download a redacted snapshot of Station health and configuration. It includes recent server logs when logging is enabled."
+                      control={
                         <button
                           type="button"
-                          className="settings__secondary-btn"
+                          className="settings__secondary-btn settings__diagnostics-download"
+                          disabled={diagnosticsBundle.isPending}
                           onClick={() => diagnosticsBundle.mutate(undefined)}
                         >
-                          Retry download
+                          Download diagnostics bundle
                         </button>
                       }
                     />
-                  )}
-                </Section>
-              )}
-            </section>
+                    {diagnosticsBundle.isPending && (
+                      <div
+                        className="settings__diagnostics-status"
+                        role="status"
+                        aria-label="Generating diagnostics bundle"
+                      >
+                        <Skeleton variant="line" />
+                      </div>
+                    )}
+                    {diagnosticsBundle.isError && (
+                      <ErrorState
+                        className="settings__diagnostics-status"
+                        variant="compact"
+                        title="Diagnostics bundle failed"
+                        description="Station could not prepare the diagnostics bundle."
+                        action={
+                          <button
+                            type="button"
+                            className="settings__secondary-btn"
+                            onClick={() => diagnosticsBundle.mutate(undefined)}
+                          >
+                            Retry download
+                          </button>
+                        }
+                      />
+                    )}
+                  </Section>
+                )}
+              </section>
+            )}
 
             {/* ── Defaults scope ── */}
-            <section
-              aria-label="Control settings"
-              className="settings__scope-group"
-            >
-              <p className="settings__scope-caption">
-                Saved to this Station — used when a chat, project, or agent
-                doesn’t set its own value.
-              </p>
+            {groupVisible('control') && (
+              <section
+                aria-label="Control settings"
+                className="settings__scope-group"
+              >
+                {/* #2182. This box holds ELEVEN rows and they are not all the
+              same kind of rule, which is why the caption has three clauses
+              rather than one. Each clause is true of at least one row and the
+              three together cover all eleven, so a row added here has to pick
+              one — or the caption needs a fourth. Assigned from what the
+              RUNTIME does with each value, not from its help text:
 
-              {sectionVisible('agent-defaults') && (
-                <AgentDefaultsSection
-                  config={config}
-                  validationErrors={validationErrors}
-                  validationWarnings={validationWarnings}
-                  onChange={setConfig}
-                  region={config.region || ''}
-                  regionError={validationErrors.region}
-                  regionProvenance={provenance?.region}
-                  showRegion={showRegion}
-                  onRegionChange={(value) =>
-                    setConfig({ ...config, region: value })
-                  }
-                />
-              )}
-            </section>
+                • "what agents may do without asking" (2) —
+                  `approval-guardian`, an always-on screener; and
+                  `default-approval-mode`, which is ALSO a fallback: a chat or
+                  its engine connection that names its own posture wins.
+                • "what every run gets" (4) —
+                  `default-agent-instructions`, prepended to the agent's own
+                  prompt and never replaced by it
+                  (`runtime-agent-builder.ts` `createRuntimeInstructions`,
+                  `routes/chat/chat.ts`); `template-variables`, one
+                  Station-wide list substituted into those prompts
+                  (`runtime-template-variables.ts`); `workspace-checkpoints`,
+                  read once when Station starts, so a change applies on the
+                  next start, and only to sessions bound to a project with a
+                  working directory (`turn-checkpoint-capture.ts`); and
+                  `builtin-agent-engine`,
+                  which applies to every run of a BUILT-IN agent only — an
+                  agent bound to its own engine is not carried by it. The
+                  first two reach runs Station builds itself; an external
+                  engine receives its own prompt.
+                • "the values a chat, project or agent inherits when it does
+                  not name its own" (5) — `default-model`, `default-region`,
+                  `default-workspace-isolation`, and the two run ceilings:
+                  `default-max-turns` (`resolveMaxSteps` in `constants.ts`:
+                  agent guardrails, then agent spec, then this) and
+                  `default-max-output-tokens` (`voltagent-adapter.ts`:
+                  `spec.guardrails.maxTokens ?? defaultMaxOutputTokens`).
+
+              2 + 4 + 5 = 11. No "device" clause: the one Station row a DEVICE
+              overrides is `default-chat-font-size`, and that row is in the
+              Chat box, not this one. */}
+                <p className="settings__scope-caption">
+                  Saved to this Station — what agents may do without asking,
+                  what every run gets, and the values a chat, project or agent
+                  inherits when it does not name its own.
+                </p>
+
+                {sectionVisible('permissions') && (
+                  <StationConfigSection
+                    section="permissions"
+                    icon="◆"
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    containerScope="station"
+                    projectOverride={projectOverride}
+                  />
+                )}
+
+                {sectionVisible('agent-runs') && (
+                  <AgentDefaultsSection
+                    config={config}
+                    validationErrors={validationErrors}
+                    validationWarnings={validationWarnings}
+                    onChange={setConfig}
+                    region={config.region || ''}
+                    regionError={validationErrors.region}
+                    regionProvenance={provenance?.region}
+                    showRegion={showRegion}
+                    onRegionChange={(value) =>
+                      setConfig({ ...config, region: value })
+                    }
+                  >
+                    {/* #2182: what a run starts with and what bounds it —
+                  which engine carries the built-in agent, its step and
+                  output-token ceilings, the workspace a new chat gets and
+                  whether it is checkpointed. */}
+                    <StationConfigSection
+                      section="agent-runs"
+                      embedded
+                      config={config}
+                      provenance={provenance}
+                      onChange={setConfig}
+                      containerScope="station"
+                      projectOverride={projectOverride}
+                    />
+                  </AgentDefaultsSection>
+                )}
+              </section>
+            )}
 
             {/* ── This device scope ── */}
-            <section
-              aria-label="This device settings"
-              className="settings__scope-group"
-            >
-              <p className="settings__scope-caption">
-                Saved to this device only — these choices won’t follow you to
-                another device.
-              </p>
+            {groupVisible('you') && (
+              <section
+                aria-label="This device settings"
+                className="settings__scope-group"
+              >
+                <p className="settings__scope-caption">
+                  Saved to this device only — these choices won’t follow you to
+                  another device.
+                </p>
 
-              {sectionVisible('appearance') && (
-                <Section icon="◐" title="Appearance" id="section-appearance">
-                  <PageRow
-                    {...settingsRow('theme')}
-                    description="Toggle between light and dark mode."
-                    control={<ThemeToggle />}
-                  />
-                  {/* archive#3314: the restore path for a section removed via the
-                  sidebar's own × affordance. */}
-                  <PageRow
-                    {...settingsRow('sidebar-sections')}
-                    description="Show the Open chats and Drafts sections in the sidebar."
-                    control={
-                      <div className="settings__toggle-column">
-                        <div className="settings__toggle-line">
-                          <Toggle
-                            checked={!sidebarSections.openChatsHidden}
-                            onChange={(checked) =>
-                              setDeviceSetting('sidebarSections', {
-                                ...sidebarSections,
-                                openChatsHidden: !checked,
-                              })
-                            }
-                            label="Open chats in sidebar"
-                          />
-                          <span aria-hidden="true">Open chats</span>
-                        </div>
-                        <div className="settings__toggle-line">
-                          <Toggle
-                            checked={!sidebarSections.draftsHidden}
-                            onChange={(checked) =>
-                              setDeviceSetting('sidebarSections', {
-                                ...sidebarSections,
-                                draftsHidden: !checked,
-                              })
-                            }
-                            label="Drafts in sidebar"
-                          />
-                          <span aria-hidden="true">Drafts</span>
-                        </div>
-                      </div>
-                    }
-                  />
-                  {isMobile && (
+                {sectionVisible('appearance') && (
+                  <Section icon="◐" title="Appearance" id="section-appearance">
                     <PageRow
-                      {...settingsRow('haptic-feedback')}
-                      description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
+                      {...settingsRow('theme')}
+                      description="Toggle between light and dark mode."
+                      control={<ThemeToggle />}
+                    />
+                    {/* archive#3314: the restore path for a section removed via the
+                  sidebar's own × affordance. */}
+                    <PageRow
+                      {...settingsRow('sidebar-sections')}
+                      description="Show the Open chats and Drafts sections in the sidebar."
                       control={
-                        <Toggle
-                          checked={hapticsEnabled}
-                          onChange={(checked) =>
-                            setDeviceSetting('hapticsEnabled', checked)
-                          }
-                          label={settingsRow('haptic-feedback').title}
-                        />
+                        <div className="settings__toggle-column">
+                          <div className="settings__toggle-line">
+                            <Toggle
+                              checked={!sidebarSections.openChatsHidden}
+                              onChange={(checked) =>
+                                setDeviceSetting('sidebarSections', {
+                                  ...sidebarSections,
+                                  openChatsHidden: !checked,
+                                })
+                              }
+                              label="Open chats in sidebar"
+                            />
+                            <span aria-hidden="true">Open chats</span>
+                          </div>
+                          <div className="settings__toggle-line">
+                            <Toggle
+                              checked={!sidebarSections.draftsHidden}
+                              onChange={(checked) =>
+                                setDeviceSetting('sidebarSections', {
+                                  ...sidebarSections,
+                                  draftsHidden: !checked,
+                                })
+                              }
+                              label="Drafts in sidebar"
+                            />
+                            <span aria-hidden="true">Drafts</span>
+                          </div>
+                        </div>
                       }
                     />
-                  )}
-                  <AccentColorPicker />
-                  {/* #2144 slice 6 item E. A group, not a new section: slice 4
-                  owns the navigation, and only ONE destructive confirm has
-                  an action behind it today — archive and quit do not exist,
-                  and "Clear all conversations" deliberately keeps asking. */}
-                  <h3 className="settings__group-title">Confirmations</h3>
-                  <PageRow
-                    {...settingsRow('confirm-conversation-delete')}
-                    description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
-                    control={
-                      <Toggle
-                        checked={confirmConversationDelete}
-                        onChange={(checked) =>
-                          setDeviceSetting('confirmConversationDelete', checked)
+                    {isMobile && (
+                      <PageRow
+                        {...settingsRow('haptic-feedback')}
+                        description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
+                        control={
+                          <Toggle
+                            checked={hapticsEnabled}
+                            onChange={(checked) =>
+                              setDeviceSetting('hapticsEnabled', checked)
+                            }
+                            label={settingsRow('haptic-feedback').title}
+                          />
                         }
-                        label={settingsRow('confirm-conversation-delete').title}
                       />
-                    }
-                  />
-                </Section>
-              )}
+                    )}
+                    <AccentColorPicker />
+                  </Section>
+                )}
 
-              {/* #2144 decision 2: Chat owns the rows that decide what a chat
+                {/* #2144 decision 2: Chat owns the rows that decide what a chat
               LOOKS and BEHAVES like on this device. Two of them moved here
               from Appearance (their ids, and therefore every `highlight=`
               deep link, are unchanged); the other five had a device-settings
@@ -1177,209 +1345,255 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               than a new one: that list is recorded debt (#1704 is shrinking
               it), so a section arriving with its own pictogram would grow it
               for decoration. A speech bubble would have. */}
-              {sectionVisible('chat') && (
-                <Section icon="◇" title="Chat" id="section-chat">
-                  {/* This slider writes the DEVICE key only. The Station
+                {sectionVisible('chat') && (
+                  <Section icon="◇" title="Chat" id="section-chat">
+                    {/* This slider writes the DEVICE key only. The Station
                   default it falls back to (`defaultChatFontSize`) has its own
-                  row under Station configuration — the catalog entry used to
+                  row, immediately below — the catalog entry used to
                   claim both keys while nothing here wrote the Station one. */}
-                  <PageRow
-                    {...settingsRow('chat-font-size')}
-                    // `savedConfig`, not `config`, in all three places below: this
-                    // row reports what this device falls back to, which is the
-                    // STORED Station default. An unsaved draft of
-                    // `defaultChatFontSize` is not in force anywhere yet, so
-                    // moving the slider with it would show a fallback no chat is
-                    // using.
-                    description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
-                    control={
-                      <div className="settings__range-row">
-                        <input
-                          id="chatFontSize"
-                          aria-label={settingsRow('chat-font-size').title}
-                          type="range"
-                          min="10"
-                          max="24"
-                          value={
-                            chatFontSize ??
-                            savedConfig.defaultChatFontSize ??
-                            14
-                          }
-                          onChange={(e) =>
-                            setDeviceSetting(
-                              'chatFontSize',
-                              parseInt(e.target.value, 10),
-                            )
-                          }
-                        />
-                        <span className="settings__range-value">
-                          {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
-                        </span>
-                        {chatFontSize != null && (
-                          <button
-                            type="button"
-                            className="settings__secondary-btn"
-                            onClick={() => resetDeviceSetting('chatFontSize')}
-                          >
-                            Use Station default
-                          </button>
-                        )}
-                      </div>
-                    }
-                  />
-                  {/* #585 / #2144 slice 6 item B: one control naming BOTH
+                    <PageRow
+                      {...settingsRow('chat-font-size')}
+                      // `savedConfig`, not `config`, in all three places below: this
+                      // row reports what this device falls back to, which is the
+                      // STORED Station default. An unsaved draft of
+                      // `defaultChatFontSize` is not in force anywhere yet, so
+                      // moving the slider with it would show a fallback no chat is
+                      // using.
+                      description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
+                      control={
+                        <div className="settings__range-row">
+                          <input
+                            id="chatFontSize"
+                            aria-label={settingsRow('chat-font-size').title}
+                            type="range"
+                            min="10"
+                            max="24"
+                            value={
+                              chatFontSize ??
+                              savedConfig.defaultChatFontSize ??
+                              14
+                            }
+                            onChange={(e) =>
+                              setDeviceSetting(
+                                'chatFontSize',
+                                parseInt(e.target.value, 10),
+                              )
+                            }
+                          />
+                          <span className="settings__range-value">
+                            {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
+                          </span>
+                          {chatFontSize != null && (
+                            <button
+                              type="button"
+                              className="settings__secondary-btn"
+                              onClick={() => resetDeviceSetting('chatFontSize')}
+                            >
+                              Use Station default
+                            </button>
+                          )}
+                        </div>
+                      }
+                    />
+                    {/* #2182: the Station default the slider above falls back
+                  to, beside it rather than in a Station card a reader would
+                  have to know to look in. It is the one STATION-scope row in
+                  a device box, so `containerScope="device"` makes it print a
+                  "Station" chip — the chip is a DIFFERENCE from the group's
+                  caption, and this is the first row that actually differs. */}
+                    <StationConfigSection
+                      section="chat"
+                      embedded
+                      config={config}
+                      provenance={provenance}
+                      onChange={setConfig}
+                      containerScope="device"
+                      projectOverride={projectOverride}
+                    />
+                    {/* #585 / #2144 slice 6 item B: one control naming BOTH
                   outcomes, over the same `featureSettings.smoothReveal`
                   boolean the two "Smooth answer reveal" toggles wrote. The
                   in-chat gear panel renders the same options from the same
                   mapping module. */}
-                  <PageRow
-                    {...settingsRow('smooth-answer-reveal')}
-                    description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
-                    control={
-                      <select
-                        className="editor-select"
-                        aria-label={settingsRow('smooth-answer-reveal').title}
-                        value={answerDeliveryModeOf(
-                          featureSettings?.smoothReveal,
-                        )}
-                        onChange={(event) => {
-                          const mode = event.target.value;
-                          if (!isAnswerDeliveryMode(mode)) return;
-                          setDeviceSetting('featureSettings', {
-                            ...featureSettings,
-                            smoothReveal: smoothRevealForAnswerDelivery(mode),
-                          });
-                        }}
-                      >
-                        {ANSWER_DELIVERY_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    }
-                  />
-                  <PageRow
-                    {...settingsRow('chat-show-reasoning')}
-                    description="Chat messages on this device include the model’s reasoning steps."
-                    control={
-                      <Toggle
-                        checked={chatShowReasoning}
-                        onChange={(checked) =>
-                          setDeviceSetting('chatShowReasoning', checked)
-                        }
-                        label={settingsRow('chat-show-reasoning').title}
-                      />
-                    }
-                  />
-                  <PageRow
-                    {...settingsRow('chat-show-tool-details')}
-                    description="Tool calls can be expanded to read their arguments and results."
-                    control={
-                      <Toggle
-                        checked={chatShowToolDetails}
-                        onChange={(checked) =>
-                          setDeviceSetting('chatShowToolDetails', checked)
-                        }
-                        label={settingsRow('chat-show-tool-details').title}
-                      />
-                    }
-                  />
-                  <PageRow
-                    {...settingsRow('chat-dock-auto-hide')}
-                    description="An idle, open chat dock collapses to its bar after five seconds."
-                    control={
-                      <Toggle
-                        checked={chatDockAutoHide}
-                        onChange={(checked) =>
-                          setDeviceSetting('chatDockAutoHide', checked)
-                        }
-                        label={settingsRow('chat-dock-auto-hide').title}
-                      />
-                    }
-                  />
-                  {/* The diff rows belong to chat because the changed files a
+                    <PageRow
+                      {...settingsRow('smooth-answer-reveal')}
+                      description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
+                      control={
+                        <select
+                          className="editor-select"
+                          aria-label={settingsRow('smooth-answer-reveal').title}
+                          value={answerDeliveryModeOf(
+                            featureSettings?.smoothReveal,
+                          )}
+                          onChange={(event) => {
+                            const mode = event.target.value;
+                            if (!isAnswerDeliveryMode(mode)) return;
+                            setDeviceSetting('featureSettings', {
+                              ...featureSettings,
+                              smoothReveal: smoothRevealForAnswerDelivery(mode),
+                            });
+                          }}
+                        >
+                          {ANSWER_DELIVERY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      }
+                    />
+                    <PageRow
+                      {...settingsRow('chat-show-reasoning')}
+                      description="Chat messages on this device include the model’s reasoning steps."
+                      control={
+                        <Toggle
+                          checked={chatShowReasoning}
+                          onChange={(checked) =>
+                            setDeviceSetting('chatShowReasoning', checked)
+                          }
+                          label={settingsRow('chat-show-reasoning').title}
+                        />
+                      }
+                    />
+                    <PageRow
+                      {...settingsRow('chat-show-tool-details')}
+                      description="Tool calls can be expanded to read their arguments and results."
+                      control={
+                        <Toggle
+                          checked={chatShowToolDetails}
+                          onChange={(checked) =>
+                            setDeviceSetting('chatShowToolDetails', checked)
+                          }
+                          label={settingsRow('chat-show-tool-details').title}
+                        />
+                      }
+                    />
+                    <PageRow
+                      {...settingsRow('chat-dock-auto-hide')}
+                      description="An idle, open chat dock collapses to its bar after five seconds."
+                      control={
+                        <Toggle
+                          checked={chatDockAutoHide}
+                          onChange={(checked) =>
+                            setDeviceSetting('chatDockAutoHide', checked)
+                          }
+                          label={settingsRow('chat-dock-auto-hide').title}
+                        />
+                      }
+                    />
+                    {/* The diff rows belong to chat because the changed files a
                   reader opens arrive there. `DiffPanel` writes the same two
                   keys from its own controls. */}
-                  <PageRow
-                    {...settingsRow('diff-style')}
-                    description="Changed files show as one column, or as two side-by-side columns."
-                    control={
-                      <select
-                        className="editor-select"
-                        aria-label={settingsRow('diff-style').title}
-                        value={diffStyle}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          if (value !== 'unified' && value !== 'split') return;
-                          setDeviceSetting('diffStyle', value);
-                        }}
-                      >
-                        <option value="unified">Unified</option>
-                        <option value="split">Side by side</option>
-                      </select>
-                    }
-                  />
-                  <PageRow
-                    {...settingsRow('diff-wrap')}
-                    description="Long diff lines wrap instead of scrolling sideways."
-                    control={
-                      <Toggle
-                        checked={diffWrap}
-                        onChange={(checked) =>
-                          setDeviceSetting('diffWrap', checked)
-                        }
-                        label={settingsRow('diff-wrap').title}
-                      />
-                    }
-                  />
-                </Section>
-              )}
+                    <PageRow
+                      {...settingsRow('diff-style')}
+                      description="Changed files show as one column, or as two side-by-side columns."
+                      control={
+                        <select
+                          className="editor-select"
+                          aria-label={settingsRow('diff-style').title}
+                          value={diffStyle}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value !== 'unified' && value !== 'split')
+                              return;
+                            setDeviceSetting('diffStyle', value);
+                          }}
+                        >
+                          <option value="unified">Unified</option>
+                          <option value="split">Side by side</option>
+                        </select>
+                      }
+                    />
+                    <PageRow
+                      {...settingsRow('diff-wrap')}
+                      description="Long diff lines wrap instead of scrolling sideways."
+                      control={
+                        <Toggle
+                          checked={diffWrap}
+                          onChange={(checked) =>
+                            setDeviceSetting('diffWrap', checked)
+                          }
+                          label={settingsRow('diff-wrap').title}
+                        />
+                      }
+                    />
+                    {/* #2144 slice 6 item E. A group, not a new section: only
+                  ONE destructive confirm has an action behind it today —
+                  archive and quit do not exist, and "Clear all conversations"
+                  deliberately keeps asking. It moved here from Appearance
+                  with its heading (#2182): whether deleting a conversation
+                  asks first is a fact about conversations, not about how the
+                  app looks. */}
+                    <h3 className="settings__group-title">Confirmations</h3>
+                    <PageRow
+                      {...settingsRow('confirm-conversation-delete')}
+                      description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                      control={
+                        <Toggle
+                          checked={confirmConversationDelete}
+                          onChange={(checked) =>
+                            setDeviceSetting(
+                              'confirmConversationDelete',
+                              checked,
+                            )
+                          }
+                          label={
+                            settingsRow('confirm-conversation-delete').title
+                          }
+                        />
+                      }
+                    />
+                  </Section>
+                )}
 
-              {sectionVisible('keyboard-shortcuts') && (
-                <Section
-                  icon="⌨"
-                  title="Keyboard shortcuts"
-                  id="section-keyboard-shortcuts"
-                >
-                  <KeyboardShortcutsSection />
-                </Section>
-              )}
+                {sectionVisible('keyboard-shortcuts') && (
+                  <Section
+                    icon="⌨"
+                    title="Keyboard shortcuts"
+                    id="section-keyboard-shortcuts"
+                  >
+                    <KeyboardShortcutsSection />
+                  </Section>
+                )}
 
-              {sectionVisible('notifications') && (
-                <NotificationsSection apiBase={currentApiBase} />
-              )}
+                {sectionVisible('notifications') && (
+                  <NotificationsSection apiBase={currentApiBase} />
+                )}
 
-              {sectionVisible('voice') && <VoiceFeaturesSection />}
+                {sectionVisible('voice') && <VoiceFeaturesSection />}
 
-              {sectionVisible('developer-tools') && (
-                <Section
-                  icon="⌥"
-                  title="Developer tools"
-                  id="section-developer-tools"
-                >
-                  <PageRow
-                    {...settingsRow('enable-developer-tools')}
-                    // Where the result APPEARS, because it is not here: the row
-                    // this adds opens the This Station group of the navigation
-                    // strip at the top of this page, while the switch itself sits
-                    // in This device further down, and the strip scrolls
-                    // sideways. Nothing else on the page moves, so without the
-                    // sentence the press reads as having done nothing.
-                    description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
-                    control={
-                      <Toggle
-                        checked={developerToolsEnabled}
-                        onChange={(checked) =>
-                          setDeviceSetting('developerToolsEnabled', checked)
-                        }
-                        label={settingsRow('enable-developer-tools').title}
-                      />
-                    }
-                  />
-                </Section>
-              )}
-            </section>
+                {/* #2182: pairing is not a voice feature, and now says so. */}
+                {sectionVisible('pairing') && <PairingSection />}
+
+                {sectionVisible('developer-tools') && (
+                  <Section
+                    icon="⌥"
+                    title="Developer tools"
+                    id="section-developer-tools"
+                  >
+                    <PageRow
+                      {...settingsRow('enable-developer-tools')}
+                      // Where the result APPEARS, because it is not here: the row
+                      // this adds opens the This Station group of the navigation
+                      // strip at the top of this page, while the switch itself sits
+                      // in This device further down, and the strip scrolls
+                      // sideways. Nothing else on the page moves, so without the
+                      // sentence the press reads as having done nothing.
+                      description="Show the Developer surface (logs, system, telemetry, memory, archive) on this device. A Developer row appears in the navigation at the top of this page, first under This Station, and Developer joins the sidebar and the command palette. Deep links to /developer keep working either way."
+                      control={
+                        <Toggle
+                          checked={developerToolsEnabled}
+                          onChange={(checked) =>
+                            setDeviceSetting('developerToolsEnabled', checked)
+                          }
+                          label={settingsRow('enable-developer-tools').title}
+                        />
+                      }
+                    />
+                  </Section>
+                )}
+              </section>
+            )}
 
             {/* ── My knowledge store (stays its own top-level card) ──
             The caption keeps the persistence fact the removed scope legend
@@ -1387,7 +1601,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             this card sits outside every scope group, so without its own
             caption nothing on the page said knowledge lives on the Station
             and follows you across devices. */}
-            {sectionVisible('knowledge') && (
+            {groupVisible('knowledge') && (
               <section
                 aria-label="Knowledge settings"
                 className="settings__scope-group"

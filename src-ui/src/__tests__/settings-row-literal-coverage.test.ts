@@ -80,14 +80,15 @@ const DYNAMIC_ROW_RENDERERS: Readonly<
     reason:
       'The rows are per-preview and server-derived; the one catalog entry is the section anchor, written as a literal data-catalog-id rather than through settingsRow.',
   },
+  // `mobile-pairing` used to be exempt here for the same reason as the three
+  // below. #2182 gave pairing its own section, and a section with ONE row
+  // names that row's id at the mount instead of looping a table of them —
+  // so the exemption stopped being true and the guard said so. Removed
+  // rather than repointed.
   'voice-pill': {
     file: 'src-ui/src/views/settings/VoiceFeaturesSection.tsx',
     reason:
       'Rendered by a shared feature-toggle component that takes the catalog id as a prop from a typed union; the three ids share the composite `featureSettings` key, so no per-row config key identifies them.',
-  },
-  'mobile-pairing': {
-    file: 'src-ui/src/views/settings/VoiceFeaturesSection.tsx',
-    reason: 'Same shared feature-toggle component as `voice-pill`.',
   },
   'tts-readback': {
     file: 'src-ui/src/views/settings/VoiceFeaturesSection.tsx',

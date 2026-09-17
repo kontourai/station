@@ -586,14 +586,17 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     },
   },
   {
+    // The id is the stable palette identity and stays as minted; the LABEL
+    // and the section it opens follow #2182's rename. "Defaults" is not a
+    // noun for a thing a person can go to, and the palette showed it as one.
     id: 'settings-defaults',
     route: '/settings',
-    label: () => 'Settings: Defaults',
-    keywords: ['settings', 'defaults', 'model', 'region'],
+    label: () => 'Settings: Agent runs',
+    keywords: ['settings', 'defaults', 'agent runs', 'model', 'region'],
     hiddenFromNav: true,
     palette: {
       order: 120,
-      params: { view: 'agent-defaults', highlight: 'default-model' },
+      params: { view: 'agent-runs', highlight: 'default-model' },
     },
   },
   {

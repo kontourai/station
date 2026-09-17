@@ -92,12 +92,10 @@ const STATUS_READY = JSON.stringify({
   },
 });
 
-/** Open the Voice & Features section directly and wait for its real surface. */
+/** Open the Voice section directly and wait for its real surface. */
 async function openSettings(page: import('@playwright/test').Page) {
   await page.goto('/settings?section=voice');
-  await expect(
-    page.getByRole('heading', { name: 'Voice & Features' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Voice' })).toBeVisible();
 }
 
 test.describe('Voice Providers — Settings UI', () => {
@@ -205,7 +203,7 @@ test.describe('Voice Providers — Settings UI', () => {
 
   test('TTS readback toggle is still present', async ({ page }) => {
     await openSettings(page);
-    await expect(page.locator('text=Read agent responses aloud')).toBeVisible();
+    await expect(page.locator('text=Read replies aloud')).toBeVisible();
   });
 
   test('screenshot: voice settings section (desktop)', async ({
@@ -214,7 +212,7 @@ test.describe('Voice Providers — Settings UI', () => {
     await openSettings(page);
     const voiceSection = page.locator('#section-voice');
     await expect(
-      voiceSection.getByRole('heading', { name: 'Voice & Features' }),
+      voiceSection.getByRole('heading', { name: 'Voice' }),
     ).toBeVisible();
     await voiceSection.scrollIntoViewIfNeeded();
     await page.screenshot({

@@ -449,7 +449,7 @@ describe('CommandPalette', () => {
     fireEvent.click(command);
 
     expect(navigateMock).toHaveBeenCalledWith('/settings', {
-      view: 'station-config',
+      view: 'host-runtime',
       highlight: 'terminal-shell',
     });
   });

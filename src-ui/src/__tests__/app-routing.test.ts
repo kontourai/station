@@ -19,7 +19,10 @@ const LEGACY_PATH_CASES = [
   ['/sessions?session=x&anything=y', '/?surface=activity&session=x'],
   ['/activity', '/?surface=activity'],
   ['/activity/', '/?surface=activity'],
-  ['/developer/config', '/settings?view=station-config'],
+  // #2182: the `station-config` section this named was dissolved into six
+  // others, and a redirect cannot pick one of them. It lands on Settings'
+  // overview, which shows all of them.
+  ['/developer/config', '/settings'],
   // archive#3313: Feature Previews retired into a Settings section.
   ['/feature-previews', '/settings?view=feature-previews'],
   ['/developer/storage', '/connections/knowledge'],
@@ -194,7 +197,7 @@ describe('app-shell routing', () => {
   });
 
   test.each([
-    ['/developer/config', '/settings?view=station-config'],
+    ['/developer/config', '/settings'],
     ['/developer/storage', '/connections/knowledge'],
     ['/developer/mcp', '/connections/tools'],
     ['/developer/mcp/new', '/connections/tools/new'],
@@ -208,10 +211,13 @@ describe('app-shell routing', () => {
       '/developer/mcp/example?source=notification',
       '/connections/tools/example?source=notification',
     ],
-    ['/developer/config?foo=bar', '/settings?view=station-config&foo=bar'],
+    ['/developer/config?foo=bar', '/settings?foo=bar'],
     [
+      // A caller-supplied `view` is still dropped: the redirect never
+      // honoured one, and #2182 removed the view it substituted rather than
+      // starting to honour theirs.
       '/developer/config?view=caller-choice&foo=bar&view=duplicate',
-      '/settings?view=station-config&foo=bar',
+      '/settings?foo=bar',
     ],
     [
       '/agents/planner/tools?source=notification',

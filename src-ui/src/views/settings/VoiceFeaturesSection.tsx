@@ -1,10 +1,3 @@
-import {
-  QRDisplay,
-  useConnections,
-  useHostUrl,
-} from '@kontourai/station-connect';
-import type { ReactNode } from 'react';
-import '../../components/Toggle.css';
 import { CheckGlyph, MicGlyph } from '../../components/icons/Glyph';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigation } from '../../contexts/NavigationContext';
@@ -12,100 +5,17 @@ import { useVoiceProviderContext } from '../../contexts/VoiceProviderContext';
 import type { BooleanFeatureSetting } from '../../hooks/useFeatureSettings';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { FeatureToggle, SettingsToggle } from './feature-toggle';
 import { NotificationSoundSettings } from './NotificationSoundSettings';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
-
-function SettingsToggle({
-  checked,
-  className,
-  describedBy,
-  label,
-  onChange,
-  children,
-}: {
-  checked: boolean;
-  className: string;
-  describedBy?: string;
-  label: string;
-  onChange: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className={className}
-      role="switch"
-      aria-checked={checked}
-      aria-describedby={describedBy}
-      aria-label={label}
-      onClick={onChange}
-    >
-      <span
-        className={`station-toggle station-toggle--sm${checked ? ' station-toggle--on' : ''}`}
-        aria-hidden="true"
-      >
-        <span className="station-toggle__thumb" />
-      </span>
-      {children}
-    </button>
-  );
-}
-
-function MobilePairingSection() {
-  const { activeConnection } = useConnections();
-  const serverPort = (() => {
-    try {
-      // archive#198: resolve against the current page as the base so a relative
-      // or empty `activeConnection.url` never throws — parity with the
-      // hardened `TerminalPanel.tsx`/`deriveVoiceWsUrl` pattern elsewhere.
-      const url = new URL(
-        activeConnection?.url || window.location.origin,
-        window.location.href,
-      );
-      return Number(url.port) || 3141;
-    } catch {
-      return 3141;
-    }
-  })();
-  const { hostUrl, isDetecting } = useHostUrl({
-    port: serverPort,
-    fallback: activeConnection?.url || `http://localhost:${serverPort}`,
-  });
-  const isLocalhost =
-    hostUrl.includes('localhost') || hostUrl.includes('127.0.0.1');
-
-  return (
-    <div className="form-group">
-      <span className="form-group__label">Mobile Pairing</span>
-      <div className="settings__pairing-content">
-        {isDetecting ? (
-          <div className="settings__pairing-detecting">Detecting local IP…</div>
-        ) : (
-          <QRDisplay url={hostUrl} size={160} label={hostUrl} />
-        )}
-        {isLocalhost && !isDetecting && (
-          <div className="settings__pairing-warning">
-            Showing localhost — your device may not be able to reach this
-            address. Make sure both devices are on the same network and use your
-            computer&apos;s LAN IP.
-          </div>
-        )}
-        <span className="form-help">
-          Scan this QR code with the mobile app to connect to this server
-          automatically.
-        </span>
-      </div>
-    </div>
-  );
-}
 
 // The `key` literals here trip gitleaks' generic-api-key rule, and the
 //gitleaks.toml allowlist for this file only masks identifiers matching
 // ^[a-z][A-Za-z0-9]{2,40}Enabled$ — a new key NOT ending in `Enabled` will
 // fail the secret scan until that regex is widened alongside it.
 const FEATURE_META: Array<{
-  catalogId: 'voice-pill' | 'mobile-pairing' | 'tts-readback';
+  catalogId: 'voice-pill' | 'tts-readback';
   key: BooleanFeatureSetting;
   description: string;
   privacyNote?: string;
@@ -117,68 +27,12 @@ const FEATURE_META: Array<{
       'Show the floating voice pill for full-duplex speech-to-speech sessions with app control.',
   },
   {
-    catalogId: 'mobile-pairing',
-    key: 'mobilePairingEnabled',
-    // The toggle's only effect is mounting `MobilePairingSection` below it —
-    // it enables no pairing capability on the server, which is what the
-    // description used to imply. The WebRTC consequence keeps its own
-    // `privacyNote` element (`.settings__toggle-privacy`) rather than being
-    // folded into the description as an ordinary sentence.
-    description: 'Show the pairing QR code and LAN discovery panel below.',
-    privacyNote:
-      'Detects this device’s local IP address via WebRTC while the panel is shown.',
-  },
-  {
     catalogId: 'tts-readback',
     key: 'ttsReadbackEnabled',
     description:
       'Automatically reads the latest assistant response via the selected TTS provider after each reply.',
   },
 ];
-
-function FeatureToggle({
-  featureKey,
-  label,
-  description,
-  privacyNote,
-  checked,
-  onToggle,
-}: {
-  featureKey: BooleanFeatureSetting;
-  label: string;
-  description: string;
-  privacyNote?: string;
-  checked: boolean;
-  onToggle: (key: BooleanFeatureSetting) => void;
-}) {
-  const descId = `feature-desc-${featureKey}`;
-  const privacyId = `feature-privacy-${featureKey}`;
-  return (
-    <SettingsToggle
-      className="settings__feature-toggle"
-      checked={checked}
-      onChange={() => onToggle(featureKey)}
-      // The privacy note is a consequence of flipping this switch, not
-      // decoration beside it. Left out of the description, a screen-reader
-      // user hears the toggle described without the one sentence that says
-      // what turning it on makes this device do.
-      describedBy={privacyNote ? `${descId} ${privacyId}` : descId}
-      label={label}
-    >
-      <div>
-        <div className="settings__toggle-name">{label}</div>
-        <div className="settings__toggle-detail" id={descId}>
-          {description}
-        </div>
-        {privacyNote && (
-          <div className="settings__toggle-privacy" id={privacyId}>
-            {privacyNote}
-          </div>
-        )}
-      </div>
-    </SettingsToggle>
-  );
-}
 
 function NotificationSubscribeButton({ apiBase }: { apiBase: string }) {
   const { settings } = useFeatureSettings();
@@ -237,11 +91,7 @@ export function VoiceFeaturesSection() {
     useMessageContextContext();
 
   return (
-    <SettingsSection
-      icon={<MicGlyph />}
-      title="Voice & Features"
-      id="section-voice"
-    >
+    <SettingsSection icon={<MicGlyph />} title="Voice" id="section-voice">
       <div
         className="voice-provider-section"
         {...settingsRow('speech-to-text')}
@@ -350,8 +200,6 @@ export function VoiceFeaturesSection() {
           </div>
         ))}
       </div>
-
-      {settings.mobilePairingEnabled && <MobilePairingSection />}
 
       <span className="form-help settings__form-help-block">
         Voice service selection and context settings are saved in this browser

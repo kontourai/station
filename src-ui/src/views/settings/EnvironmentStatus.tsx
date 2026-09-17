@@ -1,5 +1,5 @@
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   CheckGlyph,
   CloseGlyph,
@@ -25,7 +25,20 @@ interface Prerequisite {
 // device or their own Settings — so it is framed as "Host runtime" and lives
 // low in Settings behind a disclosure, surfacing only genuinely-unmet REQUIRED
 // items inline (glossary: "Engine", "Model connections", "host").
-export function EnvironmentStatus({ apiBase }: { apiBase: string }) {
+export function EnvironmentStatus({
+  apiBase,
+  children,
+}: {
+  apiBase: string;
+  /**
+   * Rows that belong to this section but are not part of the host report
+   * (#2182: the three Station settings whose subject is the machine). They
+   * render inside this card in BOTH branches — a host report that has not
+   * arrived must not also withhold the settings, which are readable and
+   * editable regardless of whether the prerequisite scan answered.
+   */
+  children?: ReactNode;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [guideOpen, setGuideOpen] = useState<Set<string>>(new Set());
 
@@ -72,6 +85,7 @@ export function EnvironmentStatus({ apiBase }: { apiBase: string }) {
             ? 'Checking prerequisites on the Station host…'
             : 'Host runtime status is unavailable. Try again when the Station host is reachable.'}
         </div>
+        {children}
       </PageSection>
     );
   }
@@ -199,6 +213,7 @@ export function EnvironmentStatus({ apiBase }: { apiBase: string }) {
           </div>
         </details>
       </div>
+      {children}
     </PageSection>
   );
 }

@@ -19,9 +19,12 @@ import {
   DEVELOPER_TOOLS_FLAG,
 } from '../app-shell/destination-registry';
 import {
+  OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
+  SETTINGS_SECTIONS,
   visibleCatalogIds,
 } from '../views/settings/settings-catalog';
+import { RESETTABLE_STATION_SETTING_KEYS } from '../views/settings/station-reset';
 
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
@@ -52,22 +55,50 @@ vi.mock('@kontourai/station-sdk', () => ({
   // here is the settings catalog, and a refusal would legitimately render
   // nothing and make the enumeration disagree for a reason unrelated to the
   // catalog.
-  usePluginVisibilityQuery: () => ({
-    data: {
-      principals: [
-        {
-          id: 'human:device:paired',
-          display: 'Paired device',
-          revoked: false,
-          plugins: [],
-          operator: false,
-        },
-      ],
-    },
-  }),
+  //
+  // #2182 review M-b adds the REFUSED case, driven by `pluginVisibilityRefused`:
+  // the route's answer to a non-operator, which is how the real query reports
+  // one (no data, a forbidden error, settled).
+  usePluginVisibilityQuery: () =>
+    pluginVisibilityRefused
+      ? {
+          data: undefined,
+          error: new Error('forbidden'),
+          isError: true,
+          isLoading: false,
+          isPending: false,
+        }
+      : pluginVisibilityFailed
+        ? {
+            // A settled failure that is NOT a refusal: what an operator sees
+            // when the one request (the query does not retry) hits a 5xx.
+            data: undefined,
+            error: new Error('network down'),
+            isError: true,
+            isLoading: false,
+            isPending: false,
+            refetch: vi.fn(),
+          }
+        : {
+            data: {
+              principals: [
+                {
+                  id: 'human:device:paired',
+                  display: 'Paired device',
+                  revoked: false,
+                  plugins: [],
+                  operator: false,
+                },
+              ],
+            },
+          },
   usePluginsQuery: () => ({ data: [] }),
   useSetPluginVisibilityMutation: () => ({ mutate: vi.fn(), isError: false }),
-  isPluginVisibilityForbidden: () => false,
+  // Discriminates on the refusal, not on "any error": a failure that is not
+  // a refusal must stay distinguishable, or the failed-operator case below
+  // would be indistinguishable from a non-operator.
+  isPluginVisibilityForbidden: (error: unknown) =>
+    error instanceof Error && error.message === 'forbidden',
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
   // #2144 slice 3: the hook takes the selected project's slug, and the
   // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
@@ -251,7 +282,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
     hapticsEnabled: true,
     accentColor: null,
     developerToolsEnabled: false,
-    // #2144 slice 6 item E: the Confirmations group in Appearance.
+    // #2144 slice 6 item E: the Confirmations group (in Chat since #2182).
     confirmConversationDelete: true,
     sidebarSections: {
       openChatsCollapsed: false,
@@ -268,6 +299,8 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
 }));
 let isMobile = false;
 let isDesktop = false;
+let pluginVisibilityRefused = false;
+let pluginVisibilityFailed = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
@@ -338,6 +371,8 @@ describe('settings catalog completeness', () => {
   beforeEach(() => {
     isMobile = false;
     isDesktop = false;
+    pluginVisibilityRefused = false;
+    pluginVisibilityFailed = false;
     updateConfig.mockReset();
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
@@ -471,6 +506,283 @@ describe('settings catalog completeness', () => {
     // that MOVED into the new chat section are not a change to this count:
     // the same ids, in a different `view`.
     expect(SETTINGS_CATALOG).toHaveLength(54);
+  });
+
+  /**
+   * #2182. The Station default for chat font size renders inside the "This
+   * device" box, beside the device slider that falls back to it — the one row
+   * on the page whose own scope differs from its container's caption, which
+   * is what `containerScope` exists for (#2144 slice 7): the chip is a
+   * DIFFERENCE from the caption, not a label printed on every line.
+   *
+   * WHAT THIS PINS. `scopeBadgeLabel` reads an absent container as the
+   * pre-slice-7 always-label behaviour, so for a STATION row
+   * `containerScope="device"` and no `containerScope` at all print the same
+   * chip, and no rendered assertion can tell them apart. This test catches
+   * the Chat mount naming the WRONG box (`"station"` there makes the chip
+   * vanish). The absent-prop case is caught by the compiler instead:
+   * `containerScope` is required on `StationConfigSection`.
+   *
+   * Every test in this block awaits the element it reads rather than querying
+   * synchronously after `renderSettings()`: run alone with `-t`, a synchronous
+   * query reads a page that has not mounted yet and fails for a reason that
+   * has nothing to do with the assertion.
+   */
+  test('a Station row in the device box prints a Station chip', async () => {
+    await renderSettings();
+
+    const stationDefault = (
+      await screen.findByLabelText('Default chat font size')
+    ).closest('.page-row');
+    expect(stationDefault).toBeTruthy();
+    expect(
+      stationDefault?.querySelector('.setting-row-status')?.textContent,
+    ).toContain('Station');
+  });
+
+  /**
+   * The other half of the difference rule, and the half with full power: the
+   * SAME `station` scope prints NOTHING inside the box whose caption already
+   * said it. This pins the Sources mount's `containerScope="station"` — drop
+   * it and Registry URL grows a chip that only restates the caption above it,
+   * which is the per-row noise #2144 slice 7 removed.
+   */
+  test('a Station row in the Station box prints no chip', async () => {
+    const { container } = await renderSettings();
+
+    const row = (await screen.findByLabelText('Registry URL')).closest(
+      '.page-row',
+    );
+    expect(
+      row?.querySelector('.setting-row-status'),
+      'the assertion below is vacuous without a status strip to read',
+    ).toBeTruthy();
+    expect(
+      row?.querySelector('.setting-row-status')?.textContent,
+    ).not.toContain('Station');
+    // The caption this row is being compared against, so "no chip" is read as
+    // "the box already said it" rather than "no box said anything".
+    expect(
+      container.querySelector(
+        '[aria-label="This Station settings"] .settings__scope-caption',
+      )?.textContent,
+    ).toContain('Saved to this Station');
+  });
+
+  /**
+   * #2182 review M2 / L-d. The nav strip and the page body must list sections
+   * in the same order: a body that mounts in a different sequence
+   * desynchronises the strip a reader skims from the page they scroll, and
+   * nothing else would say so — every section still renders, every deep link
+   * still resolves, only the sequence lies. (This branch did exactly that for
+   * one commit.)
+   *
+   * The expectation comes from `settingsSectionNavItems` — what the nav
+   * ACTUALLY lists — not from `SETTINGS_SECTIONS`, so the test means what its
+   * name says. And it is exact: the sections this fixture should NOT render
+   * are removed by id (`OPERATOR_ONLY_SECTION_IDS`, for a non-operator), not
+   * absorbed by a count tolerance, so a section that fails to mount is named
+   * in the diff instead of being forgiven anonymously.
+   */
+  test('the page body mounts its sections in the order the nav lists them', async () => {
+    const { container } = await renderSettings();
+    const { settingsSectionNavItems } = await import('../views/SettingsView');
+
+    const operator = !pluginVisibilityRefused;
+    const expected = settingsSectionNavItems((id) => id, [])
+      .map((item) => item.key)
+      .filter((key) => key !== 'overview')
+      .filter((key) => operator || !OPERATOR_ONLY_SECTION_IDS.has(key))
+      .map((key) => `section-${key}`);
+    // The expectation itself must not be empty, or the comparison below is
+    // satisfied by an empty page.
+    expect(expected.length).toBeGreaterThan(10);
+
+    // Every catalog section anchor the page rendered — including any it
+    // should NOT have, so an operator-only section leaking to a non-operator
+    // fails this as surely as a missing one does.
+    const rendered = () =>
+      [...container.querySelectorAll('[id^="section-"]')]
+        .map((element) => element.id)
+        .filter((id) =>
+          SETTINGS_SECTIONS.some((section) => `section-${section.id}` === id),
+        );
+    await waitFor(() => expect(rendered()).toEqual(expected));
+  });
+
+  /**
+   * `station-reset.ts` says its key list is "in the order the page renders
+   * them". That was a claim about the catalog, and the catalog only agrees
+   * with the page while the bodies mount in section order. Checked here
+   * against the DOM rather than restated.
+   */
+  test('the reset key order is the order those rows appear on the page', async () => {
+    const { container } = await renderSettings();
+
+    const idForKey = new Map(
+      SETTINGS_CATALOG.filter((entry) => entry.configKeys?.length).map(
+        (entry) => [entry.configKeys?.[0] as string, entry.id],
+      ),
+    );
+    const expected: string[] = RESETTABLE_STATION_SETTING_KEYS.map(
+      (key) => idForKey.get(key as string) as string,
+    );
+    expect(expected.filter(Boolean)).toHaveLength(expected.length);
+    const domOrder = () =>
+      [...container.querySelectorAll('[data-catalog-id]')]
+        .map((element) => element.getAttribute('data-catalog-id'))
+        .filter((id): id is string => id !== null)
+        .filter((id) => expected.includes(id));
+    await waitFor(() => expect(domOrder()).toEqual(expected));
+  });
+
+  /**
+   * #2182 review L7. Each `.settings__scope-group` opens with the storage
+   * rule its sections are saved under. Three of the four rendered that
+   * caption unconditionally, so opening ONE section printed the other groups'
+   * promises over nothing. A caption is a claim about contents; with no
+   * contents it is a claim about nothing.
+   */
+  describe('scope-group captions', () => {
+    const CONTROL_CAPTION =
+      'Saved to this Station — what agents may do without asking, what every run gets, and the values a chat, project or agent inherits when it does not name its own.';
+    const STATION_CAPTION =
+      'Saved to this Station — every client sees the same values.';
+    const DEVICE_CAPTION =
+      'Saved to this device only — these choices won’t follow you to another device.';
+
+    function captions(container: HTMLElement) {
+      return [...container.querySelectorAll('.settings__scope-caption')].map(
+        (node) => node.textContent?.replace(/\s+/g, ' ').trim(),
+      );
+    }
+
+    test("a single-section view shows only that section group's caption", async () => {
+      window.history.replaceState({}, '', '/settings?view=permissions');
+      const { container } = await renderSettings();
+
+      // The section body first, so the caption count below is read from a
+      // mounted page rather than one that has not rendered anything yet.
+      await waitFor(() =>
+        expect(container.querySelector('#section-permissions')).toBeTruthy(),
+      );
+      expect(captions(container)).toEqual([CONTROL_CAPTION]);
+    });
+
+    test('a This device view shows only the device caption', async () => {
+      window.history.replaceState({}, '', '/settings?view=chat');
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(container.querySelector('#section-chat')).toBeTruthy(),
+      );
+      expect(captions(container)).toEqual([DEVICE_CAPTION]);
+    });
+
+    test('the overview shows every group, which is what makes the two above a filter and not a break', async () => {
+      const { container } = await renderSettings();
+      await waitFor(() =>
+        expect(container.querySelector('#section-knowledge')).toBeTruthy(),
+      );
+      expect(captions(container).length).toBeGreaterThanOrEqual(4);
+    });
+
+    /**
+     * #2182 review M-b. An operator-only view for a caller who is not the
+     * operator selects NOTHING, so no caption is printed over the box the
+     * section refuses to fill. The "loaded" signal is the project selector,
+     * which renders only once the page has its config — without it, "no
+     * caption" would also be true of a page that had not mounted.
+     */
+    test('a non-operator on the Plugin visibility view sees no caption over an empty box', async () => {
+      pluginVisibilityRefused = true;
+      window.history.replaceState({}, '', '/settings?view=plugin-visibility');
+      const { container } = await renderSettings();
+
+      await screen.findByLabelText('Show settings for:');
+      expect(captions(container)).toEqual([]);
+      expect(container.querySelector('#section-plugin-visibility')).toBeNull();
+    });
+
+    /**
+     * An operator whose single directory request FAILED (not refused) still
+     * gets the section, and with it the error and its Retry. Gating on data
+     * alone filtered this operator into a blank body with no way back.
+     */
+    test('an operator whose visibility request failed still sees its error and a Retry', async () => {
+      pluginVisibilityFailed = true;
+      window.history.replaceState({}, '', '/settings?view=plugin-visibility');
+      const { container } = await renderSettings();
+
+      await screen.findByText('Plugin visibility could not be listed');
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+      expect(captions(container)).toEqual([STATION_CAPTION]);
+    });
+
+    /** The same URL for the operator still opens the section under its caption. */
+    test('the operator on the Plugin visibility view sees it under the Station caption', async () => {
+      window.history.replaceState({}, '', '/settings?view=plugin-visibility');
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(captions(container)).toEqual([STATION_CAPTION]),
+      );
+    });
+  });
+
+  /**
+   * #2182 dissolved the `station-config` section across six others. A link
+   * carrying a real `highlight` is healed to the section its control is in
+   * NOW; that is the whole reason a section id is allowed to move while a row
+   * id is not. Two rows, landing in two different sections, each asserted to
+   * the same depth — URL, section, focused control, no unavailable notice —
+   * because a healer that sent everything to one place, or that corrected
+   * the URL without revealing the row, would satisfy a weaker case.
+   */
+  describe('links to the retired station-config view', () => {
+    test('a host setting heals to Station host and is focused', async () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/settings?view=station-config&highlight=terminal-shell',
+      );
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(window.location.search).toBe('?view=host-runtime'),
+      );
+      expect(container.querySelector('#section-host-runtime')).toBeTruthy();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole('textbox', { name: 'Terminal shell' }),
+        ),
+      );
+      expect(
+        screen.queryByText('That Settings target is no longer available.'),
+      ).toBeNull();
+    });
+
+    test('a per-run ceiling heals to Agent runs and is focused', async () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/settings?view=station-config&highlight=default-max-turns',
+      );
+      const { container } = await renderSettings();
+
+      await waitFor(() =>
+        expect(window.location.search).toBe('?view=agent-runs'),
+      );
+      expect(container.querySelector('#section-agent-runs')).toBeTruthy();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByLabelText('Default max turns'),
+        ),
+      );
+      expect(
+        screen.queryByText('That Settings target is no longer available.'),
+      ).toBeNull();
+    });
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
@@ -1034,7 +1346,7 @@ describe('settings catalog completeness', () => {
     expect(container.querySelector('#section-appearance')).toBeTruthy();
   });
 
-  test('focuses a deep-linked editable field in the Defaults section', async () => {
+  test('focuses a deep-linked editable field in the Agent runs section', async () => {
     // The `.agent-defaults__disclosure` assertion that used to close this
     // test is gone with the disclosure itself: these fields render directly
     // under the section intro, so there is nothing left to open. The focus
@@ -1042,7 +1354,7 @@ describe('settings catalog completeness', () => {
     window.history.replaceState(
       {},
       '',
-      '/settings?view=agent-defaults&highlight=default-region',
+      '/settings?view=agent-runs&highlight=default-region',
     );
     const { container } = await renderSettings();
 
@@ -1052,6 +1364,59 @@ describe('settings catalog completeness', () => {
       ),
     );
     expect(container.querySelector('.agent-defaults__disclosure')).toBeNull();
+  });
+
+  /**
+   * #2182 renamed the section id `agent-defaults` to `agent-runs`. A section
+   * id is the one identity in the catalog that is allowed to move, and these
+   * two tests are what makes that a decision rather than an accident: a link
+   * carrying a real highlight is healed to the new section, and a link
+   * carrying only the stale view is NOT — it lands on the overview, silently.
+   */
+  test('a deep link to the retired agent-defaults view heals when it carries a highlight', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?view=agent-defaults&highlight=default-region',
+    );
+    const { container } = await renderSettings();
+
+    // The view is corrected to the section the control is in now; the
+    // highlight is then consumed by the reveal, which is why it is not in
+    // the final URL.
+    await waitFor(() =>
+      expect(window.location.search).toBe('?view=agent-runs'),
+    );
+    expect(container.querySelector('#section-agent-runs')).toBeTruthy();
+    expect(
+      screen.getByText('Default Region revealed in Settings.'),
+    ).toBeTruthy();
+    // The healer's other branch announces this for an unknown HIGHLIGHT, and
+    // a stale VIEW must not reach it.
+    expect(
+      screen.queryByText('That Settings target is no longer available.'),
+    ).toBeNull();
+  });
+
+  test('a bare retired view lands on the overview, which is the documented cost of renaming a section', async () => {
+    window.history.replaceState({}, '', '/settings?view=agent-defaults');
+    const { container } = await renderSettings();
+
+    // Every section renders, which IS the overview — not the one section the
+    // stale link named. `useSectionNavigation` also drops the unresolvable
+    // `view` from the URL (it preserves any other query state), so nothing is
+    // left saying the reader asked for somewhere else.
+    await waitFor(() =>
+      expect(container.querySelector('#section-agent-runs')).toBeTruthy(),
+    );
+    expect(container.querySelector('#section-appearance')).toBeTruthy();
+    await waitFor(() => expect(window.location.search).toBe(''));
+    // No announcement: nothing failed from the reader's point of view, and
+    // that silence is exactly what makes this a soft break rather than an
+    // error. It is the cost of letting a section be renamed at all.
+    expect(
+      screen.queryByText('That Settings target is no longer available.'),
+    ).toBeNull();
   });
 
   // #2144 slice 4. Turning developer tools on changes nothing where the switch
@@ -1249,11 +1614,11 @@ describe('settings catalog completeness', () => {
     window.history.pushState(
       {},
       '',
-      '/settings?view=station-config&highlight=default-max-turns',
+      '/settings?view=agent-runs&highlight=default-max-turns',
     );
     fireEvent(window, new PopStateEvent('popstate'));
     await waitFor(() =>
-      expect(window.location.search).toBe('?view=station-config'),
+      expect(window.location.search).toBe('?view=agent-runs'),
     );
     // Simulate the browser restoring the previous same-page history entry.
     // The Settings instance remains mounted, so its draft must remain local.
@@ -1648,13 +2013,26 @@ describe('settings catalog completeness', () => {
    * the control that writes it.
    */
   describe('Ask before deleting a conversation', () => {
-    test('renders on by default under a Confirmations group and round-trips', async () => {
+    test('renders on by default under a Confirmations group in Chat and round-trips', async () => {
       const { container } = await renderSettings();
+      // #2182 moved the group out of Appearance and into Chat. The SECTION
+      // is asserted, not merely the heading's existence: a heading that
+      // stayed behind in Appearance would satisfy a page-wide search while
+      // the row's own `?view=` said `chat`.
+      const chat = container.querySelector('#section-chat');
+      expect(chat).toBeTruthy();
       expect(
-        [...container.querySelectorAll('.settings__group-title')].map(
+        [...(chat?.querySelectorAll('.settings__group-title') ?? [])].map(
           (node) => node.textContent,
         ),
       ).toContain('Confirmations');
+      expect(
+        [
+          ...(container
+            .querySelector('#section-appearance')
+            ?.querySelectorAll('.settings__group-title') ?? []),
+        ].map((node) => node.textContent),
+      ).not.toContain('Confirmations');
       const toggle = screen.getByRole('switch', {
         name: 'Ask before deleting a conversation',
       });

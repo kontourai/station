@@ -96,11 +96,15 @@ export function getLegacyPathRedirect(path: string): string | null {
   };
 
   if (pathname === '/developer/config') {
+    // #2182 dissolved the `station-config` section this used to name, and a
+    // redirect cannot choose one of the six sections its rows went to. It
+    // lands on Settings' overview, which shows every section — the same
+    // place a bare stale `?view=` lands. Any other query state is preserved,
+    // as it was before; only the `view` this route used to assert is gone.
     const params = new URLSearchParams(search);
     params.delete('view');
-    const canonicalParams = new URLSearchParams({ view: 'station-config' });
-    for (const [key, value] of params) canonicalParams.append(key, value);
-    return `/settings?${canonicalParams.toString()}`;
+    const remaining = params.toString();
+    return remaining ? `/settings?${remaining}` : '/settings';
   }
   // archive#3313 (Settings IA, option A): Feature Previews is a Settings
   // section now; the standalone route redirects into it, same pattern as

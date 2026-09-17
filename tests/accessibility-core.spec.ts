@@ -147,10 +147,14 @@ test.describe('core journey accessibility gate', () => {
     {
       name: 'settings',
       path: '/settings',
-      // The Station-config section heading; its ⚙ span is aria-hidden, so the
-      // accessible name is the bare title.
+      // A settings section heading; the pictogram span beside it is
+      // aria-hidden, so the accessible name is the bare title. #2182 retired
+      // the "Station configuration" heading this used to wait for — and this
+      // is a READINESS GATE, so a stale name does not fail the audit, it
+      // hangs the spec until the suite deadline. "Sources" is the first card
+      // of the first group and is unconditional.
       ready: (page: Page) =>
-        page.getByRole('heading', { name: 'Station configuration', level: 2 }),
+        page.getByRole('heading', { name: 'Sources', level: 2 }),
     },
   ]) {
     test(`${surface.name} has no unaccepted serious or critical violations`, async ({

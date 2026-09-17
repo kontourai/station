@@ -8,11 +8,84 @@ vi.mock('../views/settings/composite-editors', () => ({
   DEFERRED_COMPOSITE_KEYS: ['approvalGuardian', 'distributionProfile'],
 }));
 
-import { StationConfigSection } from '../views/settings/StationConfigSection';
+import {
+  STATION_SETTING_KEYS_BY_SECTION,
+  StationConfigSection,
+} from '../views/settings/StationConfigSection';
+import { SETTINGS_CATALOG } from '../views/settings/settings-catalog';
+
+/**
+ * Every key the single "Station configuration" card rendered before #2182
+ * dissolved it, in the order it rendered them.
+ *
+ * Pinned as a literal because the split is only safe if it is exhaustive: a
+ * key left out of every section's list disappears from Settings entirely, and
+ * nothing else would have said so — the catalog would still carry its row,
+ * the 54-row count would be unchanged, and the deep link would open a card
+ * the control is not on.
+ */
+const KEYS_THE_DISSOLVED_CARD_RENDERED = [
+  'approvalGuardian',
+  'telemetryEnabled',
+  'defaultMaxTurns',
+  'defaultMaxOutputTokens',
+  'defaultChatFontSize',
+  'terminalShell',
+  'mcpUiHost',
+  'surfaceTrustFromVeritasEvidence',
+  'disableDefaultSkillRegistries',
+  'workspaceCheckpoints',
+  'defaultWorkspaceIsolation',
+  'defaultApprovalMode',
+  'registryUrl',
+  'distributionProfile',
+  'builtinAgentEngineConnectionId',
+] as const;
+
+test('#2182: the split renders every key the one card used to, and no other', () => {
+  const rendered = Object.values(STATION_SETTING_KEYS_BY_SECTION).flatMap(
+    (keys) => [...keys],
+  );
+  expect(new Set(rendered).size).toBe(rendered.length);
+  expect([...rendered].sort()).toEqual(
+    [...KEYS_THE_DISSOLVED_CARD_RENDERED].sort(),
+  );
+});
+
+test('#2182: a key renders under the section its deep link names', () => {
+  const sectionForKey = new Map(
+    SETTINGS_CATALOG.filter((entry) => entry.configKeys?.length).map(
+      (entry) => [entry.configKeys?.[0] as string, entry.section],
+    ),
+  );
+  const disagreements = Object.entries(STATION_SETTING_KEYS_BY_SECTION)
+    .flatMap(([section, keys]) =>
+      [...keys].map((key) => ({
+        section,
+        key,
+        catalog: sectionForKey.get(key),
+      })),
+    )
+    .filter((row) => row.catalog !== row.section)
+    .map(
+      (row) =>
+        `${row.key}: rendered in ${row.section}, catalog says ${row.catalog}`,
+    );
+  // A row rendered in one card while `?view=` names another sends a reader
+  // who follows the link to a card the control is not on, with no error.
+  expect(disagreements).toEqual([]);
+});
 
 test('USAGE TELEMETRY SETTINGS DEFECT: the registry-backed toggle renders and round-trips', () => {
   const onChange = vi.fn();
-  render(<StationConfigSection config={{}} onChange={onChange} />);
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={{}}
+      onChange={onChange}
+    />,
+  );
   const toggle = screen.getByRole('switch', { name: 'Usage telemetry' });
   expect(
     toggle.getAttribute('aria-checked'),
@@ -37,6 +110,8 @@ test('USAGE TELEMETRY SETTINGS DEFECT: the registry-backed toggle renders and ro
 test('#1582 D9: the terminal shell input shows the host default this server reported', () => {
   render(
     <StationConfigSection
+      containerScope="station"
+      section="host-runtime"
       config={{ defaultTerminalShell: '/opt/homebrew/bin/fish' }}
       onChange={vi.fn()}
     />,
@@ -51,6 +126,8 @@ test('#1582 D9: the terminal shell input shows the host default this server repo
 test('#1582 D9: an override is the value, and the host default stays the hint', () => {
   render(
     <StationConfigSection
+      containerScope="station"
+      section="host-runtime"
       config={{
         terminalShell: '/usr/bin/nu',
         defaultTerminalShell: '/opt/homebrew/bin/fish',
@@ -64,15 +141,27 @@ test('#1582 D9: an override is the value, and the host default stays the hint', 
 });
 
 test('#1582 D9: a server that reports no default leaves the hint absent rather than guessing', () => {
-  render(<StationConfigSection config={{}} onChange={vi.fn()} />);
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="host-runtime"
+      config={{}}
+      onChange={vi.fn()}
+    />,
+  );
   const input = screen.getByRole('textbox', { name: 'Terminal shell' });
   expect(input.getAttribute('placeholder')).toBeNull();
 });
 
 test('#1582 D9: a field with no host default keeps its registry placeholder', () => {
   // The runtime hint must not become a global override of the static ones.
+  // Registry URL is in a DIFFERENT section from the shell since #2182, and
+  // the host default is still supplied here: a hint that leaked would leak
+  // across the split too.
   render(
     <StationConfigSection
+      containerScope="station"
+      section="sources"
       config={{ defaultTerminalShell: '/opt/homebrew/bin/fish' }}
       onChange={vi.fn()}
     />,
@@ -91,7 +180,14 @@ test('#1582 D9: a field with no host default keeps its registry placeholder', ()
  */
 test('#2144 slice 6: the default approval mode row renders its effective value and round-trips', () => {
   const onChange = vi.fn();
-  render(<StationConfigSection config={{}} onChange={onChange} />);
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="permissions"
+      config={{}}
+      onChange={onChange}
+    />,
+  );
   const select = screen.getByRole('combobox', {
     name: 'Default approval mode',
   }) as HTMLSelectElement;
@@ -111,7 +207,14 @@ test('#2144 slice 6: the default approval mode row renders its effective value a
 });
 
 test('#2144 slice 6: the row states who ignores it and when it applies', () => {
-  render(<StationConfigSection config={{}} onChange={vi.fn()} />);
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="permissions"
+      config={{}}
+      onChange={vi.fn()}
+    />,
+  );
   // The conditions themselves, not a paraphrase. WHEN it applies is the
   // row's checkable promise, and the qualifier is load-bearing: the client
   // withholds the posture only while it CAN SEE a session running — a
@@ -132,6 +235,8 @@ test('#2144 slice 6: the row states who ignores it and when it applies', () => {
 test('#2144 slice 6: a stored value is what the row shows', () => {
   render(
     <StationConfigSection
+      containerScope="station"
+      section="permissions"
       config={{ defaultApprovalMode: 'never' }}
       onChange={vi.fn()}
     />,

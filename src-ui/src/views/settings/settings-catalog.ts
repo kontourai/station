@@ -5,14 +5,27 @@ import { interpolate } from '../../i18n/LocaleContext';
 import { pseudoLocalize } from '../../i18n/pseudo';
 
 export type SettingsSectionId =
-  | 'station-config'
+  // #2182 dissolved 'station-config'. It was a card named after a FILE
+  // FORMAT that had collected sixteen unrelated controls — a permission
+  // screener beside a shell path beside a telemetry switch — and nobody
+  // could have guessed which of them lived there. Its rows moved to the
+  // sections named for what they decide; the id is gone, and a stale
+  // `?view=station-config` heals whenever the link carries a highlight.
   | 'system'
   | 'feature-previews'
   | 'answer-shares'
   | 'plugin-visibility'
   | 'host-runtime'
+  | 'sources'
+  | 'telemetry'
+  | 'permissions'
   | 'diagnostics'
-  | 'agent-defaults'
+  // #2182: renamed from 'agent-defaults'. "Defaults" named a precedence
+  // rule and said nothing about what the rule applies TO; these are the
+  // values a new agent run inherits. Section ids are the one identity in
+  // this module that CAN move — `SettingsView` heals a stale `view=` from
+  // the row's own catalog entry whenever the link carries a highlight.
+  | 'agent-runs'
   | 'appearance'
   // #2144 slice 4: chat behaviour owns its rows now, rather than borrowing
   // Appearance's. The only new section id this slice adds.
@@ -20,6 +33,7 @@ export type SettingsSectionId =
   | 'keyboard-shortcuts'
   | 'notifications'
   | 'voice'
+  | 'pairing'
   | 'developer-tools'
   | 'knowledge';
 
@@ -69,11 +83,6 @@ export interface SettingsCatalogEntry {
 export type SettingsNavGroup = 'this-station' | 'control' | 'you' | 'knowledge';
 
 export const SETTINGS_SECTIONS = [
-  {
-    id: 'station-config',
-    title: 'Station configuration',
-    group: 'this-station',
-  },
   { id: 'system', title: 'System', group: 'this-station' },
   // archive#3313 (IA option A): the retired standalone Feature Previews view,
   // as a Station-scope section (previews persist on the Station).
@@ -88,8 +97,23 @@ export const SETTINGS_SECTIONS = [
     group: 'this-station',
   },
   { id: 'host-runtime', title: 'Station host', group: 'this-station' },
+  // #2182: where this Station gets agents, skills, plugins and layouts from.
+  { id: 'sources', title: 'Sources', group: 'this-station' },
+  // #2182: whether anything is sent, and whether there is anywhere to send
+  // it. The disclosure card that lists what a payload contains moved here
+  // with the toggle that decides it.
+  // The SECTION is "Telemetry" and the ROW inside it is "Usage telemetry":
+  // the two were the same words, so the nav offered a destination whose only
+  // apparent content was itself, and the card's heading restated its first
+  // row. The id stays `telemetry`.
+  { id: 'telemetry', title: 'Telemetry', group: 'this-station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'this-station' },
-  { id: 'agent-defaults', title: 'Defaults', group: 'control' },
+  // #2182: what agents may do without asking. Two rows, and that is the
+  // whole of it today — the epic's other permissions ideas have no consumer
+  // yet, and a section padded to look substantial would be the same lie as
+  // the card this one came out of.
+  { id: 'permissions', title: 'Permissions', group: 'control' },
+  { id: 'agent-runs', title: 'Agent runs', group: 'control' },
   { id: 'appearance', title: 'Appearance', group: 'you' },
   // #2144 decision 2: chat behaviour is per-device, so it sits beside the
   // other choices this device makes for the person using it.
@@ -100,7 +124,13 @@ export const SETTINGS_SECTIONS = [
     group: 'you',
   },
   { id: 'notifications', title: 'Notifications', group: 'you' },
-  { id: 'voice', title: 'Voice & Features', group: 'you' },
+  // #2182: "Voice & Features" was two nouns because the section held one
+  // thing that was not voice — mobile pairing. "Features" named no category
+  // a reader could predict; it named the leftovers.
+  { id: 'voice', title: 'Voice', group: 'you' },
+  // #2182: reaching this Station from a phone. It was the one non-voice row
+  // of "Voice & Features", which is what made "Features" necessary.
+  { id: 'pairing', title: 'Pairing', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
@@ -113,103 +143,6 @@ export const SETTINGS_SECTIONS = [
 }[];
 
 const SETTINGS_CATALOG_SOURCE = [
-  {
-    id: 'approval-guardian',
-    title: 'Approval guardian',
-    section: 'station-config',
-    configKeys: ['approvalGuardian'],
-  },
-  {
-    id: 'usage-telemetry',
-    title: 'Usage telemetry',
-    section: 'station-config',
-    configKeys: ['telemetryEnabled'],
-  },
-  {
-    id: 'telemetry-destination',
-    title: 'Telemetry destination',
-    section: 'station-config',
-    keywords: ['endpoint', 'where telemetry goes', 'otel'],
-  },
-  {
-    id: 'default-max-turns',
-    title: 'Default max turns',
-    section: 'station-config',
-    configKeys: ['defaultMaxTurns'],
-  },
-  {
-    id: 'default-max-output-tokens',
-    title: 'Default max output tokens',
-    section: 'station-config',
-    configKeys: ['defaultMaxOutputTokens'],
-  },
-  {
-    id: 'default-chat-font-size',
-    title: 'Default chat font size',
-    section: 'station-config',
-    configKeys: ['defaultChatFontSize'],
-  },
-  {
-    id: 'terminal-shell',
-    title: 'Terminal shell',
-    section: 'station-config',
-    configKeys: ['terminalShell'],
-  },
-  {
-    id: 'mcp-ui-host',
-    title: 'MCP UI host',
-    section: 'station-config',
-    configKeys: ['mcpUiHost'],
-  },
-  {
-    id: 'surface-trust',
-    title: 'Surface trust from Veritas evidence',
-    section: 'station-config',
-    configKeys: ['surfaceTrustFromVeritasEvidence'],
-  },
-  {
-    id: 'default-skill-registries',
-    title: 'Disable default skill registries',
-    section: 'station-config',
-    configKeys: ['disableDefaultSkillRegistries'],
-  },
-  {
-    id: 'workspace-checkpoints',
-    title: 'Workspace checkpoints',
-    section: 'station-config',
-    configKeys: ['workspaceCheckpoints'],
-  },
-  {
-    id: 'default-workspace-isolation',
-    title: 'New chat workspace',
-    section: 'station-config',
-    configKeys: ['defaultWorkspaceIsolation'],
-  },
-  {
-    id: 'default-approval-mode',
-    title: 'Default approval mode',
-    section: 'station-config',
-    keywords: ['approval', 'permissions', 'auto approve', 'ask first'],
-    configKeys: ['defaultApprovalMode'],
-  },
-  {
-    id: 'registry-url',
-    title: 'Registry URL',
-    section: 'station-config',
-    configKeys: ['registryUrl'],
-  },
-  {
-    id: 'distribution-profile',
-    title: 'Layout sources',
-    section: 'station-config',
-    configKeys: ['distributionProfile'],
-  },
-  {
-    id: 'builtin-agent-engine',
-    title: 'Built-in agent engine',
-    section: 'station-config',
-    configKeys: ['builtinAgentEngineConnectionId'],
-  },
   {
     id: 'desktop-app-updates',
     title: 'Desktop app updates',
@@ -284,35 +217,150 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'host-runtime',
     keywords: ['environment prerequisites detected software'],
   },
+  // ── Station host (#2182) ────────────────────────────────────────────────
+  // Three settings whose subject is the machine: which shell a terminal
+  // starts, which origin an MCP UI may be served from, and whether Veritas
+  // evidence is allowed to raise a surface's trust on it. The shell's own
+  // default is a HOST reading (`HOST_DERIVED_DEFAULTS`), which is the clearest
+  // statement that these belong beside the prerequisite report rather than in
+  // a general configuration bin.
+  {
+    id: 'terminal-shell',
+    title: 'Terminal shell',
+    section: 'host-runtime',
+    configKeys: ['terminalShell'],
+  },
+  {
+    id: 'mcp-ui-host',
+    title: 'MCP UI host',
+    section: 'host-runtime',
+    configKeys: ['mcpUiHost'],
+  },
+  {
+    id: 'surface-trust',
+    title: 'Surface trust from Veritas evidence',
+    section: 'host-runtime',
+    configKeys: ['surfaceTrustFromVeritasEvidence'],
+  },
+  // ── Sources (#2182) ─────────────────────────────────────────────────────
+  // Where this Station gets agents, skills, plugins and layouts from. All
+  // three were previously scattered through one undifferentiated card, so
+  // nothing said they answer the same question.
+  {
+    id: 'registry-url',
+    title: 'Registry URL',
+    section: 'sources',
+    configKeys: ['registryUrl'],
+  },
+  {
+    id: 'default-skill-registries',
+    title: 'Disable default skill registries',
+    section: 'sources',
+    configKeys: ['disableDefaultSkillRegistries'],
+  },
+  {
+    id: 'distribution-profile',
+    title: 'Layout sources',
+    section: 'sources',
+    configKeys: ['distributionProfile'],
+  },
+  // ── Usage telemetry (#2182) ─────────────────────────────────────────────
+  // Whether anything is sent, and whether there is anywhere to send it.
+  {
+    id: 'usage-telemetry',
+    title: 'Usage telemetry',
+    section: 'telemetry',
+    configKeys: ['telemetryEnabled'],
+  },
+  {
+    id: 'telemetry-destination',
+    title: 'Telemetry destination',
+    section: 'telemetry',
+    keywords: ['endpoint', 'where telemetry goes', 'otel'],
+  },
   {
     id: 'diagnostics-bundle',
     title: 'Diagnostics bundle',
     section: 'diagnostics',
     keywords: ['health logs download'],
   },
+  // ── Permissions (#2182) ─────────────────────────────────────────────────
+  // What agents may do without asking. `approval-guardian` is an always-on
+  // screener rather than a fallback, which is why the Control group's caption
+  // has to name both kinds of rule.
+  {
+    id: 'approval-guardian',
+    title: 'Approval guardian',
+    section: 'permissions',
+    configKeys: ['approvalGuardian'],
+  },
+  {
+    id: 'default-approval-mode',
+    title: 'Default approval mode',
+    section: 'permissions',
+    keywords: ['approval', 'permissions', 'auto approve', 'ask first'],
+    configKeys: ['defaultApprovalMode'],
+  },
   {
     id: 'default-model',
     title: 'Default model',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['defaultModel'],
   },
   {
     id: 'default-region',
     title: 'Default Region',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['region'],
   },
   {
     id: 'default-agent-instructions',
     title: 'Default Agent Instructions',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['systemPrompt'],
   },
   {
     id: 'template-variables',
     title: 'Template Variables',
-    section: 'agent-defaults',
+    section: 'agent-runs',
     configKeys: ['templateVariables'],
+  },
+  // The five below moved here from the dissolved `station-config` card
+  // (#2182). Every one of them bounds or equips a RUN — which engine carries
+  // the built-in agent, how many steps and output tokens a run may take, the
+  // workspace a new chat gets, and whether that workspace is checkpointed —
+  // so they belong with the values a run starts from, not in a card named
+  // after a config file. Their `scope` stays `station`: it is read from each
+  // key's own registry definition, not from this section (`scopeForEntry`).
+  {
+    id: 'builtin-agent-engine',
+    title: 'Built-in agent engine',
+    section: 'agent-runs',
+    configKeys: ['builtinAgentEngineConnectionId'],
+  },
+  {
+    id: 'default-max-turns',
+    title: 'Default max turns',
+    section: 'agent-runs',
+    configKeys: ['defaultMaxTurns'],
+  },
+  {
+    id: 'default-max-output-tokens',
+    title: 'Default max output tokens',
+    section: 'agent-runs',
+    configKeys: ['defaultMaxOutputTokens'],
+  },
+  {
+    id: 'default-workspace-isolation',
+    title: 'New chat workspace',
+    section: 'agent-runs',
+    configKeys: ['defaultWorkspaceIsolation'],
+  },
+  {
+    id: 'workspace-checkpoints',
+    title: 'Workspace checkpoints',
+    section: 'agent-runs',
+    configKeys: ['workspaceCheckpoints'],
   },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every
@@ -327,8 +375,20 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'chat',
     // Device key only: this slider writes `chatFontSize` through the
     // device-settings store. The Station default (`defaultChatFontSize`) is
-    // its own row under Station configuration.
+    // its own row, immediately below.
     configKeys: ['chatFontSize'],
+  },
+  // The Station default this device's slider falls back to (#2182). It is a
+  // STATION-scope row inside the device box, which is exactly the case the
+  // scope chip exists for: `containerScope="device"` makes it print a
+  // "Station" chip that the device rows around it do not get. It sits here
+  // rather than in a Station card because the question it answers —
+  // "how big is chat text" — is the one the reader came to this card with.
+  {
+    id: 'default-chat-font-size',
+    title: 'Default chat font size',
+    section: 'chat',
+    configKeys: ['defaultChatFontSize'],
   },
   {
     // The id is the stable URL/palette identity and stays as minted even
@@ -385,6 +445,18 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['wrap long lines', 'changed files'],
     configKeys: ['diffWrap'],
   },
+  {
+    id: 'confirm-conversation-delete',
+    title: 'Ask before deleting a conversation',
+    // #2182: moved from `appearance`. Whether deleting a conversation asks
+    // first is a fact about conversations, not about how the app looks; it
+    // sat under Appearance only because Appearance was where the device
+    // toggles happened to live before Chat existed. Its id is unchanged, so
+    // every `highlight=` link still resolves and heals to the new view.
+    section: 'chat',
+    keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
+    configKeys: ['confirmConversationDelete'],
+  },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
   {
     id: 'sidebar-sections',
@@ -399,13 +471,6 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'appearance',
     configKeys: ['hapticsEnabled'],
     conditional: 'mobile',
-  },
-  {
-    id: 'confirm-conversation-delete',
-    title: 'Ask before deleting a conversation',
-    section: 'appearance',
-    keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
-    configKeys: ['confirmConversationDelete'],
   },
   {
     id: 'accent-color',
@@ -435,7 +500,11 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'text-to-speech',
-    title: 'Text-to-speech (agent readback)',
+    // #2182: this row and `tts-readback` below read as one control — both
+    // said "text to speech" and both parenthesised the other's job. This one
+    // picks WHICH service speaks; that one decides WHETHER anything is read
+    // without being asked.
+    title: 'Text-to-speech service',
     section: 'voice',
     configKeys: ['ttsProvider'],
   },
@@ -452,15 +521,15 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['featureSettings'],
   },
   {
-    id: 'mobile-pairing',
-    title: 'Mobile pairing & network discovery',
+    id: 'tts-readback',
+    title: 'Read replies aloud',
     section: 'voice',
     configKeys: ['featureSettings'],
   },
   {
-    id: 'tts-readback',
-    title: 'Read agent responses aloud (TTS)',
-    section: 'voice',
+    id: 'mobile-pairing',
+    title: 'Mobile pairing & network discovery',
+    section: 'pairing',
     configKeys: ['featureSettings'],
   },
   {
@@ -534,13 +603,44 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'message-context': 'temporary',
 };
 
-function scopeForSection(
-  id: SettingsCatalogId,
+/**
+ * The write authority each registry declares for its own key.
+ *
+ * Both registries carry `scope` on every definition (`settings-registry.ts`
+ * for the Station document, `device-settings.ts` for this device's store), so
+ * a row that names a key has an authoritative answer and never has to be
+ * guessed at from where it is rendered.
+ */
+const SCOPE_BY_CONFIG_KEY: ReadonlyMap<
+  string,
+  NonNullable<SettingsCatalogEntry['scope']>
+> = new Map(
+  [...APP_SETTINGS_REGISTRY, ...DEVICE_SETTINGS_REGISTRY].map((definition) => [
+    String(definition.key),
+    definition.scope as NonNullable<SettingsCatalogEntry['scope']>,
+  ]),
+);
+
+/**
+ * The scope a row with NO config key gets, from the section it sits in.
+ *
+ * This is a last resort, not the rule — see `scopeForEntry`. A status
+ * reading, a surface or a button has no registry definition to ask, so the
+ * section's own storage character is the only honest answer available.
+ */
+function scopeForKeylessSection(
   section: SettingsSectionId,
 ): NonNullable<SettingsCatalogEntry['scope']> {
-  const override = SETTING_SCOPE_OVERRIDES[id];
-  if (override) return override;
-  if (section === 'agent-defaults') return 'defaults';
+  // No `agent-runs` branch. It used to return 'defaults', and it could never
+  // execute because every Agent runs row names a config key that one of the
+  // two registries defines — so each takes its scope from that definition in
+  // `scopeForEntry` and none reaches this fallback. (What DOES reach it: a
+  // row with no key, and a row whose first key neither registry defines.
+  // Today that is fifteen keyless rows, none of them in Agent runs.) A branch
+  // that cannot run is a claim nothing checks; a keyless Agent runs row added
+  // later would get `station` from the default below, which is right for
+  // anything that is not one of the registry's six `defaults` keys — and those
+  // six all have keys.
   if (
     section === 'appearance' ||
     section === 'chat' ||
@@ -555,7 +655,43 @@ function scopeForSection(
   return 'station';
 }
 
-/** Every entry has write authority metadata, derived once from its owning section. */
+/**
+ * Which document an edit to this row is written to.
+ *
+ * Read from the row's OWN key, not from the section it is rendered in
+ * (#2182). A section is an information-architecture choice and is expected to
+ * move; `scope` is a persistence fact and must not move with it. This field is
+ * published to agents in `src-server/generated/settings-registry.json`, so
+ * deriving it from the section let "which card is this under" silently decide
+ * "which document does an agent write": filing `default-chat-font-size` under
+ * Chat would have flipped it from `station` to `device`, and filing the
+ * per-run Station controls under the defaults card would have flipped them to
+ * `defaults`, contradicting the closed six-key `defaults` list that
+ * `packages/contracts/src/__tests__/settings-registry.test.ts` pins.
+ *
+ * The FIRST config key, matching `scripts/gen-settings-registry.ts`: a row
+ * with several keys is one control over one primary value, and that is the
+ * key the published artifact names.
+ *
+ * `SETTING_SCOPE_OVERRIDES` still has the final say — it exists for the rows
+ * whose registry answer is true of the KEY but not of what this row does with
+ * it (a derived status line, an export that spans both documents).
+ */
+function scopeForEntry(
+  id: SettingsCatalogId,
+  section: SettingsSectionId,
+  configKeys: readonly string[] | undefined,
+): NonNullable<SettingsCatalogEntry['scope']> {
+  const override = SETTING_SCOPE_OVERRIDES[id];
+  if (override) return override;
+  const declaredKey = configKeys?.[0];
+  const declared = declaredKey
+    ? SCOPE_BY_CONFIG_KEY.get(declaredKey)
+    : undefined;
+  return declared ?? scopeForKeylessSection(section);
+}
+
+/** Every entry has write authority metadata, derived once from its own key. */
 type SettingsCatalogWithScope = readonly (SettingsCatalogEntry & {
   readonly id: SettingsCatalogId;
   readonly scope: NonNullable<SettingsCatalogEntry['scope']>;
@@ -563,7 +699,14 @@ type SettingsCatalogWithScope = readonly (SettingsCatalogEntry & {
 
 export const SETTINGS_CATALOG = SETTINGS_CATALOG_SOURCE.map((entry) => ({
   ...entry,
-  scope: scopeForSection(entry.id, entry.section),
+  // `configKeys` is absent from the literal type of every keyless row, and
+  // the source is a union of 54 such literals, so it is read through the
+  // declared shape rather than off the union member.
+  scope: scopeForEntry(
+    entry.id,
+    entry.section,
+    (entry as Omit<SettingsCatalogEntry, 'scope'>).configKeys,
+  ),
 })) as SettingsCatalogWithScope;
 
 export interface SettingsPaletteCommand {

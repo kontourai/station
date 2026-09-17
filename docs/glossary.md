@@ -110,6 +110,8 @@ distinction:
 - **Task workspace** — the `/tasks/:taskId` surface for one durable Task. It keeps identity, files, diffs, artifacts, receipts, and exact Session correlation in context.
 - **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver** is Builder Kit-owned; **Learn** is Knowledge Kit-owned; **Operate** is Console-owned. The labels are provisional while #495 is experimental.
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
+- **Agent run** — one agent working through a request from start to stop: the thing a step limit counts steps of, an output-token ceiling bounds, and a workspace is chosen for. It is the vocabulary the product already uses in its own settings help ("Station stops an agent run once it has taken this many steps",
+  `defaultMaxTurns` in `packages/contracts/src/settings-registry.ts`), and #2182 makes the Settings card that holds those controls say it too — **Agent runs**, not "Defaults". A run is carried by a **Session**, and where the two could both be said, Session names the execution episode Station records and Agent run names what the agent is doing inside it. **"Profile" never names this** (see Saved Stations, above), and neither does **"Agents"** — that word is the entity list at `/agents`, and a Settings strip cannot carry two rows reading "Agents" that go to different places.
 - **Direct chat** — an immediate conversation entry point. Starting a direct chat does not silently create or infer a Task.
 - **Workspace availability** — `available`, `ambiguous`, or `unavailable`. Only `available` permits local inspection; the other states preserve the captured identity without claiming the path is still safe or current.
 
@@ -321,6 +323,7 @@ retired names.
 | The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
+| One agent working through a request from start to stop | **Agent run** (the Settings card is **Agent runs**) |
 | An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 
