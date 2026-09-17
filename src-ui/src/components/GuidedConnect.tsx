@@ -157,6 +157,7 @@ export function GuidedConnect({
         checkCompatibility={checkHostCompatibility}
         initialPanel={openPanel ?? undefined}
         originIsStation={!profile.isTauri}
+        hasLocalStation={!profile.isTauri || !profile.isMobile}
         hostAppName={
           profile.isTauri ? profile.productName || 'Station' : undefined
         }

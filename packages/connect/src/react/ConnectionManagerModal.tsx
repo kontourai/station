@@ -55,6 +55,13 @@ export interface ConnectionManagerModalProps {
    * preserve the current served-from-Station behavior when unset.
    */
   originIsStation?: boolean;
+  /**
+   * True when this device has a Station of its own (served by one, or a
+   * native desktop supervising its local server). False on client-only
+   * devices such as the phone, where the host-access section has no local
+   * Station to act on (station#2205). Defaults to true when unset.
+   */
+  hasLocalStation?: boolean;
   /** Native shell name, when this UI is not running in a browser. */
   hostAppName?: string;
   pairingClientChannel?: 'stable' | 'beta' | 'nightly';
@@ -89,6 +96,7 @@ export function ConnectionManagerModal({
   pairingLinkError,
   onPairingReviewDismissed,
   originIsStation,
+  hasLocalStation,
   hostAppName,
   pairingClientChannel,
   allowManualCredentials,
@@ -110,6 +118,7 @@ export function ConnectionManagerModal({
         pairingLinkError={pairingLinkError}
         onPairingReviewDismissed={onPairingReviewDismissed}
         originIsStation={originIsStation}
+        hasLocalStation={hasLocalStation}
         hostAppName={hostAppName}
         pairingClientChannel={pairingClientChannel}
         allowManualCredentials={allowManualCredentials}
