@@ -214,6 +214,25 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     );
   });
 
+  it('both hosts keep the full title and failure reason on ellipsized rows', () => {
+    const title = 'What can you help me with? List your capabilities.';
+    const failureNotice =
+      'The engine reported an error: Claude model "claude-opus-5" failed: stream ended early.';
+    for (const renderHost of [renderPanelHost, renderSheetHost]) {
+      const { unmount } = renderHost(
+        workItem({ title, failureNotice, lifecycleLabel: 'Failed' }),
+      );
+      const row = screen.getByTestId('inbox-row');
+      expect(
+        row.querySelector('.chat-dock-inbox__title')?.getAttribute('title'),
+      ).toBe(title);
+      expect(
+        screen.getByTestId('inbox-row-failure-reason').getAttribute('title'),
+      ).toBe(failureNotice);
+      unmount();
+    }
+  });
+
   it('a snooze written in one host is read by the other (same store, same key)', () => {
     const item = workItem();
     const sheet = renderSheetHost(item);

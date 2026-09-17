@@ -15,6 +15,12 @@ const BUCKET_COUNT = 12;
 const BUCKET_MS = 4 * HOUR_MS;
 /** Derived from the window the buckets actually cover, not written twice. */
 const WINDOW_LABEL = `${(BUCKET_COUNT * BUCKET_MS) / (24 * HOUR_MS)} days ago`;
+/**
+ * The same window as a range ("2 in the last 2 days"): the axis start
+ * above reads "2 days ago", which is grammatical as a point on the axis
+ * but not as the total's range ("2 in 2 days ago").
+ */
+export const WINDOW_RANGE_LABEL = `the last ${(BUCKET_COUNT * BUCKET_MS) / (24 * HOUR_MS)} days`;
 
 interface HeatCell {
   count: number;
@@ -210,7 +216,10 @@ export function ActivityBars({
             </span>
             <span className="home-heat__total">
               {row.total}
-              <span className="home-heat__total-unit"> in {WINDOW_LABEL}</span>
+              <span className="home-heat__total-unit">
+                {' '}
+                in {WINDOW_RANGE_LABEL}
+              </span>
             </span>
           </li>
         ))}

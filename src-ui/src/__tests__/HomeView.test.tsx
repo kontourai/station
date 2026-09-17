@@ -308,6 +308,17 @@ describe('HomeView', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });
 
+  test('the project-folder card names this Station, not this computer', () => {
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+
+    // The folder lives on the Station host, which is a different machine
+    // when this UI runs as a remote client (e.g. the paired phone app).
+    expect(
+      screen.getByRole('button', { name: /Add a folder on this Station/i }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/from this computer/i)).toBeNull();
+  });
+
   test('renders shimmer cards while Home actions are unresolved instead of claiming an agent is absent', () => {
     fixtures.agents = [];
     fixtures.agentsLoaded = false;

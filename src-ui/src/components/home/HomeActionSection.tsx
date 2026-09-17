@@ -126,7 +126,10 @@ export function HomeActionSection({
       />
       <HomeActionCard
         label="Open local project"
-        title="Add a folder from this computer"
+        // "This Station", not "this computer": the folder lives on the
+        // Station host, which is a different machine when this UI runs as
+        // a remote client (e.g. the phone app paired to a desktop).
+        title="Add a folder on this Station"
         detail={projectAvailability(model.projects.length)}
         onClick={() => onNavigate({ type: 'project-new' })}
       />

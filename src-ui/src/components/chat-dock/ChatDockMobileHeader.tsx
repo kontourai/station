@@ -191,6 +191,7 @@ export function ChatDockMobileHeader({
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
             id={titleDescriptionId}
+            title={sessionTitle}
           >
             {sessionTitle}
           </span>

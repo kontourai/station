@@ -346,7 +346,9 @@ export function InboxRow({
           />
         )}
         <span className="chat-dock-inbox__project">{item.projectLabel}</span>
-        <strong className="chat-dock-inbox__title">{item.title}</strong>
+        <strong className="chat-dock-inbox__title" title={item.title}>
+          {item.title}
+        </strong>
         <span className="chat-dock-inbox__meta">
           {item.controlMode === 'read-only-attached'
             ? `Started in ${item.agentLabel}`
@@ -373,6 +375,7 @@ export function InboxRow({
           <span
             className="chat-dock-inbox__answerability"
             data-testid="inbox-row-failure-reason"
+            title={item.failureNotice}
           >
             {item.failureNotice}
           </span>
