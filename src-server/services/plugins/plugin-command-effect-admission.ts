@@ -64,7 +64,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Strict route-seam parse; unknown fields are refused, never ignored. */
-export function parsePluginCommandEffectAdmissionRequest(
+function parsePluginCommandEffectAdmissionRequest(
   value: unknown,
 ): PluginCommandEffectAdmissionRequest | null {
   if (!isRecord(value)) return null;

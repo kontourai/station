@@ -361,7 +361,7 @@ const isOpenWithdrawal = (withdrawal: WithdrawalRecord) =>
  * Strict parse plus the cross-record invariants the protocol depends on. A
  * ledger that violates one is refused whole rather than partially trusted.
  */
-export function validatePluginCommandEffectLedger(
+function validatePluginCommandEffectLedger(
   value: unknown,
 ): PluginCommandEffectLedger {
   const unavailable = () =>
@@ -1172,7 +1172,7 @@ export type PluginCommandEffectService = ReturnType<
 >;
 
 /** How long a lifecycle response waits, after releasing its locks, for settlements. */
-export const PLUGIN_COMMAND_WITHDRAWAL_RESPONSE_WAIT_MS = 2_000;
+const PLUGIN_COMMAND_WITHDRAWAL_RESPONSE_WAIT_MS = 2_000;
 
 /**
  * LP-W for a lifecycle path. Call inside the serialization admission of the

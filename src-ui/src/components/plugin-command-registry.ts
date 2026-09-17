@@ -65,7 +65,7 @@ function requirementUnavailableReason(
   return available ? null : REQUIREMENT_COPY[requirement];
 }
 
-export function pluginCommandUnavailableReason(
+function pluginCommandUnavailableReason(
   plugin: InstalledPluginCommandSource,
   command: PluginCommandContribution,
   context: PluginCommandHostContext,

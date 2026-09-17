@@ -19,7 +19,7 @@ import type {
  * client concern; existence is decided where the effect is applied.
  */
 
-export const MAX_PLUGIN_COMMANDS = 32;
+const MAX_PLUGIN_COMMANDS = 32;
 const COMMAND_LOCAL_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 /** `$defs/id` in the Station extension schema. */
 const DECLARATION_ID = /^[a-z0-9](?:[a-z0-9._:-]*[a-z0-9])?$/;
