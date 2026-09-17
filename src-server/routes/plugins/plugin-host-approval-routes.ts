@@ -20,6 +20,7 @@
  * before granting.
  */
 import { randomUUID } from 'node:crypto';
+import type { PluginCommandEffectsWithdrawalSummary } from '@kontourai/station-contracts/plugin-command-effect';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { type Context, Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
@@ -38,6 +39,10 @@ import {
 } from '../../services/consent/consent-transactions.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import {
+  PluginCommandEffectsUnavailableError,
+  withdrawPluginCommandEffects,
+} from '../../services/plugins/plugin-command-effects.js';
 import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
 import type { PluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
@@ -397,6 +402,27 @@ export function registerPluginHostApprovalRoutes(
         // `changed` binding withdraws everything else the plugin held, so the
         // broadcast carries what was actually derived rather than leaving
         // every listener to assume an approval only ever adds.
+        // LP-W (grant withdrawal, kontourai/station#1419): this runs inside
+        // the decision guard's content lock, after the grant write. An
+        // approval over a changed binding can withdraw `plugin.server`.
+        let commandEffects: PluginCommandEffectsWithdrawalSummary | null = null;
+        let commandEffectsUnrecorded = false;
+        if (outcome.withdrawn.includes('plugin.server')) {
+          try {
+            commandEffects = await withdrawPluginCommandEffects(
+              deps.projectHomeDir,
+              {
+                pluginId: pluginName,
+                cause: 'grant-withdrawal',
+                captures: (effect) => effect.requiresPluginServer,
+              },
+            );
+          } catch (error) {
+            if (!(error instanceof PluginCommandEffectsUnavailableError))
+              throw error;
+            commandEffectsUnrecorded = true;
+          }
+        }
         const reconciled = deps.grantReconciliation
           ? await deps.grantReconciliation.reconcile({
               pluginName,
@@ -408,14 +434,19 @@ export function registerPluginHostApprovalRoutes(
               generation: 0,
               failures: ['runtime-unavailable'] as const,
             };
+        const failures = [
+          ...('failures' in reconciled ? reconciled.failures : []),
+          ...(commandEffectsUnrecorded ? ['command-effects'] : []),
+        ];
         const reconciliation = {
-          status: reconciled.status,
+          status: commandEffectsUnrecorded
+            ? ('incomplete' as const)
+            : reconciled.status,
           operationId: reconciled.operationId,
           generation: reconciled.generation,
           ...('effects' in reconciled ? { effects: reconciled.effects } : {}),
-          ...('failures' in reconciled
-            ? { failures: reconciled.failures }
-            : {}),
+          ...(failures.length > 0 ? { failures } : {}),
+          ...(commandEffects ? { commandEffects } : {}),
         };
         deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
           name: pluginName,

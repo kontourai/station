@@ -1,5 +1,5 @@
 import { cpSync, existsSync, lstatSync, realpathSync, rmSync } from 'node:fs';
-import { basename, isAbsolute, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type {
   PluginInstallationRevision,
@@ -12,6 +12,7 @@ import {
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import {
   capturePluginProviderGeneration,
   preparePluginProviderGeneration,
@@ -23,8 +24,13 @@ import { readRegistryInstallAliases } from '../../providers/registries/registry-
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import {
+  settlePluginCommandEffectsForResponse,
+  withdrawPluginCommandEffects,
+} from '../../services/plugins/plugin-command-effects.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
+  computePluginContentDigest,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
   withPluginContentLock,
@@ -61,6 +67,7 @@ import {
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
 } from '../../services/plugins/plugin-public-server.js';
+import { pluginInstallationGeneration } from '../../services/plugins/plugin-runtime-artifact.js';
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
@@ -683,13 +690,22 @@ export function registerPluginLifecycleRoutes(
             ),
           { rediscoverSkills: true },
         );
+        // LP-C: the install transaction released its locks.
+        const settled = await settlePluginCommandEffectsForResponse(
+          projectHomeDir,
+          mutation.value.commandEffects,
+          configurationMutationStatus(mutation.activation, 200),
+        );
         return c.json(
           {
             ...mutation.value,
+            ...(settled.commandEffects
+              ? { commandEffects: settled.commandEffects }
+              : {}),
             success: mutation.activation?.status !== 'pending',
             ...configurationActivationPayload(mutation.activation),
           },
-          configurationMutationStatus(mutation.activation, 200),
+          settled.status as ContentfulStatusCode,
         );
       } catch (error) {
         if (error instanceof PluginInstallationPending)
@@ -891,6 +907,27 @@ export function registerPluginLifecycleRoutes(
                   await deps.reconcileEngineConnections?.(originalIdentity);
                   await settleProviderAdapterRetirements?.();
 
+                  // LP-W (update, kontourai/station#1419): the new tree and
+                  // its re-bound grants are final and the content lock is
+                  // still held. Effects admitted against any other generation
+                  // are captured; failure to record rolls the update back.
+                  const updatedDigest = computePluginContentDigest(
+                    dirname(pluginDir),
+                    basename(pluginDir),
+                  );
+                  const currentGeneration = updatedDigest
+                    ? pluginInstallationGeneration({ digest: updatedDigest })
+                    : null;
+                  const commandEffects = await withdrawPluginCommandEffects(
+                    projectHomeDir,
+                    {
+                      pluginId: originalIdentity,
+                      cause: 'update',
+                      captures: (effect) =>
+                        effect.installationGeneration !== currentGeneration,
+                    },
+                  );
+
                   eventBus?.emit('plugins:updated', {
                     name,
                     version: manifest.version,
@@ -909,6 +946,7 @@ export function registerPluginLifecycleRoutes(
                       withdrawn: rebound.withdrawn,
                       retained: rebound.retained,
                     },
+                    ...(commandEffects ? { commandEffects } : {}),
                   };
                 } catch (error) {
                   try {
@@ -993,14 +1031,22 @@ export function registerPluginLifecycleRoutes(
           });
         }
       }
-
+      // LP-C: every lock is released; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        mutation.value.commandEffects,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...(settled.commandEffects
+            ? { commandEffects: settled.commandEffects }
+            : {}),
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isRegistryAcquisitionRefusal(error))
@@ -1127,13 +1173,23 @@ export function registerPluginLifecycleRoutes(
           });
         }
       }
+      // LP-C: the uninstall released its locks; 200 only once every captured
+      // command effect settled with proof, else 202 winding-down.
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        mutation.value.commandEffects,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...(settled.commandEffects
+            ? { commandEffects: settled.commandEffects }
+            : {}),
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isContextSafetyError(error)) {

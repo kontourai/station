@@ -26,6 +26,7 @@ import {
   type PluginInstallResult,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { type PluginCommandEffectsWithdrawalSummary } from '@kontourai/station-contracts/plugin-command-effect';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
@@ -89,6 +90,7 @@ import {
   pluginActivationDescriptorDigest,
 } from './plugin-activation-plan.js';
 import { captureLocalPluginArtifact } from './plugin-artifact-local.js';
+import { withdrawPluginCommandEffects } from './plugin-command-effects.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
@@ -161,6 +163,7 @@ import {
   type PluginPublicServerQuiescence,
   quiescePluginPublicServerModule,
 } from './plugin-public-server.js';
+import { pluginInstallationGeneration } from './plugin-runtime-artifact.js';
 import {
   detectWorkspacePaneCatalogConflicts,
   fetchPluginSource,
@@ -450,6 +453,8 @@ export function installationHostFor(
 
 export interface InstalledPluginResult extends PluginInstallResult {
   lifecycle?: Awaited<ReturnType<PluginInstallationService['install']>>;
+  /** Present when installing over the plugin withdrew outstanding command effects. */
+  commandEffects?: PluginCommandEffectsWithdrawalSummary;
   success: true;
   plugin: {
     name: string;
@@ -4033,6 +4038,27 @@ async function installPluginFromSourceUnderContext(
           );
           eventBus?.emit('plugins:grants-changed', { name: pluginName });
         }
+        // LP-W (update, kontourai/station#1419): the replaced generation's
+        // tree and grants are gone and this holds the content lock command
+        // admission takes. Effects admitted against any other generation are
+        // captured; an unrecordable withdrawal fails into the rollback below.
+        let commandEffects: PluginCommandEffectsWithdrawalSummary | null = null;
+        if (hadExistingPlugin) {
+          const digest =
+            permissionArtifact?.digest ??
+            computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
+          const current = digest
+            ? pluginInstallationGeneration({
+                generation: managedLifecycle?.selected.generation,
+                digest,
+              })
+            : null;
+          commandEffects = await withdrawPluginCommandEffects(projectHomeDir, {
+            pluginId: pluginName,
+            cause: 'update',
+            captures: (effect) => effect.installationGeneration !== current,
+          });
+        }
         const droppedDependencyOwnership = retainedDependencyOwnership.filter(
           (entry) => !approvedDependencyIds.has(entry.id),
         );
@@ -4184,6 +4210,7 @@ async function installPluginFromSourceUnderContext(
         return {
           success: true,
           ...(managedLifecycle ? { lifecycle: managedLifecycle } : {}),
+          ...(commandEffects ? { commandEffects } : {}),
           plugin: {
             name: pluginName,
             displayName: manifest.displayName,
@@ -4478,7 +4505,11 @@ async function uninstallInstalledPluginUnderContext(
   name: string,
   deps: PluginInstallTransactionDeps,
   recovery?: PluginRemovalRecovery,
-): Promise<{ success: true; lifecycle?: unknown }> {
+): Promise<{
+  success: true;
+  lifecycle?: unknown;
+  commandEffects?: PluginCommandEffectsWithdrawalSummary;
+}> {
   const requestGrants = publicationGrantRevisions(() =>
     observePluginGrantRevisions(deps.projectHomeDir),
   );
@@ -4512,7 +4543,11 @@ async function uninstallPluginUnderPublication(
   installedPluginName: string,
   recovery?: PluginRemovalRecovery,
   requestGrants?: PluginGrantRevisionSnapshot,
-): Promise<{ success: true; lifecycle?: unknown }> {
+): Promise<{
+  success: true;
+  lifecycle?: unknown;
+  commandEffects?: PluginCommandEffectsWithdrawalSummary;
+}> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
   const captured = deps.packageMcpJournal
     ? captureLocalPluginInstallation(
@@ -4809,6 +4844,15 @@ async function uninstallPluginUnderPublication(
       name === installedPluginName ? undefined : name,
     );
     await removePluginHostRecord(projectHomeDir, pluginName);
+    // LP-W (removal, kontourai/station#1419): the plugin's authority is gone
+    // and this still holds its content lock, which command admission takes.
+    // A withdrawal that cannot be recorded throws into the compensation below
+    // rather than reporting a removal whose effects nobody is tracking.
+    const commandEffects = await withdrawPluginCommandEffects(projectHomeDir, {
+      pluginId: pluginName,
+      cause: 'removal',
+      captures: () => true,
+    });
 
     eventBus?.emit('plugins:removed', {
       name: pluginName,
@@ -4822,7 +4866,11 @@ async function uninstallPluginUnderPublication(
     };
     if (recovery) recovery.capture(compensateRemoval, finishRemoval);
     else finishRemoval();
-    return { success: true, ...(lifecycle ? { lifecycle } : {}) };
+    return {
+      success: true,
+      ...(lifecycle ? { lifecycle } : {}),
+      ...(commandEffects ? { commandEffects } : {}),
+    };
   } catch (error) {
     try {
       await compensateRemoval();

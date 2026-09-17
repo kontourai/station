@@ -349,7 +349,15 @@ vi.mock('node:fs', async (importOriginal) => {
     // (`writeJsonDurably`), which stages through a descriptor rather than a
     // path: stub the whole open/fsync/close/rename sequence, not just the
     // rename, or the commit escapes this fixture and writes to real /tmp.
-    openSync: vi.fn(() => 3),
+    // The plugin command effect ledger (kontourai/station#1419) does not
+    // exist in this fixture home. Answer it as absent: the fabricated
+    // descriptor below would send the bounded reader's real `readSync` to
+    // whatever this worker holds at fd 3.
+    openSync: vi.fn((path: unknown) => {
+      if (String(path).endsWith('/plugin-command-effects.json'))
+        throw enoent('open', String(path));
+      return 3;
+    }),
     // `fsyncDirectorySync` fstats the descriptor `openSync` returned. That 3
     // is fabricated, so without this stub the real syscall runs against
     // whatever this worker happens to hold at fd 3 -- the test's outcome

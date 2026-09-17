@@ -7,6 +7,7 @@ import type { RegistryTrustPolicyAuthority } from '../../services/plugins/regist
  */
 
 import { join } from 'node:path';
+import type { OperationalEventEnvelope } from '@kontourai/station-contracts/operational-event';
 import { Hono } from 'hono';
 import {
   disposeRetainedPreparedPluginProviders,
@@ -18,6 +19,14 @@ import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import {
+  createPluginCommandEffectAdmission,
+  type PluginCommandEffectAdmissionDeps,
+} from '../../services/plugins/plugin-command-effect-admission.js';
+import {
+  createPluginCommandEffectService,
+  FilePluginCommandEffectStore,
+} from '../../services/plugins/plugin-command-effects.js';
 import { createPluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import {
   publishGrantedPluginProviderGeneration,
@@ -35,6 +44,7 @@ import {
 } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { buildPlugin } from './plugin-bundles.js';
+import { registerPluginCommandEffectRoutes } from './plugin-command-effect-routes.js';
 import { registerPluginConfigRoutes } from './plugin-config-routes.js';
 import { registerPluginHomeRoleRoutes } from './plugin-home-role-routes.js';
 import { registerPluginHostApprovalRoutes } from './plugin-host-approval-routes.js';
@@ -85,6 +95,17 @@ export function createPluginRoutes(
     reconcileEventSubscriptions?: () => Promise<{
       kind: 'applied' | 'unavailable';
     }>;
+    /**
+     * kontourai/station#1418: plugin command effect admission. Absent, the
+     * routes still refuse unattributed callers and record nothing.
+     */
+    commandEffects?: {
+      isHostedDeployment(): boolean;
+      publishAudit?(event: OperationalEventEnvelope): boolean;
+      producerVersion?: string;
+      onSettlementConflict?(): void;
+      resolveRequirement: PluginCommandEffectAdmissionDeps['resolveRequirement'];
+    };
   },
 ) {
   const app = new Hono();
@@ -250,6 +271,34 @@ export function createPluginRoutes(
           reconcileSubscriptions: runtime.reconcileEventSubscriptions,
         })
       : undefined;
+
+  const commandEffects = createPluginCommandEffectService({
+    store: new FilePluginCommandEffectStore(projectHomeDir),
+    publishAudit: runtime?.commandEffects?.publishAudit,
+    producerVersion: runtime?.commandEffects?.producerVersion,
+    onSettlementConflict: runtime?.commandEffects?.onSettlementConflict,
+  });
+  registerPluginCommandEffectRoutes(app, {
+    effects: commandEffects,
+    resolution: runtime?.visibility
+      ? { resolvePrincipal: runtime.visibility.resolvePrincipal }
+      : undefined,
+    // No composed runtime means no attributable, audited caller: refuse.
+    isHostedDeployment: () =>
+      runtime?.commandEffects?.isHostedDeployment() ?? true,
+    admission: createPluginCommandEffectAdmission({
+      pluginsDir,
+      projectHomeDir,
+      journal: runtime?.packageMcpJournal,
+      effects: commandEffects,
+      canSeePlugin: (principal, pluginId) =>
+        runtime?.visibility?.service.canSee(principal, pluginId) ?? false,
+      resolveRequirement: async (input) =>
+        runtime?.commandEffects
+          ? runtime.commandEffects.resolveRequirement(input)
+          : 'unavailable',
+    }),
+  });
 
   // Literal reserved-segment routes (`/home-role/**`) must register before
   // any `/:name` catch-all: Hono matches in registration order, and the

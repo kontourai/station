@@ -46,6 +46,15 @@ export interface PluginCommandEffectAdmissionRequest {
   installationGeneration: string;
   commandId: string;
   target: PluginCommandEffectTarget;
+  /** Host facts a command's `requires` are checked against; omitted when none. */
+  context?: PluginCommandEffectRequirementContext;
+}
+
+export interface PluginCommandEffectRequirementContext {
+  activeChatSessionId?: string;
+  sessionId?: string;
+  projectSlug?: string;
+  taskId?: string;
 }
 
 /** Effect content always comes from the receipt, never from a cached row. */

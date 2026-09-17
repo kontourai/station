@@ -1170,3 +1170,53 @@ export function createPluginCommandEffectService(
 export type PluginCommandEffectService = ReturnType<
   typeof createPluginCommandEffectService
 >;
+
+/** How long a lifecycle response waits, after releasing its locks, for settlements. */
+export const PLUGIN_COMMAND_WITHDRAWAL_RESPONSE_WAIT_MS = 2_000;
+
+/**
+ * LP-W for a lifecycle path. Call inside the serialization admission of the
+ * withdrawn authority uses, after that change is durable. Throws
+ * {@link PluginCommandEffectsUnavailableError} when the withdrawal cannot be
+ * recorded, so a transaction with a rollback can refuse the change instead of
+ * reporting an unrecorded withdrawal. `null` means nothing was outstanding.
+ */
+export async function withdrawPluginCommandEffects(
+  projectHomeDir: string,
+  input: Parameters<PluginCommandEffectService['beginWithdrawal']>[0],
+): Promise<PluginCommandEffectsWithdrawalSummary | null> {
+  return createPluginCommandEffectService({
+    store: new FilePluginCommandEffectStore(projectHomeDir),
+  }).beginWithdrawal(input);
+}
+
+/**
+ * LP-C for a lifecycle response. The caller must hold no plugin lock. Returns
+ * the latest summary, and the HTTP status the response should carry: a
+ * success that still has outstanding effects is 202, never 200.
+ */
+export async function settlePluginCommandEffectsForResponse(
+  projectHomeDir: string,
+  summary: PluginCommandEffectsWithdrawalSummary | null | undefined,
+  status: number,
+  waitMs = PLUGIN_COMMAND_WITHDRAWAL_RESPONSE_WAIT_MS,
+): Promise<{
+  commandEffects?: PluginCommandEffectsWithdrawalSummary;
+  status: number;
+}> {
+  if (!summary) return { status };
+  let latest = summary;
+  try {
+    latest =
+      (await createPluginCommandEffectService({
+        store: new FilePluginCommandEffectStore(projectHomeDir),
+      }).awaitWithdrawal(summary.withdrawalId, waitMs)) ?? summary;
+  } catch {
+    // The capture already committed; an unreadable ledger now leaves the
+    // captured summary, which is never `completed` unless it already was.
+  }
+  return {
+    commandEffects: latest,
+    status: status === 200 && latest.status !== 'completed' ? 202 : status,
+  };
+}

@@ -327,6 +327,7 @@ import type { KnowledgeService } from '../../services/knowledge/knowledge-servic
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
+import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
@@ -568,6 +569,8 @@ export interface ConfigureRuntimeRoutesContext {
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
   orchestrationEventStore?: EventStore;
+  /** Runtime's notification-bearing durable operational-event publisher. */
+  operationalEventPublisher?: OperationalEventPublisher;
   pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
@@ -1803,6 +1806,42 @@ export function configureRuntimeRoutes(
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
         reconcileEventSubscriptions: () =>
           context.pluginOperationalEventSubscriptions.reconcile(),
+        commandEffects: {
+          // F6 (kontourai/station#1419): hosted deployments keep refusing.
+          isHostedDeployment: () => hostedTenantRegistry !== undefined,
+          publishAudit: (event) => {
+            const outcome = context.operationalEventPublisher?.append(event);
+            return (
+              outcome?.kind === 'appended' || outcome?.kind === 'duplicate'
+            );
+          },
+          resolveRequirement: async ({ requirement, request }) => {
+            const target = request.target;
+            const ctx = request.context ?? {};
+            if (requirement === 'active-chat' || requirement === 'session') {
+              const id =
+                requirement === 'active-chat'
+                  ? ctx.activeChatSessionId
+                  : ctx.sessionId;
+              return id &&
+                (target.kind !== 'composer' || target.sessionId === id)
+                ? 'available'
+                : 'missing';
+            }
+            if (requirement === 'project') {
+              if (!ctx.projectSlug) return 'missing';
+              return context.projectService.getProject(ctx.projectSlug)
+                ? 'available'
+                : 'missing';
+            }
+            if (!ctx.taskId) return 'missing';
+            const task = context.taskGraphService.readTask(ctx.taskId);
+            return task &&
+              (!ctx.projectSlug || task.projectId === ctx.projectSlug)
+              ? 'available'
+              : 'missing';
+          },
+        },
         // #2067. The SAME memoized, fail-closed resolver every other
         // identity-bearing route in this file reads, so `GET /api/plugins`
         // projects onto the request's own caller and no header or body can
