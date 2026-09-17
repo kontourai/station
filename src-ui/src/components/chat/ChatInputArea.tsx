@@ -477,8 +477,13 @@ export function ChatInputArea({
             aria-label={agentAccessibleLabel}
             title={agentAccessibleLabel}
           >
-            <span className="chat-input__agent-name">
-              {agentLabel ?? 'Current Agent'}
+            <span className="chat-input__chip-stack">
+              <span className="chat-input__chip-caption" aria-hidden="true">
+                Agent
+              </span>
+              <span className="chat-input__agent-name">
+                {agentLabel ?? 'Current Agent'}
+              </span>
             </span>
             <ArrowDownGlyph className="choice-caret" />
           </button>
@@ -494,8 +499,13 @@ export function ChatInputArea({
           aria-label={modelAccessibleLabel}
           title={modelAccessibleLabel}
         >
-          <span className="chat-input__model-name" aria-hidden="true">
-            {modelLabel}
+          <span className="chat-input__chip-stack">
+            <span className="chat-input__chip-caption" aria-hidden="true">
+              Model
+            </span>
+            <span className="chat-input__model-name" aria-hidden="true">
+              {modelLabel}
+            </span>
           </span>
           <ArrowDownGlyph className="choice-caret" />
         </button>

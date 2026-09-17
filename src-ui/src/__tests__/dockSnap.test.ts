@@ -11,6 +11,7 @@ import {
   nearestDockSnap,
   nextDockSnap,
   resolveMobileDockSnap,
+  shouldCollapseDockOnMobileNavigation,
   shouldRestoreDockOnNavigation,
   shrinkDockSnap,
   snapAfterNavigationRestore,
@@ -318,6 +319,41 @@ describe('shouldRestoreDockOnNavigation (#869)', () => {
         previousPathname: '/projects/alpha',
         pathname: '/projects/alpha',
         isDockMaximized: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('shouldCollapseDockOnMobileNavigation', () => {
+  test('collapses an open phone dock when the pathname changes', () => {
+    expect(
+      shouldCollapseDockOnMobileNavigation({
+        previousPathname: '/',
+        pathname: '/settings',
+        isMobile: true,
+        isDockOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  test('leaves a desktop dock alone', () => {
+    expect(
+      shouldCollapseDockOnMobileNavigation({
+        previousPathname: '/',
+        pathname: '/settings',
+        isMobile: false,
+        isDockOpen: true,
+      }),
+    ).toBe(false);
+  });
+
+  test('ignores query-only updates on the same pathname', () => {
+    expect(
+      shouldCollapseDockOnMobileNavigation({
+        previousPathname: '/',
+        pathname: '/',
+        isMobile: true,
+        isDockOpen: true,
       }),
     ).toBe(false);
   });

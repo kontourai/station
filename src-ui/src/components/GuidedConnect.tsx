@@ -13,6 +13,7 @@ import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
+import { hasLocalStationForProfile } from '../platform/client-origin-surface';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import './GuidedConnect.css';
 import { triggerHaptic } from '../platform/native/haptics';
@@ -157,7 +158,7 @@ export function GuidedConnect({
         checkCompatibility={checkHostCompatibility}
         initialPanel={openPanel ?? undefined}
         originIsStation={!profile.isTauri}
-        hasLocalStation={!profile.isTauri || !profile.isMobile}
+        hasLocalStation={hasLocalStationForProfile(profile)}
         hostAppName={
           profile.isTauri ? profile.productName || 'Station' : undefined
         }

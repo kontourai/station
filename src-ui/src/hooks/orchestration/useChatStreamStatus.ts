@@ -29,8 +29,11 @@ export function useChatStreamStatus(apiBase: string, replay?: ChatReplayState) {
   if (phase === 'closed')
     return { label: 'Connection needs attention', blocked: true };
   if (!show) return undefined;
+  // Names the subject: the Station itself may still be reachable (the
+  // header presence dot says so) while this live-update stream is down.
+  // A bare "Reconnecting" reads as contradicting that dot.
   if (phase === 'interrupted')
-    return { label: 'Reconnecting…', blocked: false };
+    return { label: 'Reconnecting live updates…', blocked: false };
   if (phase === 'receiving') return { label: 'Catching up…', blocked: false };
   return undefined;
 }

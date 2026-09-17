@@ -50,7 +50,7 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
       .map((part: any) => part.content)
       .join('\n');
     expect(text).toContain('This turn did not complete');
-    expect(text).toContain(raw);
+    expect(text).not.toContain(raw);
     expect(text).not.toMatch(/session was lost|fresh session|send.*again/i);
     expect(chat.messages?.[0].content).toBe(
       `[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] ${raw}`,
@@ -75,12 +75,8 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
     // engine session was lost) — not "history is gone", which overclaimed:
     // the conversation survives via the server's continuation seam.
     expect(bubbleText).toMatch(/engine session was lost/i);
-    // The raw engine text is present (the disclosure), but strictly AFTER
-    // the translated headline — never itself the headline.
-    expect(bubbleText).toContain(RAW_MESSAGE);
-    expect(bubbleText!.indexOf(RAW_MESSAGE)).toBeGreaterThan(
-      bubbleText!.indexOf('engine session was lost'),
-    );
+    // Host stderr is offered via Details on render, not stored in the bubble.
+    expect(bubbleText).not.toContain(RAW_MESSAGE);
   });
 
   test('embeds the code in the [SYSTEM_EVENT] [CHAT_ERROR:code] marker', () => {

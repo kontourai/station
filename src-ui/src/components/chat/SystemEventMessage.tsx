@@ -4,6 +4,8 @@ import './chat.css';
 interface SystemEventMessageProps {
   content: string;
   messageKey: string;
+  /** Raw engine text, offered behind Details — never the card body. */
+  details?: string;
   /**
    * Optional recovery affordance rendered under the message — used by the
    * failed-turn marker so a cut-short turn can be resent without retyping
@@ -12,9 +14,19 @@ interface SystemEventMessageProps {
   action?: { label: string; onClick: () => void };
 }
 
+export function ChatErrorDetails({ raw }: { raw: string }) {
+  return (
+    <details className="chat-error-details">
+      <summary>Details</summary>
+      <pre className="chat-error-details__raw">{raw}</pre>
+    </details>
+  );
+}
+
 export function SystemEventMessage({
   content,
   messageKey,
+  details,
   action,
 }: SystemEventMessageProps) {
   return (
@@ -34,6 +46,7 @@ export function SystemEventMessage({
       }}
     >
       <LazyMarkdown>{content}</LazyMarkdown>
+      {details ? <ChatErrorDetails raw={details} /> : null}
       {action && (
         <button
           type="button"

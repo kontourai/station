@@ -45,11 +45,15 @@ export interface ChatErrorTranslation {
    */
   terminalSession?: boolean;
   /**
-   * archive#1827: true when `formatChatErrorDisplay` should append the raw
-   * underlying message as a clearly-labeled, visually secondary section
-   * (a blockquote under a rule) rather than only surfacing the translated
-   * copy — "for bug reports, not as the headline" per the ticket. Every
-   * existing translation leaves this unset (unchanged display).
+   * When false, the marker must not offer "Send again": retrying the same
+   * turn cannot help until the user does something else (sign in, pair,
+   * switch agent). Unset means retry is an honest affordance.
+   */
+  retryable?: boolean;
+  /**
+   * True when the raw engine message should be available behind a Details
+   * control, never as the card body. Callers that still inline markdown
+   * (formatChatErrorDisplay) must not dump it there.
    */
   disclosureRaw?: boolean;
 }
@@ -118,6 +122,26 @@ const STALLED_PATTERN = /stalled — no response for \d+s/i;
 const CREDENTIALS_PATTERN =
   /credential|accessKeyId|secretAccessKey|UnrecognizedClientException|InvalidSignatureException|ExpiredToken/i;
 
+/**
+ * Host CLI/OAuth expiry observed live on a paired phone: the engine code is
+ * still `engine-turn-failed`, so the structured-code branch used to swallow
+ * this before CREDENTIALS_PATTERN could run, and the card dumped the
+ * Windows stderr as "raw engine message for bug reports".
+ */
+const ENGINE_AUTH_PATTERN =
+  /OAuth session expired|could not be refreshed|authentication (failed|expired)|not logged in|please (log|sign) in/i;
+
+function engineAuthTranslation(text: string): ChatErrorTranslation | null {
+  if (!ENGINE_AUTH_PATTERN.test(text)) return null;
+  return {
+    title: 'This engine needs to be signed in',
+    body: 'The computer running this Station could not refresh its login, so this turn did not run.',
+    hint: 'Sign in on that computer, then try again — or switch to another agent.',
+    retryable: false,
+    disclosureRaw: true,
+  };
+}
+
 const BEDROCK_ACCESS_PATTERN =
   /AccessDeniedException|isn't authorized to invoke|don't have access to the model|ValidationException.*on-demand throughput/i;
 
@@ -135,6 +159,18 @@ const OLLAMA_PATTERN = /ollama/i;
  * (#chat).
  */
 const NOT_LAUNCHABLE_PATTERN = /not (currently )?launchable/i;
+
+/**
+ * The code `station-agent-adapter.ts` publishes on the `runtime.error` it
+ * emits when the inner `/chat` stream reports `type: 'error'`
+ * (`mapStationAgentStreamEvent`). Unlike `ENGINE_TURN_FAILED_CODE`, the
+ * message carries no underlying cause — the inner chunk's `errorText` is
+ * already the outward-safe generic (`writeSSEError` in
+ * `stream-orchestrator.ts`), so there is nothing further to forward — but
+ * the event IS marked `retriable: true`, which is what lets the hint below
+ * promise a retry honestly instead of hedging.
+ */
+const STATION_AGENT_TURN_FAILED_CODE = 'station_agent_turn_failed';
 
 /**
  * archive#3299: the stream ended without a well-formed body — the client
@@ -222,6 +258,11 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *       is absent, falls back to matching the engine's own English
  *       (`TERMINAL_SESSION_PATTERN`) as a last resort — still evaluated at
  *       this same point, not lower in the function.
+ *   -1b. `code` is the station-agent adapter's retriable turn failure
+ *       (`station_agent_turn_failed`) -> the inner stream reported an
+ *       error whose text is already the outward-safe generic, so there is
+ *       no cause to quote; the hint promises a retry because the event
+ *       carries `retriable: true`.
  *   0. Native `transport_*` codes (the FFI contract — see the `switch`).
  *   1. Client-abort-shaped message (prose) -> the response was stopped, not
  *      failed.
@@ -310,11 +351,21 @@ export function translateChatError(
   }
 
   if (code === ENGINE_TURN_FAILED_CODE) {
+    const auth = engineAuthTranslation(text);
+    if (auth) return auth;
     return {
       title: 'This turn did not complete',
       body: 'The engine reported an error for this turn.',
-      hint: 'Review the engine message below.',
+      hint: 'Open Details if you want the engine message.',
       disclosureRaw: true,
+    };
+  }
+
+  if (code === STATION_AGENT_TURN_FAILED_CODE) {
+    return {
+      title: 'This turn did not complete',
+      body: 'The Station agent could not finish this turn.',
+      hint: 'Your message was kept — send it again to retry.',
     };
   }
 
@@ -459,31 +510,16 @@ export function translateChatError(
   };
 }
 
-/**
- * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
- * user — shared by the live SSE path (`useStreamingMessage.ts`), the
- * pre-stream ephemeral bubble (`useActiveChatSessionMessaging.ts`), and the
- * persisted-marker reload path (`ChatDockBody.tsx`) so a translated error
- * reads identically whether it's live or restored after a reload.
- *
- * `rawMessage` is only used when `translation.disclosureRaw` is set
- * (archive#1827): the engine's own text, appended as a clearly-labeled,
- * visually secondary section — a blockquote under a rule, never the
- * headline — "for bug reports, not as the headline" per the ticket. This
- * codebase's markdown renderer has no raw-HTML support (no `rehype-raw`),
- * so a literal collapsible `<details>` widget isn't available here; a
- * blockquote is the closest de-emphasized treatment markdown-only rendering
- * can express. Every existing translation leaves `disclosureRaw` unset, so
- * this is purely additive — their display is byte-identical to before.
- */
+/** Strip the projection's ⚠️ prefix so Details can show the engine text. */
+export function projectedRuntimeErrorRaw(text: string): string {
+  const match = /^⚠️ ([\s\S]*?)( \(repeated \d+×\))?$/.exec(text);
+  return match?.[1] ?? text;
+}
+
 /**
  * #765 A1: translation for a runtime-error part rehydrated from the durable
- * event projection (`runtime-event-projection.ts` writes
- * `⚠️ <raw engine message>` with `runtimeError: true` and, when the event
- * carried one, `runtimeErrorCode`). Returns the same translated markdown the
- * live path shows, or `null` when the code is not one this table maps —
- * an uncoded or unrecognised failure keeps its verbatim engine prose, the
- * same honesty rule the live `turnHandlers.ts` path applies.
+ * event projection. Returns the same translated markdown the live path shows,
+ * or `null` when the code is not one this table maps.
  */
 export function translateProjectedRuntimeError(
   text: string,
@@ -491,36 +527,29 @@ export function translateProjectedRuntimeError(
 ): string | null {
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
-    code !== ENGINE_TURN_FAILED_CODE
+    code !== ENGINE_TURN_FAILED_CODE &&
+    code !== STATION_AGENT_TURN_FAILED_CODE
   )
     return null;
+  const raw = projectedRuntimeErrorRaw(text);
   const match = /^⚠️ ([\s\S]*?)( \(repeated \d+×\))?$/.exec(text);
-  const raw = match?.[1] ?? text;
   const repeatSuffix = match?.[2] ?? '';
   const display = formatChatErrorDisplay(
     translateChatError({ message: raw, code }),
-    raw,
   );
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
 }
 
+/**
+ * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
+ * user. Raw engine text is not inlined — `disclosureRaw` is a Details control.
+ */
 export function formatChatErrorDisplay(
   translation: ChatErrorTranslation,
-  rawMessage?: string,
 ): string {
   const lines = [`**${translation.title}**`, '', translation.body];
   if (translation.hint) {
     lines.push('', translation.hint);
-  }
-  if (translation.disclosureRaw && rawMessage) {
-    lines.push(
-      '',
-      '---',
-      '',
-      'Raw engine message (for bug reports):',
-      '',
-      `> ${rawMessage.replace(/\n/g, '\n> ')}`,
-    );
   }
   return lines.join('\n');
 }

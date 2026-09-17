@@ -15,6 +15,7 @@ import {
   useCreateChatSession,
   useOpenConversation,
 } from './useActiveChatSessions';
+import { useIsMobile } from './useIsMobile';
 
 interface DerivedSession {
   id: string;
@@ -62,6 +63,7 @@ export function useChatDockActions({
 }: UseChatDockActionsOptions) {
   const { apiBase } = useApiBase();
   const { lastDockMaximized, setDockState, setActiveChat } = useNavigation();
+  const isMobile = useIsMobile();
   const { updateChat, removeChat } = useActiveChatActions();
   const createChatSession = useCreateChatSession();
   const openConversationAction = useOpenConversation(apiBase);
@@ -85,7 +87,8 @@ export function useChatDockActions({
       // clears the URL's `maximize` flag by design, so reading the live
       // value here would silently drop a maximized dock back to normal size
       // on return instead of restoring it.
-      if (revealDock) setDockState(true, lastDockMaximized);
+      // Phone: continue/resume is a destination, not a half-sheet over Home.
+      if (revealDock) setDockState(true, isMobile ? true : lastDockMaximized);
       updateChat(sessionId, { hasUnread: false });
     },
     [
@@ -94,6 +97,7 @@ export function useChatDockActions({
       setActiveChat,
       setDockState,
       lastDockMaximized,
+      isMobile,
       updateChat,
     ],
   );
