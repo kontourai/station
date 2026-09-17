@@ -1,5 +1,36 @@
 [
   {
+    "timestampUtc": "2026-09-17T17:54:52Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2451.1",
+    "sha": "fa83684ed1c6dd5bc3e5d78184565b35c995a916",
+    "artifactBuiltAt": "2026-09-17T16:54:38.802Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35248613245",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 35248613245)",
+      "macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:35248613245:github-release-upload-or-readback (the provider effect may already be live))",
+      "windows: NOT_VERIFIED (windows provider outcome unknown: unresolved:run:35248613245:desktop-upload-or-readback (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "ea101d69eb1d3773b02672f919e99514396bb52d",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2207](https://github.com/kontourai/station/pull/2207) fix(connect): hide host-only Station management on client-only devices (#2205)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-09-17T17:30:49Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2451.35248613245",
