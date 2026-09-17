@@ -395,16 +395,44 @@ export async function list(parsed: ParsedCoreArgs = NO_FLAGS): Promise<void> {
   console.log(JSON.stringify(plugins, null, 2));
 }
 
+/**
+ * A lifecycle change that withdrew plugin command effects commits at once but
+ * is not finished until every captured effect settles (kontourai/station#1419).
+ * Station answers 202 with the withdrawal; say so rather than "done".
+ */
+interface CommandEffectsWithdrawal {
+  withdrawalId: string;
+  status: string;
+  outstanding: number;
+}
+
+function commandEffectsNote(
+  withdrawal: CommandEffectsWithdrawal | undefined,
+): string {
+  if (!withdrawal || withdrawal.status === 'completed') return '';
+  const effects =
+    withdrawal.outstanding === 1
+      ? '1 plugin command effect is'
+      : `${withdrawal.outstanding} plugin command effects are`;
+  return withdrawal.status === 'winding-down'
+    ? ` ${effects} still winding down (withdrawal ${withdrawal.withdrawalId}).`
+    : ` ${effects} unresolved (${withdrawal.status}, withdrawal ${withdrawal.withdrawalId}).`;
+}
+
 export async function remove(
   name: string,
   parsed: ParsedCoreArgs = NO_FLAGS,
 ): Promise<void> {
-  await pluginRequest<{ success: boolean }>(
-    parsed,
-    `/${encodeURIComponent(name)}`,
-    { method: 'DELETE' },
+  const result = await pluginRequest<{
+    success: boolean;
+    commandEffects?: CommandEffectsWithdrawal;
+  }>(parsed, `/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const note = commandEffectsNote(result.commandEffects);
+  console.log(
+    note
+      ? `✅ Removed ${name} through Station.${note}`
+      : `✅ Removed ${name} through Station`,
   );
-  console.log(`✅ Removed ${name} through Station`);
 }
 
 export async function info(
@@ -431,10 +459,16 @@ export async function update(
   const result = await pluginRequest<{
     success: boolean;
     plugin?: { name?: string; version?: string };
+    commandEffects?: CommandEffectsWithdrawal;
   }>(parsed, `/${encodeURIComponent(name)}/update`, { method: 'POST' });
   const updatedName = result.plugin?.name ?? name;
   const version = result.plugin?.version ? `@${result.plugin.version}` : '';
-  console.log(`✅ Updated ${updatedName}${version} through Station`);
+  const note = commandEffectsNote(result.commandEffects);
+  console.log(
+    note
+      ? `✅ Updated ${updatedName}${version} through Station.${note}`
+      : `✅ Updated ${updatedName}${version} through Station`,
+  );
 }
 
 export async function registry(registryUrl?: string): Promise<void> {

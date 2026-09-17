@@ -2496,6 +2496,64 @@ unavailable installation omits both fields.
 
 ---
 
+### Plugin Command Effects
+```http
+POST /plugins/:name/command-effects
+POST /plugins/command-effects/settlements
+GET  /plugins/command-effects/withdrawals/:id
+POST /plugins/command-effects/withdrawals/:id/resolve
+```
+
+A plugin command row in the palette grants nothing (kontourai/station#1418).
+Before a browser document applies an argument-free `navigate` or
+`seed-composer` command it asks Station to admit the effect:
+
+```json
+{
+  "documentId": "document-4f2c9a",
+  "documentKey": "<random per-document secret, 32-256 base64url characters>",
+  "requestId": "request-0001",
+  "installationGeneration": "<from GET /plugins>",
+  "commandId": "my-plugin.open-plugins",
+  "target": { "kind": "destination", "destinationId": "plugins" },
+  "context": { "projectSlug": "demo" }
+}
+```
+
+`200` returns `{ "receipt": { effectId, requestId, pluginId, commandId,
+installationGeneration, effect } }`, where `effect` is what Station read from
+the installed declaration (`navigate` with a destination id, or
+`seed-composer` with a session id and text). Admission is idempotent on
+`documentId` + `requestId`. A plugin the caller cannot see answers exactly as an
+absent one (`404`). Other refusals are `409` with a `reason`:
+`generation-changed`, `command-not-declared`, `command-not-executable`,
+`target-mismatch`, `requirement-not-satisfied`, `permission-unavailable`,
+`capacity`, `cancelled`, or `request-conflict`; `503` means the ledger or grants
+are unavailable. Hosted deployments refuse every route with `403`.
+
+The document reports how it ended each effect with up to 16 items of
+`{ requestId, effectId?, outcome }`, where `outcome` is `applied`, `aborted`,
+`cancelled` or `abandoned`. `cancelled` without an `effectId` is accepted
+before any receipt arrived; a later admission of that request is refused.
+Per-item results are `settled`, `already-settled`, `cancel-recorded`,
+`recorded-late`, `conflict` or `not-found`; any `conflict` makes the response
+`409`.
+
+Removing, updating or installing over a plugin, and withdrawing
+`plugin.server` from it (revocation, a grant or host approval against changed
+content), capture the plugin's outstanding effects. The change commits at
+once. When anything was captured the response carries
+`commandEffects: { withdrawalId, status, outstanding }` and is `202` until every
+captured effect settles, and `200` once it has. `status` is `completed`,
+`winding-down`, `indeterminate` (still outstanding after the wait; not
+terminal) or `closed-indeterminate`. A host approval carries the same summary in
+its `reconciliation` projection. The operator reads a withdrawal (at most 16
+outstanding effect ids) and may resolve an `indeterminate` one with
+`{ "disposition": "accept-indeterminate" }`; that is never reported as
+completed, and late settlements are still counted.
+
+---
+
 ### Revoke Plugin Permissions
 ```http
 DELETE /plugins/:name/grant

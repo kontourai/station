@@ -174,6 +174,13 @@ export const PLUGIN_IDENTITY_ROUTES: readonly PluginIdentityRoute[] = [
   },
   {
     method: 'GET',
+    path: '/api/plugins/command-effects/withdrawals/:id',
+    disposition: 'operator-only',
+    rationale:
+      'Reports a command effect withdrawal, including the `pluginId` whose lifecycle change caused it. Withdrawals follow operator lifecycle actions and only the operator may resolve one, so a collaborator is refused rather than projected.',
+  },
+  {
+    method: 'GET',
     path: '/api/plugins/home-role',
     disposition: 'projected',
     rationale:

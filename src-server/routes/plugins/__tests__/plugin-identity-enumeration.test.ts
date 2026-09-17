@@ -103,6 +103,11 @@ const { registerPluginInstallRoutes } = await import(
 const { registerPluginLifecycleRoutes } = await import(
   '../plugin-lifecycle-routes.js'
 );
+const { registerPluginCommandEffectRoutes } = await import(
+  '../plugin-command-effect-routes.js'
+);
+const { createPluginCommandEffectService, FilePluginCommandEffectStore } =
+  await import('../../../services/plugins/plugin-command-effects.js');
 const { createRegistryRoutes } = await import('../registry.js');
 const { createProjectRoutes } = await import('../../projects/projects.js');
 const { FileStorageAdapter } = await import(
@@ -335,6 +340,7 @@ const FACTORY_SPIES = {
   createRegistryRoutes: vi.fn(createRegistryRoutes),
   registerPluginInstallRoutes: vi.fn(registerPluginInstallRoutes),
   registerPluginLifecycleRoutes: vi.fn(registerPluginLifecycleRoutes),
+  registerPluginCommandEffectRoutes: vi.fn(registerPluginCommandEffectRoutes),
 } as const;
 
 const DRIVERS: Record<
@@ -416,6 +422,22 @@ const DRIVERS: Record<
         visibility: { resolvePrincipal: () => principal },
       } as never);
       return { app, path: '/check-updates' };
+    },
+  },
+  'GET /api/plugins/command-effects/withdrawals/:id': {
+    driver: FACTORY_SPIES.registerPluginCommandEffectRoutes,
+    mount: (dir, principal) => {
+      const app = new HonoApp();
+      const effects = createPluginCommandEffectService({
+        store: new FilePluginCommandEffectStore(dir),
+      });
+      FACTORY_SPIES.registerPluginCommandEffectRoutes(app, {
+        effects,
+        resolution: { resolvePrincipal: () => principal },
+        isHostedDeployment: () => false,
+        admission: { admit: vi.fn() } as never,
+      });
+      return { app, path: '/command-effects/withdrawals/pcw-unknown' };
     },
   },
   'POST /api/plugins/reload': {

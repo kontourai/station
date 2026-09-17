@@ -105,6 +105,9 @@ export function createPluginRoutes(
       producerVersion?: string;
       onSettlementConflict?(): void;
       resolveRequirement: PluginCommandEffectAdmissionDeps['resolveRequirement'];
+      /** Test seams for withdrawal age; production uses the wall clock. */
+      now?(): Date;
+      indeterminateAfterMs?: number;
     };
   },
 ) {
@@ -277,6 +280,8 @@ export function createPluginRoutes(
     publishAudit: runtime?.commandEffects?.publishAudit,
     producerVersion: runtime?.commandEffects?.producerVersion,
     onSettlementConflict: runtime?.commandEffects?.onSettlementConflict,
+    now: runtime?.commandEffects?.now,
+    indeterminateAfterMs: runtime?.commandEffects?.indeterminateAfterMs,
   });
   registerPluginCommandEffectRoutes(app, {
     effects: commandEffects,

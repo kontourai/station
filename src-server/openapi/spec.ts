@@ -272,6 +272,7 @@ const FIRST_PASS_PATHS: Record<
       summary: 'Install a plugin from a source',
       tags: ['plugins'],
       responses: {
+        202: 'Installed over an existing plugin; runtime activation or withdrawn plugin command effects are still winding down',
         409: 'Registry trust or reviewed installation state refused; inspect and review again',
       },
     },
@@ -315,6 +316,7 @@ const FIRST_PASS_PATHS: Record<
       summary: 'Update an installed plugin',
       tags: ['plugins'],
       responses: {
+        202: 'Updated; runtime activation or withdrawn plugin command effects are still winding down',
         409: 'Registry trust or reviewed installation state refused; inspect and review again',
       },
     },
@@ -324,6 +326,60 @@ const FIRST_PASS_PATHS: Record<
       operationId: 'deletePlugin',
       summary: 'Delete an installed plugin',
       tags: ['plugins'],
+      responses: {
+        202: 'Removed; runtime activation or withdrawn plugin command effects are still winding down',
+      },
+    },
+  },
+  '/api/plugins/{name}/command-effects': {
+    post: {
+      operationId: 'admitPluginCommandEffect',
+      summary: 'Admit one plugin palette command effect for a browser document',
+      tags: ['plugins'],
+      responses: {
+        403: 'Plugin commands are unavailable on hosted deployments',
+        404: 'The plugin is absent or not visible to the caller',
+        409: 'Refused: changed generation, undeclared or unavailable command, unmet requirement, capacity, or a cancelled request',
+        503: 'Plugin command effects or permissions are unavailable',
+      },
+    },
+  },
+  '/api/plugins/command-effects/settlements': {
+    post: {
+      operationId: 'settlePluginCommandEffects',
+      summary:
+        'Record how a browser document settled its plugin command effects',
+      tags: ['plugins'],
+      responses: {
+        403: 'Plugin commands are unavailable on hosted deployments',
+        409: 'At least one item conflicts with an earlier terminal outcome',
+        503: 'Plugin command effects are unavailable',
+      },
+    },
+  },
+  '/api/plugins/command-effects/withdrawals/{id}': {
+    get: {
+      operationId: 'getPluginCommandWithdrawal',
+      summary: 'Read a plugin command effect withdrawal (operator only)',
+      tags: ['plugins'],
+      responses: {
+        403: 'Only the Station operator can read withdrawals',
+        404: 'Withdrawal not found',
+        503: 'Plugin command effects are unavailable',
+      },
+    },
+  },
+  '/api/plugins/command-effects/withdrawals/{id}/resolve': {
+    post: {
+      operationId: 'resolvePluginCommandWithdrawal',
+      summary: 'Accept an indeterminate withdrawal (operator only)',
+      tags: ['plugins'],
+      responses: {
+        403: 'Only the Station operator can resolve withdrawals',
+        404: 'Withdrawal not found',
+        409: 'The withdrawal is not indeterminate',
+        503: 'Plugin command effects are unavailable',
+      },
     },
   },
   '/api/plugins/reload': {
