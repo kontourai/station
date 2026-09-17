@@ -1,5 +1,212 @@
 [
   {
+    "timestampUtc": "2026-09-17T02:50:36Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2451",
+    "sha": "ea101d69eb1d3773b02672f919e99514396bb52d",
+    "artifactBuiltAt": "2026-09-17T02:07:32.130Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35172665354",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35172665354)"
+    ],
+    "changelog": {
+      "previousSha": "b9f05fe2666c46b9e882726a758a3c6f5a5a3a8a",
+      "groups": {
+        "feat": [
+          "[#2204](https://github.com/kontourai/station/pull/2204) feat(settings): the Station configuration junk drawer becomes Sources, Telemetry, Permissions and Agent runs, and a caption only prints over something (#2182)",
+          "[#1663](https://github.com/kontourai/station/pull/1663) feat: reconcile room admissions from durable receipts",
+          "[#2190](https://github.com/kontourai/station/pull/2190) feat(regions): the record parser reads an instance pane held by two regions — #2159 slice A, behaviour-neutral",
+          "[#2189](https://github.com/kontourai/station/pull/2189) feat(settings): a vertical rail that shows every group, a scope chip that only draws a difference, and headings above the cards (#2144)",
+          "[#1653](https://github.com/kontourai/station/pull/1653) feat: connect controlled home sessions to room writes",
+          "[#2184](https://github.com/kontourai/station/pull/2184) feat(regions): the region toggles only show and hide; the chooser is a hold away (#2155)",
+          "[#1659](https://github.com/kontourai/station/pull/1659) feat: expose personal home-control session endpoints",
+          "[#2180](https://github.com/kontourai/station/pull/2180) feat(sidebar): a pill's context menu opens its Board or Layout into a dock region (#2158)",
+          "[#2179](https://github.com/kontourai/station/pull/2179) feat(settings): one navigation that names what each group is for, and Chat's settings get a home (#2144)",
+          "[#1579](https://github.com/kontourai/station/pull/1579) feat(plugins): bind registry trust to installation and recovery",
+          "[#1550](https://github.com/kontourai/station/pull/1550) feat(plugins): migrate coding starter to portable Project Panes",
+          "[#1640](https://github.com/kontourai/station/pull/1640) feat: fence home-control sessions and reconcile durable receipts",
+          "[#2174](https://github.com/kontourai/station/pull/2174) feat(regions): an empty region is a chooser, and the region's + opens the same rows (#2154)",
+          "[#1542](https://github.com/kontourai/station/pull/1542) feat(plugins): migrate the minimal example to a portable Project Pane",
+          "[#2172](https://github.com/kontourai/station/pull/2172) feat(regions): a dock region holds a Board or a project Layout beside Chat (#2157)",
+          "[#2169](https://github.com/kontourai/station/pull/2169) feat(settings): six settings that were missing, and the ones that were labels become derivations",
+          "[#2166](https://github.com/kontourai/station/pull/2166) feat(regions): an empty dock region may stay visible; a close keeps it, a move hides it (#2153)",
+          "[#2167](https://github.com/kontourai/station/pull/2167) feat(settings): every row says which scope decides it, and a project overrides a Station setting from the row itself",
+          "[#2165](https://github.com/kontourai/station/pull/2165) feat(regions): a lone pane reaches any region from its own bar (#2160)",
+          "[#2163](https://github.com/kontourai/station/pull/2163) feat(regions): Bottom is Chat's — Terminal joins it and a taken default falls right (#2156)",
+          "[#2161](https://github.com/kontourai/station/pull/2161) feat(settings): search reads every setting's consequence, and agents get a generated registry of deep links",
+          "[#2149](https://github.com/kontourai/station/pull/2149) feat(settings): every setting states its consequence, and a project overrides three Station settings by name",
+          "[#2147](https://github.com/kontourai/station/pull/2147) feat(regions): the toolbar is one toggle per dock region; a pane moves from its tab (#2143)"
+        ],
+        "fix": [
+          "[#2201](https://github.com/kontourai/station/pull/2201) fix(tests): the font-size persistence guard asserts behaviour, not indentation",
+          "[#2198](https://github.com/kontourai/station/pull/2198) fix(home-authority): a negative revision is malformed (400), not a conflict (409)",
+          "[#2199](https://github.com/kontourai/station/pull/2199) fix(layouts): a docked Layout renders no prompt control it cannot run, and a project plugin record's stored actions are dropped (#2171)",
+          "[#2197](https://github.com/kontourai/station/pull/2197) fix(environments): expectedRevision 0 is a first write, not a malformed one (#2196)",
+          "[#2097](https://github.com/kontourai/station/pull/2097) fix(ui): resume code highlighting from completed lines while streaming",
+          "[#2183](https://github.com/kontourai/station/pull/2183) fix(tests): the local collaboration lab supplies the operator currency callback",
+          "[#2177](https://github.com/kontourai/station/pull/2177) fix(orchestration): admit a room write only once its transaction can finish",
+          "[#2178](https://github.com/kontourai/station/pull/2178) fix(tests): derive the accent ratchet's scratch roots from the gate's own list",
+          "[#2173](https://github.com/kontourai/station/pull/2173) fix(tests): classify the settings-registry gate, and regenerate the registry the catalog outran",
+          "[#2170](https://github.com/kontourai/station/pull/2170) fix(tests): the three nightly load failures each get a derivation where a literal was",
+          "[#2164](https://github.com/kontourai/station/pull/2164) fix(layouts): sweeps see through symlinks and past directories named *.json",
+          "[#2162](https://github.com/kontourai/station/pull/2162) fix(dock): the first-run nudge opens the dock only onto a known, non-empty inbox",
+          "[#2152](https://github.com/kontourai/station/pull/2152) fix(sidebar): six gaps between the built panel and design record D3",
+          "[#2145](https://github.com/kontourai/station/pull/2145) fix(settings): controls that persisted nothing stop claiming they do"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2188](https://github.com/kontourai/station/pull/2188) refactor(regions): the placement drag is one shared gesture, and a wandered drag is no longer a click (#2185)",
+          "[#2187](https://github.com/kontourai/station/pull/2187) refactor(pairing): operator currency revalidation is required, not optional"
+        ]
+      },
+      "note": null,
+      "commitCount": 39
+    }
+  },
+  {
+    "timestampUtc": "2026-09-17T02:50:33Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2451",
+    "sha": "ea101d69eb1d3773b02672f919e99514396bb52d",
+    "artifactBuiltAt": "2026-09-17T02:07:58.308Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35172665354",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35172665354)"
+    ],
+    "changelog": {
+      "previousSha": "b9f05fe2666c46b9e882726a758a3c6f5a5a3a8a",
+      "groups": {
+        "feat": [
+          "[#2204](https://github.com/kontourai/station/pull/2204) feat(settings): the Station configuration junk drawer becomes Sources, Telemetry, Permissions and Agent runs, and a caption only prints over something (#2182)",
+          "[#1663](https://github.com/kontourai/station/pull/1663) feat: reconcile room admissions from durable receipts",
+          "[#2190](https://github.com/kontourai/station/pull/2190) feat(regions): the record parser reads an instance pane held by two regions — #2159 slice A, behaviour-neutral",
+          "[#2189](https://github.com/kontourai/station/pull/2189) feat(settings): a vertical rail that shows every group, a scope chip that only draws a difference, and headings above the cards (#2144)",
+          "[#1653](https://github.com/kontourai/station/pull/1653) feat: connect controlled home sessions to room writes",
+          "[#2184](https://github.com/kontourai/station/pull/2184) feat(regions): the region toggles only show and hide; the chooser is a hold away (#2155)",
+          "[#1659](https://github.com/kontourai/station/pull/1659) feat: expose personal home-control session endpoints",
+          "[#2180](https://github.com/kontourai/station/pull/2180) feat(sidebar): a pill's context menu opens its Board or Layout into a dock region (#2158)",
+          "[#2179](https://github.com/kontourai/station/pull/2179) feat(settings): one navigation that names what each group is for, and Chat's settings get a home (#2144)",
+          "[#1579](https://github.com/kontourai/station/pull/1579) feat(plugins): bind registry trust to installation and recovery",
+          "[#1550](https://github.com/kontourai/station/pull/1550) feat(plugins): migrate coding starter to portable Project Panes",
+          "[#1640](https://github.com/kontourai/station/pull/1640) feat: fence home-control sessions and reconcile durable receipts",
+          "[#2174](https://github.com/kontourai/station/pull/2174) feat(regions): an empty region is a chooser, and the region's + opens the same rows (#2154)",
+          "[#1542](https://github.com/kontourai/station/pull/1542) feat(plugins): migrate the minimal example to a portable Project Pane",
+          "[#2172](https://github.com/kontourai/station/pull/2172) feat(regions): a dock region holds a Board or a project Layout beside Chat (#2157)",
+          "[#2169](https://github.com/kontourai/station/pull/2169) feat(settings): six settings that were missing, and the ones that were labels become derivations",
+          "[#2166](https://github.com/kontourai/station/pull/2166) feat(regions): an empty dock region may stay visible; a close keeps it, a move hides it (#2153)",
+          "[#2167](https://github.com/kontourai/station/pull/2167) feat(settings): every row says which scope decides it, and a project overrides a Station setting from the row itself",
+          "[#2165](https://github.com/kontourai/station/pull/2165) feat(regions): a lone pane reaches any region from its own bar (#2160)",
+          "[#2163](https://github.com/kontourai/station/pull/2163) feat(regions): Bottom is Chat's — Terminal joins it and a taken default falls right (#2156)",
+          "[#2161](https://github.com/kontourai/station/pull/2161) feat(settings): search reads every setting's consequence, and agents get a generated registry of deep links",
+          "[#2149](https://github.com/kontourai/station/pull/2149) feat(settings): every setting states its consequence, and a project overrides three Station settings by name",
+          "[#2147](https://github.com/kontourai/station/pull/2147) feat(regions): the toolbar is one toggle per dock region; a pane moves from its tab (#2143)"
+        ],
+        "fix": [
+          "[#2201](https://github.com/kontourai/station/pull/2201) fix(tests): the font-size persistence guard asserts behaviour, not indentation",
+          "[#2198](https://github.com/kontourai/station/pull/2198) fix(home-authority): a negative revision is malformed (400), not a conflict (409)",
+          "[#2199](https://github.com/kontourai/station/pull/2199) fix(layouts): a docked Layout renders no prompt control it cannot run, and a project plugin record's stored actions are dropped (#2171)",
+          "[#2197](https://github.com/kontourai/station/pull/2197) fix(environments): expectedRevision 0 is a first write, not a malformed one (#2196)",
+          "[#2097](https://github.com/kontourai/station/pull/2097) fix(ui): resume code highlighting from completed lines while streaming",
+          "[#2183](https://github.com/kontourai/station/pull/2183) fix(tests): the local collaboration lab supplies the operator currency callback",
+          "[#2177](https://github.com/kontourai/station/pull/2177) fix(orchestration): admit a room write only once its transaction can finish",
+          "[#2178](https://github.com/kontourai/station/pull/2178) fix(tests): derive the accent ratchet's scratch roots from the gate's own list",
+          "[#2173](https://github.com/kontourai/station/pull/2173) fix(tests): classify the settings-registry gate, and regenerate the registry the catalog outran",
+          "[#2170](https://github.com/kontourai/station/pull/2170) fix(tests): the three nightly load failures each get a derivation where a literal was",
+          "[#2164](https://github.com/kontourai/station/pull/2164) fix(layouts): sweeps see through symlinks and past directories named *.json",
+          "[#2162](https://github.com/kontourai/station/pull/2162) fix(dock): the first-run nudge opens the dock only onto a known, non-empty inbox",
+          "[#2152](https://github.com/kontourai/station/pull/2152) fix(sidebar): six gaps between the built panel and design record D3",
+          "[#2145](https://github.com/kontourai/station/pull/2145) fix(settings): controls that persisted nothing stop claiming they do"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2188](https://github.com/kontourai/station/pull/2188) refactor(regions): the placement drag is one shared gesture, and a wandered drag is no longer a click (#2185)",
+          "[#2187](https://github.com/kontourai/station/pull/2187) refactor(pairing): operator currency revalidation is required, not optional"
+        ]
+      },
+      "note": null,
+      "commitCount": 39
+    }
+  },
+  {
+    "timestampUtc": "2026-09-17T02:45:30Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2451.35172665354",
+    "sha": "ea101d69eb1d3773b02672f919e99514396bb52d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35172665354",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2451.35172665354 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b9f05fe2666c46b9e882726a758a3c6f5a5a3a8a",
+      "groups": {
+        "feat": [
+          "[#2204](https://github.com/kontourai/station/pull/2204) feat(settings): the Station configuration junk drawer becomes Sources, Telemetry, Permissions and Agent runs, and a caption only prints over something (#2182)",
+          "[#1663](https://github.com/kontourai/station/pull/1663) feat: reconcile room admissions from durable receipts",
+          "[#2190](https://github.com/kontourai/station/pull/2190) feat(regions): the record parser reads an instance pane held by two regions — #2159 slice A, behaviour-neutral",
+          "[#2189](https://github.com/kontourai/station/pull/2189) feat(settings): a vertical rail that shows every group, a scope chip that only draws a difference, and headings above the cards (#2144)",
+          "[#1653](https://github.com/kontourai/station/pull/1653) feat: connect controlled home sessions to room writes",
+          "[#2184](https://github.com/kontourai/station/pull/2184) feat(regions): the region toggles only show and hide; the chooser is a hold away (#2155)",
+          "[#1659](https://github.com/kontourai/station/pull/1659) feat: expose personal home-control session endpoints",
+          "[#2180](https://github.com/kontourai/station/pull/2180) feat(sidebar): a pill's context menu opens its Board or Layout into a dock region (#2158)",
+          "[#2179](https://github.com/kontourai/station/pull/2179) feat(settings): one navigation that names what each group is for, and Chat's settings get a home (#2144)",
+          "[#1579](https://github.com/kontourai/station/pull/1579) feat(plugins): bind registry trust to installation and recovery",
+          "[#1550](https://github.com/kontourai/station/pull/1550) feat(plugins): migrate coding starter to portable Project Panes",
+          "[#1640](https://github.com/kontourai/station/pull/1640) feat: fence home-control sessions and reconcile durable receipts",
+          "[#2174](https://github.com/kontourai/station/pull/2174) feat(regions): an empty region is a chooser, and the region's + opens the same rows (#2154)",
+          "[#1542](https://github.com/kontourai/station/pull/1542) feat(plugins): migrate the minimal example to a portable Project Pane",
+          "[#2172](https://github.com/kontourai/station/pull/2172) feat(regions): a dock region holds a Board or a project Layout beside Chat (#2157)",
+          "[#2169](https://github.com/kontourai/station/pull/2169) feat(settings): six settings that were missing, and the ones that were labels become derivations",
+          "[#2166](https://github.com/kontourai/station/pull/2166) feat(regions): an empty dock region may stay visible; a close keeps it, a move hides it (#2153)",
+          "[#2167](https://github.com/kontourai/station/pull/2167) feat(settings): every row says which scope decides it, and a project overrides a Station setting from the row itself",
+          "[#2165](https://github.com/kontourai/station/pull/2165) feat(regions): a lone pane reaches any region from its own bar (#2160)",
+          "[#2163](https://github.com/kontourai/station/pull/2163) feat(regions): Bottom is Chat's — Terminal joins it and a taken default falls right (#2156)",
+          "[#2161](https://github.com/kontourai/station/pull/2161) feat(settings): search reads every setting's consequence, and agents get a generated registry of deep links",
+          "[#2149](https://github.com/kontourai/station/pull/2149) feat(settings): every setting states its consequence, and a project overrides three Station settings by name",
+          "[#2147](https://github.com/kontourai/station/pull/2147) feat(regions): the toolbar is one toggle per dock region; a pane moves from its tab (#2143)"
+        ],
+        "fix": [
+          "[#2201](https://github.com/kontourai/station/pull/2201) fix(tests): the font-size persistence guard asserts behaviour, not indentation",
+          "[#2198](https://github.com/kontourai/station/pull/2198) fix(home-authority): a negative revision is malformed (400), not a conflict (409)",
+          "[#2199](https://github.com/kontourai/station/pull/2199) fix(layouts): a docked Layout renders no prompt control it cannot run, and a project plugin record's stored actions are dropped (#2171)",
+          "[#2197](https://github.com/kontourai/station/pull/2197) fix(environments): expectedRevision 0 is a first write, not a malformed one (#2196)",
+          "[#2097](https://github.com/kontourai/station/pull/2097) fix(ui): resume code highlighting from completed lines while streaming",
+          "[#2183](https://github.com/kontourai/station/pull/2183) fix(tests): the local collaboration lab supplies the operator currency callback",
+          "[#2177](https://github.com/kontourai/station/pull/2177) fix(orchestration): admit a room write only once its transaction can finish",
+          "[#2178](https://github.com/kontourai/station/pull/2178) fix(tests): derive the accent ratchet's scratch roots from the gate's own list",
+          "[#2173](https://github.com/kontourai/station/pull/2173) fix(tests): classify the settings-registry gate, and regenerate the registry the catalog outran",
+          "[#2170](https://github.com/kontourai/station/pull/2170) fix(tests): the three nightly load failures each get a derivation where a literal was",
+          "[#2164](https://github.com/kontourai/station/pull/2164) fix(layouts): sweeps see through symlinks and past directories named *.json",
+          "[#2162](https://github.com/kontourai/station/pull/2162) fix(dock): the first-run nudge opens the dock only onto a known, non-empty inbox",
+          "[#2152](https://github.com/kontourai/station/pull/2152) fix(sidebar): six gaps between the built panel and design record D3",
+          "[#2145](https://github.com/kontourai/station/pull/2145) fix(settings): controls that persisted nothing stop claiming they do"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2188](https://github.com/kontourai/station/pull/2188) refactor(regions): the placement drag is one shared gesture, and a wandered drag is no longer a click (#2185)",
+          "[#2187](https://github.com/kontourai/station/pull/2187) refactor(pairing): operator currency revalidation is required, not optional"
+        ]
+      },
+      "note": null,
+      "commitCount": 39
+    }
+  },
+  {
     "timestampUtc": "2026-09-15T21:22:59Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2449.5",
