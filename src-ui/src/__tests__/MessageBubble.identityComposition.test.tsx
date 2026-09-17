@@ -18,7 +18,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../types';
@@ -117,8 +117,20 @@ function occurrences(container: HTMLElement, needle: string): number {
   return text.split(needle).length - 1;
 }
 
+/**
+ * #2211: the card left the resting row. It opens from the overflow menu as a
+ * dialog — the same card, one deliberate click deeper into the turn record.
+ */
+async function openProvenanceDialog() {
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'More answer actions' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+  await screen.findByLabelText(/^Answer provenance/);
+}
+
 describe('assistant row identity composition (station#1434)', () => {
-  it('resolves the engine chip from the turn envelope, in the card’s own vocabulary', () => {
+  it('resolves the engine chip from the turn envelope, in the card’s own vocabulary', async () => {
     const { container } = renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -130,17 +142,16 @@ describe('assistant row identity composition (station#1434)', () => {
     // card does (`engineDisplayLabel`), not the raw slug.
     const chip = container.querySelector('.engine-chip');
     expect(chip?.textContent).toBe('Claude Code');
-    // …and it is stated exactly ONCE on the row: the card's collapsed
-    // headline no longer repeats what the strip already says.
+    // …and it is stated exactly ONCE on the row: the dialog-hosted card does
+    // not put a second statement on the resting row.
     expect(occurrences(container, 'Claude Code')).toBe(1);
-    // The card is still there, and still the checkable record — with a
-    // headline that says there is provenance to open rather than an empty
-    // span where the engine used to be.
+    // The card is still there — one click deeper — and still the checkable
+    // record, opened expanded.
+    await openProvenanceDialog();
     const card = screen.getByLabelText('Answer provenance for turn turn-7');
     expect(card).toBeTruthy();
-    expect(within(card).getByRole('button').textContent).toContain(
-      'Provenance',
-    );
+    const summary = card.querySelector('.turn-provenance__summary');
+    expect(summary?.textContent).toContain('Provenance');
   });
 
   it('names Station’s own engine "Station", never the raw adapter slug, on the governed naming surface', () => {
@@ -181,7 +192,7 @@ describe('assistant row identity composition (station#1434)', () => {
     );
   });
 
-  it('renders requested and reported models as two LABELLED claims when they disagree, and never repeats either', () => {
+  it('renders requested and reported models as two LABELLED claims when they disagree, and never repeats either', async () => {
     const { container } = renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -225,12 +236,12 @@ describe('assistant row identity composition (station#1434)', () => {
     // And the legacy bare badge is gone: no unlabelled model claim survives.
     expect(container.querySelector('.message__model-badge')).toBeNull();
 
-    // With BOTH facts stated on the row, the card's headline still says what
-    // it is rather than collapsing to an empty span.
+    // With BOTH facts stated on the row, the dialog-hosted card still opens
+    // as the checkable record.
+    await openProvenanceDialog();
     const card = screen.getByLabelText('Answer provenance for turn turn-7');
-    expect(within(card).getByRole('button').textContent).toContain(
-      'Provenance',
-    );
+    const summary = card.querySelector('.turn-provenance__summary');
+    expect(summary?.textContent).toContain('Provenance');
   });
 
   it('keeps the request’s options attached to the claim that names the request, attributed so they never read as engine-reported', () => {
@@ -329,7 +340,7 @@ describe('assistant row identity composition (station#1434)', () => {
     expect(occurrences(container, 'claude-3-7-sonnet-latest')).toBe(0);
   });
 
-  it('degrades the strip to honest absence — and never crashes — on an envelope this build cannot read', () => {
+  it('degrades the strip to honest absence — and never crashes — on an envelope this build cannot read', async () => {
     const { container } = renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -341,9 +352,6 @@ describe('assistant row identity composition (station#1434)', () => {
     // No engine chip, no partial claim, transcript intact.
     expect(container.querySelector('.engine-chip')).toBeNull();
     expect(screen.getByText('Here is the answer.')).toBeTruthy();
-    expect(
-      screen.getByText(/cannot read\. Nothing about this answer is being/),
-    ).toBeTruthy();
     // An unreadable envelope is not an envelope: the row keeps the pre-#1434
     // badge behaviour rather than silently dropping the model it does know.
     expect(container.querySelector('.message__model-claims')).toBeNull();
@@ -351,9 +359,15 @@ describe('assistant row identity composition (station#1434)', () => {
     // replaced answered "Custom" for every model newer than Claude 3, so a row
     // running claude-opus-5 named it "Custom" while Home named it "Opus 5".
     expect(screen.getByText('3 7 Sonnet Latest')).toBeTruthy();
+    // The unreadable record is still reachable — and still honest about
+    // reading nothing (#2211: from the overflow menu's dialog).
+    await openProvenanceDialog();
+    expect(
+      screen.getByText(/cannot read\. Nothing about this answer is being/),
+    ).toBeTruthy();
   });
 
-  it('states no engine when the envelope is readable but its engine slot is a gap', () => {
+  it('states no engine when the envelope is readable but its engine slot is a gap', async () => {
     const { container } = renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -363,10 +377,10 @@ describe('assistant row identity composition (station#1434)', () => {
 
     expect(container.querySelector('.engine-chip')).toBeNull();
     // The card keeps its own honest headline when the row states nothing.
+    await openProvenanceDialog();
     const card = screen.getByLabelText('Answer provenance for turn turn-7');
-    expect(within(card).getByRole('button').textContent).toContain(
-      'Engine unknown',
-    );
+    const summary = card.querySelector('.turn-provenance__summary');
+    expect(summary?.textContent).toContain('Engine unknown');
   });
 
   it('preserves non-accessibility output for a row with no provenance', () => {

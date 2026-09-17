@@ -144,12 +144,13 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     const footerActions = messageBubble.indexOf(
       'className="turn-footer__actions"',
     );
-    const shareContent = messageBubble.indexOf('shareContent={');
+    // #2211: the share affordance is composed under the overflow menu's
+    // `provenance.shareContent` prop and mounts only inside that dialog.
+    const shareContent = messageBubble.indexOf('shareContent: (');
     const shareLoader = messageBubble.indexOf('load={loadShareAnswerButton}');
     expect(footerActions).toBeGreaterThanOrEqual(0);
     expect(shareContent).toBeGreaterThanOrEqual(0);
     expect(shareLoader).toBeGreaterThan(shareContent);
-    expect(footerActions).toBeGreaterThan(shareLoader);
     expect(messageBubble.indexOf('load={loadTurnActionsMenu}')).toBeGreaterThan(
       footerActions,
     );

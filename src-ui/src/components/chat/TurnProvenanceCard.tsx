@@ -370,7 +370,7 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
  * list is the checkable record and always carries every field, including
  * the raw provider slug behind the row's engine chip.
  */
-interface TurnProvenanceStatedInRow {
+export interface TurnProvenanceStatedInRow {
   engine?: boolean;
   model?: boolean;
 }
@@ -588,6 +588,12 @@ export interface TurnProvenanceCardProps {
   basisContent?: ReactNode;
   /** The share entry point is part of the always-visible disclosure line. */
   shareContent?: ReactNode;
+  /**
+   * Render expanded immediately (#2211): the dialog host IS the disclosure —
+   * a collapsed summary inside a dialog the reader just opened to see the
+   * card would be one more click for zero information.
+   */
+  defaultOpen?: boolean;
 }
 
 export function TurnProvenanceCard({
@@ -596,8 +602,9 @@ export function TurnProvenanceCard({
   accountableHuman,
   basisContent,
   shareContent,
+  defaultOpen = false,
 }: TurnProvenanceCardProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const detailsId = useId();
 
   if (provenance === undefined || provenance === null) return null;
