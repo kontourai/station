@@ -80,7 +80,7 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
     ).toEqual([]);
   });
 
-  it('has the eight entries the scan produces, named independently', () => {
+  it('has the nine entries the scan produces, named independently', () => {
     // Pinned by hand ON PURPOSE, and the reason is narrower than "the
     // derivations cannot see a removal" — verified by injection, the first
     // one CAN: it iterates the scanned segments and reports any the constant
@@ -97,8 +97,11 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
     // make loud: #2095 mounted `/api/plugins/visibility` without reserving
     // the name, and the scan above went red on main until somebody ran it.
     // Updating this list is meant to be a decision, not a formality.
+    // `command-effects` (kontourai/station#1419) was added deliberately with
+    // the settlement and withdrawal routes it reserves.
     expect([...STATION_RESERVED_PLUGIN_IDENTITIES]).toEqual([
       'check-updates',
+      'command-effects',
       'fetch',
       'home-role',
       'host-approvals',
