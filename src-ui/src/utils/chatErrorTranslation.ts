@@ -137,6 +137,18 @@ const OLLAMA_PATTERN = /ollama/i;
 const NOT_LAUNCHABLE_PATTERN = /not (currently )?launchable/i;
 
 /**
+ * The code `station-agent-adapter.ts` publishes on the `runtime.error` it
+ * emits when the inner `/chat` stream reports `type: 'error'`
+ * (`mapStationAgentStreamEvent`). Unlike `ENGINE_TURN_FAILED_CODE`, the
+ * message carries no underlying cause — the inner chunk's `errorText` is
+ * already the outward-safe generic (`writeSSEError` in
+ * `stream-orchestrator.ts`), so there is nothing further to forward — but
+ * the event IS marked `retriable: true`, which is what lets the hint below
+ * promise a retry honestly instead of hedging.
+ */
+const STATION_AGENT_TURN_FAILED_CODE = 'station_agent_turn_failed';
+
+/**
  * archive#3299: the stream ended without a well-formed body — the client
  * opened a response stream and got a short, non-parseable body instead of a
  * reply (observed live: the server was answering 401 and the SSE machinery
@@ -222,6 +234,11 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *       is absent, falls back to matching the engine's own English
  *       (`TERMINAL_SESSION_PATTERN`) as a last resort — still evaluated at
  *       this same point, not lower in the function.
+ *   -1b. `code` is the station-agent adapter's retriable turn failure
+ *       (`station_agent_turn_failed`) -> the inner stream reported an
+ *       error whose text is already the outward-safe generic, so there is
+ *       no cause to quote; the hint promises a retry because the event
+ *       carries `retriable: true`.
  *   0. Native `transport_*` codes (the FFI contract — see the `switch`).
  *   1. Client-abort-shaped message (prose) -> the response was stopped, not
  *      failed.
@@ -315,6 +332,14 @@ export function translateChatError(
       body: 'The engine reported an error for this turn.',
       hint: 'Review the engine message below.',
       disclosureRaw: true,
+    };
+  }
+
+  if (code === STATION_AGENT_TURN_FAILED_CODE) {
+    return {
+      title: 'This turn did not complete',
+      body: 'The Station agent could not finish this turn.',
+      hint: 'Your message was kept — send it again to retry.',
     };
   }
 
@@ -491,7 +516,8 @@ export function translateProjectedRuntimeError(
 ): string | null {
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
-    code !== ENGINE_TURN_FAILED_CODE
+    code !== ENGINE_TURN_FAILED_CODE &&
+    code !== STATION_AGENT_TURN_FAILED_CODE
   )
     return null;
   const match = /^⚠️ ([\s\S]*?)( \(repeated \d+×\))?$/.exec(text);

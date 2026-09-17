@@ -332,6 +332,26 @@ describe('translateChatError', () => {
     expect(result.hint).toBeTruthy();
   });
 
+  it("classifies the station-agent adapter's retriable turn failure by code, with a retry hint and no invented cause", () => {
+    const result = translateChatError({
+      message: 'Station agent turn failed',
+      code: 'station_agent_turn_failed',
+    });
+
+    expect(result.title).toBe('This turn did not complete');
+    expect(result.body).toMatch(/could not finish/i);
+    // The event carries `retriable: true`, so the hint may promise a retry;
+    // it must not invent a cause (no model-connection claim from this code).
+    expect(result.hint).toMatch(/send it again to retry/i);
+    expect(`${result.title} ${result.body}`).not.toMatch(
+      /model connection|ollama|credential/i,
+    );
+    expect(result.terminalSession).toBeUndefined();
+    // The raw text adds nothing beyond the headline, so there is no
+    // disclosure section to demote it into.
+    expect(result.disclosureRaw).toBeUndefined();
+  });
+
   // archive#1827
   describe('a dead engine session binding', () => {
     const rawMessage =
@@ -412,6 +432,18 @@ describe('translateProjectedRuntimeError', () => {
     expect(
       translateProjectedRuntimeError(`⚠️ ${RAW}`, 'some-unmapped-code'),
     ).toBeNull();
+  });
+
+  it('translates the station-agent retriable turn failure instead of quoting it verbatim', () => {
+    const result = translateProjectedRuntimeError(
+      '⚠️ Station agent turn failed',
+      'station_agent_turn_failed',
+    );
+
+    expect(result).toMatch(/did not complete/i);
+    expect(result).toMatch(/send it again to retry/i);
+    // No cause to disclose: the raw text must not reappear as a blockquote.
+    expect(result).not.toContain('Raw engine message');
   });
 });
 

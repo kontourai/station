@@ -100,3 +100,17 @@ test('a failed engine turn preserves its refusal without claiming the session wa
     /engine session was lost|fresh engine session|send your message again/i,
   );
 });
+
+test('a station-agent retriable turn failure renders translated copy with a retry hint, not the bare engine sentence', async () => {
+  const { container } = renderPart({
+    type: 'text',
+    content: '⚠️ Station agent turn failed',
+    runtimeError: true,
+    runtimeErrorCode: 'station_agent_turn_failed',
+  });
+  await waitFor(() =>
+    expect(container.textContent).toMatch(/did not complete/i),
+  );
+  expect(container.textContent).toMatch(/send it again to retry/i);
+  expect(container.textContent).not.toContain('Raw engine message');
+});
