@@ -82,6 +82,12 @@ function admission(
   };
 }
 
+function captured<T>(value: T | null): T {
+  if (value === null)
+    throw new Error('expected a withdrawal that captured effects');
+  return value;
+}
+
 async function admit(
   service: ReturnType<typeof harness>['service'],
   input = admission(),
@@ -357,11 +363,13 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
     const h = harness();
     const a = await admit(h.service);
     const b = await admit(h.service);
-    const withdrawal = await h.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'removal',
-      captures: () => true,
-    });
+    const withdrawal = captured(
+      await h.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'removal',
+        captures: () => true,
+      }),
+    );
     expect(withdrawal).toMatchObject({
       status: 'winding-down',
       outstanding: 2,
@@ -391,15 +399,17 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
     ).resolves.toMatchObject({ status: 'completed', outstanding: 0 });
   });
 
-  test('a withdrawal with nothing outstanding is completed at once', async () => {
+  test('a withdrawal that captures nothing records nothing', async () => {
     const h = harness();
+    await admit(h.service, admission({ pluginId: 'other' }));
     await expect(
       h.service.beginWithdrawal({
         pluginId: 'demo',
         cause: 'update',
         captures: () => true,
       }),
-    ).resolves.toMatchObject({ status: 'completed', outstanding: 0 });
+    ).resolves.toBeNull();
+    expect(h.ledger().withdrawals).toEqual([]);
   });
 
   test('the capture predicate selects by generation and by plugin-server requirement', async () => {
@@ -413,23 +423,27 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
       h.service,
       admission({ requiresPluginServer: true }),
     );
-    const update = await h.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'update',
-      captures: (effect) =>
-        effect.installationGeneration !== '["incarnation-2","digest-2"]',
-    });
+    const update = captured(
+      await h.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'update',
+        captures: (effect) =>
+          effect.installationGeneration !== '["incarnation-2","digest-2"]',
+      }),
+    );
     await expect(
       h.service.withdrawal(update.withdrawalId),
     ).resolves.toMatchObject({
       outstanding: 2,
       outstandingEffectIds: [old.receipt.effectId, server.receipt.effectId],
     });
-    const grant = await h.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'grant-withdrawal',
-      captures: (effect) => effect.requiresPluginServer,
-    });
+    const grant = captured(
+      await h.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'grant-withdrawal',
+        captures: (effect) => effect.requiresPluginServer,
+      }),
+    );
     await expect(
       h.service.withdrawal(grant.withdrawalId),
     ).resolves.toMatchObject({
@@ -440,12 +454,22 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
 
   test('effects admitted after the capture do not join the withdrawal', async () => {
     const h = harness();
-    const withdrawal = await h.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'removal',
-      captures: () => true,
-    });
+    const before = await admit(h.service);
+    const withdrawal = captured(
+      await h.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'removal',
+        captures: () => true,
+      }),
+    );
+    if (!withdrawal) throw new Error('expected a withdrawal');
     await admit(h.service);
+    await h.service.settle({
+      principalId: before.input.principalId,
+      documentId: before.input.documentId,
+      documentKey: before.input.documentKey,
+      items: [{ requestId: before.input.requestId, outcome: 'applied' }],
+    });
     await expect(
       h.service.withdrawal(withdrawal.withdrawalId),
     ).resolves.toMatchObject({ status: 'completed', outstanding: 0 });
@@ -454,11 +478,13 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
   test('only an indeterminate withdrawal can be resolved; late settlements are counted, never shown as completed', async () => {
     const h = harness();
     const { input, receipt } = await admit(h.service);
-    const withdrawal = await h.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'removal',
-      captures: () => true,
-    });
+    const withdrawal = captured(
+      await h.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'removal',
+        captures: () => true,
+      }),
+    );
     await expect(
       h.service.resolveWithdrawal(withdrawal.withdrawalId),
     ).resolves.toMatchObject({
@@ -502,11 +528,13 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
   test('awaitWithdrawal wakes on a settlement and stops at its deadline', async () => {
     const h = harness();
     const { input } = await admit(h.service);
-    const withdrawal = await h.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'removal',
-      captures: () => true,
-    });
+    const withdrawal = captured(
+      await h.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'removal',
+        captures: () => true,
+      }),
+    );
     await expect(
       h.service.awaitWithdrawal(withdrawal.withdrawalId, 20),
     ).resolves.toMatchObject({ status: 'winding-down', outstanding: 1 });
@@ -573,11 +601,13 @@ describe('plugin command effect ledger durability', () => {
     const dir = home();
     const before = harness(dir);
     const { input } = await admit(before.service);
-    const withdrawal = await before.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'removal',
-      captures: () => true,
-    });
+    const withdrawal = captured(
+      await before.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'removal',
+        captures: () => true,
+      }),
+    );
     const after = harness(dir);
     await expect(
       after.service.withdrawal(withdrawal.withdrawalId),
@@ -600,11 +630,13 @@ describe('plugin command effect ledger durability', () => {
     const dir = home();
     const h = harness(dir);
     await admit(h.service);
-    const withdrawal = await h.service.beginWithdrawal({
-      pluginId: 'demo',
-      cause: 'removal',
-      captures: () => true,
-    });
+    const withdrawal = captured(
+      await h.service.beginWithdrawal({
+        pluginId: 'demo',
+        cause: 'removal',
+        captures: () => true,
+      }),
+    );
     const file = join(dir, 'plugin-command-effects.json');
     const ledger = JSON.parse(readFileSync(file, 'utf8'));
     // An unsettled capture whose effect is no longer outstanding.

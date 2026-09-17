@@ -151,6 +151,8 @@ export interface PluginCommandEffectTransaction<T> {
 }
 
 export interface PluginCommandEffectStore {
+  /** Services on the same ledger share settlement wake-ups through this. */
+  readonly ledgerIdentity: string;
   read(): Promise<PluginCommandEffectLedger>;
   transact<T>(
     update: (
@@ -464,6 +466,7 @@ interface FilePluginCommandEffectStoreOptions {
 
 /** Station home file store; the rename is the commit point. */
 export class FilePluginCommandEffectStore implements PluginCommandEffectStore {
+  readonly ledgerIdentity: string;
   readonly #file: string;
   readonly #acquireLock: typeof acquireFileMutationLockAsync;
   readonly #beforeCommit?: () => void | Promise<void>;
@@ -473,6 +476,7 @@ export class FilePluginCommandEffectStore implements PluginCommandEffectStore {
     options: FilePluginCommandEffectStoreOptions = {},
   ) {
     this.#file = join(projectHomeDir, STORE_FILE);
+    this.ledgerIdentity = this.#file;
     this.#acquireLock = options.acquireLock ?? acquireFileMutationLockAsync;
     this.#beforeCommit = options.beforeCommit;
   }
@@ -607,6 +611,12 @@ export type PluginCommandWithdrawalResolveOutcome =
       withdrawal: PluginCommandWithdrawalProjection;
     };
 
+/**
+ * A lifecycle route's wait and the settlement route may hold different service
+ * instances over one ledger; a settlement must still wake the wait.
+ */
+const ledgerWaiters = new Map<string, Set<() => void>>();
+
 export function createPluginCommandEffectService(
   options: PluginCommandEffectServiceOptions,
 ) {
@@ -614,7 +624,11 @@ export function createPluginCommandEffectService(
   const now = options.now ?? (() => new Date());
   const indeterminateAfterMs = options.indeterminateAfterMs ?? 60_000;
   const bounds = PLUGIN_COMMAND_EFFECT_BOUNDS;
-  const waiters = new Set<() => void>();
+  let waiters = ledgerWaiters.get(store.ledgerIdentity);
+  if (!waiters) {
+    waiters = new Set();
+    ledgerWaiters.set(store.ledgerIdentity, waiters);
+  }
   const notify = () => {
     for (const waiter of [...waiters]) waiter();
   };
@@ -1016,38 +1030,46 @@ export function createPluginCommandEffectService(
         installationGeneration: string;
         requiresPluginServer: boolean;
       }): boolean;
-    }): Promise<PluginCommandEffectsWithdrawalSummary> {
-      const withdrawal = await commit((ledger) => {
-        const captured = ledger.effects
-          .filter(
-            (effect) =>
-              effect.pluginId === input.pluginId &&
-              effect.state === 'admitted' &&
-              input.captures({
-                installationGeneration: effect.installationGeneration,
-                requiresPluginServer: effect.requiresPluginServer,
-              }),
-          )
-          .map((effect) => ({ effectId: effect.effectId }));
-        if (
-          captured.length > 0 &&
-          ledger.withdrawals.filter(isOpenWithdrawal).length >=
+    }): Promise<PluginCommandEffectsWithdrawalSummary | null> {
+      const matches = (ledger: PluginCommandEffectLedger) =>
+        ledger.effects.filter(
+          (effect) =>
+            effect.pluginId === input.pluginId &&
+            effect.state === 'admitted' &&
+            input.captures({
+              installationGeneration: effect.installationGeneration,
+              requiresPluginServer: effect.requiresPluginServer,
+            }),
+        );
+      // Lock-free fast path. Callers are after the authority change and every
+      // admission of that authority committed before it, so an empty read
+      // cannot miss a capturable effect. Nothing captured, nothing recorded.
+      if (matches(await store.read()).length === 0) return null;
+      const withdrawal = await commit(
+        (ledger): PluginCommandEffectTransaction<WithdrawalRecord | null> => {
+          const captured = matches(ledger).map((effect) => ({
+            effectId: effect.effectId,
+          }));
+          if (captured.length === 0) return { result: null };
+          if (
+            ledger.withdrawals.filter(isOpenWithdrawal).length >=
             bounds.openWithdrawals
-        )
-          throw new PluginCommandWithdrawalCapacityError();
-        const record: WithdrawalRecord = {
-          withdrawalId: `pcw-${randomUUID()}`,
-          sequence: nextSequence(ledger),
-          pluginId: input.pluginId,
-          cause: input.cause,
-          createdAt: now().toISOString(),
-          captured,
-        };
-        ledger.withdrawals.push(record);
-        trim(ledger);
-        return { result: structuredClone(record), next: ledger };
-      });
-      return summary(project(withdrawal));
+          )
+            throw new PluginCommandWithdrawalCapacityError();
+          const record: WithdrawalRecord = {
+            withdrawalId: `pcw-${randomUUID()}`,
+            sequence: nextSequence(ledger),
+            pluginId: input.pluginId,
+            cause: input.cause,
+            createdAt: now().toISOString(),
+            captured,
+          };
+          ledger.withdrawals.push(record);
+          trim(ledger);
+          return { result: structuredClone(record), next: ledger };
+        },
+      );
+      return withdrawal ? summary(project(withdrawal)) : null;
     },
 
     async withdrawal(
