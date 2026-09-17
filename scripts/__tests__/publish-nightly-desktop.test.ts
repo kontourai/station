@@ -169,6 +169,40 @@ it('retries a timed-out upload that landed and skips it on readback', () => {
   expect(f.writes).toHaveLength(5);
   expect(f.writes.at(-1)).toBe('latest.json');
 });
+it('fails closed when the release already names the asset with other bytes', () => {
+  const f = fixture();
+  const current = JSON.stringify({
+    version: f.plan.versionIdentities.desktop.version,
+  });
+  Object.assign(f.release, {
+    assets: [
+      {
+        id: 42,
+        name: 'latest.json',
+        state: 'uploaded',
+        size: current.length,
+        digest: `sha256:${createHash('sha256').update(current).digest('hex')}`,
+      },
+      {
+        name: 'station-0.1.11-nightly.2443.2-macos-aarch64.dmg',
+        state: 'uploaded',
+        size: 1,
+        digest: 'sha256:other',
+      },
+    ],
+  });
+  let uploads = 0;
+  const run = (args: string[]) => {
+    if (args[0] === 'api')
+      return args[1].endsWith('/assets/42')
+        ? current
+        : JSON.stringify(f.release);
+    uploads += 1;
+    return f.run(args);
+  };
+  expect(() => publishNightlyDesktop({ ...f, run })).toThrow('different bytes');
+  expect(uploads).toBe(0);
+});
 it('gives up after bounded upload attempts', () => {
   const f = fixture();
   let uploads = 0;
