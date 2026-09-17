@@ -36,6 +36,10 @@ import {
   closePluginActivationSession,
   createPluginActivationSession,
 } from '../plugin-activation-composition.js';
+import {
+  createPluginCommandEffectService,
+  FilePluginCommandEffectStore,
+} from '../plugin-command-effects.js';
 import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../plugin-incarnation.js';
 import { derivePluginConsentBasis } from '../plugin-install-consent.js';
@@ -55,6 +59,10 @@ import type { PluginInstallationHost } from '../plugin-installation-service.js';
 import { PluginInstallationService } from '../plugin-installation-service.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import { grantPermissions } from '../plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  pluginInstallationGeneration,
+} from '../plugin-runtime-artifact.js';
 import { installPluginDependency } from '../plugin-source.js';
 
 const homes: string[] = [],
@@ -1429,3 +1437,56 @@ test.each(['registry', 'source', 'mutation'] as const)(
     }
   },
 );
+
+test('kontourai/station#1419: installing over a managed plugin captures command effects admitted against the replaced generation', async () => {
+  const f = fixture();
+  await installPluginFromSource(f.source, [], f.deps);
+  const replaced = capturePluginRuntimeArtifact(
+    f.plugins,
+    'fixture',
+    f.journal,
+  );
+  expect(replaced).not.toBeNull();
+  const effects = createPluginCommandEffectService({
+    store: new FilePluginCommandEffectStore(f.home),
+  });
+  const admitted = await effects.recordAdmission({
+    principalId: 'local-operator',
+    pluginId: 'fixture',
+    installationGeneration: pluginInstallationGeneration(replaced!),
+    requiresPluginServer: false,
+    commandId: 'fixture.open',
+    target: { kind: 'destination', destinationId: 'plugins' },
+    content: { kind: 'navigate', destinationId: 'plugins' },
+    documentId: 'document-install-over',
+    documentKey: 'k'.repeat(43),
+    requestId: 'request-install-over',
+  });
+  if (admitted.kind !== 'admitted') throw new Error(admitted.reason);
+
+  const result = await installPluginFromSource(f.source, [], f.deps);
+  expect(result.commandEffects).toMatchObject({
+    status: 'winding-down',
+    outstanding: 1,
+  });
+  expect(
+    await effects.withdrawal(result.commandEffects!.withdrawalId),
+  ).toMatchObject({
+    cause: 'update',
+    outstandingEffectIds: [admitted.receipt.effectId],
+  });
+  const current = capturePluginRuntimeArtifact(f.plugins, 'fixture', f.journal);
+  expect(pluginInstallationGeneration(current!)).not.toBe(
+    pluginInstallationGeneration(replaced!),
+  );
+  // Nothing outstanding: a later install-over records no withdrawal.
+  await effects.settle({
+    principalId: 'local-operator',
+    documentId: 'document-install-over',
+    documentKey: 'k'.repeat(43),
+    items: [{ requestId: 'request-install-over', outcome: 'applied' }],
+  });
+  expect(
+    (await installPluginFromSource(f.source, [], f.deps)).commandEffects,
+  ).toBeUndefined();
+});
