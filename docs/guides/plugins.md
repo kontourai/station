@@ -119,7 +119,8 @@ a plugin installed under one of those names would find Station's routes inside
 the namespace it believes it owns. Install refuses these names outright:
 
 ```
-check-updates   fetch   home-role   host-approvals   install   preview   reload
+check-updates   command-effects   fetch   home-role   host-approvals
+install         preview           reload   visibility
 ```
 
 The list is derived from Station's actual route registrations rather than kept
