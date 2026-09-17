@@ -136,6 +136,55 @@ it('refuses changed admitted bytes before any upload', () => {
   expect(f.writes).toEqual([]);
 });
 
+it('retries a timed-out upload that landed and skips it on readback', () => {
+  const f = fixture();
+  let uploads = 0;
+  const run = (args: string[]) => {
+    if (args[0] === 'api') return JSON.stringify(f.release);
+    const name = basename(args.at(-1)!);
+    if (name.includes('macos-aarch64.dmg')) {
+      uploads += 1;
+      if (uploads === 1) {
+        // Client-side timeout after server-side completion: the asset lands
+        // even though this call throws, so the retry must see it on readback
+        // and skip re-uploading instead of failing on a duplicate.
+        const bytes = readFileSync(args.at(-1)!);
+        f.release.assets.push({
+          name,
+          state: 'uploaded',
+          size: bytes.length,
+          digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+        });
+        throw Object.assign(new Error('spawnSync gh ETIMEDOUT'), {
+          code: 'ETIMEDOUT',
+        });
+      }
+    }
+    return f.run(args);
+  };
+  publishNightlyDesktop({ ...f, run });
+  expect(uploads).toBe(1);
+  // The timed-out attempt threw before reaching the mock uploader, so only
+  // the four assets uploaded through the mock plus the manifest are logged.
+  expect(f.writes).toHaveLength(5);
+  expect(f.writes.at(-1)).toBe('latest.json');
+});
+it('gives up after bounded upload attempts', () => {
+  const f = fixture();
+  let uploads = 0;
+  const run = (args: string[]) => {
+    if (args[0] === 'api') return JSON.stringify(f.release);
+    if (basename(args.at(-1)!).includes('macos-aarch64.dmg')) {
+      uploads += 1;
+      throw Object.assign(new Error('spawnSync gh ETIMEDOUT'), {
+        code: 'ETIMEDOUT',
+      });
+    }
+    return f.run(args);
+  };
+  expect(() => publishNightlyDesktop({ ...f, run })).toThrow('ETIMEDOUT');
+  expect(uploads).toBe(3);
+});
 it('rejects an older Nightly before changing the shared feed', () => {
   const f = fixture();
   const current = JSON.stringify({ version: '0.1.11-nightly.2444' });
