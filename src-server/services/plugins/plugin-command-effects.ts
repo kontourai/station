@@ -407,7 +407,7 @@ export function validatePluginCommandEffectLedger(
     ...ledger.tombstones,
   ].map((entry) => entry.sequence);
   for (const effect of ledger.effects) {
-    const request = `${effect.documentId} ${effect.requestId}`;
+    const request = `${effect.documentId}/${effect.requestId}`;
     if (byId.has(effect.effectId) || requests.has(request)) throw unavailable();
     byId.set(effect.effectId, effect);
     requests.add(request);
