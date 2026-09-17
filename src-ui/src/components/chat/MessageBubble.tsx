@@ -25,7 +25,6 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
-import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own
@@ -274,6 +273,17 @@ function MessageBubbleComponent({
         .map(([key, value]) => `${key}: ${String(value)}`)
         .join(' · ')
     : undefined;
+  // #2211: the settled row's reasoning moves out of the bubble into the turn
+  // overflow menu. The reasoning part is the turn's record of what the model
+  // thought, so it stays reachable per-row; the streaming row keeps its
+  // inline section (StreamingMessage's renderReasoning path).
+  const reasoningPart = msg.contentParts?.find(
+    (part) => part.type === 'reasoning' && typeof part.content === 'string',
+  );
+  const reasoningContent =
+    reasoningPart?.content && reasoningPart.content.trim().length > 0
+      ? reasoningPart.content
+      : undefined;
   // `modelOptions` (effort, thinking, …) describe Station's REQUEST, so they
   // ride the claim that names the requested model. When the envelope observed
   // only the model the engine reported back, they ride that claim instead —
@@ -495,59 +505,16 @@ function MessageBubbleComponent({
         </details>
       )}
 
-      {/* archive#1410: the answer's provenance, rendered only for a turn
-            Station actually observed through the canonical event store.
-            A row with no envelope claims nothing rather than showing an
-            empty card. */}
+      {/* archive#1410: the answer's provenance is the turn's record, now
+            opened from the overflow menu (#2211) so the transcript stays
+            focused on the answer. A row with no envelope claims nothing
+            rather than showing an empty affordance. */}
       {/* archive#2652 redesign: one quiet footer row holds every per-turn
-            meta affordance — the provenance disclosure leads (its collapsed
-            line IS the takeaway) and the share control sits beside it, both
-            text-weight and muted so the answer above stays the loudest thing
-            in the column. */}
+            meta affordance — icon-weight, muted, so the answer above stays
+            the loudest thing in the column; provenance and reasoning open
+            from the overflow as dialogs (#2211). */}
       {hasTurnFooter && (
         <div className="turn-footer">
-          {msg.provenance !== undefined && (
-            <TurnProvenanceCard
-              provenance={msg.provenance}
-              statedInRow={{
-                engine: engine !== null,
-                model:
-                  modelIdentity.source === 'envelope' &&
-                  modelIdentity.claims.length > 0,
-              }}
-              accountableHuman={accountableHuman}
-              shareContent={
-                <LazyBoundary
-                  load={loadShareAnswerButton}
-                  componentProps={{ provenance: msg.provenance }}
-                  pending={null}
-                />
-              }
-              basisContent={
-                msg.turnId &&
-                answerSessionId &&
-                msg.answerEligible === true &&
-                // #1536 B3: the same precondition the Basis route applies. A
-                // turn whose envelope records an aborted outcome can only ever
-                // be answered 404, and the affordance rendered that refusal as
-                // "Basis · Unavailable" on a healthy instance.
-                turnCompletedNormally(msg) &&
-                (!isLastMessage || !activeSession.isThinking) ? (
-                  <LazyBoundary
-                    load={loadConnectedAnswerBasisAffordance}
-                    componentProps={{
-                      projectSlug: activeSession.projectSlug,
-                      chatStoreId: activeSession.id,
-                      sessionId: answerSessionId,
-                      turnId: msg.turnId,
-                    }}
-                    pending={null}
-                    unavailable={() => null}
-                  />
-                ) : null
-              }
-            />
-          )}
           <div className="turn-footer__actions">
             {developerToolsEnabled && msg.traceId && (
               <a
@@ -568,14 +535,29 @@ function MessageBubbleComponent({
                 title="Copy message"
                 aria-label="Copy message"
               >
-                Copy
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
               </button>
             )}
             {((msg.turnId &&
               answerSessionId &&
               msg.answerEligible === true &&
               (!isLastMessage || !activeSession.isThinking)) ||
-              (turnForkSource && onForkFromTurn)) && (
+              (turnForkSource && onForkFromTurn) ||
+              msg.provenance !== undefined ||
+              reasoningContent !== undefined) && (
               <LazyBoundary
                 load={loadTurnActionsMenu}
                 componentProps={{
@@ -592,6 +574,53 @@ function MessageBubbleComponent({
                       : undefined,
                   forkSource: turnForkSource,
                   onForkFromTurn,
+                  provenance:
+                    msg.provenance !== undefined
+                      ? {
+                          envelope: msg.provenance,
+                          statedInRow: {
+                            engine: engine !== null,
+                            model:
+                              modelIdentity.source === 'envelope' &&
+                              modelIdentity.claims.length > 0,
+                          },
+                          accountableHuman,
+                          shareContent: (
+                            <LazyBoundary
+                              load={loadShareAnswerButton}
+                              componentProps={{ provenance: msg.provenance }}
+                              pending={null}
+                            />
+                          ),
+                          basisContent:
+                            msg.turnId &&
+                            answerSessionId &&
+                            msg.answerEligible === true &&
+                            // #1536 B3: the same precondition the Basis route
+                            // applies. A turn whose envelope records an aborted
+                            // outcome can only ever be answered 404, and the
+                            // affordance rendered that refusal as
+                            // "Basis · Unavailable" on a healthy instance.
+                            turnCompletedNormally(msg) &&
+                            (!isLastMessage || !activeSession.isThinking) ? (
+                              <LazyBoundary
+                                load={loadConnectedAnswerBasisAffordance}
+                                componentProps={{
+                                  projectSlug: activeSession.projectSlug,
+                                  chatStoreId: activeSession.id,
+                                  sessionId: answerSessionId,
+                                  turnId: msg.turnId,
+                                }}
+                                pending={null}
+                                unavailable={() => null}
+                              />
+                            ) : null,
+                        }
+                      : undefined,
+                  reasoning:
+                    reasoningContent !== undefined
+                      ? { content: reasoningContent }
+                      : undefined,
                 }}
                 pending={null}
                 unavailable={() => null}

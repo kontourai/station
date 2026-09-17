@@ -103,6 +103,13 @@ function MessageContentComponent({
 
           const { index, part } = block;
           if (part.type === 'reasoning' && part.content) {
+            // #2211: reasoning is the STREAMING row's follow-along surface.
+            // Once a row settles, the reasoning record opens from the turn's
+            // overflow menu (TurnActionsMenu) instead of occupying a
+            // disclosure row inside the answer bubble. StreamingMessage owns
+            // the live path; this component renders settled rows, so only the
+            // last-message-while-active case keeps the section here.
+            if (!isStreamingMessage) return null;
             return (
               <ReasoningSection
                 key={index}

@@ -174,7 +174,7 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     });
   });
 
-  it('renders the card for a turn that completed live, with no refetch or remount', () => {
+  it('keeps the card reachable from the committed row — opened from the overflow, stated once on the strip (#2211)', async () => {
     runLiveTurn({ provenance: envelope });
 
     const message = committedAssistantMessage();
@@ -184,16 +184,26 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     expect(message?.provenance).toEqual(envelope);
 
     const { container } = renderCommittedRow();
-    const card = screen.getByLabelText(
+    // Resting row: no card; the engine statement lives on the strip.
+    expect(
+      screen.queryByLabelText('Answer provenance for turn turn-live-1'),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+    const card = await screen.findByLabelText(
       'Answer provenance for turn turn-live-1',
     );
     // archive#1434: the live-committed row states the engine once, on its
-    // own attribution strip, sourced from this same envelope — the card's
-    // collapsed headline no longer repeats it.
+    // own attribution strip, sourced from this same envelope — the row makes
+    // that statement exactly once, and the dialog-hosted card's expanded
+    // detail is where the raw engine record is checked.
     expect(container.querySelector('.engine-chip')?.textContent).toBe(
       'Claude Code',
     );
-    expect(card.textContent).not.toContain('Claude Code');
+    expect(container.querySelectorAll('.engine-chip')).toHaveLength(1);
+    expect(card.textContent).toContain('(claude)');
     // archive#1802: this used to assert "6 gaps". That count was of Station's
     // own not-yet-captured signals, which are identical under every answer and
     // therefore say nothing about this turn — they no longer reach the badge.
@@ -356,13 +366,19 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     expect(committedAssistantMessage()?.provenance).toEqual(envelope);
   });
 
-  it('keeps the transcript usable when the live envelope is unreadable', () => {
+  it('keeps the transcript usable when the live envelope is unreadable', async () => {
     runLiveTurn({ provenance: { envelopeVersion: 9999 } });
 
     renderCommittedRow();
     expect(screen.getByText('Here is the answer.')).toBeTruthy();
+    // The unreadable record is honest about reading nothing — opened from
+    // the overflow menu's dialog (#2211).
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
     expect(
-      screen.getByText(
+      await screen.findByText(
         /cannot read\. Nothing about this answer is being claimed/,
       ),
     ).toBeTruthy();
