@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-17T22:12:01Z | nightly-desktop | 0.1.11-nightly.2451.3 | `c479c21` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35275391814) |
 | 2026-09-17T22:11:58Z | nightly-android | 0.1.11-nightly.2451.3 | `c479c21` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35275391814) |
 | 2026-09-17T21:59:18Z | nightly-npm | 0.6.0-nightly.2451.35275391814 | `c479c21` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35275391814) |
 | 2026-09-17T20:25:45Z | nightly-android | 0.1.11-nightly.2451.2 | `adfba3a` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/35265013644) |
@@ -101,6 +102,21 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-17T22:12:01Z · nightly-desktop · 0.1.11-nightly.2451.3
+
+- Ship SHA: `c479c218bef24ca5268700fd571a2998ef4f131d`
+- Artifact built at: `2026-09-17T21:22:04.919Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35275391814)
+
+### Changelog
+
+Commits since `ea101d6` ([full sha](https://github.com/kontourai/station/commit/ea101d69eb1d3773b02672f919e99514396bb52d)):
+
+**Fixes**
+
+- [#2207](https://github.com/kontourai/station/pull/2207) fix(connect): hide host-only Station management on client-only devices (#2205)
 
 ## 2026-09-17T22:11:58Z · nightly-android · 0.1.11-nightly.2451.3
 

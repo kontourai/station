@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-09-17T22:12:01Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2451.3",
+    "sha": "c479c218bef24ca5268700fd571a2998ef4f131d",
+    "artifactBuiltAt": "2026-09-17T21:22:04.919Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35275391814",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35275391814)"
+    ],
+    "changelog": {
+      "previousSha": "ea101d69eb1d3773b02672f919e99514396bb52d",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2207](https://github.com/kontourai/station/pull/2207) fix(connect): hide host-only Station management on client-only devices (#2205)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-09-17T22:11:58Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2451.3",
