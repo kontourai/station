@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OperationalEventEnvelope } from '@kontourai/station-contracts/operational-event';
+import { PLUGIN_COMMAND_EFFECT_REQUEST_WINDOW_MS } from '@kontourai/station-contracts/plugin-command-effect';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createPluginCommandEffectService,
@@ -9,7 +10,8 @@ import {
   PLUGIN_COMMAND_EFFECT_BOUNDS,
   type PluginCommandEffectAdmissionRecord,
   PluginCommandEffectsUnavailableError,
-  PluginCommandWithdrawalCapacityError,
+  settlePluginCommandEffectsForResponse,
+  withdrawPluginCommandEffects,
 } from '../plugin-command-effects.js';
 
 const cleanups: Array<() => void> = [];
@@ -19,6 +21,8 @@ afterEach(() => {
 
 const DOCUMENT = 'document-0001';
 const KEY = 'k'.repeat(43);
+const START = Date.parse('2026-09-16T12:00:00.000Z');
+const WAIT = 60_000;
 
 function home() {
   const dir = mkdtempSync(join(tmpdir(), 'station-command-effects-'));
@@ -31,39 +35,57 @@ function harness(
   options: {
     beforeCommit?: () => void | Promise<void>;
     publishAudit?: (event: OperationalEventEnvelope) => boolean;
+    clock?: { now: number };
   } = {},
 ) {
-  let clock = Date.parse('2026-09-16T12:00:00.000Z');
+  const clock = options.clock ?? { now: START };
   const conflicts = vi.fn();
+  const events: OperationalEventEnvelope[] = [];
   const service = createPluginCommandEffectService({
     store: new FilePluginCommandEffectStore(dir, {
       beforeCommit: options.beforeCommit,
     }),
-    now: () => new Date(clock),
-    indeterminateAfterMs: 60_000,
-    publishAudit: options.publishAudit,
+    now: () => new Date(clock.now),
+    indeterminateAfterMs: WAIT,
+    publishAudit:
+      options.publishAudit ??
+      ((event) => {
+        events.push(event);
+        return true;
+      }),
     onSettlementConflict: conflicts,
   });
   return {
     dir,
+    clock,
     service,
     conflicts,
+    events,
     advance(ms: number) {
-      clock += ms;
+      clock.now += ms;
     },
     ledger: () =>
       JSON.parse(
         readFileSync(join(dir, 'plugin-command-effects.json'), 'utf8'),
       ) as {
-        effects: Array<{ effectId: string; state: string; pluginId: string }>;
-        withdrawals: unknown[];
+        effects: Array<{
+          effectId: string;
+          state: string;
+          pluginId: string;
+          settledBy?: string;
+          lateOutcome?: string;
+          conflicts: number;
+        }>;
+        withdrawals: Array<{ withdrawalId: string }>;
         tombstones: unknown[];
       },
   };
 }
+type Harness = ReturnType<typeof harness>;
 
 let requestCounter = 0;
 function admission(
+  h: Pick<Harness, 'clock'>,
   overrides: Partial<PluginCommandEffectAdmissionRecord> = {},
 ): PluginCommandEffectAdmissionRecord {
   requestCounter += 1;
@@ -78,48 +100,102 @@ function admission(
     documentId: DOCUMENT,
     documentKey: KEY,
     requestId: `request-${String(requestCounter).padStart(4, '0')}`,
+    issuedAt: h.clock.now,
     ...overrides,
   };
 }
 
-function captured<T>(value: T | null): T {
-  if (value === null)
-    throw new Error('expected a withdrawal that captured effects');
-  return value;
-}
-
-async function admit(
-  service: ReturnType<typeof harness>['service'],
-  input = admission(),
-) {
-  const outcome = await service.recordAdmission(input);
+async function admit(h: Harness, input = admission(h)) {
+  const outcome = await h.service.recordAdmission(input);
   if (outcome.kind !== 'admitted')
     throw new Error(`expected admission, got ${outcome.reason}`);
   return { input, receipt: outcome.receipt };
 }
 
+const settleOne = (
+  h: Harness,
+  input: PluginCommandEffectAdmissionRecord,
+  outcome: 'applied' | 'aborted' | 'cancelled' | 'abandoned',
+  extra: { effectId?: string; principalId?: string; documentKey?: string } = {},
+) =>
+  h.service.settle({
+    principalId: extra.principalId ?? input.principalId,
+    documentId: input.documentId,
+    documentKey: extra.documentKey ?? input.documentKey,
+    items: [
+      {
+        requestId: input.requestId,
+        ...(extra.effectId ? { effectId: extra.effectId } : {}),
+        outcome,
+      },
+    ],
+  });
+
+const withdrawAll = (
+  h: Harness,
+  cause: 'removal' | 'update' | 'grant-withdrawal' = 'removal',
+  pluginId = 'demo',
+) => h.service.beginWithdrawal({ pluginId, cause, captures: () => true });
+
+async function captured(h: Harness, cause?: 'removal' | 'update') {
+  const summary = await withdrawAll(h, cause);
+  if (!summary) throw new Error('expected a withdrawal that captured effects');
+  return summary;
+}
+
 describe('plugin command effect admission (LP-A)', () => {
   test('is idempotent on (documentId, requestId) and refuses a conflicting retry', async () => {
     const h = harness();
-    const input = admission();
-    const first = await admit(h.service, input);
-    const again = await h.service.recordAdmission(input);
-    expect(again).toEqual({ kind: 'admitted', receipt: first.receipt });
-    expect(h.ledger().effects).toHaveLength(1);
+    const input = admission(h);
+    const first = await admit(h, input);
+    await expect(h.service.recordAdmission(input)).resolves.toEqual({
+      kind: 'admitted',
+      receipt: first.receipt,
+    });
     await expect(
       h.service.recordAdmission({ ...input, commandId: 'demo.other' }),
     ).resolves.toEqual({ kind: 'refused', reason: 'request-conflict' });
-    await expect(
-      h.service.recordAdmission({ ...input, documentKey: 'x'.repeat(43) }),
-    ).resolves.toEqual({ kind: 'refused', reason: 'request-conflict' });
     expect(h.ledger().effects).toHaveLength(1);
+  });
+
+  test('L6: request identity is scoped to principal and document key, so nobody else gets a conflict oracle', async () => {
+    const h = harness();
+    const input = admission(h);
+    await admit(h, input);
+    const otherPrincipal = await h.service.recordAdmission({
+      ...input,
+      principalId: 'device:someone',
+      commandId: 'demo.other',
+    });
+    const otherKey = await h.service.recordAdmission({
+      ...input,
+      documentKey: 'x'.repeat(43),
+      commandId: 'demo.other',
+    });
+    expect(otherPrincipal).toMatchObject({ kind: 'admitted' });
+    expect(otherKey).toMatchObject({ kind: 'admitted' });
+    expect(h.ledger().effects).toHaveLength(3);
+  });
+
+  test('refuses a request issued outside the window in either direction', async () => {
+    const h = harness();
+    const window = PLUGIN_COMMAND_EFFECT_REQUEST_WINDOW_MS;
+    await expect(
+      h.service.recordAdmission(admission(h, { issuedAt: START - window - 1 })),
+    ).resolves.toEqual({ kind: 'refused', reason: 'request-expired' });
+    await expect(
+      h.service.recordAdmission(admission(h, { issuedAt: START + window + 1 })),
+    ).resolves.toEqual({ kind: 'refused', reason: 'request-expired' });
+    await expect(
+      h.service.recordAdmission(admission(h, { issuedAt: START - window })),
+    ).resolves.toMatchObject({ kind: 'admitted' });
   });
 
   test('the receipt carries exactly the server-read effect content', async () => {
     const h = harness();
     const { receipt } = await admit(
-      h.service,
-      admission({
+      h,
+      admission(h, {
         target: { kind: 'composer', sessionId: 'session-1' },
         content: {
           kind: 'seed-composer',
@@ -135,61 +211,65 @@ describe('plugin command effect admission (LP-A)', () => {
     });
   });
 
-  test('I4: capacity refuses new admissions and never evicts an outstanding effect', async () => {
+  test('I4: capacity refuses per plugin and in total, and never evicts an outstanding effect', async () => {
     const h = harness();
     const bounds = PLUGIN_COMMAND_EFFECT_BOUNDS;
     const held: string[] = [];
     for (let index = 0; index < bounds.outstandingPerPlugin; index += 1)
-      held.push((await admit(h.service)).receipt.effectId);
-    await expect(h.service.recordAdmission(admission())).resolves.toEqual({
+      held.push((await admit(h)).receipt.effectId);
+    await expect(h.service.recordAdmission(admission(h))).resolves.toEqual({
       kind: 'refused',
       reason: 'capacity',
     });
-    // Churn far past terminal retention on other plugins.
     for (
       let index = 0;
       index < bounds.retainedTerminalEffects + 8;
       index += 1
     ) {
       const { input } = await admit(
-        h.service,
-        admission({ pluginId: 'other', commandId: 'other.open' }),
+        h,
+        admission(h, { pluginId: 'other', commandId: 'other.open' }),
       );
-      await h.service.settle({
-        principalId: input.principalId,
-        documentId: input.documentId,
-        documentKey: input.documentKey,
-        items: [{ requestId: input.requestId, outcome: 'applied' }],
-      });
+      await settleOne(h, input, 'applied');
     }
     const effects = h.ledger().effects;
     for (const effectId of held)
       expect(effects).toContainEqual(
         expect.objectContaining({ effectId, state: 'admitted' }),
       );
-    expect(
-      effects.filter((effect) => effect.state !== 'admitted').length,
-    ).toBeLessThanOrEqual(bounds.retainedTerminalEffects);
 
-    // Total capacity across plugins.
     const g = harness();
     for (let plugin = 0; plugin < 8; plugin += 1)
       for (let index = 0; index < bounds.outstandingPerPlugin; index += 1)
-        await admit(g.service, admission({ pluginId: `p${plugin}` }));
+        await admit(
+          g,
+          admission(g, { pluginId: `p${plugin}`, principalId: `pr-${plugin}` }),
+        );
     await expect(
-      g.service.recordAdmission(admission({ pluginId: 'fresh' })),
+      g.service.recordAdmission(
+        admission(g, { pluginId: 'fresh', principalId: 'pr-fresh' }),
+      ),
     ).resolves.toEqual({ kind: 'refused', reason: 'capacity' });
   });
 
+  test('M2: one principal reaches its own bound before the global one, and others still admit', async () => {
+    const h = harness();
+    const bounds = PLUGIN_COMMAND_EFFECT_BOUNDS;
+    for (let index = 0; index < bounds.outstandingPerPrincipal; index += 1)
+      await admit(h, admission(h, { pluginId: `p${index % 4}` }));
+    await expect(
+      h.service.recordAdmission(admission(h, { pluginId: 'p9' })),
+    ).resolves.toEqual({ kind: 'refused', reason: 'capacity' });
+    await expect(
+      h.service.recordAdmission(
+        admission(h, { pluginId: 'p9', principalId: 'device:other' }),
+      ),
+    ).resolves.toMatchObject({ kind: 'admitted' });
+  });
+
   test('an audit that is not persisted cancels the admission with station proof and refuses', async () => {
-    const events: OperationalEventEnvelope[] = [];
-    const h = harness(home(), {
-      publishAudit: (event) => {
-        events.push(event);
-        return false;
-      },
-    });
-    const input = admission();
+    const h = harness(home(), { publishAudit: () => false });
+    const input = admission(h);
     await expect(h.service.recordAdmission(input)).resolves.toEqual({
       kind: 'refused',
       reason: 'unavailable',
@@ -197,19 +277,7 @@ describe('plugin command effect admission (LP-A)', () => {
     expect(h.ledger().effects).toEqual([
       expect.objectContaining({ state: 'cancelled', settledBy: 'station' }),
     ]);
-    expect(events[0]?.payload).toMatchObject({
-      schema: 'station.plugin-command.execution/v1',
-      data: { outcome: 'admitted', pluginId: 'demo' },
-    });
-    // The document's own cancel for that request is idempotent, not a conflict.
-    await expect(
-      h.service.settle({
-        principalId: input.principalId,
-        documentId: input.documentId,
-        documentKey: input.documentKey,
-        items: [{ requestId: input.requestId, outcome: 'cancelled' }],
-      }),
-    ).resolves.toEqual([
+    await expect(settleOne(h, input, 'cancelled')).resolves.toEqual([
       { requestId: input.requestId, status: 'already-settled' },
     ]);
   });
@@ -221,116 +289,161 @@ describe('plugin command effect admission (LP-A)', () => {
         if (fail) throw new Error('injected commit fault');
       },
     });
-    const input = admission();
+    const input = admission(h);
     await expect(h.service.recordAdmission(input)).resolves.toEqual({
       kind: 'refused',
       reason: 'unavailable',
     });
-    await expect(h.service.withdrawal('pcw-missing')).resolves.toBeNull();
     expect(() => h.ledger()).toThrow();
     fail = false;
-    const { receipt } = await admit(h.service, input);
+    const { receipt } = await admit(h, input);
     expect(h.ledger().effects).toEqual([
       expect.objectContaining({ effectId: receipt.effectId }),
     ]);
   });
+
+  test('L2: the admission event names the principal and carries no effect content', async () => {
+    const h = harness();
+    const { receipt } = await admit(
+      h,
+      admission(h, {
+        target: { kind: 'composer', sessionId: 'session-1' },
+        content: {
+          kind: 'seed-composer',
+          sessionId: 'session-1',
+          text: 'Never in an event',
+        },
+      }),
+    );
+    expect(h.events).toHaveLength(1);
+    expect(h.events[0]!.payload).toEqual({
+      schema: 'station.plugin-command.execution/v1',
+      data: {
+        effectId: receipt.effectId,
+        principalId: 'local-operator',
+        pluginId: 'demo',
+        installationGeneration: '["incarnation-1","digest-1"]',
+        commandId: 'demo.open',
+        target: { kind: 'composer', sessionId: 'session-1' },
+        outcome: 'admitted',
+      },
+    });
+  });
 });
 
 describe('plugin command effect settlement (LP-K)', () => {
-  test('first terminal wins; the same outcome is idempotent; a different one is a counted conflict', async () => {
+  test('first terminal wins; the same outcome is idempotent; a different one is a counted conflict with its own event', async () => {
     const h = harness();
-    const { input, receipt } = await admit(h.service);
-    const settle = (outcome: 'applied' | 'aborted', key = KEY) =>
-      h.service.settle({
-        principalId: input.principalId,
-        documentId: input.documentId,
-        documentKey: key,
-        items: [
-          {
-            requestId: input.requestId,
-            effectId: receipt.effectId,
-            outcome,
-          },
-        ],
-      });
-    await expect(settle('applied', 'y'.repeat(43))).resolves.toEqual([
-      { requestId: input.requestId, status: 'not-found' },
-    ]);
-    await expect(settle('applied')).resolves.toEqual([
-      { requestId: input.requestId, status: 'settled' },
-    ]);
-    await expect(settle('applied')).resolves.toEqual([
-      { requestId: input.requestId, status: 'already-settled' },
-    ]);
-    await expect(settle('aborted')).resolves.toEqual([
-      { requestId: input.requestId, status: 'conflict' },
-    ]);
+    const { input, receipt } = await admit(h);
+    const effectId = receipt.effectId;
+    await expect(
+      settleOne(h, input, 'applied', { documentKey: 'y'.repeat(43) }),
+    ).resolves.toEqual([{ requestId: input.requestId, status: 'not-found' }]);
+    await expect(settleOne(h, input, 'applied', { effectId })).resolves.toEqual(
+      [{ requestId: input.requestId, status: 'settled' }],
+    );
+    await expect(settleOne(h, input, 'applied', { effectId })).resolves.toEqual(
+      [{ requestId: input.requestId, status: 'already-settled' }],
+    );
+    await expect(settleOne(h, input, 'aborted', { effectId })).resolves.toEqual(
+      [{ requestId: input.requestId, status: 'conflict' }],
+    );
     expect(h.conflicts).toHaveBeenCalledTimes(1);
     expect(h.ledger().effects).toEqual([
       expect.objectContaining({ state: 'applied', conflicts: 1 }),
     ]);
+    expect(h.events.map((event) => event.payload.data)).toEqual([
+      expect.objectContaining({ outcome: 'admitted' }),
+      expect.objectContaining({ outcome: 'applied', settledBy: 'document' }),
+      expect.objectContaining({ outcome: 'aborted', disposition: 'conflict' }),
+    ]);
+  });
+
+  test('a mismatched effectId never settles the request', async () => {
+    const h = harness();
+    const { input } = await admit(h);
+    await expect(
+      settleOne(h, input, 'applied', { effectId: 'pce-not-this-one' }),
+    ).resolves.toEqual([{ requestId: input.requestId, status: 'not-found' }]);
+    expect(h.ledger().effects[0]?.state).toBe('admitted');
   });
 
   test('another principal cannot settle an effect even with the document key', async () => {
     const h = harness();
-    const { input } = await admit(h.service);
+    const { input } = await admit(h);
     await expect(
-      h.service.settle({
-        principalId: 'someone-else',
-        documentId: input.documentId,
-        documentKey: input.documentKey,
-        items: [{ requestId: input.requestId, outcome: 'cancelled' }],
-      }),
-    ).resolves.toEqual([{ requestId: input.requestId, status: 'not-found' }]);
+      settleOne(h, input, 'cancelled', { principalId: 'someone-else' }),
+    ).resolves.toEqual([
+      { requestId: input.requestId, status: 'cancel-recorded' },
+    ]);
     expect(h.ledger().effects[0]?.state).toBe('admitted');
   });
 
   test('a cancel recorded before the admission commits makes that admission refuse', async () => {
     const h = harness();
-    const input = admission();
-    await expect(
-      h.service.settle({
-        principalId: input.principalId,
-        documentId: input.documentId,
-        documentKey: input.documentKey,
-        items: [{ requestId: input.requestId, outcome: 'cancelled' }],
-      }),
-    ).resolves.toEqual([
+    const input = admission(h);
+    await expect(settleOne(h, input, 'cancelled')).resolves.toEqual([
       { requestId: input.requestId, status: 'cancel-recorded' },
     ]);
     await expect(h.service.recordAdmission(input)).resolves.toEqual({
       kind: 'refused',
       reason: 'cancelled',
     });
-    expect(h.ledger().effects).toEqual([]);
-    // A forged cancel under a different key does not block the real document.
-    const other = admission();
-    await h.service.settle({
-      principalId: other.principalId,
-      documentId: other.documentId,
-      documentKey: 'z'.repeat(43),
-      items: [{ requestId: other.requestId, outcome: 'cancelled' }],
-    });
+    const other = admission(h);
+    await settleOne(h, other, 'cancelled', { documentKey: 'z'.repeat(43) });
     await expect(h.service.recordAdmission(other)).resolves.toMatchObject({
       kind: 'admitted',
     });
   });
 
-  test('a cancel after the admission commits settles it, and a retry then refuses', async () => {
+  test('M4: cancels at capacity are refused, never evicted, and nobody else can push one out', async () => {
     const h = harness();
-    const { input } = await admit(h.service);
-    await expect(
-      h.service.settle({
-        principalId: input.principalId,
-        documentId: input.documentId,
-        documentKey: input.documentKey,
-        items: [{ requestId: input.requestId, outcome: 'cancelled' }],
-      }),
-    ).resolves.toEqual([{ requestId: input.requestId, status: 'settled' }]);
-    await expect(h.service.recordAdmission(input)).resolves.toEqual({
+    const bounds = PLUGIN_COMMAND_EFFECT_BOUNDS;
+    const first = admission(h);
+    await settleOne(h, first, 'cancelled');
+    for (let index = 1; index < bounds.tombstonesPerDocument; index += 1)
+      await settleOne(h, admission(h), 'cancelled');
+    const overflow = admission(h);
+    await expect(settleOne(h, overflow, 'cancelled')).resolves.toEqual([
+      { requestId: overflow.requestId, status: 'cancel-refused' },
+    ]);
+    // Another principal filling its own quota evicts nothing of ours.
+    for (let index = 0; index < bounds.tombstonesPerPrincipal; index += 1)
+      await settleOne(
+        h,
+        admission(h, {
+          documentKey: `${String(index).padStart(3, '0')}${'q'.repeat(40)}`,
+        }),
+        'cancelled',
+        { principalId: 'device:noisy' },
+      );
+    await expect(h.service.recordAdmission(first)).resolves.toEqual({
       kind: 'refused',
       reason: 'cancelled',
     });
+  });
+
+  test('M4: a cancel is forgotten only after no admission it could match can still be accepted', async () => {
+    const h = harness();
+    const input = admission(h);
+    await settleOne(h, input, 'cancelled');
+    h.advance(2 * PLUGIN_COMMAND_EFFECT_REQUEST_WINDOW_MS - 1);
+    // The original request is still inside the window only if it was issued
+    // by a clock up to one window ahead; the cancel still guards it.
+    await expect(
+      h.service.recordAdmission({
+        ...input,
+        issuedAt: START + PLUGIN_COMMAND_EFFECT_REQUEST_WINDOW_MS,
+      }),
+    ).resolves.toEqual({ kind: 'refused', reason: 'cancelled' });
+    h.advance(2);
+    // Past the lifetime the request itself is expired, so forgetting is safe.
+    await expect(h.service.recordAdmission(input)).resolves.toEqual({
+      kind: 'refused',
+      reason: 'request-expired',
+    });
+    await settleOne(h, admission(h), 'cancelled');
+    expect(h.ledger().tombstones).toHaveLength(1);
   });
 
   test('a beforeCommit fault leaves no half-committed settlement', async () => {
@@ -341,17 +454,12 @@ describe('plugin command effect settlement (LP-K)', () => {
         if (fail) throw new Error('injected commit fault');
       },
     });
-    const { input } = await admit(h.service);
+    const { input } = await admit(h);
     const before = readFileSync(join(dir, 'plugin-command-effects.json'));
     fail = true;
-    await expect(
-      h.service.settle({
-        principalId: input.principalId,
-        documentId: input.documentId,
-        documentKey: input.documentKey,
-        items: [{ requestId: input.requestId, outcome: 'applied' }],
-      }),
-    ).rejects.toBeInstanceOf(PluginCommandEffectsUnavailableError);
+    await expect(settleOne(h, input, 'applied')).rejects.toBeInstanceOf(
+      PluginCommandEffectsUnavailableError,
+    );
     expect(readFileSync(join(dir, 'plugin-command-effects.json'))).toEqual(
       before,
     );
@@ -359,41 +467,27 @@ describe('plugin command effect settlement (LP-K)', () => {
 });
 
 describe('plugin command withdrawals (LP-W, LP-C)', () => {
-  test('I1: status is completed only once every captured effect is settled with document proof', async () => {
+  test('I1: completed only once every captured effect is settled with document proof', async () => {
     const h = harness();
-    const a = await admit(h.service);
-    const b = await admit(h.service);
-    const withdrawal = captured(
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    );
+    const a = await admit(h);
+    const b = await admit(h);
+    const withdrawal = await captured(h);
     expect(withdrawal).toMatchObject({
       status: 'winding-down',
       outstanding: 2,
     });
-    const settle = (entry: typeof a) =>
-      h.service.settle({
-        principalId: entry.input.principalId,
-        documentId: entry.input.documentId,
-        documentKey: entry.input.documentKey,
-        items: [{ requestId: entry.input.requestId, outcome: 'applied' }],
-      });
-    await settle(a);
+    await settleOne(h, a.input, 'applied');
     await expect(
       h.service.withdrawal(withdrawal.withdrawalId),
     ).resolves.toMatchObject({
       status: 'winding-down',
-      outstanding: 1,
       outstandingEffectIds: [b.receipt.effectId],
     });
-    h.advance(60_000);
+    h.advance(WAIT);
     await expect(
       h.service.withdrawal(withdrawal.withdrawalId),
     ).resolves.toMatchObject({ status: 'indeterminate', outstanding: 1 });
-    await settle(b);
+    await settleOne(h, b.input, 'applied');
     await expect(
       h.service.withdrawal(withdrawal.withdrawalId),
     ).resolves.toMatchObject({ status: 'completed', outstanding: 0 });
@@ -401,178 +495,162 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
 
   test('a withdrawal that captures nothing records nothing', async () => {
     const h = harness();
-    await admit(h.service, admission({ pluginId: 'other' }));
-    await expect(
-      h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'update',
-        captures: () => true,
-      }),
-    ).resolves.toBeNull();
+    await admit(h, admission(h, { pluginId: 'other' }));
+    await expect(withdrawAll(h, 'update')).resolves.toBeNull();
     expect(h.ledger().withdrawals).toEqual([]);
   });
 
   test('the capture predicate selects by generation and by plugin-server requirement', async () => {
     const h = harness();
-    const old = await admit(h.service);
-    const current = await admit(
-      h.service,
-      admission({ installationGeneration: '["incarnation-2","digest-2"]' }),
+    const old = await admit(h);
+    await admit(
+      h,
+      admission(h, { installationGeneration: '["incarnation-2","digest-2"]' }),
     );
-    const server = await admit(
-      h.service,
-      admission({ requiresPluginServer: true }),
-    );
-    const update = captured(
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'update',
-        captures: (effect) =>
-          effect.installationGeneration !== '["incarnation-2","digest-2"]',
-      }),
-    );
-    await expect(
-      h.service.withdrawal(update.withdrawalId),
-    ).resolves.toMatchObject({
-      outstanding: 2,
-      outstandingEffectIds: [old.receipt.effectId, server.receipt.effectId],
+    const server = await admit(h, admission(h, { requiresPluginServer: true }));
+    const grant = await h.service.beginWithdrawal({
+      pluginId: 'demo',
+      cause: 'grant-withdrawal',
+      captures: (effect) => effect.requiresPluginServer,
     });
-    const grant = captured(
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'grant-withdrawal',
-        captures: (effect) => effect.requiresPluginServer,
-      }),
-    );
     await expect(
-      h.service.withdrawal(grant.withdrawalId),
+      h.service.withdrawal(grant!.withdrawalId),
     ).resolves.toMatchObject({
       outstandingEffectIds: [server.receipt.effectId],
     });
-    expect(current.receipt.effectId).not.toBe(old.receipt.effectId);
+    const update = await h.service.beginWithdrawal({
+      pluginId: 'demo',
+      cause: 'update',
+      captures: (effect) =>
+        effect.installationGeneration !== '["incarnation-2","digest-2"]',
+    });
+    expect(update?.withdrawalId).toBe(grant!.withdrawalId);
+    await expect(
+      h.service.withdrawal(grant!.withdrawalId),
+    ).resolves.toMatchObject({
+      causes: ['grant-withdrawal', 'update'],
+      outstandingEffectIds: [server.receipt.effectId, old.receipt.effectId],
+    });
   });
 
-  test('effects admitted after the capture do not join the withdrawal', async () => {
+  test('coalescing: every change on a plugin with an open withdrawal joins it, so capacity can never refuse one', async () => {
     const h = harness();
-    const before = await admit(h.service);
-    const withdrawal = captured(
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    );
-    if (!withdrawal) throw new Error('expected a withdrawal');
-    await admit(h.service);
-    await h.service.settle({
-      principalId: before.input.principalId,
-      documentId: before.input.documentId,
-      documentKey: before.input.documentKey,
-      items: [{ requestId: before.input.requestId, outcome: 'applied' }],
-    });
+    await admit(h);
+    const first = await captured(h, 'update');
+    for (let index = 0; index < 200; index += 1) {
+      const again = await withdrawAll(
+        h,
+        index % 2 ? 'removal' : 'grant-withdrawal',
+      );
+      expect(again?.withdrawalId).toBe(first.withdrawalId);
+    }
+    expect(h.ledger().withdrawals).toHaveLength(1);
     await expect(
-      h.service.withdrawal(withdrawal.withdrawalId),
+      h.service.withdrawal(first.withdrawalId),
+    ).resolves.toMatchObject({
+      causes: ['update', 'grant-withdrawal', 'removal'],
+      outstanding: 1,
+    });
+  });
+
+  test('a completed withdrawal is never reopened: a later capture starts a new one', async () => {
+    const h = harness();
+    const a = await admit(h);
+    const first = await captured(h);
+    await settleOne(h, a.input, 'applied');
+    await admit(h);
+    const second = await captured(h, 'update');
+    expect(second.withdrawalId).not.toBe(first.withdrawalId);
+    await expect(
+      h.service.withdrawal(first.withdrawalId),
     ).resolves.toMatchObject({ status: 'completed', outstanding: 0 });
   });
 
-  test('only an indeterminate withdrawal can be resolved; late settlements are counted, never shown as completed', async () => {
+  test("H2: closed-indeterminate comes only from the withdrawal's own resolution, and a later withdrawal stays resolvable", async () => {
     const h = harness();
-    const { input, receipt } = await admit(h.service);
-    const withdrawal = captured(
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    );
+    await admit(h);
+    const first = await captured(h);
+    h.advance(WAIT);
     await expect(
-      h.service.resolveWithdrawal(withdrawal.withdrawalId),
+      h.service.resolveWithdrawal(first.withdrawalId),
     ).resolves.toMatchObject({
-      kind: 'not-indeterminate',
-      withdrawal: { status: 'winding-down' },
+      kind: 'resolved',
+      withdrawal: { status: 'closed-indeterminate' },
     });
-    h.advance(60_000);
+    await admit(h);
+    const second = await captured(h, 'update');
+    expect(second.withdrawalId).not.toBe(first.withdrawalId);
+    h.advance(WAIT);
     await expect(
-      h.service.resolveWithdrawal(withdrawal.withdrawalId),
+      h.service.withdrawal(second.withdrawalId),
+    ).resolves.toMatchObject({ status: 'indeterminate', outstanding: 1 });
+    await expect(
+      h.service.resolveWithdrawal(second.withdrawalId),
+    ).resolves.toMatchObject({ kind: 'resolved' });
+  });
+
+  test('resolving a merged withdrawal abandons exactly its outstanding captured effects; late settlements are counted with an event', async () => {
+    const h = harness();
+    const a = await admit(h);
+    const b = await admit(h);
+    await captured(h, 'update');
+    await settleOne(h, a.input, 'applied');
+    const c = await admit(h, admission(h, { requiresPluginServer: true }));
+    const merged = await h.service.beginWithdrawal({
+      pluginId: 'demo',
+      cause: 'grant-withdrawal',
+      captures: (effect) => effect.requiresPluginServer,
+    });
+    const uncaptured = await admit(h);
+    await expect(
+      h.service.resolveWithdrawal(merged!.withdrawalId),
+    ).resolves.toMatchObject({ kind: 'not-indeterminate' });
+    h.advance(WAIT);
+    await expect(
+      h.service.resolveWithdrawal(merged!.withdrawalId),
     ).resolves.toMatchObject({
       kind: 'resolved',
       withdrawal: { status: 'closed-indeterminate', outstanding: 0 },
     });
-    expect(h.ledger().effects).toEqual([
-      expect.objectContaining({
-        effectId: receipt.effectId,
-        state: 'abandoned',
-        settledBy: 'operator',
-      }),
-    ]);
-    await expect(
-      h.service.settle({
-        principalId: input.principalId,
-        documentId: input.documentId,
-        documentKey: input.documentKey,
-        items: [{ requestId: input.requestId, outcome: 'applied' }],
-      }),
-    ).resolves.toEqual([
-      { requestId: input.requestId, status: 'recorded-late' },
-    ]);
-    expect(h.ledger().effects[0]).toMatchObject({ lateOutcome: 'applied' });
-    await expect(
-      h.service.withdrawal(withdrawal.withdrawalId),
-    ).resolves.toMatchObject({ status: 'closed-indeterminate' });
-    // A freed slot admits again.
-    await expect(h.service.recordAdmission(admission())).resolves.toMatchObject(
-      { kind: 'admitted' },
+    const states = Object.fromEntries(
+      h.ledger().effects.map((effect) => [effect.effectId, effect]),
     );
+    expect(states[a.receipt.effectId]).toMatchObject({ state: 'applied' });
+    expect(states[b.receipt.effectId]).toMatchObject({
+      state: 'abandoned',
+      settledBy: 'operator',
+    });
+    expect(states[c.receipt.effectId]).toMatchObject({
+      state: 'abandoned',
+      settledBy: 'operator',
+    });
+    expect(states[uncaptured.receipt.effectId]).toMatchObject({
+      state: 'admitted',
+    });
+    await expect(settleOne(h, b.input, 'applied')).resolves.toEqual([
+      { requestId: b.input.requestId, status: 'recorded-late' },
+    ]);
+    expect(h.events.at(-1)?.payload.data).toMatchObject({
+      outcome: 'applied',
+      disposition: 'late',
+    });
+    await expect(
+      h.service.withdrawal(merged!.withdrawalId),
+    ).resolves.toMatchObject({ status: 'closed-indeterminate' });
   });
 
   test('awaitWithdrawal wakes on a settlement and stops at its deadline', async () => {
     const h = harness();
-    const { input } = await admit(h.service);
-    const withdrawal = captured(
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    );
+    const { input } = await admit(h);
+    const withdrawal = await captured(h);
     await expect(
       h.service.awaitWithdrawal(withdrawal.withdrawalId, 20),
     ).resolves.toMatchObject({ status: 'winding-down', outstanding: 1 });
     const waiting = h.service.awaitWithdrawal(withdrawal.withdrawalId, 10_000);
-    await h.service.settle({
-      principalId: input.principalId,
-      documentId: input.documentId,
-      documentKey: input.documentKey,
-      items: [{ requestId: input.requestId, outcome: 'aborted' }],
-    });
+    await settleOne(h, input, 'aborted');
     const started = Date.now();
     await expect(waiting).resolves.toMatchObject({ status: 'completed' });
     expect(Date.now() - started).toBeLessThan(5_000);
-  });
-
-  test('open withdrawals at capacity refuse a new capture instead of evicting one', async () => {
-    const h = harness();
-    await admit(h.service);
-    for (
-      let index = 0;
-      index < PLUGIN_COMMAND_EFFECT_BOUNDS.openWithdrawals;
-      index += 1
-    )
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'update',
-        captures: () => true,
-      });
-    await expect(
-      h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    ).rejects.toBeInstanceOf(PluginCommandWithdrawalCapacityError);
-    expect(h.ledger().withdrawals).toHaveLength(
-      PLUGIN_COMMAND_EFFECT_BOUNDS.openWithdrawals,
-    );
   });
 
   test('a beforeCommit fault leaves no half-committed withdrawal', async () => {
@@ -583,73 +661,221 @@ describe('plugin command withdrawals (LP-W, LP-C)', () => {
         if (fail) throw new Error('injected commit fault');
       },
     });
-    await admit(h.service);
+    await admit(h);
     fail = true;
-    await expect(
-      h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    ).rejects.toBeInstanceOf(PluginCommandEffectsUnavailableError);
+    await expect(withdrawAll(h)).rejects.toBeInstanceOf(
+      PluginCommandEffectsUnavailableError,
+    );
     expect(h.ledger().withdrawals).toEqual([]);
+  });
+
+  test('lists every open withdrawal before recent closed ones', async () => {
+    const h = harness();
+    const a = await admit(h, admission(h, { pluginId: 'alpha' }));
+    const closed = await withdrawAll(h, 'removal', 'alpha');
+    await settleOne(h, a.input, 'applied');
+    await admit(h, admission(h, { pluginId: 'beta' }));
+    const open = await withdrawAll(h, 'update', 'beta');
+    await expect(h.service.listWithdrawals()).resolves.toEqual([
+      expect.objectContaining({
+        withdrawalId: open!.withdrawalId,
+        status: 'winding-down',
+      }),
+      expect.objectContaining({
+        withdrawalId: closed!.withdrawalId,
+        status: 'completed',
+      }),
+    ]);
   });
 });
 
-describe('plugin command effect ledger durability', () => {
+describe('uncaptured outstanding effects (M2)', () => {
+  test('the operator may abandon an aged effect no withdrawal captured, and nothing younger or captured', async () => {
+    const h = harness();
+    const loose = await admit(h, admission(h, { pluginId: 'alpha' }));
+    const held = await admit(h, admission(h, { pluginId: 'beta' }));
+    const withdrawal = await withdrawAll(h, 'removal', 'beta');
+    await expect(h.service.listUncapturedEffects()).resolves.toEqual([
+      expect.objectContaining({
+        effectId: loose.receipt.effectId,
+        abandonable: false,
+      }),
+    ]);
+    await expect(
+      h.service.abandonEffect(loose.receipt.effectId),
+    ).resolves.toEqual({ kind: 'too-recent' });
+    h.advance(WAIT);
+    await expect(
+      h.service.abandonEffect(held.receipt.effectId),
+    ).resolves.toEqual({
+      kind: 'captured',
+      withdrawalId: withdrawal!.withdrawalId,
+    });
+    await expect(
+      h.service.abandonEffect(loose.receipt.effectId),
+    ).resolves.toEqual({ kind: 'abandoned' });
+    await expect(
+      h.service.abandonEffect(loose.receipt.effectId),
+    ).resolves.toEqual({ kind: 'not-found' });
+    expect(
+      h
+        .ledger()
+        .effects.find((effect) => effect.effectId === loose.receipt.effectId),
+    ).toMatchObject({ state: 'abandoned', settledBy: 'operator' });
+    // A freed principal slot admits again.
+    await expect(h.service.listUncapturedEffects()).resolves.toEqual([]);
+  });
+});
+
+describe('plugin command effect ledger durability and bounds', () => {
   test('a restarted service on the same file keeps outstanding effects and completes their withdrawal', async () => {
     const dir = home();
-    const before = harness(dir);
-    const { input } = await admit(before.service);
-    const withdrawal = captured(
-      await before.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    );
-    const after = harness(dir);
+    const clock = { now: START };
+    const before = harness(dir, { clock });
+    const { input } = await admit(before);
+    const withdrawal = await captured(before);
+    const after = harness(dir, { clock });
     await expect(
       after.service.withdrawal(withdrawal.withdrawalId),
     ).resolves.toMatchObject({ status: 'winding-down', outstanding: 1 });
-    await expect(after.service.recordAdmission(input)).resolves.toMatchObject({
-      kind: 'admitted',
-    });
-    await after.service.settle({
-      principalId: input.principalId,
-      documentId: input.documentId,
-      documentKey: input.documentKey,
-      items: [{ requestId: input.requestId, outcome: 'applied' }],
-    });
+    await settleOne(after, input, 'applied');
     await expect(
       after.service.withdrawal(withdrawal.withdrawalId),
     ).resolves.toMatchObject({ status: 'completed' });
   });
 
-  test('a ledger violating its cross-record invariants is refused whole', async () => {
+  test('a ledger with two open withdrawals for one plugin is refused whole', async () => {
     const dir = home();
     const h = harness(dir);
-    await admit(h.service);
-    const withdrawal = captured(
-      await h.service.beginWithdrawal({
-        pluginId: 'demo',
-        cause: 'removal',
-        captures: () => true,
-      }),
-    );
+    await admit(h);
+    await admit(h);
+    await captured(h);
     const file = join(dir, 'plugin-command-effects.json');
     const ledger = JSON.parse(readFileSync(file, 'utf8'));
-    // An unsettled capture whose effect is no longer outstanding.
-    ledger.effects[0].state = 'applied';
-    ledger.effects[0].settledBy = 'document';
-    ledger.effects[0].settledAt = '2026-09-16T12:00:01.000Z';
+    const [withdrawal] = ledger.withdrawals;
+    const second = withdrawal.outstanding.pop();
+    ledger.withdrawals.push({
+      ...withdrawal,
+      withdrawalId: 'pcw-duplicate',
+      sequence: ledger.sequence + 1,
+      outstanding: [second],
+    });
+    ledger.sequence += 1;
     writeFileSync(file, JSON.stringify(ledger));
+    await expect(h.service.listWithdrawals()).rejects.toBeInstanceOf(
+      PluginCommandEffectsUnavailableError,
+    );
+  });
+
+  test('L3: a ledger at every bound with maximum-length fields fits under the growth limit', async () => {
+    const dir = home();
+    const bounds = PLUGIN_COMMAND_EFFECT_BOUNDS;
+    const long = (prefix: string, length: number) =>
+      `${prefix}${'x'.repeat(length - prefix.length)}`;
+    const at = '2026-09-16T12:00:00.000Z';
+    let sequence = 0;
+    const effect = (index: number, state: string, pluginId: string) => ({
+      effectId: long(`pce-${index}-`, 64),
+      sequence: ++sequence,
+      documentId: long(`d${index}-`, 128),
+      documentKeyDigest: 'a'.repeat(64),
+      requestId: long(`r${index}-`, 128),
+      principalId: long(`p${Math.floor(index / 16)}-`, 256),
+      pluginId,
+      installationGeneration: long('g', 256),
+      requiresPluginServer: true,
+      commandId: long('c', 127),
+      target: { kind: 'composer', sessionId: long('s', 128) },
+      effectDigest: 'b'.repeat(64),
+      state,
+      admittedAt: at,
+      ...(state === 'admitted'
+        ? {}
+        : { settledBy: 'operator', settledAt: at, lateOutcome: 'applied' }),
+      conflicts: 999_999,
+    });
+    const outstanding = Array.from(
+      { length: bounds.outstandingTotal },
+      (_, i) => effect(i, 'admitted', long(`plugin${Math.floor(i / 8)}-`, 64)),
+    );
+    const terminal = Array.from(
+      { length: bounds.retainedTerminalEffects },
+      (_, i) => effect(1000 + i, 'abandoned', long('plugin-t', 64)),
+    );
+    const withdrawal = (index: number, open: boolean) => ({
+      withdrawalId: long(`pcw-${index}-`, 64),
+      sequence: ++sequence,
+      pluginId: long(`plugin${index}-`, 64),
+      causes: ['removal', 'update', 'grant-withdrawal'],
+      createdAt: at,
+      outstanding: open
+        ? outstanding.slice(index * 8, index * 8 + 8).map((entry) => ({
+            effectId: entry.effectId,
+            capturedAt: at,
+          }))
+        : [],
+      settled: 999_999,
+      ...(open
+        ? {}
+        : {
+            resolution: {
+              disposition: 'accept-indeterminate',
+              resolvedAt: at,
+              abandoned: 999_999,
+            },
+          }),
+    });
+    const tombstones = Array.from(
+      { length: bounds.tombstonesTotal },
+      (_, i) => ({
+        sequence: ++sequence,
+        documentId: long(`t${i}-`, 128),
+        documentKeyDigest: 'c'.repeat(64),
+        requestId: long(`tr${i}-`, 128),
+        principalId: long(`tp${Math.floor(i / 16)}-`, 256),
+        createdAt: at,
+      }),
+    );
+    const ledger = {
+      version: 1,
+      sequence: 0,
+      effects: [...outstanding, ...terminal],
+      withdrawals: [
+        ...Array.from({ length: 8 }, (_, i) => withdrawal(i, true)),
+        ...Array.from({ length: bounds.retainedResolvedWithdrawals }, (_, i) =>
+          withdrawal(100 + i, false),
+        ),
+      ],
+      tombstones,
+    };
+    ledger.sequence = sequence;
+    const serialized = JSON.stringify(ledger, null, 2);
+    writeFileSync(join(dir, 'plugin-command-effects.json'), serialized);
+    const store = new FilePluginCommandEffectStore(dir);
+    await expect(store.read()).resolves.toMatchObject({ version: 1 });
+    expect(Buffer.byteLength(serialized)).toBeLessThan(bounds.growthBytes);
+  });
+});
+
+describe('lifecycle helpers', () => {
+  test('an unreadable ledger never throws into a lifecycle change and never reads as completion', async () => {
+    const dir = home();
+    writeFileSync(join(dir, 'plugin-command-effects.json'), 'not json');
+    const capture = await withdrawPluginCommandEffects(dir, {
+      pluginId: 'demo',
+      cause: 'removal',
+      captures: () => true,
+    });
+    expect(capture).toEqual({ kind: 'unavailable' });
     await expect(
-      h.service.withdrawal(withdrawal.withdrawalId),
-    ).rejects.toBeInstanceOf(PluginCommandEffectsUnavailableError);
-    await expect(h.service.recordAdmission(admission())).resolves.toEqual({
-      kind: 'refused',
-      reason: 'unavailable',
+      settlePluginCommandEffectsForResponse(
+        dir,
+        { commandEffectsUnavailable: true },
+        200,
+      ),
+    ).resolves.toEqual({
+      fields: { commandEffectsUnavailable: true },
+      status: 202,
     });
   });
 });

@@ -92,6 +92,27 @@ test('a ready installation publishes its commands and the generation admission d
   );
 });
 
+test('L5: invalid command declarations are dropped from a ready record with their diagnostic, and the plugin stays listed', async () => {
+  const h = home();
+  mkdirSync(join(h.plugins, 'demo'));
+  writeFileSync(
+    join(h.plugins, 'demo', 'plugin.json'),
+    JSON.stringify({
+      name: 'demo',
+      version: '1.0.0',
+      commands: [{ ...commands[0], id: 'someone-else.open' }],
+    }),
+  );
+  const [record] = await routes(h)();
+  expect(record).toMatchObject({
+    name: 'demo',
+    installationReadiness: { state: 'ready' },
+    commands: [],
+    commandsRejected: { reason: expect.stringContaining("'demo.'") },
+  });
+  expect(record).not.toHaveProperty('status');
+});
+
 test('an invisible plugin is absent from the inventory, commands included', async () => {
   const h = home();
   mkdirSync(join(h.plugins, 'demo'));

@@ -269,6 +269,9 @@ export function registerPluginInstallRoutes(
             ...(catalog.readiness.state === 'ready'
               ? {
                   commands: manifest.commands ?? [],
+                  ...(manifest.commandsRejected
+                    ? { commandsRejected: manifest.commandsRejected }
+                    : {}),
                   installationGeneration: pluginInstallationGeneration(
                     catalog.artifact,
                   ),
@@ -405,15 +408,13 @@ export function registerPluginInstallRoutes(
       // LP-C: the recovery released its locks.
       const settled = await settlePluginCommandEffectsForResponse(
         projectHomeDir,
-        mutation.value.commandEffects,
+        mutation.value,
         configurationMutationStatus(mutation.activation, 200),
       );
       return c.json(
         {
           ...mutation.value,
-          ...(settled.commandEffects
-            ? { commandEffects: settled.commandEffects }
-            : {}),
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
@@ -905,15 +906,13 @@ export function registerPluginInstallRoutes(
       // LP-C: installing over a plugin may have withdrawn command effects.
       const settled = await settlePluginCommandEffectsForResponse(
         projectHomeDir,
-        mutation.value.commandEffects,
+        mutation.value,
         configurationMutationStatus(mutation.activation, 200),
       );
       return c.json(
         {
           ...mutation.value,
-          ...(settled.commandEffects
-            ? { commandEffects: settled.commandEffects }
-            : {}),
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },

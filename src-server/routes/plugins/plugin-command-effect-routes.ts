@@ -4,8 +4,12 @@
  * - `POST /:name/command-effects` admits one local effect (LP-A).
  * - `POST /command-effects/settlements` records how a document settled its
  *   effects (LP-K).
- * - `GET /command-effects/withdrawals/:id` and `POST …/:id/resolve` are the
- *   operator's view of, and only way to close, an indeterminate withdrawal.
+ * - `GET /command-effects/withdrawals`, `GET …/withdrawals/:id` and
+ *   `POST …/:id/resolve` are the operator's view of, and only way to close,
+ *   an indeterminate withdrawal.
+ * - `GET /command-effects/uncaptured` and `POST /command-effects/effects/
+ *   :effectId/abandon` let the operator free an aged outstanding effect no
+ *   withdrawal captured.
  *
  * Hosted deployments refuse every route: their audit and document authority
  * are not established, so no effect is admitted there.
@@ -45,6 +49,7 @@ const REFUSAL_STATUS: Record<
   400 | 404 | 409 | 503
 > = {
   'invalid-request': 400,
+  'request-expired': 409,
   'not-found': 404,
   'generation-changed': 409,
   'command-not-declared': 409,
@@ -191,6 +196,69 @@ export function registerPluginCommandEffectRoutes(
     }),
   );
 
+  const unavailable = (c: Context, error: unknown) => {
+    if (error instanceof PluginCommandEffectsUnavailableError)
+      return c.json({ success: false, reason: 'unavailable' as const }, 503);
+    throw error;
+  };
+
+  app.get(
+    '/command-effects/withdrawals',
+    asOperator('read plugin command withdrawals', async (c) => {
+      try {
+        return c.json({
+          success: true,
+          withdrawals: await deps.effects.listWithdrawals(),
+        });
+      } catch (error) {
+        return unavailable(c, error);
+      }
+    }),
+  );
+
+  app.get(
+    '/command-effects/uncaptured',
+    asOperator('read outstanding plugin command effects', async (c) => {
+      try {
+        return c.json({
+          success: true,
+          effects: await deps.effects.listUncapturedEffects(),
+        });
+      } catch (error) {
+        return unavailable(c, error);
+      }
+    }),
+  );
+
+  app.post(
+    '/command-effects/effects/:effectId/abandon',
+    asOperator('abandon plugin command effects', async (c) => {
+      try {
+        const outcome = await deps.effects.abandonEffect(
+          c.req.param('effectId') ?? '',
+        );
+        if (outcome.kind === 'abandoned') return c.json({ success: true });
+        if (outcome.kind === 'not-found')
+          return c.json(
+            { success: false, error: 'Outstanding effect not found' },
+            404,
+          );
+        return c.json(
+          {
+            success: false,
+            reason: outcome.kind,
+            ...(outcome.kind === 'captured'
+              ? { withdrawalId: outcome.withdrawalId }
+              : {}),
+          },
+          409,
+        );
+      } catch (error) {
+        return unavailable(c, error);
+      }
+    }),
+  );
+
   app.get(
     '/command-effects/withdrawals/:id',
     asOperator('read plugin command withdrawals', async (c) => {
@@ -259,6 +327,7 @@ export function registerPluginCommandEffectRoutes(
         principal: caller,
         pluginId: c.req.param('name') ?? '',
         body: await readJson(c),
+        authority: c.req.raw,
       });
       if (outcome.kind === 'admitted')
         return c.json({ success: true, receipt: outcome.receipt });

@@ -2950,12 +2950,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // only for a plugin the caller's own principal can see (an invisible one
     // is refused as absent) and grants no capability beyond a local palette
     // effect; a settlement is bound to that principal and a per-document key.
-    // Reading and resolving a withdrawal are refused to non-operators inside
-    // the handler, the same shape as the visibility grants above; neither
-    // reaches another environment's or another Station's data.
+    // Listing, reading and resolving withdrawals, listing uncaptured effects
+    // and abandoning one are refused to non-operators inside the handler, the
+    // same shape as the visibility grants above; none reaches another
+    // environment's or another Station's data.
     { method: 'POST', path: '/api/plugins/:name/command-effects' },
     { method: 'POST', path: '/api/plugins/command-effects/settlements' },
+    { method: 'GET', path: '/api/plugins/command-effects/withdrawals' },
     { method: 'GET', path: '/api/plugins/command-effects/withdrawals/:id' },
+    { method: 'GET', path: '/api/plugins/command-effects/uncaptured' },
+    {
+      method: 'POST',
+      path: '/api/plugins/command-effects/effects/:effectId/abandon',
+    },
     {
       method: 'POST',
       path: '/api/plugins/command-effects/withdrawals/:id/resolve',

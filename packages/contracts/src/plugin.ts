@@ -228,6 +228,11 @@ export interface PluginManifest {
   build?: string;
   capabilities?: string[];
   commands?: PluginCommandContribution[];
+  /**
+   * Set by Station when `commands` failed validation and was dropped; the
+   * plugin still loads. Not a manifest field an author writes.
+   */
+  commandsRejected?: { reason: string };
   permissions?: string[];
   links?: unknown;
   agents?: Array<{ slug: string; source: string }>;

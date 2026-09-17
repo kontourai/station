@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
-import type { PluginCommandEffectsWithdrawalSummary } from '@kontourai/station-contracts/plugin-command-effect';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { type Context, Hono } from 'hono';
+import { Hono } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
-  PluginCommandEffectsUnavailableError,
+  type PluginCommandWithdrawalCapture,
+  pluginCommandEffectFields,
   settlePluginCommandEffectsForResponse,
   withdrawPluginCommandEffects,
 } from '../../services/plugins/plugin-command-effects.js';
@@ -57,26 +57,6 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import { readPluginBundle } from './plugin-bundles.js';
-
-/**
- * The grant change committed but its command effect withdrawal could not be
- * recorded. Said plainly, never as a success whose effects nobody tracks.
- */
-function commandEffectsUnrecorded(
-  c: Context,
-  committed: Record<string, unknown>,
-): Response {
-  return c.json(
-    {
-      success: false,
-      ...committed,
-      error:
-        'The permission change was saved, but its outstanding plugin command effects could not be recorded.',
-      commandEffectsUnavailable: true,
-    },
-    503,
-  );
-}
 
 interface PluginPublicRouteDeps {
   pluginsDir: string;
@@ -250,23 +230,16 @@ export function registerPluginPublicRoutes(
       // LP-W (grant withdrawal, kontourai/station#1419): a grant against a
       // changed binding can withdraw `plugin.server`. The grants write is
       // durable, and admissions that need it append inside the grants lease.
-      let withdrawal: PluginCommandEffectsWithdrawalSummary | null = null;
-      if (outcome.withdrawn.includes('plugin.server')) {
-        try {
-          withdrawal = await withdrawPluginCommandEffects(projectHomeDir, {
-            pluginId: name,
-            cause: 'grant-withdrawal',
-            captures: (effect) => effect.requiresPluginServer,
-          });
-        } catch (error) {
-          if (error instanceof PluginCommandEffectsUnavailableError)
-            return commandEffectsUnrecorded(c, {
-              granted: outcome.granted,
-              withdrawn: outcome.withdrawn,
-            });
-          throw error;
-        }
-      }
+      // Ledger trouble never un-commits the grant change: it is reported as
+      // commandEffectsUnavailable on a 202, never as completion.
+      const withdrawal: PluginCommandWithdrawalCapture =
+        outcome.withdrawn.includes('plugin.server')
+          ? await withdrawPluginCommandEffects(projectHomeDir, {
+              pluginId: name,
+              cause: 'grant-withdrawal',
+              captures: (effect) => effect.requiresPluginServer,
+            })
+          : { kind: 'none' };
       const reconciliation = pluginPermissionsNeedRuntimeReconciliation(
         outcome.withdrawn,
       )
@@ -290,7 +263,7 @@ export function registerPluginPublicRoutes(
       // verbs agree.
       const settled = await settlePluginCommandEffectsForResponse(
         projectHomeDir,
-        withdrawal,
+        pluginCommandEffectFields(withdrawal),
         reconciliation?.status === 'winding-down' ? 202 : 200,
       );
       return c.json(
@@ -299,9 +272,7 @@ export function registerPluginPublicRoutes(
           granted: outcome.granted,
           withdrawn: outcome.withdrawn,
           ...(reconciliation ? { reconciliation } : {}),
-          ...(settled.commandEffects
-            ? { commandEffects: settled.commandEffects }
-            : {}),
+          ...settled.fields,
         },
         settled.status as 200 | 202,
       );
@@ -376,22 +347,17 @@ export function registerPluginPublicRoutes(
       // LP-W (grant withdrawal, kontourai/station#1419): `revokeGrants` waited
       // on the grants lease every plugin-server admission appends inside, so
       // each such effect admitted before the revoke is already in the ledger.
-      let withdrawal: PluginCommandEffectsWithdrawalSummary | null = null;
-      if (permissions.includes('plugin.server')) {
-        try {
-          withdrawal = await withdrawPluginCommandEffects(projectHomeDir, {
+      // Ledger trouble never un-commits the grant change: it is reported as
+      // commandEffectsUnavailable on a 202, never as completion.
+      const withdrawal: PluginCommandWithdrawalCapture = permissions.includes(
+        'plugin.server',
+      )
+        ? await withdrawPluginCommandEffects(projectHomeDir, {
             pluginId: name,
             cause: 'grant-withdrawal',
             captures: (effect) => effect.requiresPluginServer,
-          });
-        } catch (error) {
-          if (error instanceof PluginCommandEffectsUnavailableError)
-            return commandEffectsUnrecorded(c, {
-              revoked: permissions,
-            });
-          throw error;
-        }
-      }
+          })
+        : { kind: 'none' };
       const reconciliation = pluginPermissionsNeedRuntimeReconciliation(
         permissions,
       )
@@ -410,7 +376,7 @@ export function registerPluginPublicRoutes(
           };
       const settled = await settlePluginCommandEffectsForResponse(
         projectHomeDir,
-        withdrawal,
+        pluginCommandEffectFields(withdrawal),
         reconciliation.status === 'winding-down' ? 202 : 200,
       );
       return c.json(
@@ -419,9 +385,7 @@ export function registerPluginPublicRoutes(
           revoked: permissions,
           granted: getPluginGrants(projectHomeDir, name),
           reconciliation,
-          ...(settled.commandEffects
-            ? { commandEffects: settled.commandEffects }
-            : {}),
+          ...settled.fields,
         },
         settled.status as 200 | 202,
       );

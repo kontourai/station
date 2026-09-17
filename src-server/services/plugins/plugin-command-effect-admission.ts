@@ -42,13 +42,70 @@ export interface PluginCommandEffectAdmissionDeps {
   effects: PluginCommandEffectService;
   /** Invisible must be indistinguishable from absent; checked before any read. */
   canSeePlugin(principal: PrincipalRef, pluginId: string): boolean;
-  resolveRequirement(input: {
-    requirement: Exclude<PluginCommandRequirement, 'plugin-server'>;
-    principal: PrincipalRef;
-    request: PluginCommandEffectAdmissionRequest;
-  }): Promise<PluginCommandRequirementResolution>;
+  resolveRequirement: PluginCommandRequirementResolver;
   /** Test seam; production reads the installed artifact. */
   captureArtifact?(pluginId: string): Promise<PluginRuntimeArtifact | null>;
+  /**
+   * Test seam run immediately before the ledger append, inside every lock
+   * and lease the append runs under. Production omits it.
+   */
+  beforeRecord?(input: {
+    pluginId: string;
+    requiresPluginServer: boolean;
+  }): Promise<void>;
+}
+
+export type PluginCommandRequirementResolver = (input: {
+  requirement: Exclude<PluginCommandRequirement, 'plugin-server'>;
+  principal: PrincipalRef;
+  request: PluginCommandEffectAdmissionRequest;
+  /** The caller's HTTP request, for authorization that reads its credential. */
+  authority: Request;
+}) => Promise<PluginCommandRequirementResolution>;
+
+/**
+ * Requirement checks that answer for the CALLER, never for an id alone.
+ *
+ * - `active-chat` and `session` use the session read predicate every other
+ *   session read goes through; a session the caller cannot read is `missing`,
+ *   exactly like one that does not exist. A composer target must be that
+ *   same session.
+ * - `project` and `task` have no per-principal read predicate on main (see
+ *   `routes/board.ts`'s authorization note): Station answers project and task
+ *   existence to any caller of its project and task routes. These checks use
+ *   that same existence authority, so they reveal nothing those routes do not.
+ */
+export function createPluginCommandRequirementResolver(deps: {
+  canReadSession(sessionId: string, authority: Request): boolean;
+  projectExists(projectSlug: string): boolean;
+  taskInProject(taskId: string, projectSlug: string | undefined): boolean;
+}): PluginCommandRequirementResolver {
+  return async ({ requirement, request, authority }) => {
+    const context = request.context ?? {};
+    if (requirement === 'active-chat' || requirement === 'session') {
+      const sessionId =
+        requirement === 'active-chat'
+          ? context.activeChatSessionId
+          : context.sessionId;
+      if (!sessionId) return 'missing';
+      if (
+        request.target.kind === 'composer' &&
+        request.target.sessionId !== sessionId
+      )
+        return 'missing';
+      return deps.canReadSession(sessionId, authority)
+        ? 'available'
+        : 'missing';
+    }
+    if (requirement === 'project')
+      return context.projectSlug && deps.projectExists(context.projectSlug)
+        ? 'available'
+        : 'missing';
+    return context.taskId &&
+      deps.taskInProject(context.taskId, context.projectSlug)
+      ? 'available'
+      : 'missing';
+  };
 }
 
 const CONTEXT_FIELDS = [
@@ -76,6 +133,7 @@ function parsePluginCommandEffectAdmissionRequest(
     'commandId',
     'target',
     'context',
+    'issuedAt',
   ];
   if (Object.keys(value).some((key) => !allowed.includes(key))) return null;
   const target = parsePluginCommandEffectTarget(value.target);
@@ -85,7 +143,8 @@ function parsePluginCommandEffectAdmissionRequest(
     !isPluginCommandClientId(value.requestId) ||
     typeof value.installationGeneration !== 'string' ||
     value.installationGeneration.length === 0 ||
-    value.installationGeneration.length > 1024 ||
+    value.installationGeneration.length > 256 ||
+    !Number.isSafeInteger(value.issuedAt) ||
     typeof value.commandId !== 'string' ||
     value.commandId.length > 127 ||
     !target
@@ -117,6 +176,7 @@ function parsePluginCommandEffectAdmissionRequest(
     documentId: value.documentId,
     documentKey: value.documentKey,
     requestId: value.requestId,
+    issuedAt: value.issuedAt as number,
     installationGeneration: value.installationGeneration,
     commandId: value.commandId,
     target,
@@ -152,6 +212,7 @@ export function createPluginCommandEffectAdmission(
       principal: PrincipalRef;
       pluginId: string;
       body: unknown;
+      authority: Request;
     }): Promise<PluginCommandEffectAdmissionResult> {
       const { principal, pluginId } = input;
       if (!isCanonicalPluginId(pluginId)) return refuse('not-found');
@@ -213,6 +274,7 @@ export function createPluginCommandEffectAdmission(
                   requirement,
                   principal,
                   request,
+                  authority: input.authority,
                 });
               } catch {
                 resolution = 'unavailable';
@@ -225,8 +287,9 @@ export function createPluginCommandEffectAdmission(
             // ones they judged.
             if (!(await artifact.isCurrentAsync()))
               return refuse('generation-changed');
-            const record = () =>
-              deps.effects.recordAdmission({
+            const record = async () => {
+              await deps.beforeRecord?.({ pluginId, requiresPluginServer });
+              return deps.effects.recordAdmission({
                 principalId: principal.id,
                 pluginId,
                 installationGeneration: request.installationGeneration,
@@ -237,7 +300,9 @@ export function createPluginCommandEffectAdmission(
                 documentId: request.documentId,
                 documentKey: request.documentKey,
                 requestId: request.requestId,
+                issuedAt: request.issuedAt,
               });
+            };
             if (!requiresPluginServer) return await record();
             let reached = false;
             try {

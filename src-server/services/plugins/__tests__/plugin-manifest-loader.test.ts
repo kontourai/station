@@ -7,7 +7,6 @@ import { isReservedObjectKey } from '../../../utils/reserved-object-keys.js';
 import { ContextSafetyError } from '../../orchestration/context-safety.js';
 import { DistributionProfileService } from '../distribution-profile-service.js';
 import {
-  PluginManifestValidationError,
   readPluginManifestFile,
   readPluginManifestFileWithFormat,
 } from '../plugin-manifest-loader.js';
@@ -846,18 +845,52 @@ describe('plugin-manifest-loader', () => {
         })),
       ],
       ['a non-array', { open: navigate }],
-    ])('a legacy manifest with %s is refused', async (_label, commands) => {
-      const refusal = await readPluginManifestFile(writeLegacy(commands)).then(
-        () => null,
-        (error: unknown) => error,
+    ])(
+      'L5: a legacy manifest with %s still loads; its commands are dropped with a diagnostic',
+      async (_label, commands) => {
+        const manifest = await readPluginManifestFile(writeLegacy(commands));
+        expect(manifest.name).toBe('demo');
+        expect(manifest.commands).toBeUndefined();
+        expect(manifest.commandsRejected?.reason).toEqual(expect.any(String));
+        expect(manifest.commandsRejected!.reason.length).toBeLessThanOrEqual(
+          240,
+        );
+      },
+    );
+
+    test('a manifest cannot assert its own command rejection', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          name: 'demo',
+          version: '1.0.0',
+          commands: [navigate],
+          commandsRejected: { reason: 'forged' },
+        }),
       );
-      expect(refusal).toBeInstanceOf(PluginManifestValidationError);
-      expect((refusal as PluginManifestValidationError).code).toBe(
-        'invalid-manifest',
-      );
+      const manifest = await readPluginManifestFile(manifestPath);
+      expect(manifest.commands).toEqual([navigate]);
+      expect(manifest).not.toHaveProperty('commandsRejected');
     });
 
-    test('an Agent Plugins manifest gets the same semantic checks; a violation disables its extension', async () => {
+    test('the diagnostic is printable and bounded even for hostile field names', async () => {
+      const manifest = await readPluginManifestFile(
+        writeLegacy([
+          {
+            ...navigate,
+            [`evil${String.fromCharCode(7)}${'k'.repeat(400)}`]: 1,
+          },
+        ]),
+      );
+      const reason = manifest.commandsRejected!.reason;
+      expect(
+        [...reason].some((character) => character.charCodeAt(0) < 0x20),
+      ).toBe(false);
+      expect(reason.length).toBeLessThanOrEqual(240);
+    });
+
+    test('L5: an Agent Plugins manifest keeps its extension when only the semantic checks fail; schema failures still disable it', async () => {
       const manifestPath = join(dir, 'plugin.json');
       const write = (commands: unknown[]) =>
         writeFileSync(
@@ -868,7 +901,11 @@ describe('plugin-manifest-loader', () => {
             name: 'portable.example',
             version: '2.0',
             extensions: {
-              'io.kontourai.station': { schemaVersion: '1.0', commands },
+              'io.kontourai.station': {
+                schemaVersion: '1.0',
+                permissions: ['agents.invoke'],
+                commands,
+              },
             },
           }),
         );
@@ -880,11 +917,19 @@ describe('plugin-manifest-loader', () => {
         stationExtension: { status: 'validated' },
         manifest: { commands: [valid] },
       });
-      // Schema-valid (3-127 chars, closed shape) but owned by another plugin.
+      // Schema-valid, but owned by another plugin: dropped, extension kept.
       write([{ ...navigate, id: 'someone-else.open' }]);
-      const loaded = await readPluginManifestFileWithFormat(manifestPath);
-      expect(loaded.stationExtension).toMatchObject({ status: 'disabled' });
-      expect(loaded.manifest.commands).toBeUndefined();
+      const semantic = await readPluginManifestFileWithFormat(manifestPath);
+      expect(semantic.stationExtension).toMatchObject({ status: 'validated' });
+      expect(semantic.manifest.permissions).toEqual(['agents.invoke']);
+      expect(semantic.manifest.commands).toBeUndefined();
+      expect(semantic.manifest.commandsRejected?.reason).toContain(
+        'portable.example.',
+      );
+      // Schema-invalid (closed shape): main's behaviour, the extension is disabled.
+      write([{ ...valid, route: '/plugins' }]);
+      const schema = await readPluginManifestFileWithFormat(manifestPath);
+      expect(schema.stationExtension).toMatchObject({ status: 'disabled' });
     });
   });
 });

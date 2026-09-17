@@ -316,6 +316,64 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     expect(response.status).toBe(404);
   });
 
+  test('F6: the real runtime wiring refuses plugin command effects on a hosted registry and not on a personal runtime', async () => {
+    const hostedHome = mkdtempSync(join(tmpdir(), 'station-runtime-routes-'));
+    directories.push(hostedHome);
+    const registryPath = join(hostedHome, 'tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+      }),
+    );
+    process.env[registryFileEnv] = registryPath;
+    const hosted = new Hono();
+    await configureRuntimeRoutes(runtimeContext(hosted, hostedHome));
+    const paths = [
+      ['POST', '/api/plugins/demo/command-effects'],
+      ['POST', '/api/plugins/command-effects/settlements'],
+      ['GET', '/api/plugins/command-effects/withdrawals'],
+      ['GET', '/api/plugins/command-effects/uncaptured'],
+    ] as const;
+    for (const [method, path] of paths) {
+      const response = await hosted.request(
+        path,
+        {
+          method,
+          headers: {
+            ...hostedHeaders('alpha'),
+            'content-type': 'application/json',
+          },
+          ...(method === 'POST' ? { body: '{}' } : {}),
+        },
+        loopbackEnv(),
+      );
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(await response.json()).toMatchObject({
+        error: 'Plugin commands are unavailable on hosted deployments',
+      });
+    }
+
+    delete process.env[registryFileEnv];
+    const personalHome = mkdtempSync(join(tmpdir(), 'station-runtime-routes-'));
+    directories.push(personalHome);
+    const personal = new Hono();
+    await configureRuntimeRoutes(runtimeContext(personal, personalHome));
+    const response = await personal.request(
+      '/api/plugins/command-effects/settlements',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      },
+      loopbackEnv(),
+    );
+    expect(await response.text()).not.toContain(
+      'Plugin commands are unavailable on hosted deployments',
+    );
+  });
+
   test('retains personal token-only MCP behavior when the runtime has no registry', async () => {
     delete process.env[registryFileEnv];
     const homeDir = mkdtempSync(join(tmpdir(), 'station-runtime-routes-'));

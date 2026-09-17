@@ -20,7 +20,6 @@
  * before granting.
  */
 import { randomUUID } from 'node:crypto';
-import type { PluginCommandEffectsWithdrawalSummary } from '@kontourai/station-contracts/plugin-command-effect';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { type Context, Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
@@ -35,12 +34,14 @@ import {
 import {
   CONSENT_TRANSACTION_TTL_MS,
   ConsentCommitRefusedError,
+  type ConsentEffectProjection,
   type ConsentTargetSnapshot,
 } from '../../services/consent/consent-transactions.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
-  PluginCommandEffectsUnavailableError,
+  createPluginCommandEffectService,
+  FilePluginCommandEffectStore,
   withdrawPluginCommandEffects,
 } from '../../services/plugins/plugin-command-effects.js';
 import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
@@ -93,6 +94,30 @@ interface PluginHostApprovalRouteDeps {
  * the decided tree is byte-identical to the reviewed tree, nothing more.
  * An underivable digest (unreadable tree) refuses rather than grants.
  */
+/**
+ * A trusted approval's reconciliation never reads `completed` while command
+ * effects it withdrew are outstanding: they wind down (`winding-down`), and an
+ * operator-closed withdrawal is `incomplete` with a `command-effects` stage,
+ * because its effects' outcomes are unknown.
+ */
+function projectApprovalCommandEffects(
+  reconciliation: ConsentEffectProjection,
+): ConsentEffectProjection {
+  const effects = reconciliation.commandEffects;
+  if (!effects || effects.status === 'completed') return reconciliation;
+  if (effects.status === 'closed-indeterminate')
+    return {
+      ...reconciliation,
+      status: 'incomplete',
+      failures: [
+        ...new Set([...(reconciliation.failures ?? []), 'command-effects']),
+      ],
+    };
+  return reconciliation.status === 'completed'
+    ? { ...reconciliation, status: 'winding-down' }
+    : reconciliation;
+}
+
 async function derivePluginTrustTarget(
   pluginsDir: string,
   pluginName: string,
@@ -405,24 +430,18 @@ export function registerPluginHostApprovalRoutes(
         // LP-W (grant withdrawal, kontourai/station#1419): this runs inside
         // the decision guard's content lock, after the grant write. An
         // approval over a changed binding can withdraw `plugin.server`.
-        let commandEffects: PluginCommandEffectsWithdrawalSummary | null = null;
-        let commandEffectsUnrecorded = false;
-        if (outcome.withdrawn.includes('plugin.server')) {
-          try {
-            commandEffects = await withdrawPluginCommandEffects(
-              deps.projectHomeDir,
-              {
-                pluginId: pluginName,
-                cause: 'grant-withdrawal',
-                captures: (effect) => effect.requiresPluginServer,
-              },
-            );
-          } catch (error) {
-            if (!(error instanceof PluginCommandEffectsUnavailableError))
-              throw error;
-            commandEffectsUnrecorded = true;
-          }
-        }
+        // Ledger trouble never refuses the committed approval; it is reported
+        // as an `incomplete` reconciliation with a `command-effects` failure.
+        const capture = outcome.withdrawn.includes('plugin.server')
+          ? await withdrawPluginCommandEffects(deps.projectHomeDir, {
+              pluginId: pluginName,
+              cause: 'grant-withdrawal',
+              captures: (effect) => effect.requiresPluginServer,
+            })
+          : ({ kind: 'none' } as const);
+        const commandEffects =
+          capture.kind === 'captured' ? capture.summary : undefined;
+        const commandEffectsUnrecorded = capture.kind === 'unavailable';
         const reconciled = deps.grantReconciliation
           ? await deps.grantReconciliation.reconcile({
               pluginName,
@@ -438,7 +457,7 @@ export function registerPluginHostApprovalRoutes(
           ...('failures' in reconciled ? reconciled.failures : []),
           ...(commandEffectsUnrecorded ? ['command-effects'] : []),
         ];
-        const reconciliation = {
+        const reconciliation = projectApprovalCommandEffects({
           status: commandEffectsUnrecorded
             ? ('incomplete' as const)
             : reconciled.status,
@@ -447,7 +466,7 @@ export function registerPluginHostApprovalRoutes(
           ...('effects' in reconciled ? { effects: reconciled.effects } : {}),
           ...(failures.length > 0 ? { failures } : {}),
           ...(commandEffects ? { commandEffects } : {}),
-        };
+        });
         deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
           name: pluginName,
           granted: outcome.granted,
@@ -485,18 +504,40 @@ export function registerPluginHostApprovalRoutes(
     );
   });
 
-  app.get('/host-approvals/:id', (c) => {
+  app.get('/host-approvals/:id', async (c) => {
     const channel = deps.consentChannel;
     const approval = channel?.store.get(channel.tenantId, c.req.param('id'));
     if (!approval) {
       return c.json({ success: false, error: 'Approval not found' }, 404);
+    }
+    // The stored projection is a snapshot from the decision. Command effects
+    // keep settling after it, so their summary is read again from the ledger.
+    let reconciliation = approval.effect;
+    if (reconciliation?.commandEffects) {
+      try {
+        const current = await createPluginCommandEffectService({
+          store: new FilePluginCommandEffectStore(deps.projectHomeDir),
+        }).withdrawal(reconciliation.commandEffects.withdrawalId);
+        if (current)
+          reconciliation = projectApprovalCommandEffects({
+            ...reconciliation,
+            commandEffects: {
+              withdrawalId: current.withdrawalId,
+              status: current.status,
+              outstanding: current.outstanding,
+            },
+          });
+      } catch {
+        // An unreadable ledger leaves the decision's snapshot, which was never
+        // reported as completed while its effects were outstanding.
+      }
     }
     return c.json({
       success: true,
       approval: {
         id: approval.id,
         status: approval.status,
-        ...(approval.effect ? { reconciliation: approval.effect } : {}),
+        ...(reconciliation ? { reconciliation } : {}),
       },
     });
   });

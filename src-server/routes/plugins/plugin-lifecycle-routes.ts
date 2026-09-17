@@ -25,6 +25,7 @@ import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
+  pluginCommandEffectFields,
   settlePluginCommandEffectsForResponse,
   withdrawPluginCommandEffects,
 } from '../../services/plugins/plugin-command-effects.js';
@@ -693,15 +694,13 @@ export function registerPluginLifecycleRoutes(
         // LP-C: the install transaction released its locks.
         const settled = await settlePluginCommandEffectsForResponse(
           projectHomeDir,
-          mutation.value.commandEffects,
+          mutation.value,
           configurationMutationStatus(mutation.activation, 200),
         );
         return c.json(
           {
             ...mutation.value,
-            ...(settled.commandEffects
-              ? { commandEffects: settled.commandEffects }
-              : {}),
+            ...settled.fields,
             success: mutation.activation?.status !== 'pending',
             ...configurationActivationPayload(mutation.activation),
           },
@@ -910,7 +909,7 @@ export function registerPluginLifecycleRoutes(
                   // LP-W (update, kontourai/station#1419): the new tree and
                   // its re-bound grants are final and the content lock is
                   // still held. Effects admitted against any other generation
-                  // are captured; failure to record rolls the update back.
+                  // are captured; ledger trouble is reported, never a veto.
                   const updatedDigest = computePluginContentDigest(
                     dirname(pluginDir),
                     basename(pluginDir),
@@ -946,7 +945,7 @@ export function registerPluginLifecycleRoutes(
                       withdrawn: rebound.withdrawn,
                       retained: rebound.retained,
                     },
-                    ...(commandEffects ? { commandEffects } : {}),
+                    ...pluginCommandEffectFields(commandEffects),
                   };
                 } catch (error) {
                   try {
@@ -1034,15 +1033,13 @@ export function registerPluginLifecycleRoutes(
       // LP-C: every lock is released; wait briefly for settlements.
       const settled = await settlePluginCommandEffectsForResponse(
         projectHomeDir,
-        mutation.value.commandEffects,
+        mutation.value,
         configurationMutationStatus(mutation.activation, 200),
       );
       return c.json(
         {
           ...mutation.value,
-          ...(settled.commandEffects
-            ? { commandEffects: settled.commandEffects }
-            : {}),
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
@@ -1177,15 +1174,13 @@ export function registerPluginLifecycleRoutes(
       // command effect settled with proof, else 202 winding-down.
       const settled = await settlePluginCommandEffectsForResponse(
         projectHomeDir,
-        mutation.value.commandEffects,
+        mutation.value,
         configurationMutationStatus(mutation.activation, 200),
       );
       return c.json(
         {
           ...mutation.value,
-          ...(settled.commandEffects
-            ? { commandEffects: settled.commandEffects }
-            : {}),
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },

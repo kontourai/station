@@ -65,6 +65,21 @@ function assertPluginNameIsNotReserved(name: string): void {
   }
 }
 
+/**
+ * A manifest-derived message made safe for an authenticated display surface:
+ * printable, single-line and bounded. The manifest can influence it (field
+ * names, ids), so it is never used to classify anything.
+ */
+function boundedDiagnostic(message: string): string {
+  const printable = [...message]
+    .map((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code < 0x20 || (code >= 0x7f && code <= 0x9f) ? ' ' : character;
+    })
+    .join('');
+  return printable.length > 240 ? `${printable.slice(0, 239)}…` : printable;
+}
+
 function invalidManifest(
   code: PluginManifestValidationFailureCode,
   message: string,
@@ -335,20 +350,27 @@ function parsePluginManifest(
       'Plugin manifest version must be a non-empty string',
     );
   }
+  // Station derives this; a manifest cannot assert it.
+  delete candidate.commandsRejected;
   if (candidate.commands !== undefined) {
     // Both formats reach here (Agent Plugins via normalization), so both get
     // the owner-qualified id, uniqueness and argument checks the schema
-    // cannot express — and legacy manifests get the schema's shape as well.
+    // cannot express. Invalid declarations never stop the plugin loading:
+    // they are dropped and the reason is kept for the Plugins surface.
     try {
       candidate.commands = parsePluginCommandDeclarations(
         candidate.commands,
         candidate.name,
       );
     } catch (error) {
-      invalidManifest(
-        'invalid-manifest',
-        error instanceof Error ? error.message : 'Plugin commands are invalid',
-      );
+      delete candidate.commands;
+      candidate.commandsRejected = {
+        reason: boundedDiagnostic(
+          error instanceof Error
+            ? error.message
+            : 'Plugin commands are invalid',
+        ),
+      };
     }
   }
   if (candidate.workspacePaneHost !== undefined) {

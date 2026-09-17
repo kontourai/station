@@ -352,6 +352,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { createPluginCommandRequirementResolver } from '../../services/plugins/plugin-command-effect-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
@@ -1815,32 +1816,28 @@ export function configureRuntimeRoutes(
               outcome?.kind === 'appended' || outcome?.kind === 'duplicate'
             );
           },
-          resolveRequirement: async ({ requirement, request }) => {
-            const target = request.target;
-            const ctx = request.context ?? {};
-            if (requirement === 'active-chat' || requirement === 'session') {
-              const id =
-                requirement === 'active-chat'
-                  ? ctx.activeChatSessionId
-                  : ctx.sessionId;
-              return id &&
-                (target.kind !== 'composer' || target.sessionId === id)
-                ? 'available'
-                : 'missing';
-            }
-            if (requirement === 'project') {
-              if (!ctx.projectSlug) return 'missing';
-              return context.projectService.getProject(ctx.projectSlug)
-                ? 'available'
-                : 'missing';
-            }
-            if (!ctx.taskId) return 'missing';
-            const task = context.taskGraphService.readTask(ctx.taskId);
-            return task &&
-              (!ctx.projectSlug || task.projectId === ctx.projectSlug)
-              ? 'available'
-              : 'missing';
-          },
+          // M5 (kontourai/station#1419): answered for the CALLER. Sessions go
+          // through the same read predicate every other session read uses.
+          resolveRequirement: createPluginCommandRequirementResolver({
+            canReadSession: (sessionId, authority) =>
+              context.orchestrationService.canUserReadSession(
+                sessionId,
+                readAuthorityForRequest(authority),
+              ),
+            projectExists: (slug) => {
+              try {
+                return Boolean(context.projectService.getProject(slug));
+              } catch {
+                return false;
+              }
+            },
+            taskInProject: (taskId, projectSlug) => {
+              const task = context.taskGraphService.readTask(taskId);
+              return Boolean(
+                task && (!projectSlug || task.projectId === projectSlug),
+              );
+            },
+          }),
         },
         // #2067. The SAME memoized, fail-closed resolver every other
         // identity-bearing route in this file reads, so `GET /api/plugins`

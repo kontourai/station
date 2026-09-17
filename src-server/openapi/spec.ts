@@ -236,6 +236,7 @@ const FIRST_PASS_PATHS: Record<
       summary: 'Install a plugin from the registry',
       tags: ['registry'],
       responses: {
+        202: 'Installed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)',
         409: 'Registry trust or reviewed installation state refused; inspect and review again',
       },
     },
@@ -245,6 +246,9 @@ const FIRST_PASS_PATHS: Record<
       operationId: 'uninstallRegistryPlugin',
       summary: 'Uninstall a registry plugin',
       tags: ['registry'],
+      responses: {
+        202: 'Removed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)',
+      },
     },
   },
   '/api/plugins': {
@@ -272,7 +276,7 @@ const FIRST_PASS_PATHS: Record<
       summary: 'Install a plugin from a source',
       tags: ['plugins'],
       responses: {
-        202: 'Installed over an existing plugin; runtime activation or withdrawn plugin command effects are still winding down',
+        202: 'Installed over an existing plugin; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)',
         409: 'Registry trust or reviewed installation state refused; inspect and review again',
       },
     },
@@ -304,7 +308,7 @@ const FIRST_PASS_PATHS: Record<
         'Recover a retained plugin with freshly reviewed permission revisions',
       tags: ['plugins'],
       responses: {
-        202: 'Recovery accepted; runtime activation is still pending',
+        202: 'Recovery accepted; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)',
         409: 'Recovery, permission or registry trust revision refused; review again',
         503: 'Permission storage is unavailable',
       },
@@ -316,7 +320,7 @@ const FIRST_PASS_PATHS: Record<
       summary: 'Update an installed plugin',
       tags: ['plugins'],
       responses: {
-        202: 'Updated; runtime activation or withdrawn plugin command effects are still winding down',
+        202: 'Updated; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)',
         409: 'Registry trust or reviewed installation state refused; inspect and review again',
       },
     },
@@ -327,7 +331,7 @@ const FIRST_PASS_PATHS: Record<
       summary: 'Delete an installed plugin',
       tags: ['plugins'],
       responses: {
-        202: 'Removed; runtime activation or withdrawn plugin command effects are still winding down',
+        202: 'Removed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)',
       },
     },
   },
@@ -339,7 +343,7 @@ const FIRST_PASS_PATHS: Record<
       responses: {
         403: 'Plugin commands are unavailable on hosted deployments',
         404: 'The plugin is absent or not visible to the caller',
-        409: 'Refused: changed generation, undeclared or unavailable command, unmet requirement, capacity, or a cancelled request',
+        409: 'Refused: expired request, changed generation, undeclared or unavailable command, unmet requirement, capacity, or a cancelled or conflicting request',
         503: 'Plugin command effects or permissions are unavailable',
       },
     },
@@ -353,6 +357,44 @@ const FIRST_PASS_PATHS: Record<
       responses: {
         403: 'Plugin commands are unavailable on hosted deployments',
         409: 'At least one item conflicts with an earlier terminal outcome',
+        503: 'Plugin command effects are unavailable',
+      },
+    },
+  },
+  '/api/plugins/command-effects/withdrawals': {
+    get: {
+      operationId: 'listPluginCommandWithdrawals',
+      summary:
+        'List open plugin command withdrawals, then the most recent closed ones (operator only)',
+      tags: ['plugins'],
+      responses: {
+        403: 'Only the Station operator can read withdrawals',
+        503: 'Plugin command effects are unavailable',
+      },
+    },
+  },
+  '/api/plugins/command-effects/uncaptured': {
+    get: {
+      operationId: 'listUncapturedPluginCommandEffects',
+      summary:
+        'List outstanding plugin command effects no withdrawal captured (operator only)',
+      tags: ['plugins'],
+      responses: {
+        403: 'Only the Station operator can read outstanding effects',
+        503: 'Plugin command effects are unavailable',
+      },
+    },
+  },
+  '/api/plugins/command-effects/effects/{effectId}/abandon': {
+    post: {
+      operationId: 'abandonPluginCommandEffect',
+      summary:
+        'Abandon an aged outstanding effect no withdrawal captured (operator only)',
+      tags: ['plugins'],
+      responses: {
+        403: 'Only the Station operator can abandon effects',
+        404: 'Outstanding effect not found',
+        409: 'The effect is captured by a withdrawal (resolve it instead) or is still too recent',
         503: 'Plugin command effects are unavailable',
       },
     },

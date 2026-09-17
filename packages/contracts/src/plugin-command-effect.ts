@@ -25,8 +25,8 @@ export type PluginCommandEffectState = 'admitted' | PluginCommandEffectOutcome;
 
 /**
  * Who proved a terminal state. `document` is the browser document that
- * requested the effect; `operator` accepted an indeterminate withdrawal;
- * `station` cancelled an admission whose receipt was never released.
+ * requested the effect; `operator` accepted an unknown outcome; `station`
+ * cancelled an admission whose receipt was never released.
  */
 export type PluginCommandEffectSettledBy = 'document' | 'operator' | 'station';
 
@@ -35,13 +35,26 @@ export type PluginCommandEffectTarget =
   | { kind: 'destination'; destinationId: string }
   | { kind: 'composer'; sessionId: string };
 
+/**
+ * An admission request is honoured only while `issuedAt` (the document's clock,
+ * epoch milliseconds) is within this window of Station's clock, in either
+ * direction. A cancel recorded before its admission therefore stops mattering
+ * after twice the window, and is forgotten then.
+ */
+export const PLUGIN_COMMAND_EFFECT_REQUEST_WINDOW_MS = 5 * 60 * 1000;
+
 export interface PluginCommandEffectAdmissionRequest {
   /** Random per-document id; stable for the document's lifetime. */
   documentId: string;
   /** Random per-document secret held in memory only; Station stores a digest. */
   documentKey: string;
-  /** Client-chosen id; admission is idempotent on (documentId, requestId). */
+  /**
+   * Client-chosen id. Admission is idempotent on (documentId, requestId)
+   * within the caller's principal and document key.
+   */
   requestId: string;
+  /** When the document created this request; see the request window. */
+  issuedAt: number;
   /** The inventory's opaque generation for the installation the row came from. */
   installationGeneration: string;
   commandId: string;
@@ -73,6 +86,7 @@ export interface PluginCommandEffectReceipt {
 
 export type PluginCommandEffectRefusalReason =
   | 'invalid-request'
+  | 'request-expired'
   | 'not-found'
   | 'generation-changed'
   | 'command-not-declared'
@@ -104,14 +118,17 @@ export interface PluginCommandEffectSettlementRequest {
  * - `settled`: this item recorded the effect's first terminal state.
  * - `already-settled`: the same outcome was already recorded.
  * - `cancel-recorded`: no admission exists yet; a later one will be refused.
+ * - `cancel-refused`: no admission exists and this document's cancels are at
+ *   capacity; nothing was recorded, so retry once an admission lands.
  * - `recorded-late`: the operator already closed the effect; counted, not applied.
  * - `conflict`: a different terminal outcome was already recorded.
- * - `not-found`: no effect for this document and request (or key mismatch).
+ * - `not-found`: no effect for this principal, document and request.
  */
 export type PluginCommandEffectSettlementStatus =
   | 'settled'
   | 'already-settled'
   | 'cancel-recorded'
+  | 'cancel-refused'
   | 'recorded-late'
   | 'conflict'
   | 'not-found';
@@ -129,10 +146,10 @@ export type PluginCommandWithdrawalCause =
 /**
  * Derived, never stored:
  * - `completed`: every captured effect was settled with document or station proof.
- * - `winding-down`: some are outstanding and the withdrawal is still young.
+ * - `winding-down`: some are outstanding and the newest capture is still young.
  * - `indeterminate`: some are outstanding past the wait; not terminal.
- * - `closed-indeterminate`: an operator accepted the unknown outcome. This is
- *   never a completed or withdrawn state.
+ * - `closed-indeterminate`: an operator resolved this withdrawal, accepting
+ *   that its outstanding effects' outcomes are unknown. Never a completed state.
  */
 export type PluginCommandWithdrawalStatus =
   | 'completed'
@@ -142,7 +159,11 @@ export type PluginCommandWithdrawalStatus =
 
 export const PLUGIN_COMMAND_WITHDRAWAL_MAX_LISTED_EFFECTS = 16;
 
-/** What a lifecycle response carries about the effects its change withdrew. */
+/**
+ * What a lifecycle response carries about the effects its change withdrew.
+ * A plugin has at most one open withdrawal: a later change while one is open
+ * joins it and answers with the same `withdrawalId`.
+ */
 export interface PluginCommandEffectsWithdrawalSummary {
   withdrawalId: string;
   status: PluginCommandWithdrawalStatus;
@@ -152,7 +173,8 @@ export interface PluginCommandEffectsWithdrawalSummary {
 export interface PluginCommandWithdrawalProjection
   extends PluginCommandEffectsWithdrawalSummary {
   pluginId: string;
-  cause: PluginCommandWithdrawalCause;
+  /** Every lifecycle change that joined this withdrawal, first first. */
+  causes: PluginCommandWithdrawalCause[];
   createdAt: string;
   /** At most {@link PLUGIN_COMMAND_WITHDRAWAL_MAX_LISTED_EFFECTS} ids. */
   outstandingEffectIds: string[];
@@ -160,3 +182,35 @@ export interface PluginCommandWithdrawalProjection
 
 export const PLUGIN_COMMAND_WITHDRAWAL_RESOLVE_DISPOSITION =
   'accept-indeterminate' as const;
+
+/** An outstanding effect no open withdrawal captured. */
+export interface PluginCommandUncapturedEffect {
+  effectId: string;
+  pluginId: string;
+  principalId: string;
+  commandId: string;
+  admittedAt: string;
+  /** Older than the withdrawal wait, so the operator may abandon it. */
+  abandonable: boolean;
+}
+
+/** `station.plugin-command.execution/v1` payload data. */
+export interface PluginCommandEffectEventData {
+  effectId: string;
+  /** The principal the effect was admitted for. */
+  principalId: string;
+  pluginId: string;
+  installationGeneration: string;
+  commandId: string;
+  target: PluginCommandEffectTarget;
+  /** `admitted`, or the outcome this settlement reported. */
+  outcome: PluginCommandEffectState;
+  /** Present for settlement events. */
+  settledBy?: PluginCommandEffectSettledBy;
+  /**
+   * Present when the reported outcome did not become the effect's state:
+   * `conflict` (a different outcome was first) or `late` (the operator had
+   * already closed it).
+   */
+  disposition?: 'conflict' | 'late';
+}

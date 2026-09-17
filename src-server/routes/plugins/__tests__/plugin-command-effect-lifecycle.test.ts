@@ -2,13 +2,16 @@
  * Plugin command effects against the lifecycle changes that withdraw them
  * (kontourai/station#1418, #1419).
  *
- * Every case drives the REAL plugin route composition (`createPluginRoutes`)
- * over a real Station home: a legacy plugin removal, a legacy Git update, a
- * `plugin.server` revocation, and a host-approval regrant decided through the
- * real consent listener. Interleavings are forced with promise gates inside
- * the admission's awaited requirement check, never with sleeps that decide
- * an outcome; the only timer is a bound on how long a serialized lifecycle is
- * observed to stay blocked.
+ * Every case drives REAL route compositions (`createPluginRoutes`, and
+ * `createRegistryRoutes` for the registry rows) over a real Station home:
+ * removal, legacy Git update, registry removal, registry install-over,
+ * `plugin.server` revocation, a grant against a changed binding, and a
+ * host-approval regrant decided through the real consent listener.
+ * Interleavings are forced with promise gates at named seams — the awaited
+ * requirement check, or immediately before the ledger append inside every lock
+ * and lease the append runs under — never with sleeps that decide an outcome.
+ * The only timer bounds how long a serialized change is observed to stay
+ * blocked.
  *
  * Invariants:
  * - I1: a withdrawal reads `completed` only when every captured effect
@@ -16,6 +19,7 @@
  * - I3: no effect is admitted after its authority's withdrawal point.
  * - I4: capacity refuses new admissions and never evicts an outstanding
  *   effect; only an operator's resolution frees it.
+ * - F1: a lifecycle change commits even when the ledger cannot record it.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,14 +30,24 @@ import type {
   PluginCommandEffectsWithdrawalSummary,
   PluginCommandWithdrawalProjection,
 } from '@kontourai/station-contracts/plugin-command-effect';
-import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import {
+  humanPrincipal,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
+import type { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  clearAll,
+  registerPluginRegistryProvider,
+} from '../../../providers/registries/registry.js';
 import { createConsentApp } from '../../../runtime/consent/consent-listener.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
 import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
 import { PluginVisibilityService } from '../../../services/plugins/plugin-visibility-service.js';
 import { createPluginRoutes } from '../plugins.js';
+import { createRegistryRoutes } from '../registry.js';
 import { TEST_OPERATOR_PRINCIPAL } from './plugin-visibility-test-support.js';
 
 const CONSENT_PORT = 4979;
@@ -45,6 +59,7 @@ const DOCUMENT_KEY = 'd'.repeat(43);
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  clearAll();
 });
 
 const logger = {
@@ -77,7 +92,7 @@ function writePlugin(dir: string, version: string, behavior = 'reviewed') {
       name: 'demo',
       version,
       serverModule: 'server.mjs',
-      permissions: ['system.config'],
+      permissions: ['system.config', 'ui.confirm'],
       commands: [OPEN, SERVE],
     }),
   );
@@ -111,31 +126,63 @@ function deferred() {
   return { promise, resolve };
 }
 
+type GateSeam = 'requirement' | 'record';
 type Harness = ReturnType<typeof harness>;
 
-function harness(options: { git?: boolean; caller?: PrincipalRef } = {}) {
+function harness(
+  options: {
+    source?: 'plain' | 'git' | 'registry';
+    caller?: PrincipalRef;
+    hosted?: boolean;
+    /** Compose grant reconciliation so approvals can reach `completed`. */
+    reconciliation?: boolean;
+  } = {},
+) {
   const home = mkdtempSync(join(tmpdir(), 'station-command-lifecycle-'));
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+  // Registry routes read through the Station home schema gate.
+  ensureStationHomeSchemaSync(home);
   const plugins = join(home, 'plugins');
   const pluginDir = join(plugins, 'demo');
   const source = join(home, 'source-demo');
-  if (options.git) {
+  if (options.source === 'git') {
     writePlugin(source, '1.0.0');
     git(source, 'init', '-q', '-b', 'main');
     git(source, 'add', '.');
     git(source, 'commit', '-q', '-m', 'initial');
     mkdirSync(plugins, { recursive: true });
     git(plugins, 'clone', '-q', source, 'demo');
+  } else if (options.source === 'registry') {
+    writePlugin(source, '1.0.0');
+    mkdirSync(plugins, { recursive: true });
+    registerPluginRegistryProvider({
+      registryKey: 'lifecycle-test-registry',
+      listAvailable: async () => [],
+      listInstalled: async () => [],
+      resolveSource: async (id: string) => (id === 'demo' ? source : null),
+      install: async () => ({ success: false, message: 'unused' }),
+      uninstall: async () => ({ success: false, message: 'unused' }),
+    } as never);
   } else {
     writePlugin(pluginDir, '1.0.0');
   }
-  // Lifecycle transactions stamp withdrawals with the wall clock; the route
-  // service's clock starts there and only moves forward.
-  let clock = Date.now();
-  let requirementGate: {
-    entered: ReturnType<typeof deferred>;
-    release: ReturnType<typeof deferred>;
-  } | null = null;
+  const clock = { now: Date.now() };
+  const gates: Partial<
+    Record<
+      GateSeam,
+      {
+        entered: ReturnType<typeof deferred>;
+        release: ReturnType<typeof deferred>;
+      }
+    >
+  > = {};
+  const pass = async (seam: GateSeam) => {
+    const gate = gates[seam];
+    if (!gate) return;
+    delete gates[seam];
+    gate.entered.resolve();
+    await gate.release.promise;
+  };
   const channel = new ConsentChannelService();
   channel.markListening(CONSENT_PORT);
   const consentApp = createConsentApp({
@@ -147,64 +194,85 @@ function harness(options: { git?: boolean; caller?: PrincipalRef } = {}) {
     },
   });
   const visibility = new PluginVisibilityService(home);
+  const caller = options.caller ?? TEST_OPERATOR_PRINCIPAL;
   const mount = () =>
     createPluginRoutes(home, logger, undefined, {
       visibility: {
         service: visibility,
-        resolvePrincipal: () => options.caller ?? TEST_OPERATOR_PRINCIPAL,
+        resolvePrincipal: () => caller,
         listKnownPrincipals: () => [],
       },
       consentChannel: channel,
       applyConfigurationMutation: undefined as never,
       settleProviderAdapterRetirements: async () => {},
+      ...(options.reconciliation
+        ? {
+            quiesceEventSubscriptions: async () => ({ release() {} }),
+            reconcileEventSubscriptions: async () => ({
+              kind: 'applied' as const,
+            }),
+            removeEngineConnections: async () => {},
+            reconcileEngineConnections: async () => {},
+          }
+        : {}),
       commandEffects: {
-        isHostedDeployment: () => false,
+        isHostedDeployment: () => options.hosted === true,
         publishAudit: () => true,
-        now: () => new Date(clock),
+        now: () => new Date(Math.max(clock.now, Date.now())),
         indeterminateAfterMs: 60_000,
         resolveRequirement: async () => {
-          const gate = requirementGate;
-          if (gate) {
-            requirementGate = null;
-            gate.entered.resolve();
-            await gate.release.promise;
-          }
+          await pass('requirement');
           return 'available';
         },
+        beforeRecord: () => pass('record'),
       },
     });
+  const mountRegistry = () =>
+    createRegistryRoutes(
+      { getProjectHomeDir: () => home } as never,
+      async () => {},
+      undefined,
+      undefined,
+      { logger } as never,
+    );
   let app = mount();
+  let registryApp: Hono = mountRegistry();
   return {
     home,
     plugins,
     pluginDir,
     source,
     consentApp,
+    visibility,
     get app() {
       return app;
     },
+    get registryApp() {
+      return registryApp;
+    },
     restart() {
       app = mount();
+      registryApp = mountRegistry();
     },
     advance(ms: number) {
-      clock = Math.max(clock, Date.now()) + ms;
+      clock.now = Math.max(clock.now, Date.now()) + ms;
     },
-    /** The next admission stops inside its requirement check until released. */
-    gateNextRequirement() {
+    /** The next admission stops at `seam` until released. */
+    gate(seam: GateSeam) {
       const gate = { entered: deferred(), release: deferred() };
-      requirementGate = gate;
+      gates[seam] = gate;
       return gate;
     },
   };
 }
 
-async function generation(h: Harness): Promise<string> {
+async function generation(h: Harness, name = 'demo'): Promise<string> {
   const body = (await (await h.app.request('/')).json()) as {
     plugins: Array<{ name: string; installationGeneration?: string }>;
   };
-  const record = body.plugins.find((plugin) => plugin.name === 'demo');
+  const record = body.plugins.find((plugin) => plugin.name === name);
   if (!record?.installationGeneration)
-    throw new Error('demo has no ready installation generation');
+    throw new Error(`${name} has no ready installation generation`);
   return record.installationGeneration;
 }
 
@@ -214,32 +282,44 @@ function nextRequestId() {
   return `request-${String(requestSequence).padStart(6, '0')}`;
 }
 
+function admissionBody(
+  command: 'open' | 'serve',
+  installationGeneration: string,
+  requestId: string,
+) {
+  return {
+    documentId: DOCUMENT_ID,
+    documentKey: DOCUMENT_KEY,
+    requestId,
+    issuedAt: Date.now(),
+    installationGeneration,
+    commandId: command === 'open' ? OPEN.id : SERVE.id,
+    target:
+      command === 'open'
+        ? { kind: 'destination', destinationId: 'plugins' }
+        : { kind: 'composer', sessionId: 'session-1' },
+    context: {
+      projectSlug: 'demo-project',
+      activeChatSessionId: 'session-1',
+    },
+  };
+}
+
 function admit(
   h: Harness,
   command: 'open' | 'serve',
   installationGeneration: string,
   requestId = nextRequestId(),
+  plugin = 'demo',
 ) {
   return {
     requestId,
-    response: h.app.request('/demo/command-effects', {
+    response: h.app.request(`/${plugin}/command-effects`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        documentId: DOCUMENT_ID,
-        documentKey: DOCUMENT_KEY,
-        requestId,
-        installationGeneration,
-        commandId: command === 'open' ? OPEN.id : SERVE.id,
-        target:
-          command === 'open'
-            ? { kind: 'destination', destinationId: 'plugins' }
-            : { kind: 'composer', sessionId: 'session-1' },
-        context: {
-          projectSlug: 'demo-project',
-          activeChatSessionId: 'session-1',
-        },
-      }),
+      body: JSON.stringify(
+        admissionBody(command, installationGeneration, requestId),
+      ),
     }),
   };
 }
@@ -248,7 +328,6 @@ async function receiptOf(response: Response | Promise<Response>) {
   const resolved = await response;
   const body = (await resolved.json()) as {
     receipt?: PluginCommandEffectReceipt;
-    reason?: string;
   };
   expect(resolved.status, JSON.stringify(body)).toBe(200);
   return body.receipt!;
@@ -289,9 +368,7 @@ async function withdrawalOf(
   const response = await h.app.request(`/command-effects/withdrawals/${id}`);
   expect(response.status).toBe(200);
   return (
-    (await response.json()) as {
-      withdrawal: PluginCommandWithdrawalProjection;
-    }
+    (await response.json()) as { withdrawal: PluginCommandWithdrawalProjection }
   ).withdrawal;
 }
 
@@ -307,21 +384,32 @@ async function stateOf(promise: Promise<unknown>, boundMs = 150) {
 
 interface LifecycleResult {
   status: number;
+  approvalId?: string;
   commandEffects?: PluginCommandEffectsWithdrawalSummary;
+  commandEffectsUnavailable?: boolean;
 }
 
 interface Lifecycle {
   name: string;
   command: 'open' | 'serve';
-  git?: boolean;
+  source?: 'plain' | 'git' | 'registry';
   /** Waits on the admission's plugin content lock. */
   serialized: boolean;
-  /** How a gated admission ends when this withdrawal wins the interleaving. */
-  gatedAdmission: 'admitted' | 'permission-unavailable' | 'generation-changed';
+  /**
+   * Where the gated admission stops: inside the requirement check, or just
+   * before the append inside the content lock and (for `serve`) the grants
+   * lease — the seam an unserialized grant withdrawal must wait on.
+   */
+  gateSeam: GateSeam;
+  /** How the gated admission ends when this change contends with it. */
+  gatedAdmission: 'admitted' | 'permission-unavailable';
   /** A fresh admission of the withdrawn authority after the change. */
   staleRefusal: string;
+  /** Out-of-band byte change this grant path needs, applied before the change. */
+  alterBytes?(h: Harness): void;
   prepare(h: Harness): Promise<void>;
-  run(h: Harness): Promise<LifecycleResult>;
+  /** The durable authority change itself (after any `alterBytes`). */
+  commit(h: Harness): Promise<LifecycleResult>;
   /** For the capacity case: make a current generation admissible again. */
   readmit?(h: Harness): Promise<void>;
 }
@@ -335,8 +423,114 @@ async function grantServer(h: Harness) {
 async function jsonResult(response: Response): Promise<LifecycleResult> {
   const body = (await response.json()) as {
     commandEffects?: PluginCommandEffectsWithdrawalSummary;
+    commandEffectsUnavailable?: boolean;
   };
-  return { status: response.status, commandEffects: body.commandEffects };
+  expect(response.status, JSON.stringify(body)).toBeLessThan(300);
+  return {
+    status: response.status,
+    commandEffects: body.commandEffects,
+    commandEffectsUnavailable: body.commandEffectsUnavailable,
+  };
+}
+
+async function registryInstall(h: Harness): Promise<Response> {
+  const preview = (await (
+    await h.app.request('/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ registryId: 'demo' }),
+    })
+  ).json()) as {
+    contentDigest: string;
+    grantRevision?: string;
+    registryTrustRevision?: string;
+    permissions: { required: string[] };
+  };
+  return h.registryApp.request('/plugins/install', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: 'demo',
+      consent: {
+        permissions: preview.permissions.required,
+        contentDigest: preview.contentDigest,
+        grantRevision: preview.grantRevision,
+        registryTrustRevision: preview.registryTrustRevision,
+        dependencies: [],
+      },
+    }),
+  });
+}
+
+function changeServerBytes(h: Harness) {
+  writeFileSync(
+    join(h.pluginDir, 'server.mjs'),
+    'export const behavior = "changed";\n',
+  );
+}
+
+async function approveTrusted(h: Harness): Promise<LifecycleResult> {
+  const opened = await h.app.request('/host-approvals', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', host: 'localhost:3141' },
+    body: JSON.stringify({
+      pluginName: 'demo',
+      permissions: ['system.config'],
+    }),
+  });
+  expect(opened.status).toBe(200);
+  const { approval } = (await opened.json()) as { approval: { id: string } };
+  const review = await h.consentApp.request(`/consent/${approval.id}`, {
+    headers: {
+      host: CONSENT_HOST,
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-dest': 'document',
+      cookie: `station-device=${OPERATOR_CREDENTIAL}`,
+    },
+  });
+  const nonce = (await review.text()).match(
+    /name="nonce" value="([^"]+)"/,
+  )?.[1];
+  expect(nonce).toBeTruthy();
+  const decided = await h.consentApp.request(`/consent/${approval.id}/decide`, {
+    method: 'POST',
+    headers: {
+      host: CONSENT_HOST,
+      origin: `http://${CONSENT_HOST}`,
+      'sec-fetch-site': 'same-origin',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-user': '?1',
+      'content-type': 'application/x-www-form-urlencoded',
+      cookie: `station-device=${OPERATOR_CREDENTIAL}`,
+    },
+    body: new URLSearchParams({
+      decision: 'approve',
+      nonce: nonce!,
+    }).toString(),
+  });
+  expect(decided.status).toBe(200);
+  const status = (await (
+    await h.app.request(`/host-approvals/${approval.id}`)
+  ).json()) as {
+    approval: {
+      status: string;
+      reconciliation?: {
+        status: string;
+        failures?: string[];
+        commandEffects?: PluginCommandEffectsWithdrawalSummary;
+      };
+    };
+  };
+  expect(status.approval.status).toBe('approved');
+  return {
+    status: decided.status,
+    approvalId: approval.id,
+    commandEffects: status.approval.reconciliation?.commandEffects,
+    commandEffectsUnavailable:
+      status.approval.reconciliation?.failures?.includes('command-effects') ||
+      undefined,
+  };
 }
 
 const LIFECYCLES: Lifecycle[] = [
@@ -344,22 +538,24 @@ const LIFECYCLES: Lifecycle[] = [
     name: 'removal',
     command: 'open',
     serialized: true,
+    gateSeam: 'requirement',
     gatedAdmission: 'admitted',
     staleRefusal: 'not-found',
     prepare: async () => {},
-    run: async (h) =>
+    commit: async (h) =>
       jsonResult(await h.app.request('/demo', { method: 'DELETE' })),
     readmit: async (h) => writePlugin(h.pluginDir, '2.0.0'),
   },
   {
-    name: 'update',
+    name: 'legacy git update',
     command: 'open',
-    git: true,
+    source: 'git',
     serialized: true,
+    gateSeam: 'requirement',
     gatedAdmission: 'admitted',
     staleRefusal: 'generation-changed',
     prepare: async () => {},
-    run: async (h) => {
+    commit: async (h) => {
       writePlugin(h.source, '1.1.0');
       git(h.source, 'commit', '-q', '-am', 'update');
       return jsonResult(
@@ -368,13 +564,44 @@ const LIFECYCLES: Lifecycle[] = [
     },
   },
   {
+    name: 'registry removal',
+    command: 'open',
+    serialized: true,
+    gateSeam: 'requirement',
+    gatedAdmission: 'admitted',
+    staleRefusal: 'not-found',
+    prepare: async () => {},
+    commit: async (h) =>
+      jsonResult(
+        await h.registryApp.request('/plugins/demo', { method: 'DELETE' }),
+      ),
+    readmit: async (h) => writePlugin(h.pluginDir, '2.0.0'),
+  },
+  {
+    name: 'registry install-over',
+    command: 'open',
+    source: 'registry',
+    serialized: true,
+    gateSeam: 'requirement',
+    gatedAdmission: 'admitted',
+    staleRefusal: 'generation-changed',
+    prepare: async (h) => {
+      await jsonResult(await registryInstall(h));
+    },
+    commit: async (h) => {
+      writePlugin(h.source, '1.1.0');
+      return jsonResult(await registryInstall(h));
+    },
+  },
+  {
     name: 'plugin.server revoke',
     command: 'serve',
-    serialized: false,
-    gatedAdmission: 'permission-unavailable',
+    serialized: true,
+    gateSeam: 'record',
+    gatedAdmission: 'admitted',
     staleRefusal: 'permission-unavailable',
     prepare: grantServer,
-    run: async (h) =>
+    commit: async (h) =>
       jsonResult(
         await h.app.request('/demo/grant', {
           method: 'DELETE',
@@ -384,101 +611,62 @@ const LIFECYCLES: Lifecycle[] = [
       ),
   },
   {
+    name: 'grant over changed binding',
+    command: 'serve',
+    serialized: false,
+    gateSeam: 'requirement',
+    gatedAdmission: 'permission-unavailable',
+    staleRefusal: 'generation-changed',
+    prepare: grantServer,
+    alterBytes: changeServerBytes,
+    commit: async (h) => {
+      const response = await h.app.request('/demo/grant', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ permissions: ['ui.confirm'] }),
+      });
+      const body = (await response.clone().json()) as { withdrawn?: string[] };
+      expect(body.withdrawn).toContain('plugin.server');
+      return jsonResult(response);
+    },
+  },
+  {
     name: 'host-approval regrant',
     command: 'serve',
     serialized: true,
-    gatedAdmission: 'generation-changed',
+    gateSeam: 'requirement',
+    gatedAdmission: 'permission-unavailable',
     staleRefusal: 'generation-changed',
     prepare: grantServer,
-    run: async (h) => {
-      // The reviewed bytes change, so approving another trusted permission
-      // re-binds consent and withdraws `plugin.server`.
-      writeFileSync(
-        join(h.pluginDir, 'server.mjs'),
-        'export const behavior = "changed";\n',
-      );
-      const opened = await h.app.request('/host-approvals', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          host: 'localhost:3141',
-        },
-        body: JSON.stringify({
-          pluginName: 'demo',
-          permissions: ['system.config'],
-        }),
-      });
-      expect(opened.status).toBe(200);
-      const { approval } = (await opened.json()) as {
-        approval: { id: string };
-      };
-      const review = await h.consentApp.request(`/consent/${approval.id}`, {
-        headers: {
-          host: CONSENT_HOST,
-          'sec-fetch-mode': 'navigate',
-          'sec-fetch-dest': 'document',
-          cookie: `station-device=${OPERATOR_CREDENTIAL}`,
-        },
-      });
-      const nonce = (await review.text()).match(
-        /name="nonce" value="([^"]+)"/,
-      )?.[1];
-      expect(nonce).toBeTruthy();
-      const decided = await h.consentApp.request(
-        `/consent/${approval.id}/decide`,
-        {
-          method: 'POST',
-          headers: {
-            host: CONSENT_HOST,
-            origin: `http://${CONSENT_HOST}`,
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-user': '?1',
-            'content-type': 'application/x-www-form-urlencoded',
-            cookie: `station-device=${OPERATOR_CREDENTIAL}`,
-          },
-          body: new URLSearchParams({
-            decision: 'approve',
-            nonce: nonce!,
-          }).toString(),
-        },
-      );
-      expect(decided.status).toBe(200);
-      const status = (await (
-        await h.app.request(`/host-approvals/${approval.id}`)
-      ).json()) as {
-        approval: {
-          status: string;
-          reconciliation?: {
-            commandEffects?: PluginCommandEffectsWithdrawalSummary;
-          };
-        };
-      };
-      expect(status.approval.status).toBe('approved');
-      return {
-        status: decided.status,
-        commandEffects: status.approval.reconciliation?.commandEffects,
-      };
-    },
+    alterBytes: changeServerBytes,
+    commit: approveTrusted,
   },
 ];
 
+const run = async (lifecycle: Lifecycle, h: Harness) => {
+  lifecycle.alterBytes?.(h);
+  return lifecycle.commit(h);
+};
+
 describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
   const setup = async () => {
-    const h = harness({ git: lifecycle.git });
+    const h = harness({ source: lifecycle.source });
     await lifecycle.prepare(h);
     return { h, before: await generation(h) };
   };
 
-  test('I3: a withdrawal between the requirement check and the append never admits after it', async () => {
-    const { h, before } = await setup();
-    const gate = h.gateNextRequirement();
-    const admission = admit(h, lifecycle.command, before);
+  test('I3: a withdrawal contending with an admission at its seam never admits after it', async () => {
+    const { h } = await setup();
+    // A grant path's authority is already withheld by its byte change, so the
+    // admission contends with the current bytes, not the old generation.
+    lifecycle.alterBytes?.(h);
+    const current = await generation(h);
+    const gate = h.gate(lifecycle.gateSeam);
+    const admission = admit(h, lifecycle.command, current);
     await gate.entered.promise;
-    const withdrawal = lifecycle.run(h);
+    const withdrawal = lifecycle.commit(h);
     if (lifecycle.serialized) {
-      // It waits on the content lock the admission holds.
+      // It waits on the lock or lease the admission holds at this seam.
       expect(await stateOf(withdrawal)).toBe('pending');
     } else {
       await withdrawal;
@@ -489,8 +677,6 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
 
     if (lifecycle.gatedAdmission === 'admitted') {
       const receipt = await receiptOf(response);
-      // Admitted before the withdrawal point, so it is captured, and the
-      // withdrawal cannot claim completion while it is outstanding.
       expect(result.status).toBe(202);
       expect(result.commandEffects).toMatchObject({
         status: 'winding-down',
@@ -511,12 +697,13 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
         (await withdrawalOf(h, result.commandEffects!.withdrawalId)).status,
       ).toBe('completed');
     } else {
+      // The derived grant binding refuses: `grantPermissions` can only
+      // withdraw a permission the byte change already withheld.
       expect(await refusalOf(response)).toBe(lifecycle.gatedAdmission);
-      // Nothing was admitted, so nothing was captured.
       expect(result.commandEffects).toBeUndefined();
     }
-    expect(await refusalOf(admit(h, lifecycle.command, before).response)).toBe(
-      lifecycle.staleRefusal,
+    expect(await refusalOf(admit(h, lifecycle.command, current).response)).toBe(
+      lifecycle.alterBytes ? 'permission-unavailable' : lifecycle.staleRefusal,
     );
   });
 
@@ -525,7 +712,7 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
     const admission = admit(h, lifecycle.command, before);
     const response = await admission.response;
     expect(response.status).toBe(200);
-    const result = await lifecycle.run(h);
+    const result = await run(lifecycle, h);
     if (lifecycle.name !== 'host-approval regrant')
       expect(result.status).toBe(202);
     expect(result.commandEffects).toMatchObject({
@@ -557,9 +744,16 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
     const { h, before } = await setup();
     const admission = admit(h, lifecycle.command, before);
     const receipt = await receiptOf(admission.response);
-    const result = await lifecycle.run(h);
+    const result = await run(lifecycle, h);
     const id = result.commandEffects!.withdrawalId;
-    // The document abandoned before it saw the receipt: cancel by request.
+    const mismatched = await settle(h, [
+      {
+        requestId: admission.requestId,
+        effectId: 'pce-not-this-effect',
+        outcome: 'applied',
+      },
+    ]);
+    expect(mismatched.body.results[0]?.status).toBe('not-found');
     const cancelled = await settle(h, [
       { requestId: admission.requestId, outcome: 'cancelled' },
     ]);
@@ -585,7 +779,7 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
 
   test('a cancel recorded before the admission commits refuses it, and the withdrawal then captures nothing', async () => {
     const { h, before } = await setup();
-    const gate = h.gateNextRequirement();
+    const gate = h.gate('requirement');
     const admission = admit(h, lifecycle.command, before);
     await gate.entered.promise;
     const cancel = await settle(h, [
@@ -594,7 +788,7 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
     expect(cancel.body.results[0]?.status).toBe('cancel-recorded');
     gate.release.resolve();
     expect(await refusalOf(admission.response)).toBe('cancelled');
-    const result = await lifecycle.run(h);
+    const result = await run(lifecycle, h);
     expect(result.commandEffects).toBeUndefined();
     expect(result.status).toBe(200);
   });
@@ -603,7 +797,7 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
     const { h, before } = await setup();
     const admission = admit(h, lifecycle.command, before);
     const receipt = await receiptOf(admission.response);
-    const result = await lifecycle.run(h);
+    const result = await run(lifecycle, h);
     const id = result.commandEffects!.withdrawalId;
     h.restart();
     expect(await withdrawalOf(h, id)).toMatchObject({
@@ -628,26 +822,23 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
         (await receiptOf(admit(h, lifecycle.command, before).response))
           .effectId,
       );
-    const result = await lifecycle.run(h);
+    const result = await run(lifecycle, h);
     const id = result.commandEffects!.withdrawalId;
     expect(result.commandEffects?.outstanding).toBe(8);
     await lifecycle.readmit?.(h);
     const current = await generation(h);
-    // Revocation withdraws a permission, not the installed bytes.
     if (lifecycle.name === 'plugin.server revoke') expect(current).toBe(before);
     else expect(current).not.toBe(before);
     expect(await refusalOf(admit(h, 'open', current).response)).toBe(
       'capacity',
     );
-    const early = await h.app.request(
-      `/command-effects/withdrawals/${id}/resolve`,
-      {
+    const resolve = () =>
+      h.app.request(`/command-effects/withdrawals/${id}/resolve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ disposition: 'accept-indeterminate' }),
-      },
-    );
-    expect(early.status).toBe(409);
+      });
+    expect((await resolve()).status).toBe(409);
     h.advance(60_000);
     const indeterminate = await withdrawalOf(h, id);
     expect(indeterminate).toMatchObject({
@@ -657,54 +848,107 @@ describe.each(LIFECYCLES)('plugin command effects × $name', (lifecycle) => {
     expect([...indeterminate.outstandingEffectIds].sort()).toEqual(
       [...held].sort(),
     );
-    const resolved = await h.app.request(
-      `/command-effects/withdrawals/${id}/resolve`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ disposition: 'accept-indeterminate' }),
-      },
-    );
-    expect(resolved.status).toBe(200);
+    expect((await resolve()).status).toBe(200);
     expect(await withdrawalOf(h, id)).toMatchObject({
       status: 'closed-indeterminate',
       outstanding: 0,
     });
     await receiptOf(admit(h, 'open', current).response);
   });
+
+  test('F1: a change commits even when its withdrawal cannot be recorded, and says so', async () => {
+    const { h, before } = await setup();
+    await receiptOf(admit(h, lifecycle.command, before).response);
+    writeFileSync(join(h.home, 'plugin-command-effects.json'), 'not json');
+    const result = await run(lifecycle, h);
+    expect(result.commandEffects).toBeUndefined();
+    expect(result.commandEffectsUnavailable).toBe(true);
+    if (lifecycle.name !== 'host-approval regrant')
+      expect(result.status).toBe(202);
+    // The change itself committed: the withdrawn authority is gone.
+    rmSync(join(h.home, 'plugin-command-effects.json'));
+    expect(await refusalOf(admit(h, lifecycle.command, before).response)).toBe(
+      lifecycle.staleRefusal,
+    );
+  });
 });
 
-describe('plugin command effect routes', () => {
-  test('an invisible plugin is refused exactly as an absent one', async () => {
-    const collaborator: PrincipalRef = {
-      id: 'device:collaborator',
-      kind: 'human',
-      display: 'Collaborator',
-    };
+describe('plugin command effects × coalescing across lifecycle routes', () => {
+  test('a revoke then a removal of the same plugin answer with one withdrawal', async () => {
+    const h = harness();
+    await grantServer(h);
+    const before = await generation(h);
+    const admission = admit(h, 'serve', before);
+    await receiptOf(admission.response);
+    const revoked = await jsonResult(
+      await h.app.request('/demo/grant', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ permissions: ['plugin.server'] }),
+      }),
+    );
+    const removed = await jsonResult(
+      await h.app.request('/demo', { method: 'DELETE' }),
+    );
+    expect(removed.commandEffects?.withdrawalId).toBe(
+      revoked.commandEffects?.withdrawalId,
+    );
+    expect(
+      await withdrawalOf(h, removed.commandEffects!.withdrawalId),
+    ).toMatchObject({
+      causes: ['grant-withdrawal', 'removal'],
+      outstanding: 1,
+    });
+  });
+});
+
+describe('plugin command effect admission seams', () => {
+  test('the currentness re-check refuses a navigate command whose bytes changed during the requirement wait', async () => {
+    const h = harness();
+    const current = await generation(h);
+    const gate = h.gate('requirement');
+    const admission = admit(h, 'open', current);
+    await gate.entered.promise;
+    // Not a lifecycle change: nothing but the post-wait re-check can notice.
+    writeFileSync(join(h.pluginDir, 'server.mjs'), 'export const x = 1;\n');
+    gate.release.resolve();
+    expect(await refusalOf(admission.response)).toBe('generation-changed');
+  });
+
+  test('L1: an invisible installed plugin is refused exactly like one that was never installed', async () => {
+    const collaborator = humanPrincipal(
+      'device',
+      'collaborator-device',
+      'Collaborator',
+    );
     const h = harness({ caller: collaborator });
-    const operator = harness();
-    const current = await generation(operator);
+    const current = await generation(harness());
+    // The collaborator may see `ghost` — which does not exist — and not `demo`.
+    await h.visibility.grant(collaborator.id, 'ghost');
+    const body = JSON.stringify(
+      admissionBody('open', current, nextRequestId()),
+    );
     const invisible = await h.app.request('/demo/command-effects', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        commandId: OPEN.id,
-        installationGeneration: current,
-      }),
+      body,
     });
-    const absent = await h.app.request('/missing/command-effects', {
+    const absent = await h.app.request('/ghost/command-effects', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        commandId: OPEN.id,
-        installationGeneration: current,
-      }),
+      body,
     });
     expect(invisible.status).toBe(404);
-    expect(absent.status).toBe(404);
-    expect(await invisible.text()).toBe(await absent.text());
-    // The control: the operator reaches the same plugin.
-    await receiptOf(admit(operator, 'open', current).response);
+    expect(absent.status).toBe(invisible.status);
+    expect(await absent.text()).toBe(await invisible.text());
+    // The control: once visible, the same request reaches the plugin.
+    await h.visibility.grant(collaborator.id, 'demo');
+    const visible = await h.app.request('/demo/command-effects', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+    expect(visible.status).not.toBe(404);
   });
 
   test('the receipt carries seed text read from the installed declaration', async () => {
@@ -719,28 +963,147 @@ describe('plugin command effect routes', () => {
       text: SERVE.intent.text,
     });
   });
+});
 
-  test('withdrawal reads and resolution are operator-only', async () => {
+describe('plugin command effect operator routes', () => {
+  const operatorPaths = [
+    ['GET', '/command-effects/withdrawals'],
+    ['GET', '/command-effects/withdrawals/pcw-anything'],
+    ['POST', '/command-effects/withdrawals/pcw-anything/resolve'],
+    ['GET', '/command-effects/uncaptured'],
+    ['POST', '/command-effects/effects/pce-anything/abandon'],
+  ] as const;
+
+  test.each(operatorPaths)('%s %s is operator-only', async (method, path) => {
     const collaborator = harness({
       caller: { id: 'device:collaborator', kind: 'human', display: 'Other' },
     });
-    const read = await collaborator.app.request(
-      '/command-effects/withdrawals/pcw-anything',
-    );
-    const resolve = await collaborator.app.request(
-      '/command-effects/withdrawals/pcw-anything/resolve',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ disposition: 'accept-indeterminate' }),
-      },
-    );
-    expect(read.status).toBe(403);
-    expect(resolve.status).toBe(403);
+    const refused = await collaborator.app.request(path, {
+      method,
+      ...(method === 'POST'
+        ? {
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ disposition: 'accept-indeterminate' }),
+          }
+        : {}),
+    });
+    expect(refused.status).toBe(403);
     const operator = harness();
-    expect(
-      (await operator.app.request('/command-effects/withdrawals/pcw-anything'))
-        .status,
-    ).toBe(404);
+    const reached = await operator.app.request(path, {
+      method,
+      ...(method === 'POST'
+        ? {
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ disposition: 'accept-indeterminate' }),
+          }
+        : {}),
+    });
+    expect(reached.status).not.toBe(403);
+  });
+
+  test('F6: hosted deployments refuse every command-effect route', async () => {
+    const h = harness({ hosted: true });
+    const current = await generation(harness());
+    const paths = [
+      ['POST', '/demo/command-effects'],
+      ['POST', '/command-effects/settlements'],
+      ...operatorPaths,
+    ] as const;
+    for (const [method, path] of paths) {
+      const response = await h.app.request(path, {
+        method,
+        ...(method === 'POST'
+          ? {
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(
+                admissionBody('open', current, nextRequestId()),
+              ),
+            }
+          : {}),
+      });
+      expect(response.status, `${method} ${path}`).toBe(403);
+    }
+  });
+
+  test('M1/M2: the operator lists withdrawals and uncaptured effects, and abandons an aged uncaptured one', async () => {
+    const h = harness();
+    await grantServer(h);
+    const current = await generation(h);
+    const loose = await receiptOf(admit(h, 'open', current).response);
+    const held = await receiptOf(admit(h, 'serve', current).response);
+    const revoked = await jsonResult(
+      await h.app.request('/demo/grant', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ permissions: ['plugin.server'] }),
+      }),
+    );
+    const listed = (await (
+      await h.app.request('/command-effects/withdrawals')
+    ).json()) as { withdrawals: PluginCommandWithdrawalProjection[] };
+    expect(listed.withdrawals).toEqual([
+      expect.objectContaining({
+        withdrawalId: revoked.commandEffects!.withdrawalId,
+        outstandingEffectIds: [held.effectId],
+      }),
+    ]);
+    const uncaptured = (await (
+      await h.app.request('/command-effects/uncaptured')
+    ).json()) as { effects: Array<{ effectId: string; abandonable: boolean }> };
+    expect(uncaptured.effects).toEqual([
+      expect.objectContaining({ effectId: loose.effectId, abandonable: false }),
+    ]);
+    const abandon = (effectId: string) =>
+      h.app.request(`/command-effects/effects/${effectId}/abandon`, {
+        method: 'POST',
+      });
+    expect((await abandon(loose.effectId)).status).toBe(409);
+    h.advance(60_000);
+    expect((await abandon(held.effectId)).status).toBe(409);
+    expect((await abandon(loose.effectId)).status).toBe(200);
+    expect((await abandon(loose.effectId)).status).toBe(404);
+  });
+
+  test('M3: a host approval re-reads its command effects and never reads completed while they are outstanding', async () => {
+    const h = harness({ reconciliation: true });
+    await grantServer(h);
+    const before = await generation(h);
+    const admission = admit(h, 'serve', before);
+    const receipt = await receiptOf(admission.response);
+    changeServerBytes(h);
+    const { approvalId } = await approveTrusted(h);
+    const reconciliation = async () =>
+      (
+        (await (
+          await h.app.request(`/host-approvals/${approvalId}`)
+        ).json()) as {
+          approval: {
+            reconciliation: {
+              status: string;
+              commandEffects: PluginCommandEffectsWithdrawalSummary;
+            };
+          };
+        }
+      ).approval.reconciliation;
+    const outstanding = await reconciliation();
+    expect(outstanding.status).not.toBe('completed');
+    expect(outstanding.commandEffects).toMatchObject({
+      status: 'winding-down',
+      outstanding: 1,
+    });
+    await settle(h, [
+      {
+        requestId: admission.requestId,
+        effectId: receipt.effectId,
+        outcome: 'applied',
+      },
+    ]);
+    // Re-projected from the ledger on read, not the decision's snapshot.
+    // (Under the decision guard runtime reconciliation itself answers
+    // `winding-down`, so that base status is what remains.)
+    expect(await reconciliation()).toMatchObject({
+      status: 'winding-down',
+      commandEffects: { status: 'completed', outstanding: 0 },
+    });
   });
 });

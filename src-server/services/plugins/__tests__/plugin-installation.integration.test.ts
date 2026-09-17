@@ -1461,6 +1461,7 @@ test('kontourai/station#1419: installing over a managed plugin captures command 
     documentId: 'document-install-over',
     documentKey: 'k'.repeat(43),
     requestId: 'request-install-over',
+    issuedAt: Date.now(),
   });
   if (admitted.kind !== 'admitted') throw new Error(admitted.reason);
 
@@ -1472,7 +1473,7 @@ test('kontourai/station#1419: installing over a managed plugin captures command 
   expect(
     await effects.withdrawal(result.commandEffects!.withdrawalId),
   ).toMatchObject({
-    cause: 'update',
+    causes: ['update'],
     outstandingEffectIds: [admitted.receipt.effectId],
   });
   const current = capturePluginRuntimeArtifact(f.plugins, 'fixture', f.journal);

@@ -105,6 +105,8 @@ export function createPluginRoutes(
       producerVersion?: string;
       onSettlementConflict?(): void;
       resolveRequirement: PluginCommandEffectAdmissionDeps['resolveRequirement'];
+      /** Test seam: runs inside every lock and lease just before the append. */
+      beforeRecord?: PluginCommandEffectAdmissionDeps['beforeRecord'];
       /** Test seams for withdrawal age; production uses the wall clock. */
       now?(): Date;
       indeterminateAfterMs?: number;
@@ -302,6 +304,7 @@ export function createPluginRoutes(
         runtime?.commandEffects
           ? runtime.commandEffects.resolveRequirement(input)
           : 'unavailable',
+      beforeRecord: runtime?.commandEffects?.beforeRecord,
     }),
   });
 

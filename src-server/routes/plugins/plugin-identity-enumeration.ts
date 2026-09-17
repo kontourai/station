@@ -174,6 +174,20 @@ export const PLUGIN_IDENTITY_ROUTES: readonly PluginIdentityRoute[] = [
   },
   {
     method: 'GET',
+    path: '/api/plugins/command-effects/withdrawals',
+    disposition: 'operator-only',
+    rationale:
+      'Lists every open command effect withdrawal and recent closed ones, each naming the `pluginId` whose lifecycle change caused it. Only the operator can act on a withdrawal, so a collaborator is refused rather than projected.',
+  },
+  {
+    method: 'GET',
+    path: '/api/plugins/command-effects/uncaptured',
+    disposition: 'operator-only',
+    rationale:
+      'Lists outstanding command effects no withdrawal captured, with their `pluginId` and principal. Abandoning one is an operator action, so the list is refused to a collaborator rather than projected.',
+  },
+  {
+    method: 'GET',
     path: '/api/plugins/command-effects/withdrawals/:id',
     disposition: 'operator-only',
     rationale:

@@ -343,6 +343,19 @@ const FACTORY_SPIES = {
   registerPluginCommandEffectRoutes: vi.fn(registerPluginCommandEffectRoutes),
 } as const;
 
+function commandEffectApp(dir: string, principal: PrincipalRef): Hono {
+  const app = new HonoApp();
+  FACTORY_SPIES.registerPluginCommandEffectRoutes(app, {
+    effects: createPluginCommandEffectService({
+      store: new FilePluginCommandEffectStore(dir),
+    }),
+    resolution: { resolvePrincipal: () => principal },
+    isHostedDeployment: () => false,
+    admission: { admit: vi.fn() } as never,
+  });
+  return app;
+}
+
 const DRIVERS: Record<
   string,
   {
@@ -423,6 +436,20 @@ const DRIVERS: Record<
       } as never);
       return { app, path: '/check-updates' };
     },
+  },
+  'GET /api/plugins/command-effects/withdrawals': {
+    driver: FACTORY_SPIES.registerPluginCommandEffectRoutes,
+    mount: (dir, principal) => ({
+      app: commandEffectApp(dir, principal),
+      path: '/command-effects/withdrawals',
+    }),
+  },
+  'GET /api/plugins/command-effects/uncaptured': {
+    driver: FACTORY_SPIES.registerPluginCommandEffectRoutes,
+    mount: (dir, principal) => ({
+      app: commandEffectApp(dir, principal),
+      path: '/command-effects/uncaptured',
+    }),
   },
   'GET /api/plugins/command-effects/withdrawals/:id': {
     driver: FACTORY_SPIES.registerPluginCommandEffectRoutes,
