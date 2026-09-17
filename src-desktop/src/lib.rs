@@ -2464,12 +2464,21 @@ fn cancel_native_http_request(
 pub(crate) fn native_http_agent() -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .max_redirects(0)
-        // SSE bodies are intentionally open-ended. Bound connection and
-        // response-header phases only; cancellation is checked between
-        // bounded body receives below.
+        // SSE bodies are intentionally open-ended, so the body phase must have
+        // NO budget. ureq's `timeout_recv_body` is a TOTAL budget for the whole
+        // body — it starts once the response headers land and is never
+        // restarted per read — so any value here silently ends every
+        // `text/event-stream` response a fixed interval after its headers:
+        // the 1s budget previously configured here killed each SSE connection
+        // exactly 1s after open, pinned the SDK reconnect ladder at its 30s
+        // ceiling, and left every desktop chat showing "Reconnecting…".
+        // Cancellation is still bounded: the cancel flag is checked between
+        // body reads, and an idle SSE delivers its next keepalive frame within
+        // the server's SSE_KEEPALIVE_INTERVAL_MS, so a cancel takes effect at
+        // worst one keepalive later.
         .timeout_connect(Some(Duration::from_secs(15)))
         .timeout_recv_response(Some(Duration::from_secs(20)))
-        .timeout_recv_body(Some(Duration::from_secs(1)))
+        .timeout_recv_body(None)
         .http_status_as_error(false)
         .build();
     #[cfg(target_os = "android")]
@@ -3364,10 +3373,11 @@ fn station_native_pairing_exchange_blocking(
         })?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .max_redirects(0)
+        // `timeout_global` bounds the whole exchange. No `timeout_recv_body`:
+        // it is a TOTAL body budget in ureq (started at headers, never
+        // restarted per read), so a short value fails any slow body read as
+        // `network_unreachable`; the cancel flag below bounds cancellation.
         .timeout_global(Some(Duration::from_secs(20)))
-        // A short receive timeout provides cancellation rendezvous while the
-        // overall 20-second pairing timeout remains unchanged.
-        .timeout_recv_body(Some(Duration::from_secs(1)))
         .http_status_as_error(false)
         .build()
         .into();
@@ -14712,6 +14722,85 @@ mod tests {
         let response = native_http_agent().run(request).unwrap();
 
         assert_eq!(response.status().as_u16(), 401);
+        server.join().unwrap();
+    }
+
+    /// The desktop broker carries every SSE stream (orchestration events, the
+    /// broadcast feed, task rooms, chat). ureq's `timeout_recv_body` is a
+    /// TOTAL budget for the whole body — started once headers land, never
+    /// restarted per read — so a configured value ends every open-ended
+    /// stream a fixed interval after its headers. The 1s budget that used to
+    /// be configured here killed each SSE connection at +1.0s with
+    /// `ErrorKind::Other` ("timeout: receive body"), which the read loop's
+    /// `TimedOut|WouldBlock => continue` guard does not catch: the broker
+    /// reported a transport failure, the client's reconnect ladder pinned at
+    /// its ceiling, and the chat showed "Reconnecting…" nearly continuously.
+    ///
+    /// This test reaches the real seam: a server that writes a frame, goes
+    /// quiet past the old 1s budget, then writes again. The reader must
+    /// survive the quiet window and deliver the LATE frame. Against the old
+    /// config it fails at the quiet window with `timeout: receive body`.
+    #[test]
+    fn native_broker_sse_body_survives_a_quiet_window_past_one_second() {
+        use std::io::Write;
+        use std::net::TcpListener;
+        use std::time::{Duration, Instant};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = socket.read(&mut request).unwrap();
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+            socket.write_all(b"event: orchestration:caughtUp\ndata: {}\n\n").unwrap();
+            socket.flush().unwrap();
+            // Outlive the 1s total body budget the regression configured.
+            std::thread::sleep(Duration::from_millis(1500));
+            socket.write_all(b"event: ping\ndata: \n\n").unwrap();
+            socket.flush().unwrap();
+        });
+        let request = ureq::http::Request::builder()
+            .method("GET")
+            .uri(format!("http://{address}/api/orchestration/events"))
+            .header("accept", "text/event-stream")
+            .body(Vec::<u8>::new())
+            .unwrap();
+
+        let mut response = native_http_agent().run(request).unwrap();
+        assert_eq!(response.status().as_u16(), 200);
+        let mut reader = response.body_mut().as_reader();
+        let started = Instant::now();
+        let mut body = Vec::new();
+        let mut buffer = [0_u8; 16 * 1024];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(read) if read == 0 => break,
+                Ok(read) => body.extend_from_slice(&buffer[..read]),
+                Err(error) => panic!(
+                    "SSE body failed after {:.2}s (the old 1s total budget would fail here): {error}",
+                    started.elapsed().as_secs_f32()
+                ),
+            }
+        }
+        let elapsed = started.elapsed();
+        let body = String::from_utf8_lossy(&body).into_owned();
+        assert!(
+            body.contains("orchestration:caughtUp"),
+            "the initial frame must arrive first"
+        );
+        assert!(
+            body.contains("event: ping"),
+            "the frame written after the quiet window must arrive; got {body:?}"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(1400),
+            "the connection must survive the quiet window; ended after {elapsed:?}"
+        );
         server.join().unwrap();
     }
 
