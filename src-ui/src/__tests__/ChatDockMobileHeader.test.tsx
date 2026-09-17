@@ -176,9 +176,9 @@ describe('mobile conversation focus', () => {
     // The visible title ellipsizes on narrow widths; the full text rides
     // along for hover, long-press, and assistive tech.
     expect(
-      identity.querySelector('.chat-dock__mobile-title-text')?.getAttribute(
-        'title',
-      ),
+      identity
+        .querySelector('.chat-dock__mobile-title-text')
+        ?.getAttribute('title'),
     ).toBe('New chat');
     fireEvent.click(identity);
     expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();

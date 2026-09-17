@@ -190,9 +190,7 @@ describe('NewProjectModal starter layout picker', () => {
   test('the header close button dismisses the modal without creating anything', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Close new project' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close new project' }));
 
     expect(onCloseMock).toHaveBeenCalledTimes(1);
     expect(createProjectMock).not.toHaveBeenCalled();
