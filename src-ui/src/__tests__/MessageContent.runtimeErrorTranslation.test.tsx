@@ -49,8 +49,8 @@ describe('MessageContent projected runtime-error translation (#765 A1)', () => {
     await waitFor(() =>
       expect(container.textContent).toMatch(/engine session was lost/i),
     );
-    // The raw engine text survives as the labeled disclosure, strictly after
-    // the translated headline — never AS the headline.
+    // Details offers the raw engine text; it is not the headline.
+    expect(container.textContent).toContain('Details');
     expect(container.textContent).toContain(RAW_MESSAGE);
     expect(container.textContent!.indexOf(RAW_MESSAGE)).toBeGreaterThan(
       container.textContent!.toLowerCase().indexOf('engine session was lost'),
@@ -95,6 +95,7 @@ test('a failed engine turn preserves its refusal without claiming the session wa
   await waitFor(() =>
     expect(container.textContent).toContain('This turn did not complete'),
   );
+  expect(container.textContent).toContain('Details');
   expect(container.textContent).toContain(message);
   expect(container.textContent).not.toMatch(
     /engine session was lost|fresh engine session|send your message again/i,

@@ -66,7 +66,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-engine-new': {
     eyebrow: 'Connections',
     title: 'Engines',
-    subtitle: 'Agent CLIs installed here, and custom engines you connected.',
+    subtitle: 'Agent CLIs on this Station, and custom engines you connected.',
     width: 'narrow',
   },
   'connections-tools': SPLIT_PANE,

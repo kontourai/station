@@ -1,4 +1,8 @@
+import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
+import { relativeTimeAgo } from '../../utils/relativeTime';
+import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type {
   HomeViewNavigation,
   useHomeViewModel,
@@ -82,12 +86,31 @@ function projectAvailability(count: number): string {
     : 'Choose a working directory';
 }
 
+/** Continue-card subtitle: omit "Model not reported", include Failed + time. */
+export function continueWorkDetail(
+  item: Pick<
+    HomeWorkItem,
+    'kindLabel' | 'agentLabel' | 'modelLabel' | 'lifecycleLabel' | 'updatedAt'
+  >,
+  now = Date.now(),
+): string {
+  const parts = [item.kindLabel, item.agentLabel];
+  if (item.modelLabel && item.modelLabel !== 'Model not reported') {
+    parts.push(item.modelLabel);
+  }
+  if (item.lifecycleLabel === 'Failed') parts.push('Failed');
+  if (item.updatedAt > 0) parts.push(relativeTimeAgo(item.updatedAt, now));
+  return parts.join(' · ');
+}
+
 export function HomeActionSection({
   continuation,
   model,
   onNavigate,
   showPrimary = true,
 }: HomeActionSectionProps) {
+  const profile = usePlatformProfile();
+  const showLocalProject = hasLocalStationForProfile(profile);
   if (model.actionsLoading) {
     return (
       <SkeletonBlock
@@ -104,7 +127,7 @@ export function HomeActionSection({
           className="home-view__action--primary"
           label="Continue most recent work"
           title={model.primaryWorkItem.title}
-          detail={`${model.primaryWorkItem.kindLabel} · ${model.primaryWorkItem.agentLabel} · ${model.primaryWorkItem.modelLabel}`}
+          detail={continueWorkDetail(model.primaryWorkItem)}
           onClick={() => model.continueWork(model.primaryWorkItem!)}
         />
       )}
@@ -124,15 +147,17 @@ export function HomeActionSection({
         detail={model.startIdentity}
         onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}
       />
-      <HomeActionCard
-        label="Open local project"
-        // "This Station", not "this computer": the folder lives on the
-        // Station host, which is a different machine when this UI runs as
-        // a remote client (e.g. the phone app paired to a desktop).
-        title="Add a folder on this Station"
-        detail={projectAvailability(model.projects.length)}
-        onClick={() => onNavigate({ type: 'project-new' })}
-      />
+      {showLocalProject ? (
+        <HomeActionCard
+          label="Open local project"
+          // "This Station", not "this computer": the folder lives on the
+          // Station host, which is a different machine when this UI runs as
+          // a remote client (e.g. the phone app paired to a desktop).
+          title="Add a folder on this Station"
+          detail={projectAvailability(model.projects.length)}
+          onClick={() => onNavigate({ type: 'project-new' })}
+        />
+      ) : null}
       {continuation && (
         <HomeActionCard
           className="home-view__action--quiet"

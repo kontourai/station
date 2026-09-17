@@ -1146,12 +1146,59 @@
   color: white;
 }
 
+.chat-input__chip-stack {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+  line-height: 1.1;
+}
+
+.chat-input__chip-caption {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .chat-input__agent-name,
 .chat-input__model-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-error-details {
+  margin: 8px 0 0;
+  text-align: left;
+  font-style: normal;
+}
+
+.chat-error-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.chat-error-details__raw {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
 }
 
 .chat-controls-row

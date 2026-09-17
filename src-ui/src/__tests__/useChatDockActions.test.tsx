@@ -13,6 +13,7 @@ const {
   setActiveChat,
   setDockState,
   updateChat,
+  isMobile,
 } = vi.hoisted(() => ({
   createChatSession: vi.fn(() => 'new-session'),
   openConversationAction: vi.fn(async () => 'reopened-session'),
@@ -21,6 +22,7 @@ const {
   setActiveChat: vi.fn(),
   setDockState: vi.fn(),
   updateChat: vi.fn(),
+  isMobile: { value: false },
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -40,6 +42,10 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
   useCreateChatSession: () => createChatSession,
   useOpenConversation: () => openConversationAction,
 }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useIsMobile')>();
+  return { ...actual, useIsMobile: () => isMobile.value };
+});
 vi.mock('../utils/execution', () => ({
   // Carries a model, so a test can tell "seeded the agent default" from
   // "seeded nothing" — the mock previously returned no model at all, which
@@ -56,6 +62,7 @@ import { useChatDockActions } from '../hooks/useChatDockActions';
 describe('useChatDockActions placement-aware actions', () => {
   beforeEach(() => {
     lastDockMaximized.value = false;
+    isMobile.value = false;
     createChatSession.mockClear();
     openConversationAction.mockClear();
     removeChat.mockClear();
@@ -91,6 +98,26 @@ describe('useChatDockActions placement-aware actions', () => {
     expect(updateChat).toHaveBeenCalledWith('new-session', {
       input: 'move this message',
     });
+  });
+
+  test('opening a chat on mobile always maximizes the dock', () => {
+    isMobile.value = true;
+    lastDockMaximized.value = false;
+    const setActiveSessionId = vi.fn();
+    const { result } = renderHook(() =>
+      useChatDockActions({
+        sessions: [
+          { id: 'chat-a', conversationId: 'conversation-a', agentSlug: 'a' },
+        ],
+        agents: [],
+        activeSessionId: null,
+        setActiveSessionId,
+      }),
+    );
+
+    act(() => result.current.focusSession('chat-a', true));
+
+    expect(setDockState).toHaveBeenCalledWith(true, true);
   });
 
   test('focuses a full-screen selection without opening the ambient dock', () => {

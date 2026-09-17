@@ -199,6 +199,21 @@ describe('mobile conversation focus', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'New chat' }));
     expect(onNewChat).toHaveBeenCalledOnce();
   });
+  test('chat overflow is chats and dock chrome, not Profile or a second conversation list', async () => {
+    renderHeader();
+    await openActions();
+    expect(screen.getByRole('menuitem', { name: 'Chats' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Profile' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Open conversation' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Session inventory' }),
+    ).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Activity' })).toBeNull();
+  });
   test('keeps project scope and branch context in the sheet', async () => {
     const onClear = renderHeader({ branchLabel: 'feature/chat' });
     await openActions();

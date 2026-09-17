@@ -412,11 +412,9 @@ describe('translateProjectedRuntimeError', () => {
       'engine-session-binding-dead',
     );
     expect(result).toMatch(/engine session was lost/i);
-    // The raw prose survives, demoted to the disclosure section.
-    expect(result).toContain(RAW);
-    expect(result!.indexOf(RAW)).toBeGreaterThan(
-      result!.toLowerCase().indexOf('engine session was lost'),
-    );
+    // Raw host text is offered via Details, not inlined in the card markdown.
+    expect(result).not.toContain(RAW);
+    expect(result).not.toContain('Raw engine message');
   });
 
   it('preserves a repeat-compaction suffix', () => {
@@ -469,35 +467,32 @@ describe('formatChatErrorDisplay', () => {
     expect(rendered).not.toContain('undefined');
   });
 
-  // archive#1827
-  it('appends the raw message as a de-emphasized blockquote when disclosureRaw is set', () => {
-    const rendered = formatChatErrorDisplay(
-      {
-        title: "This conversation's history is gone",
-        body: "Can't reach native session.",
-        hint: 'New chat.',
-        disclosureRaw: true,
-      },
-      'No conversation found with session ID: dead-id',
-    );
+  it('never inlines host stderr in the card markdown', () => {
+    const rendered = formatChatErrorDisplay({
+      title: "This conversation's history is gone",
+      body: "Can't reach native session.",
+      hint: 'New chat.',
+      disclosureRaw: true,
+    });
 
-    expect(rendered).toContain(
-      '> No conversation found with session ID: dead-id',
-    );
-    // The raw text is never the headline: it must appear strictly after
-    // the translated title.
-    expect(rendered.indexOf('dead-id')).toBeGreaterThan(
-      rendered.indexOf("This conversation's history is gone"),
-    );
-  });
-
-  it('never appends a disclosure section when disclosureRaw is unset (every existing translation)', () => {
-    const rendered = formatChatErrorDisplay(
-      { title: 'Error', body: 'Synthetic provider failure' },
-      'Synthetic provider failure',
-    );
-
+    expect(rendered).toContain("This conversation's history is gone");
     expect(rendered).not.toContain('Raw engine message');
     expect(rendered).not.toContain('---');
+  });
+});
+
+describe('engine OAuth / sign-in classification', () => {
+  it('classifies an expired OAuth session as sign-in, not a generic turn failure', () => {
+    const raw =
+      'Failed to authenticate: OAuth session expired and could not be refreshed';
+    const result = translateChatError({
+      code: 'engine-turn-failed',
+      message: raw,
+    });
+    expect(result.title).toMatch(/signed in/i);
+    expect(result.retryable).toBe(false);
+    expect(result.disclosureRaw).toBe(true);
+    expect(result.body).not.toContain(raw);
+    expect(result.hint).not.toMatch(/send again/i);
   });
 });

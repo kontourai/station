@@ -9074,11 +9074,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: block;
 }
 
-.chat-dock__mobile-project-name,
-.chat-dock__mobile-title-text {
+.chat-dock__mobile-project-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-dock__mobile-title-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .chat-dock__mobile-activity.is-active {

@@ -30,6 +30,7 @@ import { Dialog } from '../../components/Dialog';
 import { checkHostCompatibility } from '../../lib/compatibilityLoader';
 import './AddMachineModal.css';
 import { checkServerHealthDetailed } from '../../lib/serverHealth';
+import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { triggerHaptic } from '../../platform/native/haptics';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { SshComputerCreatorDialog } from './SshComputerCreatorDialog';
@@ -112,7 +113,7 @@ export function AddMachineModal({
         }
         initialPanel="pair-host"
         originIsStation={!profile.isTauri}
-        hasLocalStation={!profile.isTauri || !profile.isMobile}
+        hasLocalStation={hasLocalStationForProfile(profile)}
         hostAppName={
           profile.isTauri ? profile.productName || 'Station' : undefined
         }

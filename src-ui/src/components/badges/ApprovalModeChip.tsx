@@ -175,8 +175,13 @@ export function ApprovalModeChip({
         title={`Approval mode: ${selectedLabel}. ${policyDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}
       >
-        <span className="chat-input__approval-chip-label" aria-hidden="true">
-          {chipText}
+        <span className="chat-input__chip-stack">
+          <span className="chat-input__chip-caption" aria-hidden="true">
+            Approval
+          </span>
+          <span className="chat-input__approval-chip-label" aria-hidden="true">
+            {chipText}
+          </span>
         </span>
         <ArrowDownGlyph className="choice-caret" />
       </button>
