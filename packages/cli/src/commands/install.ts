@@ -408,7 +408,10 @@ interface CommandEffectsWithdrawal {
 
 function commandEffectsNote(
   withdrawal: CommandEffectsWithdrawal | undefined,
+  unavailable?: boolean,
 ): string {
+  if (unavailable)
+    return ' Its plugin command effects could not be recorded, so completion cannot be confirmed.';
   if (!withdrawal || withdrawal.status === 'completed') return '';
   const effects =
     withdrawal.outstanding === 1
@@ -426,8 +429,12 @@ export async function remove(
   const result = await pluginRequest<{
     success: boolean;
     commandEffects?: CommandEffectsWithdrawal;
+    commandEffectsUnavailable?: boolean;
   }>(parsed, `/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  const note = commandEffectsNote(result.commandEffects);
+  const note = commandEffectsNote(
+    result.commandEffects,
+    result.commandEffectsUnavailable,
+  );
   console.log(
     note
       ? `✅ Removed ${name} through Station.${note}`
@@ -460,10 +467,14 @@ export async function update(
     success: boolean;
     plugin?: { name?: string; version?: string };
     commandEffects?: CommandEffectsWithdrawal;
+    commandEffectsUnavailable?: boolean;
   }>(parsed, `/${encodeURIComponent(name)}/update`, { method: 'POST' });
   const updatedName = result.plugin?.name ?? name;
   const version = result.plugin?.version ? `@${result.plugin.version}` : '';
-  const note = commandEffectsNote(result.commandEffects);
+  const note = commandEffectsNote(
+    result.commandEffects,
+    result.commandEffectsUnavailable,
+  );
   console.log(
     note
       ? `✅ Updated ${updatedName}${version} through Station.${note}`

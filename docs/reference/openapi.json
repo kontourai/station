@@ -635,6 +635,9 @@
           "200": {
             "description": "Success"
           },
+          "202": {
+            "description": "Installed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
+          },
           "400": {
             "description": "Validation or request error"
           },
@@ -657,6 +660,9 @@
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "202": {
+            "description": "Removed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -752,7 +758,7 @@
             "description": "Success"
           },
           "202": {
-            "description": "Installed over an existing plugin; runtime activation or withdrawn plugin command effects are still winding down"
+            "description": "Installed over an existing plugin; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -844,7 +850,7 @@
             "description": "Success"
           },
           "202": {
-            "description": "Recovery accepted; runtime activation is still pending"
+            "description": "Recovery accepted; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -883,7 +889,7 @@
             "description": "Success"
           },
           "202": {
-            "description": "Updated; runtime activation or withdrawn plugin command effects are still winding down"
+            "description": "Updated; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -919,7 +925,7 @@
             "description": "Success"
           },
           "202": {
-            "description": "Removed; runtime activation or withdrawn plugin command effects are still winding down"
+            "description": "Removed; runtime activation, withdrawn plugin command effects still winding down, or a withdrawal that could not be recorded (commandEffectsUnavailable)"
           },
           "400": {
             "description": "Validation or request error"
@@ -961,7 +967,7 @@
             "description": "The plugin is absent or not visible to the caller"
           },
           "409": {
-            "description": "Refused: changed generation, undeclared or unavailable command, unmet requirement, capacity, or a cancelled request"
+            "description": "Refused: expired request, changed generation, undeclared or unavailable command, unmet requirement, capacity, or a cancelled or conflicting request"
           },
           "500": {
             "description": "Server error"
@@ -1010,6 +1016,100 @@
           }
         }
       }
+    },
+    "/api/plugins/command-effects/withdrawals": {
+      "get": {
+        "operationId": "listPluginCommandWithdrawals",
+        "summary": "List open plugin command withdrawals, then the most recent closed ones (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can read withdrawals"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      }
+    },
+    "/api/plugins/command-effects/uncaptured": {
+      "get": {
+        "operationId": "listUncapturedPluginCommandEffects",
+        "summary": "List outstanding plugin command effects no withdrawal captured (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can read outstanding effects"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      }
+    },
+    "/api/plugins/command-effects/effects/{effectId}/abandon": {
+      "post": {
+        "operationId": "abandonPluginCommandEffect",
+        "summary": "Abandon an aged outstanding effect no withdrawal captured (operator only)",
+        "tags": [
+          "plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Validation or request error"
+          },
+          "403": {
+            "description": "Only the Station operator can abandon effects"
+          },
+          "404": {
+            "description": "Outstanding effect not found"
+          },
+          "409": {
+            "description": "The effect is captured by a withdrawal (resolve it instead) or is still too recent"
+          },
+          "500": {
+            "description": "Server error"
+          },
+          "503": {
+            "description": "Plugin command effects are unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "effectId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
     },
     "/api/plugins/command-effects/withdrawals/{id}": {
       "get": {
