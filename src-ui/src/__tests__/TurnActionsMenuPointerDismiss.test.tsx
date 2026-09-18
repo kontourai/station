@@ -6,13 +6,15 @@
  * #2081, the per-turn half: the answer's `…` menu could not be closed by
  * pressing the control that opened it.
  *
- * This menu is not portalled — the issue frames the defect as a consequence of
- * portalling, and that is not the condition. The condition is that the TRIGGER
- * IS NOT INSIDE THE MENU CONTAINER, which is just as true of a sibling
- * (`TurnActionsMenu.tsx:33-43` beside `:46-91`) as of a portal. So pressing the
- * trigger moves focus out of the container, `useMenuFocus` dismisses on that
- * `focusout`, React flushes it, and the trigger's own click reads the
- * already-false `open` and re-opens the menu it was pressed to dismiss.
+ * The menu is portalled to `document.body` (it opens from inside a message
+ * bubble, whose side-mode `overflow` clipping cut it off), but portalling was
+ * never the condition of the defect — the condition is that the TRIGGER IS
+ * NOT INSIDE THE MENU CONTAINER, which is just as true of a sibling
+ * (`TurnActionsMenu.tsx`, trigger beside the portalled menu) as of a portal.
+ * So pressing the trigger moves focus out of the container, `useMenuFocus`
+ * dismisses on that `focusout`, React flushes it, and the trigger's own click
+ * reads the already-false `open` and re-opens the menu it was pressed to
+ * dismiss.
  *
  * Unlike the header's other menus this one has no dismiss backdrop over the
  * viewport, so the trigger really is pressable while the menu is open — see the
