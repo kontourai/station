@@ -72,26 +72,50 @@ export function anchorIsWithinClip(
 
 const MAX_SUGGESTIONS = 8;
 
+/** Windows drive-rooted values (`D:\…`, `D:/…`) browse like `~` and `/` do;
+ * a bare `D:` is drive-RELATIVE and never gets suggestions. `\\` is the
+ * server's Windows drive-listing level. */
+const WINDOWS_DRIVE_PATH = /^[A-Za-z]:[\\/]/;
+
+function isBrowsablePathValue(value: string): boolean {
+  return (
+    value.startsWith('/') ||
+    value.startsWith('~') ||
+    value === '\\' ||
+    WINDOWS_DRIVE_PATH.test(value)
+  );
+}
+
+/** A browse candidate that parsed down to a bare drive letter is
+ * drive-RELATIVE (the process cwd on that drive) — promote it to the drive
+ * root before it becomes a request. */
+function normalizeBrowseCandidate(candidate: string): string {
+  if (candidate === '') return '/';
+  if (candidate === '~') return '~';
+  if (/^[A-Za-z]:$/.test(candidate)) return `${candidate}\\`;
+  return candidate;
+}
+
 function resolveBrowsePath(value: string): string | undefined {
-  const shouldSuggest = value.startsWith('/') || value.startsWith('~');
-  if (!shouldSuggest) return undefined;
+  if (!isBrowsablePathValue(value)) return undefined;
 
-  if (value === '~') return '~';
-  if (value === '/') return '/';
+  if (value === '~' || value === '/' || value === '\\') return value;
 
-  const endsWithSlash = value.endsWith('/');
-  if (endsWithSlash) {
-    return value === '/' ? '/' : value.replace(/\/$/, '');
+  if (/[\\/]$/.test(value)) {
+    return normalizeBrowseCandidate(value.replace(/[\\/]+$/, ''));
   }
 
-  const lastSlash = value.lastIndexOf('/');
-  if (value.startsWith('~/') && lastSlash === 1) {
+  const lastSeparator = Math.max(
+    value.lastIndexOf('/'),
+    value.lastIndexOf('\\'),
+  );
+  if (value.startsWith('~/') && lastSeparator === 1) {
     return '~';
   }
-  if (lastSlash <= 0) {
+  if (lastSeparator <= 0) {
     return value.startsWith('~') ? '~' : '/';
   }
-  return value.substring(0, lastSlash);
+  return normalizeBrowseCandidate(value.substring(0, lastSeparator));
 }
 
 function buildSuggestionPath(basePath: string, entryName: string): string {
@@ -101,17 +125,28 @@ function buildSuggestionPath(basePath: string, entryName: string): string {
   if (basePath === '~') {
     return `~/${entryName}`;
   }
-  return `${basePath.replace(/\/$/, '')}/${entryName}`;
+  return `${basePath.replace(/[\\/]$/, '')}/${entryName}`;
 }
 
 function normalizePathValue(value: string): string {
-  if (value === '/' || value === '~') return value;
-  return value.replace(/\/+$/, '');
+  if (value === '/' || value === '~' || value === '\\') return value;
+  // A drive root with its separator (`D:\`, `D:/`) is already a root;
+  // stripping the separator would corrupt it into drive-relative `D:`.
+  if (/^[A-Za-z]:[\\/]+$/.test(value)) return value;
+  return value.replace(/[\\/]+$/, '');
 }
 
 function getPathLabel(path: string): string {
-  if (path === '/' || path === '~') return path;
-  return path.split('/').filter(Boolean).pop() ?? path;
+  if (path === '/' || path === '~' || path === '\\') return path;
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+/** Picked suggestions keep a trailing separator so typing continues inside
+ * them — the separator the picked path itself uses, so a Windows path stays
+ * backslash-canonical and a drive root (`C:\`) does not double up. */
+function withTrailingSeparator(path: string): string {
+  if (/[\\/]$/.test(path)) return path;
+  return `${path}${path.includes('\\') ? '\\' : '/'}`;
 }
 
 export function PathAutocomplete({
@@ -173,15 +208,19 @@ export function PathAutocomplete({
     if (autoFocus) inputRef.current?.focus();
   }, [autoFocus]);
 
-  const shouldSuggest = value.startsWith('/') || value.startsWith('~');
-  const endsWithSlash = value.endsWith('/');
+  const shouldSuggest = isBrowsablePathValue(value);
+  const endsWithSlash = /[\\/]$/.test(value);
   const browsePath = resolveBrowsePath(value);
   const normalizedValue = normalizePathValue(value);
   const prefix = !shouldSuggest
     ? ''
     : endsWithSlash
       ? ''
-      : value.substring(value.lastIndexOf('/') + 1).toLowerCase();
+      : value
+          .substring(
+            Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\')) + 1,
+          )
+          .toLowerCase();
 
   const { data } = useFileSystemBrowseQuery(browsePath, {
     enabled: shouldSuggest,
@@ -224,7 +263,10 @@ export function PathAutocomplete({
       // but never `.codex`/`.claude`, which only *contain* "de".
       if (prefix && !entry.name.toLowerCase().startsWith(prefix)) continue;
 
-      const path = buildSuggestionPath(browsePath, entry.name);
+      // Prefer the server's own canonical path for the entry (Windows
+      // listings are backslash-canonical; drive entries carry their root);
+      // the local join is the older-server fallback.
+      const path = entry.path ?? buildSuggestionPath(browsePath, entry.name);
       if (seen.has(path)) continue;
       seen.add(path);
       items.push({
@@ -371,7 +413,7 @@ export function PathAutocomplete({
 
   const pick = (path: string) => {
     pickingRef.current = true;
-    onChange(`${path}/`);
+    onChange(withTrailingSeparator(path));
     setUserDismissed(false);
     setActive(true);
     inputRef.current?.focus();
@@ -395,7 +437,7 @@ export function PathAutocomplete({
   };
 
   const handleBrowserSelect = (path: string) => {
-    onChange(`${path}/`);
+    onChange(withTrailingSeparator(path));
     setUserDismissed(false);
     setActive(true);
   };
