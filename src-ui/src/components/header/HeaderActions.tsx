@@ -20,7 +20,7 @@ import {
 } from '../../lib/serverHealth';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { useBundledServerStatus } from '../../platform/useBundledServerStatus';
-import { BellGlyph, SettingsGlyph } from '../icons/Glyph';
+import { BellGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { HeaderHelpPrompt } from './utils';
 
@@ -306,9 +306,10 @@ export function HeaderActions({
   //   an identity to fall back on: the collapsed form promises "Connected ·
   //     <name>" in its tooltip and accessible name, so it is only taken when
   //     there is a name to put there.
-  // The mobile breakpoint already rendered `connected` dot-only (chat.css,
-  // archive#3311); this is the same rule, now that the desktop row has the
-  // same problem.
+  // The mobile breakpoint renders every state dot-only (chat.css) — the
+  // banner layer announces the states that need a decision there, and the
+  // drawer footer owns Settings, so the row holds no text and no gear;
+  // this is the same rule, now that the desktop row has the same problem.
   const compactConn =
     connState === 'connected' &&
     (connections ?? []).length <= 1 &&
@@ -437,9 +438,9 @@ export function HeaderActions({
                (chat.css) is a FLOOR, not a ceiling: measured in a real
                Chromium page with the real stylesheets, the badge renders 18px
                at one digit, 23.91px at "99", 28.59px at three digits and
-               35.58px at four — and every pixel past 18 pushes `Open settings`
-               closer to the viewport edge, which is the whole subject of
-               #1132. Capping bounds it at the two-character worst case
+               35.58px at four — and every pixel past 18 pushes the trailing
+               controls closer to the viewport edge, which is the whole subject
+               of #1132. Capping bounds it at the two-character worst case
                ("9+" measures 23.80px, just inside "99"), which is what makes
                the breakpoint in chat.css a derived bound rather than an
                assumption about how many notifications a person has.
@@ -555,21 +556,12 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* Phone only since #1552 D1 — see `.app-toolbar__action--compact-only` in
-          chat.css for why the fine-pointer row can drop it and a phone cannot:
-          the avatar that carries the Settings row is itself `--secondary` there,
-          so a phone has no avatar menu, and this gear is its route. */}
-      <div className="app-toolbar__action--compact-only">
-        <button
-          type="button"
-          className={`app-toolbar__icon-btn ${currentViewType === 'settings' ? 'is-active' : ''}`}
-          onClick={onToggleSettings}
-          title={`Settings (${settingsShortcut})`}
-          aria-label="Open settings"
-        >
-          <SettingsGlyph />
-        </button>
-      </div>
+      {/* No phone-only Settings gear: Settings lives in the sidebar drawer's
+          footer (`ProjectSidebarFooter`), which the hamburger beside the brand
+          opens on every viewport — so a phone reaches it in two taps without
+          spending a permanent slot in the row that runs out of width first.
+          `onToggleSettings` stays a prop because the desktop avatar menu's
+          Settings row still dispatches through it. */}
     </div>
   );
 }

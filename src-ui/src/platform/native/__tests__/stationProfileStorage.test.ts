@@ -1967,4 +1967,25 @@ describe('NativeStationProfileStorage', () => {
       environmentId: 'environment-confirmed',
     });
   });
+
+  describe('hasSavedProfiles', () => {
+    it('is false before hydration and true once a store with profiles loads', async () => {
+      const { storage } = storageWithProfileStore();
+      expect(storage.hasSavedProfiles()).toBe(false);
+      await storage.hydrate();
+      expect(storage.hasSavedProfiles()).toBe(true);
+    });
+
+    it('stays false for a hydrated store with no profiles', async () => {
+      const { storage } = storageWithProfileStore({
+        schemaVersion: 1,
+        revision: 0,
+        defaultProfile: null,
+        projectProfiles: {},
+        profiles: [],
+      });
+      await storage.hydrate();
+      expect(storage.hasSavedProfiles()).toBe(false);
+    });
+  });
 });

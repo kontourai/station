@@ -331,23 +331,6 @@
   color: var(--text-primary);
 }
 
-/* The inverse of `.app-toolbar__action--secondary`: a control the MOBILE toolbar
- * keeps and the fine-pointer row does not.
- *
- * #1552 D1 moves "Open settings" and "Ask Station for help" into the avatar
- * menu, leaving four controls on the right. It cannot do the same on a phone:
- * the avatar itself is `--secondary` there (archive#3311 demoted it into the `⋯`
- * menu to free the slot the connection chip took), so an avatar menu is not a
- * route a phone has — and `tests/toolbar-reachability.spec.ts` requires "Open
- * settings" in the phone toolbar's measured inventory, because on that surface
- * the gear IS the route. Help already lives in the `⋯` menu; Settings does not,
- * and putting it there as well would give a phone two routes to the same view
- * while removing none.
- */
-.app-toolbar__action--compact-only {
-  display: none;
-}
-
 .app-toolbar__icon-btn.is-active {
   color: var(--accent-primary);
 }
@@ -1717,11 +1700,6 @@
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
     display: none;
   }
-  /* Doubled for the same reason as the rule above it: a single class ties with
-     the base rule and source order would decide. */
-  .app-toolbar__action--compact-only.app-toolbar__action--compact-only {
-    display: flex;
-  }
   .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
     display: flex;
   }
@@ -1732,89 +1710,46 @@
     /* station#1401: the 44px above is a FLOOR, so every glyph-only control
        carrying this class is 44 whatever its padding — trimming theirs changes
        nothing, in this row or in the chat dock's mobile header, which uses the
-       same class for three glyph buttons. The two content-sized members are
-       what this reclaims from: the toolbar's labelled connection chip and its
-       notifications button when it carries a badge. Measured below, both give
-       back 4px each. The vertical 6px -> 4px is inert for the same reason
+       same class for three glyph buttons. The content-sized member this
+       reclaims from is the notifications button when it carries a badge: the
+       connection chip is dot-only here (see below), so its width is already
+       the floor. The vertical 6px -> 4px is inert for the same reason
        `min-height` floors it, and the dock's own connection chip overrides
        padding entirely (`index.css`, `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
   .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
-    display: none;
-  }
-  /* The parts those separators lead into are gone here, and `:has()` cannot
-     see `display: none` — so without this the state would print a trailing
-     "· " with nothing after it: the same defect facing the other way. The
-     selectors mirror the base rule's exactly: a media query adds no
-     specificity, and `:has(+ …)` outweighs a bare class, so a shorter
-     selector here would silently lose. `index.css` carries the same
-     breakpoint and the same `display: none`; this file owns the separators,
-     and it cascades after that one (station#3766). */
-  .app-toolbar__conn-state:has(+ .app-toolbar__conn-name)::after,
-  .app-toolbar__conn-state:has(+ .app-toolbar__conn-note)::after,
-  .app-toolbar__conn-name:has(+ .app-toolbar__conn-note)::after {
-    content: none;
-  }
-  /* archive#3311: the toolbar chip stays compact on mobile — dot only while
-     healthy; the state text appears exactly when it carries news
-     (reconnecting / disconnected / credential required). `idle` stays
-     dot-only too, and that is not a guess about the health status: the chip
-     carries `--idle` only when `hasRealSavedConnection` is false AND nothing
-     is blocked, failed, or connected — a strict subset of the condition that
-     renders MobileConnectionBanner (OnboardingGate). So this suppresses the
-     toolbar copy only where the banner is already announcing it, and every
-     news-carrying state keeps its text. */
-  .app-toolbar__conn--connected .app-toolbar__conn-state,
-  .app-toolbar__conn--idle .app-toolbar__conn-state {
-    display: none;
-  }
-  /* The state text that DOES survive here sits in a `flex-shrink: 0` cluster
-     beside three 44px controls, so its width is the one thing here that can
-     grow the cluster. Bounded, like the identity beside it. Measured, not
-     assumed: station#4512 review (L3) re-checked this against the reserved
-     116px `min-width` above — "Credential required" was never a string this
-     chip actually shows (`connStateLabel` in `HeaderActions.tsx` has no such
-     value; this comment predated a rename). The longest copy TODAY is
-     "Awaiting approval" at ~102px (measured the same way as the min-width
-     reservation: real Chromium, the app's self-hosted DM Sans, this exact
-     font-size/weight, at a 320px viewport), comfortably inside this 120px
-     ceiling — this remains a bound on a string that a larger text scale, a
-     translation, or a new state could grow, not a fix for an overflow that
-     reproduces today. */
-  /* #1401: the 116px reservation above buys nothing HERE and costs the
-     Settings control. It exists (station#4474) so siblings hold still as the
-     chip flips state — but that contract is already defeated at this
-     breakpoint by the rule directly above: `connected`/`idle` hide the label
-     entirely, so a connect/disconnect shifts every sibling by ~31px whatever
-     this reserves. What it does buy is 37px of permanent width in a row that
-     does not have it. Measured on a real phone-width page in the
-     `error` state ("Can't connect", 79px natural): the toolbar's content is
-     viewport-independent (`.app-toolbar__actions` is `flex-shrink: 0` and the
-     brand has already bottomed out), so Settings sat at x=377..421 at EVERY
-     width — outside a 412px Pixel 7 by 9px, and outside its own centre on
-     anything narrower than 399px, which made it unreachable rather than
-     merely clipped. Releasing the reservation moves it to x=340..384: fully
-     inside 390, 402 and 412. Below ~386px it is still clipped — the row is
-     over-subscribed at those widths and that needs a control to leave it, not
-     a width tweak (#1401). The `max-width` below still bounds a label that a
-     larger text scale or a new state could grow. */
+  .app-toolbar__conn-note,
   .app-toolbar__conn-state {
-    min-width: 0;
-    /* Derived from the row, not chosen: at 390px the left side (hamburger,
-       logo, brand at its floor, gaps) ends at x=126 and this cluster carries
-       three further 44px controls plus three 4px gaps = 144, leaving 120px
-       for the whole chip. The chip's own furniture (button padding, the 7px
-       dot, its gap) measures 35px, so the label gets 85. "Can't connect"
-       (79px) still renders in full; the two longest — "Needs re-pairing" and
-       "Awaiting approval", which archive#4512 added and which are what the
-       120px ceiling below was actually sized for — ellipsize by a few
-       characters rather than pushing Settings off the screen. */
-    max-width: 85px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: none;
   }
+  /* The toolbar chip is dot-only in EVERY state on mobile — not just
+     `connected`/`idle` (archive#3311's old rule). Every state that needs a
+     decision already announces itself in the banner layer with its remedy
+     beside it (credential, pairing-failure, pending-approval, offline
+     decision banners), so the chip's text restated the banner's sentence in
+     the row that runs out of width first. The words are not gone: they stay
+     in the chip's accessible name and desktop tooltip, and the dot keeps
+     carrying the state by shape (`ConnectionStatusDot`).
+     *
+     * DISCLOSED TRADEOFF (reverses archive#3297's carrier for one case):
+     * transient reachability — a failing probe that is not a decision —
+     * deliberately banners nothing, so there the dot is the only visible
+     * signal and the remedy (tap the chip, which rechecks and opens
+     * Stations) is discoverable only by tapping. That is the price of the
+     * uncluttered row; the dot's alert shape plus the tap target is what
+     * remains of it.
+     *
+     * With no label in any state, the old label rules retired with it:
+     * the 85px `max-width` bound (#1401/#1424), the `:has()` separator
+     * suppressions (a `::after` on a `display: none` element renders
+     * nothing), and the 374px label-drop breakpoint (#1132). The chip is a
+     * fixed 44px touch target now, so there is no label width left to bound
+     * and no reflow left for the chip to cause at this breakpoint —
+     * station#4474's contract holds here by construction rather than by
+     * reservation. `index.css` carries the same breakpoint and the same
+     * `display: none` for the identity; this file owns the chip's own text
+     * (station#3766). */
 
   .composer-popover-overlay {
     justify-content: stretch;

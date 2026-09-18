@@ -14,6 +14,7 @@ import {
   subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
+import { primeNativeNotifications } from '../platform/native/notify';
 import { ElapsedWait } from './ElapsedWait';
 import { LazyBoundary } from './LazyBoundary';
 import { SkeletonBlock } from './state';
@@ -99,6 +100,10 @@ export function LocalUiSessionGate({
     void pairingRecheck.current.then(setResolution).finally(() => {
       pairingRecheck.current = null;
     });
+    // First usable session in this browser: the moment the boot-time prime
+    // skips on a fresh device (see PlatformProfileContext). Idempotent, so a
+    // boot prime makes this a no-op.
+    void primeNativeNotifications();
   }, [apiBase]);
 
   if (!resolution) {

@@ -12,6 +12,7 @@ const profileStorage = vi.hoisted(() => ({
     lifecycle.push('authorize');
     return true;
   }),
+  hasSavedProfiles: vi.fn(() => true),
 }));
 
 vi.mock('../native', () => ({
