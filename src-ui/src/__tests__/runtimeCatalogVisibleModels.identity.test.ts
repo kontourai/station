@@ -39,6 +39,20 @@ describe('runtimeCatalogVisibleModels identity passthrough', () => {
     );
   });
 
+  test('a live catalog does not fall through to built-in models', () => {
+    const models = runtimeCatalogVisibleModels({
+      ...connection([]),
+      runtimeCatalog: {
+        source: 'live',
+        models: [],
+        builtInModels: [
+          { id: 'gpt-5.6-sol', name: 'GPT-5.6-Sol', originalId: 'gpt-5.6-sol' },
+        ],
+      },
+    } as never);
+    expect(models).toEqual([]);
+  });
+
   test('drops a malformed identity rather than trusting its shape', () => {
     for (const malformed of [
       'anthropic:x',

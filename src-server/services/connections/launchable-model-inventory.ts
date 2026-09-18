@@ -20,6 +20,7 @@ import type {
   LLMExecutionIdentity,
   LLMModel,
 } from '../../providers/llm/model-provider-types.js';
+import { visibleRuntimeCatalogModels } from './connection-service-helpers.js';
 
 export interface ModelConnectionInventorySource {
   connection: ConnectionConfig & { kind: 'model' };
@@ -201,12 +202,7 @@ function runtimeModels(connection: AgentConnectionView): {
   if (!catalog || catalog.source === 'none') {
     return null;
   }
-  const models =
-    catalog.source === 'live'
-      ? catalog.models
-      : catalog.models.length > 0
-        ? catalog.models
-        : catalog.builtInModels;
+  const models = visibleRuntimeCatalogModels(catalog);
   return {
     freshness: catalog.source,
     observedAt: catalog.fetchedAt ?? null,

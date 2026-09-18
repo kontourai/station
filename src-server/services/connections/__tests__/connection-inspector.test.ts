@@ -174,7 +174,7 @@ describe('ConnectionInspector Interface', () => {
     expect(listModels).toHaveBeenCalledOnce();
   });
 
-  test('reports partial stale provenance when live catalog fails and built-ins remain', async () => {
+  test('does not invent a built-in catalog when Codex live discovery fails', async () => {
     const subject = inspector({
       provider: 'codex',
       metadata: {
@@ -193,11 +193,16 @@ describe('ConnectionInspector Interface', () => {
       subject.inspect({ kind: 'runtime-capability-inventory' }),
     ).resolves.toMatchObject({
       kind: 'inspected',
-      freshness: 'stale',
-      provenance: 'adapter-and-built-in',
+      freshness: 'unknown',
+      provenance: 'adapter-observation',
       connections: [
         expect.objectContaining({
-          runtimeCatalog: expect.objectContaining({ source: 'built-in' }),
+          runtimeCatalog: expect.objectContaining({
+            source: 'none',
+            models: [],
+            builtInModels: [],
+            reason: 'Live runtime model discovery failed.',
+          }),
         }),
       ],
     });
@@ -579,7 +584,7 @@ describe('ConnectionInspector Interface', () => {
     });
   });
 
-  test('keeps an authoritative live-empty catalog distinct from built-in fallback', async () => {
+  test('keeps an authoritative live-empty catalog empty instead of a dated snapshot', async () => {
     const liveEmpty = inspector(
       adapter('codex', {
         metadata: { knownModels: [{ id: 'fallback', name: 'Fallback' }] },
@@ -594,9 +599,7 @@ describe('ConnectionInspector Interface', () => {
           runtimeCatalog: expect.objectContaining({
             source: 'live',
             models: [],
-            builtInModels: expect.arrayContaining([
-              expect.objectContaining({ id: 'gpt-5.6-sol' }),
-            ]),
+            builtInModels: [],
           }),
         }),
       ],
