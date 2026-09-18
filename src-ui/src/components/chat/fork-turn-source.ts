@@ -39,3 +39,20 @@ export function forkTurnSource(
     model,
   };
 }
+
+/**
+ * #2216: a user row can fork from the nearest preceding completed assistant
+ * turn. Failed assistant rows are not eligible, so this walks past them.
+ */
+export function precedingForkSource(
+  messages: readonly ChatMessage[],
+  userIndex: number,
+): ForkTurnSource | null {
+  for (let index = userIndex - 1; index >= 0; index -= 1) {
+    const candidate = messages[index];
+    if (candidate?.role !== 'assistant') continue;
+    const source = forkTurnSource(candidate);
+    if (source) return source;
+  }
+  return null;
+}

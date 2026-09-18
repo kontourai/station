@@ -917,6 +917,13 @@ export function ChatDockBody({
             owner,
             accountableHuman,
             onForkFromTurn: forkFromTurn,
+            onNewChatFromMessage: onNewChat
+              ? (text: string) => {
+                  void Promise.resolve(onNewChat(text)).catch(
+                    surfaceRecoveryFailure,
+                  );
+                }
+              : undefined,
             // The dock's header gear opens ChatSettingsPanel, which carries the
             // Summarize entry point (#3310).
             hasSettingsEntryPoint: true,
