@@ -305,7 +305,9 @@ describe('PathAutocomplete', () => {
         path: 'C:\\',
         parent: '\\',
         selectable: true,
-        entries: [{ name: 'Projects', isDirectory: true, path: 'C:\\Projects' }],
+        entries: [
+          { name: 'Projects', isDirectory: true, path: 'C:\\Projects' },
+        ],
       },
     });
     const onChange = vi.fn();
