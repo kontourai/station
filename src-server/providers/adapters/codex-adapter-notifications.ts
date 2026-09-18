@@ -17,7 +17,7 @@ import {
   mapTurnFinishReason,
 } from './codex-adapter-events.js';
 import type { CodexSessionRecord } from './codex-adapter-types.js';
-import { projectCodexToolOutput } from './codex-tool-output.js';
+import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
@@ -228,7 +228,7 @@ export function handleCodexNotification(
         extractString(notification.params.delta) ??
         extractString(notification.params.message);
       if (!turnId || !itemId || !message) return;
-      const preview = projectCodexToolOutput(message);
+      const preview = projectBoundedToolOutput(message);
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -449,7 +449,7 @@ function handleCodexItemCompleted(
   if (!turnId || !itemId) return;
   const toolName = record.toolNames.get(itemId);
   if (!toolName || !record.openToolCalls.has(itemId)) return;
-  const preview = projectCodexToolOutput(deriveToolOutput(params.item));
+  const preview = projectBoundedToolOutput(deriveToolOutput(params.item));
   record.openToolCalls.delete(itemId);
   publish({
     eventId: crypto.randomUUID(),

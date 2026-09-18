@@ -150,6 +150,98 @@ describe('AttachedSessionFollowService', () => {
     expect(resolveAttachedSessionPollInterval('120000')).toBe(60_000);
   });
 
+  // station#2210: one deterministically un-ingestable event used to abort the
+  // poll with an unhandled rejection (~42k in a day on the live desktop
+  // instance), while the cursor sat wedged before the event — so every later
+  // poll re-emitted it into the same wall. The skip must be identified, the
+  // tail must stay alive, and the cursor must advance.
+  test('skips a deterministically un-ingestable event and keeps the tail alive', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({ sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [
+            event('oversized-1', 'x'.repeat(70_000)),
+            event('after-oversized', 'later'),
+          ],
+          cursor: 40,
+        })
+        .mockResolvedValueOnce({ outcome: 'ok', events: [], cursor: 40 }),
+    };
+    const logger = { warn: vi.fn() };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    // The poll RESOLVES — before the fix the rejection escaped pollNow.
+    await expect(service.pollNow()).resolves.toBeUndefined();
+
+    const persisted = store
+      .listEvents(session.threadId)
+      .map((item) => item.id);
+    // The tail survived…
+    expect(persisted).toContain('after-oversized');
+    // …the un-ingestable event did not pretend to be stored…
+    expect(persisted).not.toContain('oversized-1');
+    // …and the skip names its subject.
+    const skip = logger.warn.mock.calls.find(
+      ([message]) =>
+        message ===
+        'Attached-session event cannot be persisted; skipping it and advancing',
+    );
+    expect(skip?.[1]).toMatchObject({
+      eventId: 'oversized-1',
+      method: 'content.text-delta',
+      threadId: session.threadId,
+    });
+
+    // The cursor advanced past the skipped event: the next poll re-reads
+    // with it, imports nothing new, and still resolves.
+    await expect(service.pollNow()).resolves.toBeUndefined();
+    expect(source.read).toHaveBeenLastCalledWith(session, 40);
+  });
+
+  test('still surfaces a non-ingress append failure as a poll rejection', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({ sessions: [session] }),
+      read: vi.fn().mockResolvedValueOnce({
+        outcome: 'ok',
+        events: [event('event-1')],
+        cursor: 40,
+      }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+    const append = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation(() => {
+        throw new Error('disk full');
+      });
+
+    // Only a DETERMINISTIC ingress rejection is skipped; anything else keeps
+    // failing the poll loudly.
+    await expect(service.pollNow()).rejects.toThrow('disk full');
+    append.mockRestore();
+  });
+
   test('rejects duplicate registered source implementations', () => {
     const source: AttachedSessionSource = {
       provider: 'claude',

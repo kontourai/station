@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { projectSessionLifecycle } from '../../../services/orchestration/session-lifecycle-service.js';
+import { MAX_EVENT_STORE_INGRESS_BYTES } from '../../../services/orchestration/event-store.js';
 import { ClaudeTranscriptSessionSource } from '../claude-transcript-session-source.js';
 
 const dirs: string[] = [];
@@ -1121,5 +1122,186 @@ describe('ClaudeTranscriptSessionSource', () => {
     const [session] = (await source.discover()).sessions;
     await source.read(session);
     expect(yields).toBe(0);
+  });
+
+  // station#2210: transcript records carry engine-written data of unbounded
+  // size, and every mapped event must survive EventStore's 64 KiB ingress
+  // ceiling. One oversized `tool.completed` output used to fail ingestion on
+  // every 2s poll — ~42k unhandled rejections a day — while its cursor sat
+  // wedged before the event forever. Each test below feeds a fixture that
+  // crosses the ceiling and asserts the mapped events BOTH stay honest about
+  // what was bounded AND serialize under the ceiling.
+  describe('oversized transcript content maps to ingestable events (station#2210)', () => {
+    const OVERSIZED = 'x'.repeat(70_000);
+
+    function expectUnderIngressCeiling(
+      events: ReturnType<ClaudeTranscriptSessionSource['read']> extends Promise<
+        infer R
+      >
+        ? R extends { events: infer E }
+          ? E
+          : never
+        : never,
+    ): void {
+      for (const event of events) {
+        const serialized = JSON.stringify(event).length;
+        expect(serialized).toBeLessThan(MAX_EVENT_STORE_INGRESS_BYTES);
+      }
+    }
+
+    test('bounds an oversized tool_result output with an explicit receipt', async () => {
+      const root = fixtureDir();
+      const directory = join(root, 'projects', 'project');
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'session-a.jsonl'),
+        [
+          {
+            type: 'user',
+            uuid: 'tool-result-1',
+            sessionId: 'session-a',
+            cwd: '/workspace/project',
+            timestamp: '2026-09-17T00:00:00.000Z',
+            message: {
+              content: [
+                { type: 'tool_result', tool_use_id: 'tool-1', content: OVERSIZED },
+              ],
+            },
+          },
+        ]
+          .map(record)
+          .join(''),
+      );
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+
+      const result = await source.read(session);
+      expectUnderIngressCeiling(result.events);
+
+      const completed = result.events.find(
+        (event) => event.method === 'tool.completed',
+      );
+      expect(completed).toBeTruthy();
+      expect((completed as { output?: string }).output).toHaveLength(2000);
+      const receipt = (completed as { outputReceipt?: { truncated: boolean } })
+        .outputReceipt;
+      expect(receipt?.truncated).toBe(true);
+    });
+
+    test('bounds oversized tool_use arguments and announces the bound as a warning', async () => {
+      const root = fixtureDir();
+      const directory = join(root, 'projects', 'project');
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'session-a.jsonl'),
+        [
+          {
+            type: 'assistant',
+            uuid: 'assistant-1',
+            sessionId: 'session-a',
+            cwd: '/workspace/project',
+            timestamp: '2026-09-17T00:00:00.000Z',
+            message: {
+              content: [
+                {
+                  type: 'tool_use',
+                  id: 'tool-1',
+                  name: 'Write',
+                  input: { content: OVERSIZED },
+                },
+              ],
+            },
+          },
+        ]
+          .map(record)
+          .join(''),
+      );
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+
+      const result = await source.read(session);
+      expectUnderIngressCeiling(result.events);
+
+      const started = result.events.find(
+        (event) => event.method === 'tool.started',
+      ) as { arguments?: { content?: string } } | undefined;
+      expect(started).toBeTruthy();
+      expect(
+        (started?.arguments?.content ?? '').length,
+      ).toBeLessThan(OVERSIZED.length);
+      const warning = result.events.find(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          (event as { code?: string }).code ===
+            'external_tool_arguments_bounded',
+      ) as { details?: { receipt?: { truncated?: boolean } } } | undefined;
+      expect(warning?.details?.receipt?.truncated).toBe(true);
+    });
+
+    test('chunks an oversized assistant message instead of truncating it', async () => {
+      const root = fixtureDir();
+      const directory = join(root, 'projects', 'project');
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'session-a.jsonl'),
+        [
+          {
+            type: 'assistant',
+            uuid: 'assistant-1',
+            sessionId: 'session-a',
+            cwd: '/workspace/project',
+            timestamp: '2026-09-17T00:00:00.000Z',
+            message: { content: [{ type: 'text', text: OVERSIZED }] },
+          },
+        ]
+          .map(record)
+          .join(''),
+      );
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+
+      const result = await source.read(session);
+      expectUnderIngressCeiling(result.events);
+
+      const deltas = result.events.filter(
+        (event) => event.method === 'content.text-delta',
+      ) as Array<{ delta: string }>;
+      expect(deltas.length).toBeGreaterThan(1);
+      expect(deltas.map((delta) => delta.delta).join('')).toBe(OVERSIZED);
+    });
+
+    test('bounds an oversized pasted prompt with a truncation marker', async () => {
+      const root = fixtureDir();
+      const directory = join(root, 'projects', 'project');
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'session-a.jsonl'),
+        [
+          {
+            type: 'user',
+            uuid: 'user-1',
+            sessionId: 'session-a',
+            cwd: '/workspace/project',
+            timestamp: '2026-09-17T00:00:00.000Z',
+            message: { content: OVERSIZED },
+          },
+        ]
+          .map(record)
+          .join(''),
+      );
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+
+      const result = await source.read(session);
+      expectUnderIngressCeiling(result.events);
+
+      const started = result.events.find(
+        (event) => event.method === 'turn.started',
+      ) as { prompt?: string; metadata?: Record<string, unknown> } | undefined;
+      expect(started).toBeTruthy();
+      expect((started?.prompt ?? '').length).toBeLessThan(OVERSIZED.length);
+      expect(started?.metadata?.sourceTextTruncated).toBe(true);
+      expect(started?.metadata?.omittedUtf8Bytes).toBeGreaterThan(0);
+    });
   });
 });

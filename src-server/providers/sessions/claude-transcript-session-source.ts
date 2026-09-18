@@ -4,6 +4,15 @@ import { homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  claudeToolResultOutputReceipt,
+  summarizeClaudeToolResult,
+} from '../adapters/claude-adapter-events.js';
+import {
+  boundedPrompt,
+  projectBoundedToolOutput,
+  utf8Chunks,
+} from '../tool-output-projection.js';
 import { isRecord } from '../../utils/is-record.js';
 import type {
   AttachedSessionCursor,
@@ -26,6 +35,16 @@ const DEFAULT_MAX_CANDIDATES = 128;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_LINE_BYTES = 128 * 1024;
 const DEFAULT_MAX_EVENTS = 512;
+/**
+ * station#2210: transcript records are engine-written data of unbounded
+ * size, and every mapped event must survive EventStore's 64 KiB ingress
+ * ceiling — one oversized field used to wedge this source's poll cursor
+ * permanently, failing ingestion on every 2s poll. The codex source's
+ * budgets are reused verbatim so both providers bound identically.
+ */
+const MAX_PROMPT_BYTES = 32 * 1024;
+const MAX_TEXT_CHUNK_BYTES = 16 * 1024;
+const PROMPT_SOURCE = 'claude-transcript';
 /**
  * archive#1997: how many transcript lines `read()` parses between event-loop
  * yields. Without an interior yield, a full `maxBytes` window (2MB of JSONL
@@ -506,6 +525,13 @@ function mapClaudeRecord(
     const content = message ? message.content : undefined;
     if (typeof content === 'string') {
       const turnId = recordId;
+      // station#2210: a pasted prompt is real user data of unbounded size.
+      // Bounded with a marker, never dropped — a wedge here stalled this
+      // source's cursor for good.
+      const bounded = boundedPrompt(content, {
+        maxBytes: MAX_PROMPT_BYTES,
+        source: PROMPT_SOURCE,
+      });
       return {
         events: [
           {
@@ -513,7 +539,8 @@ function mapClaudeRecord(
             turnId,
             eventId: eventId(session.sessionId, recordId, 0, 'user'),
             method: 'turn.started',
-            prompt: content,
+            prompt: bounded.value,
+            ...(bounded.metadata ? { metadata: bounded.metadata } : {}),
           },
         ],
         nextTurnId: turnId,
@@ -721,36 +748,53 @@ function mapAssistantBlock(
   const type = text(raw.type);
   const itemId = `${recordId}:${index}`;
   if (type === 'text' && typeof raw.text === 'string') {
-    return [
-      {
-        ...base,
-        eventId: eventId(sessionId, recordId, index, 'text'),
-        method: 'content.text-delta',
-        itemId,
-        delta: raw.text,
-      },
-    ];
+    // station#2210: one transcript record can carry an arbitrarily large
+    // assistant message. Chunk it — the deltas reassemble to the full text
+    // downstream — rather than emitting an event the event store must
+    // refuse, which used to wedge this source's cursor.
+    return utf8Chunks(raw.text, MAX_TEXT_CHUNK_BYTES).map((delta, chunk) => ({
+      ...base,
+      eventId: eventId(
+        sessionId,
+        recordId,
+        index,
+        chunk === 0 ? 'text' : `text:${chunk}`,
+      ),
+      method: 'content.text-delta' as const,
+      itemId: chunk === 0 ? itemId : `${itemId}:${chunk}`,
+      delta,
+    }));
   }
   const reasoning = typeof raw.thinking === 'string' ? raw.thinking : raw.text;
   if (
     (type === 'thinking' || type === 'reasoning') &&
     typeof reasoning === 'string'
   ) {
-    return [
-      {
+    return utf8Chunks(reasoning, MAX_TEXT_CHUNK_BYTES).map(
+      (delta, chunk) => ({
         ...base,
-        eventId: eventId(sessionId, recordId, index, 'reasoning'),
-        method: 'content.reasoning-delta',
-        itemId,
-        delta: reasoning,
-      },
-    ];
+        eventId: eventId(
+          sessionId,
+          recordId,
+          index,
+          chunk === 0 ? 'reasoning' : `reasoning:${chunk}`,
+        ),
+        method: 'content.reasoning-delta' as const,
+        itemId: chunk === 0 ? itemId : `${itemId}:${chunk}`,
+        delta,
+      }),
+    );
   }
   if (
     type === 'tool_use' &&
     typeof raw.id === 'string' &&
     typeof raw.name === 'string'
   ) {
+    // station#2210: tool arguments (a pasted Write input, for example) are
+    // transcript data of unbounded size. Bound them structurally — the same
+    // projector and warning event the codex transcript source emits — so
+    // the truncation is announced in the stream, never silent.
+    const projectedArguments = projectBoundedToolOutput(raw.input);
     return [
       {
         ...base,
@@ -759,8 +803,30 @@ function mapAssistantBlock(
         itemId,
         toolCallId: raw.id,
         toolName: raw.name,
-        arguments: raw.input,
+        arguments: projectedArguments.value,
       },
+      ...(projectedArguments.receipt
+        ? [
+            {
+              ...base,
+              eventId: eventId(
+                sessionId,
+                recordId,
+                index,
+                'tool-arguments-bounded',
+              ),
+              method: 'runtime.warning' as const,
+              severity: 'warning' as const,
+              code: 'external_tool_arguments_bounded',
+              message:
+                'Claude tool arguments exceeded the retained activity limit.',
+              details: {
+                toolCallId: raw.id,
+                receipt: projectedArguments.receipt,
+              },
+            },
+          ]
+        : []),
     ];
   }
   return [];
@@ -784,6 +850,13 @@ function mapToolResult(
     typeof raw.tool_use_id !== 'string'
   )
     return [];
+  // station#2210: a tool_result's content is engine output of unbounded
+  // size — the exact shape that exceeded the 64 KiB ingress ceiling on the
+  // live instance (a 64,675-byte `output` string), failed ingestion every
+  // 2s poll, and wedged this source's cursor. Bound it the same way the
+  // live Claude adapter does: head-slice plus an explicit outputReceipt.
+  const output = summarizeClaudeToolResult(raw.content);
+  const receipt = claudeToolResultOutputReceipt(raw.content);
   return [
     {
       ...base,
@@ -796,7 +869,8 @@ function mapToolResult(
         text(raw.is_error) === 'true' || raw.is_error === true
           ? 'error'
           : 'success',
-      output: raw.content,
+      output,
+      ...(receipt ? { outputReceipt: receipt } : {}),
     },
   ];
 }

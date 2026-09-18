@@ -1,7 +1,24 @@
 import type { ToolOutputReceipt } from '@kontourai/station-contracts/runtime-events';
 
-/** Codex retains its own transcript. Station publishes a bounded tool preview. */
-export function projectCodexToolOutput(input: unknown): {
+/**
+ * Shared bounded-mapping helpers for attached-session transcript sources.
+ *
+ * A transcript record is engine-written data of unbounded size, and every
+ * canonical event must survive EventStore's 64 KiB ingress ceiling — one
+ * oversized field used to wedge its source's poll cursor permanently and
+ * fail ingestion on every poll (station#2210). Codex and Claude transcript
+ * sources therefore map through the SAME byte-safe bounds; the codex source
+ * had them first and they moved here verbatim when the claude source needed
+ * the identical discipline.
+ */
+
+/**
+ * Structural projection of engine-supplied tool material: keeps the TAIL of
+ * long strings (where command failures and exit summaries usually appear)
+ * under a shared byte budget, bounds structure depth and property counts,
+ * and reports what was dropped as a {@link ToolOutputReceipt}.
+ */
+export function projectBoundedToolOutput(input: unknown): {
   value: unknown;
   receipt?: ToolOutputReceipt;
 } {
@@ -100,4 +117,68 @@ export function projectCodexToolOutput(input: unknown): {
         }
       : {}),
   };
+}
+
+/**
+ * Head-keep byte-safe truncation for a JSON string value: the retained head
+ * never splits a surrogate pair, and escaping is counted, so the result is
+ * always valid JSON whose UTF-8 size is within `maxBytes`.
+ */
+export function truncateJsonString(
+  value: string,
+  maxBytes: number,
+): { value: string; omittedBytes: number } {
+  const totalBytes = Buffer.byteLength(value);
+  if (Buffer.byteLength(JSON.stringify(value)) <= maxBytes) {
+    return { value, omittedBytes: 0 };
+  }
+  let low = 0;
+  let high = value.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (Buffer.byteLength(JSON.stringify(value.slice(0, middle))) <= maxBytes) {
+      low = middle;
+    } else high = middle - 1;
+  }
+  let end = low;
+  if (end > 0 && /[\uD800-\uDBFF]/u.test(value[end - 1] ?? '')) end -= 1;
+  const retained = value.slice(0, end);
+  return {
+    value: retained,
+    omittedBytes: totalBytes - Buffer.byteLength(retained),
+  };
+}
+
+/** Split a string into byte-bounded chunks that reassemble to the original. */
+export function utf8Chunks(value: string, maxChunkBytes: number): string[] {
+  const chunks: string[] = [];
+  let remaining = value;
+  while (remaining) {
+    const chunk = truncateJsonString(remaining, maxChunkBytes).value;
+    if (!chunk) break;
+    chunks.push(chunk);
+    remaining = remaining.slice(chunk.length);
+  }
+  return chunks;
+}
+
+/**
+ * A transcript user prompt is the turn's record, so it is bounded with a
+ * marker in the event's `metadata` rather than dropped or silently sliced.
+ */
+export function boundedPrompt(
+  value: string,
+  options: { maxBytes: number; source: string },
+): { value: string; metadata?: Record<string, unknown> } {
+  const result = truncateJsonString(value, options.maxBytes);
+  return result.omittedBytes > 0
+    ? {
+        value: result.value,
+        metadata: {
+          sourceTextTruncated: true,
+          omittedUtf8Bytes: result.omittedBytes,
+          source: options.source,
+        },
+      }
+    : { value: result.value };
 }

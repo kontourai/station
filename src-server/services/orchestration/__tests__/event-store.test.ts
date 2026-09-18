@@ -7663,6 +7663,29 @@ describe('EventStore', () => {
       ).toBeUndefined();
     });
 
+    // station#2210: a deterministic ingress rejection carries no payload, so
+    // it must at least name its subject — the same oversized event used to
+    // fail every 2s poll with an anonymous error nobody could trace.
+    test('names the event method and thread when ingress rejects an oversized event', () => {
+      expect(() =>
+        store.appendEvent({
+          eventId: 'evt-tool-result-identity',
+          provider: 'claude',
+          threadId: 'external:claude:oversized',
+          turnId: 'turn',
+          itemId: 'item',
+          createdAt: '2026-08-19T00:00:00.000Z',
+          method: 'tool.completed',
+          toolCallId: 'call',
+          toolName: 'shell',
+          status: 'success',
+          output: 'x'.repeat(70_000),
+        }),
+      ).toThrow(
+        /method=tool\.completed, threadId=external:claude:oversized.*ingress ceiling/s,
+      );
+    });
+
     test('bounds both event insert paths before JSON serialization', () => {
       const stringify = vi.spyOn(JSON, 'stringify');
       const oversized = '😀'.repeat(MAX_EVENT_STORE_INGRESS_BYTES);
