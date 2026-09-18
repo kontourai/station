@@ -55,6 +55,7 @@ import {
 import { hasRealSavedConnection } from '../lib/saved-connections';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
+import { reconnectLocalService } from '../platform/native/localServiceReconnect';
 import { invokeTauri } from '../platform/native/tauriInvoke';
 import {
   nativeProfileBootstrapRecoveryError,
@@ -861,6 +862,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         allowManualCredentials={!profile.isDesktop}
         authenticatedRequest={
           profile.isDesktop ? authenticatedFetch : undefined
+        }
+        onReconnectLocalService={
+          profile.isDesktop ? reconnectLocalService : undefined
         }
         onRestartInjectedConnection={
           // Ownership, not just "this build supervises a bundled server".

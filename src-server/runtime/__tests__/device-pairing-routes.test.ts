@@ -17,6 +17,8 @@ import {
   PAIRING_SCOPE_HOME_CONTROL,
   type PairedDevice,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
@@ -2159,6 +2161,221 @@ describe('local-grant startup proof', () => {
       LOOPBACK_PEER,
     );
     expect(malformed.status).toBe(400);
+  });
+});
+
+/**
+ * #2228 — the DECISIVE local-grant eligibility answer. The authenticated
+ * `GET /api/auth/local-grant-eligibility` presupposes a valid bearer, so a
+ * desktop whose stored credential is DEAD is rejected by the auth boundary
+ * before any route runs and must fail closed on the one state its recovery
+ * exists to classify. This loopback owner-secret surface answers even then,
+ * which is what lets `station_local_self_provision` self-heal at boot.
+ */
+describe('local-grant eligibility answer (#2228)', () => {
+  const LOOPBACK_PEER = '127.0.0.1';
+
+  test('answers decisive false for a credential no active device recognizes', async () => {
+    const harness = createHarness({ localGrant: true });
+    const response = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({
+        secret: harness.readLocalGrantSecret(),
+        credential: 'stale-keychain-token-that-matches-no-device',
+      }),
+      LOOPBACK_PEER,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ eligible: false });
+  });
+
+  test('answers decisive true for a live local-grant credential and false for a plain paired one', async () => {
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+
+    const minted = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+      harness.json({ secret, deviceName: 'This Mac' }),
+      LOOPBACK_PEER,
+    );
+    expect(minted.status).toBe(200);
+    const { credential } = (await minted.json()) as { credential: string };
+
+    const eligible = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret, credential }),
+      LOOPBACK_PEER,
+    );
+    expect(eligible.status).toBe(200);
+    expect(await eligible.json()).toEqual({ eligible: true });
+
+    // A paired credential with no home-possession mint (the ordinary
+    // ceremony) is live but NOT local-grant: the archive#3677 semantics
+    // must carry through this surface too, not just the bound predicate.
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Paired phone',
+    });
+    harness.pairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const paired = harness.pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    const pairedEligibility = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret, credential: paired.credential }),
+      LOOPBACK_PEER,
+    );
+    expect(pairedEligibility.status).toBe(200);
+    expect(await pairedEligibility.json()).toEqual({ eligible: false });
+  });
+
+  test('keeps wrong secret, missing grant, non-loopback, and malformed input out of the answer', async () => {
+    const noGrant = createHarness();
+    const noGrantResponse = await noGrant.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      noGrant.json({ secret: 'anything', credential: 'anything' }),
+      LOOPBACK_PEER,
+    );
+    expect(noGrantResponse.status).toBe(403);
+    expect(await noGrantResponse.json()).toEqual({
+      error: 'local_grant_forbidden',
+    });
+
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+    const body = { secret, credential: 'some-stored-credential' };
+
+    const wrongSecret = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ ...body, secret: 'not-the-real-secret' }),
+      LOOPBACK_PEER,
+    );
+    expect(wrongSecret.status).toBe(403);
+    expect(await wrongSecret.json()).toEqual({
+      error: 'local_grant_forbidden',
+    });
+
+    const remote = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json(body),
+      '100.96.12.41',
+    );
+    expect(remote.status).toBe(403);
+
+    const missingCredential = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret }),
+      LOOPBACK_PEER,
+    );
+    expect(missingCredential.status).toBe(400);
+
+    const withQuery = await harness.request(
+      `${PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH}?extra=1`,
+      harness.json(body),
+      LOOPBACK_PEER,
+    );
+    expect(withQuery.status).toBe(400);
+  });
+});
+
+/**
+ * #2228 slice 4, wire half: the joiner's completion loop keys on the exchange
+ * route's error CODE. The service used to answer a consumed or cancelled
+ * offer with `request_not_confirmed` — indistinguishable from "nobody has
+ * approved yet", which is why the joiner polled a dead offer forever. The
+ * route must surface `offer_unavailable` (409) for exactly the definitive
+ * cases, and keep `request_not_confirmed` for the one retryable 409.
+ */
+describe('exchange answers offer_unavailable for definitive conflicts (#2228 slice 4)', () => {
+  const wireExchange = (
+    harness: ReturnType<typeof createHarness>,
+    offerId: string,
+    requestId: string,
+    proof: string,
+  ) =>
+    harness.request(
+      PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+      harness.json({ offerId, proof, requestId }),
+      '198.51.100.77',
+    );
+
+  test('a consumed offer answers offer_unavailable, not request_not_confirmed', async () => {
+    const harness = createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'First device',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+    harness.pairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const first = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(first.status).toBe(200);
+
+    // THE replay pin: the second exchange is definitive, not a waiting state.
+    const replay = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(replay.status).toBe(409);
+    expect(await replay.json()).toEqual({ error: 'offer_unavailable' });
+  });
+
+  test('a host-cancelled offer answers offer_unavailable while an unapproved request keeps its retryable 409', async () => {
+    const harness = createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Second device',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+
+    // Before anyone acts: the one 409 a retry can still resolve.
+    const waiting = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(waiting.status).toBe(409);
+    expect(await waiting.json()).toEqual({ error: 'request_not_confirmed' });
+
+    // The host cancels the approval (not a deny — request_denied stays its
+    // own answer): the offer is gone, and the joiner must hear that.
+    harness.pairing.cancelOffer(offer.offerId);
+    const cancelled = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(cancelled.status).toBe(409);
+    expect(await cancelled.json()).toEqual({ error: 'offer_unavailable' });
   });
 });
 

@@ -49,7 +49,15 @@ export type PairingStateCopyId =
   | 'waiting-for-approval'
   | 'waiting-for-code-approval'
   | 'expired-access-request'
-  | 'expired-pairing-code';
+  | 'expired-pairing-code'
+  /**
+   * The offer is gone before anyone acted on it — consumed by another
+   * exchange, cancelled by the host, or lost to a Station restart (#2228).
+   * Same subject split as the expired pair: the dialog that made the request
+   * speaks about the request; chrome speaks about the device.
+   */
+  | 'unavailable-access-request'
+  | 'unavailable-pairing-code';
 
 export interface PairingStateCopy {
   /**
@@ -104,6 +112,14 @@ const PAIRING_STATE_COPY: Record<
   'expired-pairing-code': (label) => ({
     title: 'Pairing code expired',
     message: `This pairing code expired before ${objectSubject(label)} approved it. Create a new code on ${objectSubject(label)}.`,
+  }),
+  'unavailable-access-request': (label) => ({
+    title: 'Access request no longer available',
+    message: `${sentenceSubject(label)} no longer has this request — it was cancelled, already used, or the Station restarted. Request access again.`,
+  }),
+  'unavailable-pairing-code': (label) => ({
+    title: 'Pairing code no longer available',
+    message: `${sentenceSubject(label)} no longer has this pairing code — it was already used, cancelled, or the Station restarted. Create a new code on ${objectSubject(label)}.`,
   }),
 };
 

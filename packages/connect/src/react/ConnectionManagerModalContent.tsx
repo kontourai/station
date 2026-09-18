@@ -112,6 +112,13 @@ interface ConnectionManagerModalContentProps {
    * shows its state without a Restart control.
    */
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  /**
+   * Re-authorize this app's own access to the active Station (#2228). Passed
+   * only by a host whose local service can self-provision (native desktop);
+   * when omitted the host pairing panel's auth-rejected state renders its
+   * copy without a Reconnect control.
+   */
+  onReconnectLocalService?: () => Promise<boolean>;
   /** Persistent trigger to restore after a parent chooser is replaced. */
   returnFocusTarget?: HTMLElement | null;
   /** Optional success side-effect after pairing commits (station#1954). */
@@ -177,6 +184,7 @@ export function ConnectionManagerModalContent({
   allowManualCredentials = true,
   authenticatedRequest,
   onRestartInjectedConnection,
+  onReconnectLocalService,
   returnFocusTarget,
   onPairingSucceeded,
   onApprovalPending,
@@ -1168,6 +1176,7 @@ export function ConnectionManagerModalContent({
                 : undefined
             }
             request={authenticatedRequest}
+            onReconnect={onReconnectLocalService}
             onCancel={() => setPanel(hostPairingReturnPanel)}
           />
         )}

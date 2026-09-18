@@ -192,6 +192,16 @@ export function PendingPairingReconciler({
           finish(copy.title, copy.message);
           return;
         }
+        if (completion.status === 'unavailable') {
+          const copy = pairingStateCopy(
+            pending.requestKind === 'direct'
+              ? 'unavailable-access-request'
+              : 'unavailable-pairing-code',
+            stationLabel,
+          );
+          finish(copy.title, copy.message);
+          return;
+        }
         if (completion.status === 'identity-changed') {
           finish(
             'Station identity changed',

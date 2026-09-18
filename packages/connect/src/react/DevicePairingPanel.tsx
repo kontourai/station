@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isLoopbackUrl } from '../core/connectionProfile';
 import { describeDeviceScope, deviceRevokeError } from '../core/deviceActivity';
 import {
   deriveDefaultDeviceName,
@@ -35,6 +36,10 @@ import {
   encodePairingDeepLink,
   type PairingDeepLinkChannel,
 } from '../core/pairingDeepLink';
+import {
+  rememberPairingEndpoint,
+  suggestPairingEndpoint,
+} from '../core/pairingEndpointSuggestion';
 import { completePendingPairing } from '../core/pendingPairingCompletionLoader';
 import { PairedDeviceList } from './connection-manager-modal/PairedDeviceList';
 import {
@@ -374,9 +379,16 @@ export function JoinDevicePairingPanel({
                     : 'expired-pairing-code',
                   directLabel,
                 ).message
-              : completion.status === 'identity-changed'
-                ? 'The Station identity changed during pairing.'
-                : 'Pairing failed. Check the code and try again.';
+              : completion.status === 'unavailable'
+                ? pairingStateCopy(
+                    pending.requestKind === 'direct'
+                      ? 'unavailable-access-request'
+                      : 'unavailable-pairing-code',
+                    directLabel,
+                  ).message
+                : completion.status === 'identity-changed'
+                  ? 'The Station identity changed during pairing.'
+                  : 'Pairing failed. Check the code and try again.';
         setError(message);
         setPending(null);
       });
@@ -915,34 +927,56 @@ function authHeaders(credential: string | undefined): HeadersInit {
   return credential ? { Authorization: `Bearer ${credential}` } : {};
 }
 
-async function pairingOfferError(response: Response): Promise<string> {
+async function pairingOfferError(response: Response): Promise<{
+  message: string;
+  /** The rejection answers for THIS device's own access (the 401 class). */
+  auth: boolean;
+}> {
   const body = (await response.json().catch(() => undefined)) as
     | { error?: string | { code?: string } }
     | undefined;
   const code = typeof body?.error === 'string' ? body.error : body?.error?.code;
 
   if (response.status === 401 || code === 'authentication_required') {
-    return "This device's access to this Station needs review. Reconnect it, then try again.";
+    return {
+      auth: true,
+      message:
+        "This device's access to this Station needs review. Reconnect it, then try again.",
+    };
   }
   if (response.status === 403 || code === 'origin_forbidden') {
-    return 'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.';
+    return {
+      auth: false,
+      message:
+        'This Station does not allow pairing from the current app address. Update its trusted app address, then try again.',
+    };
   }
   if (response.status === 429 || code === 'rate_limited') {
     const retryAfter = response.headers.get('Retry-After');
     const retryAfterSeconds =
       retryAfter && /^\d{1,5}$/.test(retryAfter) ? Number(retryAfter) : 0;
-    return retryAfterSeconds > 0 && retryAfterSeconds <= 86_400
-      ? `Too many pairing attempts. Try again in ${retryAfterSeconds} seconds.`
-      : 'Too many pairing attempts. Wait a moment, then try again.';
+    return {
+      auth: false,
+      message:
+        retryAfterSeconds > 0 && retryAfterSeconds <= 86_400
+          ? `Too many pairing attempts. Try again in ${retryAfterSeconds} seconds.`
+          : 'Too many pairing attempts. Wait a moment, then try again.',
+    };
   }
   if (
     response.status === 400 ||
     response.status === 422 ||
     code === 'invalid_request'
   ) {
-    return 'Use a valid HTTPS address that the other device can reach.';
+    return {
+      auth: false,
+      message: 'Use a valid HTTPS address that the other device can reach.',
+    };
   }
-  return `This Station could not create a pairing code (HTTP ${response.status}).`;
+  return {
+    auth: false,
+    message: `This Station could not create a pairing code (HTTP ${response.status}).`,
+  };
 }
 
 function isDevicePairingOffer(value: unknown): value is DevicePairingOffer {
@@ -1014,6 +1048,7 @@ export function HostDevicePairingPanel({
   request = fetch,
   onCancel,
   initialClientChannel = 'stable',
+  onReconnect,
 }: {
   apiBase: string;
   publicEndpoint: string;
@@ -1022,6 +1057,15 @@ export function HostDevicePairingPanel({
   onCancel: () => void;
   /** Host-facing route selector; it never constrains the paired backend. */
   initialClientChannel?: Exclude<PairingDeepLinkChannel, 'dev'>;
+  /**
+   * Re-authorize THIS app's own access to the Station (#2228). Supplied by a
+   * desktop host whose local service can self-provision; when omitted the
+   * auth-rejected state renders its copy without a Reconnect control. The
+   * panel shows the control when an offer creation was refused with an
+   * authentication rejection — the one failure the host can usually fix
+   * itself — and re-enables offer creation once it resolves.
+   */
+  onReconnect?: () => Promise<boolean>;
 }) {
   const [offer, setOffer] = useState<DevicePairingOffer | null>(null);
   const [qrTarget, setQrTarget] = useState<'app' | 'scanner'>('app');
@@ -1036,7 +1080,17 @@ export function HostDevicePairingPanel({
       : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [endpoint, setEndpoint] = useState(publicEndpoint);
+  // True only when `error` came from an authentication rejection of THIS
+  // device's own access (401 class) — the state `onReconnect` addresses.
+  const [authBlocked, setAuthBlocked] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
+  // operator last created an offer with for this Station) outranks the active
+  // connection's own URL, which is loopback on a desktop host and points the
+  // phone at itself. Seeded at mount; the field stays fully editable.
+  const [endpoint, setEndpoint] = useState(
+    () => suggestPairingEndpoint(apiBase) ?? publicEndpoint,
+  );
   const [scopePreset, setScopePreset] = useState<PairingScopePreset>(
     DEFAULT_PAIRING_SCOPE_PRESET,
   );
@@ -1061,6 +1115,11 @@ export function HostDevicePairingPanel({
       payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
     [clientChannel, payload],
   );
+  // #2228 slice 3: the QR embeds this address, so a loopback value is the one
+  // input mistake this surface makes silently fatal — the code scans fine and
+  // then opens the phone against itself. Name it at the field, in the same
+  // vocabulary the field's hint uses, instead of after the scan fails.
+  const endpointIsLoopback = useMemo(() => isLoopbackUrl(endpoint), [endpoint]);
 
   const downloads = MOBILE_APP_DOWNLOADS[clientChannel];
 
@@ -1277,6 +1336,7 @@ export function HostDevicePairingPanel({
 
   const createOffer = async () => {
     setError(null);
+    setAuthBlocked(false);
     try {
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
@@ -1287,16 +1347,37 @@ export function HostDevicePairingPanel({
         }),
       });
       if (!response.ok) {
-        setError(await pairingOfferError(response));
+        const outcome = await pairingOfferError(response);
+        setError(outcome.message);
+        setAuthBlocked(outcome.auth);
         return;
       }
       const value: unknown = await response.json();
       if (!isDevicePairingOffer(value)) throw new Error('Invalid offer');
+      rememberPairingEndpoint(apiBase, endpoint);
       setOffer(value);
     } catch {
       setError(
         'Could not create a pairing code. Check the connection and try again.',
       );
+    }
+  };
+
+  const reconnect = async () => {
+    if (!onReconnect || reconnecting) return;
+    setError(null);
+    setAuthBlocked(false);
+    setReconnecting(true);
+    try {
+      const reconnected = await onReconnect();
+      if (!reconnected) {
+        setError(
+          'Station could not re-authorize this connection. Quit and reopen Station, then try again.',
+        );
+      }
+      await refresh();
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -1491,13 +1572,26 @@ export function HostDevicePairingPanel({
                 autoCapitalize="none"
                 value={endpoint}
                 onChange={(event) => setEndpoint(event.target.value)}
-                style={inputStyle}
+                style={{
+                  ...inputStyle,
+                  ...(endpointIsLoopback
+                    ? { borderColor: 'var(--status-error, #e66)' }
+                    : {}),
+                }}
               />
             </label>
-            <small style={{ color: 'var(--text-secondary, #999)' }}>
-              Use this server’s LAN or tailnet address. Localhost and 127.0.0.1
-              point to the phone itself when opened there.
-            </small>
+            {endpointIsLoopback ? (
+              <small role="note" style={{ color: 'var(--status-error, #e66)' }}>
+                A phone cannot reach this address — localhost and 127.0.0.1
+                point to the phone itself. Use this server’s LAN or tailnet
+                address (for example a Tailscale Serve HTTPS URL).
+              </small>
+            ) : (
+              <small style={{ color: 'var(--text-secondary, #999)' }}>
+                Use this server’s LAN or tailnet address. Localhost and
+                127.0.0.1 point to the phone itself when opened there.
+              </small>
+            )}
           </div>
         </>
       ) : (
@@ -1615,7 +1709,21 @@ export function HostDevicePairingPanel({
           />
         </section>
       )}
-      {error && <div role="alert">{error}</div>}
+      {error && (
+        <div className="pairing-error" role="alert">
+          <p>{error}</p>
+          {authBlocked && onReconnect && (
+            <button
+              type="button"
+              onClick={() => void reconnect()}
+              disabled={reconnecting}
+              style={primaryBtnStyle}
+            >
+              {reconnecting ? 'Reconnecting…' : 'Reconnect this Station'}
+            </button>
+          )}
+        </div>
+      )}
       <button
         type="button"
         onClick={async () => {

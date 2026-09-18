@@ -5091,17 +5091,21 @@ fn credential_provisioned_from_read_outcome(read_outcome: CredentialReadOutcome)
 }
 
 /// The only server-side facts that may turn a readable local credential into
-/// an eligible replacement. The desktop presents the bearer directly from
-/// Rust, and the server answers whether its *already-bound* principal carries
-/// the owner-secret local-grant mint. This is intentionally not `/api/auth/
-/// status`: an old paired bearer can be accepted there while lacking the
-/// home-possession and mint-kind facts personal-mode identity requires.
+/// an eligible replacement. The desktop proves possession of the owner-only
+/// local-grant secret to a direct-loopback Station route, which answers
+/// whether the stored bearer is STILL accepted and carries the local-grant
+/// mint (#2228). This is intentionally not `/api/auth/status`: an old paired
+/// bearer can be accepted there while lacking the home-possession and
+/// mint-kind facts personal-mode identity requires — and it is deliberately
+/// not the bearer-authenticated `/api/auth/local-grant-eligibility` either:
+/// that route presupposes a valid bearer, so a DEAD credential is rejected by
+/// the auth boundary before any route runs and the desktop would have to fail
+/// closed on the one state its recovery exists to fix (#2228).
 ///
-/// Only the bounded `{ "eligible": false }` server response replaces. An
-/// authentication rejection, outage,
-/// malformed response, or a future route drift cannot supersede a working
-/// grant. The exchange that follows remains desktop-only and must still read
-/// the owner-only local-grant secret itself.
+/// Only the bounded `{ "eligible": false }` server response replaces. A
+/// rejected secret proof, outage, malformed response, or a future route
+/// drift cannot supersede a working grant. The exchange that follows remains
+/// desktop-only and must still read the owner-only local-grant secret itself.
 #[cfg(not(mobile))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LocalCredentialProbeOutcome {
@@ -5183,10 +5187,14 @@ fn exchange_after_readable_credential_probe<T>(
 }
 
 #[cfg(not(mobile))]
-fn probe_local_credential(origin: &str, credential: &str) -> LocalCredentialProbeOutcome {
-    let endpoint = match url::Url::parse(origin)
-        .and_then(|url| url.join("/api/auth/local-grant-eligibility"))
-    {
+fn probe_local_credential(
+    origin: &str,
+    credential: &str,
+    secret: &str,
+) -> LocalCredentialProbeOutcome {
+    let endpoint = match url::Url::parse(origin).and_then(|url| {
+        url.join("/.well-known/station/v1/pairing/local-grant-eligibility")
+    }) {
         Ok(endpoint) => endpoint,
         Err(_) => return LocalCredentialProbeOutcome::Inconclusive,
     };
@@ -5196,10 +5204,19 @@ fn probe_local_credential(origin: &str, credential: &str) -> LocalCredentialProb
         .http_status_as_error(false)
         .build()
         .into();
+    // The bearer travels in the body next to the secret, not as an
+    // Authorization header: this is a public owner-secret route, not the
+    // authenticated boundary, so a dead bearer must reach the decisive
+    // answer instead of being rejected before one exists (#2228).
+    let request_body = serde_json::json!({
+        "secret": secret,
+        "credential": credential,
+    })
+    .to_string();
     let response = agent
-        .get(endpoint.as_str())
-        .header("Authorization", format!("Bearer {credential}"))
-        .call()
+        .post(endpoint.as_str())
+        .header("Content-Type", "application/json")
+        .send(&request_body)
         .map_err(|_| ());
     let parsed = response.and_then(|mut response| {
         let status = response.status().as_u16();
@@ -5518,9 +5535,15 @@ fn station_local_self_provision(
     // confirms `{ "eligible": false }`, or returns without making the local-grant request,
     // allocating pending state, or touching the Keychain.
     let client_instance_id = resolve_local_self_provision_client_instance_id(profile);
+    // Read once so the decisive probe and the exchange it can authorize see
+    // the same secret. On the retain path (the server answers that the saved
+    // credential is still mint-adequate) the secret goes unused — acceptable:
+    // in production the server writes this file at boot, so a read failure
+    // here means the sidecar this command supervises is not the one that
+    // answered, which is worth refusing loudly rather than probing without
+    // a possession proof.
+    let secret = read_local_grant_secret(local)?;
     let reprovision = || -> Result<(), NativeCommandError> {
-        let secret = read_local_grant_secret(local)?;
-
         // Exchange the secret for a credential, entirely in Rust.
         let endpoint = url::Url::parse(&origin)
             .map_err(|_| "invalid Station local service endpoint".to_string())?
@@ -5649,16 +5672,20 @@ fn station_local_self_provision(
     };
     if profile_already_locally_provisioned(profile, read_credential_for_eligibility) {
         // A readable keychain item is only locally healthy. Before retaining
-        // it, ask one bounded protected same-origin endpoint from Rust. This
-        // reaches neither the WebView nor the generic connection scheduler,
-        // so a disconnected UI cannot suppress the evidence we need here.
+        // it, prove possession of the owner-only secret to one bounded
+        // direct-loopback Station route from Rust (#2228). This reaches
+        // neither the WebView nor the generic connection scheduler, so a
+        // disconnected UI cannot suppress the evidence we need here — and
+        // because the route authenticates by secret rather than by the
+        // possibly-dead bearer, its answer is decisive in exactly the state
+        // this recovery exists to classify.
         let readable = profile
             .credential_ref
             .as_ref()
             .and_then(|reference| credential_entry(reference).ok())
             .and_then(|entry| entry.get_password().ok());
         if let Some(credential) = readable {
-            let probe = probe_local_credential(&origin, &credential);
+            let probe = probe_local_credential(&origin, &credential, &secret);
             return match exchange_after_readable_credential_probe(
                 probe,
                 &client_instance_id,
@@ -14502,6 +14529,86 @@ mod tests {
             );
         }
         assert_eq!(exchanges, 1);
+    }
+
+    /// #2228: the probe must reach the OWNER-SECRET eligibility route with the
+    /// secret AND the stored bearer in the body — not the bearer-authenticated
+    /// `/api/auth/local-grant-eligibility`, whose auth boundary rejects a dead
+    /// bearer before any route runs, which is the exact state this probe
+    /// exists to classify. A loopback stub proves the wire contract and that a
+    /// decisive `{ "eligible": false }` from that route classifies as
+    /// `Ineligible` (the re-mint trigger).
+    #[test]
+    fn probe_local_credential_proves_owner_secret_to_the_decisive_route() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            // Head and body are separate TCP segments in general — one
+            // `read()` is a coalescing coincidence, not a full request.
+            // Read to the header terminator, then honor Content-Length.
+            let mut raw = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            let header_end = loop {
+                let read = socket.read(&mut chunk).unwrap();
+                if read == 0 {
+                    panic!("client closed before sending a full request");
+                }
+                raw.extend_from_slice(&chunk[..read]);
+                if let Some(position) = raw
+                    .windows(4)
+                    .position(|window| window == b"\r\n\r\n")
+                {
+                    break position + 4;
+                }
+            };
+            let headers = String::from_utf8_lossy(&raw[..header_end]).to_string();
+            let content_length: usize = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse().ok())?
+                })
+                .unwrap_or(0);
+            while raw.len() < header_end + content_length {
+                let read = socket.read(&mut chunk).unwrap();
+                if read == 0 {
+                    panic!("client closed before sending the full body");
+                }
+                raw.extend_from_slice(&chunk[..read]);
+            }
+            let body = r#"{"eligible": false}"#;
+            socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+            String::from_utf8_lossy(&raw).to_string()
+        });
+
+        let outcome = probe_local_credential(
+            &format!("http://{address}"),
+            "stored-bearer-token",
+            "owner-secret",
+        );
+        assert_eq!(outcome, LocalCredentialProbeOutcome::Ineligible);
+
+        let raw = server.join().unwrap();
+        assert!(raw.starts_with("POST /.well-known/station/v1/pairing/local-grant-eligibility "));
+        let body = raw.split("\r\n\r\n").nth(1).unwrap_or_default();
+        let parsed: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert_eq!(
+            parsed,
+            serde_json::json!({ "secret": "owner-secret", "credential": "stored-bearer-token" })
+        );
     }
 
     /// The taxonomy decision (station#1818's hardest part), tested through

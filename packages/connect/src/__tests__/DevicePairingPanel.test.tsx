@@ -2297,6 +2297,225 @@ describe('device pairing panels', () => {
       expect(document.body.textContent).not.toContain('not-json');
     },
   );
+
+  test('an auth-rejected offer creation renders the styled alert and its Reconnect control clears it (#2228)', async () => {
+    const onReconnect = vi.fn().mockResolvedValue(true);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        // The auth boundary's own shape, not a flat string: this is what the
+        // desktop actually receives when its stored grant is dead.
+        return response({ error: { code: 'authentication_required' } }, 401);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+        onReconnect={onReconnect}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+
+    const alert = await screen.findByRole('alert');
+    // The refusal must be distinguishable from body copy: it carries the
+    // destructive alert styling, not a bare unstyled div.
+    expect(alert.className).toBe('pairing-error');
+    expect(alert.textContent).toContain(
+      "This device's access to this Station needs review",
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reconnect this Station' }),
+    );
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledOnce());
+    // A successful reconnect clears the refusal; the operator can retry
+    // offer creation against the re-authorized connection.
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  test('a failed reconnect says what to do next (#2228)', async () => {
+    const onReconnect = vi.fn().mockResolvedValue(false);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        return response({ error: { code: 'authentication_required' } }, 401);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+        onReconnect={onReconnect}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    await screen.findByRole('alert');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reconnect this Station' }),
+    );
+
+    expect(
+      await screen.findByText(/Quit and reopen Station, then try again/),
+    ).toBeTruthy();
+  });
+
+  test('the Reconnect control appears only for the auth class of an offered reconnect (#2228)', async () => {
+    // An auth rejection WITHOUT a reconnect affordance: copy only.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        return response({ error: { code: 'authentication_required' } }, 401);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    const first = render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    await screen.findByRole('alert');
+    expect(
+      screen.queryByRole('button', { name: 'Reconnect this Station' }),
+    ).toBeNull();
+    first.unmount();
+
+    // A non-auth refusal (rate limited) never offers Reconnect, even when
+    // the host supplies the affordance.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        return response({ error: 'rate_limited' }, 429);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Reconnect this Station' }),
+    ).toBeNull();
+  });
+
+  test('seeds the endpoint field from a remembered reachable address (#2228 slice 3)', () => {
+    const suggestionKey =
+      'station-pairing-endpoint-suggestion:v1:https://station.example.test';
+    globalThis.localStorage.setItem(
+      suggestionKey,
+      'https://kontour.python-smelt.ts.net:3773',
+    );
+    try {
+      render(
+        <HostDevicePairingPanel
+          apiBase="https://station.example.test"
+          publicEndpoint="http://127.0.0.1:38141"
+          getCredential={() => 'operator-credential'}
+          onCancel={vi.fn()}
+        />,
+      );
+      // The remembered tailnet address outranks the active connection's
+      // loopback URL as the field's starting value.
+      expect(
+        (screen.getByLabelText('Pairing endpoint') as HTMLInputElement).value,
+      ).toBe('https://kontour.python-smelt.ts.net:3773');
+    } finally {
+      globalThis.localStorage.removeItem(suggestionKey);
+    }
+  });
+
+  test('remembering a reachable offer address replaces a loopback default and clears the warning (#2228 slice 3)', async () => {
+    const suggestionKey =
+      'station-pairing-endpoint-suggestion:v1:https://station.example.test';
+    globalThis.localStorage.removeItem(suggestionKey);
+    try {
+      const offer = {
+        protocolVersion: 1 as const,
+        environmentId: 'environment-1',
+        offerId: 'offer-1',
+        challenge: 'challenge-1',
+        manualCode: 'PAIRME2345',
+        endpoint: 'https://station.example.test',
+        scope: 'station:interactive',
+        expiresAt: Date.now() + 60_000,
+      };
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/api/pairing/requests') return response({ requests: [] });
+        if (path === '/api/pairing/devices') return response({ devices: [] });
+        if (path === '/api/pairing/offers' && init?.method === 'POST') {
+          return response(offer, 201);
+        }
+        return response({ error: 'unexpected' }, 500);
+      });
+
+      render(
+        <HostDevicePairingPanel
+          apiBase="https://station.example.test"
+          publicEndpoint="http://127.0.0.1:38141"
+          getCredential={() => 'operator-credential'}
+          onCancel={vi.fn()}
+        />,
+      );
+
+      // The loopback default is named at the field, before it ever reaches a
+      // QR code: error-styled border and the phone-reach warning, not the
+      // neutral hint.
+      expect(screen.getByRole('note').textContent).toContain(
+        'A phone cannot reach this address',
+      );
+      fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
+        target: { value: 'https://kontour.python-smelt.ts.net:3773' },
+      });
+      await waitFor(() => expect(screen.queryByRole('note')).toBeNull());
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Create pairing code' }),
+      );
+      expect(await screen.findByText('PAIRME2345')).toBeTruthy();
+      // The reachable address the operator typed is remembered for next time.
+      expect(globalThis.localStorage.getItem(suggestionKey)).toBe(
+        'https://kontour.python-smelt.ts.net:3773',
+      );
+    } finally {
+      globalThis.localStorage.removeItem(suggestionKey);
+    }
+  });
 });
 
 test('pending approval counts down from its saved expiry without announcing every tick', async () => {

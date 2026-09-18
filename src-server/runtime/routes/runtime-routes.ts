@@ -47,6 +47,7 @@ import {
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -5129,6 +5130,45 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'local_grant_forbidden' }, 403);
     }
     return c.json({ ready: true });
+  });
+  // #2228: the decisive local-grant eligibility answer. The authenticated
+  // `GET /api/auth/local-grant-eligibility` presupposes a valid bearer — a
+  // dead one is rejected by the auth boundary before the route runs, and the
+  // desktop must treat that rejection as inconclusive (fail closed) even
+  // though a dead credential is exactly what its recovery needs to classify.
+  // This route closes that hole WITHOUT loosening the boundary: the caller
+  // still proves possession of THIS boot's owner-only secret on a direct
+  // loopback connection — the same capability the local-grant exchange
+  // itself requires — so the answer reveals one bit about a credential the
+  // caller already holds, never credential material. A credential the
+  // service does not recognize answers `{ eligible: false }`, which the
+  // desktop acts on by minting a fresh grant through the ordinary
+  // owner-secret exchange route.
+  app.post(PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH, async (c) => {
+    if (!localGrantSecret || !isDirectLoopbackCaller(c)) {
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    }
+    if (new URL(c.req.url).search) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    const body = await readPairingJson(c.req.raw, ['secret', 'credential']);
+    if (
+      !body ||
+      typeof body.secret !== 'string' ||
+      body.secret.length === 0 ||
+      typeof body.credential !== 'string' ||
+      body.credential.length === 0
+    ) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    // Keep wrong secret and wrong position indistinguishable, matching the
+    // startup proof: callers learn only that the local proof did not hold.
+    if (!timingSafeSecretEqual(body.secret, localGrantSecret)) {
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    }
+    return c.json({
+      eligible: pairing.isLocalGrantMintedCredential(body.credential),
+    });
   });
   app.post(PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH, async (c) => {
     if (

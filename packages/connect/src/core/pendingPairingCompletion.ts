@@ -23,6 +23,7 @@ export type PendingPairingCompletion =
   | { status: 'post-exchange-failed'; failure: unknown }
   | { status: 'declined' }
   | { status: 'expired' }
+  | { status: 'unavailable' }
   | { status: 'identity-changed' }
   | { status: 'failed' }
   | { status: 'aborted' };
@@ -321,7 +322,18 @@ export function createPendingPairingCompletion(
           const status = errorStatus(error);
           const code = errorCode(error);
           let minimumDelayMs = 0;
+          if (code === 'offer_unavailable') {
+            // #2228 slice 4: a definitive rejection, not a waiting state. The
+            // offer was already claimed by another exchange, cancelled by the
+            // host, or pruned — offers are in-memory, so a Station restart
+            // also lands here. Retrying cannot revive it: classifying this
+            // with the other 409s used to poll a dead offer every few seconds
+            // until the record's own expiry let it stop.
+            return terminal({ status: 'unavailable' });
+          }
           if (status === 409) {
+            // request_not_confirmed: the request exists and is approvable but
+            // nobody has acted yet — the one 409 retrying can still resolve.
             reportProgress(flight, 'waiting-for-approval');
           } else if (status === 429) {
             reportProgress(flight, 'waiting-for-approval');

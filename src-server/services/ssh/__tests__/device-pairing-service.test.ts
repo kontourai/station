@@ -987,13 +987,17 @@ describe('DevicePairingService', () => {
     expect(service.listDevices()).toEqual([
       expect.objectContaining({ name: 'Brian phone', revokedAt: null }),
     ]);
+    // A replayed exchange is definitive — the offer was consumed, and no
+    // amount of retrying revives it (#2228: the joiner's completion loop
+    // settles offer_unavailable instead of polling it as "waiting for
+    // approval" forever).
     expect(() =>
       service.exchange({
         offerId: offer.offerId,
         proof: offer.challenge,
         requestId: request.requestId,
       }),
-    ).toThrowError(new DevicePairingError('request_not_confirmed'));
+    ).toThrowError(new DevicePairingError('offer_unavailable'));
 
     const persisted = readFileSync(
       join(homeDir, 'security', 'paired-devices.json'),
