@@ -293,6 +293,9 @@ At the end of onboarding or in the Connections modal, choose **Connect another d
 to the selected Station server. The existing client and the phone both connect
 to that server; the existing client does not become a server. Check the visible
 server address: the phone needs a reachable LAN or tailnet address, not localhost.
+The panel warns when the address is a loopback one, and remembers the last
+reachable address an offer was created with for that Station, offering it back
+as the field's starting value the next time (#2228).
 Choose **Create pairing code**, scan with the phone camera to open the selected
 installed Station channel, then review and approve the request. For Station’s
 in-app scanner, select **Scanner inside Station** above the QR instead.

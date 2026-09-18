@@ -2432,6 +2432,90 @@ describe('device pairing panels', () => {
       screen.queryByRole('button', { name: 'Reconnect this Station' }),
     ).toBeNull();
   });
+
+  test('seeds the endpoint field from a remembered reachable address (#2228 slice 3)', () => {
+    const suggestionKey =
+      'station-pairing-endpoint-suggestion:v1:https://station.example.test';
+    globalThis.localStorage.setItem(
+      suggestionKey,
+      'https://kontour.python-smelt.ts.net:3773',
+    );
+    try {
+      render(
+        <HostDevicePairingPanel
+          apiBase="https://station.example.test"
+          publicEndpoint="http://127.0.0.1:38141"
+          getCredential={() => 'operator-credential'}
+          onCancel={vi.fn()}
+        />,
+      );
+      // The remembered tailnet address outranks the active connection's
+      // loopback URL as the field's starting value.
+      expect(
+        (screen.getByLabelText('Pairing endpoint') as HTMLInputElement).value,
+      ).toBe('https://kontour.python-smelt.ts.net:3773');
+    } finally {
+      globalThis.localStorage.removeItem(suggestionKey);
+    }
+  });
+
+  test('remembering a reachable offer address replaces a loopback default and clears the warning (#2228 slice 3)', async () => {
+    const suggestionKey =
+      'station-pairing-endpoint-suggestion:v1:https://station.example.test';
+    globalThis.localStorage.removeItem(suggestionKey);
+    try {
+      const offer = {
+        protocolVersion: 1 as const,
+        environmentId: 'environment-1',
+        offerId: 'offer-1',
+        challenge: 'challenge-1',
+        manualCode: 'PAIRME2345',
+        endpoint: 'https://station.example.test',
+        scope: 'station:interactive',
+        expiresAt: Date.now() + 60_000,
+      };
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/api/pairing/requests') return response({ requests: [] });
+        if (path === '/api/pairing/devices') return response({ devices: [] });
+        if (path === '/api/pairing/offers' && init?.method === 'POST') {
+          return response(offer, 201);
+        }
+        return response({ error: 'unexpected' }, 500);
+      });
+
+      render(
+        <HostDevicePairingPanel
+          apiBase="https://station.example.test"
+          publicEndpoint="http://127.0.0.1:38141"
+          getCredential={() => 'operator-credential'}
+          onCancel={vi.fn()}
+        />,
+      );
+
+      // The loopback default is named at the field, before it ever reaches a
+      // QR code: error-styled border and the phone-reach warning, not the
+      // neutral hint.
+      expect(screen.getByRole('note').textContent).toContain(
+        'A phone cannot reach this address',
+      );
+      fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
+        target: { value: 'https://kontour.python-smelt.ts.net:3773' },
+      });
+      await waitFor(() => expect(screen.queryByRole('note')).toBeNull());
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Create pairing code' }),
+      );
+      expect(await screen.findByText('PAIRME2345')).toBeTruthy();
+      // The reachable address the operator typed is remembered for next time.
+      expect(globalThis.localStorage.getItem(suggestionKey)).toBe(
+        'https://kontour.python-smelt.ts.net:3773',
+      );
+    } finally {
+      globalThis.localStorage.removeItem(suggestionKey);
+    }
+  });
 });
 
 test('pending approval counts down from its saved expiry without announcing every tick', async () => {

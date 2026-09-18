@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isLoopbackUrl } from '../core/connectionProfile';
 import { describeDeviceScope, deviceRevokeError } from '../core/deviceActivity';
 import {
   deriveDefaultDeviceName,
@@ -35,6 +36,10 @@ import {
   encodePairingDeepLink,
   type PairingDeepLinkChannel,
 } from '../core/pairingDeepLink';
+import {
+  rememberPairingEndpoint,
+  suggestPairingEndpoint,
+} from '../core/pairingEndpointSuggestion';
 import { completePendingPairing } from '../core/pendingPairingCompletionLoader';
 import { PairedDeviceList } from './connection-manager-modal/PairedDeviceList';
 import {
@@ -374,9 +379,16 @@ export function JoinDevicePairingPanel({
                     : 'expired-pairing-code',
                   directLabel,
                 ).message
-              : completion.status === 'identity-changed'
-                ? 'The Station identity changed during pairing.'
-                : 'Pairing failed. Check the code and try again.';
+              : completion.status === 'unavailable'
+                ? pairingStateCopy(
+                    pending.requestKind === 'direct'
+                      ? 'unavailable-access-request'
+                      : 'unavailable-pairing-code',
+                    directLabel,
+                  ).message
+                : completion.status === 'identity-changed'
+                  ? 'The Station identity changed during pairing.'
+                  : 'Pairing failed. Check the code and try again.';
         setError(message);
         setPending(null);
       });
@@ -1072,7 +1084,13 @@ export function HostDevicePairingPanel({
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [endpoint, setEndpoint] = useState(publicEndpoint);
+  // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
+  // operator last created an offer with for this Station) outranks the active
+  // connection's own URL, which is loopback on a desktop host and points the
+  // phone at itself. Seeded at mount; the field stays fully editable.
+  const [endpoint, setEndpoint] = useState(
+    () => suggestPairingEndpoint(apiBase) ?? publicEndpoint,
+  );
   const [scopePreset, setScopePreset] = useState<PairingScopePreset>(
     DEFAULT_PAIRING_SCOPE_PRESET,
   );
@@ -1097,6 +1115,11 @@ export function HostDevicePairingPanel({
       payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
     [clientChannel, payload],
   );
+  // #2228 slice 3: the QR embeds this address, so a loopback value is the one
+  // input mistake this surface makes silently fatal — the code scans fine and
+  // then opens the phone against itself. Name it at the field, in the same
+  // vocabulary the field's hint uses, instead of after the scan fails.
+  const endpointIsLoopback = useMemo(() => isLoopbackUrl(endpoint), [endpoint]);
 
   const downloads = MOBILE_APP_DOWNLOADS[clientChannel];
 
@@ -1331,6 +1354,7 @@ export function HostDevicePairingPanel({
       }
       const value: unknown = await response.json();
       if (!isDevicePairingOffer(value)) throw new Error('Invalid offer');
+      rememberPairingEndpoint(apiBase, endpoint);
       setOffer(value);
     } catch {
       setError(
@@ -1548,13 +1572,26 @@ export function HostDevicePairingPanel({
                 autoCapitalize="none"
                 value={endpoint}
                 onChange={(event) => setEndpoint(event.target.value)}
-                style={inputStyle}
+                style={{
+                  ...inputStyle,
+                  ...(endpointIsLoopback
+                    ? { borderColor: 'var(--status-error, #e66)' }
+                    : {}),
+                }}
               />
             </label>
-            <small style={{ color: 'var(--text-secondary, #999)' }}>
-              Use this server’s LAN or tailnet address. Localhost and 127.0.0.1
-              point to the phone itself when opened there.
-            </small>
+            {endpointIsLoopback ? (
+              <small role="note" style={{ color: 'var(--status-error, #e66)' }}>
+                A phone cannot reach this address — localhost and 127.0.0.1
+                point to the phone itself. Use this server’s LAN or tailnet
+                address (for example a Tailscale Serve HTTPS URL).
+              </small>
+            ) : (
+              <small style={{ color: 'var(--text-secondary, #999)' }}>
+                Use this server’s LAN or tailnet address. Localhost and
+                127.0.0.1 point to the phone itself when opened there.
+              </small>
+            )}
           </div>
         </>
       ) : (
