@@ -224,3 +224,93 @@ export default function TurnActionsMenu({
     </span>
   );
 }
+
+export interface UserMessageActionsMenuProps {
+  onCopy?: () => void;
+  forkSource?: ForkTurnSource | null;
+  onForkFromTurn?: (source: ForkTurnSource) => void;
+  onNewChatFromMessage?: () => void;
+}
+
+/** Overflow for a user bubble: Copy plus fork or a new-chat seed (#2216). */
+export function UserMessageActionsMenu({
+  onCopy,
+  forkSource,
+  onForkFromTurn,
+  onNewChatFromMessage,
+}: UserMessageActionsMenuProps) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = () => setOpen(false);
+  const menuRef = useMenuFocus<HTMLDivElement>(open, close);
+  const triggerProps = useMenuTriggerToggle(open, () => setOpen(true), close);
+  const canFork = Boolean(forkSource && onForkFromTurn);
+
+  return (
+    <span className="turn-footer__actions-menu">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="message__copy-btn turn-footer__overflow-trigger"
+        aria-label="More message actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        {...triggerProps}
+      >
+        …
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="turn-footer__overflow-menu"
+          role="menu"
+          aria-label="Message actions"
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              close();
+            }
+          }}
+        >
+          {onCopy && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                close();
+                onCopy();
+              }}
+            >
+              Copy
+            </button>
+          )}
+          {canFork && forkSource && onForkFromTurn && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                close();
+                onForkFromTurn(forkSource);
+              }}
+            >
+              Fork from here…
+            </button>
+          )}
+          {!canFork && onNewChatFromMessage && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                close();
+                onNewChatFromMessage();
+              }}
+            >
+              New chat from this message
+            </button>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}

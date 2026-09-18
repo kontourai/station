@@ -27,7 +27,10 @@ import { expandTilde } from '../../utils/paths.js';
 import type { CheckoutRemoteReader } from './checkout-remote-reader.js';
 import { compareProjectGitRemotes } from './project-git-remote-comparison.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
-import type { ProjectService } from './project-service.js';
+import {
+  defaultedProjectWorkingDirectory,
+  type ProjectService,
+} from './project-service.js';
 
 type ProjectIdentityManifestPort = Pick<ProjectManifestStore, 'readRecord'> &
   Partial<Pick<ProjectManifestStore, 'ensureProjectManifest'>>;
@@ -93,10 +96,15 @@ export class ProjectIdentityService {
           const view = this.view(project);
           // Identity attachment does not rewrite an existing local config,
           // including its chosen path spelling; this is not a filesystem read.
+          const expectedWorkingDirectory =
+            config.workingDirectory ??
+            resolve(expandTilde(defaultedProjectWorkingDirectory(config.slug)));
+          const pathMatches =
+            project.workingDirectory === expectedWorkingDirectory;
           if (
             !isDeepStrictEqual(view.identity, identity) ||
             project.name !== config.name ||
-            project.workingDirectory !== config.workingDirectory
+            !pathMatches
           ) {
             throw new FileStorageConflictError(
               'This local Project already has a different identity or configuration. Nothing was changed.',

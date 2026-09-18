@@ -79,6 +79,44 @@ describe('buildCliRuntimePrerequisites', () => {
     ]);
   });
 
+  test('login descriptions name observed credential presence, not a live session', async () => {
+    const authenticated = await buildCliRuntimePrerequisites({
+      command: 'claude',
+      displayName: 'Claude',
+      versionArgs: ['--version'],
+      authArgs: ['login', 'status'],
+      installStep: 'Install it.',
+      authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
+      detectAuthState: async () => 'authenticated',
+      runCommand: async () => ({ stdout: 'ok', stderr: '', code: 0 }),
+    });
+    const missing = await buildCliRuntimePrerequisites({
+      command: 'claude',
+      displayName: 'Claude',
+      versionArgs: ['--version'],
+      authArgs: ['login', 'status'],
+      installStep: 'Install it.',
+      authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
+      detectAuthState: async () => 'unauthenticated',
+      runCommand: async () => ({ stdout: 'ok', stderr: '', code: 0 }),
+    });
+
+    expect(
+      authenticated.find((prerequisite) => prerequisite.id === 'claude-auth'),
+    ).toMatchObject({
+      status: 'installed',
+      description: 'Claude CLI credentials are present on this Station.',
+    });
+    expect(
+      missing.find((prerequisite) => prerequisite.id === 'claude-auth'),
+    ).toMatchObject({
+      status: 'missing',
+      description: 'Claude CLI is not authenticated.',
+    });
+  });
+
   test('reuses identical version and capability probes', async () => {
     const calls: string[][] = [];
     await buildCliRuntimePrerequisites({

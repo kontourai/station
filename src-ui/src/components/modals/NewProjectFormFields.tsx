@@ -157,6 +157,8 @@ interface IdentityFieldProps {
   onIconChange: (icon: string) => void;
   onNameChange: (name: string) => void;
   onToggleIconChoices: () => void;
+  /** When the host path is hidden, name is the identity — not a folder leaf. */
+  identityHint?: string;
 }
 
 export function NewProjectIdentityField({
@@ -171,6 +173,7 @@ export function NewProjectIdentityField({
   onIconChange,
   onNameChange,
   onToggleIconChoices,
+  identityHint,
 }: IdentityFieldProps) {
   return (
     <div className="editor-field">
@@ -222,8 +225,8 @@ export function NewProjectIdentityField({
         )
       )}
       <p className="editor-field-hint">
-        Follows the working directory until you edit it. Uses initials until you
-        choose an icon.
+        {identityHint ??
+          'Follows the working directory until you edit it. Uses initials until you choose an icon.'}
       </p>
       {showIconChoices && (
         <ProjectIconChoices

@@ -62,6 +62,34 @@ describe('runtime adapter readiness', () => {
       }).state,
     ).toBe('unavailable_prerequisites');
 
+    const expiredAuth = resolveRuntimeAdapterReadiness({
+      adapter,
+      engineId: engineId('claude'),
+      enabled: true,
+      prerequisites: [
+        {
+          id: 'claude-cli',
+          name: 'Claude CLI',
+          description: 'Required to launch the Claude runtime.',
+          status: 'installed',
+          category: 'required',
+        },
+        {
+          id: 'runtime-authentication',
+          name: 'Claude authentication',
+          description:
+            'Claude rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.',
+          status: 'missing',
+          category: 'required',
+        },
+      ],
+    });
+    expect(expiredAuth.ready).toBe(false);
+    expect(expiredAuth.state).toBe('unavailable_prerequisites');
+    expect(connectionStatusFromRuntimeReadiness(expiredAuth)).toBe(
+      'missing_prerequisites',
+    );
+
     expect(
       resolveRuntimeAdapterReadiness({
         adapter: {

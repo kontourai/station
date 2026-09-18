@@ -26,7 +26,7 @@ import {
   createResizeReanchorGate,
   restoreChatScrollAnchor,
 } from './chatScrollAnchor';
-import type { ForkTurnSource } from './fork-turn-source';
+import { type ForkTurnSource, precedingForkSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
 import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
@@ -85,6 +85,7 @@ interface ChatMessageListProps {
    */
   hasSettingsEntryPoint?: boolean;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onNewChatFromMessage?: (text: string) => void;
   onQuote?: (quote: SavedAnswerQuote) => void;
 }
 
@@ -133,6 +134,7 @@ function ChatMessageListComponent({
   accountableHuman,
   hasSettingsEntryPoint,
   onForkFromTurn,
+  onNewChatFromMessage,
   onQuote,
 }: ChatMessageListProps) {
   const agents = useAgents();
@@ -472,6 +474,12 @@ function ChatMessageListComponent({
       showToolDetails={showToolDetails}
       onCopy={handleCopy}
       onForkFromTurn={onForkFromTurn}
+      userForkSource={
+        msg.role === 'user' ? precedingForkSource(messages, idx) : undefined
+      }
+      onNewChatFromMessage={
+        msg.role === 'user' ? onNewChatFromMessage : undefined
+      }
       onToolApproval={
         activeSession.replay ? undefined : (handleToolApproval as any)
       }

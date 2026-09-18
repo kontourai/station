@@ -43,6 +43,10 @@ const loadConnectedAnswerBasisAffordance = () =>
   }));
 
 const loadTurnActionsMenu = () => import('./TurnActionsMenu');
+const loadUserMessageActionsMenu = () =>
+  import('./TurnActionsMenu').then((module) => ({
+    default: module.UserMessageActionsMenu,
+  }));
 const loadShareAnswerButton = () =>
   import('./ShareAnswerButton').then((module) => ({
     default: module.ShareAnswerButton,
@@ -100,6 +104,9 @@ interface MessageBubbleProps {
   showToolDetails: boolean;
   onCopy: (text: string) => void;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  /** #2216: nearest preceding completed assistant turn, if any. */
+  userForkSource?: ForkTurnSource | null;
+  onNewChatFromMessage?: (text: string) => void;
   onToolApproval?: (
     sessionId: string,
     agentSlug: string,
@@ -128,6 +135,8 @@ function MessageBubbleComponent({
   showToolDetails,
   onCopy,
   onForkFromTurn,
+  userForkSource,
+  onNewChatFromMessage,
   onToolApproval,
   anchorKey,
   owner,
@@ -331,6 +340,23 @@ function MessageBubbleComponent({
           Copy message
         </button>
       )}
+      {msg.role === 'user' &&
+        textContent &&
+        (userForkSource || onNewChatFromMessage) && (
+          <LazyBoundary
+            load={loadUserMessageActionsMenu}
+            componentProps={{
+              onCopy: isMobile ? undefined : () => onCopy(textContent),
+              forkSource: userForkSource,
+              onForkFromTurn,
+              onNewChatFromMessage: onNewChatFromMessage
+                ? () => onNewChatFromMessage(textContent)
+                : undefined,
+            }}
+            pending={null}
+            unavailable={() => null}
+          />
+        )}
       {msg.role === 'assistant' && textContent && !hasTurnFooter && (
         <button
           type="button"
