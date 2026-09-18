@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-09-18T05:12:04Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2452",
+    "sha": "26b4deca1ba2e2c2d2c3c4a722df314daf6c948b",
+    "artifactBuiltAt": "2026-09-18T04:28:32.795Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35306644320",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35306644320)"
+    ],
+    "changelog": {
+      "previousSha": "c479c218bef24ca5268700fd571a2998ef4f131d",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2212](https://github.com/kontourai/station/pull/2212) fix(nightly): retry timed-out desktop asset uploads with readback adoption",
+          "[#2218](https://github.com/kontourai/station/pull/2218) fix(server): bound attached-transcript mapping so no event can wedge the poll loop",
+          "[#2214](https://github.com/kontourai/station/pull/2214) fix(ui): B10 phone chat honesty, fullscreen continue, and client copy",
+          "[#2213](https://github.com/kontourai/station/pull/2213) fix(ui): focus the transcript on answers — turn record moves to the overflow menu (#2211)",
+          "[#2209](https://github.com/kontourai/station/pull/2209) fix(desktop): stop the native broker's 1s total body budget from killing every SSE stream"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2219](https://github.com/kontourai/station/pull/2219) chore(deps): upgrade @kontourai/veritas to 1.6.1 — the readiness report states its rollup's derivation",
+          "[#2206](https://github.com/kontourai/station/pull/2206) build(deps): bump the desktop-crates group across 1 directory with 2 updates"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-09-18T05:06:29Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2452.35306644320",
