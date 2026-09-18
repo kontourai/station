@@ -14,14 +14,22 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 // are synthesized.
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, readdir: vi.fn(actual.readdir) };
+  return {
+    ...actual,
+    readdir: vi.fn(actual.readdir),
+    stat: vi.fn(actual.stat),
+  };
 });
 
-const { readdir } = await import('node:fs/promises');
+const { readdir, stat } = await import('node:fs/promises');
 const { createFsRoutes } = await import('../fs.js');
 
 function errnoError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`${code}: simulated`), { code });
+}
+
+function fakeDirectoryEntry(name: string, isDirectory = true) {
+  return { name, isDirectory: () => isDirectory } as unknown as import('node:fs').Dirent;
 }
 
 describe('FS Routes', () => {
@@ -131,5 +139,95 @@ describe('FS Routes', () => {
     expect(body.success).toBe(true);
     expect(body.data.path).toBe(join(homedir(), firstDir.name));
     expect(body.data.path).not.toContain('/~/');
+  });
+
+  // The navigation contract: `parent` is server-derived so the UI never
+  // re-encodes path semantics (its old POSIX-only `..` regex could not climb
+  // backslash paths at all), `label` names navigation-only levels, and
+  // `selectable: false` keeps those levels out of the Select button.
+  test('GET /browse reports the POSIX root as the top of the hierarchy', async () => {
+    const app = createFsRoutes();
+    const body = await json(await app.request('/browse?path=/'));
+    expect(body.data.path).toBe('/');
+    expect(body.data.parent).toBeNull();
+    expect(body.data.selectable).toBe(true);
+  });
+
+  test('GET /browse parents a POSIX listing at its dirname and carries entry paths', async () => {
+    const app = createFsRoutes();
+    const body = await json(await app.request('/browse?path=/tmp'));
+    expect(body.data.path).toBe('/tmp');
+    expect(body.data.parent).toBe('/');
+    for (const entry of body.data.entries) {
+      expect(entry.path).toBe(`/tmp/${entry.name}`);
+    }
+  });
+
+  // Windows branches run on any CI host: the platform is injected at the
+  // factory and `readdir`/`stat` are armed, so no real Windows filesystem is
+  // required to prove the contract.
+  test('GET /browse lists present Windows drives at the drives level', async () => {
+    vi.mocked(stat).mockImplementation(async (path) => {
+      if (path === 'C:\\' || path === 'D:\\') {
+        return {} as import('node:fs').Stats;
+      }
+      throw errnoError('ENOENT');
+    });
+    try {
+      const app = createFsRoutes({ platform: 'win32' });
+      const body = await json(
+        await app.request(`/browse?path=${encodeURIComponent('\\')}`),
+      );
+
+      expect(body.success).toBe(true);
+      expect(body.data.path).toBe('\\');
+      expect(body.data.label).toBe('This PC');
+      expect(body.data.selectable).toBe(false);
+      expect(body.data.parent).toBeNull();
+      expect(body.data.entries).toEqual([
+        { name: 'C:', path: 'C:\\', isDirectory: true },
+        { name: 'D:', path: 'D:\\', isDirectory: true },
+      ]);
+    } finally {
+      vi.mocked(stat).mockRestore();
+    }
+  });
+
+  test('GET /browse parents a Windows drive root at the drives level', async () => {
+    vi.mocked(readdir).mockResolvedValueOnce([
+      fakeDirectoryEntry('Projects'),
+      fakeDirectoryEntry('notes.txt', false),
+    ]);
+    const app = createFsRoutes({ platform: 'win32' });
+
+    const body = await json(
+      await app.request(`/browse?path=${encodeURIComponent('C:\\')}`),
+    );
+
+    expect(body.data.path).toBe('C:\\');
+    expect(body.data.parent).toBe('\\');
+    // Directories only, and the entry carries its full backslash-canonical
+    // path so the picker never joins separators itself.
+    expect(body.data.entries).toEqual([
+      { name: 'Projects', path: 'C:\\Projects', isDirectory: true },
+    ]);
+  });
+
+  test('GET /browse derives a Windows subdirectory parent and joins children', async () => {
+    vi.mocked(readdir).mockResolvedValueOnce([fakeDirectoryEntry('app')]);
+    const app = createFsRoutes({ platform: 'win32' });
+
+    const body = await json(
+      await app.request(`/browse?path=${encodeURIComponent('C:/Projects')}`),
+    );
+
+    // Forward slashes from the client normalize to the canonical backslash
+    // form, so the picker's up-navigation and child paths agree regardless
+    // of which separator the user typed.
+    expect(body.data.path).toBe('C:\\Projects');
+    expect(body.data.parent).toBe('C:\\');
+    expect(body.data.entries).toEqual([
+      { name: 'app', path: 'C:\\Projects\\app', isDirectory: true },
+    ]);
   });
 });

@@ -10,10 +10,13 @@ function titleCaseSegment(segment: string): string {
 
 export function normalizeWorkingDirectory(value: string): string {
   const trimmed = value.trim();
-  if (!trimmed || trimmed === '/' || trimmed === '~') {
+  if (!trimmed || trimmed === '/' || trimmed === '~' || trimmed === '\\') {
     return trimmed;
   }
-  return trimmed.replace(/\/+$/, '');
+  // A drive root with its separator (`D:\`, `D:/`) is already a root;
+  // stripping separators would corrupt it into the drive-RELATIVE `D:`.
+  if (/^[A-Za-z]:[\\/]+$/.test(trimmed)) return trimmed;
+  return trimmed.replace(/[\\/]+$/, '');
 }
 
 /**
@@ -58,7 +61,15 @@ export function getWorkingDirectoryLeaf(value: string): string {
   const pathWithoutHome = normalized.startsWith('~/')
     ? normalized.slice(2)
     : normalized;
-  const parts = pathWithoutHome.split('/').filter(Boolean);
+  // A drive root has no leaf — `D:\` must not infer a project named "D".
+  if (/^[A-Za-z]:[\\/]*$/.test(pathWithoutHome)) {
+    return '';
+  }
+  // Both separators: a Windows path's leaf is after the last `\` just as a
+  // POSIX path's is after the last `/` — splitting on `/` alone would treat
+  // `C:\Users\brian\myproject` as one segment and name the project after
+  // the entire path.
+  const parts = pathWithoutHome.split(/[\\/]/).filter(Boolean);
   return parts.at(-1) ?? '';
 }
 
