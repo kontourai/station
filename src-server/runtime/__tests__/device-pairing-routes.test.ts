@@ -17,6 +17,7 @@ import {
   PAIRING_SCOPE_HOME_CONTROL,
   type PairedDevice,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
@@ -2283,6 +2284,98 @@ describe('local-grant eligibility answer (#2228)', () => {
       LOOPBACK_PEER,
     );
     expect(withQuery.status).toBe(400);
+  });
+});
+
+/**
+ * #2228 slice 4, wire half: the joiner's completion loop keys on the exchange
+ * route's error CODE. The service used to answer a consumed or cancelled
+ * offer with `request_not_confirmed` — indistinguishable from "nobody has
+ * approved yet", which is why the joiner polled a dead offer forever. The
+ * route must surface `offer_unavailable` (409) for exactly the definitive
+ * cases, and keep `request_not_confirmed` for the one retryable 409.
+ */
+describe('exchange answers offer_unavailable for definitive conflicts (#2228 slice 4)', () => {
+  const wireExchange = (
+    harness: ReturnType<typeof createHarness>,
+    offerId: string,
+    requestId: string,
+    proof: string,
+  ) =>
+    harness.request(
+      PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+      harness.json({ offerId, proof, requestId }),
+      '198.51.100.77',
+    );
+
+  test('a consumed offer answers offer_unavailable, not request_not_confirmed', async () => {
+    const harness = createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'First device',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+    harness.pairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const first = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(first.status).toBe(200);
+
+    // THE replay pin: the second exchange is definitive, not a waiting state.
+    const replay = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(replay.status).toBe(409);
+    expect(await replay.json()).toEqual({ error: 'offer_unavailable' });
+  });
+
+  test('a host-cancelled offer answers offer_unavailable while an unapproved request keeps its retryable 409', async () => {
+    const harness = createHarness();
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Second device',
+      requesterPosition: 'off-box',
+      source: 'pairing-code',
+    });
+
+    // Before anyone acts: the one 409 a retry can still resolve.
+    const waiting = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(waiting.status).toBe(409);
+    expect(await waiting.json()).toEqual({ error: 'request_not_confirmed' });
+
+    // The host cancels the approval (not a deny — request_denied stays its
+    // own answer): the offer is gone, and the joiner must hear that.
+    harness.pairing.cancelOffer(offer.offerId);
+    const cancelled = await wireExchange(
+      harness,
+      offer.offerId,
+      request.requestId,
+      offer.challenge,
+    );
+    expect(cancelled.status).toBe(409);
+    expect(await cancelled.json()).toEqual({ error: 'offer_unavailable' });
   });
 });
 

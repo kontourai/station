@@ -1165,13 +1165,31 @@ export class DevicePairingService {
     credential: string;
     replacement: 'none' | 'superseded';
   } {
-    const offer = this.#activeOffer(input.offerId);
+    const offer = this.#offers.get(input.offerId);
+    if (!offer) {
+      // #2228: the joiner polls a saved request, so an offer that is not in
+      // the map — a Station restart wiped the in-memory offers, it was pruned
+      // after expiry elsewhere, or the id is foreign — is a definitive "no
+      // longer available", not a malformed request. Exchange is the one
+      // caller whose absent-offer answer means that; requestPairing's manual
+      // code path keeps invalid_offer's "no open offer matches that code".
+      throw new DevicePairingError('offer_unavailable');
+    }
+    this.#ensureNotExpired(offer);
     if (
       offer.status === 'cancelled' &&
       offer.request?.requestId === input.requestId &&
       offer.request.status === 'denied'
     ) {
       throw new DevicePairingError('request_denied');
+    }
+    if (offer.status === 'used' || offer.status === 'cancelled') {
+      // Definitive: another exchange already consumed this offer, or the host
+      // cancelled it without a deny (the arm above). Both are unrecoverable
+      // by retrying, which is exactly why they must not share the
+      // request_not_confirmed "nobody has approved yet" answer the joiner's
+      // completion loop polls through (#2228 slice 4).
+      throw new DevicePairingError('offer_unavailable');
     }
     if (
       offer.status !== 'confirmed' ||
