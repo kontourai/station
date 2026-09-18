@@ -41,7 +41,15 @@ describe('runtimeCatalogVisibleModels identity passthrough', () => {
 
   test('a live catalog does not fall through to built-in models', () => {
     const models = runtimeCatalogVisibleModels({
-      ...connection([]),
+      id: 'c1',
+      kind: 'model',
+      type: 'anthropic',
+      name: 'c1',
+      enabled: true,
+      capabilities: [],
+      config: { modelOptions: [] },
+      status: 'ready',
+      prerequisites: [],
       runtimeCatalog: {
         source: 'live',
         models: [],
