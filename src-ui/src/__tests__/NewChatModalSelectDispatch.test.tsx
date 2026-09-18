@@ -121,6 +121,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     modelChoiceKey: (agent: AgentData) => agent.slug,
     defaultEffectiveModelForAgent: () => ({
       id: undefined,
+      label: 'Model not reported',
       source: 'agent default' as const,
     }),
   }),
@@ -341,6 +342,27 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     // description carrying the server's sentence.
     expect(screen.getByText('Not set up')).toBeTruthy();
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('the model trigger is disabled while the engine reports no catalog', () => {
+    // modelsForAgent is [] for every agent in this harness, so the trigger
+    // must not offer a picker that would open empty; the accessible name
+    // still says what the control is and the tooltip names why.
+    selectionModelState.agents = [AGENT];
+    renderModal();
+    const trigger = document.querySelector(
+      '.new-chat-modal__model-trigger',
+    ) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
+    expect(trigger.getAttribute('aria-label')).toBe(
+      'Model: Model not reported',
+    );
+    expect(trigger.getAttribute('title')).toBe(
+      'This Agent has not reported a model catalog',
+    );
+    fireEvent.click(trigger);
+    expect(document.querySelector('.new-chat-modal__model-picker-backdrop'))
+      .toBeNull();
   });
 
   test('Enable materializes the engine Agent, announces progress, and selects off the response (#3027)', async () => {

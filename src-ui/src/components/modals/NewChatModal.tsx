@@ -1401,7 +1401,10 @@ function AgentRow({
           type="button"
           className="new-chat-modal__model-trigger"
           onClick={onOpenModel}
-          disabled={interactionDisabled}
+          // An Agent whose engine has reported no catalog has no model to
+          // choose — the trigger opened an empty picker. Disabled (not
+          // hidden) so the row keeps its shape and the tooltip names why.
+          disabled={interactionDisabled || modelUnavailable}
           aria-label={`Model: ${modelLabel}`}
           title={
             modelUnavailable
