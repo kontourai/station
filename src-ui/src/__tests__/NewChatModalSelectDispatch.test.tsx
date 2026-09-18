@@ -361,8 +361,9 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       'This Agent has not reported a model catalog',
     );
     fireEvent.click(trigger);
-    expect(document.querySelector('.new-chat-modal__model-picker-backdrop'))
-      .toBeNull();
+    expect(
+      document.querySelector('.new-chat-modal__model-picker-backdrop'),
+    ).toBeNull();
   });
 
   test('Enable materializes the engine Agent, announces progress, and selects off the response (#3027)', async () => {

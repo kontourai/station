@@ -517,9 +517,7 @@ describe('ACP Routes', () => {
         source: 'acpConnectionRegistry:core',
         builtin: true,
         provider: {
-          listAvailable: () => [
-            { id: 'muse', name: 'Muse', command: 'muse' },
-          ],
+          listAvailable: () => [{ id: 'muse', name: 'Muse', command: 'muse' }],
         },
       },
     ];
@@ -551,9 +549,7 @@ describe('ACP Routes', () => {
         source: 'acpConnectionRegistry:core',
         builtin: true,
         provider: {
-          listAvailable: () => [
-            { id: 'muse', name: 'Muse', command: 'muse' },
-          ],
+          listAvailable: () => [{ id: 'muse', name: 'Muse', command: 'muse' }],
         },
       },
     ];

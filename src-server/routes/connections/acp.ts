@@ -357,7 +357,11 @@ export function createACPRoutes(ctx: RuntimeContext) {
           // same entry re-probes and materializes once the engine works.
           const connected = await connectNewACPConnection(ctx, newConn);
           const agent = connected
-            ? await registerPersistedACPConnection(ctx, newConn.id, newConn.name)
+            ? await registerPersistedACPConnection(
+                ctx,
+                newConn.id,
+                newConn.name,
+              )
             : undefined;
           acpOps.add(1, { op: 'create' });
           return c.json({
