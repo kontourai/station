@@ -320,7 +320,7 @@
         "id": "style-standard",
         "command": "npm run lint:check",
         "method": "validation",
-        "summary": "Advisory (owner-approved #2220): the style standard is enforced as a blocking ci:fast invariant; this check makes standalone readiness runs execute and record lint so the readiness evidence carries the style verdict too. Not in requiredEvidenceCheckIds — the direct invariant blocks; duplicate blocking here would be ceremony."
+        "summary": "Owner-approved required evidence check (#2220, promoted to required in-thread 2026-09-17): the style standard gates the readiness verdict. It does not double-fire inside ci:fast — the direct lint:check invariant fails the lane before readiness runs — and in standalone veritas:shadow runs it is what makes a style violation read as not-ready instead of invisible."
       },
       {
         "id": "repo-governance",
@@ -407,7 +407,7 @@
         }
       }
     ],
-    "requiredEvidenceCheckIds": ["repo-governance"],
+    "requiredEvidenceCheckIds": ["repo-governance", "style-standard"],
     "defaultEvidenceCheckIds": ["repo-governance", "verification-policy", "style-standard"],
     "evidenceCheckRoutes": [
       {

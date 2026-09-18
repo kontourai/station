@@ -15,5 +15,6 @@
   "static-verification": "enforced",
   "sdk-builds": "enforced",
   "app-builds": "enforced",
-  "fallow-advisory": "advisory"
+  "fallow-advisory": "advisory",
+  "style-standard": "enforced"
 }
