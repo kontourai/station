@@ -317,6 +317,12 @@
     "uncoveredPathPolicy": "warn",
     "evidenceChecks": [
       {
+        "id": "style-standard",
+        "command": "npm run lint:check",
+        "method": "validation",
+        "summary": "Advisory (owner-approved #2220): the style standard is enforced as a blocking ci:fast invariant; this check makes standalone readiness runs execute and record lint so the readiness evidence carries the style verdict too. Not in requiredEvidenceCheckIds — the direct invariant blocks; duplicate blocking here would be ceremony."
+      },
+      {
         "id": "repo-governance",
         "command": "npm run proof:repo-governance",
         "method": "validation",
@@ -402,7 +408,7 @@
       }
     ],
     "requiredEvidenceCheckIds": ["repo-governance"],
-    "defaultEvidenceCheckIds": ["repo-governance", "verification-policy"],
+    "defaultEvidenceCheckIds": ["repo-governance", "verification-policy", "style-standard"],
     "evidenceCheckRoutes": [
       {
         "nodeIds": [
