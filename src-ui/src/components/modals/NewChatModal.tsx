@@ -744,19 +744,25 @@ export function NewChatModal({
               {currentContextOption?.label || 'Select workspace'}
             </span>
             {workspaceHint.kind !== 'home' && (
-              <span className="new-chat-modal__context-dir">
-                <CwdBreadcrumb path={workspaceHint.path} />
-              </span>
+              <>
+                <ContextLabelSeparator />
+                <span className="new-chat-modal__context-dir">
+                  <CwdBreadcrumb path={workspaceHint.path} />
+                </span>
+              </>
             )}
             {workspaceHint.kind === 'home' && (
-              <HomeFolderLabel
-                className="new-chat-modal__context-dir new-chat-modal__context-dir--fallback"
-                title={
-                  isGlobal
-                    ? '~ (your home folder)'
-                    : '~ (no project folder set — chats start in your home folder)'
-                }
-              />
+              <>
+                <ContextLabelSeparator />
+                <HomeFolderLabel
+                  className="new-chat-modal__context-dir new-chat-modal__context-dir--fallback"
+                  title={
+                    isGlobal
+                      ? '~ (your home folder)'
+                      : '~ (no project folder set — chats start in your home folder)'
+                  }
+                />
+              </>
             )}
             <ArrowDownGlyph className="choice-caret" />
           </button>
@@ -1258,6 +1264,19 @@ function CwdBreadcrumb({ path }: { path: string }) {
   );
 }
 
+/**
+ * The dot between the workspace's name and its directory hint. Without it,
+ * "No workspace" and its "Home folder" fallback rendered flush and read as
+ * one invented phrase — "No workspace Home folder".
+ */
+function ContextLabelSeparator() {
+  return (
+    <span className="new-chat-modal__context-sep" aria-hidden="true">
+      ·
+    </span>
+  );
+}
+
 function AgentRow({
   agent,
   isSelected,
@@ -1332,7 +1351,15 @@ function AgentRow({
           >
             {agent.name}
           </span>
-          <AgentReadinessCell agent={agent} part="status" />
+          {/* archive#4521's compact rule, at the row that proved why: the
+              header badge carries the SHORT state ("Not set up", caution
+              tone), never the server's full sentence — that badge label IS a
+              paragraph, and inline beside the name it squeezed the name to
+              one ellipsized letter while the sentence's own remedy link sat
+              below. The complete sentence stays on the row (assistive node +
+              title) and at this width the Agents list row reads the same
+              compact badge, so §5's one-wording contract keeps holding. */}
+          <AgentReadinessCell agent={agent} part="status" compact />
         </div>
         {/* One quiet line beneath the name carrying what the row IS: the
             engine (and model, when the descriptor resolves one) plus the
@@ -1382,7 +1409,12 @@ function AgentRow({
               : `Choose model: ${modelLabel}`
           }
         >
-          Model · {modelLabel}
+          {/* The model name alone. The `Model · ` prefix read four times per
+              list and was the first thing the chip's own max-width ellipsized
+              — on every seeded row the visible string ended at the model's
+              actual name ("Model · Default (r…"), the one part that matters.
+              What this control IS stays in the accessible name and tooltip. */}
+          {modelLabel}
         </button>
         {/*
           DESIGN.md §5: the SAME readiness cell the Agents list row renders.
