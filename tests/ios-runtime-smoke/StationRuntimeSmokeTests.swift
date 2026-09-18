@@ -44,26 +44,37 @@ final class StationRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(connect.isHittable)
         // Settings lives in the sidebar drawer's footer, not the header: open
         // the drawer, prove the route exists, then close it again so the
-        // connection flow below starts from the undrawered shell. The open
-        // goes through `tap(until:)` because a WKWebView tap can be delivered
-        // and dropped while the control already reads hittable (see that
-        // helper); a single tap here fails the run on a dropped event, which
-        // is what the first version of this assertion did.
+        // connection flow below starts from the undrawered shell.
+        //
+        // Interaction model, learned from two red runs: a tap that OPENS the
+        // drawer covers the Toggle menu button behind it, so tapping Toggle
+        // again throws "not hittable" instead of closing anything. The Toggle
+        // therefore stays hittable exactly while the drawer is closed — a
+        // still-hittable Toggle after a tap means the tap was dropped (tap
+        // again); a covered one means it applied (stop tapping, wait for the
+        // footer). The loop below never taps a covered control, which is what
+        // both red runs did. Close with the drawer's own Close navigation
+        // button, which stays hittable while the drawer is open.
+        let toggle = app.buttons["Toggle menu"]
         let settings = app.buttons["Settings"]
+        let openDeadline = Date().addingTimeInterval(20)
+        while !settings.exists && Date() < openDeadline {
+            if toggle.isHittable {
+                toggle.tap()
+            }
+            _ = settings.waitForExistence(timeout: 2)
+        }
         XCTAssertTrue(
-            tap(app.buttons["Toggle menu"], until: settings, budget: 20),
+            settings.waitForExistence(timeout: 5),
             "Settings route missing from the drawer. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         XCTAssertTrue(settings.isHittable)
-        // The close gets one retry for the same dropped-tap reason, bounded:
-        // two taps total, then the assertion decides. The retry only fires
-        // after the button is still there past the close animation — checking
-        // `exists` immediately after the tap would catch the animating drawer
-        // and reopen it.
-        app.buttons["Toggle menu"].tap()
-        if !settings.waitForNonExistence(timeout: 2) {
-            app.buttons["Toggle menu"].tap()
-        }
+        let closeNav = app.buttons["Close navigation"]
+        XCTAssertTrue(
+            closeNav.waitForExistence(timeout: 5),
+            "Drawer close control missing. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
+        closeNav.tap()
         XCTAssertTrue(
             settings.waitForNonExistence(timeout: 5),
             "Drawer did not close after proving the Settings route."
