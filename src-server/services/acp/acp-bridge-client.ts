@@ -387,7 +387,7 @@ export async function handleACPBridgeCreateTerminal(
     term.signal = signal ?? null;
     term.exited = true;
   });
-  proc.on('error', (error) => {
+  proc.on('error', (error: NodeJS.ErrnoException) => {
     if (spawned || term.exited) return;
     term.spawnFailed = true;
     term.output += `spawn failed: ${error.message}\n`;
