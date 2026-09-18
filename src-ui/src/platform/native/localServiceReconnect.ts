@@ -17,9 +17,12 @@ import { invokeTauri } from './tauriInvoke';
  * Attempts `station_local_self_provision` for the process-selected local
  * Station. Resolves `false` when there is no local-service profile to
  * provision or the host refused (kept opaque by the connect wrapper) — the
- * panel renders its retry copy in that case. On success the shared saved
- * Station store is re-read so the panel's next poll carries the fresh
- * credential the native command just authorized.
+ * panel renders its retry copy in that case. Never rejects: this promise is
+ * consumed by a UI affordance whose alert state is already cleared, so a
+ * best-effort store refresh failure must not escape as an unhandled
+ * rejection. On success the shared saved Station store is re-read so the
+ * panel's next poll carries the fresh credential the native command just
+ * authorized.
  */
 export async function reconnectLocalService(): Promise<boolean> {
   const profileName =
@@ -29,6 +32,12 @@ export async function reconnectLocalService(): Promise<boolean> {
     invoke: invokeTauri,
     profileName,
   });
-  if (provisioned) await nativeProfileRepository().refresh();
+  if (provisioned) {
+    try {
+      await nativeProfileRepository().refresh();
+    } catch {
+      return false;
+    }
+  }
   return provisioned;
 }

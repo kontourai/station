@@ -5535,10 +5535,13 @@ fn station_local_self_provision(
     // confirms `{ "eligible": false }`, or returns without making the local-grant request,
     // allocating pending state, or touching the Keychain.
     let client_instance_id = resolve_local_self_provision_client_instance_id(profile);
-    // Read once for both the decisive eligibility probe (#2228) and the
-    // exchange that a decisive `{ "eligible": false }` authorizes. An
-    // unreadable secret file fails the command here — the same failure the
-    // exchange path would have hit later, now before any probe ran.
+    // Read once so the decisive probe and the exchange it can authorize see
+    // the same secret. On the retain path (the server answers that the saved
+    // credential is still mint-adequate) the secret goes unused — acceptable:
+    // in production the server writes this file at boot, so a read failure
+    // here means the sidecar this command supervises is not the one that
+    // answered, which is worth refusing loudly rather than probing without
+    // a possession proof.
     let secret = read_local_grant_secret(local)?;
     let reprovision = || -> Result<(), NativeCommandError> {
         // Exchange the secret for a credential, entirely in Rust.
@@ -14544,9 +14547,40 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
-            let mut request = [0_u8; 4096];
-            let read = socket.read(&mut request).unwrap();
-            let raw = String::from_utf8_lossy(&request[..read]).to_string();
+            // Head and body are separate TCP segments in general — one
+            // `read()` is a coalescing coincidence, not a full request.
+            // Read to the header terminator, then honor Content-Length.
+            let mut raw = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            let header_end = loop {
+                let read = socket.read(&mut chunk).unwrap();
+                if read == 0 {
+                    panic!("client closed before sending a full request");
+                }
+                raw.extend_from_slice(&chunk[..read]);
+                if let Some(position) = raw
+                    .windows(4)
+                    .position(|window| window == b"\r\n\r\n")
+                {
+                    break position + 4;
+                }
+            };
+            let headers = String::from_utf8_lossy(&raw[..header_end]).to_string();
+            let content_length: usize = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse().ok())?
+                })
+                .unwrap_or(0);
+            while raw.len() < header_end + content_length {
+                let read = socket.read(&mut chunk).unwrap();
+                if read == 0 {
+                    panic!("client closed before sending the full body");
+                }
+                raw.extend_from_slice(&chunk[..read]);
+            }
             let body = r#"{"eligible": false}"#;
             socket
                 .write_all(
@@ -14557,7 +14591,7 @@ mod tests {
                     .as_bytes(),
                 )
                 .unwrap();
-            raw
+            String::from_utf8_lossy(&raw).to_string()
         });
 
         let outcome = probe_local_credential(
