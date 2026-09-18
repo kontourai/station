@@ -29,7 +29,10 @@ function errnoError(code: string): NodeJS.ErrnoException {
 }
 
 function fakeDirectoryEntry(name: string, isDirectory = true) {
-  return { name, isDirectory: () => isDirectory } as unknown as import('node:fs').Dirent;
+  // `as never`: the mock's resolved-value type is the generic-carrying
+  // `Dirent<NonSharedBuffer>` of this @types/node, whose type parameter is
+  // not exported; the structural fake satisfies every member the route uses.
+  return { name, isDirectory: () => isDirectory } as never;
 }
 
 describe('FS Routes', () => {

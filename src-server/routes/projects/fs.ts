@@ -1,6 +1,5 @@
 import { readdir, stat } from 'node:fs/promises';
 import { posix, win32 } from 'node:path';
-import type { PlatformPath } from 'node:path';
 import { Hono } from 'hono';
 import { fileTreeOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
@@ -51,7 +50,11 @@ function browseParentOf(platform: string, resolvedPath: string): string | null {
  * joined with the listing's own separator so Windows paths stay backslash-
  * canonical (`C:\` + `Projects`, not `C:\/Projects`).
  */
-function joinEntryPath(pathTools: PlatformPath, resolvedPath: string, name: string): string {
+function joinEntryPath(
+  pathTools: typeof posix,
+  resolvedPath: string,
+  name: string,
+): string {
   const endsWithSeparator = resolvedPath.endsWith(pathTools.sep);
   return `${endsWithSeparator ? resolvedPath : `${resolvedPath}${pathTools.sep}`}${name}`;
 }
