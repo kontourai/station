@@ -560,10 +560,7 @@ export function RegionChromeBar({
   // capture rather than compensated after.
   const onDragPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!barRef.current?.contains(event.target as Node)) return;
-    if (
-      event.target instanceof Element &&
-      event.target.closest(TOGGLE_EXEMPT)
-    )
+    if (event.target instanceof Element && event.target.closest(TOGGLE_EXEMPT))
       return;
     chrome.onHeaderDragPointerDown(event);
   };

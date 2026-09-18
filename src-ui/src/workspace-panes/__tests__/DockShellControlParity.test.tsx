@@ -706,9 +706,7 @@ describe('the region bar is a header drag surface (real chrome)', () => {
       );
       act(() => currentRegionModel().placeSurface('activity', 'bottom'));
       await waitFor(() =>
-        expect(
-          screen.queryByTestId('region-activity-occupant'),
-        ).not.toBeNull(),
+        expect(screen.queryByTestId('region-activity-occupant')).not.toBeNull(),
       );
       const shell = document.querySelector('.chat-dock--bottom') as HTMLElement;
       const bar = shell.querySelector('.region-chrome') as HTMLElement;

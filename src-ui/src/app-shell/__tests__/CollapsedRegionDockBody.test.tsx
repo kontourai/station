@@ -96,12 +96,13 @@ test('a collapsed bottom dock’s non-chat body is hidden by the shared collapse
   await act(async () => {
     await vi.dynamicImportSettled();
   });
-  await waitFor(() =>
-    expect(model?.regions.bottom.occupant).toBe('activity'),
-  );
+  await waitFor(() => expect(model?.regions.bottom.occupant).toBe('activity'));
   const occupant = await screen.findByTestId('sessions-view');
   const body = occupant.closest('.dock-slot__body');
-  expect(body, 'the pane renders inside the shared scroll container').not.toBeNull();
+  expect(
+    body,
+    'the pane renders inside the shared scroll container',
+  ).not.toBeNull();
   const shell = body?.closest('.chat-dock');
   expect(shell?.getAttribute('data-region')).toBe('bottom');
   expect(shell?.className).not.toContain('is-collapsed');
@@ -109,9 +110,7 @@ test('a collapsed bottom dock’s non-chat body is hidden by the shared collapse
   // The real collapse write, the same one the chevron and the bar's own
   // surface reach (`applyDockSnap('collapsed')` → region `visible: false`).
   act(() => model?.setRegion('bottom', { visible: false }));
-  await waitFor(() =>
-    expect(shell?.className).toContain('is-collapsed'),
-  );
+  await waitFor(() => expect(shell?.className).toContain('is-collapsed'));
   // The pane stays mounted behind the rule — state survives a collapse, and
   // the selector above is verified against the element it will hide.
   expect(occupant.closest('.chat-dock')).toBe(shell);

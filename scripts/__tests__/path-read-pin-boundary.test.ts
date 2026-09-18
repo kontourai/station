@@ -626,6 +626,7 @@ describe('the scanner resolves only what it can justify', () => {
     expect(
       scan(
         'readFileSync(__filename);\n' +
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder IS the fixture — the scan matches this text shape.
           "const entry = `export * from ${JSON.stringify(join(__dirname, '..', 'App.tsx'))};`;\n",
       ),
     ).toEqual(['src-ui/src/App.tsx']);

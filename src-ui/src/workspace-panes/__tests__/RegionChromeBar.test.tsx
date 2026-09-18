@@ -885,10 +885,13 @@ describe('the bar is a header drag surface (the chrome pair)', () => {
       button: 0,
       pointerId: 2,
     });
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Move the dock' }), {
-      button: 0,
-      pointerId: 3,
-    });
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: 'Move the dock' }),
+      {
+        button: 0,
+        pointerId: 3,
+      },
+    );
     fireEvent.pointerDown(screen.getByLabelText('Hide Chat'), {
       button: 0,
       pointerId: 4,
