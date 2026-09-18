@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-18T05:12:07Z | nightly-desktop | 0.1.11-nightly.2452 | `26b4dec` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35306644320) |
 | 2026-09-18T05:12:04Z | nightly-android | 0.1.11-nightly.2452 | `26b4dec` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35306644320) |
 | 2026-09-18T05:06:29Z | nightly-npm | 0.6.0-nightly.2452.35306644320 | `26b4dec` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35306644320) |
 | 2026-09-17T22:12:01Z | nightly-desktop | 0.1.11-nightly.2451.3 | `c479c21` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35275391814) |
@@ -104,6 +105,30 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-18T05:12:07Z · nightly-desktop · 0.1.11-nightly.2452
+
+- Ship SHA: `26b4deca1ba2e2c2d2c3c4a722df314daf6c948b`
+- Artifact built at: `2026-09-18T04:28:15.060Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35306644320)
+
+### Changelog
+
+Commits since `c479c21` ([full sha](https://github.com/kontourai/station/commit/c479c218bef24ca5268700fd571a2998ef4f131d)):
+
+**Fixes**
+
+- [#2212](https://github.com/kontourai/station/pull/2212) fix(nightly): retry timed-out desktop asset uploads with readback adoption
+- [#2218](https://github.com/kontourai/station/pull/2218) fix(server): bound attached-transcript mapping so no event can wedge the poll loop
+- [#2214](https://github.com/kontourai/station/pull/2214) fix(ui): B10 phone chat honesty, fullscreen continue, and client copy
+- [#2213](https://github.com/kontourai/station/pull/2213) fix(ui): focus the transcript on answers — turn record moves to the overflow menu (#2211)
+- [#2209](https://github.com/kontourai/station/pull/2209) fix(desktop): stop the native broker's 1s total body budget from killing every SSE stream
+
+**Other**
+
+- [#2219](https://github.com/kontourai/station/pull/2219) chore(deps): upgrade @kontourai/veritas to 1.6.1 — the readiness report states its rollup's derivation
+- [#2206](https://github.com/kontourai/station/pull/2206) build(deps): bump the desktop-crates group across 1 directory with 2 updates
 
 ## 2026-09-18T05:12:04Z · nightly-android · 0.1.11-nightly.2452
 
