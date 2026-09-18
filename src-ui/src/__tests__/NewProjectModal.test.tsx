@@ -17,7 +17,7 @@ const platformProfileState = vi.hoisted(() => ({
     isTauri: false,
     isMobile: false,
     isDesktop: false,
-    target: 'web' as const,
+    target: 'web' as 'web' | 'android' | 'ios' | 'unknown',
     supervisesBundledServer: false,
     isDevBuild: false,
   },

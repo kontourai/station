@@ -6,6 +6,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { precedingForkSource } from '../components/chat/fork-turn-source';
 import { MessageBubble } from '../components/chat/MessageBubble';
+import type { ChatMessage } from '../types';
 
 vi.mock('../components/chat/message-bubble/MessageRating', () => ({
   MessageRating: () => null,
@@ -47,7 +48,10 @@ describe('MessageBubble user-turn recovery (#2216)', () => {
         showReasoning={false}
         showToolDetails={false}
         onCopy={() => {}}
-        userForkSource={precedingForkSource([userMessage, failedAssistant], 0)}
+        userForkSource={precedingForkSource(
+          [userMessage, failedAssistant] as ChatMessage[],
+          0,
+        )}
         onNewChatFromMessage={onNewChatFromMessage}
       />,
     );
@@ -89,7 +93,7 @@ describe('MessageBubble user-turn recovery (#2216)', () => {
         onCopy={() => {}}
         onForkFromTurn={onForkFromTurn}
         userForkSource={precedingForkSource(
-          [userMessage, completed, laterUser],
+          [userMessage, completed, laterUser] as ChatMessage[],
           2,
         )}
         onNewChatFromMessage={vi.fn()}
