@@ -1020,6 +1020,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const copyActions = useDockCopyActions({
     conversationId: activeSession?.conversationId,
+    sessionId: activeSession?.currentSessionId,
     workingDirectory: sessionDisplayCwd,
   });
   /**

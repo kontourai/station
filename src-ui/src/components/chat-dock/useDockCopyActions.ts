@@ -24,6 +24,14 @@ export function useDockCopyActions(input: {
    * than falling back.
    */
   conversationId?: string | null;
+  /**
+   * The durable id of the chained execution session the dock is currently on
+   * (`currentSessionId` — `…:session:<uuid>`), which exists only after a
+   * continuation. Before any continuation the first session's id IS the
+   * conversation id, so the row is offered exactly when the two identities
+   * have diverged and "Copy thread ID" no longer names the running session.
+   */
+  sessionId?: string | null;
   /** The directory this dock's active session actually resolved to. */
   workingDirectory?: string | null;
 }): DockMoreAction[] {
@@ -31,6 +39,10 @@ export function useDockCopyActions(input: {
   const copy = async (value: string) => {
     if (await copyWithToast(value)) triggerHaptic('light');
   };
+  const sessionCopyable =
+    input.sessionId != null &&
+    input.sessionId !== '' &&
+    input.sessionId !== input.conversationId;
   return [
     ...(input.conversationId
       ? [
@@ -39,6 +51,17 @@ export function useDockCopyActions(input: {
             label: 'Copy thread ID',
             onSelect: () => {
               void copy(input.conversationId as string);
+            },
+          },
+        ]
+      : []),
+    ...(sessionCopyable
+      ? [
+          {
+            key: 'copy-session-id',
+            label: 'Copy session ID',
+            onSelect: () => {
+              void copy(input.sessionId as string);
             },
           },
         ]

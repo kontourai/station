@@ -192,6 +192,58 @@ describe('ModelLaunchPlan', () => {
     ).toEqual({ kind: 'unavailable', reason: 'turn-override-unsupported' });
   });
 
+  test('treats a restated resume selector as retention for adapters that cannot take a resume override', () => {
+    // ACP's real declaration (acp-adapter.ts): resume cannot apply a NEW
+    // model, and a recovered ACP session starts FRESH (continuity `none`),
+    // so the retained selector rides the same fresh start that accepted it
+    // at the original start. Before the exemption covered resume, the
+    // 2026-09-18 incident left every recovered ACP conversation
+    // un-continuable from a client that still held the selected model.
+    const acpShape = {
+      defaultAtStart: 'engine-selected' as const,
+      omissionAtResume: 'engine-selected' as const,
+      omissionPerTurn: 'engine-selected' as const,
+      overrideAtStart: true,
+      overrideAtResume: false,
+      overridePerTurn: false,
+    };
+    expect(
+      resolveModelLaunchPlan(acpShape, {
+        lifecycle: 'resume',
+        requestedModelId: 'opencode/big-pickle',
+        retainedModelId: 'opencode/big-pickle',
+      }),
+    ).toEqual({ kind: 'engine-selected', evidence: 'adapter-declared' });
+    // A DIFFERENT selector is still a resume override, and still refused.
+    expect(
+      resolveModelLaunchPlan(acpShape, {
+        lifecycle: 'resume',
+        requestedModelId: 'opencode/other-model',
+        retainedModelId: 'opencode/big-pickle',
+      }),
+    ).toEqual({ kind: 'unavailable', reason: 'resume-override-unsupported' });
+    // No retained model to restate: still refused.
+    expect(
+      resolveModelLaunchPlan(acpShape, {
+        lifecycle: 'resume',
+        requestedModelId: 'opencode/big-pickle',
+      }),
+    ).toEqual({ kind: 'unavailable', reason: 'resume-override-unsupported' });
+    // Adapters that DO support resume overrides keep the override path (and
+    // its evidence) for the same selector — the exemption changes nothing
+    // for them.
+    expect(
+      resolveModelLaunchPlan(
+        { ...acpShape, overrideAtResume: true },
+        {
+          lifecycle: 'resume',
+          requestedModelId: 'opencode/big-pickle',
+          retainedModelId: 'opencode/big-pickle',
+        },
+      ),
+    ).toEqual({ kind: 'engine-selected', evidence: 'adapter-declared' });
+  });
+
   test('projects only bounded, content-free telemetry attributes', () => {
     expect(
       modelLaunchTelemetryAttributes(
