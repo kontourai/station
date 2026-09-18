@@ -112,15 +112,23 @@ describe('veritas repo map (1.5)', () => {
     expect(result.unmatchedFiles).toEqual(['package.json.backup']);
   });
 
-  it('keeps repo-governance required and verification-policy default-only', () => {
+  it('keeps repo-governance and the style standard required, verification-policy default-only', () => {
+    // #2220: the style standard is a REQUIRED evidence check — the readiness
+    // verdict carries the style standard, so a lint violation reads as
+    // not-ready (owner-approved 2026-09-17, attested policy-change
+    // policy-change-2026-09-18T03-59-57-595Z / -04-06-56-449Z).
     expect(repoMap.evidence.requiredEvidenceCheckIds).toEqual([
       'repo-governance',
+      'style-standard',
     ]);
     expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
       'repo-governance',
     );
     expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
       'verification-policy',
+    );
+    expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
+      'style-standard',
     );
     expect(repoMap.evidence.requiredEvidenceCheckIds).not.toContain(
       'verification-policy',

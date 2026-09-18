@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-09-18T04-06-56-449Z-84bb216db68b",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian-anderson",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-09-18T04:06:56.449Z",
+  "repoStandardsHash": "sha256:2b48874e05b19ae6c7609101d57c69e8f0ac7700478332b6538b24aefff2b007",
+  "repoMapHash": "sha256:4bb2649b64f9362547c1905514694881713af1fd97517ea008a19c7e6723bfc3",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df",
+  "validUntilDays": 90,
+  "notes": "Promote the style standard evidence check (npm run lint:check) from advisory to REQUIRED in requiredEvidenceCheckIds. Owner direction in-thread 2026-09-17, recorded in #2220: governance states lint is required; the readiness verdict now carries the style standard (a failing lint check reads as not-ready, including in standalone veritas:shadow runs). No double-enforcement inside ci:fast: the direct lint:check invariant fails the lane before readiness runs. Execution mapping remains enforced (nightly lane + verify:static:raw + workflow run block are the invokers).",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-09-18T03-59-57-595Z-9128f23ce6df",
+    "approvalRef": "https://github.com/kontourai/station/issues/2220",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-09-18T04-06-56-449Z-84bb216db68b",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "1a8eaf1d10775d48e459703e346bec1402943109eba974dd660419c60970793b",
+        "validUntil": "2026-12-17T04:06:56.449Z"
+      },
+      "createdAt": "2026-09-18T04:06:56.449Z",
+      "updatedAt": "2026-09-18T04:06:56.449Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-09-18T04-06-56-449Z-84bb216db68b",
+      "claimId": "veritas.attestation.policy-change-2026-09-18T04-06-56-449Z-84bb216db68b",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Promote the style standard evidence check (npm run lint:check) from advisory to REQUIRED in requiredEvidenceCheckIds. Owner direction in-thread 2026-09-17, recorded in #2220: governance states lint is required; the readiness verdict now carries the style standard (a failing lint check reads as not-ready, including in standalone veritas:shadow runs). No double-enforcement inside ci:fast: the direct lint:check invariant fails the lane before readiness runs. Execution mapping remains enforced (nightly lane + verify:static:raw + workflow run block are the invokers).",
+      "observedAt": "2026-09-18T04:06:56.449Z",
+      "collectedBy": "brian-anderson",
+      "integrityRef": "1a8eaf1d10775d48e459703e346bec1402943109eba974dd660419c60970793b",
+      "metadata": {
+        "actor": {
+          "id": "brian-anderson",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-09-18T04:06:56.449Z",
+        "validUntil": "2026-12-17T04:06:56.449Z",
+        "contentHash": "1a8eaf1d10775d48e459703e346bec1402943109eba974dd660419c60970793b"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-09-18T04-06-56-449Z-84bb216db68b.verified",
+      "claimId": "veritas.attestation.policy-change-2026-09-18T04-06-56-449Z-84bb216db68b",
+      "status": "verified",
+      "actor": "brian-anderson",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-09-18T04-06-56-449Z-84bb216db68b"
+      ],
+      "createdAt": "2026-09-18T04:06:56.449Z",
+      "verifiedAt": "2026-09-18T04:06:56.449Z"
+    }
+  }
+}

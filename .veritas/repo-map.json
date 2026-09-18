@@ -317,6 +317,12 @@
     "uncoveredPathPolicy": "warn",
     "evidenceChecks": [
       {
+        "id": "style-standard",
+        "command": "npm run lint:check",
+        "method": "validation",
+        "summary": "Owner-approved required evidence check (#2220, promoted to required in-thread 2026-09-17): the style standard gates the readiness verdict. It does not double-fire inside ci:fast — the direct lint:check invariant fails the lane before readiness runs — and in standalone veritas:shadow runs it is what makes a style violation read as not-ready instead of invisible."
+      },
+      {
         "id": "repo-governance",
         "command": "npm run proof:repo-governance",
         "method": "validation",
@@ -401,8 +407,8 @@
         }
       }
     ],
-    "requiredEvidenceCheckIds": ["repo-governance"],
-    "defaultEvidenceCheckIds": ["repo-governance", "verification-policy"],
+    "requiredEvidenceCheckIds": ["repo-governance", "style-standard"],
+    "defaultEvidenceCheckIds": ["repo-governance", "verification-policy", "style-standard"],
     "evidenceCheckRoutes": [
       {
         "nodeIds": [
