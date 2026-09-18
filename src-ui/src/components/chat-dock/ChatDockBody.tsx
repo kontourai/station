@@ -732,7 +732,7 @@ export function ChatDockBody({
           /^\[TURN_INTERRUPTED\]\s*([\s\S]*)$/,
         );
         const displayContent = translation
-          ? formatChatErrorDisplay(translation, chatErrorText)
+          ? formatChatErrorDisplay(translation)
           : (turnInterruptedMatch?.[1] ?? eventBody);
         // #797: the failed turn's own user message now survives the failure,
         // so the marker can offer to send it again — text and attachments
@@ -743,11 +743,14 @@ export function ChatDockBody({
         // continuation seam now recovers it (fresh child session, transcript
         // carried forward), so a resend into the same conversation is a
         // truthful affordance again. Translations that still claim
-        // `terminalSession` keep the New-chat-only treatment.
+        // `terminalSession` keep the New-chat-only treatment. Auth/login
+        // failures set `retryable: false` — Send again would hit the same
+        // expired session.
         const retryTurn = chatErrorMatch
           ? findPrecedingUserTurn(activeSession.messages, idx)
           : null;
         const canRetry =
+          translation?.retryable !== false &&
           !!retryTurn &&
           (!!retryTurn.text.trim() || retryTurn.attachments.length > 0);
         return (
@@ -755,26 +758,35 @@ export function ChatDockBody({
             key={`${activeSession.id}-msg-${idx}`}
             messageKey={`${activeSession.id}-msg-${idx}`}
             content={displayContent}
+            details={translation?.disclosureRaw ? chatErrorText : undefined}
             action={
               activeSession.replay
                 ? undefined
-                : translation?.terminalSession && onNewChat && retryTurn
+                : translation?.retryable === false && onNewChat
                   ? {
-                      label: 'New chat',
+                      label: 'Switch agent',
                       onClick: () =>
-                        void runRecoveredTurn(retryTurn, onNewChat),
+                        void Promise.resolve(onNewChat()).catch(
+                          surfaceRecoveryFailure,
+                        ),
                     }
-                  : canRetry && retryTurn
+                  : translation?.terminalSession && onNewChat && retryTurn
                     ? {
-                        label: 'Send again',
+                        label: 'New chat',
                         onClick: () =>
-                          void runRecoveredTurn(
-                            retryTurn,
-                            (text, attachments) =>
-                              sendRef.current(text, attachments),
-                          ),
+                          void runRecoveredTurn(retryTurn, onNewChat),
                       }
-                    : undefined
+                    : canRetry && retryTurn
+                      ? {
+                          label: 'Send again',
+                          onClick: () =>
+                            void runRecoveredTurn(
+                              retryTurn,
+                              (text, attachments) =>
+                                sendRef.current(text, attachments),
+                            ),
+                        }
+                      : undefined
             }
           />
         );

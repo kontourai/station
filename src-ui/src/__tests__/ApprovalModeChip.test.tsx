@@ -49,12 +49,17 @@ function option(name: RegExp) {
   return screen.getByRole('radio', { name });
 }
 
+function chipValue() {
+  return trigger().querySelector('.chat-input__approval-chip-label')
+    ?.textContent;
+}
+
 describe('ApprovalModeChip', () => {
   test('an inherited mode keeps Default visible when the engine receipt arrives', () => {
     const { rerender } = render(
       <ApprovalModeChip engineConnectionId="codex" onChange={vi.fn()} />,
     );
-    expect(trigger().textContent).toBe('Default');
+    expect(chipValue()).toBe('Default');
     rerender(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -62,7 +67,7 @@ describe('ApprovalModeChip', () => {
         onChange={vi.fn()}
       />,
     );
-    expect(trigger().textContent).toBe('Default');
+    expect(chipValue()).toBe('Default');
     expect(trigger().getAttribute('title')).toContain(
       'Never ask (full access)',
     );

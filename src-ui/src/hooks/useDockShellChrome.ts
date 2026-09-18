@@ -12,6 +12,7 @@ import {
   type DockSnap,
   dockSnapPixels,
   readDockSnap,
+  shouldCollapseDockOnMobileNavigation,
   shouldRestoreDockOnNavigation,
   snapAfterNavigationRestore,
   writeDockSnap,
@@ -631,18 +632,33 @@ export function useDockShellChrome({
   const previousPathnameRef = useRef(pathname);
   useEffect(() => {
     if (!publishesDockSlotClearance) return;
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+    if (
+      shouldCollapseDockOnMobileNavigation({
+        previousPathname,
+        pathname,
+        isMobile,
+        isDockOpen: readerIsDockOpen,
+      })
+    ) {
+      applyDockSnap('collapsed');
+      return;
+    }
     const restore = shouldRestoreDockOnNavigation({
-      previousPathname: previousPathnameRef.current,
+      previousPathname,
       pathname,
       isDockMaximized: effectiveIsDockMaximized,
     });
-    previousPathnameRef.current = pathname;
     if (!restore) return;
     restoreDockToDocked();
   }, [
+    applyDockSnap,
     pathname,
     effectiveIsDockMaximized,
+    isMobile,
     publishesDockSlotClearance,
+    readerIsDockOpen,
     restoreDockToDocked,
   ]);
 

@@ -54,6 +54,7 @@ import {
 } from '../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../lib/saved-connections';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
+import { hasLocalStationForProfile } from '../platform/client-origin-surface';
 import { invokeTauri } from '../platform/native/tauriInvoke';
 import {
   nativeProfileBootstrapRecoveryError,
@@ -847,7 +848,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setPairingLinkError(undefined);
         }}
         originIsStation={!profile.isTauri}
-        hasLocalStation={!profile.isTauri || !profile.isMobile}
+        hasLocalStation={hasLocalStationForProfile(profile)}
         hostAppName={
           profile.isTauri ? profile.productName || 'Station' : undefined
         }

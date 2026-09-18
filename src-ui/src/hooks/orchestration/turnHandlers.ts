@@ -401,7 +401,7 @@ export function handleRuntimeErrorEvent(
       ? translateChatError({ message: event.message, code: event.code })
       : undefined;
   const errorPartPrefix = translation
-    ? formatChatErrorDisplay(translation, event.message)
+    ? formatChatErrorDisplay(translation)
     : event.message;
   const previousPart = streamingMessage.contentParts?.at(-1);
   const previousPartCount =

@@ -1,9 +1,14 @@
 import { memo, useMemo } from 'react';
 import type { ChatMessage } from '../../../types';
-import { translateProjectedRuntimeError } from '../../../utils/chatErrorTranslation';
+import {
+  projectedRuntimeErrorRaw,
+  translateChatError,
+  translateProjectedRuntimeError,
+} from '../../../utils/chatErrorTranslation';
 import { FilePartPreview } from '../FilePartPreview';
 import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
+import { ChatErrorDetails } from '../SystemEventMessage';
 import { ToolCallBatchBoundary } from '../ToolCallBatchBoundary';
 import { ToolCallDisplay } from '../ToolCallDisplay';
 import { splitToolCallRuns } from '../tool-call-runs';
@@ -133,7 +138,17 @@ function MessageContentComponent({
                 part.runtimeErrorCode,
               );
               if (translated) {
-                return <LazyMarkdown key={index}>{translated}</LazyMarkdown>;
+                const raw = projectedRuntimeErrorRaw(part.content);
+                const wantsDetails = translateChatError({
+                  message: raw,
+                  code: part.runtimeErrorCode,
+                }).disclosureRaw;
+                return (
+                  <div key={index}>
+                    <LazyMarkdown>{translated}</LazyMarkdown>
+                    {wantsDetails ? <ChatErrorDetails raw={raw} /> : null}
+                  </div>
+                );
               }
             }
             // archive#3354: persisted text parts keep their highlighting —

@@ -302,14 +302,21 @@ describe('ChatInputArea', () => {
     const agent = screen.getByRole('button', {
       name: 'Agent: Codex reviewer. Change Agent',
     });
-    expect(agent.textContent).toBe('Codex reviewer');
+    expect(agent.querySelector('.chat-input__agent-name')?.textContent).toBe(
+      'Codex reviewer',
+    );
+    expect(agent.querySelector('.chat-input__chip-caption')?.textContent).toBe(
+      'Agent',
+    );
     expect(agent.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(agent.title).toBe('Agent: Codex reviewer. Change Agent');
     expect(agentHandoffTriggerRef.current).toBe(agent);
     expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
-      screen.getByRole('button', { name: /^Model:/ }).textContent,
-    ).not.toContain('Model');
+      screen
+        .getByRole('button', { name: /^Model:/ })
+        .querySelector('.chat-input__model-name')?.textContent,
+    ).not.toBe('Model');
     expect(
       screen.getByRole('button', { name: /^Model:/ }).getAttribute('title'),
     ).toMatch(/^Model:/);
@@ -454,7 +461,12 @@ describe('ChatInputArea', () => {
     expect(modelButton.getAttribute('aria-label')).toContain('OpenCode');
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
     expect(modelButton.title).toContain('OpenCode');
-    expect(modelButton.textContent).toBe('Big Pickle');
+    expect(
+      modelButton.querySelector('.chat-input__model-name')?.textContent,
+    ).toBe('Big Pickle');
+    expect(
+      modelButton.querySelector('.chat-input__chip-caption')?.textContent,
+    ).toBe('Model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.

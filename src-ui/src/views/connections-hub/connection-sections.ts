@@ -11,7 +11,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'engines',
     title: 'Engines',
-    subtitle: 'Agent CLIs installed here, and custom engines you connected.',
+    subtitle: 'Agent CLIs on this Station, and custom engines you connected.',
     path: '/connections/engines',
     legacyPaths: [
       '/connections/acp',
