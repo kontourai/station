@@ -239,6 +239,14 @@ export function stationOwnedWorkspaceDirectory(
   return join(home, 'workspaces', slug);
 }
 
+/** Stored spelling of {@link stationOwnedWorkspaceDirectory}. */
+export function defaultedProjectWorkingDirectory(
+  slug: string,
+  home: string = resolveHomeDir(),
+): string {
+  return resolve(expandTilde(stationOwnedWorkspaceDirectory(slug, home)));
+}
+
 export class ProjectService {
   /**
    * `manifests` is optional so a caller that only needs project CRUD (tests,
@@ -412,7 +420,7 @@ export class ProjectService {
       if (isolation === 'worktree') {
         await assertProjectWorktreeDirectory(slug, undefined);
       } else {
-        const workspace = stationOwnedWorkspaceDirectory(slug);
+        const workspace = defaultedProjectWorkingDirectory(slug);
         await mkdir(workspace, { recursive: true });
         input.workingDirectory = resolve(expandTilde(workspace));
       }
