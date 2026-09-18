@@ -12,6 +12,28 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+const platformProfileState = vi.hoisted(() => ({
+  profile: {
+    isTauri: false,
+    isMobile: false,
+    isDesktop: false,
+    target: 'web' as const,
+    supervisesBundledServer: false,
+    isDevBuild: false,
+  },
+}));
+
+function resetPlatformProfile() {
+  platformProfileState.profile = {
+    isTauri: false,
+    isMobile: false,
+    isDesktop: false,
+    target: 'web',
+    supervisesBundledServer: false,
+    isDevBuild: false,
+  };
+}
+
 const createProjectMock = vi.fn();
 const applyProjectLayoutMock = vi.fn();
 const validateDirectoryMock = vi.fn();
@@ -126,6 +148,10 @@ vi.mock('../hooks/useGitActions', () => ({
   useReposQuery: () => reposQueryState,
 }));
 
+vi.mock('../platform/PlatformProfileContext', () => ({
+  usePlatformProfile: () => platformProfileState.profile,
+}));
+
 vi.mock('../components/PathAutocomplete', () => ({
   PathAutocomplete: ({
     value,
@@ -150,6 +176,7 @@ import { NewProjectModal } from '../components/modals/NewProjectModal';
 describe('NewProjectModal starter layout picker', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
     applyProjectLayoutMock.mockReset();
@@ -194,6 +221,23 @@ describe('NewProjectModal starter layout picker', () => {
 
     expect(onCloseMock).toHaveBeenCalledTimes(1);
     expect(createProjectMock).not.toHaveBeenCalled();
+  });
+
+  test('a client of a remote Station never asks for a host filesystem path', () => {
+    platformProfileState.profile = {
+      ...platformProfileState.profile,
+      isTauri: true,
+      isMobile: true,
+      target: 'android',
+    };
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+
+    expect(screen.queryByLabelText('Working Directory')).toBeNull();
+    expect(
+      screen.getByText(
+        'Created on this Station. You pick the name; the host keeps the folder.',
+      ),
+    ).toBeTruthy();
   });
 
   test('uses one inline identity control without derivation pills or a duplicate preview', () => {
@@ -653,6 +697,7 @@ describe('NewProjectModal starter layout picker', () => {
 describe('NewProjectModal copy density and layout browser placement (station#1825 items 3-4)', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
     applyProjectLayoutMock.mockReset();
@@ -754,6 +799,7 @@ describe('NewProjectModal copy density and layout browser placement (station#182
 describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, review round 2)', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
     applyProjectLayoutMock.mockReset();
@@ -908,6 +954,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
   beforeEach(() => {
     localStorage.clear();
+    resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
     applyProjectLayoutMock.mockReset();

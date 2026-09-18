@@ -96,6 +96,43 @@ describe('ProjectService', () => {
     expect(result.name).toBe('Test');
   });
 
+  test('createProject defaults an omitted directory to a Station-owned workspace', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-project-home-'));
+    tmpHomes.push(home);
+    const previousHome = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    try {
+      const adapter = createMockStorageAdapter();
+      const svc = new ProjectService(adapter as any);
+      const result = await svc.createProject({
+        name: 'Notes',
+        slug: 'notes',
+      } as any);
+      const workspace = join(home, 'workspaces', 'notes');
+      expect(result.workingDirectory).toBe(workspace);
+      expect(existsSync(workspace)).toBe(true);
+    } finally {
+      if (previousHome === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previousHome;
+    }
+  });
+
+  test('createProject still requires a git directory for worktree isolation', async () => {
+    const adapter = createMockStorageAdapter();
+    const svc = new ProjectService(adapter as any);
+    await expect(
+      svc.createProject({
+        name: 'Worktree',
+        slug: 'worktree',
+        defaultWorkspaceIsolation: 'worktree',
+      } as any),
+    ).rejects.toMatchObject({
+      code: 'project_worktree_directory_invalid',
+      message: expect.stringContaining('empty path'),
+    });
+    expect(adapter.createProject).not.toHaveBeenCalled();
+  });
+
   test('createProject derives name from workingDirectory', async () => {
     const adapter = createMockStorageAdapter();
     const svc = new ProjectService(adapter as any);
