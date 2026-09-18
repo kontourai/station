@@ -17,9 +17,9 @@ import {
   PAIRING_SCOPE_HOME_CONTROL,
   type PairedDevice,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
-  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
 } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
@@ -2259,7 +2259,9 @@ describe('local-grant eligibility answer (#2228)', () => {
       LOOPBACK_PEER,
     );
     expect(wrongSecret.status).toBe(403);
-    expect(await wrongSecret.json()).toEqual({ error: 'local_grant_forbidden' });
+    expect(await wrongSecret.json()).toEqual({
+      error: 'local_grant_forbidden',
+    });
 
     const remote = await harness.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,

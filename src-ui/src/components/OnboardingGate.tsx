@@ -55,8 +55,8 @@ import {
 import { hasRealSavedConnection } from '../lib/saved-connections';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
-import { invokeTauri } from '../platform/native/tauriInvoke';
 import { reconnectLocalService } from '../platform/native/localServiceReconnect';
+import { invokeTauri } from '../platform/native/tauriInvoke';
 import {
   nativeProfileBootstrapRecoveryError,
   nativeProfileRepository,
