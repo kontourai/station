@@ -62,7 +62,10 @@ function baseScripts() {
   return {
     'full:regression:raw':
       'npm run proof:repo-governance && npm run proof:sdk-builds && npm run verify:static:raw && npm run proof:app-builds',
-    'verify:static:raw': pass,
+    // Mirrors the real script, whose body names `npm run lint:check` —
+    // style-standard's lane-root reachability in the execution mapping.
+    'lint:check': pass,
+    'verify:static:raw': `${pass} && npm run lint:check`,
     'ci:fast': pass,
     'ci:fast:raw': pass,
     'test:prepush': pass,
