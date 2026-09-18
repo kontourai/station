@@ -427,7 +427,12 @@ function RegionTabStrip({
  * into (`RegionChromeSlots`; Chat's identity, context and More menu), so a
  * dock still has one bar. The bar's own surface collapses and expands the
  * region on click, as `ChatDockHeader`'s did before it (#1064: a convenience
- * mouse surface; the chevron is the keyboard path).
+ * mouse surface; the chevron is the keyboard path), and DRAGS the region's
+ * height on its bare surface — the chrome's one header gesture
+ * (`onHeaderDragPointerDown`, the pair `ChatDockMobileHeader` wears), so
+ * every dock header resizes the way chat's does, chat-desktop's included.
+ * Controls are not part of the gesture: tabs reorder, the grab moves the
+ * region, and each keeps its own pointer capture.
  *
  * Collapsed (D1): the bar alone, at the `--chat-dock-header-height` the
  * collapsed shell is sized to; the strip hides with the body, and the
@@ -543,12 +548,34 @@ export function RegionChromeBar({
       : undefined;
   const barMoveLabel = barMoveTab ? `Move ${barMoveTab.title}` : '';
 
+  // The bar's bare surface is a dock drag surface, the same chrome gesture
+  // `ChatDockMobileHeader` puts on its whole bar. Presses that land on a
+  // control stay the control's: the tabs reorder, the ⋮⋮ grab moves the
+  // region, and each owns its pointer capture, so the gesture is offered
+  // only where no other gesture lives — the exact targets the click toggle
+  // below already exempts. The DOM-containment bail keeps content a pane
+  // portals OUT of the bar (its sheets and menus are React descendants of
+  // this bar, so a React handler still sees their presses) from having the
+  // gesture captured out from under it — the #1638 shape, bailed before the
+  // capture rather than compensated after.
+  const onDragPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!barRef.current?.contains(event.target as Node)) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest(TOGGLE_EXEMPT)
+    )
+      return;
+    chrome.onHeaderDragPointerDown(event);
+  };
+
   // A NATIVE listener rather than `onClick`: the pane toolbar is portalled
   // into this bar, and a React handler on the bar never sees a click that
   // starts inside a portal (React bubbles along its own tree). The DOM
   // bubbles along the bar's, which is the surface the user sees. Interactive
   // descendants and the actions cluster are exempt, the same rule the
-  // `ChatDockHeader` handler applied (#1064).
+  // `ChatDockHeader` handler applied (#1064). A DRAG that began on this
+  // surface releases as a click retargeted at the bar; the chrome's click
+  // capture swallows exactly that one, so dragging never toggles.
   useEffect(() => {
     const bar = barRef.current;
     if (!bar || mobileChat) return;
@@ -575,6 +602,9 @@ export function RegionChromeBar({
     <div
       ref={barRef}
       className={`chat-dock__header region-chrome ${isDockMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''}`}
+      onPointerDown={onDragPointerDown}
+      onClickCapture={chrome.onHeaderDragClickCapture}
+      data-dock-drag-surface=""
     >
       <div className="chat-dock__title">
         <DockPlacementControl

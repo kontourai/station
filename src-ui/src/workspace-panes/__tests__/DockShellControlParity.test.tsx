@@ -627,3 +627,141 @@ describe('the docked Chat gets the full dock chrome (station#4460)', () => {
     expect(within(empty).queryAllByRole('tab')).toHaveLength(0);
   });
 });
+
+/**
+ * The region bar's bare surface is a header drag surface (`RegionChromeBar`
+ * wires the chrome's `onHeaderDragPointerDown` pair — the gesture Chat's
+ * mobile header wears), so a dock's header resizes the dock whichever
+ * occupant it names, on both device shapes: a fine pointer commits the
+ * exact clamped height, a coarse one resolves a snap — the same split the
+ * resize handle keys on `isMobile`. These drive the REAL chrome through the
+ * REAL bar, so the mode selection, the bail wiring and the snap/commit
+ * destination are all the shipped path. The pointer mechanics themselves
+ * (capture, thresholds, flings) are the shared hook's,
+ * `useChatDockVerticalDrag.test.tsx`.
+ */
+describe('the region bar is a header drag surface (real chrome)', () => {
+  test('a bare-surface drag on a fine pointer commits an exact dock height', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--bottom')).not.toBeNull(),
+    );
+    const shell = document.querySelector('.chat-dock') as HTMLElement;
+    const bar = shell.querySelector('.region-chrome') as HTMLElement;
+    expect(
+      bar,
+      'the ambient dock renders its region bar on a fine pointer',
+    ).not.toBeNull();
+
+    // Down at the bar, up 300px: the committed height is the pointer's
+    // distance to the viewport bottom (768 - 400), clamped.
+    fireEvent.pointerDown(
+      bar.querySelector('.chat-dock__title') as HTMLElement,
+      { button: 0, pointerId: 1, clientY: 700 },
+    );
+    expect(
+      shell.className,
+      'a bare-surface press announces the drag immediately (no tap target under it)',
+    ).toContain('is-dragging');
+    fireEvent.pointerMove(bar, { pointerId: 1, clientY: 400 });
+    fireEvent.pointerUp(bar, { pointerId: 1, clientY: 400 });
+
+    expect(shell.className).not.toContain('is-dragging');
+    expect(shell.style.height).toBe('368px');
+  });
+
+  test('a bare-surface drag on a coarse non-chat bar resolves a snap — collapse, like chat’s bar', async () => {
+    // A coarse pointer folds every placement to bottom and renders no tab
+    // strip. The AMBIENT mount is chat-locked (its selection never leaves
+    // chat, so there the bar yields to ChatDockMobileHeader), so the coarse
+    // bar drives a regional mount holding Activity.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    try {
+      render(
+        <KeyboardShortcutsProvider>
+          <NavigationProvider>
+            <RegionModelProvider>
+              <RegionModelProbe />
+              <RegionPaneHost
+                regionId="bottom"
+                // Bottom's default occupant is chat (and its pane set keeps
+                // it beside Activity), so both renderers need a stub; only
+                // the SELECTED pane's is on this test's path.
+                renderChatPane={() => <p data-testid="region-chat-occupant" />}
+                renderActivityPane={() => (
+                  <p data-testid="region-activity-occupant" />
+                )}
+              />
+            </RegionModelProvider>
+          </NavigationProvider>
+        </KeyboardShortcutsProvider>,
+      );
+      act(() => currentRegionModel().placeSurface('activity', 'bottom'));
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId('region-activity-occupant'),
+        ).not.toBeNull(),
+      );
+      const shell = document.querySelector('.chat-dock--bottom') as HTMLElement;
+      const bar = shell.querySelector('.region-chrome') as HTMLElement;
+      expect(
+        bar,
+        'a coarse device renders the bar for a non-chat pane (mobileChat is chat-only)',
+      ).not.toBeNull();
+      expect(shell.className).not.toContain('is-collapsed');
+
+      // Down 40px from the bar and release: a decisive downward gesture puts
+      // the dock away — position and fling resolve to the same verdict here.
+      fireEvent.pointerDown(
+        bar.querySelector('.chat-dock__title') as HTMLElement,
+        { button: 0, pointerId: 1, clientY: 700 },
+      );
+      fireEvent.pointerMove(bar, { pointerId: 1, clientY: 740 });
+      fireEvent.pointerUp(bar, { pointerId: 1, clientY: 740 });
+
+      await waitFor(() =>
+        expect(currentRegionModel().regions.bottom.visible).toBe(false),
+      );
+      expect(shell.className).toContain('is-collapsed');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('a press on a bar control is not a dock gesture — the grab keeps its own drag', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--bottom')).not.toBeNull(),
+    );
+    const shell = document.querySelector('.chat-dock') as HTMLElement;
+    const bar = shell.querySelector('.region-chrome') as HTMLElement;
+    const grab = bar.querySelector(
+      '.chat-dock__placement-grab',
+    ) as HTMLButtonElement;
+
+    // The grab's own placement drag hit-tests the drop edges on move;
+    // jsdom has no `elementFromPoint` (null = "over no edge").
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: () => null,
+    });
+    const heightBefore = shell.style.height;
+    fireEvent.pointerDown(grab, { button: 0, pointerId: 2, clientY: 700 });
+    fireEvent.pointerMove(grab, { pointerId: 2, clientY: 400 });
+    // The press went to the grab's placement drag: the dock neither announced
+    // its own gesture nor followed the pointer's height.
+    expect(shell.className).not.toContain('is-dragging');
+    expect(shell.style.height).toBe(heightBefore);
+    fireEvent.pointerUp(grab, { pointerId: 2, clientY: 400 });
+    expect(shell.className).not.toContain('is-dragging');
+    delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+  });
+});

@@ -77,8 +77,8 @@ function chromeStub(overrides: Partial<DockShellChrome> = {}): DockShellChrome {
     commitDockPlacement: vi.fn(),
     restoreDockToDocked: noop,
     onSidePanelResizePointerDown: noop,
-    onMobileHeaderDragPointerDown: noop,
-    onMobileHeaderDragClickCapture: noop,
+    onHeaderDragPointerDown: noop,
+    onHeaderDragClickCapture: noop,
     activeProjectSlug: null,
     setActiveProjectSlug: noop,
     ...overrides,
@@ -853,5 +853,83 @@ describe('the bar’s own click surface', () => {
     const { container } = renderBar({ chrome });
     fireEvent.click(container.querySelector('.chat-dock__title') as Element);
     expect(chrome.applyDockSnap).toHaveBeenCalledWith('half');
+  });
+});
+
+describe('the bar is a header drag surface (the chrome pair)', () => {
+  /**
+   * The bar's bare surface now carries the chrome's one header drag gesture
+   * (`onHeaderDragPointerDown` — the pair `ChatDockMobileHeader` wears), so a
+   * non-chat dock's header resizes like chat's. What is THIS bar's to pin is
+   * the wiring and its two bails: the gesture is offered only on the bar's
+   * own bare surface, never where another gesture lives. The pointer
+   * mechanics itself (capture, live height, snap/commit) is the shared
+   * hook's, covered by `useChatDockVerticalDrag.test.tsx` and driven against
+   * the real chrome in `DockShellControlParity.test.tsx`.
+   */
+  test('a bare-surface press forwards to the chrome gesture; a press on a control does not', () => {
+    const onHeaderDragPointerDown = vi.fn();
+    const chrome = chromeStub({ onHeaderDragPointerDown });
+    const { container } = renderBar({ chrome });
+    const bar = container.querySelector('.chat-dock__header') as HTMLElement;
+    expect(bar.getAttribute('data-dock-drag-surface')).toBe('');
+
+    const title = bar.querySelector('.chat-dock__title') as HTMLElement;
+    fireEvent.pointerDown(title, { button: 0, pointerId: 1 });
+    expect(onHeaderDragPointerDown).toHaveBeenCalledTimes(1);
+
+    // Every control keeps its own gesture: tabs reorder, the grab moves the
+    // region, the chevron and the action cluster click. The TOGGLE_EXEMPT set
+    // is the bail, so a control added to the strip inherits the exemption.
+    fireEvent.pointerDown(screen.getByRole('tab', { name: 'Activity' }), {
+      button: 0,
+      pointerId: 2,
+    });
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Move the dock' }), {
+      button: 0,
+      pointerId: 3,
+    });
+    fireEvent.pointerDown(screen.getByLabelText('Hide Chat'), {
+      button: 0,
+      pointerId: 4,
+    });
+    fireEvent.pointerDown(screen.getByLabelText('Close Chat'), {
+      button: 0,
+      pointerId: 5,
+    });
+    expect(onHeaderDragPointerDown).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The move menu is `createPortal(document.body)` INSIDE this bar's React
+   * tree, so a press on it reaches the bar's React `onPointerDown` with a
+   * target the bar's DOM does not contain. Starting the gesture there would
+   * capture the pointer away from the menu — the #1638 shape — so the bail is
+   * DOM containment, before the capture, and this pins the real portal the
+   * bar itself renders.
+   */
+  test('a press inside content the bar portals out does not start the gesture', () => {
+    const onHeaderDragPointerDown = vi.fn();
+    const { container } = renderBar({
+      chrome: chromeStub({ onHeaderDragPointerDown }),
+    });
+    const bar = container.querySelector('.chat-dock__header') as HTMLElement;
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chat' }));
+    const menu = screen.getByRole('menu', { name: 'Move Chat' });
+    expect(
+      bar.contains(menu),
+      'the move menu stopped portaling out of the bar; the containment bail ' +
+        'is no longer exercised and this test proves nothing',
+    ).toBe(false);
+
+    fireEvent.pointerDown(menu, { button: 0, pointerId: 6 });
+    expect(onHeaderDragPointerDown).not.toHaveBeenCalled();
+  });
+
+  test('clicks cross the chrome click-capture seam that retires a drag’s click', () => {
+    const onHeaderDragClickCapture = vi.fn();
+    renderBar({ chrome: chromeStub({ onHeaderDragClickCapture }) });
+    fireEvent.click(screen.getByRole('tab', { name: 'Chat' }));
+    expect(onHeaderDragClickCapture).toHaveBeenCalledTimes(1);
   });
 });

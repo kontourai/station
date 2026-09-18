@@ -1457,9 +1457,11 @@ button:hover {
 .chat-dock.is-collapsed {
   border-top: 1px solid var(--border-primary);
   box-shadow: var(--shadow-sm);
-  /* NOT overflow:hidden (#1046): a collapsed non-chat region surface has
-     real content height (#765 C1), so this would clip the header's escaping
-     upward menu at the dock's own top edge. Chat clips via .chat-dock__body. */
+  /* NOT overflow:hidden (#1046): the collapsed bar's header hosts escaping
+     menus (the move menu, pane toolbars), and clipping at the dock's own top
+     edge would cut them off. The body is handled per region instead — chat
+     via `.chat-dock__body`, the non-chat panes via the collapsed
+     `.dock-slot__body` hide in the desktop block below. */
 }
 
 .chat-dock__file-drop-overlay {
@@ -7474,12 +7476,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      Activity's list ("Act", "Wat host", "Dele are c") stayed visible as a
      clipped sliver on every route. Chat already clips through
      `.chat-dock__body`; a non-chat occupant renders `.dock-slot__body`, which
-     nothing hid. The bottom dock deliberately keeps a collapsed non-chat
-     occupant's height (#765 C1, `.chat-dock.is-collapsed` above) because its
-     content stays reachable there; a vertical rail cannot show content at
-     all, so hiding the body loses nothing. */
+     nothing hid. The bottom dock had kept its collapsed body mounted (#765
+     C1's "content stays reachable" on the v0.1.2 title-only strip), but with
+     a real bar under every region that contract is chat's now: a collapsed
+     dock is the bar alone, so the body hides on every edge — on the bottom
+     the desktop `height: auto !important` rule below otherwise sizes the
+     collapsed dock back to its body, and the pane reappears the moment the
+     region is shown (or dragged from collapsed, which drops `is-collapsed`). */
   .app__main
-    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    > :is(
+      [data-region="left"],
+      [data-region="right"],
+      [data-region="bottom"]
+    ).is-collapsed
     .dock-slot__body {
     display: none;
   }
@@ -7707,7 +7716,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   /* Collapsed: size the row to the header's real rendered height instead of
      the 38px height token — the dock carries a 2px accent border on top of
-     the header content, so the fixed token clips the bar's bottom edge. */
+     the header content, so the fixed token clips the bar's bottom edge. The
+     collapsed `.dock-slot__body` hide above is what leaves the header as the
+     only content for `auto` to size to on a non-chat occupant. */
   .app__main > [data-region="bottom"].is-collapsed {
     height: auto !important;
   }
@@ -8820,6 +8831,20 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      gone, so the browser must not claim the vertical pan for scrolling. */
   touch-action: none;
   user-select: none;
+}
+
+/* The region bar's bare surface is a dock drag surface too (`RegionChromeBar`
+   wears the chrome's header gesture), so on the devices whose drags the
+   browser would otherwise claim for panning, it opts out the same way the
+   mobile header above does. Scoped to the mobile breakpoint, byte-identical
+   to `MOBILE_MEDIA_QUERY`'s condition: inside it a region renders no tab
+   strip, and a touch-action on an ancestor intersects down — a `none` here
+   would also strip the strip's own `overflow-x` pan on the wide-coarse
+   tablets that DO render one. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .region-chrome {
+    touch-action: none;
+  }
 }
 
 /* archive#3309: at 320px the bar's non-shrinking 44px slots plus the 12px
