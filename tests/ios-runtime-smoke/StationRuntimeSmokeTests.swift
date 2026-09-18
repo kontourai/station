@@ -44,10 +44,30 @@ final class StationRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(connect.isHittable)
         // Settings lives in the sidebar drawer's footer, not the header: open
         // the drawer, prove the route exists, then close it again so the
-        // connection flow below starts from the undrawered shell.
+        // connection flow below starts from the undrawered shell. The open
+        // goes through `tap(until:)` because a WKWebView tap can be delivered
+        // and dropped while the control already reads hittable (see that
+        // helper); a single tap here fails the run on a dropped event, which
+        // is what the first version of this assertion did.
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(
+            tap(app.buttons["Toggle menu"], until: settings, budget: 20),
+            "Settings route missing from the drawer. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
+        XCTAssertTrue(settings.isHittable)
+        // The close gets one retry for the same dropped-tap reason, bounded:
+        // two taps total, then the assertion decides. The retry only fires
+        // after the button is still there past the close animation — checking
+        // `exists` immediately after the tap would catch the animating drawer
+        // and reopen it.
         app.buttons["Toggle menu"].tap()
-        XCTAssertTrue(app.buttons["Settings"].isHittable)
-        app.buttons["Toggle menu"].tap()
+        if !settings.waitForNonExistence(timeout: 2) {
+            app.buttons["Toggle menu"].tap()
+        }
+        XCTAssertTrue(
+            settings.waitForNonExistence(timeout: 5),
+            "Drawer did not close after proving the Settings route."
+        )
         XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
 
         connect.tap()
