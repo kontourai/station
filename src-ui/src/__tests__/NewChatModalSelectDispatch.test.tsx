@@ -121,6 +121,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     modelChoiceKey: (agent: AgentData) => agent.slug,
     defaultEffectiveModelForAgent: () => ({
       id: undefined,
+      label: 'Model not reported',
       source: 'agent default' as const,
     }),
   }),
@@ -336,10 +337,33 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = renderModal();
     const row = clickAgent('downed');
     expect(row).toHaveProperty('disabled', true);
-    // One visible statement of the refusal (the shared readiness chip) and
-    // one accessible description carrying the server's sentence.
-    expect(screen.getByText('Needs: connection offline')).toBeTruthy();
+    // One visible statement of the refusal (the shared readiness chip, in
+    // the same compact words the Agents list row uses) and one accessible
+    // description carrying the server's sentence.
+    expect(screen.getByText('Not set up')).toBeTruthy();
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('the model trigger is disabled while the engine reports no catalog', () => {
+    // modelsForAgent is [] for every agent in this harness, so the trigger
+    // must not offer a picker that would open empty; the accessible name
+    // still says what the control is and the tooltip names why.
+    selectionModelState.agents = [AGENT];
+    renderModal();
+    const trigger = document.querySelector(
+      '.new-chat-modal__model-trigger',
+    ) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(true);
+    expect(trigger.getAttribute('aria-label')).toBe(
+      'Model: Model not reported',
+    );
+    expect(trigger.getAttribute('title')).toBe(
+      'This Agent has not reported a model catalog',
+    );
+    fireEvent.click(trigger);
+    expect(
+      document.querySelector('.new-chat-modal__model-picker-backdrop'),
+    ).toBeNull();
   });
 
   test('Enable materializes the engine Agent, announces progress, and selects off the response (#3027)', async () => {
@@ -627,16 +651,19 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     });
 
     // DESIGN.md §5: EVERY non-ready row carries a state, in the same words
-    // the Agents list uses — the row that "kept its reason and got no chip"
-    // was the one case the picker and the list described differently. The
-    // sentence is now always the row's accessible description, and the chip
-    // is always the visible statement.
-    test('a row with no enable signal states its need and keeps the sentence for a11y', () => {
+    // the Agents list uses — and the Agents list row renders the COMPACT
+    // badge (agentsViewHelpers `part="status" compact`), so the picker now
+    // does too. The full server sentence used to BE the badge label here; a
+    // paragraph for a chip that squeezed the row's own name to one letter
+    // while the sentence stayed in the accessibility tree either way. The
+    // visible state is short vocabulary; the sentence remains the row's
+    // accessible description.
+    test('a row with no enable signal states its need compactly and keeps the sentence for a11y', () => {
       selectionModelState.agents = [UNAVAILABLE_AGENT];
       renderModal();
 
-      expect(screen.queryByText('Not set up')).toBeNull();
-      expect(screen.getByText('Needs: connection offline')).toBeTruthy();
+      expect(screen.queryByText('Needs: connection offline')).toBeNull();
+      expect(screen.getByText('Not set up')).toBeTruthy();
       const reason = reasonNode('downed');
       expect(reason?.textContent).toBe('connection offline');
       expect(reason?.className).toContain(

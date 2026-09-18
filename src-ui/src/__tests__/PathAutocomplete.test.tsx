@@ -243,6 +243,111 @@ describe('PathAutocomplete', () => {
     expect(options.length).toBe(8);
   });
 
+  // Windows drive-rooted values browse like `~` and `/` do. These pin the
+  // contract for both separators a user can type, against a server whose
+  // listings are backslash-canonical.
+  test('suggests from the drive root for a Windows path with a typed prefix', () => {
+    browseMock.mockReturnValue({
+      data: {
+        path: 'C:\\',
+        parent: '\\',
+        selectable: true,
+        entries: [
+          { name: 'Projects', isDirectory: true, path: 'C:\\Projects' },
+          { name: 'Users', isDirectory: true, path: 'C:\\Users' },
+        ],
+      },
+    });
+
+    render(<PathAutocomplete value={'C:\\Pro'} onChange={vi.fn()} />);
+
+    expect(browseMock).toHaveBeenCalledWith('C:\\', { enabled: true });
+    const option = screen.getByText('Projects').closest('button');
+    // The server's canonical entry path, not a locally joined one.
+    expect(option?.textContent).toContain('C:\\Projects');
+    expect(screen.queryByText('Users')).toBeNull();
+  });
+
+  test('browses the parent directory of a deeper Windows path, on either separator', () => {
+    browseMock.mockReturnValue({
+      data: { path: 'D:\\dev', entries: [{ name: 'app', isDirectory: true }] },
+    });
+
+    render(<PathAutocomplete value={'D:\\dev\\ap'} onChange={vi.fn()} />);
+    expect(browseMock).toHaveBeenCalledWith('D:\\dev', { enabled: true });
+
+    // Forward-slash spelling of the same location browses the same parent —
+    // the bare `D:` that substring parsing would produce is drive-RELATIVE
+    // and must be promoted to the root instead.
+    render(<PathAutocomplete value={'D:/dev/ap'} onChange={vi.fn()} />);
+    expect(browseMock).toHaveBeenLastCalledWith('D:\\dev', { enabled: true });
+  });
+
+  test('a Windows drive root value browses itself without doubling its separator', () => {
+    browseMock.mockReturnValue({
+      data: {
+        path: 'D:\\',
+        parent: '\\',
+        selectable: true,
+        entries: [{ name: 'dev', isDirectory: true, path: 'D:\\dev' }],
+      },
+    });
+
+    render(<PathAutocomplete value={'D:\\'} onChange={vi.fn()} />);
+
+    expect(browseMock).toHaveBeenCalledWith('D:\\', { enabled: true });
+    expect(screen.getByText('dev')).toBeTruthy();
+  });
+
+  test('picking a Windows suggestion appends the path own separator', () => {
+    browseMock.mockReturnValue({
+      data: {
+        path: 'C:\\',
+        parent: '\\',
+        selectable: true,
+        entries: [
+          { name: 'Projects', isDirectory: true, path: 'C:\\Projects' },
+        ],
+      },
+    });
+    const onChange = vi.fn();
+
+    render(<PathAutocomplete value={'C:\\Pro'} onChange={onChange} />);
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /Projects/ }));
+    expect(onChange).toHaveBeenCalledWith('C:\\Projects\\');
+  });
+
+  test('picking a drive from the drives level keeps the drive root intact', () => {
+    browseMock.mockReturnValue({
+      data: {
+        path: '\\',
+        parent: null,
+        label: 'This PC',
+        selectable: false,
+        entries: [{ name: 'C:', isDirectory: true, path: 'C:\\' }],
+      },
+    });
+    const onChange = vi.fn();
+
+    render(<PathAutocomplete value={'\\'} onChange={onChange} />);
+
+    expect(browseMock).toHaveBeenCalledWith('\\', { enabled: true });
+    fireEvent.pointerDown(screen.getByRole('button', { name: /C:/ }));
+    // Already ends in its separator: `C:\`, never `C:\/` or `C:\\`.
+    expect(onChange).toHaveBeenCalledWith('C:\\');
+  });
+
+  test('a bare drive letter is drive-relative and gets no suggestions', () => {
+    browseMock.mockReturnValue({ data: undefined });
+
+    render(<PathAutocomplete value="D:" onChange={vi.fn()} />);
+
+    // The hook still runs (hooks are unconditional); it must stay disabled —
+    // no browse request is issued for a drive-relative string.
+    expect(browseMock).toHaveBeenCalledWith(undefined, { enabled: false });
+  });
+
   test('tab-completes a single directory and appends a trailing slash', () => {
     browseMock.mockImplementation((path?: string) => {
       if (path === '/tmp/pro') {

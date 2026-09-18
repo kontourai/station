@@ -308,7 +308,10 @@ export function ACPConnectionConfirmStage({
         <li>
           Saves a connection to {entry.name} on the computer Station runs on.
         </li>
-        <li>Adds an agent named {entry.name} to your Agents list.</li>
+        <li>
+          Adds an agent named {entry.name} to your Agents list once the engine
+          connects.
+        </li>
         <li>
           Runs <code>{entry.command}</code> to check whether it is ready.
         </li>
@@ -410,7 +413,7 @@ export function ACPConnectionSetupStatus({
       label === 'Ready'
         ? 'This engine is ready to use.'
         : label === 'Setup needed'
-          ? 'This engine needs more setup before it can run work.'
+          ? 'This engine needs more setup before it can run work — its Agent is added when it connects.'
           : label === 'Off'
             ? 'This engine is configured but turned off.'
             : 'Station could not make this engine available.';

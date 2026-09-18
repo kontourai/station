@@ -2226,18 +2226,33 @@ GET /fs/browse?path=<path>
 Lists directories (not files) at the given path. Used by the UI directory picker.
 
 **Query Parameters**:
-- `path`: Absolute path or `~` for home directory (default: `~`)
+- `path`: Absolute path or `~` for home directory (default: `~`). On a Windows
+  host, `\\` (the server-emitted parent of every drive root) lists the
+  machine's present drives.
 
 **Response**:
 ```json
 {
-  "path": "~/projects",
+  "path": "/home/user/projects",
+  "parent": "/home/user",
+  "selectable": true,
   "entries": [
-    { "name": "Documents", "isDirectory": true },
-    { "name": "Downloads", "isDirectory": true }
+    { "name": "Documents", "path": "/home/user/projects/Documents", "isDirectory": true },
+    { "name": "Downloads", "path": "/home/user/projects/Downloads", "isDirectory": true }
   ]
 }
 ```
+
+- `entries[].path` is the entry's full path, canonical for the server's
+  platform (backslash-joined on Windows; drive entries carry their root, e.g.
+  `C:\`).
+- `parent` is where the picker's `..` navigates, derived server-side so
+  clients never re-encode path semantics; `null` marks the top of the
+  hierarchy (POSIX `/`, and the Windows drive listing).
+- `label` optionally names the location for display (the Windows drive
+  listing reports `"This PC"`); clients fall back to `path`.
+- `selectable` is `false` only for navigation-only levels (the Windows drive
+  listing), which must not be selected as a folder.
 
 Entries are sorted: non-dotfiles first, then dotfiles, each group alphabetically.
 

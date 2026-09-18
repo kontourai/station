@@ -1,22 +1,25 @@
-.turn-footer__actions-menu {
-  position: relative;
-}
-
 .turn-footer__overflow-trigger {
   min-width: 28px;
 }
 
+/* Portalled to the document and fixed to the trigger's own rect — the
+   coordinates come from the inline style `useFixedMenuPlacement` computes, so
+   this rule owns only the box. `--layer-navigation`, not `--layer-popover`:
+   the open menu is no longer a descendant of `.chat-dock` (fixed at
+   `--layer-dock`, 9200), so 1000 would paint it underneath the very dock that
+   holds its message — the shape recorded on `.chat-dock__more-menu` in
+   index.css. */
 .turn-footer__overflow-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-  z-index: var(--layer-popover);
+  position: fixed;
+  z-index: var(--layer-navigation);
+  /* Twin of `MENU_MIN_WIDTH_PX` in TurnActionsMenu.tsx; the placement math
+     assumes this extent before the box is laid out. */
   min-width: 180px;
   padding: 4px;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-menu);
 }
 
 .turn-footer__overflow-menu [role="menuitem"] {

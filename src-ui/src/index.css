@@ -7636,11 +7636,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     font-size: var(--text-xs);
   }
 
-  /* Side-mode messages: compact conversation flow */
-  .app__main > :is([data-region="left"], [data-region="right"]) .chat-messages {
-    align-items: flex-end;
-  }
-
+  /* Side-mode messages: compact conversation flow.
+     No `align-items` override: the column keeps the default stretch so the
+     transcript rows lay out exactly as the main view does — `.message-row` is
+     full-width and user rows right-align via `row-reverse`. `flex-end` used to
+     sit here and right-aligned EVERY shrink-wrapped `.chat-message-anchor`,
+     pushing assistant answers (avatar and all) against the dock's far edge. */
   .app__main > :is([data-region="left"], [data-region="right"]) .message {
     max-width: 95%;
     overflow-x: hidden;
@@ -8248,6 +8249,15 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   flex-shrink: 0;
 }
 
+/* The quiet dot between a workspace name and its directory hint, so
+   "No workspace · Home folder" parses as name + detail instead of one
+   run-on phrase. aria-hidden in the markup; the label and hint carry the
+   meaning themselves. */
+.new-chat-modal__context-sep {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
 .new-chat-modal__context-dir {
   display: flex;
   font-family: var(--font-mono);
@@ -8597,7 +8607,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__model-trigger {
   min-height: 32px;
-  max-width: min(30vw, 130px);
+  /* Wide enough to carry an actual model name ("Default (recommended)",
+     "GPT-5.6-Codex"). The old min(30vw, 130px) ellipsized every one of them
+     mid-name — while the row's own name column had width to spare. The name
+     column keeps priority through the grid's minmax(0, 1fr); the cap only
+     stops one very long catalog id from starving it entirely. */
+  max-width: min(40vw, 200px);
   overflow: hidden;
   padding: 0 10px;
   border: 1px solid var(--border-primary);
@@ -9254,7 +9269,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .new-chat-modal__model-trigger {
-    max-width: 116px;
+    /* The side controls own their own full-width line on a phone, so the
+       cap is the container, not an arbitrary 116px that clipped every real
+       model name ("GPT-5.6-…", "Model no…"). */
+    max-width: 100%;
     min-height: 44px;
   }
 

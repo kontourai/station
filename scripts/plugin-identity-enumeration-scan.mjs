@@ -117,6 +117,8 @@ const SCAN_EXCLUSIONS = {
     'A mutation naming its own target. It reveals no plugin the caller did not already name.',
   'POST /api/registry/plugins/install':
     'Same: a mutation naming its own target. The `plugins/` signal is the install destination, not a listing.',
+  'POST /acp/registry/:id/install':
+    'A mutation naming its own target: it installs the engine connection the caller named and returns that connection, never a listing. The `agent` receipt names the Agent this same mutation created or adopted for THAT connection id — a fact the projected agents list (`GET /api/agents`, the New Chat picker\u2019s own source) already carries — and names no other engine or plugin.',
   'DELETE /api/registry/plugins/:id':
     'A mutation addressed by id. The `plugins/` signal is the removal path.',
   'POST /api/plugins/home-role/requests':
