@@ -66,7 +66,10 @@ import { buildInfo } from '../build-info';
  *    whitelist. Revisit if `acp` ever grows a sensitive field.
  *  - 'config' — app config (`/config/app`; UI-level settings, not secrets)
  *  - 'model-catalog', 'model-picker-catalog' — model metadata and the deliberately
- *    credential-free connection projection used by offline model pickers
+ *    credential-free connection projection used by New Chat, Home, and Chat.
+ *    Raw `connections` stay excluded (config can hold credentials). On
+ *    relaunch the picker paints from this snapshot; reconnect invalidation
+ *    then refetches in the background.
  *
  * Deliberately excluded (sensitive or volatile — never persist):
  *  - 'auth-status', 'connections' — auth/credential state
