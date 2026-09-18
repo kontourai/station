@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { adapterTurnDuration, providerOps } from '../../telemetry/metrics.js';
+import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   codexResumeCursor,
   deriveToolArguments,
@@ -17,7 +18,6 @@ import {
   mapTurnFinishReason,
 } from './codex-adapter-events.js';
 import type { CodexSessionRecord } from './codex-adapter-types.js';
-import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**

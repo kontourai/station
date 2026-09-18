@@ -11,8 +11,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { projectSessionLifecycle } from '../../../services/orchestration/session-lifecycle-service.js';
 import { MAX_EVENT_STORE_INGRESS_BYTES } from '../../../services/orchestration/event-store.js';
+import { projectSessionLifecycle } from '../../../services/orchestration/session-lifecycle-service.js';
 import { ClaudeTranscriptSessionSource } from '../claude-transcript-session-source.js';
 
 const dirs: string[] = [];
@@ -1164,7 +1164,11 @@ describe('ClaudeTranscriptSessionSource', () => {
             timestamp: '2026-09-17T00:00:00.000Z',
             message: {
               content: [
-                { type: 'tool_result', tool_use_id: 'tool-1', content: OVERSIZED },
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'tool-1',
+                  content: OVERSIZED,
+                },
               ],
             },
           },
@@ -1226,9 +1230,9 @@ describe('ClaudeTranscriptSessionSource', () => {
         (event) => event.method === 'tool.started',
       ) as { arguments?: { content?: string } } | undefined;
       expect(started).toBeTruthy();
-      expect(
-        (started?.arguments?.content ?? '').length,
-      ).toBeLessThan(OVERSIZED.length);
+      expect((started?.arguments?.content ?? '').length).toBeLessThan(
+        OVERSIZED.length,
+      );
       const warning = result.events.find(
         (event) =>
           event.method === 'runtime.warning' &&

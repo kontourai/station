@@ -565,9 +565,9 @@ function mapCodexRecord(
       return { events: [], state };
     }
     const bounded = boundedPrompt(prompt, {
-    maxBytes: MAX_PROMPT_BYTES,
-    source: 'codex-rollout',
-  });
+      maxBytes: MAX_PROMPT_BYTES,
+      source: 'codex-rollout',
+    });
     if (pending && pending.turnId === state.turnId) {
       delete state.codex.pendingTurn;
       return {
@@ -741,9 +741,9 @@ function mapCodexRecord(
           contentIndex,
         ])}`;
       for (const [chunkIndex, delta] of utf8Chunks(
-          outputText,
-          MAX_TEXT_CHUNK_BYTES,
-        ).entries()) {
+        outputText,
+        MAX_TEXT_CHUNK_BYTES,
+      ).entries()) {
         events.push({
           ...base,
           eventId: id(events.length, `assistant-${contentIndex}-${chunkIndex}`),
@@ -779,9 +779,9 @@ function mapCodexRecord(
           lineOffset,
         ])}`;
       for (const [chunkIndex, delta] of utf8Chunks(
-          summaryText,
-          MAX_TEXT_CHUNK_BYTES,
-        ).entries()) {
+        summaryText,
+        MAX_TEXT_CHUNK_BYTES,
+      ).entries()) {
         events.push({
           ...base,
           eventId: id(

@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isRecord } from '../../utils/is-record.js';
 import {
   claudeToolResultOutputReceipt,
   summarizeClaudeToolResult,
@@ -13,7 +14,6 @@ import {
   projectBoundedToolOutput,
   utf8Chunks,
 } from '../tool-output-projection.js';
-import { isRecord } from '../../utils/is-record.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -770,20 +770,18 @@ function mapAssistantBlock(
     (type === 'thinking' || type === 'reasoning') &&
     typeof reasoning === 'string'
   ) {
-    return utf8Chunks(reasoning, MAX_TEXT_CHUNK_BYTES).map(
-      (delta, chunk) => ({
-        ...base,
-        eventId: eventId(
-          sessionId,
-          recordId,
-          index,
-          chunk === 0 ? 'reasoning' : `reasoning:${chunk}`,
-        ),
-        method: 'content.reasoning-delta' as const,
-        itemId: chunk === 0 ? itemId : `${itemId}:${chunk}`,
-        delta,
-      }),
-    );
+    return utf8Chunks(reasoning, MAX_TEXT_CHUNK_BYTES).map((delta, chunk) => ({
+      ...base,
+      eventId: eventId(
+        sessionId,
+        recordId,
+        index,
+        chunk === 0 ? 'reasoning' : `reasoning:${chunk}`,
+      ),
+      method: 'content.reasoning-delta' as const,
+      itemId: chunk === 0 ? itemId : `${itemId}:${chunk}`,
+      delta,
+    }));
   }
   if (
     type === 'tool_use' &&

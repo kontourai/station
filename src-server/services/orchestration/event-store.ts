@@ -2593,7 +2593,8 @@ export class EventStore {
         return new BoundedEventStoreIngressProjector().project(value, options);
       } catch (error) {
         if (error instanceof EventStoreIngressError) {
-          const prefix = 'Runtime event cannot be safely persisted by EventStore: ';
+          const prefix =
+            'Runtime event cannot be safely persisted by EventStore: ';
           const reason = error.message.startsWith(prefix)
             ? error.message.slice(prefix.length).replace(/\.$/, '')
             : error.message;

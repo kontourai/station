@@ -186,9 +186,7 @@ describe('AttachedSessionFollowService', () => {
     // The poll RESOLVES — before the fix the rejection escaped pollNow.
     await expect(service.pollNow()).resolves.toBeUndefined();
 
-    const persisted = store
-      .listEvents(session.threadId)
-      .map((item) => item.id);
+    const persisted = store.listEvents(session.threadId).map((item) => item.id);
     // The tail survived…
     expect(persisted).toContain('after-oversized');
     // …the un-ingestable event did not pretend to be stored…
