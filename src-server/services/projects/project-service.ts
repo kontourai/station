@@ -232,7 +232,7 @@ function slugifyProjectName(name: string): string {
 }
 
 /** Host-owned folder for a project that did not name another path. */
-export function stationOwnedWorkspaceDirectory(
+function stationOwnedWorkspaceDirectory(
   slug: string,
   home: string = resolveHomeDir(),
 ): string {
