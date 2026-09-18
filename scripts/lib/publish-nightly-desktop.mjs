@@ -6,11 +6,18 @@ import { desktopPublishedAssetName } from './windows-nightly.mjs';
 
 const repository = 'kontourai/station';
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
-function github(args) {
+// The macOS dmg is ~510 MiB and has twice exceeded the 10-minute API-call
+// budget on the publish runner's uplink (spawnSync gh ETIMEDOUT, SIGTERM).
+// Uploads get their own fence and bounded retries; read-only API calls keep
+// the tighter one.
+const API_TIMEOUT_MS = 600_000;
+const UPLOAD_TIMEOUT_MS = 1_800_000;
+const UPLOAD_ATTEMPTS = 3;
+function github(args, timeoutMs = API_TIMEOUT_MS) {
   return execFileSync('gh', args, {
     encoding: 'utf8',
     windowsHide: true,
-    timeout: 600_000,
+    timeout: timeoutMs,
   });
 }
 
@@ -130,21 +137,43 @@ export function publishNightlyDesktop({
         'Desktop publication would regress the current Nightly version',
       );
   }
+  const readRelease = () =>
+    checkRelease(
+      JSON.parse(
+        run(['api', `repos/${repository}/releases/tags/nightly-desktop`]),
+      ),
+    );
   for (const asset of assets) {
-    if (before.assets.some((entry) => entry.name === asset.name)) {
-      if (!matches(before, asset))
-        throw new Error(
-          'An immutable desktop asset already exists with different bytes',
+    // A client-side timeout does not prove the bytes never landed: the next
+    // attempt re-reads the release first, so an asset that completed
+    // server-side is adopted via matches() instead of re-uploaded, and a
+    // conflicting asset with the same name still fails closed.
+    for (let attempt = 1; ; attempt++) {
+      const state = attempt === 1 ? before : readRelease();
+      if (state.assets.some((entry) => entry.name === asset.name)) {
+        if (!matches(state, asset))
+          throw new Error(
+            'An immutable desktop asset already exists with different bytes',
+          );
+        break;
+      }
+      try {
+        run(
+          [
+            'release',
+            'upload',
+            'nightly-desktop',
+            '--repo',
+            repository,
+            asset.path,
+          ],
+          UPLOAD_TIMEOUT_MS,
         );
-    } else {
-      run([
-        'release',
-        'upload',
-        'nightly-desktop',
-        '--repo',
-        repository,
-        asset.path,
-      ]);
+      } catch (error) {
+        if (attempt >= UPLOAD_ATTEMPTS) throw error;
+        continue;
+      }
+      break;
     }
   }
   const uploaded = checkRelease(query());
