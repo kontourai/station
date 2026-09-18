@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
@@ -8,6 +8,7 @@ import {
   createACPBridgeClient,
   handleACPBridgeCreateTerminal,
   handleACPBridgePermissionRequest,
+  splitComposedShellLine,
 } from '../acp-bridge-client.js';
 
 const mockLogger = {
@@ -145,6 +146,238 @@ describe('handleACPBridgeCreateTerminal', () => {
     // handle on `dir`) can still be alive when afterEach's cleanup runs,
     // unlike POSIX where the effect is closer to immediate.
     await exited;
+  });
+
+  test('a failed spawn is a failed terminal, not a crashed server', async () => {
+    // The 2026-09-18 live crash: a spawn failure emitted `error` with no
+    // listener, the uncaughtException killed the sidecar mid-turn, and every
+    // session on it died with `session.exited: orchestration_shutdown`. The
+    // discriminating property of this test is that the test process itself
+    // SURVIVES the failed spawn — under the old code this file dies with an
+    // uncaught exception.
+    const terminals = new Map();
+    const client = createACPBridgeClient({
+      cwd: dir,
+      terminals: terminals as any,
+      approvalRegistry: new ApprovalRegistry(mockLogger),
+      getActiveWriter: () => null,
+      nextTerminalId: () => 'term-failed-spawn',
+      onSessionUpdate: async () => {},
+      onExtNotification: () => {},
+      onExtMethod: async () => ({}),
+    });
+    const created = await client.createTerminal?.({
+      command: `${process.execPath}-no-such-binary`,
+      args: [],
+    } as never);
+    expect(created).toEqual({ terminalId: 'term-failed-spawn' });
+
+    await expect(
+      client.waitForTerminalExit?.({
+        terminalId: 'term-failed-spawn',
+      } as never),
+    ).resolves.toEqual({ exitCode: 127, signal: null });
+  });
+
+  test('a waiter arriving before the error event still resolves for a failed spawn', async () => {
+    const terminals = new Map();
+    await handleACPBridgeCreateTerminal(
+      {
+        command: `${process.execPath}-no-such-binary`,
+        args: [],
+      } as any,
+      {
+        cwd: dir,
+        terminals: terminals as any,
+        nextTerminalId: () => 'term-race',
+      },
+    );
+    // Attached before the spawn failure lands: only `error` will ever fire,
+    // never `exit`, so the waiter must resolve through the failure marker.
+    const client = createACPBridgeClient({
+      cwd: dir,
+      terminals: terminals as any,
+      approvalRegistry: new ApprovalRegistry(mockLogger),
+      getActiveWriter: () => null,
+      nextTerminalId: () => 'unused',
+      onSessionUpdate: async () => {},
+      onExtNotification: () => {},
+      onExtMethod: async () => ({}),
+    });
+    await expect(
+      client.waitForTerminalExit?.({ terminalId: 'term-race' } as never),
+    ).resolves.toMatchObject({ exitCode: 127, signal: null });
+  });
+
+  test('terminalOutput reports the spawn failure through the shell failure channel', async () => {
+    const terminals = new Map();
+    await handleACPBridgeCreateTerminal(
+      {
+        command: `${process.execPath}-no-such-binary`,
+        args: [],
+      } as any,
+      {
+        cwd: dir,
+        terminals: terminals as any,
+        nextTerminalId: () => 'term-output',
+      },
+    );
+    const client = createACPBridgeClient({
+      cwd: dir,
+      terminals: terminals as any,
+      approvalRegistry: new ApprovalRegistry(mockLogger),
+      getActiveWriter: () => null,
+      nextTerminalId: () => 'unused',
+      onSessionUpdate: async () => {},
+      onExtNotification: () => {},
+      onExtMethod: async () => ({}),
+    });
+    await vi.waitFor(async () => {
+      const out = (await client.terminalOutput?.({
+        terminalId: 'term-output',
+      } as never)) as {
+        output: string;
+        exitStatus: { exitCode: number | null; signal: string | null } | null;
+      };
+      // The empty-output-success fabrication would leave `exitStatus` null
+      // forever — the agent reads a dead terminal as still running.
+      expect(out.exitStatus).toEqual({ exitCode: 127, signal: null });
+      expect(out.output).toContain('spawn failed');
+      expect(out.output).toContain('ENOENT');
+    });
+  });
+
+  test('a composed shell line with empty args is split and runs', async () => {
+    // The exact shape from the 2026-09-18 incident: the whole command line
+    // arrived in `command` with no `args`, and the raw string was used as
+    // the executable path.
+    if (process.platform === 'win32') return; // POSIX shell quoting
+    const terminals = new Map();
+    const client = createACPBridgeClient({
+      cwd: dir,
+      terminals: terminals as any,
+      approvalRegistry: new ApprovalRegistry(mockLogger),
+      getActiveWriter: () => null,
+      nextTerminalId: () => 'term-split',
+      onSessionUpdate: async () => {},
+      onExtNotification: () => {},
+      onExtMethod: async () => ({}),
+    });
+    await client.createTerminal?.({
+      command: `${process.execPath} -p "40 + 2"`,
+      args: [],
+    } as never);
+    // Await the exit BEFORE reading output: `terminalOutput` returns an
+    // output snapshot, so an immediate read would race the child.
+    await client.waitForTerminalExit?.({ terminalId: 'term-split' } as never);
+    const out = (await client.terminalOutput?.({
+      terminalId: 'term-split',
+    } as never)) as { output: string };
+    expect(out.output.trim()).toBe('42');
+  });
+
+  test('a space-bearing command that names a real file is not split', async () => {
+    if (process.platform === 'win32') return; // shebang resolution
+    const scriptPath = join(dir, 'my tool.js');
+    writeFileSync(
+      scriptPath,
+      "#!/usr/bin/env node\nconsole.log('space-path-ok');\n",
+    );
+    chmodSync(scriptPath, 0o755);
+    const terminals = new Map();
+    const client = createACPBridgeClient({
+      cwd: dir,
+      terminals: terminals as any,
+      approvalRegistry: new ApprovalRegistry(mockLogger),
+      getActiveWriter: () => null,
+      nextTerminalId: () => 'term-space-path',
+      onSessionUpdate: async () => {},
+      onExtNotification: () => {},
+      onExtMethod: async () => ({}),
+    });
+    await client.createTerminal?.({
+      command: scriptPath,
+      args: [],
+    } as never);
+    await client.waitForTerminalExit?.({
+      terminalId: 'term-space-path',
+    } as never);
+    const out = (await client.terminalOutput?.({
+      terminalId: 'term-space-path',
+    } as never)) as { output: string };
+    expect(out.output).toContain('space-path-ok');
+  });
+
+  test('an unambiguous split failure keeps the raw command and fails honestly', async () => {
+    const terminals = new Map();
+    await handleACPBridgeCreateTerminal(
+      {
+        // Unbalanced quote: no unambiguous shell reading, so the raw string
+        // goes to spawn and the failure is reported, never fabricated.
+        command: `/no-such-dir-9x 'open-quote -lc pwd`,
+        args: [],
+      } as any,
+      {
+        cwd: dir,
+        terminals: terminals as any,
+        nextTerminalId: () => 'term-unbalanced',
+      },
+    );
+    const term = terminals.get('term-unbalanced');
+    await vi.waitFor(() => expect(term.exited).toBe(true));
+    expect(term.exitCode).toBe(127);
+    expect(term.output).toContain('spawn failed');
+  });
+});
+
+describe('splitComposedShellLine', () => {
+  test('splits plain words', () => {
+    expect(splitComposedShellLine('bash -lc pwd')).toEqual([
+      'bash',
+      '-lc',
+      'pwd',
+    ]);
+  });
+
+  test('single-quoted segments keep spaces and drop the quotes', () => {
+    expect(splitComposedShellLine("bash -lc 'pwd && ls -la'")).toEqual([
+      'bash',
+      '-lc',
+      'pwd && ls -la',
+    ]);
+  });
+
+  test('double-quoted segments honor escaped quotes only', () => {
+    expect(splitComposedShellLine('sh -c "echo \\"hi there\\""')).toEqual([
+      'sh',
+      '-c',
+      'echo "hi there"',
+    ]);
+  });
+
+  test('backslashes inside double quotes stay literal unless escaping a quote or backslash', () => {
+    // A Windows path inside double quotes must not lose its separators.
+    expect(splitComposedShellLine('"C:\\tools\\x y" --flag')).toEqual([
+      'C:\\tools\\x y',
+      '--flag',
+    ]);
+  });
+
+  test('unquoted backslash escapes the next character', () => {
+    expect(splitComposedShellLine('/opt/my\\ tool/bin/x')).toEqual([
+      '/opt/my tool/bin/x',
+    ]);
+  });
+
+  test('an unbalanced quote is not split', () => {
+    expect(splitComposedShellLine("bash -lc 'pwd")).toBeNull();
+    expect(splitComposedShellLine('bash -lc "pwd')).toBeNull();
+    expect(splitComposedShellLine('bash trailing\\')).toBeNull();
+  });
+
+  test('empty and whitespace-only lines are not split', () => {
+    expect(splitComposedShellLine('')).toBeNull();
+    expect(splitComposedShellLine('   \t  ')).toBeNull();
   });
 });
 
