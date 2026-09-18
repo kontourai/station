@@ -15945,17 +15945,14 @@ describe('OrchestrationService', () => {
     await expect(service.getProviderModels('codex')).resolves.toEqual([]);
   });
 
-  test("falls back to the adapter knownModels catalog when the picker's live catalog is empty (station#977)", async () => {
+  test('does not substitute knownModels when the picker live catalog is empty', async () => {
     (claude.metadata as any).knownModels = [
       { id: 'sonnet', name: 'Sonnet' },
       { id: 'opus', name: 'Opus' },
     ];
     claude.listModels.mockResolvedValue([]);
 
-    await expect(service.getProviderModels('claude')).resolves.toEqual([
-      { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
-      { id: 'opus', name: 'Opus', originalId: 'opus' },
-    ]);
+    await expect(service.getProviderModels('claude')).resolves.toEqual([]);
   });
 
   // Guard (archive#977): the connected-CLI softening above is scoped to

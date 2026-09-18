@@ -3,16 +3,12 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AgentConnectionView,
-  ConnectionConfig,
-} from '@kontourai/station-contracts/tool';
+import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   useACPConnectionsQuery,
   useAgentsQuery,
-  useEngineConnectionsQuery,
-  useModelConnectionsQuery,
+  useModelPickerCatalogQuery,
   useProjectLayoutQuery,
   useProjectQuery,
   useProjectsQuery,
@@ -46,6 +42,8 @@ import type {
   SelectableModel,
 } from '../utils/modelCapabilities';
 import { getLastChosenModelMap } from './lastChosenModel';
+
+const EMPTY_CONNECTIONS: never[] = [];
 
 /**
  * The engine binding a provider-managed row should carry: the Agent's own, or
@@ -188,32 +186,27 @@ export function useNewChatSelectionModel({
     selectedProjectLayout || '',
     { enabled: !!activeLayoutProject && !!selectedProjectLayout },
   );
+  // Same credential-free catalog Home and Chat already persist to IndexedDB.
+  // Raw `connections` queries stay out of persistence because `config` can
+  // hold credentials; using them here left New Chat empty on relaunch until
+  // the network returned.
   const {
-    data: agentConnections = [],
-    isLoading: runtimeLoading,
-    isFetching: runtimeFetching,
-    error: runtimeError,
-    refetch: refetchAgentConnections,
-  } = useEngineConnectionsQuery() as {
-    data?: AgentConnectionView[];
-    isLoading?: boolean;
-    isFetching?: boolean;
-    error?: unknown;
-    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
-  };
-  const {
-    data: modelConnections = [],
-    isLoading: modelsLoading,
-    isFetching: modelsFetching,
-    error: modelsError,
-    refetch: refetchModelConnections,
-  } = useModelConnectionsQuery() as {
-    data?: ConnectionConfig[];
-    isLoading?: boolean;
-    isFetching?: boolean;
-    error?: unknown;
-    refetch: (options?: { throwOnError?: boolean }) => Promise<unknown>;
-  };
+    data: pickerCatalog,
+    isLoading: catalogLoading,
+    isFetching: catalogFetching,
+    error: catalogError,
+    refetch: refetchPickerCatalog,
+  } = useModelPickerCatalogQuery();
+  const agentConnections = pickerCatalog?.agentConnections ?? EMPTY_CONNECTIONS;
+  const modelConnections = pickerCatalog?.modelConnections ?? EMPTY_CONNECTIONS;
+  const runtimeLoading = catalogLoading;
+  const modelsLoading = catalogLoading;
+  const runtimeFetching = catalogFetching;
+  const modelsFetching = catalogFetching;
+  const runtimeError = catalogError;
+  const modelsError = catalogError;
+  const refetchAgentConnections = refetchPickerCatalog;
+  const refetchModelConnections = refetchPickerCatalog;
   const {
     data: acpConnections = [],
     refetch: refreshACPConnections,

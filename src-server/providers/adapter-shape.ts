@@ -77,19 +77,18 @@ export interface ProviderAdapterMetadata {
   /**
    * Local default model id for an external native engine (archive#977 —
    * "local default + defer to engine"). Used ONLY by the connected-CLI
-   * launchability gate (`orchestration-service.ts`) as a fallback when no
-   * explicit `modelId` was requested, and as a last-resort catalog entry
-   * when the live model catalog is empty. Station-engine adapters
+   * launchability gate as a fallback when no explicit `modelId` was
+   * requested. It is not picker contents. Station-engine adapters
    * (Bedrock/Ollama/OpenAI) and ACP connections deliberately leave this
    * unset — Station-engine model resolution stays exact-match against its
    * own reliable catalog, and ACP already defers per-connection.
    */
   defaultModel?: string;
   /**
-   * A small, hand-curated set of well-known model ids for an external
-   * native engine, used as a catalog fallback (gate + model picker) when
-   * the adapter's live/cached catalog is empty or unreachable. Not a
-   * substitute for the live catalog — only consulted when it's empty.
+   * Well-known short aliases an external native engine accepts directly
+   * (`sonnet`/`opus`/`haiku` for Claude Code). Used only to match a
+   * launch selector when the live catalog is empty — never as picker
+   * contents. The picker is the adapter's live catalog.
    */
   knownModels?: ReadonlyArray<{ id: string; name: string }>;
 }

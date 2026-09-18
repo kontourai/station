@@ -6,9 +6,11 @@ import {
 import {
   acpProviderRoutingStatus,
   acpRuntimeCatalogStatus,
+  buildRuntimeCatalogStatus,
   hasRequiredMissing,
   mergeRuntimeConfig,
   sanitizeRuntimeConfig,
+  visibleRuntimeCatalogModels,
 } from '../connection-service-helpers.js';
 
 describe('connection service pure helpers', () => {
@@ -192,6 +194,59 @@ describe('acpRuntimeCatalogStatus (#3054)', () => {
     expect(status.source).toBe('none');
     expect(status.reason).toContain('No successful initialize handshake');
     expect(status.models).toEqual([]);
+  });
+});
+
+describe('buildRuntimeCatalogStatus live catalogs', () => {
+  const adapter = {
+    provider: 'codex',
+    metadata: { displayName: 'Codex' },
+    listModels: async () => [],
+  } as never;
+
+  test('does not attach a Station-authored model list when live discovery fails', () => {
+    const catalog = buildRuntimeCatalogStatus({
+      adapter,
+      liveDiscoveryFailed: true,
+      allowBuiltInOnDiscoveryFailure: true,
+      now: Date.parse('2026-09-18T00:00:00.000Z'),
+    });
+    expect(catalog).toEqual({
+      source: 'none',
+      fetchedAt: null,
+      reason: 'Live runtime model discovery failed.',
+      models: [],
+      builtInModels: [],
+    });
+  });
+
+  test('keeps a live-empty catalog empty instead of substituting built-ins', () => {
+    const catalog = buildRuntimeCatalogStatus({
+      adapter,
+      liveCatalog: { models: [] },
+      liveDiscoveryFailed: false,
+      allowBuiltInOnDiscoveryFailure: true,
+      now: Date.parse('2026-09-18T00:00:00.000Z'),
+    });
+    expect(catalog).toMatchObject({
+      source: 'live',
+      models: [],
+      builtInModels: [],
+    });
+  });
+
+  test('visible models for a live catalog ignore leftover built-ins', () => {
+    expect(
+      visibleRuntimeCatalogModels({
+        source: 'live',
+        fetchedAt: '2026-09-18T00:00:00.000Z',
+        reason: null,
+        models: [],
+        builtInModels: [
+          { id: 'gpt-5.6-sol', name: 'GPT-5.6-Sol', originalId: 'gpt-5.6-sol' },
+        ],
+      }),
+    ).toEqual([]);
   });
 });
 

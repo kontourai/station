@@ -241,7 +241,6 @@ import {
   InterruptedTurnRecovery,
 } from './interrupted-turn-recovery.js';
 import {
-  knownModelsCatalog,
   listLaunchableAdapterModels,
   ModelLaunchPlanning,
   ModelLaunchPlanUnavailableError,
@@ -2859,12 +2858,10 @@ export class OrchestrationService {
   > {
     const adapter = this.options.adapterRegistry.get(provider);
     if (!adapter) return [];
-    const models = await listLaunchableAdapterModels(adapter, options);
-    // archive#977: an empty live/cached catalog (unreachable engine, no
-    // cache yet) shouldn't leave the model picker empty for an external
-    // engine that ships a known-models fallback — keeps the picker
-    // consistent with the launchability gate's own fallback below.
-    return models.length ? models : knownModelsCatalog(adapter);
+    // The picker is the live catalog. A hand-curated knownModels list is
+    // launch-alias matching only — substituting it here hid later models
+    // whenever discovery was empty.
+    return listLaunchableAdapterModels(adapter, options);
   }
 
   async listSessions(authority: SessionReadScope): Promise<ProviderSession[]> {

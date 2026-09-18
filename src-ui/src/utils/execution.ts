@@ -394,6 +394,11 @@ export function runtimeCatalogVisibleModels(
   if (!runtimeCatalog) {
     return asModelOptions(runtimeConnection?.config.modelOptions);
   }
+  // A live answer is authoritative, including an empty one. Falling through
+  // to builtInModels here is how a dated snapshot hid later models.
+  if (runtimeCatalog.source === 'live') {
+    return runtimeCatalog.models ?? [];
+  }
   // A connection's catalog may omit models/builtInModels entirely — guard so a
   // partial catalog doesn't crash callers that render a model picker from it.
   if (runtimeCatalog.models?.length) {
