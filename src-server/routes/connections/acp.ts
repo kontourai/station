@@ -172,6 +172,16 @@ function normalizeACPConnection(value: Record<string, any>) {
   };
 }
 
+/**
+ * Only after the connection's own probe succeeded. The probe (not this
+ * function) is what decides whether a CLI ACP provider can be onboarded:
+ * materializing the registry identity and the Agent file for a connection
+ * that could not handshake is what put a permanently-broken engine's row in
+ * the New Chat picker — an "Agent" for a provider that never worked, which
+ * the built-in harnesses never produce (their defaults materialize from boot
+ * adoption and Enable, both behind a ready engine). Callers gate on
+ * `connectNewACPConnection`'s answer.
+ */
 async function registerPersistedACPConnection(
   ctx: RuntimeContext,
   id: string,
@@ -186,6 +196,27 @@ async function registerPersistedACPConnection(
     { kind: 'user-acp' },
   );
   return materializeEngineAgent(ctx.configLoader as ConfigLoader, id, name);
+}
+
+/**
+ * Hand the connection to the bridge and report whether onboarding actually
+ * worked: the probe's boolean, with a REJECTING probe (spawn/workspace
+ * failure — the command never ran) read as the same "not onboarded" answer.
+ * The catch is not error-to-success conversion: the durable connection and
+ * its status are what carry the failure (the bridge records the probe's
+ * phase+message on the connection, and every repair surface reads that), and
+ * the caller's only decision here is whether the Agent may be created.
+ */
+async function connectNewACPConnection(
+  ctx: RuntimeContext,
+  connection: ACPConnectionConfig,
+): Promise<boolean> {
+  if (!connection.enabled) return false;
+  try {
+    return (await ctx.acpBridge.addConnection(connection)) === true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -316,13 +347,18 @@ export function createACPRoutes(ctx: RuntimeContext) {
           // Durable ACP config first, then the identity/default CAS. A failed
           // CAS deliberately leaves retryable config that remains invisible.
           await ctx.configLoader.saveACPConfig(config);
-          const agent = await registerPersistedACPConnection(
-            ctx,
-            newConn.id,
-            newConn.name,
-          );
           beginMutation();
-          await ctx.acpBridge.addConnection(newConn);
+          // Probe BEFORE materializing anything user-visible. The old order
+          // created the Agent (and the picker row) unconditionally, so an
+          // engine that could not be onboarded left a permanent "Needs: …"
+          // ghost row behind its own failed install. The config entry stays —
+          // retryable, and invisible to every installed surface until the
+          // identity below registers — and a later install/re-check of the
+          // same entry re-probes and materializes once the engine works.
+          const connected = await connectNewACPConnection(ctx, newConn);
+          const agent = connected
+            ? await registerPersistedACPConnection(ctx, newConn.id, newConn.name)
+            : undefined;
           acpOps.add(1, { op: 'create' });
           return c.json({
             success: true,
@@ -385,9 +421,12 @@ export function createACPRoutes(ctx: RuntimeContext) {
             config.connections.push(newConn);
             await ctx.configLoader.saveACPConfig(config);
           }
-          await registerPersistedACPConnection(ctx, newConn.id, newConn.name);
           beginMutation();
-          if (newConn.enabled) await ctx.acpBridge.addConnection(newConn);
+          // Same gate as the registry install: no handshake, no Agent.
+          const connected = await connectNewACPConnection(ctx, newConn);
+          if (connected) {
+            await registerPersistedACPConnection(ctx, newConn.id, newConn.name);
+          }
           acpOps.add(1, { op: 'create' });
           return c.json({ success: true, data: newConn });
         },
@@ -419,10 +458,17 @@ export function createACPRoutes(ctx: RuntimeContext) {
             }
             config.connections[idx] = next;
             await ctx.configLoader.saveACPConfig(config);
-            await registerPersistedACPConnection(ctx, id, next.name);
             beginMutation();
             await ctx.acpBridge.removeConnection(id);
-            if (next.enabled) await ctx.acpBridge.addConnection(next);
+            // Same gate as the create paths: an edit that still cannot
+            // handshake does not (re)materialize the engine's Agent. An
+            // Agent that already exists is left exactly as it is — the
+            // projection marks it unavailable through the connection, and a
+            // repair that does handshake materializes or adopts below.
+            const connected = await connectNewACPConnection(ctx, next);
+            if (connected) {
+              await registerPersistedACPConnection(ctx, id, next.name);
+            }
             acpOps.add(1, { op: 'update' });
             return c.json({ success: true, data: config.connections[idx] });
           },
