@@ -173,13 +173,15 @@ export interface DockShellChrome {
   onSidePanelResizePointerDown: (
     event: React.PointerEvent<HTMLElement>,
   ) => void;
-  /** The mobile header's own drag-to-resize surface. */
-  onMobileHeaderDragPointerDown: (
-    event: React.PointerEvent<HTMLElement>,
-  ) => void;
-  onMobileHeaderDragClickCapture: (
-    event: React.MouseEvent<HTMLElement>,
-  ) => void;
+  /**
+   * The dock header's one drag-to-resize surface (`useChatDockVerticalDrag`):
+   * the gesture `ChatDockMobileHeader` puts on its whole bar, and that a
+   * region bar (`RegionChromeBar`) puts on its own bare surface. The mode
+   * follows the same device fact the resize handle keys on (`isMobile`):
+   * coarse/narrow releases snap, fine releases commit the exact height.
+   */
+  onHeaderDragPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onHeaderDragClickCapture: (event: React.MouseEvent<HTMLElement>) => void;
   /**
    * archive#4525: the dock's own remembered project binding — the single
    * source of truth an occupant (Chat, and anything else project-specific)
@@ -746,10 +748,14 @@ export function useDockShellChrome({
   });
 
   const {
-    onPointerDown: onMobileHeaderDragPointerDown,
-    onClickCapture: onMobileHeaderDragClickCapture,
+    onPointerDown: onHeaderDragPointerDown,
+    onClickCapture: onHeaderDragClickCapture,
   } = useChatDockVerticalDrag({
-    mode: 'mobile-snap',
+    // The same split `DockShell` hands the resize handle: a coarse or narrow
+    // device resolves a release to Collapsed/Half/Full, a fine one commits the
+    // exact clamped height. One gesture, whichever header surface starts it —
+    // the mobile header's whole bar here, a region bar's bare surface there.
+    mode: isMobile ? 'mobile-snap' : 'desktop-free',
     toolbarHeight,
     collapsedHeight,
     ignoreInteractiveTargets: true,
@@ -876,8 +882,8 @@ export function useDockShellChrome({
     commitDockPlacement,
     restoreDockToDocked,
     onSidePanelResizePointerDown,
-    onMobileHeaderDragPointerDown,
-    onMobileHeaderDragClickCapture,
+    onHeaderDragPointerDown,
+    onHeaderDragClickCapture,
     activeProjectSlug,
     setActiveProjectSlug,
   };

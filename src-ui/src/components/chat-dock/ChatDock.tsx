@@ -585,8 +585,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     dockHeight,
     applyDockSnap,
     restoreDockToDocked,
-    onMobileHeaderDragPointerDown,
-    onMobileHeaderDragClickCapture,
+    onHeaderDragPointerDown,
+    onHeaderDragClickCapture,
     // A drag that starts from Collapsed previews the real body at the live
     // pointer height without committing the open/half navigation state — the
     // release snap is the only owner of that transition. Derived once inside
@@ -2049,12 +2049,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 )
               }
               onDragPointerDown={
-                isFullscreenPlacement ? () => {} : onMobileHeaderDragPointerDown
+                isFullscreenPlacement ? () => {} : onHeaderDragPointerDown
               }
               onDragClickCapture={
-                isFullscreenPlacement
-                  ? () => {}
-                  : onMobileHeaderDragClickCapture
+                isFullscreenPlacement ? () => {} : onHeaderDragClickCapture
               }
               dockToggle={
                 isFullscreenPlacement
