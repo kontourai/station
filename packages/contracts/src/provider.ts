@@ -259,15 +259,25 @@ export function resolveModelLaunchPlan(
 ): ModelLaunchPlan {
   const requestedModelId = options.requestedModelId?.trim();
   const retainedModelId = options.retainedModelId?.trim();
-  // A turn may restate the model the engine already confirmed for the
-  // session. That is retention, not a per-turn override.
+  // A turn or a resume may restate the model the engine already confirmed
+  // for the session — that is retention, not a new launch. Scoped to the
+  // lifecycles whose override capability is `false`: where an override IS
+  // supported, the same selector rides the override path and its evidence
+  // unchanged. 2026-09-18 live incident: an OpenCode (ACP) session recovered
+  // after its engine exited refused the client's restated selector as
+  // `resume-override-unsupported`, so the conversation could not be
+  // continued from the UI while a model was selected — the recovery path
+  // passes the retained model, and the restatement could never reach the
+  // adapter's fresh start, which does support it.
   const isRetainedRestatement =
-    options.lifecycle === 'turn' &&
-    capabilities?.overridePerTurn === false &&
     requestedModelId !== undefined &&
     requestedModelId !== '' &&
     retainedModelId !== undefined &&
-    requestedModelId === retainedModelId;
+    requestedModelId === retainedModelId &&
+    ((options.lifecycle === 'turn' &&
+      capabilities?.overridePerTurn === false) ||
+      (options.lifecycle === 'resume' &&
+        capabilities?.overrideAtResume === false));
   const isOverride =
     requestedModelId !== undefined &&
     requestedModelId !== '' &&

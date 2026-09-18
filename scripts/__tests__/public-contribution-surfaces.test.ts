@@ -83,6 +83,7 @@ jobs:
   it.each([
     [
       'a template segment',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder IS the fixture — an import-path template segment.
       'const n = "x"; await import(`${process.env.GITHUB_WORKSPACE}/scripts/${n}.mjs`);',
     ],
     [

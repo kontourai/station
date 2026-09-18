@@ -64,6 +64,7 @@ describe('literal-swap-gate', () => {
   // links them, which is what this gate matches on.
   test('reports a separator swapped in source and in the test asserting it', () => {
     const dir = repoWithEdit(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder IS the fixture — the gate scans for template-literal text.
       'export const label = `${name}@@${model}`;\n',
       "expect(label).toBe('OpenCode@@GLM-4.7');\n",
       ' · ',
@@ -96,6 +97,7 @@ describe('literal-swap-gate', () => {
   // shape, so the default must not fail a build.
   test('exits 0 by default and 1 only under --strict', () => {
     const dir = repoWithEdit(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder IS the fixture — the gate scans for template-literal text.
       'export const label = `${name}@@${model}`;\n',
       "expect(label).toBe('OpenCode@@GLM-4.7');\n",
       ' · ',

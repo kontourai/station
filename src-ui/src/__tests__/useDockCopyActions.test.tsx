@@ -131,4 +131,35 @@ describe('useDockCopyActions', () => {
     render(<Probe conversationId="thread-1" workingDirectory={null} />);
     expect(rows()).toEqual(['Copy thread ID']);
   });
+
+  test('offers the chained session id once a continuation has split the identities', async () => {
+    // 2026-09-18: after a continue-across-engines, "Copy thread ID" still
+    // named the conversation umbrella while the live session was a `:session:`
+    // child — the copied id stopped naming what the user was looking at.
+    const writeText = clipboardWrites();
+    render(
+      <Probe
+        conversationId="grok-build:1789746816232"
+        sessionId="grok-build:1789746816232:session:f8aace61"
+      />,
+    );
+    expect(rows()).toEqual(['Copy thread ID', 'Copy session ID']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy session ID' }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        'grok-build:1789746816232:session:f8aace61',
+      ),
+    );
+  });
+
+  test('omits the session row while the session id still equals the thread id', () => {
+    render(
+      <Probe
+        conversationId="grok-build:1789746816232"
+        sessionId="grok-build:1789746816232"
+      />,
+    );
+    expect(rows()).toEqual(['Copy thread ID']);
+  });
 });

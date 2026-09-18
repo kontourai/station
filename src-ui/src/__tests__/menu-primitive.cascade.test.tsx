@@ -506,8 +506,8 @@ function moveMenuChrome(): DockShellChrome {
     commitDockPlacement: noop,
     restoreDockToDocked: noop,
     onSidePanelResizePointerDown: noop,
-    onMobileHeaderDragPointerDown: noop,
-    onMobileHeaderDragClickCapture: noop,
+    onHeaderDragPointerDown: noop,
+    onHeaderDragClickCapture: noop,
     activeProjectSlug: null,
     setActiveProjectSlug: noop,
   };
