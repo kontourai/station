@@ -28,8 +28,8 @@ import type { CheckoutRemoteReader } from './checkout-remote-reader.js';
 import { compareProjectGitRemotes } from './project-git-remote-comparison.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
 import {
+  defaultedProjectWorkingDirectory,
   type ProjectService,
-  stationOwnedWorkspaceDirectory,
 } from './project-service.js';
 
 type ProjectIdentityManifestPort = Pick<ProjectManifestStore, 'readRecord'> &
@@ -98,7 +98,7 @@ export class ProjectIdentityService {
           // including its chosen path spelling; this is not a filesystem read.
           const expectedWorkingDirectory =
             config.workingDirectory ??
-            resolve(expandTilde(stationOwnedWorkspaceDirectory(config.slug)));
+            resolve(expandTilde(defaultedProjectWorkingDirectory(config.slug)));
           const pathMatches =
             project.workingDirectory === expectedWorkingDirectory;
           if (
