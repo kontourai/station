@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -1157,5 +1160,62 @@ describe('runtime auth health monitor', () => {
       { provider: 'codex', status: 'authentication_failed' },
     ]);
     restartedMonitor.dispose();
+  });
+
+  test('persisted last auth failure keeps Ready false after restart and TTL', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-13T12:00:00.000Z'));
+    const home = mkdtempSync(join(tmpdir(), 'station-auth-health-'));
+    const persistPath = join(home, 'runtime-auth-health.json');
+    try {
+      const bus = new EventBus();
+      const monitor = new RuntimeAuthHealthMonitor(bus, {
+        ttlMs: 100,
+        persistPath,
+      });
+      bus.emit(
+        SERVER_EVENTS.ORCHESTRATION_EVENT,
+        runtimeEvent('claude', {
+          method: 'runtime.error',
+          severity: 'error',
+          message: 'OAuth token has expired',
+        }),
+      );
+      expect(monitor.getFailure('claude')?.observedAt).toBe(
+        '2026-07-13T12:00:00.000Z',
+      );
+      vi.advanceTimersByTime(100);
+      expect(monitor.getFailure('claude')?.observedAt).toBe(
+        '2026-07-13T12:00:00.000Z',
+      );
+      monitor.dispose();
+
+      const persisted = JSON.parse(readFileSync(persistPath, 'utf8')) as {
+        providers: { claude: { observedAt: string } };
+      };
+      expect(persisted.providers.claude.observedAt).toBe(
+        '2026-07-13T12:00:00.000Z',
+      );
+
+      const restarted = new RuntimeAuthHealthMonitor(bus, {
+        ttlMs: 100,
+        persistPath,
+      });
+      expect(restarted.getFailure('claude')?.observedAt).toBe(
+        '2026-07-13T12:00:00.000Z',
+      );
+      bus.emit(
+        SERVER_EVENTS.ORCHESTRATION_EVENT,
+        runtimeEvent('claude', {
+          method: 'turn.completed',
+          turnId: 'turn-1',
+          finishReason: 'stop',
+        }),
+      );
+      expect(restarted.getFailure('claude')).toBeNull();
+      restarted.dispose();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

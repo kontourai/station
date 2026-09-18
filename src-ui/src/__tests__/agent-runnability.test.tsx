@@ -108,6 +108,20 @@ const FIXTURES = [
 ];
 
 describe('agentRunnability', () => {
+  test('Ready is false when the server observed expired engine auth', () => {
+    const expired = {
+      slug: 'claude',
+      name: 'Claude Code',
+      available: false,
+      unavailableReason:
+        'Claude Code rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.',
+      unavailableFix: { kind: 'cli-missing' },
+    } as unknown as AgentData;
+    expect(agentRunnability(expired).runnable).toBe(false);
+    expect(agentReadinessState(expired).label).not.toBe('Ready');
+    expect(agentReadinessState(expired).label).toContain('Sign in again');
+  });
+
   test('the verdict table the three consumers share', () => {
     expect(
       FIXTURES.map((agent) => [agent.slug, agentRunnability(agent).runnable]),

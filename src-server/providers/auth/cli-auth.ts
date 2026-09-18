@@ -483,7 +483,7 @@ export async function buildCliRuntimePrerequisites(input: {
     name: `${input.displayName} login`,
     description:
       authState === 'authenticated'
-        ? `${input.displayName} CLI authentication is managed by the local CLI session.`
+        ? `${input.displayName} CLI credentials are present on this Station.`
         : authState === 'unauthenticated'
           ? `${input.displayName} CLI is not authenticated.`
           : `${input.displayName} CLI authentication could not be verified safely.`,

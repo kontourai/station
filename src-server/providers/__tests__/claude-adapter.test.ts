@@ -4271,8 +4271,7 @@ describe('ClaudeAdapter', () => {
         {
           id: 'claude-auth',
           name: 'Claude login',
-          description:
-            'Claude CLI authentication is managed by the local CLI session.',
+          description: 'Claude CLI credentials are present on this Station.',
           status: 'installed',
           category: 'required',
         },
@@ -4299,7 +4298,7 @@ describe('ClaudeAdapter', () => {
       expect(
         prerequisites?.find((prerequisite) => prerequisite.id === 'claude-auth')
           ?.description,
-      ).toBe('Claude CLI authentication is managed by the local CLI session.');
+      ).toBe('Claude CLI credentials are present on this Station.');
     });
 
     test('readiness names the bundled CLI when nothing is installed', async () => {
