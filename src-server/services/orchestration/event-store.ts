@@ -531,6 +531,14 @@ class EventStoreIngressError extends Error {
   }
 }
 
+/**
+ * station#2210: a deterministic ingress rejection used to carry no identity —
+ * the same oversized event failed on every poll and the log could not say
+ * WHICH event or WHO published it. Exported so the follow service can tell a
+ * deterministic "this value can never fit" failure from a transient one.
+ */
+export { EventStoreIngressError };
+
 function eventStoreIngressCeilingError(): EventStoreIngressError {
   return new EventStoreIngressError(
     `it exceeds the ${MAX_EVENT_STORE_INGRESS_BYTES}-byte ingress ceiling`,
@@ -2574,18 +2582,40 @@ export class EventStore {
     persisted: { payload: CanonicalRuntimeEvent; blobRefs: string[] };
     serializedPayload: string;
   } {
-    const projectedEvent = new BoundedEventStoreIngressProjector().project(
-      event,
-      { allowCanonicalAttachmentDataUrls: true },
-    ) as unknown as CanonicalRuntimeEvent;
+    // station#2210: every deterministic ingress rejection names its subject.
+    // A canonical event's method and thread are the minimum a log reader
+    // needs to find the producer; the reason itself stays verbatim.
+    const projectWithIdentity = (
+      value: unknown,
+      options?: { allowCanonicalAttachmentDataUrls?: boolean },
+    ): EventStoreIngressJson => {
+      try {
+        return new BoundedEventStoreIngressProjector().project(value, options);
+      } catch (error) {
+        if (error instanceof EventStoreIngressError) {
+          const prefix =
+            'Runtime event cannot be safely persisted by EventStore: ';
+          const reason = error.message.startsWith(prefix)
+            ? error.message.slice(prefix.length).replace(/\.$/, '')
+            : error.message;
+          const identity =
+            typeof (event as { method?: unknown }).method === 'string'
+              ? `method=${event.method}, threadId=${event.threadId}`
+              : 'shape unavailable';
+          throw new EventStoreIngressError(`(${identity}) ${reason}`);
+        }
+        throw error;
+      }
+    };
+    const projectedEvent = projectWithIdentity(event, {
+      allowCanonicalAttachmentDataUrls: true,
+    }) as unknown as CanonicalRuntimeEvent;
     this.assertOwnershipImmutable(projectedEvent);
     const persisted = this.persistedForm(projectedEvent);
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.
-    const persistedPayload = new BoundedEventStoreIngressProjector().project(
-      persisted.payload,
-    );
+    const persistedPayload = projectWithIdentity(persisted.payload);
     return {
       event: projectedEvent,
       requestId: persistedRequestId(projectedEvent),
