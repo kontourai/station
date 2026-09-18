@@ -47,6 +47,18 @@ export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH =
 export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH =
   '/.well-known/station/v1/pairing/local-grant-startup-proof' as const;
 /**
+ * Decisive local-grant eligibility answer for a desktop-owned local sidecar
+ * (#2228). Like the startup proof, it requires the fresh owner-only grant
+ * secret on a direct loopback connection and never mints, replaces, or
+ * returns a credential. Unlike the bearer-authenticated
+ * `GET /api/auth/local-grant-eligibility`, it answers even when the presented
+ * bearer is DEAD — the exact state a desktop must classify to recover — so
+ * the answer is decisive instead of an authentication rejection the desktop
+ * must fail closed on.
+ */
+export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH =
+  '/.well-known/station/v1/pairing/local-grant-eligibility' as const;
+/**
  * A launcher-issued, single-use capability carried in a local Station UI URL
  * fragment. The browser exchanges it for the ordinary HttpOnly device-session
  * cookie; the capability itself is never sent as an Authorization header and

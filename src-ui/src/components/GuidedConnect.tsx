@@ -17,6 +17,7 @@ import { hasLocalStationForProfile } from '../platform/client-origin-surface';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import './GuidedConnect.css';
 import { triggerHaptic } from '../platform/native/haptics';
+import { reconnectLocalService } from '../platform/native/localServiceReconnect';
 
 type GuidedConnectPanel = 'pair-device' | 'request-access' | 'add';
 
@@ -165,6 +166,9 @@ export function GuidedConnect({
         allowManualCredentials={!profile.isDesktop}
         authenticatedRequest={
           profile.isDesktop ? authenticatedFetch : undefined
+        }
+        onReconnectLocalService={
+          profile.isDesktop ? reconnectLocalService : undefined
         }
         onPairingSucceeded={() => {
           triggerHaptic('success');

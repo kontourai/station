@@ -19,6 +19,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
 } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
@@ -2159,6 +2160,127 @@ describe('local-grant startup proof', () => {
       LOOPBACK_PEER,
     );
     expect(malformed.status).toBe(400);
+  });
+});
+
+/**
+ * #2228 — the DECISIVE local-grant eligibility answer. The authenticated
+ * `GET /api/auth/local-grant-eligibility` presupposes a valid bearer, so a
+ * desktop whose stored credential is DEAD is rejected by the auth boundary
+ * before any route runs and must fail closed on the one state its recovery
+ * exists to classify. This loopback owner-secret surface answers even then,
+ * which is what lets `station_local_self_provision` self-heal at boot.
+ */
+describe('local-grant eligibility answer (#2228)', () => {
+  const LOOPBACK_PEER = '127.0.0.1';
+
+  test('answers decisive false for a credential no active device recognizes', async () => {
+    const harness = createHarness({ localGrant: true });
+    const response = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({
+        secret: harness.readLocalGrantSecret(),
+        credential: 'stale-keychain-token-that-matches-no-device',
+      }),
+      LOOPBACK_PEER,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ eligible: false });
+  });
+
+  test('answers decisive true for a live local-grant credential and false for a plain paired one', async () => {
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+
+    const minted = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+      harness.json({ secret, deviceName: 'This Mac' }),
+      LOOPBACK_PEER,
+    );
+    expect(minted.status).toBe(200);
+    const { credential } = (await minted.json()) as { credential: string };
+
+    const eligible = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret, credential }),
+      LOOPBACK_PEER,
+    );
+    expect(eligible.status).toBe(200);
+    expect(await eligible.json()).toEqual({ eligible: true });
+
+    // A paired credential with no home-possession mint (the ordinary
+    // ceremony) is live but NOT local-grant: the archive#3677 semantics
+    // must carry through this surface too, not just the bound predicate.
+    const offer = harness.pairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = harness.pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Paired phone',
+    });
+    harness.pairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const paired = harness.pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    const pairedEligibility = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret, credential: paired.credential }),
+      LOOPBACK_PEER,
+    );
+    expect(pairedEligibility.status).toBe(200);
+    expect(await pairedEligibility.json()).toEqual({ eligible: false });
+  });
+
+  test('keeps wrong secret, missing grant, non-loopback, and malformed input out of the answer', async () => {
+    const noGrant = createHarness();
+    const noGrantResponse = await noGrant.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      noGrant.json({ secret: 'anything', credential: 'anything' }),
+      LOOPBACK_PEER,
+    );
+    expect(noGrantResponse.status).toBe(403);
+    expect(await noGrantResponse.json()).toEqual({
+      error: 'local_grant_forbidden',
+    });
+
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+    const body = { secret, credential: 'some-stored-credential' };
+
+    const wrongSecret = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ ...body, secret: 'not-the-real-secret' }),
+      LOOPBACK_PEER,
+    );
+    expect(wrongSecret.status).toBe(403);
+    expect(await wrongSecret.json()).toEqual({ error: 'local_grant_forbidden' });
+
+    const remote = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json(body),
+      '100.96.12.41',
+    );
+    expect(remote.status).toBe(403);
+
+    const missingCredential = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH,
+      harness.json({ secret }),
+      LOOPBACK_PEER,
+    );
+    expect(missingCredential.status).toBe(400);
+
+    const withQuery = await harness.request(
+      `${PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_ELIGIBILITY_PATH}?extra=1`,
+      harness.json(body),
+      LOOPBACK_PEER,
+    );
+    expect(withQuery.status).toBe(400);
   });
 });
 

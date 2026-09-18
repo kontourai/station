@@ -2297,6 +2297,141 @@ describe('device pairing panels', () => {
       expect(document.body.textContent).not.toContain('not-json');
     },
   );
+
+  test('an auth-rejected offer creation renders the styled alert and its Reconnect control clears it (#2228)', async () => {
+    const onReconnect = vi.fn().mockResolvedValue(true);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        // The auth boundary's own shape, not a flat string: this is what the
+        // desktop actually receives when its stored grant is dead.
+        return response({ error: { code: 'authentication_required' } }, 401);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+        onReconnect={onReconnect}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+
+    const alert = await screen.findByRole('alert');
+    // The refusal must be distinguishable from body copy: it carries the
+    // destructive alert styling, not a bare unstyled div.
+    expect(alert.className).toBe('pairing-error');
+    expect(alert.textContent).toContain(
+      "This device's access to this Station needs review",
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reconnect this Station' }),
+    );
+    await waitFor(() => expect(onReconnect).toHaveBeenCalledOnce());
+    // A successful reconnect clears the refusal; the operator can retry
+    // offer creation against the re-authorized connection.
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  test('a failed reconnect says what to do next (#2228)', async () => {
+    const onReconnect = vi.fn().mockResolvedValue(false);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        return response({ error: { code: 'authentication_required' } }, 401);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+        onReconnect={onReconnect}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    await screen.findByRole('alert');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reconnect this Station' }),
+    );
+
+    expect(
+      await screen.findByText(/Quit and reopen Station, then try again/),
+    ).toBeTruthy();
+  });
+
+  test('the Reconnect control appears only for the auth class of an offered reconnect (#2228)', async () => {
+    // An auth rejection WITHOUT a reconnect affordance: copy only.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        return response({ error: { code: 'authentication_required' } }, 401);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    const first = render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    await screen.findByRole('alert');
+    expect(
+      screen.queryByRole('button', { name: 'Reconnect this Station' }),
+    ).toBeNull();
+    first.unmount();
+
+    // A non-auth refusal (rate limited) never offers Reconnect, even when
+    // the host supplies the affordance.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path === '/api/pairing/offers' && init?.method === 'POST') {
+        return response({ error: 'rate_limited' }, 429);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create pairing code' }),
+    );
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Reconnect this Station' }),
+    ).toBeNull();
+  });
 });
 
 test('pending approval counts down from its saved expiry without announcing every tick', async () => {

@@ -32,6 +32,7 @@ import './AddMachineModal.css';
 import { checkServerHealthDetailed } from '../../lib/serverHealth';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { triggerHaptic } from '../../platform/native/haptics';
+import { reconnectLocalService } from '../../platform/native/localServiceReconnect';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { SshComputerCreatorDialog } from './SshComputerCreatorDialog';
 import { StationAddressDialog } from './StationAddressDialog';
@@ -120,6 +121,9 @@ export function AddMachineModal({
         allowManualCredentials={!profile.isDesktop}
         authenticatedRequest={
           profile.isDesktop ? authenticatedFetch : undefined
+        }
+        onReconnectLocalService={
+          profile.isDesktop ? reconnectLocalService : undefined
         }
         returnFocusTarget={returnFocusTarget}
         onPairingSucceeded={() => triggerHaptic('success')}

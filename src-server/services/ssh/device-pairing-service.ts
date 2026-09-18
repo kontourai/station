@@ -1797,6 +1797,19 @@ export class DevicePairingService {
   }
 
   /**
+   * The credential-level mirror of the auth boundary's bound
+   * local-grant-minted-operator predicate (archive#3677 PR 3): true only when
+   * the credential is active, mint-time home-possession, AND minted through
+   * the local-grant path. This service owns the derivation — consumers answer
+   * it through this method rather than re-deriving mint-kind from raw fields,
+   * so the public eligibility answer and the boundary's bound flag cannot
+   * drift apart (#2228).
+   */
+  isLocalGrantMintedCredential(candidate: string): boolean {
+    return this.credentialMintKind(candidate) === 'local-grant';
+  }
+
+  /**
    * Timing-safe credential -> active (non-revoked) device lookup, shared by
    * verifyCredential and identifyDevice. Touches lastUsedAt at the same
    * bounded write cadence either primitive is called through.
