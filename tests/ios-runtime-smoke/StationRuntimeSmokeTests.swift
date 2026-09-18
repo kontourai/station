@@ -42,7 +42,12 @@ final class StationRuntimeSmokeTests: XCTestCase {
             "Connect to a Station disappeared after dismissing the notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         XCTAssertTrue(connect.isHittable)
-        XCTAssertTrue(app.buttons["Open settings"].isHittable)
+        // Settings lives in the sidebar drawer's footer, not the header: open
+        // the drawer, prove the route exists, then close it again so the
+        // connection flow below starts from the undrawered shell.
+        app.buttons["Toggle menu"].tap()
+        XCTAssertTrue(app.buttons["Settings"].isHittable)
+        app.buttons["Toggle menu"].tap()
         XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
 
         connect.tap()

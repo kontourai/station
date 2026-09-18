@@ -145,7 +145,11 @@ describe('HeaderActions attention badge', () => {
    * ['Notifications', 'Ask Station for help'] and #1552 D1 moved the second into
    * the avatar's menu, which would have left this test naming a control that no
    * longer exists — or, worse, quietly checking one. The claim is about every
-   * glyph-bearing control in this row, so the row is what it enumerates.
+   * glyph-bearing control in this row, so the row is what it enumerates. The
+   * phone-only Settings gear that used to be the second glyph button is gone
+   * (Settings lives in the sidebar drawer's footer), so the bell is the only
+   * one left — and the precondition still guards the empty inventory, which
+   * would pass the loop.
    */
   test('keeps icon-only button SVGs decorative because their buttons are named', () => {
     renderHeader();
@@ -156,7 +160,7 @@ describe('HeaderActions attention badge', () => {
       ),
     ].filter((button) => button.querySelector('svg'));
     // A precondition, not decoration: an empty inventory would pass the loop.
-    expect(glyphButtons.length).toBeGreaterThan(1);
+    expect(glyphButtons.length).toBeGreaterThanOrEqual(1);
     for (const button of glyphButtons) {
       expect(
         button.getAttribute('aria-label'),

@@ -69,6 +69,7 @@ import { Button } from './Button';
 import { buildSetupBannerContent } from './onboardingGateUtils';
 import './OnboardingGate.css';
 import { triggerHaptic } from '../platform/native/haptics';
+import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
 import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 
@@ -786,6 +787,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
               setWaitingForTransport(false);
               void refetch();
               triggerHaptic('success');
+              // First usable connection in this session: the moment the
+              // boot-time prime skips on a fresh device. Idempotent
+              // (`ready ??=`), so a boot prime on a non-fresh device makes
+              // this a no-op.
+              void primeNativeNotifications();
             },
             // archive#3387: the request is over, so retire the
             // waiting-for-approval claim as well as reporting the outcome.
@@ -868,7 +874,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             ? handleRestartBundledServer
             : undefined
         }
-        onPairingSucceeded={() => triggerHaptic('success')}
+        onPairingSucceeded={() => {
+          triggerHaptic('success');
+          // Same first-connection prime as the reconciler path above: the
+          // modal's own success never passes through it.
+          void primeNativeNotifications();
+        }}
         onApprovalPending={(pending) => {
           setPairingFailure(null);
           setPendingExchange(pending);

@@ -17,13 +17,12 @@ test.describe('Desktop Regression', () => {
     await page.goto('/');
 
     await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
-    // The desktop route to Settings is the avatar menu, not a gear. #1552 D1
-    // made the standalone gear `.app-toolbar__action--compact-only`, so at this
-    // viewport `getByTitle(/Settings/)` still RESOLVES -- to the phone-only gear
-    // and to the menu's own row -- while every match is `display: none`. That is
-    // why this failed as `Received: hidden` rather than as a missing element,
-    // and why matching on title alone is not a safe way to ask "is the shell
-    // present" any more (#1322).
+    // The desktop route to Settings is the avatar menu, not a gear. The header
+    // carries no standalone gear at any viewport (the phone-only one is gone;
+    // Settings lives in the sidebar drawer's footer), so at this viewport
+    // `getByTitle(/Settings/)` matches only the menu's own row. That is why
+    // matching on title alone is not a safe way to ask "is the shell
+    // present" (#1322).
     //
     // Asserting the avatar keeps what this test is for: that the knowledge nudge
     // does not overlay the desktop shell's controls. Reaching Settings through

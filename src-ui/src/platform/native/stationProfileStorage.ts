@@ -183,6 +183,13 @@ export interface NativeStationProfileRepository {
   selectProfileForProcess(profileName: string): string | undefined;
   /** Re-authorizes the CLI-owned default after each native process start. */
   authorizeDefaultProfile(): Promise<boolean>;
+  /**
+   * Whether the hydrated store holds any saved Station profile. Lets boot
+   * paths that only make sense with a Station to watch (notification
+   * priming) stay silent on a fresh device instead of prompting for a
+   * permission nothing can yet use.
+   */
+  hasSavedProfiles(): boolean;
   /** Returns a receipt only for the already-authorized exact connection/base. */
   captureNativeRequestBinding(
     connectionId: string,
@@ -813,6 +820,10 @@ export class NativeStationProfileStorage
     return profile
       ? this.authorizeActiveConnection(profileConnectionId(profile))
       : false;
+  }
+
+  hasSavedProfiles(): boolean {
+    return this.profileStore.profiles.length > 0;
   }
 
   captureNativeRequestBinding(
