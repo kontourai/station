@@ -40,7 +40,10 @@ function createMockRuntimeContext() {
     beginAgentConfigurationMutation,
     acpBridge: {
       getStatus: vi.fn().mockReturnValue({ connected: false, connections: [] }),
-      addConnection: vi.fn().mockResolvedValue(undefined),
+      // `true` = the probe handshaked. The routes gate Agent materialization
+      // on this, so the shared default is the success path and each gate test
+      // overrides it explicitly.
+      addConnection: vi.fn().mockResolvedValue(true),
       removeConnection: vi.fn().mockResolvedValue(undefined),
     },
     configLoader: {
@@ -500,6 +503,118 @@ describe('ACP Routes', () => {
       success: true,
       agent: { created: true, data: { slug: 'kiro' } },
     });
+  });
+
+  // The engine cannot be onboarded (its probe did not handshake), so nothing
+  // user-visible may be created: no Agent file, no registry identity, and no
+  // `agent` receipt claiming one. The connection config itself stays —
+  // retryable, and invisible to every installed surface until the identity
+  // registers — and installing the same entry again after the engine works
+  // is the recovery path that finally materializes the Agent.
+  test('POST /registry/:id/install creates no Agent when the probe cannot onboard the engine', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [{ id: 'muse', name: 'Muse', command: 'muse' }],
+        },
+      },
+    ];
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    ctx.acpBridge.addConnection.mockResolvedValue(false);
+    const app = createACPRoutes(ctx);
+
+    const body = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(body).toMatchObject({ success: true, data: { id: 'muse' } });
+    expect(body.agent).toBeUndefined();
+    expect(await configLoader.agentExists('muse')).toBe(false);
+    expect(
+      (await loadOrCreateAgentRegistry(configLoader)).engineConnections,
+    ).toHaveLength(0);
+    // The config entry is retryable, not silently swallowed.
+    expect((await configLoader.loadACPConfig()).connections).toHaveLength(1);
+    // And it does not count as installed while its identity is unregistered.
+    expect((await json(await app.request('/registry'))).data).toMatchObject([
+      { id: 'muse', installed: false },
+    ]);
+  });
+
+  test('POST /registry/:id/install materializes the Agent once the engine can be onboarded', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [{ id: 'muse', name: 'Muse', command: 'muse' }],
+        },
+      },
+    ];
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    ctx.acpBridge.addConnection.mockResolvedValue(false);
+    const app = createACPRoutes(ctx);
+    await app.request('/registry/muse/install', { method: 'POST' });
+
+    ctx.acpBridge.addConnection.mockResolvedValue(true);
+    const body = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(body).toMatchObject({
+      success: true,
+      agent: { created: true, data: { slug: 'muse', name: 'Muse' } },
+    });
+    expect(
+      (await loadOrCreateAgentRegistry(configLoader)).defaultAgents,
+    ).toContainEqual({
+      id: 'muse',
+      kind: 'engine-connection',
+      engineConnectionId: 'muse',
+    });
+  });
+
+  test('POST /connections creates no Agent when the probe rejects', async () => {
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    ctx.acpBridge.addConnection.mockRejectedValue(
+      new Error('spawn muse ENOENT'),
+    );
+    const app = createACPRoutes(ctx);
+
+    const body = await json(
+      await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'muse', command: 'muse', name: 'Muse' }),
+      }),
+    );
+
+    expect(body).toMatchObject({ success: true, data: { id: 'muse' } });
+    expect(await configLoader.agentExists('muse')).toBe(false);
+    expect(
+      (await loadOrCreateAgentRegistry(configLoader)).engineConnections,
+    ).toHaveLength(0);
+  });
+
+  test('POST /connections creates no Agent for a disabled connection', async () => {
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    const app = createACPRoutes(ctx);
+
+    await app.request('/connections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'muse',
+        command: 'muse',
+        name: 'Muse',
+        enabled: false,
+      }),
+    });
+
+    expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+    expect(await configLoader.agentExists('muse')).toBe(false);
   });
 
   test('POST /connections creates connection', async () => {

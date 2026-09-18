@@ -158,7 +158,9 @@ describe('ACPConnectionsView', () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.getByText(/Adds an agent named Kiro CLI to your Agents list\./),
+      screen.getByText(
+        /Adds an agent named Kiro CLI to your Agents list once the engine connects\./,
+      ),
     ).toBeTruthy();
     expect(screen.queryByText('Choose an engine')).toBeNull();
 
