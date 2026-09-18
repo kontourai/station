@@ -7645,11 +7645,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     font-size: var(--text-xs);
   }
 
-  /* Side-mode messages: compact conversation flow */
-  .app__main > :is([data-region="left"], [data-region="right"]) .chat-messages {
-    align-items: flex-end;
-  }
-
+  /* Side-mode messages: compact conversation flow.
+     No `align-items` override: the column keeps the default stretch so the
+     transcript rows lay out exactly as the main view does — `.message-row` is
+     full-width and user rows right-align via `row-reverse`. `flex-end` used to
+     sit here and right-aligned EVERY shrink-wrapped `.chat-message-anchor`,
+     pushing assistant answers (avatar and all) against the dock's far edge. */
   .app__main > :is([data-region="left"], [data-region="right"]) .message {
     max-width: 95%;
     overflow-x: hidden;

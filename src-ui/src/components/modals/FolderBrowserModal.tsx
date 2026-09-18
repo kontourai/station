@@ -68,6 +68,44 @@ interface Row {
   isParent: boolean;
 }
 
+/**
+ * `..` for servers that predate the `parent` field: derived locally, so it
+ * must answer for both separator styles. A Windows drive root (`C:\`) and
+ * the POSIX root have no parent there — older servers have no drive-listing
+ * level to climb to. `C:` alone is drive-relative and is never emitted.
+ */
+function legacyParentPath(resolvedPath: string): string | null {
+  if (!resolvedPath || resolvedPath === '/' || resolvedPath === '\\') {
+    return null;
+  }
+  if (/^[A-Za-z]:\\?$/.test(resolvedPath)) return null;
+  const lastSeparator = Math.max(
+    resolvedPath.lastIndexOf('/'),
+    resolvedPath.lastIndexOf('\\'),
+  );
+  if (lastSeparator < 0) return null;
+  let parent = resolvedPath.slice(0, lastSeparator);
+  if (/^[A-Za-z]:$/.test(parent)) {
+    parent = `${parent}\\`;
+  } else if (!parent) {
+    parent = '/';
+  }
+  return parent;
+}
+
+/**
+ * Child path for entries from servers that predate per-entry `path`:
+ * joined with the listing's own separator so Windows paths stay
+ * backslash-canonical and a drive root (`C:\`) does not double up.
+ */
+function joinEntryPath(resolvedPath: string, name: string): string {
+  const separator = resolvedPath.includes('\\') ? '\\' : '/';
+  const prefix = /[\\/]$/.test(resolvedPath)
+    ? resolvedPath
+    : `${resolvedPath}${separator}`;
+  return `${prefix}${name}`;
+}
+
 export function FolderBrowserModal({
   initialPath = '',
   onSelect,
@@ -88,19 +126,23 @@ export function FolderBrowserModal({
 
   const entries = (data?.entries || []).filter((entry) => entry.isDirectory);
   const resolvedPath = data?.path || currentPath;
-
-  const parentPath = resolvedPath
-    ? resolvedPath.replace(/\/[^/]+\/?$/, '') || '/'
-    : '';
+  // Navigation is server-derived: the server owns the path semantics (and
+  // its own platform — this UI may browse a remote Windows host from a Mac).
+  // `null` means the top of the hierarchy: no `..` row. Only servers that
+  // predate the `parent` field fall back to the local derivation above.
+  const parentPath =
+    data?.parent !== undefined ? data.parent : legacyParentPath(resolvedPath);
+  const locationLabel = data?.label ?? resolvedPath;
+  const selectable = data?.selectable !== false;
 
   const rows: Row[] = [
-    ...(resolvedPath !== '/'
+    ...(parentPath !== null
       ? [{ key: '..', label: '..', path: parentPath, isParent: true }]
       : []),
     ...entries.map((entry) => ({
       key: entry.name,
       label: entry.name,
-      path: `${resolvedPath}/${entry.name}`,
+      path: entry.path ?? joinEntryPath(resolvedPath, entry.name),
       isParent: false,
     })),
   ];
@@ -142,11 +184,14 @@ export function FolderBrowserModal({
       <div className={cx.pathRow}>
         {/* The environment/location the listing below describes — screen
             readers and other AT can identify it via `aria-current`, matching
-            how a breadcrumb marks its current page (#1014). */}
-        <code aria-current="location">{resolvedPath}</code>
+            how a breadcrumb marks its current page (#1014). Servers report a
+            human label for navigation-only levels (Windows drive listing);
+            elsewhere it is the path itself. */}
+        <code aria-current="location">{locationLabel}</code>
         <button
           type="button"
           className={cx.selectButton}
+          disabled={!selectable}
           onClick={() => {
             onSelect(resolvedPath);
             onClose();
