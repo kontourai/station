@@ -12,11 +12,34 @@ export type { ACPConnectionRegistryEntry };
 export interface FileSystemBrowseEntry {
   name: string;
   isDirectory: boolean;
+  /**
+   * Full path of this entry as the server canonicalizes it (`/tmp/src`,
+   * `C:\Projects`). Windows drive entries carry their drive root (`C:\`).
+   * Absent on older servers; clients fall back to joining `name` onto the
+   * listing's `path`.
+   */
+  path?: string;
 }
 
 export interface FileSystemBrowseResult {
   path: string;
   entries: FileSystemBrowseEntry[];
+  /**
+   * Navigation parent of this listing — where `..` goes — or `null` at the
+   * top of the hierarchy (POSIX `/`; the Windows drive-listing level).
+   * Absent on older servers; clients fall back to deriving it locally.
+   */
+  parent?: string | null;
+  /**
+   * Human-readable label for the current location. Defaults to `path` when
+   * absent; the Windows drive-listing level reports "This PC".
+   */
+  label?: string;
+  /**
+   * `false` when this listing is a navigation-only level (the Windows drive
+   * listing) and must not be selected as a folder. Absent means selectable.
+   */
+  selectable?: boolean;
 }
 
 export interface ACPConnectionInfo {
