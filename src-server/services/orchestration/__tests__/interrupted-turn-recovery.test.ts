@@ -1225,15 +1225,17 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     expect(abort).toBeDefined();
     // Names the dead turn, not a fresh one — this is what lets every fold
     // (and every live client) settle the turn that actually died.
-    expect(abort!.payload.turnId).toBe('turn-1');
-    expect(abort!.payload.eventId).toMatch(/^turn-interrupted-abort:/);
-    expect(abort!.payload.reason).toContain('interrupted');
+    const abortPayload = abort!.payload as Extract<
+      CanonicalRuntimeEvent,
+      { method: 'turn.aborted' }
+    >;
+    expect(abortPayload.turnId).toBe('turn-1');
+    expect(abortPayload.eventId).toMatch(/^turn-interrupted-abort:/);
+    expect(abortPayload.reason).toContain('interrupted');
     // The marker the boundary-retirement carve-outs match on: without it
     // the row dies mid-flow and the H1 crash-window tests below go red.
     // Asserted on the payload, not inferred from behavior.
-    expect(
-      (abort!.payload as { recoveryTerminal?: unknown }).recoveryTerminal,
-    ).toBe(true);
+    expect(abortPayload.recoveryTerminal).toBe(true);
 
     const banner = events.find(
       (e) => e.payload.method === 'session.state-changed',
