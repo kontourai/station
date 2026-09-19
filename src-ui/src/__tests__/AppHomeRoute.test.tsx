@@ -399,7 +399,6 @@ vi.mock('../hooks/useQueryCacheReconnectSync', () => ({
 vi.mock('../hooks/useOutboundQueueFlush', () => ({
   useOutboundQueueFlush: vi.fn(),
 }));
-vi.mock('../lib/apiClient', () => ({ setAuthCallback: vi.fn() }));
 
 function resetHooks() {
   hooks.projects = { data: [], isLoading: false, isError: false };

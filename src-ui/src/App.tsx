@@ -106,7 +106,6 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
 import { useServerEvents } from './hooks/useServerEvents';
-import { setAuthCallback } from './lib/apiClient';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
 import type { NavigationView } from './types';
 
@@ -261,17 +260,6 @@ function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastProject, lastProjectLayout]);
-
-  // Setup auth callback
-  useEffect(() => {
-    const authCallback = async () => Promise.resolve(false);
-    setAuthCallback(authCallback);
-    (
-      globalThis as typeof globalThis & {
-        authCallback?: () => Promise<boolean>;
-      }
-    ).authCallback = authCallback;
-  }, []);
 
   const handleAuthError = async (): Promise<boolean> => Promise.resolve(false);
 

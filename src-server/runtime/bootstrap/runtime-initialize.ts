@@ -1044,7 +1044,7 @@ export async function initializeRuntime(
 
   scheduleRuntimePluginUpdateCheck({
     timers,
-    port,
+    projectHomeDir: configLoader.getProjectHomeDir(),
     eventBus,
     logger,
   });

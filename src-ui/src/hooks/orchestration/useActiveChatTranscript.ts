@@ -1,8 +1,8 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
-import { apiRequest, unwrapApiData } from '../../lib/apiClient';
 import type { ChatMessage, ChatSession } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
@@ -169,25 +169,32 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       return;
     }
     const controller = new AbortController();
-    void apiRequest<{
-      success: true;
-      data: Array<{
-        turnId: string;
-        changedFiles: NonNullable<ChatMessage['changedFiles']>;
-      }>;
-    }>(
+    // station#2236: this fetch MUST ride the SDK authenticated transport
+    // (`getJson`), never a bare fetch — the legacy `apiRequest` helper sent
+    // no Authorization header and no cookie attaches on native shells, so
+    // this call 401'd (`credential_missing`) on every native client and the
+    // changed-files data silently dropped.
+    void getJson(
       `${apiBase}/api/orchestration/sessions/${encodeURIComponent(session.id)}/checkpoints?revision=${checkpointRevision}`,
-      {
-        signal: controller.signal,
-      },
+      { signal: controller.signal },
     )
-      .then((response) => unwrapApiData(response))
+      .then((response) =>
+        readEnvelopeOrThrow<
+          Array<{
+            turnId: string;
+            changedFiles: NonNullable<ChatMessage['changedFiles']>;
+          }>
+        >(response),
+      )
       .then((records) => {
         if (!controller.signal.aborted) {
           setChangedFilesState({
             key: checkpointKey,
             byTurn: new Map(
-              records.map((record) => [record.turnId, record.changedFiles]),
+              (records ?? []).map((record) => [
+                record.turnId,
+                record.changedFiles,
+              ]),
             ),
           });
         }

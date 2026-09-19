@@ -472,7 +472,7 @@ describe('MCPToolUIFrame', () => {
     expect(screen.getByText('MCP server is not installed')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -657,7 +657,7 @@ describe('MCPToolUIFrame', () => {
     expect(screen.queryByText('MCP UI unsupported')).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -924,7 +924,7 @@ describe('MCPToolUIFrame', () => {
     // the reserved sandbox-resource-ready notification.
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -1027,11 +1027,11 @@ describe('MCPToolUIFrame', () => {
     // It fetched the embedded endpoint, not the SEP-1865 /resource endpoint.
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/embedded',
-      undefined,
+      { method: 'GET' },
     );
     expect(fetchMock).not.toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
-      undefined,
+      { method: 'GET' },
     );
   });
 
@@ -1143,7 +1143,7 @@ describe('MCPToolUIFrame', () => {
     expect(await screen.findByText('MCP UI resource missing')).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/embedded',
-      undefined,
+      { method: 'GET' },
     );
   });
 

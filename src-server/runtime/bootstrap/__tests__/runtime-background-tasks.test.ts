@@ -264,7 +264,7 @@ describe('scheduleRuntimePluginUpdateCheck', () => {
     vi.useRealTimers();
   });
 
-  test('emits an event when plugin updates are available', async () => {
+  test('runs the update scan in-process and emits an event when updates are available', async () => {
     const timers: NodeJS.Timeout[] = [];
     const eventBus = { emit: vi.fn() };
     const logger = {
@@ -272,31 +272,70 @@ describe('scheduleRuntimePluginUpdateCheck', () => {
       warn: vi.fn(),
       debug: vi.fn(),
     };
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ updates: [{ id: 'plugin-1' }] }),
-    })) as any;
+    // station#2236: the scan is injected — the previous shape HTTP
+    // self-fetched the operator-only route headerless and 401'd every boot.
+    // No fetch happens here by construction: there is no fetch to inject.
+    const checkForUpdates = vi.fn(async (_pluginsDir: string) => ({
+      updates: [{ name: 'plugin-1' }],
+    }));
 
     scheduleRuntimePluginUpdateCheck({
       timers,
-      port: 4111,
+      projectHomeDir: '/fake/home',
+      checkForUpdates,
       eventBus,
       logger,
-      fetchImpl,
     });
 
     expect(timers).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(5000);
 
-    expect(fetchImpl).toHaveBeenCalledWith(
-      'http://localhost:4111/api/plugins/check-updates',
-    );
+    expect(checkForUpdates).toHaveBeenCalledWith('/fake/home/plugins');
     expect(eventBus.emit).toHaveBeenCalledWith('plugins:updates-available', {
       count: 1,
-      updates: [{ id: 'plugin-1' }],
+      updates: [{ name: 'plugin-1' }],
     });
     expect(logger.info).toHaveBeenCalledWith('Plugin updates available', {
       count: 1,
     });
+  });
+
+  test('stays silent when the scan finds no updates, and degrades to debug when the scan throws', async () => {
+    const timers: NodeJS.Timeout[] = [];
+    const eventBus = { emit: vi.fn() };
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+    };
+    const checkForUpdates = vi.fn(async (_pluginsDir: string) => ({
+      updates: [],
+    }));
+
+    scheduleRuntimePluginUpdateCheck({
+      timers,
+      projectHomeDir: '/fake/home',
+      checkForUpdates,
+      eventBus,
+      logger,
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(eventBus.emit).not.toHaveBeenCalled();
+
+    checkForUpdates.mockRejectedValueOnce(new Error('scan blew up'));
+    const timers2: NodeJS.Timeout[] = [];
+    scheduleRuntimePluginUpdateCheck({
+      timers: timers2,
+      projectHomeDir: '/fake/home',
+      checkForUpdates,
+      eventBus,
+      logger,
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(eventBus.emit).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Failed to check for plugin updates',
+      { error: 'scan blew up' },
+    );
   });
 });
