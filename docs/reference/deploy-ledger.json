@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-09-19T11:35:22Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2453.1",
+    "sha": "1ad69f653d52fb6b8da9d123d2bf2abec404f4e1",
+    "artifactBuiltAt": "2026-09-19T10:52:50.494Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35438202313",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35438202313)"
+    ],
+    "changelog": {
+      "previousSha": "5b6383e769445474c55c43464127161ccabe78ee",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2237](https://github.com/kontourai/station/pull/2237) fix(ui): restore the SessionsView row's host authority mock (Refs #2234)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-09-19T11:30:29Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2453.35438202313",

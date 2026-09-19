@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-19T11:35:22Z | nightly-android | 0.1.11-nightly.2453.1 | `1ad69f6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35438202313) |
 | 2026-09-19T11:30:29Z | nightly-npm | 0.6.0-nightly.2453.35438202313 | `1ad69f6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35438202313) |
 | 2026-09-19T05:00:18Z | nightly-desktop | 0.1.11-nightly.2453 | `5b6383e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35420920112) |
 | 2026-09-19T05:00:15Z | nightly-android | 0.1.11-nightly.2453 | `5b6383e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35420920112) |
@@ -109,6 +110,21 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-19T11:35:22Z · nightly-android · 0.1.11-nightly.2453.1
+
+- Ship SHA: `1ad69f653d52fb6b8da9d123d2bf2abec404f4e1`
+- Artifact built at: `2026-09-19T10:52:50.494Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 35438202313)
+
+### Changelog
+
+Commits since `5b6383e` ([full sha](https://github.com/kontourai/station/commit/5b6383e769445474c55c43464127161ccabe78ee)):
+
+**Fixes**
+
+- [#2237](https://github.com/kontourai/station/pull/2237) fix(ui): restore the SessionsView row's host authority mock (Refs #2234)
 
 ## 2026-09-19T11:30:29Z · nightly-npm · 0.6.0-nightly.2453.35438202313
 
