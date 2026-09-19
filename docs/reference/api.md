@@ -2233,12 +2233,12 @@ Lists directories (not files) at the given path. Used by the UI directory picker
 **Response**:
 ```json
 {
-  "path": "/home/user/projects",
-  "parent": "/home/user",
+  "path": "/path/to/projects",
+  "parent": "/path/to",
   "selectable": true,
   "entries": [
-    { "name": "Documents", "path": "/home/user/projects/Documents", "isDirectory": true },
-    { "name": "Downloads", "path": "/home/user/projects/Downloads", "isDirectory": true }
+    { "name": "Documents", "path": "/path/to/projects/Documents", "isDirectory": true },
+    { "name": "Downloads", "path": "/path/to/projects/Downloads", "isDirectory": true }
   ]
 }
 ```

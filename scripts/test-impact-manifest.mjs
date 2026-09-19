@@ -129,7 +129,13 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     reason: 'setup changes must preserve repair routing and return behavior',
   },
   {
-    pattern: 'docs/conformance/**',
+    // The repo-wide privacy sweep: `repo-docs-hygiene.mjs` scans every
+    // tracked markdown/.jsonl under docs/, so ANY docs file can grow a
+    // finding. The nightly's docs:truth:gate caught `docs/reference/api.md`
+    // shipping `/home/...` example paths only because nothing in PR CI
+    // selected the sweep for a reference-doc change — the entry used to
+    // name docs/conformance/** alone.
+    pattern: 'docs/**',
     tests: ['scripts/__tests__/repo-docs-hygiene.test.ts'],
     reason: 'public repository documentation privacy boundary',
   },
