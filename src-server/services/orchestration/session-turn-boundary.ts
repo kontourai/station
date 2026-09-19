@@ -711,6 +711,22 @@ export function createSessionTurnBoundaryAuthority(options: {
         event.code === SESSION_START_INDETERMINATE_CODE
       )
         return { kind: 'applied' };
+      // station#2235: a recovery-synthesized abort is the recovery's own
+      // terminal fact FOR the dead turn, published mid-flow before its
+      // banner/FileMemory/explicit-close sequence completes. Retiring the
+      // row here would delete the very record that lets the next boot
+      // finish that sequence after a mid-flow crash, so the marker
+      // `TurnAbortedEvent.recoveryTerminal` documents opts this one event
+      // out of retirement. Matched on the field, never on prose (`reason`)
+      // — a text match would retire any engine abort whose message happens
+      // to mention interruption.
+      if (
+        event.method === 'turn.aborted' &&
+        'recoveryTerminal' in event &&
+        event.recoveryTerminal === true
+      ) {
+        return { kind: 'applied' };
+      }
       const turnId = 'turnId' in event ? event.turnId : undefined;
       return options.coordinator.removeTerminal({
         threadId: event.threadId,

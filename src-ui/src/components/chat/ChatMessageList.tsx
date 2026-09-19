@@ -687,7 +687,15 @@ function ChatMessageListComponent({
                   suppressActivity={suppressActivity}
                   statusLabel={
                     activeSession.orchestrationStatus === 'awaiting-approval'
-                      ? 'Waiting for approval'
+                      ? // station#2235: the status alone asserts nothing about
+                        // an approval — a crashed turn's needs_input folds to
+                        // this status with no request behind it. Name the
+                        // approval only when a pending grant exists; without
+                        // one the session is waiting on the user, not on a
+                        // decision.
+                        (activeSession.pendingApprovals?.length ?? 0) > 0
+                        ? 'Waiting for approval'
+                        : 'Waiting on you'
                       : undefined
                   }
                   attributionAgent={streamingAttributionAgent}
