@@ -109,6 +109,10 @@ vi.mock('../contexts/ToastContext', () => ({
  */
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  // ConversationPullRequestLinks consumes the host request authority when it
+  // renders; without this export the full-corpus sweep reds on a missing
+  // mock export rather than on behavior (issue#2234).
+  useHostRequestAuthorityScope: () => null,
 }));
 
 function deferred<T>() {
