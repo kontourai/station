@@ -44,8 +44,8 @@
   },
   "dependencies": {
     "@kontourai/console-ui": "^0.2.0",
-    "@kontourai/station-contracts": "^0.7.0",
-    "@kontourai/station-sdk": "^0.7.0",
+    "@kontourai/station-contracts": "^0.8.0",
+    "@kontourai/station-sdk": "^0.8.0",
     "@kontourai/ui": "^1.12.0"
   },
   "peerDependencies": {
