@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-09-19T11:30:29Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2453.35438202313",
+    "sha": "1ad69f653d52fb6b8da9d123d2bf2abec404f4e1",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35438202313",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2453.35438202313 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "5b6383e769445474c55c43464127161ccabe78ee",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2237](https://github.com/kontourai/station/pull/2237) fix(ui): restore the SessionsView row's host authority mock (Refs #2234)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-09-19T05:00:18Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2453",
