@@ -1,5 +1,37 @@
 [
   {
+    "timestampUtc": "2026-09-19T18:29:37Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2453.35459320578",
+    "sha": "79b6112cabedf1b2dccd9e3690dc7b363bf090f3",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35459320578",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2453.35459320578 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "1ad69f653d52fb6b8da9d123d2bf2abec404f4e1",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2243](https://github.com/kontourai/station/pull/2243) fix(tests): wire SDK transport mocks into offline-settling suite",
+          "[#2242](https://github.com/kontourai/station/pull/2242) fix(tests): wire SDK transport mocks into reconnect catch-up suite",
+          "[#2241](https://github.com/kontourai/station/pull/2241) fix(auth): route every request through the authenticated transport (#2236)",
+          "[#2240](https://github.com/kontourai/station/pull/2240) fix(chat): settle crashed turns and name approvals honestly (#2235)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-09-19T11:35:25Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2453.1",
