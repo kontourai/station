@@ -36,7 +36,7 @@ beforeAll(async () => {
     '../../../components/chat/StreamingMessage'
   ));
   ({ isSessionExecutionActive, isTurnStreamLive } = await import(
-    '../../../utils/execution',
+    '../../../utils/execution'
   ));
 });
 
@@ -834,10 +834,9 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
         requestType: 'approval',
         title: 'Allow tool call',
       } as any);
-      const toastId =
-        activeChatsStore.getSnapshot()[threadId]?.approvalToasts?.get(
-          'req-dead',
-        );
+      const toastId = activeChatsStore
+        .getSnapshot()
+        [threadId]?.approvalToasts?.get('req-dead');
       expect(toastId).toBeDefined();
 
       handleSessionStateChangedEvent(

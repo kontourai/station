@@ -36,11 +36,11 @@ import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
-import { activeTurnIdForEvents } from '../session-lifecycle-service.js';
 import {
   type InterruptedTurnMemoryAdapter,
   OrchestrationService,
 } from '../orchestration-service.js';
+import { activeTurnIdForEvents } from '../session-lifecycle-service.js';
 
 // archive#4080 follow-up (review round 2, finding 1): spy-wrap the
 // REAL implementation so every other test's behavior is unchanged — this
@@ -1293,9 +1293,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     // No turn was ever accepted, so there is nothing to close — and minting
     // a turn.aborted for a turn that never opened would be the same label
     // class this change removes.
-    expect(
-      events.some((e) => e.payload.method === 'turn.aborted'),
-    ).toBe(false);
+    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(false);
     expect(
       events.some((e) => e.payload.method === 'session.state-changed'),
     ).toBe(true);
@@ -1338,9 +1336,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     await (service as any).interruptedTurns.consume();
 
     const events = eventStore.listEvents('thread-quarantined-abort');
-    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(
-      false,
-    );
+    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(false);
     expect(
       events.some((e) => e.payload.method === 'session.state-changed'),
     ).toBe(false);
@@ -1395,9 +1391,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     // Neither recovery event: the abort would be anchor-rejected by every
     // fold, but the banner would force needs_input over the live turn.
     const events = eventStore.listEvents('thread-moved-on');
-    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(
-      false,
-    );
+    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(false);
     expect(
       events.some((e) => e.payload.method === 'session.state-changed'),
     ).toBe(false);
