@@ -246,6 +246,38 @@ export class InterruptedTurnRecovery {
         continue;
       }
       try {
+        // station#2235 (review MEDIUM 1): the row outlives the crash, not the
+        // session's future. If the thread opened a NEWER turn after this
+        // boundary was claimed — a new owner attached and the user kept
+        // going before this boot's consume ran — both recovery events would
+        // be stale: the abort is anchor-rejected by every fold (harmless),
+        // but the banner still forces needs_input over a genuinely running
+        // turn (and the live client would tear down that turn's shell and
+        // grants). Resolve the row silently and publish nothing: the folds
+        // moved on. Compared by creation time, not by turn identity alone:
+        // the dead turn's own turn.started necessarily predates its
+        // boundary claim. Inside the per-record try like everything else:
+        // a throwing resolve must strand this row, not the whole loop.
+        const latestTurnStarted = eventStore.latestEventByMethod(
+          record.threadId,
+          'turn.started',
+        );
+        if (
+          latestTurnStarted?.turnId !== undefined &&
+          latestTurnStarted.turnId !== record.providerTurnId &&
+          latestTurnStarted.createdAt > record.createdAt
+        ) {
+          this.deps.logger.warn(
+            'Interrupted-turn boundary is stale; the thread moved on — resolving without recovery events',
+            { threadId: record.threadId, boundaryId: record.boundaryId },
+          );
+          eventStore.resolveInterruptedTurnBoundary({
+            boundaryId: record.boundaryId,
+            ownerId: record.ownerId,
+            state: record.state,
+          });
+          continue;
+        }
         const startEvent = eventStore.latestEventByMethod(
           record.threadId,
           'session.started',
