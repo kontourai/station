@@ -35,25 +35,18 @@
  * `path-read-pin-boundary.test.ts`'s `UNREPORTED_PATH_READING_SUITES`, so
  * the gap is a reviewable list rather than a fraction in prose that drifts
  * out of date silently — a count here said only "re-measure" and never which
- * suite had moved. Two idioms account for most of that remainder, and both
- * are missed by construction rather than by accident:
+ * suite had moved. One of the two idioms that used to account for most of
+ * that remainder is now resolved:
  *
  * - A HELPER PARAMETER. `const read = (p) => readFileSync(join(UI_SRC, p))`
- *   called with a literal never puts that literal syntactically inside an
- *   anchored expression, so nothing resolves. At least 14 files use this
- *   form, and the pins it hides include `ChatDockHeader.tsx`,
- *   `DockShell.tsx` and `ProjectLayoutRenderer.tsx` — the same directory and
- *   the same family of file as the #1785 incident this module exists to
- *   prevent recurring.
- * - A CWD-RELATIVE LITERAL. `readFileSync('src-ui/src/…')` is refused
+ *   called with a literal is resolved by binding the helper's ONE parameter
+ *   to a sentinel while evaluating its body (see `collectReadHelpers`).
+ *   Multi-parameter helpers, parameters used more than once, and non-literal
+ *   call sites stay unresolved.
+ * - A CWD-RELATIVE LITERAL. `readFileSync('src-ui/src/…')` is still refused
  *   because an unanchored path is not a repository fact for this evaluator,
  *   and refusing it is what keeps `resolve('a/b')` from being read as a repo
  *   path.
- *
- * Those pins are no worse off than before this module existed, but they are
- * NOT covered: a green `path-read-pin-boundary` gate is evidence about the 79,
- * not about the class. Closing the helper form needs real intra-file
- * dataflow.
  *
  * The scan is the authority for the pins it does report:
  * `scripts/test-impact-manifest.mjs` derives its pin edges from it at gate
@@ -177,6 +170,13 @@ const MODULE_ANCHORS = Object.freeze(
 );
 
 const READ_CALL_PATTERN = /\b(?:readFileSync|readFile)\s*\(/;
+
+/** The read calls a helper body may wrap. */
+const READ_FN_NAMES = new Set(['readFileSync', 'readFile']);
+
+/** Bound to a helper's parameter while evaluating its body. Cannot appear in
+ *  a real path, so its single occurrence marks where the literal goes. */
+const HELPER_PARAMETER_SENTINEL = '\u0000path-read-pin-param\u0000';
 
 /**
  * Calls whose path arguments name something the test CREATES or REMOVES. A
@@ -482,6 +482,21 @@ function matchingBracket(tokens, openIndex) {
   return -1;
 }
 
+/** The index of the `}` closing the `{` at `openIndex`. Braces are lexed as
+ *  plain tokens, so unlike `matchingBracket` this walks every token type. */
+function braceClose(tokens, openIndex) {
+  let depth = 0;
+  for (let index = openIndex; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.type === 'other' && token.value === '{') depth += 1;
+    else if (token.type === 'other' && token.value === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
 function stripDecoration(tokens) {
   const asIndex = tokens.findIndex(
     (token, index) =>
@@ -618,6 +633,8 @@ function resolveBinding(name, context) {
     return { value: context.moduleDirectory, anchored: true };
   if (name === '__filename')
     return { value: context.modulePath, anchored: true };
+  const parameter = context.parameters?.get(name);
+  if (parameter) return parameter;
   const binding = context.bindings.get(name);
   if (!binding) return UNRESOLVED;
   if (context.resolving.has(name)) return UNRESOLVED;
@@ -691,6 +708,234 @@ function readExpression(source, start) {
   return source.slice(start).trim();
 }
 
+/* ------------------------------------------------------------------ *
+ * Read helpers: `const read = (p) => readFileSync(join(UI_SRC, p))`.
+ *
+ * The call-site literal is never syntactically inside an anchored
+ * expression, so the scan binds the helper's ONE parameter to a sentinel,
+ * evaluates the body, and reads the anchored text around the sentinel as a
+ * template. At a call site the literal is substituted into that template.
+ * Everything unresolved stays unresolved; a helper name defined twice is
+ * poisoned rather than guessed, mirroring `collectBindings`.
+ * ------------------------------------------------------------------ */
+
+/** True when `tokens[index]` is the parameter list of a read helper. */
+function singleParameter(tokens, openIndex, closeIndex) {
+  const groups = splitArguments(tokens.slice(openIndex + 1, closeIndex));
+  if (groups.length !== 1) return undefined;
+  const [first] = groups[0];
+  // A destructured, rest, or defaulted-destructured parameter is not a name
+  // this evaluator can substitute into.
+  if (!first || first.type !== 'name') return undefined;
+  return first.value;
+}
+
+function isFatArrow(tokens, index) {
+  return tokens[index]?.value === '=' && tokens[index + 1]?.value === '>';
+}
+
+/** End of an expression arrow body: an unwrapped `;` or `,`, or a closed
+ *  block. Bounds a mis-shaped file's blast radius at 400 tokens. */
+function statementBound(tokens, start) {
+  if (tokens[start]?.type === 'other' && tokens[start]?.value === '{')
+    return braceClose(tokens, start) + 1;
+  let depth = 0;
+  for (
+    let index = start;
+    index < tokens.length && index < start + 400;
+    index += 1
+  ) {
+    const token = tokens[index];
+    if (token.type === 'punct' && '(['.includes(token.value)) depth += 1;
+    else if (token.type === 'punct' && ')]'.includes(token.value)) depth -= 1;
+    else if (
+      depth === 0 &&
+      ((token.type === 'other' && token.value === ';') ||
+        (token.type === 'punct' && token.value === ','))
+    )
+      return index;
+  }
+  return Math.min(tokens.length, start + 400);
+}
+
+/** Skips a `: Type` return annotation after a parameter list, returning the
+ *  index of the body `{` or the arrow's `=`. Bounded and conservative: an
+ *  annotation containing `{` or `=>` ends the skip at that token, and any
+ *  other shape gives up — which can only fail to resolve a helper, never
+ *  mis-resolve one. */
+function skipReturnType(tokens, index) {
+  if (tokens[index]?.type !== 'other' || tokens[index]?.value !== ':')
+    return index;
+  for (let at = index + 1; at < tokens.length && at < index + 40; at += 1) {
+    const token = tokens[at];
+    if (token.type === 'other' && token.value === '{') return at;
+    if (
+      token.type === 'other' &&
+      token.value === '=' &&
+      tokens[at + 1]?.value === '>'
+    )
+      return at;
+    if (
+      (token.type === 'other' &&
+        (token.value === ';' || token.value === '}')) ||
+      (token.type === 'punct' && (token.value === ')' || token.value === ','))
+    )
+      return -1;
+  }
+  return -1;
+}
+
+/** The ONE parameter of a helper definition, or `undefined`. */
+function helperDefinitionAt(tokens, index) {
+  const head = tokens[index];
+  if (head?.type !== 'name') return undefined;
+
+  if (head.value === 'const' || head.value === 'let') {
+    const name = tokens[index + 1];
+    if (name?.type !== 'name') return undefined;
+    if (tokens[index + 2]?.type !== 'other' || tokens[index + 2]?.value !== '=')
+      return undefined;
+    return arrowHelperDefinition(tokens, name.value, index + 3);
+  }
+  if (head.value === 'function') {
+    const name = tokens[index + 1];
+    if (name?.type !== 'name') return undefined;
+    if (tokens[index + 2]?.type !== 'punct' || tokens[index + 2]?.value !== '(')
+      return undefined;
+    const close = matchingBracket(tokens, index + 2);
+    if (close === -1) return undefined;
+    const param = singleParameter(tokens, index + 2, close);
+    if (!param) return undefined;
+    const bodyOpen = skipReturnType(tokens, close + 1);
+    if (bodyOpen === -1 || tokens[bodyOpen]?.value !== '{') return undefined;
+    const bodyClose = braceClose(tokens, bodyOpen);
+    if (bodyClose === -1) return undefined;
+    return {
+      name: name.value,
+      param,
+      body: tokens.slice(bodyOpen + 1, bodyClose),
+    };
+  }
+  return undefined;
+}
+
+function arrowHelperDefinition(tokens, name, start) {
+  if (tokens[start]?.type === 'punct' && tokens[start]?.value === '(') {
+    const close = matchingBracket(tokens, start);
+    if (close === -1) return undefined;
+    const param = singleParameter(tokens, start, close);
+    if (!param) return undefined;
+    const arrowAt = skipReturnType(tokens, close + 1);
+    if (!arrowAt || arrowAt === -1 || !isFatArrow(tokens, arrowAt))
+      return undefined;
+    const bodyStart = arrowAt + 2;
+    return {
+      name,
+      param,
+      body: tokens.slice(bodyStart, statementBound(tokens, bodyStart)),
+    };
+  }
+  if (tokens[start]?.type === 'name') {
+    // `async (p) => …` — the parameter list starts one token later.
+    if (tokens[start].value === 'async' && tokens[start + 1]?.value === '(')
+      return arrowHelperDefinition(tokens, name, start + 1);
+    if (!isFatArrow(tokens, start + 1)) return undefined;
+    return {
+      name,
+      param: tokens[start].value,
+      body: tokens.slice(start + 3, statementBound(tokens, start + 3)),
+    };
+  }
+  return undefined;
+}
+
+/** The read calls' argument tokens in a helper body. A nested definition
+ *  inside the body makes the reads ambiguous, so the helper is refused
+ *  rather than guessed. */
+function readCallArguments(body) {
+  const groups = [];
+  for (let index = 0; index < body.length; index += 1) {
+    const token = body[index];
+    if (token.type !== 'name') continue;
+    if (
+      (token.value === 'const' || token.value === 'let') &&
+      body[index + 1]?.type === 'name' &&
+      body[index + 2]?.value === '='
+    )
+      return undefined;
+    if (token.value === 'function' && body[index + 1]?.type === 'name')
+      return undefined;
+    if (READ_FN_NAMES.has(token.value) && body[index + 1]?.value === '(') {
+      const close = matchingBracket(body, index + 1);
+      if (close === -1) return undefined;
+      const args = splitArguments(body.slice(index + 2, close));
+      if (!args.length) return undefined;
+      groups.push(args[0]);
+      index = close;
+    }
+  }
+  return groups.length ? groups : undefined;
+}
+
+/** The anchored `{ prefix, suffix }` around a helper's one parameter for
+ *  each read call in its body, or `undefined` when none can be justified. */
+function helperReadTemplates({ param, body }, context) {
+  const arguments_ = readCallArguments(body);
+  if (!arguments_) return undefined;
+  const parameterScope = new Map([
+    [param, { value: HELPER_PARAMETER_SENTINEL, anchored: false }],
+  ]);
+  const templates = [];
+  for (const argument of arguments_) {
+    const { value, anchored } = evaluateTokens(argument, {
+      ...context,
+      parameters: parameterScope,
+    });
+    // A `file:` template would need the sentinel percent-encoded to convert;
+    // no observed helper reads through one, so they stay unresolved.
+    if (value === undefined || !anchored || value.startsWith('file:')) continue;
+    const at = value.indexOf(HELPER_PARAMETER_SENTINEL);
+    if (at === -1) continue;
+    if (value.indexOf(HELPER_PARAMETER_SENTINEL, at + 1) !== -1) continue;
+    templates.push({
+      prefix: value.slice(0, at),
+      suffix: value.slice(at + HELPER_PARAMETER_SENTINEL.length),
+    });
+  }
+  return templates.length ? templates : undefined;
+}
+
+function collectReadHelpers(tokens, context) {
+  const helpers = new Map();
+  for (let index = 0; index < tokens.length; index += 1) {
+    const definition = helperDefinitionAt(tokens, index);
+    if (!definition) continue;
+    const templates = helperReadTemplates(definition, context);
+    helpers.set(
+      definition.name,
+      helpers.has(definition.name) ? null : templates,
+    );
+  }
+  return helpers;
+}
+
+/** The literal a helper call site passes: one string token or a template
+ *  with no interpolations. */
+function literalTokenValue(group) {
+  if (group.length !== 1) return undefined;
+  const [token] = group;
+  if (token.type === 'string') return token.value;
+  if (token.type === 'template') {
+    let value = '';
+    for (const part of token.parts) {
+      if (part.type !== 'literal') return undefined;
+      value += part.value;
+    }
+    return value;
+  }
+  return undefined;
+}
+
 /**
  * Token positions where a supported path expression begins: `helper(`,
  * `path.helper(`, `fileURLToPath(`, and `new URL(`.
@@ -748,6 +993,7 @@ export function scanPathReadPinsInSource(source, { repoPath, root }) {
   const tokens = tokenize(source) ?? [];
   const lists = scannableTokenLists(tokens);
   const writeTargets = collectWriteTargets(lists, context);
+  const admission = { root, repoPath, writeTargets };
   for (const list of lists)
     for (const start of pathExpressionStarts(list)) {
       const close = matchingBracket(list, start.openIndex);
@@ -757,33 +1003,66 @@ export function scanPathReadPinsInSource(source, { repoPath, root }) {
         context,
       );
       if (value === undefined || !anchored) continue;
-      let resolved = value;
-      if (resolved.startsWith('file:')) {
-        try {
-          resolved = fileURLToPath(resolved);
-        } catch {
+      admitPin(pins, value, admission);
+    }
+  const readHelpers = collectReadHelpers(tokens, context);
+  if (readHelpers.size)
+    for (const list of lists)
+      for (let index = 0; index < list.length; index += 1) {
+        const token = list[index];
+        if (token.type !== 'name') continue;
+        const templates = readHelpers.get(token.value);
+        if (!templates) continue;
+        if (list[index + 1]?.type !== 'punct' || list[index + 1]?.value !== '(')
+          continue;
+        const close = matchingBracket(list, index + 1);
+        if (close === -1) continue;
+        const args = splitArguments(list.slice(index + 2, close));
+        if (!args.length) continue;
+        const literal = literalTokenValue(args[0]);
+        if (literal !== undefined) {
+          for (const template of templates)
+            admitPin(
+              pins,
+              template.prefix + literal + template.suffix,
+              admission,
+            );
           continue;
         }
+        const evaluated = evaluateTokens(args[0], context);
+        if (evaluated.value === undefined || !evaluated.anchored) continue;
+        admitPin(pins, evaluated.value, admission);
       }
-      if (!isAbsolute(resolved)) continue;
-      const relativePath = relative(root, resolved).split(sep).join('/');
-      if (!relativePath || relativePath.startsWith('..')) continue;
-      if (isExcludedPath(relativePath)) continue;
-      if (relativePath === repoPath) continue;
-      if (writeTargets.has(resolved)) continue;
-      // A directory is a location, not a pinned file. `__dirname` itself and
-      // every intermediate root resolve here.
-      if (isDirectory(resolved)) continue;
-      // An extensionless path that does not exist names a synthesized
-      // location — `join(repoRoot, 'examples', 'some-plugin')` handed to a
-      // pure resolver — not a file this repository could have renamed away
-      // from. An extensionless file that DOES exist (`.githooks/commit-msg`)
-      // is a real pin and is kept.
-      if (!/\.[A-Za-z0-9]+$/.test(relativePath) && !pathExists(resolved))
-        continue;
-      pins.add(relativePath);
-    }
   return [...pins].sort();
+}
+
+/** Adds one resolved absolute path to the pin set when it names a
+ *  repository file a rename could break. */
+function admitPin(pins, absolute, { root, repoPath, writeTargets }) {
+  let resolved = absolute;
+  if (resolved.startsWith('file:')) {
+    try {
+      resolved = fileURLToPath(resolved);
+    } catch {
+      return;
+    }
+  }
+  if (!isAbsolute(resolved)) return;
+  const relativePath = relative(root, resolved).split(sep).join('/');
+  if (!relativePath || relativePath.startsWith('..')) return;
+  if (isExcludedPath(relativePath)) return;
+  if (relativePath === repoPath) return;
+  if (writeTargets.has(resolved)) return;
+  // A directory is a location, not a pinned file. `__dirname` itself and
+  // every intermediate root resolve here.
+  if (isDirectory(resolved)) return;
+  // An extensionless path that does not exist names a synthesized
+  // location — `join(repoRoot, 'examples', 'some-plugin')` handed to a
+  // pure resolver — not a file this repository could have renamed away
+  // from. An extensionless file that DOES exist (`.githooks/commit-msg`)
+  // is a real pin and is kept.
+  if (!/\.[A-Za-z0-9]+$/.test(relativePath) && !pathExists(resolved)) return;
+  pins.add(relativePath);
 }
 
 /** Paths this file writes, creates, or removes. */
