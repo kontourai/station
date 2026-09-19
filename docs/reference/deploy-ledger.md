@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-19T18:36:05Z | nightly-desktop | 0.1.11-nightly.2453.5 | `79b6112` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35459320578) |
 | 2026-09-19T18:36:02Z | nightly-android | 0.1.11-nightly.2453.5 | `79b6112` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35459320578) |
 | 2026-09-19T18:29:37Z | nightly-npm | 0.6.0-nightly.2453.35459320578 | `79b6112` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35459320578) |
 | 2026-09-19T11:35:25Z | nightly-desktop | 0.1.11-nightly.2453.1 | `1ad69f6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35438202313) |
@@ -113,6 +114,24 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-19T18:36:05Z · nightly-desktop · 0.1.11-nightly.2453.5
+
+- Ship SHA: `79b6112cabedf1b2dccd9e3690dc7b363bf090f3`
+- Artifact built at: `2026-09-19T17:58:06.066Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35459320578)
+
+### Changelog
+
+Commits since `1ad69f6` ([full sha](https://github.com/kontourai/station/commit/1ad69f653d52fb6b8da9d123d2bf2abec404f4e1)):
+
+**Fixes**
+
+- [#2243](https://github.com/kontourai/station/pull/2243) fix(tests): wire SDK transport mocks into offline-settling suite
+- [#2242](https://github.com/kontourai/station/pull/2242) fix(tests): wire SDK transport mocks into reconnect catch-up suite
+- [#2241](https://github.com/kontourai/station/pull/2241) fix(auth): route every request through the authenticated transport (#2236)
+- [#2240](https://github.com/kontourai/station/pull/2240) fix(chat): settle crashed turns and name approvals honestly (#2235)
 
 ## 2026-09-19T18:36:02Z · nightly-android · 0.1.11-nightly.2453.5
 
