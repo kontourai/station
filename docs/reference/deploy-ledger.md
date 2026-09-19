@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-19T05:00:18Z | nightly-desktop | 0.1.11-nightly.2453 | `5b6383e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35420920112) |
 | 2026-09-19T05:00:15Z | nightly-android | 0.1.11-nightly.2453 | `5b6383e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35420920112) |
 | 2026-09-19T04:56:00Z | nightly-npm | 0.6.0-nightly.2453.35420920112 | `5b6383e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35420920112) |
 | 2026-09-18T05:12:07Z | nightly-desktop | 0.1.11-nightly.2452 | `26b4dec` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35306644320) |
@@ -107,6 +108,34 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-19T05:00:18Z · nightly-desktop · 0.1.11-nightly.2453
+
+- Ship SHA: `5b6383e769445474c55c43464127161ccabe78ee`
+- Artifact built at: `2026-09-19T04:25:53.163Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35420920112)
+
+### Changelog
+
+Commits since `26b4dec` ([full sha](https://github.com/kontourai/station/commit/26b4deca1ba2e2c2d2c3c4a722df314daf6c948b)):
+
+**Features**
+
+- [#2224](https://github.com/kontourai/station/pull/2224) feat(governance): the style standard becomes a required evidence check
+
+**Fixes**
+
+- [#2233](https://github.com/kontourai/station/pull/2233) fix: unblock nightly — docs hygiene, mobile chip pins, veritas timeouts
+- [#2225](https://github.com/kontourai/station/pull/2225) fix: live engine catalogs and persist New Chat picker on relaunch
+- [#2232](https://github.com/kontourai/station/pull/2232) fix(pairing): decisive local-grant eligibility answers so a dead desktop credential self-heals (#2228)
+- [#2230](https://github.com/kontourai/station/pull/2230) fix(ui): a region bar drags like chat's header, and a collapsed dock is the bar alone
+- [#2231](https://github.com/kontourai/station/pull/2231) fix(acp): contain failed terminal spawns, honor resumed model retention, copy session id
+- [#2227](https://github.com/kontourai/station/pull/2227) fix(acp,ui): no Agent for an engine that cannot onboard; New Chat picker row hierarchy
+- [#2229](https://github.com/kontourai/station/pull/2229) fix(ui): side-dock chat alignment and clipped turn overflow menu
+- [#2226](https://github.com/kontourai/station/pull/2226) fix(projects): cross-platform folder picker with Windows drive switching
+- [#2221](https://github.com/kontourai/station/pull/2221) fix(mobile): dot-only header chip, drawer-owned settings, gated notification prime
+- [#2222](https://github.com/kontourai/station/pull/2222) fix: B10 follow-ups for Ready honesty, user-turn recovery, and host workspaces
 
 ## 2026-09-19T05:00:15Z · nightly-android · 0.1.11-nightly.2453
 
