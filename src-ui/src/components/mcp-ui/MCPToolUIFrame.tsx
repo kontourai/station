@@ -17,6 +17,11 @@ import {
   parseStationSessionInventoryMcpV2Envelope,
   parseStationSessionInventoryMcpV2Input,
 } from '@kontourai/station-contracts/session-inventory-mcp';
+import {
+  envelopeFailureMessage,
+  getJson,
+  mutateJson,
+} from '@kontourai/station-sdk';
 import type {
   MCPToolUIPermissions,
   MCPToolUIResolutionStatus,
@@ -51,11 +56,6 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
-import {
-  type ApiEnvelope,
-  apiRequest,
-  unwrapApiData,
-} from '../../lib/apiClient';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -1259,6 +1259,37 @@ function MCPToolUISandbox({
   );
 }
 
+// station#2236: envelope reader that also preserves the response-level
+// `meta` the Task Basis bridge returns alongside `data`. Failure contract
+// is the legacy helper's, verbatim: an HTTP error throws
+// `Request failed: <statusText>` without reading the body, and a
+// `success:false` envelope throws its `error` (or the caller fallback) —
+// which the bridge surfaces to the iframe as a standard protocol error.
+async function readMCPEnvelope<T>(
+  response: Response,
+  fallbackMessage: string,
+): Promise<{ data: T; meta?: Record<string, unknown> }> {
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.statusText}`);
+  }
+  const envelope = (await response.json()) as {
+    success: boolean;
+    data?: T;
+    error?: unknown;
+    meta?: Record<string, unknown>;
+  };
+  if (!envelope.success) {
+    // station#2236 (review MEDIUM): render what the server computed, never
+    // a label — a non-string `error` must JSON-stringify, not `[object
+    // Object]`. Same derivation the SDK reader uses.
+    throw new Error(envelopeFailureMessage(envelope.error) ?? fallbackMessage);
+  }
+  return {
+    data: envelope.data as T,
+    ...(envelope.meta ? { meta: envelope.meta } : {}),
+  };
+}
+
 async function proxyToolCall(
   apiBase: string,
   serverId: string,
@@ -1268,21 +1299,24 @@ async function proxyToolCall(
 ): Promise<{ content: unknown }> {
   // `approvalPolicy` lets the server apply the same gate it was rendered under
   // (notably block-on-inbox for `require`). A non-2xx/`success:false` response
-  // (e.g. a denied/timed-out approval) makes apiRequest/unwrapApiData throw,
+  // (e.g. a denied/timed-out approval) makes the envelope read throw,
   // which the bridge surfaces to the iframe as a standard protocol error.
-  const envelope = await apiRequest<ApiEnvelope<{ content: unknown }>>(
+  // station#2236: via the SDK authenticated transport — the legacy
+  // `apiRequest` bare fetch sent no credential and 401'd on native shells.
+  const response = await mutateJson(
     `${apiBase}/integrations/${encodeURIComponent(serverId)}/ui/call`,
+    'POST',
+    undefined,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tool,
-        arguments: args,
-        ...(approvalPolicy ? { approvalPolicy } : {}),
-      }),
+      tool,
+      arguments: args,
+      ...(approvalPolicy ? { approvalPolicy } : {}),
     },
   );
-  return unwrapApiData(envelope, 'MCP tool call returned no result');
+  return readMCPEnvelope<{ content: unknown }>(
+    response,
+    'MCP tool call returned no result',
+  ).then(({ data }) => data);
 }
 
 async function proxyInitialResult(
@@ -1291,15 +1325,17 @@ async function proxyInitialResult(
   toolName: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  const envelope = await apiRequest<ApiEnvelope<unknown>>(
+  const response = await mutateJson(
     `${apiBase}/integrations/${encodeURIComponent(serverId)}/ui/${encodeURIComponent(toolName)}/initial-result`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ arguments: args }),
-    },
+    'POST',
+    undefined,
+    { arguments: args },
   );
-  return unwrapApiData(envelope, 'MCP App initial result returned no result');
+  const { data } = await readMCPEnvelope<unknown>(
+    response,
+    'MCP App initial result returned no result',
+  );
+  return data;
 }
 
 function readBasisReadCapability(
@@ -1347,22 +1383,20 @@ async function proxyBasisContinuation(
   continuationToken: string,
   occurrenceId: string,
 ): Promise<unknown> {
-  const envelope = await apiRequest<
-    ApiEnvelope<unknown> & { meta?: Record<string, unknown> }
-  >(
+  const response = await mutateJson(
     `${apiBase}/api/tasks/${encodeURIComponent(capability.taskId)}/basis/app-read`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ continuationToken, occurrenceId }),
-    },
+    'POST',
+    undefined,
+    { continuationToken, occurrenceId },
   );
-  return {
-    structuredContent: unwrapApiData(
-      envelope,
+  const { data: structuredContent, meta: _meta } =
+    await readMCPEnvelope<unknown>(
+      response,
       'Task Basis continuation returned no result',
-    ),
-    _meta: envelope.meta,
+    );
+  return {
+    structuredContent,
+    _meta,
   };
 }
 
@@ -1370,22 +1404,20 @@ async function proxyBasisOpen(
   apiBase: string,
   capability: NonNullable<MCPToolUIFrameProps['basisReadSession']>,
 ): Promise<unknown> {
-  const envelope = await apiRequest<
-    ApiEnvelope<unknown> & { meta?: Record<string, unknown> }
-  >(
+  const response = await mutateJson(
     `${apiBase}/api/tasks/${encodeURIComponent(capability.taskId)}/basis/app-read`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    },
+    'POST',
+    undefined,
+    {},
   );
-  return {
-    structuredContent: unwrapApiData(
-      envelope,
+  const { data: structuredContent, meta: _meta } =
+    await readMCPEnvelope<unknown>(
+      response,
       'Task Basis initial page unavailable',
-    ),
-    _meta: envelope.meta,
+    );
+  return {
+    structuredContent,
+    _meta,
   };
 }
 
@@ -1394,13 +1426,11 @@ async function proxyBasisDispose(
   capability: NonNullable<MCPToolUIFrameProps['basisReadSession']>,
   occurrenceId: string,
 ): Promise<void> {
-  await apiRequest<ApiEnvelope<unknown>>(
+  await mutateJson(
     `${apiBase}/api/tasks/${encodeURIComponent(capability.taskId)}/basis/app-read`,
-    {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ occurrenceId }),
-    },
+    'DELETE',
+    undefined,
+    { occurrenceId },
   );
 }
 
@@ -1542,11 +1572,14 @@ async function fetchMCPToolUIResolution(
   apiBase: string,
   refParts: MCPToolRefParts,
 ): Promise<MCPToolUIResolution> {
-  const envelope = await apiRequest<ApiEnvelope<MCPToolUIResolution>>(
+  const response = await getJson(
     `${apiBase}/integrations/${encodeURIComponent(refParts.serverId)}/ui/${encodeURIComponent(refParts.toolName)}`,
   );
-
-  return unwrapApiData(envelope, 'MCP UI resolver returned no data');
+  const { data } = await readMCPEnvelope<MCPToolUIResolution>(
+    response,
+    'MCP UI resolver returned no data',
+  );
+  return data;
 }
 
 async function fetchMCPToolUIResource(
@@ -1557,9 +1590,12 @@ async function fetchMCPToolUIResource(
   // 'declared' reads the SEP-1865 resource (resources/read); 'embedded' calls
   // the tool and extracts its mcp-ui.dev embedded UI resource.
   const path = mode === 'embedded' ? 'embedded' : 'resource';
-  const envelope = await apiRequest<ApiEnvelope<MCPToolUIResourceContent>>(
+  const response = await getJson(
     `${apiBase}/integrations/${encodeURIComponent(refParts.serverId)}/ui/${encodeURIComponent(refParts.toolName)}/${path}`,
   );
-
-  return unwrapApiData(envelope, 'MCP UI resource returned no content');
+  const { data } = await readMCPEnvelope<MCPToolUIResourceContent>(
+    response,
+    'MCP UI resource returned no content',
+  );
+  return data;
 }

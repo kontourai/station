@@ -46,10 +46,7 @@ import {
 } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
-import {
-  readPluginManifestFileSync,
-  readPluginManifestFileWithFormat,
-} from '../../services/plugins/plugin-manifest-loader.js';
+import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   createPluginGrantMutationScope,
   hasGrant,
@@ -61,6 +58,7 @@ import {
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
 } from '../../services/plugins/plugin-public-server.js';
+import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,
@@ -156,42 +154,6 @@ function assertExistingPluginRootInside(
   ) {
     throw new Error('Plugin update target escapes plugin root');
   }
-}
-
-async function listPluginRegistryUpdates() {
-  const updates: Array<{
-    name: string;
-    currentVersion: string;
-    latestVersion: string;
-    source: string;
-  }> = [];
-
-  for (const entry of getPluginRegistryProviders()) {
-    const [available, installed] = await Promise.all([
-      entry.provider.listAvailable(),
-      entry.provider.listInstalled(),
-    ]);
-    for (const installedPlugin of installed) {
-      const installedName =
-        installedPlugin.installedPluginName ?? installedPlugin.id;
-      const availablePlugin = available.find(
-        (plugin) => plugin.id === installedPlugin.id,
-      );
-      if (
-        availablePlugin?.version &&
-        availablePlugin.version !== installedPlugin.version
-      ) {
-        updates.push({
-          name: installedName,
-          currentVersion: installedPlugin.version || 'unknown',
-          latestVersion: availablePlugin.version,
-          source: 'registry',
-        });
-      }
-    }
-  }
-
-  return updates;
 }
 
 async function findOwningPluginRegistryProvider(
@@ -392,66 +354,11 @@ export function registerPluginLifecycleRoutes(
       deps.visibility,
       'check plugins for updates',
     )(async (c) => {
-      const updates: Array<{
-        name: string;
-        currentVersion: string;
-        latestVersion: string;
-        source: string;
-      }> = [];
-
+      // station#2236: the scan lives in services/plugins/plugin-update-check
+      // so the boot-time background check can run it in-process; the route
+      // stays the operator-gated HTTP seam over the same scan.
       try {
-        if (existsSync(pluginsDir)) {
-          const { readdirSync } = await import('node:fs');
-          const entries = readdirSync(pluginsDir, { withFileTypes: true });
-          for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const dir = join(pluginsDir, entry.name);
-            const gitDir = join(dir, '.git');
-            const manifestPath = join(dir, 'plugin.json');
-            if (!existsSync(gitDir) || !existsSync(manifestPath)) continue;
-
-            try {
-              await execGit(['fetch', '--quiet'], {
-                cwd: dir,
-                timeout: 10000,
-              });
-              const { stdout: behind } = await execGit(
-                ['rev-list', '--count', 'HEAD..@{u}'],
-                { cwd: dir, encoding: 'utf-8' },
-              );
-              if (parseInt(behind.trim(), 10) > 0) {
-                const manifest = readPluginManifestFileSync(manifestPath);
-                const commitsBehind = behind.trim();
-                updates.push({
-                  name: entry.name,
-                  currentVersion: manifest.version || 'unknown',
-                  latestVersion: `${commitsBehind} commit${commitsBehind === '1' ? '' : 's'} behind`,
-                  source: 'git',
-                });
-              }
-            } catch (error) {
-              logger.debug('Failed to check git updates for plugin', {
-                plugin: entry.name,
-                error,
-              });
-            }
-          }
-        }
-
-        try {
-          const registryUpdates = await listPluginRegistryUpdates();
-          for (const update of registryUpdates) {
-            if (updates.some((existing) => existing.name === update.name)) {
-              continue;
-            }
-            updates.push(update);
-          }
-        } catch (error) {
-          logger.debug('Failed to check registry for plugin updates', {
-            error,
-          });
-        }
-
+        const { updates } = await checkPluginUpdates({ pluginsDir, logger });
         return c.json({ updates });
       } catch (error: unknown) {
         logger.error('Failed to check for updates', {

@@ -158,11 +158,16 @@ export { hasCapability } from './capability';
 export type {
   FetchSseConnection,
   FetchSseMessage,
+  JsonEnvelope,
 } from './client/http';
 export {
   authenticatedFetch,
+  envelopeFailureMessage,
   fetchSSE,
+  getJson,
+  mutateJson,
   notifyCredentialChanged,
+  readEnvelopeOrThrow,
   StationCredentialConflictError,
   StationHttpError,
   StationReadOnlyError,

@@ -26,6 +26,19 @@ vi.mock('@kontourai/station-sdk', async () => ({
   extractUIBlocks: (
     await import('../../../packages/sdk/src/query-domains/uiBlocks')
   ).extractUIBlocks,
+  // station#2236: the checkpoints fetch rides the SDK authenticated
+  // transport. The mock delegates to the test's stubbed global fetch with
+  // the SDK's call shape so these tests keep asserting behavior, not the
+  // transport's internals. Async like the real getJson: a stub fetch that
+  // returns undefined must reject (caught -> empty), not throw
+  // synchronously out of the effect.
+  getJson: async (url: string, opts?: { signal?: AbortSignal }) =>
+    (globalThis.fetch as typeof fetch)(
+      url,
+      opts?.signal ? { method: 'GET', signal: opts.signal } : { method: 'GET' },
+    ),
+  readEnvelopeOrThrow: (await import('../../../packages/sdk/src/client/http'))
+    .readEnvelopeOrThrow,
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   claimSessionEventWindowCapabilityRecovery: (...args: unknown[]) =>
