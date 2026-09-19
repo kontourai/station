@@ -37,9 +37,8 @@ vi.mock('@kontourai/station-sdk', async () => ({
       url,
       opts?.signal ? { method: 'GET', signal: opts.signal } : { method: 'GET' },
     ),
-  readEnvelopeOrThrow: (
-    await import('../../../packages/sdk/src/client/http')
-  ).readEnvelopeOrThrow,
+  readEnvelopeOrThrow: (await import('../../../packages/sdk/src/client/http'))
+    .readEnvelopeOrThrow,
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   claimSessionEventWindowCapabilityRecovery: (...args: unknown[]) =>

@@ -1,13 +1,13 @@
+import { join } from 'node:path';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { join } from 'node:path';
 import { listProviders } from '../../providers/registries/registry.js';
-import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
-import { errorMessage } from '../../utils/error-message.js';
 import {
   engineSpawnTmpDirPath,
   reapEngineSpawnTmpDir,
 } from '../../services/infra/engine-spawn-tmpdir.js';
+import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 /** archive#2204: bound engine-spawn artifacts even when ACP bootstrap fails. */
 const ENGINE_SPAWN_TMP_REAP_INTERVAL_MS = 5 * 60_000;

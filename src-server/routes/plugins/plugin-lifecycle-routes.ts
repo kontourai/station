@@ -46,10 +46,7 @@ import {
 } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
-import {
-  readPluginManifestFileWithFormat,
-} from '../../services/plugins/plugin-manifest-loader.js';
-import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
+import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   createPluginGrantMutationScope,
   hasGrant,
@@ -61,6 +58,7 @@ import {
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
 } from '../../services/plugins/plugin-public-server.js';
+import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
 import {
   isRegistryAcquisitionRefusal,
   registryAcquisitionRefusalDetails,

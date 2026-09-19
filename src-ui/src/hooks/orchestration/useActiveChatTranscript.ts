@@ -1,6 +1,6 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useEffect, useMemo, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';

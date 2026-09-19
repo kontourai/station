@@ -17,6 +17,11 @@ import {
   parseStationSessionInventoryMcpV2Envelope,
   parseStationSessionInventoryMcpV2Input,
 } from '@kontourai/station-contracts/session-inventory-mcp';
+import {
+  envelopeFailureMessage,
+  getJson,
+  mutateJson,
+} from '@kontourai/station-sdk';
 import type {
   MCPToolUIPermissions,
   MCPToolUIResolutionStatus,
@@ -51,11 +56,6 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
-import {
-  envelopeFailureMessage,
-  getJson,
-  mutateJson,
-} from '@kontourai/station-sdk';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -1282,9 +1282,7 @@ async function readMCPEnvelope<T>(
     // station#2236 (review MEDIUM): render what the server computed, never
     // a label — a non-string `error` must JSON-stringify, not `[object
     // Object]`. Same derivation the SDK reader uses.
-    throw new Error(
-      envelopeFailureMessage(envelope.error) ?? fallbackMessage,
-    );
+    throw new Error(envelopeFailureMessage(envelope.error) ?? fallbackMessage);
   }
   return {
     data: envelope.data as T,
