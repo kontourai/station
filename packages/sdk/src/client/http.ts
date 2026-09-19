@@ -933,7 +933,7 @@ export interface JsonEnvelope<T> {
   message?: unknown;
 }
 
-function envelopeFailureMessage(value: unknown): string | undefined {
+export function envelopeFailureMessage(value: unknown): string | undefined {
   if (typeof value === 'string') return value || undefined;
   if (value === undefined || value === null) return undefined;
   try {

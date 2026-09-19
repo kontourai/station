@@ -52,6 +52,7 @@ import {
 import { useConfig } from '../../contexts/ConfigContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import {
+  envelopeFailureMessage,
   getJson,
   mutateJson,
 } from '@kontourai/station-sdk';
@@ -1274,11 +1275,16 @@ async function readMCPEnvelope<T>(
   const envelope = (await response.json()) as {
     success: boolean;
     data?: T;
-    error?: string;
+    error?: unknown;
     meta?: Record<string, unknown>;
   };
   if (!envelope.success) {
-    throw new Error(envelope.error || fallbackMessage);
+    // station#2236 (review MEDIUM): render what the server computed, never
+    // a label — a non-string `error` must JSON-stringify, not `[object
+    // Object]`. Same derivation the SDK reader uses.
+    throw new Error(
+      envelopeFailureMessage(envelope.error) ?? fallbackMessage,
+    );
   }
   return {
     data: envelope.data as T,
@@ -1286,7 +1292,8 @@ async function readMCPEnvelope<T>(
   };
 }
 
-async function proxyToolCall(  apiBase: string,
+async function proxyToolCall(
+  apiBase: string,
   serverId: string,
   tool: string,
   args: Record<string, unknown>,

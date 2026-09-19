@@ -3,6 +3,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { join } from 'node:path';
 import { listProviders } from '../../providers/registries/registry.js';
 import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   engineSpawnTmpDirPath,
   reapEngineSpawnTmpDir,
@@ -206,7 +207,7 @@ export function scheduleRuntimePluginUpdateCheck(
         }
       } catch (error: any) {
         context.logger.debug('Failed to check for plugin updates', {
-          error: error.message,
+          error: errorMessage(error),
         });
       }
     }, 5000),

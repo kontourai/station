@@ -609,6 +609,15 @@ describe('MCPToolUIFrame', () => {
     expect(screen.getByText('resolver failed')).toBeTruthy();
   });
 
+  test('station#2236: a non-string envelope error renders what the server computed, not [object Object]', async () => {
+    mockResolver({ success: false, error: { code: 'missing_server' } });
+
+    renderFrame({ ref: 'github/create_issue' });
+
+    expect(await screen.findByText('MCP UI failed to load')).toBeTruthy();
+    expect(screen.getByText('{"code":"missing_server"}')).toBeTruthy();
+  });
+
   test('renders a sandboxed iframe with a deny-all CSP when mcpUiHost is enabled', async () => {
     mockConfig = { mcpUiHost: true };
     fetchMock.mockImplementation(async (url: string) => {

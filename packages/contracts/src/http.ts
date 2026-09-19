@@ -41,12 +41,14 @@ export function normalizeBaseUrl(value: string): string {
  * Scope, precisely: this reconciles the repo's two
  * *automatic, unattended* retry loops — the ones that can hot-loop silently
  * with nobody watching. It does not (yet) cover every place that inspects a
- * 401/403 — e.g. `src-ui/src/lib/apiClient.ts`'s `apiRequest` is a one-shot
- * REST helper with its own hardcoded 401/403 check and a single
- * auth-callback-then-retry-once policy; it never loops unattended, so it
- * carries a materially lower version of the risk this type exists to close,
- * and adopting `isTerminalConnectionStatus` there is a disclosed follow-up,
- * not something this change claims to have already done.
+ * 401/403 — e.g. the former `src-ui/src/lib/apiClient.ts`'s `apiRequest`
+ * (removed in station#2236; UI fetches now ride the SDK authenticated
+ * transport) was a one-shot REST helper with its own hardcoded 401/403
+ * check and a single auth-callback-then-retry-once policy; it never looped
+ * unattended, so it carries a materially lower version of the risk this
+ * type exists to close, and adopting `isTerminalConnectionStatus` there is
+ * a disclosed follow-up, not something this change claims to have already
+ * done.
  *
  * Lives in `contracts`, not `connect`, for the same publish-boundary reason
  * as `HEALTH_PROBE_TIMEOUT_MS` above: the SDK is published and `connect` is

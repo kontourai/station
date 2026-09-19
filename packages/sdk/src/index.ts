@@ -162,6 +162,7 @@ export type {
 } from './client/http';
 export {
   authenticatedFetch,
+  envelopeFailureMessage,
   fetchSSE,
   getJson,
   mutateJson,
