@@ -479,6 +479,47 @@ describe('SessionTurnBoundaryAuthority', () => {
     second.close();
   });
 
+  test('station#2235: a recovery-synthesized abort does not retire the row; the engine abort still does', () => {
+    // The recovery publishes its terminal fact mid-flow, before the banner
+    // and the explicit close land. Retiring here would delete the record
+    // the next boot needs to finish that sequence after a mid-flow crash —
+    // so the marker opts this one event out, matched on the field, never
+    // on the reason prose.
+    const path = databasePath();
+    const first = new EventStore(path);
+    const second = new EventStore(path);
+    const claimed = first
+      .sessionTurnBoundaryAuthority()
+      .claim('thread-recovery', '2026-08-16T00:00:00.000Z');
+    expect(claimed.kind).toBe('owner');
+    if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+    claimed.claim.beginInvocation('2026-08-16T00:00:01.000Z');
+    claimed.claim.accepted('provider-turn-9', '2026-08-16T00:00:02.000Z');
+
+    second.sessionTurnBoundaryAuthority().observe({
+      ...terminal('thread-recovery', 'provider-turn-9'),
+      method: 'turn.aborted',
+      recoveryTerminal: true,
+    } as CanonicalRuntimeEvent);
+    expect(
+      second
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('thread-recovery'),
+    ).toEqual({ kind: 'available', active: true });
+
+    second.sessionTurnBoundaryAuthority().observe({
+      ...terminal('thread-recovery', 'provider-turn-9'),
+      method: 'turn.aborted',
+    } as CanonicalRuntimeEvent);
+    expect(
+      second
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('thread-recovery'),
+    ).toEqual({ kind: 'available', active: false });
+    first.close();
+    second.close();
+  });
+
   test('turn-id reuse after terminal history becomes indeterminate until a session terminal', () => {
     const path = databasePath();
     const first = new EventStore(path);

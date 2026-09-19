@@ -144,6 +144,14 @@ export function resolveTurnCompletionOutcome(
   },
 ): TurnOutcome | undefined {
   if (event.method === 'turn.completed') return 'done';
+  // station#2235: a recovery-synthesized abort (`recoveryTerminal`) maps
+  // here like any abort — deliberately, not by omission. The needs_input
+  // attention path schedules no offline push, so this is the crash's ONLY
+  // offline signal ("Agent failed in session …"), the same payoff
+  // archive#3473 claims for the codex-crash push above. The in-app copy is
+  // owned by the interrupted-turn banner, and connected clients never see
+  // this push (the presence gate below skips live subscribers) — so the two
+  // framings never meet on one surface.
   if (event.method === 'turn.aborted') return 'failed';
   // archive#3442: `runtime.error` is the ONLY canonical event a genuine
   // turn/stream failure publishes while a turnId is still known — see

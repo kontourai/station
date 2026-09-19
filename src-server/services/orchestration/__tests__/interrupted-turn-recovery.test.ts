@@ -1228,6 +1228,12 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     expect(abort!.payload.turnId).toBe('turn-1');
     expect(abort!.payload.eventId).toMatch(/^turn-interrupted-abort:/);
     expect(abort!.payload.reason).toContain('interrupted');
+    // The marker the boundary-retirement carve-outs match on: without it
+    // the row dies mid-flow and the H1 crash-window tests below go red.
+    // Asserted on the payload, not inferred from behavior.
+    expect(
+      (abort!.payload as { recoveryTerminal?: unknown }).recoveryTerminal,
+    ).toBe(true);
 
     const banner = events.find(
       (e) => e.payload.method === 'session.state-changed',
@@ -1340,6 +1346,65 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     const rebooted = new EventStore(path);
     stores.push(rebooted);
     expect(rebooted.takeInterruptedTurnBoundaries()).not.toEqual([]);
+  });
+
+  test('station#2235 (review MEDIUM 1): a boundary the thread moved past resolves silently with no recovery events', async () => {
+    const path = databasePath();
+    const eventStore = bootAfterCrash({
+      path,
+      threadId: 'thread-moved-on',
+      provider: 'acp',
+      agentSlug: 'demo-agent',
+      boundaryState: 'accepted',
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'acp',
+      threadId: 'thread-moved-on',
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    // The user kept going after the crash: a newer turn opened well after
+    // the boundary claim (claim lands ~00:00:02.5 in bootAfterCrash).
+    eventStore.appendEvent({
+      eventId: 'turn-started:turn-2',
+      provider: 'acp',
+      threadId: 'thread-moved-on',
+      turnId: 'turn-2',
+      createdAt: '2026-08-16T00:01:00.000Z',
+      method: 'turn.started',
+      prompt: 'a fresh start after the crash',
+    } as CanonicalRuntimeEvent);
+
+    const adapter = fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    // Neither recovery event: the abort would be anchor-rejected by every
+    // fold, but the banner would force needs_input over the live turn.
+    const events = eventStore.listEvents('thread-moved-on');
+    expect(events.some((e) => e.payload.method === 'turn.aborted')).toBe(
+      false,
+    );
+    expect(
+      events.some((e) => e.payload.method === 'session.state-changed'),
+    ).toBe(false);
+    expect(adapter.addMessage).not.toHaveBeenCalled();
+
+    // And the stale row is gone — the next boot has nothing to redo.
+    const rebooted = new EventStore(path);
+    stores.push(rebooted);
+    expect(rebooted.takeInterruptedTurnBoundaries()).toEqual([]);
   });
 
   test('station#2235: a second consume never duplicates the abort — exactly one turn.aborted survives a reboot', async () => {

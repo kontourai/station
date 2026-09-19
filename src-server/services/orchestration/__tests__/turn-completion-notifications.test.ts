@@ -43,6 +43,18 @@ describe('resolveTurnCompletionOutcome', () => {
     expect(resolveTurnCompletionOutcome({ method: 'turn.aborted' })).toBe(
       'failed',
     );
+    // station#2235: a recovery-synthesized abort is the crash's only
+    // offline signal (the needs_input attention path schedules no push),
+    // so it resolves 'failed' exactly like the engine abort it stands in
+    // for — the in-app copy stays owned by the interrupted-turn banner.
+    expect(
+      resolveTurnCompletionOutcome({
+        method: 'turn.aborted',
+        turnId: 'turn-1',
+        reason: 'The turn was interrupted before it finished.',
+        recoveryTerminal: true,
+      } as Parameters<typeof resolveTurnCompletionOutcome>[0]),
+    ).toBe('failed');
     // archive#3442: this is the ONLY event a genuine stream/runtime failure
     // publishes while a turnId is known (bedrock/ollama's
     // `publishTurnFailure`, codex-adapter-notifications' `'error'` case and
