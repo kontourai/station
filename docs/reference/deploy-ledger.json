@@ -1,5 +1,45 @@
 [
   {
+    "timestampUtc": "2026-09-19T05:00:15Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2453",
+    "sha": "5b6383e769445474c55c43464127161ccabe78ee",
+    "artifactBuiltAt": "2026-09-19T04:25:41.506Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35420920112",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35420920112)"
+    ],
+    "changelog": {
+      "previousSha": "26b4deca1ba2e2c2d2c3c4a722df314daf6c948b",
+      "groups": {
+        "feat": [
+          "[#2224](https://github.com/kontourai/station/pull/2224) feat(governance): the style standard becomes a required evidence check"
+        ],
+        "fix": [
+          "[#2233](https://github.com/kontourai/station/pull/2233) fix: unblock nightly — docs hygiene, mobile chip pins, veritas timeouts",
+          "[#2225](https://github.com/kontourai/station/pull/2225) fix: live engine catalogs and persist New Chat picker on relaunch",
+          "[#2232](https://github.com/kontourai/station/pull/2232) fix(pairing): decisive local-grant eligibility answers so a dead desktop credential self-heals (#2228)",
+          "[#2230](https://github.com/kontourai/station/pull/2230) fix(ui): a region bar drags like chat's header, and a collapsed dock is the bar alone",
+          "[#2231](https://github.com/kontourai/station/pull/2231) fix(acp): contain failed terminal spawns, honor resumed model retention, copy session id",
+          "[#2227](https://github.com/kontourai/station/pull/2227) fix(acp,ui): no Agent for an engine that cannot onboard; New Chat picker row hierarchy",
+          "[#2229](https://github.com/kontourai/station/pull/2229) fix(ui): side-dock chat alignment and clipped turn overflow menu",
+          "[#2226](https://github.com/kontourai/station/pull/2226) fix(projects): cross-platform folder picker with Windows drive switching",
+          "[#2221](https://github.com/kontourai/station/pull/2221) fix(mobile): dot-only header chip, drawer-owned settings, gated notification prime",
+          "[#2222](https://github.com/kontourai/station/pull/2222) fix: B10 follow-ups for Ready honesty, user-turn recovery, and host workspaces"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-09-19T04:56:00Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2453.35420920112",
