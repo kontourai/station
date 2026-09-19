@@ -334,7 +334,13 @@ export function handleTurnAbortedEvent(
         }
       : {}),
     status: 'idle',
-    error: event.reason,
+    // station#2235: a recovery-synthesized abort is not an engine failure
+    // to report — the interrupted-turn banner (the session.state-changed
+    // event carrying interruptedTurnBoundary, published right after this
+    // abort) owns the user-visible copy. Stamping its reason as the chat's
+    // error would leave a permanent error bar under a banner that already
+    // says the turn was interrupted.
+    ...(event.recoveryTerminal === true ? {} : { error: event.reason }),
     orchestrationStatus: 'aborted',
     orchestrationTurnOpen: false,
     openTurnId: undefined,

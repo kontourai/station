@@ -3,6 +3,7 @@ import {
   type ActiveChatsStore,
   activeChatsStore,
 } from '../../contexts/active-chats-store';
+import { toastStore } from '../../contexts/ToastContext';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
@@ -120,6 +121,24 @@ export function handleSessionStateChangedEvent(
   const chat = store.getSnapshot()[event.threadId];
   const turnActive =
     chat?.orchestrationTurnOpen === true || chat?.status === 'sending';
+  // station#2235: the boot-time interrupted-turn recovery stamps
+  // needs_input on a turn whose owner died. That turn will never produce a
+  // terminal event of its own (unless the recovery's own turn.aborted,
+  // published just before this banner, arrives first), so a live client
+  // must converge its shell here: the streaming row, the pending grants,
+  // and their toasts all name a turn that can never settle them. Gated on
+  // the provenance field, never on the state vocabulary — any future
+  // producer of a bare needs_input must not inherit this.
+  const interruptedTurn =
+    event.interruptedTurnBoundary?.boundaryId !== undefined;
+  if (interruptedTurn) {
+    // The approval registry died with the owning process: no
+    // `request.resolved` will ever arrive for these, so leaving them would
+    // strand the grants UI alongside the dead shell.
+    for (const toastId of (chat?.approvalToasts ?? new Map()).values()) {
+      toastStore.dismiss(toastId);
+    }
+  }
   store.updateChat(event.threadId, {
     status: event.to === 'running' && turnActive ? 'sending' : 'idle',
     provider: event.provider,
@@ -127,6 +146,17 @@ export function handleSessionStateChangedEvent(
     orchestrationStatus:
       event.to === 'running' && !turnActive ? 'idle' : event.to,
     orchestrationSessionStarted: true,
+    ...(interruptedTurn
+      ? {
+          orchestrationTurnOpen: false,
+          openTurnId: undefined,
+          streamingMessage: undefined,
+          isProcessingStep: false,
+          activityHint: undefined,
+          pendingApprovals: [],
+          approvalToasts: new Map(),
+        }
+      : {}),
     ...(TERMINAL_SESSION_STATES.has(event.to)
       ? { activityHint: undefined, backgroundTasks: undefined }
       : {}),
