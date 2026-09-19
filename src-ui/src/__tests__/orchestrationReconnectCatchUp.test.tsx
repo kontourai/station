@@ -20,6 +20,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const fetchCapability = vi.fn();
 const fetchWindow = vi.fn();
 const fetchLegacyWindow = vi.fn();
+const fetchCheckpoints = vi.fn(
+  async (..._args: unknown[]) =>
+    new Response(JSON.stringify({ success: true, data: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+);
 
 /**
  * archive#3967. `fetchWindow` used to stand for the ONE window read. #3843's
@@ -37,7 +44,7 @@ const fetchLegacyWindow = vi.fn();
  * testing what they were written for — a reconnect gap ends with the missed text on
  * screen — against the path production actually takes.
  */
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   claimSessionEventWindowCapabilityRecovery: () => false,
@@ -48,6 +55,13 @@ vi.mock('@kontourai/station-sdk', () => ({
   // call on this spy rather than as an unlisted-export throw.
   fetchOrchestrationSessionEventWindow: (...args: unknown[]) =>
     fetchLegacyWindow(...args),
+  // station#2236: the checkpoints fetch rides the SDK authenticated
+  // transport. These cases never provoke it; wired to an empty envelope
+  // through the real reader so an accidental call is visible as data,
+  // not as an unlisted-export throw.
+  getJson: (...args: unknown[]) => fetchCheckpoints(...args),
+  readEnvelopeOrThrow: (await import('../../../packages/sdk/src/client/http'))
+    .readEnvelopeOrThrow,
   resetSessionEventWindowCapabilityRecovery: vi.fn(),
   resetSessionEventWindowCapabilityCache: vi.fn(),
   SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS: 30_000,
