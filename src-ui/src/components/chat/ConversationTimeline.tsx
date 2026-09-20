@@ -122,7 +122,17 @@ export function ConversationTimeline({
     >
       <div className="conversation-timeline__status" role="status">
         <div className="conversation-timeline__summary">
-          <strong>Earlier in this conversation</strong>
+          <strong>
+            <span className="conversation-timeline__history-full">
+              Earlier in this conversation
+            </span>
+            <span
+              className="conversation-timeline__history-compact"
+              aria-hidden="true"
+            >
+              History
+            </span>
+          </strong>
           <span>
             {activeIndex + 1} of {landmarks.length} user turns
           </span>
@@ -142,7 +152,9 @@ export function ConversationTimeline({
         </div>
         {context.executions.length > 1 && (
           <label className="conversation-timeline__execution">
-            <span>Conversation section</span>
+            <span className="conversation-timeline__execution-label">
+              Conversation section
+            </span>
             <select
               className="editor-select"
               value={context.selectedExecutionId}

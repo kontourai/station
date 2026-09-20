@@ -384,7 +384,10 @@ test('conversation timeline crosses execution history, preserves the live draft,
     await page.getByRole('menuitem', { name: 'Conversation history' }).click();
   };
   await openHistory();
-  await expect(page.getByText('Earlier in this conversation')).toBeVisible();
+  await expect(page.getByText('History', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Historical conversation view' }),
+  ).toBeVisible();
   await expect(composer).toHaveCount(0);
   await page
     .getByRole('combobox', { name: 'Conversation section' })
@@ -416,6 +419,16 @@ test('conversation timeline crosses execution history, preserves the live draft,
     expect(
       await page
         .getByRole('combobox', { name: 'Conversation section' })
+        .evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      await page
+        .getByText('Details', { exact: true })
+        .evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      await page
+        .getByRole('slider', { name: 'Conversation position' })
         .evaluate((element) => element.getBoundingClientRect().height),
     ).toBeGreaterThanOrEqual(44);
     for (const name of [
@@ -453,6 +466,16 @@ test('conversation timeline crosses execution history, preserves the live draft,
     .boundingBox();
   expect(lightTimelineBox?.height ?? Infinity).toBeLessThanOrEqual(180);
   expect(lightTranscriptBox?.height ?? 0).toBeGreaterThanOrEqual(140);
+  expect(
+    await page
+      .getByText('Details', { exact: true })
+      .evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(44);
+  expect(
+    await page
+      .getByRole('slider', { name: 'Conversation position' })
+      .evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(44);
   expect(
     await page
       .getByRole('combobox', { name: 'Conversation section' })
