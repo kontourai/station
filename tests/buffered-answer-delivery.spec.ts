@@ -147,7 +147,10 @@ test.describe('buffered answer delivery (#585)', () => {
     const heldMobilePath = testInfo.outputPath(
       'buffered-answer-held-mobile.png',
     );
-    await page.screenshot({ path: heldMobilePath, fullPage: true });
+    await page.screenshot({
+      path: testInfo.outputPath('buffered-answer-held-mobile.png'),
+      fullPage: true,
+    });
     await emit(page, 'tool.started', {
       itemId: 'tool-1',
       toolCallId: 'call-1',
@@ -158,7 +161,10 @@ test.describe('buffered answer delivery (#585)', () => {
     const toolMobilePath = testInfo.outputPath(
       'buffered-answer-tool-boundary-mobile.png',
     );
-    await page.screenshot({ path: toolMobilePath, fullPage: true });
+    await page.screenshot({
+      path: testInfo.outputPath('buffered-answer-tool-boundary-mobile.png'),
+      fullPage: true,
+    });
     await page.setViewportSize({ width: 1280, height: 720 });
 
     await emit(page, 'content.text-delta', {
@@ -228,7 +234,7 @@ test.describe('buffered answer delivery (#585)', () => {
       'buffered-answer-delivery.json',
     );
     await page.screenshot({
-      path: screenshotPath,
+      path: testInfo.outputPath('buffered-answer-delivery.png'),
       fullPage: true,
     });
     await writeFile(
