@@ -311,8 +311,11 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
     'tests/project-architecture.spec.ts':
       'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
+    'tests/buffered-answer-delivery.spec.ts':
+      'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
   parallelSafe: [
+    'tests/buffered-answer-delivery.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/sidebar-file-intake.spec.ts',
@@ -1316,6 +1319,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted orchestration chat flow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/buffered-answer-delivery.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#585 device-local buffered answer delivery: real preference selection, canonical live event injection, semantic boundary reveal, and mid-turn disable flush.',
     exceptions: [],
   },
   {

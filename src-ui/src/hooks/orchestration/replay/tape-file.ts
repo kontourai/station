@@ -14,6 +14,7 @@ const protocolKeys = new Set([
   'finishReason',
   'inputKind',
   'coverage',
+  'answerDelivery',
   'elided',
   'createdAt',
   'recordedAt',

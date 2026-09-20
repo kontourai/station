@@ -356,6 +356,14 @@ export function tapeValidationError(
   if (value.initialHistory !== undefined && !history(value.initialHistory))
     return 'Invalid initial history state.';
   if (
+    value.presentation !== undefined &&
+    (!record(value.presentation) ||
+      !['token', 'smooth', 'buffered'].includes(
+        value.presentation.answerDelivery as string,
+      ))
+  )
+    return 'Invalid recording presentation.';
+  if (
     !(
       value.coverage === undefined ||
       value.coverage === 'server-events' ||
