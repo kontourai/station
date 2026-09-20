@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -95,6 +96,35 @@ function harness(
 }
 
 describe('portable Project attachment', () => {
+  test('attachment persists and reads a portable execution root on the destination', async () => {
+    const checkout = directory();
+    const app = join(checkout, 'apps', 'web');
+    mkdirSync(app, { recursive: true });
+    const { service, home, storage } = harness();
+    const portable: ProjectPortableIdentity = {
+      ...identity(),
+      executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/web' },
+    };
+    const attached = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      workingDirectory: checkout,
+      identity: portable,
+    });
+    expect(attached.identity).toEqual(portable);
+    expect((await service.read('local')).identity).toEqual(portable);
+    expect(
+      JSON.parse(readFileSync(projectManifestPath(home, 'local'), 'utf8')),
+    ).toMatchObject({ executionRoot: portable.executionRoot });
+    expect(
+      await new ProjectResourceResolver({
+        homeDir: home,
+        source: storage,
+        readRemotes,
+      }).resolveProjectExecutionRoot('local'),
+    ).toBe(realpathSync(app));
+  });
+
   test('expands a tilde path for checkout verification while preserving its exact authored spelling and retry identity', async () => {
     const checkout = mkdtempSync(join(homedir(), '.station-identity-test-'));
     roots.push(checkout);

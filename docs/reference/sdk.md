@@ -997,13 +997,15 @@ administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.
 
 `@kontourai/station-sdk/account-authentication` exports
-`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase)` and
+`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase, { signal? })` and
 `runAccountOperation(apiBase, endpoint, body, invitation?)`. These use the fixed
 account namespace with account cookies and explicitly omit ambient operator
 bearers. Use the account page's own browser origin. A session read returns
 `null` for an unauthenticated account; an unavailable or incompatible service
 remains an error. Choose operations from the provider descriptor; the optional
 invitation argument is registration eligibility, not authentication or membership.
+Abort the session read when its Station or expected account context changes;
+delivery after that boundary must not repopulate guest authority or query data.
 The [deployment authentication guide](../guides/deployment-authentication.md)
 defines the provider interface and separate invitation-acceptance operation.
 

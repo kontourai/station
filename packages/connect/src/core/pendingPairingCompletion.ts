@@ -186,6 +186,10 @@ export function createPendingPairingCompletion(
       pending.requestId,
       pending.expectedEnvironmentId,
       pending.browserSession,
+      pending.clientInstanceId,
+      pending.requiredAccountBinding?.issuer,
+      pending.requiredAccountBinding?.subject,
+      pending.requireAccountBinding,
     ]);
 
   const clearTerminalRecord = (flight: Flight) => {
@@ -286,6 +290,12 @@ export function createPendingPairingCompletion(
         }
 
         try {
+          if (
+            flight.pending.requireAccountBinding === true &&
+            (!flight.pending.clientInstanceId ||
+              !flight.pending.requiredAccountBinding)
+          )
+            return terminal({ status: 'failed' });
           const result = await deps.exchange({
             ...flight.pending,
             signal: flight.controller.signal,
