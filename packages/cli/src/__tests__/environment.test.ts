@@ -568,6 +568,155 @@ describe('environment CLI commands', () => {
     },
   );
 
+  test('explicit account binding uses only the server candidate and requires matching acknowledgment', async () => {
+    const pending = {
+      requestId: 'account-request',
+      deviceName: 'Collaborator phone',
+      source: 'pairing-code' as const,
+      accountCandidate: {
+        issuer: 'https://accounts.example.test',
+        subject: 'account-123',
+        displayName: 'Collaborator Account',
+      },
+      createdAt: 10,
+      expiresAt: 30,
+      status: 'pending' as const,
+    };
+    const request = makeAccessApi([pending], {
+      ...pending,
+      status: 'confirmed',
+      principalBinding: {
+        kind: 'account',
+        issuer: pending.accountCandidate.issuer,
+        subject: pending.accountCandidate.subject,
+        displayName: pending.accountCandidate.displayName,
+        approvedAt: 20,
+        approvalId: 'approval-1',
+        approvedBy: 'operator-1',
+      },
+    });
+    await runEnvironmentCommand(
+      ['access', 'approve', '--bind-account', '--force'],
+      {
+        createService: () => makeService(),
+        projectHome: '/tmp/station-home',
+        request,
+        stdout,
+        stderr,
+        isInteractive: false,
+      },
+    );
+    expect(request).toHaveBeenLastCalledWith(
+      DEFAULT_LOOPBACK_API_BASE,
+      '/api/pairing/requests/account-request/confirm',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ bindAccountIdentity: true }),
+      }),
+    );
+  });
+
+  test('account binding refuses missing candidates, conflicting modes, and mismatched acknowledgments without fallback', async () => {
+    const base = {
+      requestId: 'account-request',
+      deviceName: 'Collaborator phone',
+      source: 'tailnet' as const,
+      requester: {
+        provider: 'tailscale-serve' as const,
+        login: 'collaborator@example.test',
+      },
+      createdAt: 10,
+      expiresAt: 30,
+      status: 'pending' as const,
+    };
+    const noCandidate = makeAccessApi([base]);
+    await expect(
+      runEnvironmentCommand(
+        ['access', 'approve', '--bind-account', '--force'],
+        {
+          createService: () => makeService(),
+          projectHome: '/tmp/station-home',
+          request: noCandidate,
+          stdout,
+          stderr,
+          isInteractive: false,
+        },
+      ),
+    ).rejects.toThrow('server-verified account candidate');
+    expect(
+      noCandidate.mock.calls.filter(([, path]) =>
+        String(path).includes('/confirm'),
+      ),
+    ).toHaveLength(0);
+
+    for (const accountCandidate of [null, 'operator-input']) {
+      const malformed = makeAccessApi([
+        { ...base, accountCandidate: accountCandidate as never },
+      ]);
+      await expect(
+        runEnvironmentCommand(['access', 'list'], {
+          createService: () => makeService(),
+          projectHome: '/tmp/station-home',
+          request: malformed,
+          stdout,
+          stderr,
+          isInteractive: false,
+        }),
+      ).rejects.toThrow('invalid device access request');
+    }
+
+    const conflicting = makeAccessApi([base]);
+    await expect(
+      runEnvironmentCommand(
+        ['access', 'approve', '--bind-person', '--bind-account', '--force'],
+        {
+          createService: () => makeService(),
+          projectHome: '/tmp/station-home',
+          request: conflicting,
+          stdout,
+          stderr,
+          isInteractive: false,
+        },
+      ),
+    ).rejects.toThrow('not both');
+    expect(conflicting).not.toHaveBeenCalled();
+
+    const accountCandidate = {
+      issuer: 'https://accounts.example.test',
+      subject: 'account-123',
+      displayName: 'Collaborator Account',
+    };
+    const mismatched = makeAccessApi([{ ...base, accountCandidate }], {
+      ...base,
+      accountCandidate,
+      status: 'confirmed',
+      principalBinding: {
+        kind: 'account',
+        issuer: accountCandidate.issuer,
+        subject: 'different-account',
+        displayName: accountCandidate.displayName,
+      },
+    });
+    await expect(
+      runEnvironmentCommand(
+        ['access', 'approve', '--bind-account', '--force'],
+        {
+          createService: () => makeService(),
+          projectHome: '/tmp/station-home',
+          request: mismatched,
+          stdout,
+          stderr,
+          isInteractive: false,
+        },
+      ),
+    ).rejects.toThrow('did not confirm account binding');
+    expect(
+      mismatched.mock.calls.filter(([, path]) =>
+        String(path).includes('/confirm'),
+      ),
+    ).toHaveLength(1);
+  });
+
   test('refuses to load or send the local credential to a non-loopback API base', async () => {
     const createService = vi.fn(() => makeService());
     const request = vi.fn<OperatorJsonRequest>();
@@ -2034,6 +2183,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
           'list:station',
           'approve:latest',
           'approve:force',
+          'approve:bind-account',
           'approve:bind-person',
           'approve:api-base',
           'approve:station',

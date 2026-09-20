@@ -1078,6 +1078,14 @@ export function HostDevicePairingPanel({
     personBindingSelection.apiBase === apiBase
       ? personBindingSelection.requests
       : new Set<string>();
+  const [accountBindingSelection, setAccountBindingSelection] = useState<{
+    apiBase: string;
+    requests: ReadonlySet<string>;
+  }>(() => ({ apiBase, requests: new Set() }));
+  const accountBindingRequests =
+    accountBindingSelection.apiBase === apiBase
+      ? accountBindingSelection.requests
+      : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
   // True only when `error` came from an authentication rejection of THIS
@@ -1174,17 +1182,22 @@ export function HostDevicePairingPanel({
     requestActionIdsRef.current.add(request.requestId);
     setRequestActionIds(new Set(requestActionIdsRef.current));
     try {
+      const bindPerson = personBindingRequests.has(request.requestId);
+      const bindAccount = accountBindingRequests.has(request.requestId);
       const response = await authenticatedFetch(
         `/api/pairing/requests/${request.requestId}${
           action === 'approve' ? '/confirm' : ''
         }`,
         {
           method: action === 'approve' ? 'POST' : 'DELETE',
-          ...(action === 'approve' &&
-          personBindingRequests.has(request.requestId)
+          ...(action === 'approve' && (bindPerson || bindAccount)
             ? {
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bindVerifiedIdentity: true }),
+                body: JSON.stringify(
+                  bindAccount
+                    ? { bindAccountIdentity: true }
+                    : { bindVerifiedIdentity: true },
+                ),
               }
             : {}),
         },
@@ -1192,11 +1205,11 @@ export function HostDevicePairingPanel({
       if (!response.ok) {
         if (
           action === 'approve' &&
-          personBindingRequests.has(request.requestId) &&
+          (bindPerson || bindAccount) &&
           response.status === 409
         ) {
           setError(
-            'Person binding is unavailable in this Station deployment. Ordinary device approval does not link a person.',
+            'Identity binding is no longer available for this request. Refresh the account or verified identity, then pair again. Ordinary device approval does not link an identity.',
           );
           return;
         }
@@ -1210,23 +1223,42 @@ export function HostDevicePairingPanel({
               // remedy is a different, credentialed session, so name the one
               // that always exists on the host.
               response.status === 403 && action === 'approve'
-              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${request.requestId} --force${personBindingRequests.has(request.requestId) ? ' --bind-person' : ''}`
+              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${request.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : ''}`
               : response.status === 404 || response.status === 410
                 ? 'That access request has already expired or been removed.'
                 : `This Station could not ${action} that access request. Try again.`,
         );
         return;
       }
-      if (
-        action === 'approve' &&
-        personBindingRequests.has(request.requestId)
-      ) {
+      if (action === 'approve' && (bindPerson || bindAccount)) {
         const confirmation = (await response.json()) as {
           personBindingApproved?: boolean;
+          principalBinding?: {
+            kind?: string;
+            issuer?: string;
+            subject?: string;
+            displayName?: string;
+            approvalId?: string;
+          };
         };
-        if (confirmation.personBindingApproved !== true) {
+        const account = request.accountCandidate;
+        const accountConfirmed =
+          bindAccount &&
+          account !== undefined &&
+          confirmation.principalBinding?.kind === 'account' &&
+          confirmation.principalBinding.issuer === account.issuer &&
+          confirmation.principalBinding.subject === account.subject &&
+          confirmation.principalBinding.displayName === account.displayName &&
+          typeof confirmation.principalBinding.approvalId === 'string' &&
+          confirmation.principalBinding.approvalId.length > 0;
+        if (
+          (bindPerson && confirmation.personBindingApproved !== true) ||
+          (bindAccount && !accountConfirmed)
+        ) {
           setError(
-            'Device access was approved, but this Station did not confirm person binding. Update this Station and pair the device again to link its identity.',
+            bindAccount
+              ? 'Device access was approved, but this Station did not confirm account binding. Update this Station and pair the device again to link its identity.'
+              : 'Device access was approved, but this Station did not confirm person binding. Update this Station and pair the device again to link its identity.',
           );
         }
       }
@@ -1467,12 +1499,74 @@ export function HostDevicePairingPanel({
                           else next.delete(request.requestId);
                           return { apiBase, requests: next };
                         });
+                        if (checked)
+                          setAccountBindingSelection((accounts) => {
+                            const withoutRequest = new Set(
+                              accounts.apiBase === apiBase
+                                ? accounts.requests
+                                : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
                       }}
                     />
                     Recognize this device as {request.requester.login} at this
                     Station (operator approval required)
                   </label>
                 )}
+              {request.status === 'pending' && request.accountCandidate && (
+                <label
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto minmax(0, 1fr)',
+                    columnGap: 8,
+                    minHeight: 44,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={accountBindingRequests.has(request.requestId)}
+                    disabled={requestActionIds.has(request.requestId)}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      setAccountBindingSelection((current) => {
+                        const next = new Set(
+                          current.apiBase === apiBase ? current.requests : [],
+                        );
+                        if (checked) next.add(request.requestId);
+                        else next.delete(request.requestId);
+                        return { apiBase, requests: next };
+                      });
+                      if (checked)
+                        setPersonBindingSelection((people) => {
+                          const withoutRequest = new Set(
+                            people.apiBase === apiBase ? people.requests : [],
+                          );
+                          withoutRequest.delete(request.requestId);
+                          return { apiBase, requests: withoutRequest };
+                        });
+                    }}
+                  />
+                  <span>
+                    Bind this device to account{' '}
+                    {request.accountCandidate.displayName} at{' '}
+                    {request.accountCandidate.issuer}
+                    <small
+                      style={{
+                        display: 'block',
+                        color: 'var(--text-secondary, #999)',
+                      }}
+                    >
+                      Requires this account to sign in again. This limits the
+                      device to access already granted to the account; it does
+                      not grant Project membership or personal access. Leave
+                      identity binding off for an ordinary Personal Device.
+                      Account subject: {request.accountCandidate.subject}
+                    </small>
+                  </span>
+                </label>
+              )}
               {request.status === 'pending' ? (
                 <div
                   style={{

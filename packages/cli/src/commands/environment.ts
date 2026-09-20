@@ -223,7 +223,7 @@ const USAGE = `Usage:
   station environment credential rotate [--force]
   station environment reset [--force]
   station environment access list [--api-base=<loopback-url>|--station=<name>]
-  station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person] [--api-base=<loopback-url>|--station=<name>]
+  station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account] [--api-base=<loopback-url>|--station=<name>]
   station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
@@ -783,6 +783,11 @@ interface PairingRequestView {
     login: string;
     displayName?: string;
   };
+  accountCandidate?: {
+    issuer: string;
+    subject: string;
+    displayName: string;
+  };
   createdAt: number;
   expiresAt: number;
   status: 'pending' | 'confirmed' | 'denied';
@@ -935,6 +940,26 @@ function parsePairingRequest(value: unknown): PairingRequestView {
   if (request.source !== 'tailnet' && request.requester !== undefined) {
     throw new Error('Station returned an invalid device access request.');
   }
+  if (request.accountCandidate !== undefined) {
+    const candidate = request.accountCandidate as unknown;
+    if (
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate) ||
+      typeof (candidate as { issuer?: unknown }).issuer !== 'string' ||
+      (candidate as { issuer: string }).issuer.length === 0 ||
+      (candidate as { issuer: string }).issuer.length > 512 ||
+      typeof (candidate as { subject?: unknown }).subject !== 'string' ||
+      (candidate as { subject: string }).subject.length === 0 ||
+      (candidate as { subject: string }).subject.length > 512 ||
+      typeof (candidate as { displayName?: unknown }).displayName !==
+        'string' ||
+      (candidate as { displayName: string }).displayName.length === 0 ||
+      (candidate as { displayName: string }).displayName.length > 128
+    ) {
+      throw new Error('Station returned an invalid device access request.');
+    }
+  }
   return request as PairingRequestView;
 }
 
@@ -1071,6 +1096,9 @@ function pairingRequestListEntry(
   return {
     deviceName: request.deviceName,
     ...(requestedBy !== undefined ? { requestedBy } : {}),
+    ...(request.accountCandidate
+      ? { accountCandidate: request.accountCandidate }
+      : {}),
     status: request.status,
     source: request.source,
     requestId: request.requestId,
@@ -1447,10 +1475,12 @@ async function runLocalAccessCommand(
         'station',
         'latest',
         'force',
-        ...(action === 'approve' ? ['bind-person'] : []),
+        ...(action === 'approve' ? ['bind-person', 'bind-account'] : []),
       ]) ||
       (parsed.flags['bind-person'] !== undefined &&
         parsed.flags['bind-person'] !== true) ||
+      (parsed.flags['bind-account'] !== undefined &&
+        parsed.flags['bind-account'] !== true) ||
       (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
       (parsed.flags.force !== undefined && parsed.flags.force !== true))
   ) {
@@ -1460,6 +1490,11 @@ async function runLocalAccessCommand(
   const useLatest = action !== 'list' && parsed.flags.latest === true;
   if (explicitId && useLatest) {
     throw new Error('Provide a request id or --latest, not both.');
+  }
+  const bindPerson = parsed.flags['bind-person'] === true;
+  const bindAccount = parsed.flags['bind-account'] === true;
+  if (bindPerson && bindAccount) {
+    throw new Error('Choose --bind-person or --bind-account, not both.');
   }
   // station#4515: `resolveApiBaseDetailed` (unlike the bare `resolveApiBase`
   // these verbs used to call) also names the saved Station a target resolved
@@ -1650,10 +1685,14 @@ async function runLocalAccessCommand(
     );
   }
 
-  const bindPerson = parsed.flags['bind-person'] === true;
   if (bindPerson && (selected.source !== 'tailnet' || !selected.requester)) {
     throw new Error(
       'Person binding requires a request with server-verified Tailscale identity.',
+    );
+  }
+  if (bindAccount && !selected.accountCandidate) {
+    throw new Error(
+      'Account binding requires a request with a current server-verified account candidate.',
     );
   }
   const force = parsed.flags.force === true;
@@ -1668,7 +1707,7 @@ async function runLocalAccessCommand(
       throw new Error(
         `${action === 'approve' ? 'Approving' : 'Denying'} device access requires --force when stdin is non-interactive, ` +
           `so a script can never silently grant a stranger's device access to this Station without a human confirming ` +
-          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? ' --bind-person' : ''}${rerunTarget}`,
+          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : ''}${rerunTarget}`,
       );
     }
     if (!dependencies.confirm) {
@@ -1678,7 +1717,7 @@ async function runLocalAccessCommand(
     }
     const confirmed = await dependencies.confirm(
       `${action === 'approve' ? 'Approve' : 'Deny'} device access for ${accessRequestLabel(selected)} ` +
-        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : ''}?`,
+        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again and does not grant Project membership or personal access` : ''}?`,
     );
     if (!confirmed) {
       (dependencies.stdout ?? console.log)('Cancelled.');
@@ -1691,10 +1730,14 @@ async function runLocalAccessCommand(
   }`;
   const result = await requestOperatorJson(path, {
     method: action === 'approve' ? 'POST' : 'DELETE',
-    ...(bindPerson
+    ...(bindPerson || bindAccount
       ? {
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bindVerifiedIdentity: true }),
+          body: JSON.stringify(
+            bindAccount
+              ? { bindAccountIdentity: true }
+              : { bindVerifiedIdentity: true },
+          ),
         }
       : {}),
   });
@@ -1708,6 +1751,32 @@ async function runLocalAccessCommand(
     throw new Error(
       'Device access was approved, but this Station did not confirm person binding. Update this Station and pair again.',
     );
+  }
+  if (bindAccount) {
+    const candidate = selected.accountCandidate!;
+    const binding =
+      result && typeof result === 'object' && 'principalBinding' in result
+        ? result.principalBinding
+        : undefined;
+    if (
+      !binding ||
+      typeof binding !== 'object' ||
+      !('kind' in binding) ||
+      binding.kind !== 'account' ||
+      !('issuer' in binding) ||
+      binding.issuer !== candidate.issuer ||
+      !('subject' in binding) ||
+      binding.subject !== candidate.subject ||
+      !('displayName' in binding) ||
+      binding.displayName !== candidate.displayName ||
+      !('approvalId' in binding) ||
+      typeof binding.approvalId !== 'string' ||
+      binding.approvalId.length === 0
+    ) {
+      throw new Error(
+        'Device access was approved, but this Station did not confirm account binding. Update this Station and pair again.',
+      );
+    }
   }
   const updated = parsePairingRequest(result);
   const expectedStatus = action === 'approve' ? 'confirmed' : 'denied';
