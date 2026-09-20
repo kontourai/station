@@ -127,3 +127,266 @@ describe('useReorderProjectsMutation cache lifecycle (station#3315)', () => {
     ).toEqual(['alder', 'cedar', 'birch']);
   });
 });
+
+describe('useReorderProjectsMutation captured-authority reorder (#481)', () => {
+  const scopeA = {
+    apiBase: 'http://station.test',
+    authorityKey: 'home-a:gen-1',
+  };
+  const scopeB = {
+    apiBase: 'http://station.test',
+    authorityKey: 'home-b:gen-2',
+  };
+  const listA = [
+    { slug: 'shared', name: 'A first' },
+    { slug: 'other', name: 'A second' },
+  ];
+  const listB = [
+    { slug: 'other', name: 'B first' },
+    { slug: 'shared', name: 'B second' },
+  ];
+
+  function seededTwoHomeClient(): QueryClient {
+    const client = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+    client.setQueryData(
+      ['projects', 'list', scopeA.apiBase, scopeA.authorityKey],
+      listA,
+    );
+    client.setQueryData(
+      ['projects', 'list', scopeB.apiBase, scopeB.authorityKey],
+      listB,
+    );
+    return client;
+  }
+
+  test('normal order optimism: the captured authority list reorders optimistically and settles there', async () => {
+    reorderProjectsMock.mockResolvedValueOnce([]);
+    const client = seededTwoHomeClient();
+    const { result } = renderHook(() => useReorderProjectsMutation(), {
+      wrapper: wrapperFor(client),
+    });
+
+    act(() => {
+      result.current.mutate({
+        order: ['other', 'shared'],
+        requestScope: scopeA,
+        requireRequestScope: true,
+      });
+    });
+
+    // Optimistic: visible on the scoped key before the server answers.
+    await waitFor(() =>
+      expect(
+        client
+          .getQueryData<{ slug: string }[]>([
+            'projects',
+            'list',
+            scopeA.apiBase,
+            scopeA.authorityKey,
+          ])
+          ?.map((p) => p.slug),
+      ).toEqual(['other', 'shared']),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // The request went to the CAPTURED origin with the CAPTURED scope —
+    // never an ambient _getApiBase() resolution.
+    expect(reorderProjectsMock).toHaveBeenCalledWith(
+      scopeA.apiBase,
+      ['other', 'shared'],
+      { requestScope: scopeA },
+    );
+    // Settle invalidates only the captured authority's entry.
+    expect(
+      client.getQueryState([
+        'projects',
+        'list',
+        scopeA.apiBase,
+        scopeA.authorityKey,
+      ])?.isInvalidated,
+    ).toBe(true);
+    expect(
+      client.getQueryState([
+        'projects',
+        'list',
+        scopeB.apiBase,
+        scopeB.authorityKey,
+      ])?.isInvalidated ?? false,
+    ).toBe(false);
+  });
+
+  test('two homes with colliding ids: reordering home A never touches home B', async () => {
+    reorderProjectsMock.mockResolvedValueOnce([]);
+    const client = seededTwoHomeClient();
+    const { result } = renderHook(() => useReorderProjectsMutation(), {
+      wrapper: wrapperFor(client),
+    });
+
+    act(() => {
+      result.current.mutate({
+        order: ['other', 'shared'],
+        requestScope: scopeA,
+        requireRequestScope: true,
+      });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // Home B's cache entry is byte-identical to its pre-reorder content.
+    expect(
+      client.getQueryData([
+        'projects',
+        'list',
+        scopeB.apiBase,
+        scopeB.authorityKey,
+      ]),
+    ).toEqual(listB);
+  });
+
+  test('a pending reorder for home A that FAILS after home B reordered rolls back A only', async () => {
+    let rejectA: ((error: Error) => void) | undefined;
+    reorderProjectsMock.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectA = reject;
+        }),
+    );
+    reorderProjectsMock.mockResolvedValueOnce([]);
+    const client = seededTwoHomeClient();
+    const { result } = renderHook(() => useReorderProjectsMutation(), {
+      wrapper: wrapperFor(client),
+    });
+
+    // Home A starts a reorder and stays pending.
+    act(() => {
+      result.current.mutate({
+        order: ['other', 'shared'],
+        requestScope: scopeA,
+        requireRequestScope: true,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        client
+          .getQueryData<{ slug: string }[]>([
+            'projects',
+            'list',
+            scopeA.apiBase,
+            scopeA.authorityKey,
+          ])
+          ?.map((p) => p.slug),
+      ).toEqual(['other', 'shared']),
+    );
+
+    // The user switches to home B and reorders there; B settles successfully.
+    act(() => {
+      result.current.mutate({
+        order: ['shared', 'other'],
+        requestScope: scopeB,
+        requireRequestScope: true,
+      });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(
+      client
+        .getQueryData<{ slug: string }[]>([
+          'projects',
+          'list',
+          scopeB.apiBase,
+          scopeB.authorityKey,
+        ])
+        ?.map((p) => p.slug),
+    ).toEqual(['shared', 'other']);
+
+    // NOW home A's old request fails: its rollback must clobber ONLY A.
+    act(() => {
+      rejectA?.(new Error('stale home A rejected'));
+    });
+    // A's late failure rolls back A to its exact prior order. (The shared
+    // mutation hook's isError reflects the LATEST call — home B, which
+    // succeeded — so the rollback itself is the observable here.)
+    await waitFor(() =>
+      expect(
+        client.getQueryData([
+          'projects',
+          'list',
+          scopeA.apiBase,
+          scopeA.authorityKey,
+        ]),
+      ).toEqual(listA),
+    );
+    expect(
+      client
+        .getQueryData<{ slug: string }[]>([
+          'projects',
+          'list',
+          scopeB.apiBase,
+          scopeB.authorityKey,
+        ])
+        ?.map((p) => p.slug),
+    ).toEqual(['shared', 'other']);
+  });
+
+  test('missing required authority rejects before the request and before any cache work', async () => {
+    const client = seededTwoHomeClient();
+    const { result } = renderHook(() => useReorderProjectsMutation(), {
+      wrapper: wrapperFor(client),
+    });
+
+    act(() => {
+      result.current.mutate({
+        order: ['shared', 'other'],
+        requireRequestScope: true,
+      });
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error?.name).toBe('StationRequestAuthorityError');
+    expect(reorderProjectsMock).not.toHaveBeenCalled();
+    expect(
+      client.getQueryData([
+        'projects',
+        'list',
+        scopeA.apiBase,
+        scopeA.authorityKey,
+      ]),
+    ).toEqual(listA);
+    expect(
+      client.getQueryData([
+        'projects',
+        'list',
+        scopeB.apiBase,
+        scopeB.authorityKey,
+      ]),
+    ).toEqual(listB);
+  });
+
+  test('legacy bare-array variables keep the ambient path and legacy cache surface', async () => {
+    reorderProjectsMock.mockResolvedValueOnce([]);
+    const client = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+    client.setQueryData(['projects'], PREVIOUS);
+    const { result } = renderHook(() => useReorderProjectsMutation(), {
+      wrapper: wrapperFor(client),
+    });
+
+    act(() => {
+      result.current.mutate(['cedar', 'alder', 'birch']);
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(reorderProjectsMock).toHaveBeenCalledWith('http://example.test', [
+      'cedar',
+      'alder',
+      'birch',
+    ]);
+    expect(
+      client.getQueryData<{ slug: string }[]>(['projects'])?.map((p) => p.slug),
+    ).toEqual(['cedar', 'alder', 'birch']);
+  });
+});

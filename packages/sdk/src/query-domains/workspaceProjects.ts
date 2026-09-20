@@ -98,17 +98,41 @@ export interface ProjectReadQueryConfig<T> extends QueryConfig<T> {
   requireRequestScope?: boolean;
 }
 
-export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
-  const candidate = config?.requestScope;
-  const requestScope = isApiRequestScope(candidate)
+/**
+ * Canonical cache key of one authority's Project list. Reads and the reorder
+ * mutation MUST agree on this shape or an optimistic reorder lands in a cache
+ * entry no reader watches. Scalar segments only — react-query hashes them
+ * structurally, so the same authority always resolves to the same entry.
+ */
+function scopedProjectsListKey(requestScope: {
+  apiBase: string;
+  authorityKey: string;
+}): (string | number)[] {
+  return ['projects', 'list', requestScope.apiBase, requestScope.authorityKey];
+}
+
+/** Snapshot of a validated request scope; never retains caller-owned objects. */
+interface CapturedProjectScope {
+  apiBase: string;
+  authorityKey: string;
+}
+
+function captureProjectScope(
+  candidate: ApiRequestScope | undefined,
+): CapturedProjectScope | undefined {
+  return isApiRequestScope(candidate)
     ? { apiBase: candidate.apiBase, authorityKey: candidate.authorityKey }
     : undefined;
+}
+
+export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
+  const requestScope = captureProjectScope(config?.requestScope);
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
   const queryKey = unavailable
     ? ['projects', 'list', 'unavailable']
     : scoped
-      ? ['projects', 'list', requestScope.apiBase, requestScope.authorityKey]
+      ? scopedProjectsListKey(requestScope)
       : ['projects'];
   return useApiQuery(
     queryKey,
@@ -529,23 +553,87 @@ export function useUpdateProjectMutation(
 
 /**
  * station#3315 — server-owned sidebar order. Optimistically applies the new
- * order to the cached `['projects']` list so a drag settles immediately, then
+ * order to the cached Project list so a drag settles immediately, then
  * reconciles with the server's sorted list (rolling back on error) and
  * invalidates so every consumer re-reads the persisted order.
+ *
+ * #481 — captured-authority reorder. The variables accept EITHER a bare
+ * `string[]` (legacy ambient callers: legacy `['projects']` cache, unchanged
+ * behavior) or `{ order, requestScope, requireRequestScope }`. A scoped call
+ * snapshots origin+authority BEFORE any await, targets the optimistic
+ * update/rollback/settle at ONLY that authority's `scopedProjectsListKey()`
+ * cache entry, and never re-resolves an ambient destination on completion —
+ * a slow failed reorder for one home can never roll back or invalidate
+ * another home's list. `requireRequestScope` rejects an absent or invalid
+ * scope before the request and before any cache work.
  */
+export interface ReorderProjectsInput {
+  order: string[];
+  requestScope?: ApiRequestScope;
+  /** Fail closed when no current authority scope is captured. */
+  requireRequestScope?: boolean;
+}
+
+export type ReorderProjectsVariables = string[] | ReorderProjectsInput;
+
+interface CapturedReorder {
+  order: string[];
+  scope: CapturedProjectScope | undefined;
+}
+
+function captureReorderInput(
+  variables: ReorderProjectsVariables,
+): CapturedReorder {
+  if (Array.isArray(variables)) return { order: variables, scope: undefined };
+  return {
+    order: variables.order,
+    scope: captureProjectScope(variables.requestScope),
+  };
+}
+
 export function useReorderProjectsMutation(
-  options?: MutationOptions<any, string[]>,
+  options?: MutationOptions<any, ReorderProjectsVariables>,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (order: string[]) => {
+    mutationFn: async (variables: ReorderProjectsVariables) => {
+      // Capture before ANY await: the request is authenticated against the
+      // captured authority and never re-resolves ambient state mid-flight.
+      const { order, scope } = captureReorderInput(variables);
+      if (
+        !Array.isArray(variables) &&
+        variables.requireRequestScope === true &&
+        !scope
+      )
+        throw new StationRequestAuthorityError();
+      if (scope)
+        return reorderProjectsRaw(scope.apiBase, order, {
+          requestScope: scope,
+        });
       const apiBase = await _getApiBase();
       return reorderProjectsRaw(apiBase, order);
     },
-    onMutate: async (order: string[]) => {
-      await queryClient.cancelQueries({ queryKey: ['projects', 'list'] });
-      await queryClient.cancelQueries({ queryKey: ['projects'], exact: true });
-      const previous = queryClient.getQueryData<any[]>(['projects']);
+    onMutate: async (variables: ReorderProjectsVariables) => {
+      const { order, scope } = captureReorderInput(variables);
+      const required =
+        !Array.isArray(variables) && variables.requireRequestScope === true;
+      // Reject BEFORE any await or cache work: an absent required scope must
+      // not touch any home's cache.
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const cacheKey: (string | number)[] = scope
+        ? scopedProjectsListKey(scope)
+        : ['projects'];
+      if (scope) {
+        await queryClient.cancelQueries({ queryKey: cacheKey });
+      } else {
+        // Legacy callers keep the exact legacy cancel surface.
+        await queryClient.cancelQueries({ queryKey: ['projects', 'list'] });
+        await queryClient.cancelQueries({
+          queryKey: ['projects'],
+          exact: true,
+        });
+      }
+      const previous = queryClient.getQueryData<any[]>(cacheKey);
       if (Array.isArray(previous)) {
         const byIndex = new Map(order.map((slug, index) => [slug, index]));
         const next = [...previous].sort((a, b) => {
@@ -556,22 +644,36 @@ export function useReorderProjectsMutation(
           if (right !== undefined) return 1;
           return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
         });
-        queryClient.setQueryData(['projects'], next);
+        queryClient.setQueryData(cacheKey, next);
       }
-      return { previous };
+      return { previous, cacheKey };
     },
-    onError: (error, order, context: { previous?: any[] } | undefined) => {
-      if (context?.previous) {
-        queryClient.setQueryData(['projects'], context.previous);
+    onError: (
+      error,
+      variables,
+      context: { previous?: any[]; cacheKey: (string | number)[] } | undefined,
+    ) => {
+      // Rollback touches ONLY the captured authority's cache entry.
+      if (context?.cacheKey && Array.isArray(context.previous)) {
+        queryClient.setQueryData(context.cacheKey, context.previous);
       }
-      options?.onError?.(error as Error, order);
+      options?.onError?.(error as Error, variables);
     },
-    onSuccess: (data, order) => {
-      options?.onSuccess?.(data, order);
+    onSuccess: (data, variables) => {
+      options?.onSuccess?.(data, variables);
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'], exact: true });
+    onSettled: (
+      _data,
+      _error,
+      _variables,
+      context: { previous?: any[]; cacheKey: (string | number)[] } | undefined,
+    ) => {
+      // Settle invalidates ONLY the captured authority's entry: a pending
+      // reorder that resolves after a switch must never invalidate or roll
+      // back another home's list.
+      if (context?.cacheKey) {
+        queryClient.invalidateQueries({ queryKey: context.cacheKey });
+      }
     },
   });
 }
