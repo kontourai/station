@@ -129,6 +129,7 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/telemetry',
   '/api/diagnostics',
   '/api/proposed-changes',
+  '/api/project-contributions',
   '/api/auth',
   '/api/users',
   '/api/plugins',
@@ -1889,6 +1890,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/:slug/shared-work' },
     { method: 'GET', path: '/api/projects/:slug/shared-work/:taskId/history' },
     { method: 'GET', path: '/api/projects/:slug/shared-work/:taskId/document' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/shared-work/:taskId/publication',
+    },
     { method: 'PUT', path: '/api/projects/:slug/shared-work/:taskId' },
     { method: 'DELETE', path: '/api/projects/:slug/shared-work/:taskId' },
     { method: 'PUT', path: '/api/me/layouts/:layoutSlug' },
@@ -2462,6 +2467,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/identity/execution-root',
     },
     { method: 'POST', path: '/api/projects/attach' },
+    { method: 'PUT', path: '/api/project-contributions/offer' },
+    { method: 'POST', path: '/api/project-contributions/query' },
     // Reorders this Station's own project list and returns it. A mutation
     // within its family and no more sensitive than the rest of it: it reads
     // and writes nothing beyond the local ordering, and discloses no peer or

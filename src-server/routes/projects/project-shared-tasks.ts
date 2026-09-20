@@ -2,6 +2,7 @@ import type { ProjectMembershipScope } from '@kontourai/station-contracts/projec
 import type {
   ProjectSharedTaskDocument,
   ProjectSharedTaskHistory,
+  ProjectSharedTaskPublicationExpectation,
 } from '@kontourai/station-contracts/project-shared-task';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import { Hono } from 'hono';
@@ -57,18 +58,48 @@ export function createProjectSharedTaskRoutes(deps: {
         throw error;
       }
     });
+  const expectationSchema = z
+    .object({
+      project: z
+        .object({
+          stationId: z.string().min(1).max(256),
+          localProjectId: z.string().min(1).max(256),
+          localProjectSlug: z.string().min(1).max(256),
+          portableProjectId: z.string().min(1).max(256),
+        })
+        .strict(),
+      task: z
+        .object({
+          id: z.string().min(1).max(256),
+          createdAt: z.string().datetime(),
+        })
+        .strict(),
+    })
+    .strict();
   app.put('/:slug/shared-work/:taskId', async (c) => {
     try {
+      const raw = await c.req.raw.clone().text();
+      const expected = raw
+        ? expectationSchema.parse(JSON.parse(raw))
+        : undefined;
       const authority = await deps.authority(c.req.raw);
       const scope = await deps.scope(c.req.raw, c.req.param('slug'));
+      const admission = await deps.service.share(
+        scope,
+        c.req.param('taskId'),
+        authority,
+        expected as ProjectSharedTaskPublicationExpectation | undefined,
+      );
       return c.json(
         {
           success: true,
-          data: await deps.service.share(
-            scope,
-            c.req.param('taskId'),
-            authority,
-          ),
+          data: expected
+            ? await deps.service.publication(
+                scope,
+                c.req.param('taskId'),
+                authority,
+              )
+            : admission,
         },
         201,
       );
@@ -78,7 +109,14 @@ export function createProjectSharedTaskRoutes(deps: {
   });
   app.delete(
     '/:slug/shared-work/:taskId',
-    validate(z.object({ shareId: z.string().uuid() }).strict()),
+    validate(
+      z
+        .object({
+          shareId: z.string().uuid(),
+          expected: expectationSchema.optional(),
+        })
+        .strict(),
+    ),
     async (c) => {
       try {
         const authority = await deps.authority(c.req.raw);
@@ -90,6 +128,11 @@ export function createProjectSharedTaskRoutes(deps: {
             param(c, 'taskId'),
             (getBody(c) as { shareId: string }).shareId,
             authority,
+            (
+              getBody(c) as {
+                expected?: ProjectSharedTaskPublicationExpectation;
+              }
+            ).expected,
           ),
         });
       } catch (error) {
@@ -118,6 +161,39 @@ export function createProjectSharedTaskRoutes(deps: {
             for (const summary of data)
               await deps.service.revalidateSummary(summary, authority);
             return true;
+          } catch (error) {
+            if (
+              error instanceof ProjectMembershipRefusal ||
+              error instanceof ProjectSharedTaskRefusal
+            )
+              return false;
+            throw error;
+          }
+        },
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  });
+  app.get('/:slug/shared-work/:taskId/publication', async (c) => {
+    try {
+      const authority = await deps.authority(c.req.raw);
+      const scope = await deps.scope(c.req.raw, c.req.param('slug'));
+      const taskId = c.req.param('taskId');
+      const data = await deps.service.publication(scope, taskId, authority);
+      return guardProjectResponse(
+        Response.json(
+          { success: true, data },
+          { headers: { 'Cache-Control': 'no-store' } },
+        ),
+        async () => {
+          try {
+            const current = await deps.service.publication(
+              scope,
+              taskId,
+              authority,
+            );
+            return JSON.stringify(current) === JSON.stringify(data);
           } catch (error) {
             if (
               error instanceof ProjectMembershipRefusal ||
