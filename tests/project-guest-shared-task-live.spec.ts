@@ -22,8 +22,8 @@ test.describe
     let live: Awaited<ReturnType<typeof allocateLiveStation>>;
     let operatorCredential = '';
 
-  // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
-  test.beforeAll(async ({}, testInfo) => {
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
+    test.beforeAll(async ({}, testInfo) => {
       testInfo.setTimeout(180_000);
       live = await allocateLiveStation(
         'station-guest-acceptance-',
@@ -45,8 +45,8 @@ test.describe
       operatorCredential = readE2EOperatorCredential(live.home);
     });
 
-  // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
-  test.afterAll(async ({}, testInfo) => {
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
+    test.afterAll(async ({}, testInfo) => {
       testInfo.setTimeout(120_000);
       let stopError: unknown;
       try {
