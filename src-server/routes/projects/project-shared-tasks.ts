@@ -11,7 +11,10 @@ import type {
   ProjectSharedTaskAuthority,
   ProjectSharedTaskService,
 } from '../../services/projects/project-shared-task-service.js';
-import { type ProjectSharedTaskAdmission } from '../../services/projects/project-shared-task-store.js';
+import {
+  type ProjectSharedTaskAdmission,
+  ProjectSharedTaskRefusal,
+} from '../../services/projects/project-shared-task-store.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
 export function createProjectSharedTaskRoutes(deps: {
@@ -26,6 +29,13 @@ export function createProjectSharedTaskRoutes(deps: {
       { success: false, error: 'Shared Task not found' },
       { status: 404, headers: { 'Cache-Control': 'no-store' } },
     );
+  const failure = (error: unknown) =>
+    error instanceof ProjectSharedTaskRefusal && error.code !== 'unavailable'
+      ? missing()
+      : Response.json(
+          { success: false, error: 'Shared Task unavailable' },
+          { status: 503, headers: { 'Cache-Control': 'no-store' } },
+        );
   const guarded = async (
     response: Response,
     admission: ProjectSharedTaskAdmission,
@@ -54,8 +64,8 @@ export function createProjectSharedTaskRoutes(deps: {
         },
         201,
       );
-    } catch {
-      return missing();
+    } catch (error) {
+      return failure(error);
     }
   });
   app.delete(
@@ -74,8 +84,8 @@ export function createProjectSharedTaskRoutes(deps: {
             authority,
           ),
         });
-      } catch {
-        return missing();
+      } catch (error) {
+        return failure(error);
       }
     },
   );
@@ -99,8 +109,8 @@ export function createProjectSharedTaskRoutes(deps: {
           }
         },
       );
-    } catch {
-      return missing();
+    } catch (error) {
+      return failure(error);
     }
   });
   app.get('/:slug/shared-work/:taskId/history', async (c) => {
@@ -141,8 +151,8 @@ export function createProjectSharedTaskRoutes(deps: {
             authority,
           )
         : missing();
-    } catch {
-      return missing();
+    } catch (error) {
+      return failure(error);
     }
   });
   app.get('/:slug/shared-work/:taskId/document', async (c) => {
@@ -196,8 +206,8 @@ export function createProjectSharedTaskRoutes(deps: {
         admission,
         authority,
       );
-    } catch {
-      return missing();
+    } catch (error) {
+      return failure(error);
     }
   });
   return app;

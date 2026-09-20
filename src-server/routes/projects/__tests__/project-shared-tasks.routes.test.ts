@@ -3,7 +3,10 @@ import type { ProjectMembershipScope } from '@kontourai/station-contracts/projec
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { ProjectSharedTaskService } from '../../../services/projects/project-shared-task-service.js';
-import { ProjectSharedTaskStore } from '../../../services/projects/project-shared-task-store.js';
+import {
+  ProjectSharedTaskRefusal,
+  ProjectSharedTaskStore,
+} from '../../../services/projects/project-shared-task-store.js';
 import { createProjectSharedTaskRoutes } from '../project-shared-tasks.js';
 
 const scope: ProjectMembershipScope = {
@@ -93,7 +96,9 @@ describe('project shared Task routes', () => {
   });
   test('revocation after worker read returns opaque 404 and no content', async () => {
     const h = fixture();
-    h.service.revalidate.mockRejectedValue(new Error('revoked'));
+    h.service.revalidate.mockRejectedValue(
+      new ProjectSharedTaskRefusal('not-found'),
+    );
     const response = await h.app.request(
       '/api/projects/example/shared-work/task-1/document',
     );
