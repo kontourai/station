@@ -253,7 +253,10 @@ export function GuestSharedTaskView({
       </div>
       {notice && <p role="status">{notice}</p>}
       {tasks.data.length === 0 ? (
-        <Empty variant="compact" label="Nothing shared here" />
+        <Empty
+          variant="compact"
+          label="Tasks are not currently shared from this Project."
+        />
       ) : (
         <ul className="account-entry__shared-task-list">
           {tasks.data.map((summary: ProjectSharedTaskSummary) => (
@@ -301,7 +304,7 @@ export function GuestSharedTaskView({
               {history.data.records.length === 0 ? (
                 <Empty
                   variant="compact"
-                  label="Nothing published in this page"
+                  label="Human messages were not published in this page."
                 />
               ) : (
                 <ol>
