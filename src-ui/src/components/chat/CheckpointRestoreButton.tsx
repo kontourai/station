@@ -3,6 +3,7 @@ import {
   confirmCheckpointRestore,
   previewCheckpointRestore,
 } from '@kontourai/station-sdk/client';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   useApiBase,
@@ -21,6 +22,7 @@ export function CheckpointRestoreButton({
   const { apiBase } = useApiBase();
   const authority = useHostRequestAuthorityScope();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [preview, setPreview] = useState<CheckpointRestorePreview>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -82,6 +84,10 @@ export function CheckpointRestoreButton({
                     authority!,
                   )
                     .then(() => {
+                      void queryClient.invalidateQueries({
+                        predicate: (query) =>
+                          query.queryKey.includes(preview.repoRoot),
+                      });
                       setPreview(undefined);
                       showToast('Workspace restored.');
                     })

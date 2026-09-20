@@ -95,6 +95,60 @@ test('conversation timeline crosses execution history, preserves the live draft,
     },
   );
   await page.route(
+    '**/api/orchestration/sessions/conversation-timeline/checkpoints**',
+    (route) =>
+      route.fulfill(
+        json([
+          {
+            turnId: 'turn-29',
+            changedFiles: {
+              status: 'available',
+              files: [{ status: 'modified', path: 'src/app.ts' }],
+            },
+          },
+        ]),
+      ),
+  );
+  let restoreAttempts = 0;
+  await page.route(
+    '**/api/orchestration/sessions/conversation-timeline/checkpoints/turn-29/restore-preview',
+    (route) =>
+      route.fulfill(
+        json({
+          previewId: `11111111-1111-4111-8111-${String(restoreAttempts + 1).padStart(12, '0')}`,
+          threadId: 'conversation-timeline',
+          turnId: 'turn-29',
+          phase: 'settle',
+          checkpointId: 'checkpoint-29',
+          repoRoot: '/fixture/repo',
+          targetTreeSha: 'a'.repeat(40),
+          targetCommitSha: 'c'.repeat(40),
+          currentTreeSha: 'b'.repeat(40),
+          paths: [{ status: 'M', path: 'src/app.ts' }],
+          pathsTruncated: false,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      ),
+  );
+  await page.route(
+    '**/api/orchestration/sessions/conversation-timeline/checkpoints/turn-29/restore',
+    (route) => {
+      restoreAttempts += 1;
+      return route.fulfill(
+        restoreAttempts === 1
+          ? {
+              status: 409,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                success: false,
+                error: 'workspace_changed',
+              }),
+            }
+          : json({ restored: true }),
+      );
+    },
+  );
+  await page.route(
     /\/api\/orchestration\/sessions\/(conversation-timeline|older-execution)\/event-page(?:\?.*)?$/,
     (route) => {
       const threadId = decodeURIComponent(
@@ -144,6 +198,26 @@ test('conversation timeline crosses execution history, preserves the live draft,
   ).toBeVisible();
   await page.getByRole('button', { name: 'Cancel fork' }).click();
   await expect(composer).toHaveValue('Keep this live draft');
+  await page.getByText('1 changed file').click();
+  await page
+    .getByRole('button', { name: 'Restore workspace to here…' })
+    .click();
+  await expect(page.getByRole('alertdialog')).toContainText('src/app.ts');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page
+    .getByRole('button', { name: 'Restore workspace to here…' })
+    .click();
+  await page.getByRole('button', { name: 'Restore workspace' }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Restore outcome not confirmed',
+  );
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page
+    .getByRole('button', { name: 'Restore workspace to here…' })
+    .click();
+  await page.getByRole('button', { name: 'Restore workspace' }).click();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  expect(restoreAttempts).toBe(2);
 
   await openHistory();
   await page.getByRole('button', { name: 'Previous turn' }).click();
