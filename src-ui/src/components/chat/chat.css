@@ -904,7 +904,7 @@
   overflow-x: auto;
 }
 
-.composer-mentions__chip {
+.chat-input .composer-mentions__chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;

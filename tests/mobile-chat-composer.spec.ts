@@ -420,6 +420,33 @@ test('ChatDock sends scoped file and conversation references while preserving th
       for (const chip of await chips.getByRole('button').all()) {
         const chipBox = (await chip.boundingBox())!;
         expect(chipBox.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+        expect(
+          await chip.evaluate((element) => {
+            const probe = document.createElement('span');
+            probe.style.background = 'var(--bg-tertiary)';
+            probe.style.border = '1px solid var(--border-primary)';
+            document.body.append(probe);
+            const actual = getComputedStyle(element);
+            const canonical = getComputedStyle(probe);
+            const result = {
+              backgroundIsCanonical:
+                actual.backgroundColor === canonical.backgroundColor,
+              borderIsCanonical:
+                actual.borderTopColor === canonical.borderTopColor &&
+                actual.borderTopStyle === 'solid' &&
+                actual.borderTopWidth === '1px',
+              padding: `${actual.paddingTop} ${actual.paddingRight} ${actual.paddingBottom} ${actual.paddingLeft}`,
+              borderRadius: actual.borderRadius,
+            };
+            probe.remove();
+            return result;
+          }),
+        ).toEqual({
+          backgroundIsCanonical: true,
+          borderIsCanonical: true,
+          padding: '4px 9px 4px 9px',
+          borderRadius: '999px',
+        });
       }
 
       const screenshotName = `conversation-reference-dispatch-${width}-${theme}.png`;
