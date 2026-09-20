@@ -46,8 +46,7 @@ import {
   composerMentionWireLength,
   insertComposerMention,
   mentionQueryAt,
-  parseComposerMentions,
-  parseComposerSessionReferences,
+  parseComposerTokens,
   reconcileComposerDisplay,
   sessionReferenceBlockReason,
 } from './composer-mentions';
@@ -450,12 +449,8 @@ export function ChatInputArea({
       : workingDirectory && mentionRequestScope
         ? 'Type a message — @ files, / for commands…'
         : 'Type a message — / for commands…';
-  const displayInput = composerDisplayValue(input);
-  const mentions = parseComposerMentions(input);
-  const composerTokens = [
-    ...mentions,
-    ...parseComposerSessionReferences(input),
-  ];
+  const composerTokens = parseComposerTokens(input);
+  const displayInput = composerDisplayValue(input, composerTokens);
 
   // archive#2807: the draft's size against the same limit every server
   // turn-starting schema derives from (chatSchema AND the orchestration
@@ -463,7 +458,9 @@ export function ChatInputArea({
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
   const overLimitBy =
-    composerMentionWireLength(draftText ?? input) - CHAT_INPUT_MAX_CHARS;
+    (draftText === undefined
+      ? composerMentionWireLength(input, composerTokens)
+      : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
 
   useLayoutEffect(() => {
@@ -682,6 +679,7 @@ export function ChatInputArea({
                   updateFromInput(next);
                 }}
                 onFocusInput={() => textareaRef.current?.focus()}
+                tokens={composerTokens}
               />
             </React.Suspense>
           )}

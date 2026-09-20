@@ -6,14 +6,36 @@ import {
   durableMentionAuthority,
   insertComposerMention,
   mentionQueryAt,
+  mentionToken,
   parseComposerMentions,
   parseComposerSessionReferences,
+  parseComposerTokens,
   reconcileComposerDisplay,
   sessionReferenceBlockReason,
   sessionReferenceToken,
 } from '../composer-mentions';
 
 describe('composer file mentions', () => {
+  test('one ordered token stream preserves interleaved file and conversation positions', () => {
+    const file = mentionToken({
+      label: 'a.ts',
+      path: 'a.ts',
+      workspace: '/repo',
+      authority: 'authority',
+      type: 'file',
+    });
+    const reference = sessionReferenceToken({
+      label: 'Earlier work',
+      conversationId: 'conversation-1',
+      authority: 'authority',
+    });
+    const tokens = parseComposerTokens(`${reference} then ${file}`);
+    expect(tokens.map((token) => token.label)).toEqual([
+      'Earlier work',
+      'a.ts',
+    ]);
+    expect(tokens[0].canonicalStart).toBeLessThan(tokens[1].canonicalStart);
+  });
   test('durable authority survives remount identity but changes on credential replacement', () => {
     const evidence = {
       apiBase: 'https://station.test',

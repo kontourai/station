@@ -93,7 +93,7 @@ export function mentionToken(input: MentionIdentity): string {
   return `@[m:${strictEncode(input.label)}|${strictEncode(input.path)}|${strictEncode(input.workspace)}|${strictEncode(input.authority)}|${input.type}]`;
 }
 
-function parseComposerTokens(value: string): ComposerToken[] {
+export function parseComposerTokens(value: string): ComposerToken[] {
   if (!value.includes('@[m:') && !value.includes('@[r:')) return [];
   const tokens: ComposerToken[] = [];
   let mentionCount = 0;
@@ -204,14 +204,13 @@ export function appendComposerSessionReference(
   return `${value}${separator}${sessionReferenceToken(reference)} `;
 }
 
-export function composerDisplayValue(value: string): string {
+export function composerDisplayValue(
+  value: string,
+  tokens = parseComposerTokens(value),
+): string {
   if (!value.includes('@[m:') && !value.includes('@[r:')) return value;
   let cursor = 0;
   let result = '';
-  const tokens = [
-    ...parseComposerMentions(value),
-    ...parseComposerSessionReferences(value),
-  ].sort((a, b) => a.canonicalStart - b.canonicalStart);
   for (const token of tokens) {
     result += value.slice(cursor, token.canonicalStart);
     result += `@${token.label.replaceAll(/\s/gu, ' ')}`;
@@ -221,14 +220,10 @@ export function composerDisplayValue(value: string): string {
 }
 
 function displayToCanonical(
-  value: string,
   offset: number,
   endAffinity: boolean,
+  tokens: ComposerToken[],
 ): number {
-  const tokens = [
-    ...parseComposerMentions(value),
-    ...parseComposerSessionReferences(value),
-  ].sort((a, b) => a.displayStart - b.displayStart);
   for (const token of tokens) {
     if (offset < token.displayStart) break;
     if (offset <= token.displayEnd) {
@@ -254,10 +249,7 @@ export function reconcileComposerDisplay(
 ): string {
   if (!previous.includes('@[m:') && !previous.includes('@[r:'))
     return nextDisplay;
-  const tokens = [
-    ...parseComposerMentions(previous),
-    ...parseComposerSessionReferences(previous),
-  ].sort((a, b) => a.displayStart - b.displayStart);
+  const tokens = parseComposerTokens(previous);
   let searchFrom = 0;
   const retained: Array<{ token: ComposerToken; start: number }> = [];
   for (const token of tokens) {
@@ -278,9 +270,14 @@ export function reconcileComposerDisplay(
   return preserved;
 }
 
-export function composerMentionWireLength(value: string): number {
+export function composerMentionWireLength(
+  value: string,
+  tokens = parseComposerTokens(value),
+): number {
   let length = value.length;
-  for (const mention of parseComposerMentions(value)) {
+  for (const mention of tokens.filter(
+    (token): token is ComposerMention => 'path' in token,
+  )) {
     const separator = mention.workspace.includes('\\') ? '\\' : '/';
     const fullPath = `${mention.workspace.replace(/[\\/]+$/u, '')}${separator}${mention.path.replaceAll(/[\\/]/gu, separator)}`;
     length +=
@@ -288,7 +285,9 @@ export function composerMentionWireLength(value: string): number {
       1 -
       (mention.canonicalEnd - mention.canonicalStart);
   }
-  for (const reference of parseComposerSessionReferences(value)) {
+  for (const reference of tokens.filter(
+    (token): token is ComposerSessionReference => 'conversationId' in token,
+  )) {
     const url = canonicalSessionReferenceUrl(reference.conversationId);
     const label = safeSessionReferenceLabel(reference.label);
     length +=
@@ -315,7 +314,10 @@ export function mentionQueryAt(
   value: string,
   cursor: number,
 ): { start: number; query: string } | null {
-  const before = composerDisplayValue(value).slice(0, cursor);
+  const before = composerDisplayValue(value, parseComposerTokens(value)).slice(
+    0,
+    cursor,
+  );
   const match = before.match(/(?:^|\s)@([^\s@]*)$/u);
   return match
     ? { start: cursor - match[1].length - 1, query: match[1] }
@@ -328,8 +330,10 @@ export function insertComposerMention(
   displayEnd: number,
   mention: MentionIdentity,
 ): string {
-  if (parseComposerMentions(value).length >= MAX_MENTIONS) return value;
-  const start = displayToCanonical(value, displayStart, false);
-  const end = displayToCanonical(value, displayEnd, true);
+  const tokens = parseComposerTokens(value);
+  if (tokens.filter((token) => 'path' in token).length >= MAX_MENTIONS)
+    return value;
+  const start = displayToCanonical(displayStart, false, tokens);
+  const end = displayToCanonical(displayEnd, true, tokens);
   return `${value.slice(0, start)}${mentionToken(mention)} ${value.slice(end)}`;
 }
