@@ -111,14 +111,16 @@ test.describe
           headers: operatorHeaders,
           body: JSON.stringify({ projectId, title }),
         });
+        const envelope = (await response.json()) as {
+          success?: boolean;
+          error?: string;
+          data?: { id: string; createdAt: string };
+        };
         expect(
           response.status,
-          `Task creation failed: ${await response.text()}`,
+          `Task creation failed: ${envelope.error ?? 'unknown error'}`,
         ).toBe(201);
-        return (await response.json()).data as {
-          id: string;
-          createdAt: string;
-        };
+        return envelope.data as { id: string; createdAt: string };
       };
       const sharedTask = await createTask(
         shared.slug,
