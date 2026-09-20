@@ -1,4 +1,5 @@
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { createProject } from '@kontourai/station-sdk/client';
 import {
   changeProjectAccess,
@@ -284,23 +285,128 @@ test.describe
         );
         expect(confirmation.status).toBe(200);
 
+        // Exact admitted Device identity, read from the real operator
+        // inventory right after the real approval: the one account-bound,
+        // non-revoked Device this approval admitted. Its id is what the
+        // post-revocation assertions below must find unchanged.
+        const listDevices = async () => {
+          const response = await fetch(`${live.api}/api/pairing/devices`, {
+            headers: { Authorization: `Bearer ${operatorCredential}` },
+          });
+          expect(response.status).toBe(200);
+          return (await response.json()).devices as Array<{
+            id: string;
+            revokedAt: number | null;
+            principalBinding?: { kind?: string };
+          }>;
+        };
+        const accountBoundDevices = (await listDevices()).filter(
+          (device) =>
+            device.revokedAt === null &&
+            device.principalBinding?.kind === 'account',
+        );
+        expect(accountBoundDevices).toHaveLength(1);
+        const admittedDeviceId = accountBoundDevices[0].id;
+
         await expect(
           guest.getByRole('heading', { name: 'Available Projects' }),
         ).toBeVisible({ timeout: 15_000 });
-        await guest
-          .getByRole('button', { name: 'Read Project details' })
-          .click();
-        await guest.getByRole('button', { name: 'Read shared Task' }).click();
-        await expect(guest.getByText(messageMarker)).toBeVisible();
-        await expect(guest.getByText(documentMarker)).toBeVisible();
+
+        // Explicit caller-owned evidence directory: when the caller exports
+        // STATION_GUEST_ACCEPTANCE_EVIDENCE_DIR, captures are written there
+        // synchronously, because the canonical runner deletes passing-run
+        // Playwright output roots. Without it, captures stay in the
+        // runner-owned Playwright output as before.
+        const evidenceDir = process.env.STATION_GUEST_ACCEPTANCE_EVIDENCE_DIR;
+        const capturePath = (name: string) => {
+          if (!evidenceDir) return testInfo.outputPath(name);
+          mkdirSync(evidenceDir, { recursive: true });
+          return join(evidenceDir, name);
+        };
+        const readLayout = () =>
+          guest.evaluate(() => {
+            const surface = document.querySelector('.account-entry');
+            const targets = [
+              ...document.querySelectorAll('.account-entry button'),
+            ].filter((element) => {
+              const box = element.getBoundingClientRect();
+              return box.width > 0 && box.height > 0;
+            });
+            return {
+              horizontalOverflow:
+                document.documentElement.scrollWidth > window.innerWidth + 1,
+              palette: surface
+                ? getComputedStyle(surface).backgroundColor
+                : undefined,
+              smallestTarget: targets.length
+                ? Math.min(
+                    ...targets.map((element) => {
+                      const box = element.getBoundingClientRect();
+                      return Math.min(box.width, box.height);
+                    }),
+                  )
+                : null,
+            };
+          });
+
+        const openSharedTaskContent = async () => {
+          await guest
+            .getByRole('button', { name: 'Read Project details' })
+            .click();
+          await guest.getByRole('button', { name: 'Read shared Task' }).click();
+          await expect(guest.getByText(messageMarker)).toBeVisible();
+          await expect(guest.getByText(documentMarker)).toBeVisible();
+        };
+
+        await openSharedTaskContent();
+        const darkTheme = await guest.evaluate(() =>
+          document.documentElement.getAttribute('data-theme'),
+        );
+        expect(darkTheme).toBe('dark');
+        const darkLayout = await readLayout();
+        expect(
+          darkLayout.horizontalOverflow,
+          'dark capture must not overflow horizontally',
+        ).toBe(false);
+        expect(darkLayout.smallestTarget).toBeGreaterThanOrEqual(44);
+        expect(darkLayout.palette).toBeTruthy();
         await guest.screenshot({
-          path: testInfo.outputPath('guest-shared-task-wide-dark.png'),
+          path: capturePath('guest-shared-task-wide-dark.png'),
           fullPage: true,
         });
+
+        // The app theme is the LOCAL device-settings preference, not the
+        // media query: seed the exact persisted envelope the canonical
+        // device-settings store writes (station-device-settings-v1, v2,
+        // partial values), reload so the boot fast path applies it, and
+        // verify the document attribute AND the computed palette before
+        // capturing.
         await guest.setViewportSize({ width: 390, height: 844 });
-        await guest.emulateMedia({ colorScheme: 'light' });
+        await guest.evaluate(() => {
+          localStorage.setItem(
+            'station-device-settings-v1',
+            JSON.stringify({ version: 2, values: { theme: 'light' } }),
+          );
+        });
+        await guest.reload();
+        await expect(
+          guest.getByRole('heading', { name: 'Available Projects' }),
+        ).toBeVisible({ timeout: 15_000 });
+        await openSharedTaskContent();
+        const lightTheme = await guest.evaluate(() =>
+          document.documentElement.getAttribute('data-theme'),
+        );
+        expect(lightTheme).toBe('light');
+        const lightLayout = await readLayout();
+        expect(lightLayout.palette).toBeTruthy();
+        expect(lightLayout.palette).not.toBe(darkLayout.palette);
+        expect(
+          lightLayout.horizontalOverflow,
+          'light capture must not overflow horizontally',
+        ).toBe(false);
+        expect(lightLayout.smallestTarget).toBeGreaterThanOrEqual(44);
         await guest.screenshot({
-          path: testInfo.outputPath('guest-shared-task-narrow-light.png'),
+          path: capturePath('guest-shared-task-narrow-light.png'),
           fullPage: true,
         });
 
@@ -309,13 +415,35 @@ test.describe
             const response = await fetch(requestPath);
             return { status: response.status, body: await response.text() };
           }, path);
-        for (const path of [
-          `/api/projects/${privateProject.slug}`,
-          `/api/tasks/${encodeURIComponent(privateTask.id)}`,
-          `/api/projects/${shared.slug}/access`,
+        // Exact refusal protocol, source-pinned: an account-bound device may
+        // only reach the public allowlist (403
+        // account_bound_device_route_forbidden for everything else — task
+        // reads, access management), while a non-member Project read that IS
+        // on the allowlist fails membership with an opaque 404. A server
+        // error must never count as a denial.
+        for (const expected of [
+          {
+            path: `/api/projects/${privateProject.slug}`,
+            status: 404,
+            fragment: 'Project not found',
+          },
+          {
+            path: `/api/tasks/${encodeURIComponent(privateTask.id)}`,
+            status: 403,
+            fragment: 'account_bound_device_route_forbidden',
+          },
+          {
+            path: `/api/projects/${shared.slug}/access`,
+            status: 403,
+            fragment: 'account_bound_device_route_forbidden',
+          },
         ]) {
-          const denied = await guestRead(path);
-          expect(denied.status).toBeGreaterThanOrEqual(400);
+          const denied = await guestRead(expected.path);
+          expect(
+            denied.status,
+            `${expected.path} refused as ${denied.status}: ${denied.body}`,
+          ).toBe(expected.status);
+          expect(denied.body).toContain(expected.fragment);
           expect(denied.body).not.toContain('Private ordinary Task marker');
           expect(denied.body).not.toContain('Private operator material');
         }
@@ -380,11 +508,27 @@ test.describe
           ),
         ).toBeVisible();
         expect((await guestRead('/api/account-auth/session')).status).toBe(200);
-        const devices = await fetch(`${live.api}/api/pairing/devices`, {
-          headers: { Authorization: `Bearer ${operatorCredential}` },
-        });
-        expect(devices.status).toBe(200);
-        expect(await devices.text()).toContain('account');
+        // The SAME admitted Device id must still be present, still active
+        // (revokedAt null) and still account-bound after the membership
+        // revocation — the account was not substituted and the Device was
+        // not revoked with the membership.
+        const devicesAfterRevocation = await listDevices();
+        const retained = devicesAfterRevocation.filter(
+          (device) => device.id === admittedDeviceId,
+        );
+        expect(
+          retained,
+          'the admitted Device must survive an independent membership revocation',
+        ).toHaveLength(1);
+        expect(retained[0].revokedAt).toBeNull();
+        expect(retained[0].principalBinding?.kind).toBe('account');
+        expect(
+          devicesAfterRevocation.filter(
+            (device) =>
+              device.revokedAt === null &&
+              device.principalBinding?.kind === 'account',
+          ),
+        ).toHaveLength(1);
       } finally {
         await guestContext.close();
       }
