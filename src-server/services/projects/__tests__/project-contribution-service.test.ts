@@ -62,7 +62,9 @@ function fixture(
     layoutCount: 0,
     hasKnowledge: false,
   };
-  let manifestNow = manifest;
+  // Per-test OWNED deep clone: an in-place mutation inside one test can
+  // never leak into the shared module fixture or another test.
+  let manifestNow = structuredClone(manifest);
   let binding: any =
     options.verifiedAt === undefined
       ? undefined
@@ -133,6 +135,8 @@ function fixture(
     setBinding: (next: any) => {
       binding = next;
     },
+    getManifest: () => manifestNow,
+    getBinding: () => binding,
     setProject: (next: any) => {
       project = next;
     },
@@ -394,6 +398,62 @@ describe('ProjectContributionService', () => {
           slug: 'local',
           workingDirectory: '/fixture/other-checkout',
         });
+      },
+    });
+    handle = f;
+    const pending = expectWellFormed(() => f.service.query(QUERY, () => true));
+    handle.resolveResolution();
+    await expect(pending).resolves.toMatchObject({
+      participation: 'contributed-unavailable',
+      sourceObservedAt: null,
+      execution: [{ bound: false, verifiedAt: null }],
+    });
+  });
+
+  test('a repo replaced IN PLACE during the resolver wait is not answered from the mutated reference', async () => {
+    const verifiedAt = Date.parse('2026-09-20T11:00:00.000Z');
+    let handle: ReturnType<typeof fixture> | undefined;
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt,
+      duringResolve: () => {
+        // Same object, same updatedAt: only the repo ENTRY CONTENT changes
+        // in place. A snapshot holding the live array reference sees the
+        // mutation too and would falsely match.
+        const live = handle!.getManifest();
+        live.repos[0] = {
+          kind: 'git' as const,
+          id: 'git.example/acme/replaced-in-place',
+          canonicalRemote: 'git.example/acme/replaced-in-place',
+        };
+      },
+    });
+    handle = f;
+    const pending = expectWellFormed(() => f.service.query(QUERY, () => true));
+    handle.resolveResolution();
+    await expect(pending).resolves.toMatchObject({
+      participation: 'contributed-unavailable',
+      sourceObservedAt: null,
+      execution: [{ bound: false, verifiedAt: null }],
+    });
+  });
+
+  test('a binding UPDATED IN PLACE during the resolver wait is not projected with the stale resolution', async () => {
+    const verifiedAt = Date.parse('2026-09-20T11:00:00.000Z');
+    let handle: ReturnType<typeof fixture> | undefined;
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt,
+      duringResolve: () => {
+        // Same binding OBJECT, fields mutated in place (withdraw + rebind
+        // recorded onto the same row): a snapshot holding the returned
+        // reference would project the NEW observation under the OLD
+        // resolution verdict.
+        const live = handle!.getBinding();
+        live.verifiedAt = verifiedAt + 5_000;
+        live.resourceId = 'git.example/acme/replaced-in-place';
       },
     });
     handle = f;

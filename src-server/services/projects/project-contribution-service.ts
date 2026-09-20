@@ -220,11 +220,11 @@ export class ProjectContributionService {
         association.project.workingDirectory === undefined
           ? undefined
           : resolve(expandTilde(association.project.workingDirectory)),
-      manifest: {
+      manifest: structuredClone({
         id: association.manifest.id,
         slug: association.manifest.slug,
         repos: association.manifest.repos,
-      },
+      }),
     };
     if (
       !association.manifest.repos.some(
@@ -232,9 +232,16 @@ export class ProjectContributionService {
       )
     )
       return this.unavailable(base, requested.resourceId);
-    const beforeBinding = this.deps.bindings.findBinding(
-      requested.portableProjectId,
-      requested.resourceId,
+    // OWN the pre-await binding snapshot: `findBinding` hands back the
+    // store's live record, so an in-place withdraw+rebind recorded onto the
+    // same row during the async read would otherwise mutate "before" and
+    // "after" together and project the new observation under the old
+    // resolution verdict.
+    const beforeBinding = structuredClone(
+      this.deps.bindings.findBinding(
+        requested.portableProjectId,
+        requested.resourceId,
+      ),
     );
     const resolution = await this.deps.resolver.resolveProjectResource(
       association.project.slug,
