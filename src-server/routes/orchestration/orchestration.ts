@@ -121,6 +121,23 @@ const FOREGROUND_MESSAGE_INDETERMINATE_ERROR =
 const FOREGROUND_CONTINUATION_INDETERMINATE_ERROR =
   'Foreground Agent continuation may have started. Do not retry automatically.';
 
+const CHECKPOINT_RESTORE_REASONS = new Set([
+  'authorization_changed',
+  'checkpoint_failed',
+  'checkpoint_identity_mismatch',
+  'checkpoint_missing',
+  'checkpoint_pruned',
+  'preview_invalid',
+  'restore_verification_failed',
+  'workspace_changed',
+  'workspace_checkpoint_unsupported',
+]);
+
+function checkpointRestoreReason(error: unknown): string {
+  const reason = error instanceof Error ? error.message : '';
+  return CHECKPOINT_RESTORE_REASONS.has(reason) ? reason : 'restore_failed';
+}
+
 const reviewedSourceAssociationSchema = z
   .object({
     version: z.literal('station.reviewed-source-association/v1'),
@@ -2075,7 +2092,7 @@ export function createOrchestrationRoutes(
           {
             success: false,
             error: 'Workspace restore preview failed',
-            reason: errorMessage(error),
+            reason: checkpointRestoreReason(error),
           },
           409,
         );
@@ -2139,7 +2156,7 @@ export function createOrchestrationRoutes(
         }),
       });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : 'restore_failed';
+      const reason = checkpointRestoreReason(error);
       const status =
         reason === 'checkpoint_missing' || reason === 'checkpoint_pruned'
           ? 404
