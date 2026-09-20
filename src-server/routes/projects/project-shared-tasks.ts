@@ -135,7 +135,11 @@ export function createProjectSharedTaskRoutes(deps: {
       });
       await deps.service.revalidate(admission, authority);
       const history = humanHistory(value);
-      if (history && Buffer.byteLength(JSON.stringify(history)) > 1024 * 1024)
+      if (
+        history &&
+        Buffer.byteLength(JSON.stringify({ success: true, data: history })) >
+          1024 * 1024
+      )
         return guarded(
           Response.json({ success: true, data: { kind: 'too-large' } }),
           admission,
@@ -182,22 +186,26 @@ export function createProjectSharedTaskRoutes(deps: {
         typeof value.text !== 'string'
       )
         return missing();
-      if (Buffer.byteLength(value.text) > 1024 * 1024)
+      const success = {
+        success: true,
+        data: {
+          kind: 'snapshot',
+          project: {
+            id: admission.scope.localProjectId,
+            slug: admission.scope.localProjectSlug,
+          },
+          task: { id: admission.taskId, createdAt: admission.taskCreatedAt },
+          revision: value.revision,
+          text: value.text,
+        },
+      } as const;
+      if (Buffer.byteLength(JSON.stringify(success)) > 1024 * 1024)
         return guarded(
           Response.json({ success: true, data: { kind: 'too-large' } }),
           admission,
           authority,
         );
-      const data: ProjectSharedTaskDocument = {
-        kind: 'snapshot',
-        project: {
-          id: admission.scope.localProjectId,
-          slug: admission.scope.localProjectSlug,
-        },
-        task: { id: admission.taskId, createdAt: admission.taskCreatedAt },
-        revision: value.revision,
-        text: value.text,
-      };
+      const data: ProjectSharedTaskDocument = success.data;
       return guarded(
         Response.json(
           { success: true, data },

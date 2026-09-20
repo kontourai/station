@@ -1047,6 +1047,64 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           })
         ).status,
       ).toBe(200);
+      const operatorHeaders = {
+        Origin: origin,
+        Authorization: `Bearer ${OPERATOR_SECRET}`,
+        'Content-Type': 'application/json',
+      };
+      const messageMarker = 'explicit-shared-room-message';
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/tasks/${sharedTaskId}/room/messages`,
+            {
+              method: 'POST',
+              headers: operatorHeaders,
+              body: JSON.stringify({
+                proposalId: 'shared-message-1',
+                text: messageMarker,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      const documentMarker = 'explicit shared document';
+      const planResponse = await h.app.request(
+        `${origin}/api/tasks/${sharedTaskId}/room/edit-plan`,
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            intentId: 'shared-document-1',
+            desiredText: documentMarker,
+            selection: { anchor: 0, focus: 0 },
+          }),
+        },
+      );
+      const planEnvelope = (await planResponse.json()) as {
+        data?: unknown;
+      } & Record<string, unknown>;
+      const plan = (planEnvelope.data ?? planEnvelope) as {
+        kind: string;
+        intentId: string;
+        digest: string;
+      };
+      expect(plan.kind).toBe('planned');
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/tasks/${sharedTaskId}/room/batches`,
+            {
+              method: 'POST',
+              headers: operatorHeaders,
+              body: JSON.stringify({
+                intentId: plan.intentId,
+                intentDigest: plan.digest,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
       const sharedTask = await h.app.request(
         `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
         {
@@ -1064,13 +1122,16 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(
         (await projectRead('/api/projects/example/shared-work')).status,
       ).toBe(200);
-      expect(
-        (
-          await projectRead(
-            `/api/projects/example/shared-work/${sharedTaskId}/history`,
-          )
-        ).status,
-      ).toBe(200);
+      const sharedHistory = await projectRead(
+        `/api/projects/example/shared-work/${sharedTaskId}/history`,
+      );
+      expect(sharedHistory.status).toBe(200);
+      expect(await sharedHistory.text()).toContain(messageMarker);
+      const sharedDocument = await projectRead(
+        `/api/projects/example/shared-work/${sharedTaskId}/document`,
+      );
+      expect(sharedDocument.status).toBe(200);
+      expect(await sharedDocument.text()).toContain(documentMarker);
       expect(
         (
           await projectRead(
