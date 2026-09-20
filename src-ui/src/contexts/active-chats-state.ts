@@ -82,6 +82,7 @@ export type ChatContentPart = {
   sourceEventId?: string;
   // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
   toolName?: string;
+  purpose?: string;
   server?: string;
   originalName?: string;
   args?: any;

@@ -222,6 +222,25 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
     expect(reports[1].unpairedToolResult).toBeUndefined();
   });
 
+  test('publishes bounded purpose separately and keeps reserved metadata out of arguments', () => {
+    const { published } = relay([
+      {
+        type: 'tool-call',
+        toolName: 'repo_read',
+        input: {
+          path: 'README.md',
+          __station_tool_purpose: '  inspect   project docs ',
+        },
+      },
+    ]);
+    expect(published[0]).toMatchObject({
+      method: 'tool.started',
+      toolName: 'repo_read',
+      arguments: { path: 'README.md' },
+      purpose: 'inspect project docs',
+    });
+  });
+
   test('two id-less calls pair with their results in order', () => {
     const { published, reports } = relay([
       { type: 'tool-call', toolName: 'first_tool', input: {} },

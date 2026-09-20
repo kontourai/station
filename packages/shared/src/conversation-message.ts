@@ -24,6 +24,7 @@ export interface MessagePart {
   /** Durable terminal tool-result event identity, never a tool-call id. */
   sourceEventId?: string;
   toolName?: string;
+  purpose?: string;
   /**
    * Strands persistence writer shape; see
    * src-server/runtime/frameworks/strands-message-sync.ts.

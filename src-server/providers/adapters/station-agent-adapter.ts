@@ -30,6 +30,7 @@ import {
   currentNativeForegroundRelay,
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
+import { extractToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -604,13 +605,15 @@ export function mapStationAgentStreamEvent(options: {
         ...(openedName ? { toolName: openedName } : {}),
       });
     }
+    const purposeful = extractToolPurpose(event.input);
     publish({
       ...base,
       itemId: toolCallId,
       method: 'tool.started',
       toolCallId,
       toolName: safeToolName(event),
-      arguments: event.input,
+      arguments: purposeful.input,
+      purpose: purposeful.purpose,
     });
     return {
       toolOpened: {
@@ -681,12 +684,14 @@ export function mapStationAgentStreamEvent(options: {
     const requestId = stringField(event.approvalId);
     if (!requestId) return {};
     const toolName = stringField(event.toolName);
+    const purpose = stringField(event.purpose);
     publish({
       ...base,
       method: 'request.opened',
       requestId,
       requestType: 'approval',
       title: stringField(event.tool) ?? toolName ?? 'Allow tool call',
+      ...(purpose ? { purpose } : {}),
       ...(stringField(event.toolDescription)
         ? { description: stringField(event.toolDescription) }
         : {}),
@@ -697,6 +702,7 @@ export function mapStationAgentStreamEvent(options: {
           : {}),
         ...(stringField(event.tool) ? { tool: stringField(event.tool) } : {}),
         ...(event.toolArgs !== undefined ? { toolArgs: event.toolArgs } : {}),
+        ...(purpose ? { purpose } : {}),
       },
     });
     return { approvalOpened: { requestId, ...(toolName ? { toolName } : {}) } };

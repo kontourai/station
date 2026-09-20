@@ -525,6 +525,7 @@ export function projectRuntimeEventsToMessages(
         if (existing) {
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
+          if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
           break;
         }
@@ -533,6 +534,7 @@ export function projectRuntimeEventsToMessages(
           toolCallId: ev.toolCallId,
           toolName: ev.toolName,
           args: ev.arguments,
+          purpose: ev.purpose,
           state: 'call',
         };
         toolsByCallId.set(ev.toolCallId, part);

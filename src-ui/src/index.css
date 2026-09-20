@@ -4549,6 +4549,15 @@ button.tool-call__line:hover {
   white-space: nowrap;
 }
 
+.tool-call__purpose {
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tool-call__chevron {
   flex-shrink: 0;
   opacity: 0.5;

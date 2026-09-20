@@ -1,5 +1,5 @@
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { toVoltAgentTool } from '../frameworks/voltagent-adapter.js';
 import { createBuiltinTool } from '../mcp/mcp-manager.js';
 import {
@@ -17,6 +17,25 @@ import type { ITool } from '../types.js';
 // the model request. `toVoltAgentTool` wraps them; this test locks that in.
 
 describe('toVoltAgentTool', () => {
+  test('strips stated purpose before a Station-owned executor runs', async () => {
+    const execute = vi.fn().mockResolvedValue('ok');
+    const wrapped = toVoltAgentTool({
+      name: 'read_file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
+      execute,
+    } as never) as {
+      execute(input: unknown, options: unknown): Promise<unknown>;
+    };
+    await wrapped.execute(
+      { path: 'README.md', __station_tool_purpose: 'inspect docs' },
+      { toolContext: { callId: 'volt-purpose' } },
+    );
+    expect(execute).toHaveBeenCalledWith(
+      { path: 'README.md' },
+      { toolContext: { callId: 'volt-purpose' } },
+    );
+  });
+
   test('binds only Volt execute options toolContext.callId into the native scope', async () => {
     const authority = createNativeOutputGrantAuthority();
     const grant = authority.issue(

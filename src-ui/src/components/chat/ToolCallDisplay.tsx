@@ -20,6 +20,7 @@ import {
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
+import { toolPurposeView } from './tool-display-view';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -35,6 +36,7 @@ export interface ToolCallData {
   toolName?: string;
   server?: string;
   originalName?: string;
+  purpose?: string;
   args?: any;
   input?: any;
   result?: any;
@@ -126,6 +128,7 @@ function ToolCallDisplayComponent({
   const state = toolCall.state;
   const progressMessage = toolCall.progressMessage;
   const outputTruncated = toolCall.outputTruncated === true;
+  const purpose = toolPurposeView(toolCall);
 
   const failed = Boolean(error) || state === 'error';
   const awaitingApproval = isToolCallAwaitingApproval(toolCall);
@@ -163,6 +166,7 @@ function ToolCallDisplayComponent({
         <Glyph />
       </span>
       <span className="tool-call__label">{label}</span>
+      {purpose && <span className="tool-call__purpose">Why: {purpose}</span>}
       {running && <span className="tool-call__pulse" aria-hidden="true" />}
       {failed &&
         approvalStatus !== 'policy-denied' &&

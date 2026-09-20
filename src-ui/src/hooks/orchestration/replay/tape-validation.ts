@@ -87,6 +87,7 @@ function runtimeEvent(value: unknown, elided = false): boolean {
       'outcome',
       'toolName',
       'toolCallId',
+      'purpose',
       'from',
       'to',
     ].every((key) => optionalText(value[key]))

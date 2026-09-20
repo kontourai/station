@@ -72,6 +72,7 @@ import {
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
 import { createVoltAgentManagedModel } from './framework-model-factory.js';
+import { extractToolPurpose, toolSchemaWithPurpose } from './tool-purpose.js';
 
 // ── Result bundle from agent creation ──────────────────
 
@@ -587,10 +588,12 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
   // constructor stores `parameters` verbatim and AI SDK accepts a `jsonSchema()`
   // schema as `inputSchema` — so cast past the zod-only signature.
   const parameters = jsonSchema(
-    (tool.parameters as Record<string, unknown>) ?? {
-      type: 'object',
-      properties: {},
-    },
+    toolSchemaWithPurpose(
+      (tool.parameters as Record<string, unknown>) ?? {
+        type: 'object',
+        properties: {},
+      },
+    ) as any,
   ) as never;
   const execute =
     typeof tool.execute === 'function'
@@ -612,9 +615,10 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
               result,
             );
           }
+          const purposeful = extractToolPurpose(input);
           const result = await runWithCurrentNativeOutputCall(
             options?.toolContext?.callId,
-            () => tool.execute!(input, options),
+            () => tool.execute!(purposeful.input, options),
           );
           return result;
         }
@@ -690,10 +694,12 @@ export function createVoltAgentLifecycleHooks(
         (context.context.get('toolCallCount') as number) || 0;
       context.context.set('toolCallCount', currentCount + 1);
       const toolCallId = options?.toolContext?.callId || '';
+      const purposeful = extractToolPurpose(args);
       const toolCall: ToolCallContext = {
         toolName: tool.name,
         toolCallId,
-        toolArgs: args,
+        toolArgs: purposeful.input,
+        purpose: purposeful.purpose,
         ...(getLoadedMCPToolProvenance(tool)
           ? {
               mcp: Object.freeze({
