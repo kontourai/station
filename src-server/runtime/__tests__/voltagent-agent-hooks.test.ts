@@ -1,7 +1,9 @@
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mapStationAgentStreamEvent } from '../../providers/adapters/station-agent-adapter.js';
 import { makeUnattendedGrantResolver } from '../../services/agents/unattended-grant-resolver.js';
 import {
   principalKey,
@@ -12,6 +14,7 @@ import { BuiltinScheduler } from '../../services/scheduling/builtin-scheduler.js
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
 import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
 import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
+import { runWithNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   createVoltAgentLifecycleHooks,
   normalizeVoltAgentToolErrors,
@@ -41,6 +44,121 @@ function toolOptions(callId: string) {
 }
 
 describe('VoltAgent lifecycle hooks', () => {
+  it('carries decorated purpose through the real hook, executor, relay and durable projection', async () => {
+    const executed = vi.fn().mockResolvedValue('contents');
+    const adapted = toVoltAgentTool({
+      name: 'read_file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
+      execute: executed,
+    } as any) as any;
+    const beforeToolCall = vi.fn().mockResolvedValue(true);
+    const hooks = createVoltAgentLifecycleHooks('assistant', {
+      beforeToolCall,
+    });
+    const cleanups: Array<() => void> = [];
+    const companion = {
+      onClose: (cleanup: () => void) => cleanups.push(cleanup),
+    } as any;
+    const raw = {
+      path: 'README.md',
+      __station_tool_purpose: 'Inspect project documentation',
+    };
+    const published: any[] = [];
+    const map = (event: Record<string, unknown>) =>
+      mapStationAgentStreamEvent({
+        event,
+        threadId: 'session-purpose',
+        turnId: 'turn-purpose',
+        publish: (value) => published.push(value),
+        pendingIdlessToolCalls: [],
+      });
+
+    await runWithNativeForegroundRelay(companion, async () => {
+      await hooks.onToolStart!({
+        agent: {} as any,
+        tool: adapted,
+        context: operationContext('session-purpose'),
+        args: raw,
+        options: toolOptions('shared-call'),
+      });
+      map({
+        type: 'tool-call',
+        toolCallId: 'shared-call',
+        toolName: 'read_file',
+        input: raw,
+      });
+      await adapted.execute(raw, toolOptions('shared-call'));
+      map({
+        type: 'tool-result',
+        toolCallId: 'shared-call',
+        toolName: 'read_file',
+        output: 'contents',
+      });
+    });
+
+    expect(beforeToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolArgs: { path: 'README.md' },
+        purpose: 'Inspect project documentation',
+      }),
+      expect.anything(),
+    );
+    expect(executed).toHaveBeenCalledWith(
+      { path: 'README.md' },
+      expect.anything(),
+    );
+    expect(published).toEqual([
+      expect.objectContaining({
+        method: 'tool.started',
+        arguments: { path: 'README.md' },
+        purpose: 'Inspect project documentation',
+      }),
+      expect.objectContaining({
+        method: 'tool.completed',
+        purpose: 'Inspect project documentation',
+      }),
+    ]);
+    const projected = projectRuntimeEventsToMessages([
+      {
+        eventId: 'turn-start',
+        provider: 'station-agent',
+        threadId: 'session-purpose',
+        turnId: 'turn-purpose',
+        createdAt: '2026-09-20T00:00:00Z',
+        method: 'turn.started',
+        prompt: 'Inspect docs',
+      } as any,
+      ...published,
+    ]);
+    expect(projected.flatMap((message) => message.parts)).toContainEqual(
+      expect.objectContaining({
+        toolName: 'read_file',
+        args: { path: 'README.md' },
+        purpose: 'Inspect project documentation',
+      }),
+    );
+    cleanups.forEach((cleanup) => cleanup());
+    const afterClose: any[] = [];
+    await runWithNativeForegroundRelay(companion, async () => {
+      mapStationAgentStreamEvent({
+        event: {
+          type: 'tool-call',
+          toolCallId: 'shared-call',
+          toolName: 'provider_tool',
+          input: { __station_tool_purpose: 'provider argument' },
+        },
+        threadId: 'session-purpose',
+        turnId: 'turn-after-close',
+        publish: (value) => afterClose.push(value),
+        pendingIdlessToolCalls: [],
+      });
+    });
+    expect(afterClose[0]).toMatchObject({
+      arguments: { __station_tool_purpose: 'provider argument' },
+    });
+    expect(afterClose[0].purpose).toBeUndefined();
+  });
+
   it('surfaces the real denial reason in the ToolDeniedError, not the delegated-child wording (station#1834)', async () => {
     const reason =
       "Tool 'lookup' requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Add the tool to the agent's tools.autoApprove list to grant it for unattended runs.";
