@@ -413,12 +413,14 @@ export type StrandsToolLoadOptions = Pick<
 export function createStrandsFunctionTools(
   tools: ITool[],
   deniedToolCalls: Map<string, ToolCallDenial>,
+  purposeEnabledToolNames: Set<string> = new Set(),
 ): FunctionTool[] {
   return tools.map((tool) => {
     const inputSchema = getLoadedMCPToolProvenance(tool)
       ? tool.parameters
       : toolSchemaWithPurpose(tool.parameters);
     const purposeEnabled = inputSchema !== tool.parameters;
+    if (purposeEnabled) purposeEnabledToolNames.add(tool.name);
     return new FunctionTool({
       name: tool.name,
       description: tool.description || '',

@@ -44,6 +44,8 @@ type MessageApiPart = {
   server?: string;
   toolName?: string;
   originalName?: string;
+  purpose?: string;
+  toolPurpose?: string;
   toolCallId?: string;
   output?: unknown;
   uiBlock?: unknown;

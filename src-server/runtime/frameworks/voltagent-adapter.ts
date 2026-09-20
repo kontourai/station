@@ -72,7 +72,11 @@ import {
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
 import { createVoltAgentManagedModel } from './framework-model-factory.js';
-import { extractToolPurpose, toolSchemaWithPurpose } from './tool-purpose.js';
+import {
+  extractToolPurpose,
+  rememberToolPurpose,
+  toolSchemaWithPurpose,
+} from './tool-purpose.js';
 
 // ── Result bundle from agent creation ──────────────────
 
@@ -516,6 +520,7 @@ const nativeVoltExecuteWrappers = new WeakMap<
   object,
   { original: unknown; wrapped: unknown }
 >();
+const purposeEnabledVoltTools = new WeakSet<object>();
 
 /**
  * VoltAgent-specific framework adapter.
@@ -587,14 +592,13 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
   // `createTool`'s *type* requires a zod schema, but the runtime `Tool`
   // constructor stores `parameters` verbatim and AI SDK accepts a `jsonSchema()`
   // schema as `inputSchema` — so cast past the zod-only signature.
-  const parameters = jsonSchema(
-    toolSchemaWithPurpose(
-      (tool.parameters as Record<string, unknown>) ?? {
-        type: 'object',
-        properties: {},
-      },
-    ) as any,
-  ) as never;
+  const sourceParameters = (tool.parameters as Record<string, unknown>) ?? {
+    type: 'object',
+    properties: {},
+  };
+  const purposeParameters = toolSchemaWithPurpose(sourceParameters);
+  const purposeEnabled = purposeParameters !== sourceParameters;
+  const parameters = jsonSchema(purposeParameters as any) as never;
   const execute =
     typeof tool.execute === 'function'
       ? async (
@@ -615,7 +619,9 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
               result,
             );
           }
-          const purposeful = extractToolPurpose(input);
+          const purposeful = purposeEnabled
+            ? extractToolPurpose(input)
+            : { input };
           const result = await runWithCurrentNativeOutputCall(
             options?.toolContext?.callId,
             () => tool.execute!(purposeful.input, options),
@@ -623,7 +629,7 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
           return result;
         }
       : undefined;
-  return copyLoadedMCPToolProvenance(
+  const adapted = copyLoadedMCPToolProvenance(
     tool,
     createTool({
       id: tool.id,
@@ -633,6 +639,8 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
       ...(execute ? { execute: execute as never } : {}),
     }) as unknown as Tool<any>,
   );
+  if (purposeEnabled) purposeEnabledVoltTools.add(adapted);
+  return adapted;
 }
 
 type PendingVoltAgentToolCall = {
@@ -694,7 +702,9 @@ export function createVoltAgentLifecycleHooks(
         (context.context.get('toolCallCount') as number) || 0;
       context.context.set('toolCallCount', currentCount + 1);
       const toolCallId = options?.toolContext?.callId || '';
-      const purposeful = extractToolPurpose(args);
+      const purposeful = purposeEnabledVoltTools.has(tool)
+        ? extractToolPurpose(args)
+        : { input: args, purpose: undefined };
       const toolCall: ToolCallContext = {
         toolName: tool.name,
         toolCallId,
@@ -709,6 +719,7 @@ export function createVoltAgentLifecycleHooks(
             }
           : {}),
       };
+      rememberToolPurpose(toolCallId, purposeful.purpose);
       const invocation = voltAgentInvocationContext(
         slug,
         context as typeof context & { traceId?: string },

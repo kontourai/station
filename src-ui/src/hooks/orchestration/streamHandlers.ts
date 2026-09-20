@@ -249,6 +249,7 @@ export function handleToolCompletedEvent(
   const policyDenied = event.policyDenied === true;
   const updates = {
     toolName: event.toolName,
+    purpose: toolPurposeView(event),
     sourceEventId: event.eventId,
     state:
       event.status === 'success'

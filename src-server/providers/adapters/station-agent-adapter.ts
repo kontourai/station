@@ -30,7 +30,11 @@ import {
   currentNativeForegroundRelay,
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
-import { extractToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
+import {
+  extractToolPurpose,
+  takeToolPurpose,
+  toolPurposeForCall,
+} from '../../runtime/frameworks/tool-purpose.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -598,6 +602,10 @@ export function mapStationAgentStreamEvent(options: {
     // "no result was reported". Paired, the call is ordinary: tracked at the
     // start, deleted by its result, and settled honestly if neither arrives.
     const toolCallId = reportedCallId ?? crypto.randomUUID();
+    const trustedPurpose = toolPurposeForCall(toolCallId);
+    const purposeful = trustedPurpose
+      ? extractToolPurpose(event.input)
+      : { input: event.input };
     if (!reportedCallId) {
       const openedName = reportedToolName(event);
       options.pendingIdlessToolCalls.push({
@@ -605,7 +613,6 @@ export function mapStationAgentStreamEvent(options: {
         ...(openedName ? { toolName: openedName } : {}),
       });
     }
-    const purposeful = extractToolPurpose(event.input);
     publish({
       ...base,
       itemId: toolCallId,
@@ -613,7 +620,7 @@ export function mapStationAgentStreamEvent(options: {
       toolCallId,
       toolName: safeToolName(event),
       arguments: purposeful.input,
-      purpose: purposeful.purpose,
+      ...(trustedPurpose ? { purpose: trustedPurpose } : {}),
     });
     return {
       toolOpened: {
@@ -637,6 +644,7 @@ export function mapStationAgentStreamEvent(options: {
           reportedToolName(event),
         )?.toolCallId;
     const toolCallId = reportedCallId ?? pairedCallId ?? crypto.randomUUID();
+    const purpose = takeToolPurpose(toolCallId);
     const error = stringField(event.error);
     // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's
@@ -661,6 +669,7 @@ export function mapStationAgentStreamEvent(options: {
       method: 'tool.completed',
       toolCallId,
       toolName: safeToolName(event),
+      ...(purpose ? { purpose } : {}),
       status: error ? 'error' : 'success',
       ...(error
         ? { error, ...(policyDenied ? { policyDenied: true } : {}) }

@@ -522,6 +522,7 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   itemId: string;
   toolCallId: string;
   toolName: string;
+  purpose?: string;
   /**
    * The observed outcome of the call.
    *

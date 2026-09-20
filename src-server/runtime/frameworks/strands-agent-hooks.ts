@@ -14,7 +14,7 @@ import type {
   ToolCallDenial,
 } from '../types.js';
 import { syncStrandsMessagesToMemory } from './strands-message-sync.js';
-import { extractToolPurpose } from './tool-purpose.js';
+import { extractToolPurpose, rememberToolPurpose } from './tool-purpose.js';
 
 /**
  * Trusted per-invocation contexts, keyed by the IDENTITY of the strands
@@ -77,16 +77,14 @@ export function wireStrandsToolGate(options: {
   hooks?: IAgentHooks;
   deniedToolCalls: Map<string, ToolCallDenial>;
   invocationCtx: InvocationContext;
-  findMCPToolProvenance?: (
-    toolName: string,
-  ) => MCPToolLoaderProvenance | undefined;
+  purposeEnabledToolNames?: ReadonlySet<string>;
 }): void {
   const {
     strandsAgent,
     hooks,
     deniedToolCalls,
     invocationCtx,
-    findMCPToolProvenance,
+    purposeEnabledToolNames,
   } = options;
   if (!hooks?.beforeToolCall) return;
   strandsAgent.addHook(BeforeToolCallEvent, async (event) => {
@@ -97,9 +95,10 @@ export function wireStrandsToolGate(options: {
       (event as { invocationState?: Record<string, unknown> }).invocationState,
       invocationCtx,
     );
-    const purposeful = findMCPToolProvenance?.(event.toolUse.name)
-      ? { input: event.toolUse.input }
-      : extractToolPurpose(event.toolUse.input);
+    const purposeful = purposeEnabledToolNames?.has(event.toolUse.name)
+      ? extractToolPurpose(event.toolUse.input)
+      : { input: event.toolUse.input, purpose: undefined };
+    rememberToolPurpose(event.toolUse.toolUseId, purposeful.purpose);
     const approved = await hooks.beforeToolCall!(
       {
         toolName: event.toolUse.name,
@@ -137,6 +136,7 @@ export function wireStrandsAgentHooks(options: {
   findMCPToolProvenance?: (
     runtimeName: string,
   ) => MCPToolLoaderProvenance | undefined;
+  purposeEnabledToolNames?: ReadonlySet<string>;
 }): void {
   const {
     strandsAgent,
@@ -148,6 +148,7 @@ export function wireStrandsAgentHooks(options: {
     resolvedModel,
     getLastStreamUsage,
     findMCPToolProvenance,
+    purposeEnabledToolNames,
   } = options;
 
   let toolCallCount = 0;
@@ -157,16 +158,16 @@ export function wireStrandsAgentHooks(options: {
     hooks,
     deniedToolCalls,
     invocationCtx,
-    findMCPToolProvenance,
+    purposeEnabledToolNames,
   });
 
   if (hooks?.afterToolCall) {
     strandsAgent.addHook(AfterToolCallEvent, (event) => {
       toolCallCount++;
       const provenance = findMCPToolProvenance?.(event.toolUse.name);
-      const purposeful = provenance
-        ? { input: event.toolUse.input }
-        : extractToolPurpose(event.toolUse.input);
+      const purposeful = purposeEnabledToolNames?.has(event.toolUse.name)
+        ? extractToolPurpose(event.toolUse.input)
+        : { input: event.toolUse.input, purpose: undefined };
       hooks.afterToolCall!(
         {
           toolName: event.toolUse.name,

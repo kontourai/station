@@ -9,3 +9,20 @@ export function toolPurposeView(value: unknown): string | undefined {
   const purpose = raw.replace(/\s+/g, ' ').trim().slice(0, MAX_PURPOSE_CHARS);
   return purpose || undefined;
 }
+
+export function toolDisplayView(value: unknown) {
+  const row = (value && typeof value === 'object' ? value : {}) as Record<
+    string,
+    any
+  >;
+  return {
+    toolName:
+      row.toolName ||
+      row.name ||
+      (typeof row.type === 'string' ? row.type.replace(/^tool-/, '') : ''),
+    args: row.args ?? row.input,
+    result: row.result ?? row.output,
+    error: row.error ?? row.errorText,
+    purpose: toolPurposeView(row),
+  };
+}

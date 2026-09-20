@@ -5,6 +5,7 @@ import {
   readAuthorizedTurnCorrelationHandoff,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import { rememberToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { tenantExecutionContextOutcomes } from '../../telemetry/metrics.js';
@@ -223,9 +224,11 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
   });
 
   test('publishes bounded purpose separately and keeps reserved metadata out of arguments', () => {
+    rememberToolPurpose('purpose-call', 'inspect project docs');
     const { published } = relay([
       {
         type: 'tool-call',
+        toolCallId: 'purpose-call',
         toolName: 'repo_read',
         input: {
           path: 'README.md',
@@ -239,6 +242,21 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
       arguments: { path: 'README.md' },
       purpose: 'inspect project docs',
     });
+  });
+
+  test('preserves a collision-shaped argument for an unsupported/native tool', () => {
+    const { published } = relay([
+      {
+        type: 'tool-call',
+        toolCallId: 'native-call',
+        toolName: 'provider_tool',
+        input: { __station_tool_purpose: 'real provider argument' },
+      },
+    ]);
+    expect(published[0]).toMatchObject({
+      arguments: { __station_tool_purpose: 'real provider argument' },
+    });
+    expect(published[0]).not.toHaveProperty('purpose');
   });
 
   test('two id-less calls pair with their results in order', () => {
