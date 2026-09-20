@@ -115,6 +115,33 @@ describe('ProjectSharedTaskService', () => {
     ).rejects.toBeInstanceOf(ProjectSharedTaskRefusal);
     h.db.close();
   });
+  test('operator publication review distinguishes private and shared exact incarnations', async () => {
+    const h = fixture();
+    await expect(
+      h.service.publication(scope, 'task-1', h.authority),
+    ).resolves.toEqual({
+      kind: 'unshared',
+      project: scope,
+      task: { id: 'task-1', createdAt: task().createdAt },
+    });
+    await h.service.share(scope, 'task-1', h.authority, {
+      project: scope,
+      task: { id: 'task-1', createdAt: task().createdAt },
+    });
+    await expect(
+      h.service.publication(scope, 'task-1', h.authority),
+    ).resolves.toMatchObject({
+      kind: 'shared',
+      publication: { project: scope, task: { id: 'task-1' } },
+    });
+    await expect(
+      h.service.share(scope, 'task-1', h.authority, {
+        project: { ...scope, localProjectId: 'replacement' },
+        task: { id: 'task-1', createdAt: task().createdAt },
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    h.db.close();
+  });
   test('unshare and reshare rotates share incarnation so an in-flight admission stays revoked', async () => {
     const h = fixture();
     const first = await h.service.share(scope, 'task-1', h.authority);

@@ -1889,6 +1889,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/:slug/shared-work' },
     { method: 'GET', path: '/api/projects/:slug/shared-work/:taskId/history' },
     { method: 'GET', path: '/api/projects/:slug/shared-work/:taskId/document' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/shared-work/:taskId/publication',
+    },
     { method: 'PUT', path: '/api/projects/:slug/shared-work/:taskId' },
     { method: 'DELETE', path: '/api/projects/:slug/shared-work/:taskId' },
     { method: 'PUT', path: '/api/me/layouts/:layoutSlug' },

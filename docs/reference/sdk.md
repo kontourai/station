@@ -970,9 +970,10 @@ not imply edit, execution or administration support.
 Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
 Tasks an operator explicitly published for the caller's current Project scope.
 `readProjectSharedTaskHistory(...)` returns a closed projection of bounded human
-messages and attribution; tool events, attachments, paths and room write
-authority are excluded. `readProjectSharedTaskDocument(...)` returns the current
-text snapshot. Each response is limited to one MiB and validated without extra
+messages and attribution; structured tool events, attachment metadata and room
+write authority are excluded. Human messages and shared documents are returned
+verbatim and may themselves contain paths, secrets, or other private text.
+`readProjectSharedTaskDocument(...)` returns the current text snapshot. Each response is limited to one MiB and validated without extra
 fields. An incomplete history page reports `unavailable`; callers must not treat
 it as complete or infer private records from it.
 
@@ -980,9 +981,19 @@ These reads require the current account-bound Device, account session and active
 Project membership. Station rechecks the exact Project, publication and Task
 incarnation during admission and before response delivery, so membership,
 Device or publication revocation closes an in-flight read. A Project membership
-does not publish every Task. This slice provides no shared Task write API;
-publication administration remains an operator-only server route while Project
-owner/admin controls are still pending.
+does not publish every Task. Project owner/admin publication remains pending;
+the initial management surface requires current Station operator authority.
+
+Operators can use `getProjectSharedTaskPublication`, `shareProjectTask`, and
+`unshareProjectTask` from the same SDK subpath. Capture one `ApiRequestScope`
+before review and pass it to the read and mutation. The review returns the full
+Station/local/portable Project scope plus the exact Task id and creation time.
+Send that identity back unchanged when publishing or revoking; revocation also
+requires the current `shareId`. A same-slug Project replacement, replaced Task,
+rotated share, or changed request authority refuses the command. Refresh after
+any refusal instead of retrying stale review data. Older operator integrations
+may still issue the original bodyless PUT; UI management uses the review-bound
+form.
 
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project

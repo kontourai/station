@@ -19,6 +19,7 @@ export function TasksLayout({
     <main className="tasks-layout" aria-label="Tasks">
       <ProjectTasksSection
         slug={projectSlug}
+        projectId={project?.id}
         projectWorkingDirectory={project?.workingDirectory}
         agents={project?.agents}
       />

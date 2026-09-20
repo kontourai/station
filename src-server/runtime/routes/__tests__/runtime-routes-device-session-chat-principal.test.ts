@@ -1119,6 +1119,26 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       const sharedTaskReceipt = (await sharedTask.json()) as {
         data: { shareId: string };
       };
+      const operatorPublication = await h.app.request(
+        `${origin}/api/projects/example/shared-work/${sharedTaskId}/publication`,
+        { headers: operatorHeaders },
+      );
+      expect(
+        operatorPublication.status,
+        await operatorPublication.clone().text(),
+      ).toBe(200);
+      expect(await operatorPublication.json()).toMatchObject({
+        data: {
+          kind: 'shared',
+          publication: {
+            project: {
+              localProjectId: expect.any(String),
+            },
+            task: { id: sharedTaskId },
+            shareId: sharedTaskReceipt.data.shareId,
+          },
+        },
+      });
       expect(
         (await projectRead('/api/projects/example/shared-work')).status,
       ).toBe(200);
@@ -1144,6 +1164,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       ).toBe(403);
       expect(
         (
+          await projectRead(
+            `/api/projects/example/shared-work/${sharedTaskId}/publication`,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
           await h.app.request(
             `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
             {
@@ -1153,7 +1180,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                 Authorization: `Bearer ${OPERATOR_SECRET}`,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({ shareId: sharedTaskReceipt.data.shareId }),
+              body: JSON.stringify({
+                shareId: sharedTaskReceipt.data.shareId,
+              }),
             },
           )
         ).status,
