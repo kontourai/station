@@ -83,13 +83,10 @@ if (
   );
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
 if (
-  (args.includes('--application-protocol') ||
-    args.includes('--application-accounts')) &&
-  peerAdapter !== 'node'
+  args.includes('--application-protocol') &&
+  args.includes('--application-accounts')
 )
-  throw new Error(
-    'Application protocol fixture currently qualifies only the Node UDP profile',
-  );
+  throw new Error('Choose one application fixture profile per run');
 let accountStation:
   | Awaited<ReturnType<typeof startRelayAccountStation>>
   | undefined;
@@ -358,6 +355,42 @@ async function exchange(
       turnPort: relay.port,
       username,
       password,
+      ...(args.includes('--application-protocol') || accountStation
+        ? {
+            application: {
+              label: accountStation
+                ? 'station-application-account-fixture'
+                : 'station-application-protocol-fixture',
+              accept(channel) {
+                if (accountStation?.station.openApplicationChannel) {
+                  bridgeApplicationChannels(
+                    channel,
+                    accountStation.station.openApplicationChannel(),
+                    abort.signal,
+                  );
+                } else
+                  serveApplicationChannel(
+                    channel,
+                    'https://fixture-station.invalid',
+                    {
+                      signal: abort.signal,
+                      async fetch(request) {
+                        const marker = await request.text();
+                        assert.match(marker, /^sdk-request-[a-f0-9-]{36}$/);
+                        const address = server.address();
+                        assert(address && typeof address !== 'string');
+                        const origin = `http://127.0.0.1:${address.port}`;
+                        assert.equal(request.headers.get('Origin'), origin);
+                        return new Response(marker.repeat(512), {
+                          headers: { 'X-Fixture-Client-Origin': origin },
+                        });
+                      },
+                    },
+                  );
+              },
+            },
+          }
+        : {}),
     });
     peers.push(fixture.peer);
     if (pionProvenance) assert.deepEqual(fixture.provenance, pionProvenance);
