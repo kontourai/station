@@ -137,6 +137,54 @@ export async function browserAcceptApplicationInvitation(token) {
   );
   return { status: response.status, body: await response.json() };
 }
+export async function browserRequestBoundApplicationDevice(offer) {
+  const state = window.stationApplicationAccount;
+  const body = {
+    offerId: offer.offerId,
+    proof: offer.proof,
+    deviceName: 'Bound encrypted account lab browser',
+  };
+  const url = state.input.apiBase + '/.well-known/station/v1/pairing/request';
+  const headers = await state.client.headers(state.continuation, {
+    method: 'POST',
+    url,
+    body: JSON.stringify(body),
+  });
+  const response = await window.stationApplicationChannel.authenticatedFetch(
+    url,
+    {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      timeoutMs: 15000,
+    },
+  );
+  return { status: response.status, body: await response.json() };
+}
+export async function browserAdoptBoundApplicationDevice(device) {
+  const state = window.stationApplicationAccount;
+  state.input.credential = device.credential;
+  state.input.deviceId = device.deviceId;
+  state.continuation = await state.client.establish({
+    username: state.input.username,
+    password: state.input.password,
+  });
+  if (state.continuation.deviceId !== device.deviceId)
+    throw new Error('Bound Device continuation mismatch');
+  return { principalId: state.continuation.principal.id };
+}
+export async function browserRejectWrongBoundAccount() {
+  const state = window.stationApplicationAccount;
+  try {
+    await state.client.establish({
+      username: state.input.wrongUsername,
+      password: state.input.wrongPassword,
+    });
+    return false;
+  } catch {
+    return true;
+  }
+}
 export async function browserRenewApplicationAccount() {
   const state = window.stationApplicationAccount;
   const previous = state.continuation;

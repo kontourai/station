@@ -28,9 +28,12 @@ import { EnvironmentSecurityService } from '../src-server/services/ssh/environme
 import { bridgeApplicationChannels } from './lib/application-ipc.js';
 import {
   browserAcceptApplicationInvitation,
+  browserAdoptBoundApplicationDevice,
   browserApplicationAccountRequest,
   browserLoginApplicationAccountAgain,
   browserRenewApplicationAccount,
+  browserRejectWrongBoundAccount,
+  browserRequestBoundApplicationDevice,
   browserRevokeApplicationContinuation,
   browserStartApplicationAccount,
   browserStopApplicationAccount,
@@ -719,6 +722,24 @@ try {
     assert.equal(accepted.status, 200);
     assert.equal(accepted.body.data.grantsDeviceAccess, false);
     await accountStation.verifyMembership(account.principalId);
+    const replacementOffer = await accountStation.createBoundDeviceOffer();
+    const replacementRequest = await page.evaluate(
+      browserRequestBoundApplicationDevice,
+      { offerId: replacementOffer.offerId, proof: replacementOffer.challenge },
+    );
+    assert.equal(replacementRequest.status, 202);
+    await accountStation.confirmBoundDevice(replacementRequest.body.requestId);
+    await page.evaluate(browserRevokeApplicationContinuation);
+    const boundDevice = await accountStation.exchangeBoundDevice(
+      replacementOffer,
+      replacementRequest.body.requestId,
+    );
+    assert.equal(
+      (await page.evaluate(browserAdoptBoundApplicationDevice, boundDevice))
+        .principalId,
+      account.principalId,
+    );
+    assert.equal(await page.evaluate(browserRejectWrongBoundAccount), true);
     const sharedRead = await page.evaluate(browserApplicationAccountRequest, {
       path: '/api/projects/relay-shared',
     });
@@ -765,9 +786,9 @@ try {
       privateRead.status === 404 &&
       !privateBoundary.containsPrivateMarker &&
       JSON.parse(privateRead.body).error === 'Project not found' &&
-      bearerOnlyDirect.status === 404 &&
+      bearerOnlyDirect.status === 401 &&
       !privateBoundary.bearerOnlyDirect.containsPrivateMarker &&
-      bearerOnlyVirtual.status === 404 &&
+      bearerOnlyVirtual.status === 401 &&
       !privateBoundary.bearerOnlyVirtual.containsPrivateMarker;
     if (!privateRefused)
       errors.push(

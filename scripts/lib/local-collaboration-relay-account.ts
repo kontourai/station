@@ -159,6 +159,8 @@ export async function startRelayAccountStation(
     );
     const username = 'relay.viewer';
     const password = `Lab-${randomBytes(20).toString('hex')}-Aa1!`;
+    const wrongUsername = 'relay.other';
+    const wrongPassword = `Lab-${randomBytes(20).toString('hex')}-Bb2!`;
     const signup = await fetch(
       `${current.base}/api/account-auth${descriptor.login.signUpPath}`,
       {
@@ -180,6 +182,40 @@ export async function startRelayAccountStation(
       'Registration must not install an account session',
     );
     await signup.arrayBuffer();
+    const wrongInvite = await changeProjectAccess(
+      current.base,
+      shared.slug,
+      {
+        kind: 'invite',
+        scope: enabled.view.scope,
+        email: null,
+        role: 'viewer',
+        expiresAt: new Date(Date.now() + 600000).toISOString(),
+      },
+      current.operator,
+    );
+    assert.equal(wrongInvite.kind, 'invited');
+    if (wrongInvite.kind !== 'invited')
+      throw new Error('Wrong-account invitation failed');
+    const wrongSignup = await fetch(
+      `${current.base}/api/account-auth${descriptor.login.signUpPath}`,
+      {
+        method: 'POST',
+        headers: {
+          Origin: current.base,
+          'Content-Type': 'application/json',
+          'x-station-invitation': wrongInvite.token,
+        },
+        body: JSON.stringify({
+          username: wrongUsername,
+          password: wrongPassword,
+        }),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+        redirect: 'error',
+      },
+    );
+    assert.equal(wrongSignup.status, 200);
+    await wrongSignup.arrayBuffer();
     const offer = await http<DevicePairingOffer>(
       '/api/pairing/offers',
       { endpoint: current.base, scope: pairingScopePresetString('read-only') },
@@ -220,8 +256,7 @@ export async function startRelayAccountStation(
       },
     );
     assert.equal(exchange.status, 200);
-    const device =
-      (await exchange.json()) as DevicePairingBearerExchangeResponse;
+    let device = (await exchange.json()) as DevicePairingBearerExchangeResponse;
     assert.match(device.credential, /^[A-Za-z0-9_-]{43}$/);
     const bearerOnlyPrivateRead = async (
       request: typeof fetch,
@@ -250,8 +285,56 @@ export async function startRelayAccountStation(
         credential: device.credential,
         username,
         password,
+        wrongUsername,
+        wrongPassword,
         invitation: invitation.token,
         privateName,
+      },
+      async createBoundDeviceOffer() {
+        const result = await http<DevicePairingOffer>(
+          '/api/pairing/offers',
+          {
+            endpoint: current.base,
+            scope: pairingScopePresetString('read-only'),
+          },
+          true,
+        );
+        assert.equal(result.status, 201);
+        return result.body;
+      },
+      async confirmBoundDevice(requestId: string) {
+        const confirmation = await http<{ principalBinding: { kind: string } }>(
+          `/api/pairing/requests/${requestId}/confirm`,
+          { bindAccountIdentity: true },
+          true,
+        );
+        assert.equal(confirmation.status, 200);
+        assert.equal(confirmation.body.principalBinding.kind, 'account');
+      },
+      async exchangeBoundDevice(offer: DevicePairingOffer, requestId: string) {
+        const response = await transport(
+          current.base + PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+          {
+            method: 'POST',
+            headers: {
+              Origin: browserOrigin,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              offerId: offer.offerId,
+              proof: offer.challenge,
+              requestId,
+            }),
+          },
+        );
+        assert.equal(response.status, 200);
+        device = (await response.json()) as DevicePairingBearerExchangeResponse;
+        assert(
+          device.device.principalBinding &&
+            'kind' in device.device.principalBinding &&
+            device.device.principalBinding.kind === 'account',
+        );
+        return { credential: device.credential, deviceId: device.device.id };
       },
       async verifyMembership(principalId: string) {
         const access = await getProjectAccess(
