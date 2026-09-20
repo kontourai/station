@@ -891,10 +891,10 @@ export class ProjectTaskRoomRuntime {
     request: Request;
     current: () => Promise<boolean>;
   }) {
-    if (!(await input.current())) return { kind: 'not-found' } as const;
     const value = await this.document({
       taskId: input.taskId,
       request: input.request,
+      currentSharedRead: input.current,
     });
     return (await input.current()) ? value : ({ kind: 'not-found' } as const);
   }
@@ -932,10 +932,21 @@ export class ProjectTaskRoomRuntime {
   }
 
   /** Browser-safe text projection: no atom graph or write authority leaves this seam. */
-  async document(input: { taskId: string; request: Request; after?: string }) {
+  async document(input: {
+    taskId: string;
+    request: Request;
+    after?: string;
+    /** Shared projections recheck their separate Project/share admission at the effect seam. */
+    currentSharedRead?: () => Promise<boolean>;
+  }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
     const principal = scope ? await this.#principal(input.request) : undefined;
-    if (!scope || !principal) return { kind: 'not-found' } as const;
+    if (
+      !scope ||
+      !principal ||
+      (input.currentSharedRead && !(await input.currentSharedRead()))
+    )
+      return { kind: 'not-found' } as const;
     const result = await this.#deps.working.read({
       scope,
       ...(input.after ? { after: input.after } : {}),
@@ -952,7 +963,8 @@ export class ProjectTaskRoomRuntime {
       !currentScope ||
       !currentPrincipal ||
       !sameDocument(currentScope, scope) ||
-      !samePrincipal(currentPrincipal, principal)
+      !samePrincipal(currentPrincipal, principal) ||
+      (input.currentSharedRead && !(await input.currentSharedRead()))
     )
       return { kind: 'not-found' } as const;
     return result.kind === 'unavailable'

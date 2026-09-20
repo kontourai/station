@@ -114,6 +114,7 @@ export function createProjectSharedTaskRoutes(deps: {
         ),
         async () => {
           try {
+            await authority.requireProjectRead(scope);
             for (const summary of data)
               await deps.service.revalidateSummary(summary, authority);
             return true;
@@ -164,7 +165,10 @@ export function createProjectSharedTaskRoutes(deps: {
           1024 * 1024
       )
         return guarded(
-          Response.json({ success: true, data: { kind: 'too-large' } }),
+          Response.json(
+            { success: true, data: { kind: 'too-large' } },
+            { headers: { 'Cache-Control': 'no-store' } },
+          ),
           admission,
           authority,
         );
@@ -229,7 +233,10 @@ export function createProjectSharedTaskRoutes(deps: {
       } as const;
       if (Buffer.byteLength(JSON.stringify(success)) > 1024 * 1024)
         return guarded(
-          Response.json({ success: true, data: { kind: 'too-large' } }),
+          Response.json(
+            { success: true, data: { kind: 'too-large' } },
+            { headers: { 'Cache-Control': 'no-store' } },
+          ),
           admission,
           authority,
         );
@@ -248,7 +255,7 @@ export function createProjectSharedTaskRoutes(deps: {
   });
   return app;
 }
-function humanHistory(value: any): ProjectSharedTaskHistory | undefined {
+function humanHistory(value: unknown): ProjectSharedTaskHistory | undefined {
   const parsed = parseProjectTaskRoomBrowserHistory(value);
   if (parsed?.kind !== 'available') return undefined;
   if (parsed.hasMore) return { kind: 'unavailable' };

@@ -40,7 +40,7 @@ function fixture() {
     revalidateSummary: vi.fn(async () => {}),
   };
   const room = {
-    sharedHistory: vi.fn(async () => ({
+    sharedHistory: vi.fn(async (_input?: { current(): Promise<boolean> }) => ({
       kind: 'available',
       records: [
         {
@@ -97,6 +97,53 @@ describe('project shared Task routes', () => {
     expect(h.service.admitRead).toHaveBeenCalledOnce();
     expect(h.service.revalidate).toHaveBeenCalledTimes(3);
   });
+  test('rejects history records carrying fields outside the closed projection', async () => {
+    const h = fixture();
+    h.room.sharedHistory.mockResolvedValueOnce({
+      kind: 'available',
+      records: [
+        {
+          actor: { kind: 'human', label: 'Member' },
+          sequence: 1,
+          body: {
+            kind: 'human-message',
+            text: 'public text',
+            attachmentPath: '/private/member/upload.txt',
+          },
+          digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+          integrity: 'L0',
+        },
+      ],
+      checkpoint: {
+        throughSeq: 1,
+        checkpointDigest: 'b'.repeat(64),
+        retainedAnchorSeq: 0,
+        retainedAnchorDigest: 'e'.repeat(64),
+      },
+      hasMore: false,
+      integrity: 'L0',
+    } as never);
+    const response = await h.app.request(
+      '/api/projects/example/shared-work/task-1/history',
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toMatch(/public text|upload\.txt/);
+  });
+  test('reports an incomplete bounded room page as unavailable', async () => {
+    const h = fixture();
+    h.room.sharedHistory.mockResolvedValueOnce({
+      ...(await h.room.sharedHistory()),
+      hasMore: true,
+      nextCursor: 'next-page',
+    } as never);
+    const response = await h.app.request(
+      '/api/projects/example/shared-work/task-1/history',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { kind: 'unavailable' },
+    });
+  });
   test('revocation after worker read returns opaque 404 and no content', async () => {
     const h = fixture();
     h.service.revalidate.mockRejectedValue(
@@ -108,6 +155,30 @@ describe('project shared Task routes', () => {
     expect(response.status).toBe(404);
     expect(await response.text()).not.toContain('shared document');
     expect(h.room.sharedDocument).toHaveBeenCalledOnce();
+  });
+  test('revocation while room admission waits returns opaque 404', async () => {
+    const h = fixture();
+    h.room.sharedHistory.mockImplementationOnce(async (input) => {
+      h.service.revalidate.mockRejectedValueOnce(
+        new ProjectSharedTaskRefusal('not-found'),
+      );
+      return (await input!.current())
+        ? ({ kind: 'available' } as never)
+        : ({ kind: 'not-found' } as never);
+    });
+    const response = await h.app.request(
+      '/api/projects/example/shared-work/task-1/history',
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('shared note');
+  });
+  test('empty list still rechecks Project authority at response release', async () => {
+    const h = fixture();
+    h.authority.requireProjectRead.mockRejectedValueOnce(
+      new ProjectMembershipRefusal('forbidden'),
+    );
+    const response = await h.app.request('/api/projects/example/shared-work');
+    expect(response.status).toBe(404);
   });
   test('wrong Project membership remains an opaque 404', async () => {
     const h = fixture();

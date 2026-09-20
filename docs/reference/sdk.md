@@ -966,6 +966,24 @@ the view API and narrow its variant before using full-configuration fields.
 The first account-bound Device profile exposes only the `view` action; it does
 not imply edit, execution or administration support.
 
+`@kontourai/station-sdk/project-shared-tasks` exposes the first bounded shared
+Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
+Tasks an operator explicitly published for the caller's current Project scope.
+`readProjectSharedTaskHistory(...)` returns a closed projection of bounded human
+messages and attribution; tool events, attachments, paths and room write
+authority are excluded. `readProjectSharedTaskDocument(...)` returns the current
+text snapshot. Each response is limited to one MiB and validated without extra
+fields. An incomplete history page reports `unavailable`; callers must not treat
+it as complete or infer private records from it.
+
+These reads require the current account-bound Device, account session and active
+Project membership. Station rechecks the exact Project, publication and Task
+incarnation during admission and before response delivery, so membership,
+Device or publication revocation closes an in-flight read. A Project membership
+does not publish every Task. This slice provides no shared Task write API;
+publication administration remains an operator-only server route while Project
+owner/admin controls are still pending.
+
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project
 slug and explicit `ClientRequestOptions`. Reads return the acting principal,
@@ -2569,4 +2587,3 @@ account's request scope, bound channel counts/lifetimes, and close the transport
 when its endpoint trust retires. Transport readiness alone does not partition
 account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
-
