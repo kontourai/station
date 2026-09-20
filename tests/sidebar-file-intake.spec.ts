@@ -208,7 +208,7 @@ async function drop(
   path: string,
   testInfo?: TestInfo,
 ) {
-  const row = page.getByRole('group', { name: 'Chat ' + name, exact: true });
+  const row = page.getByRole('group', { name: `Chat ${name}`, exact: true });
   const box = await row.boundingBox();
   if (!box) throw Error('Missing sidebar row');
   const cdp = await page.context().newCDPSession(page);
