@@ -45,6 +45,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import {
   DEPLOYMENT_AUTHENTICATION_VERSION,
@@ -501,6 +502,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       app,
       store,
       membership,
+      membershipProjects,
+      membershipStorage,
+      roomHomeDir,
       localAccounts,
       sharedProject,
       privateProject,
@@ -1060,6 +1064,63 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           },
         ],
       });
+      const staleDetail = await projectRead('/api/projects/example');
+      expect(staleDetail.status).toBe(200);
+      const membershipDb = new DatabaseSync(
+        join(h.roomHomeDir, 'security', 'project-membership.sqlite'),
+      );
+      membershipDb.exec(
+        `DELETE FROM project_invitations;
+         DELETE FROM project_members;
+         DELETE FROM shared_projects;`,
+      );
+      membershipDb.close();
+      await h.membershipStorage!.projectRevision('example').remove();
+      const replacementProject = await h.membershipProjects!.createProject({
+        name: 'Replacement shared Project',
+        slug: 'example',
+        workingDirectory: h.roomHomeDir,
+        defaultProviderId: 'replacement-private-provider',
+      });
+      const replacementAccess =
+        await responseData<ProjectAccessAdministrationView>(
+          await request(
+            '/api/projects/example/access/enable',
+            { localProjectId: replacementProject.id },
+            operator,
+          ),
+        );
+      const replacementOffer = await responseData<{ token: string }>(
+        await request(
+          '/api/projects/example/access/invitations',
+          {
+            scope: replacementAccess.scope,
+            email: null,
+            role: 'viewer',
+            expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+          },
+          operator,
+        ),
+      );
+      const replacementAcceptPath = '/api/account-auth/accept-invitation';
+      const replacementAccepted = await request(
+        replacementAcceptPath,
+        { token: replacementOffer.token },
+        {
+          ...(await boundClient.headers(boundSession, {
+            method: 'POST',
+            url: origin + replacementAcceptPath,
+          })),
+          Authorization: `Bearer ${replacement.credential}`,
+        },
+      );
+      expect(
+        replacementAccepted.status,
+        await replacementAccepted.clone().text(),
+      ).toBe(200);
+      await expect(staleDetail.text()).rejects.toThrow(
+        'Project authorization ended before response delivery',
+      );
       expect((await projectRead('/api/projects/example/layouts')).status).toBe(
         403,
       );
