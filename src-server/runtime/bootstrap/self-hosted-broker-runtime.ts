@@ -28,8 +28,10 @@ export class SelfHostedBrokerRuntime {
     )
       throw new Error('broker_runtime_origin_mismatch');
     for (const value of [options.heartbeatMs, options.renewMs, options.pollMs])
-      if (!Number.isSafeInteger(value) || value < 1_000)
+      if (!Number.isSafeInteger(value) || value < 1_000 || value > 86_400_000)
         throw new Error('broker_runtime_interval_invalid');
+    if (options.heartbeatMs > 30_000)
+      throw new Error('broker_runtime_heartbeat_too_slow');
     if (options.application.signal.aborted)
       throw new Error('broker_runtime_application_unavailable');
   }
@@ -75,18 +77,27 @@ export class SelfHostedBrokerRuntime {
         break;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(
-          resolve,
+          finish,
           Math.min(
             this.options.heartbeatMs,
             this.options.renewMs,
             this.options.pollMs,
           ),
         );
+        function finish() {
+          clearTimeout(timer);
+          thisSignal.removeEventListener('abort', abort);
+          applicationSignal.removeEventListener('abort', abort);
+          resolve();
+        }
         const abort = () => {
           clearTimeout(timer);
-          resolve();
+          finish();
         };
-        this.#abort.signal.addEventListener('abort', abort, { once: true });
+        const thisSignal = this.#abort.signal,
+          applicationSignal = this.options.application.signal;
+        thisSignal.addEventListener('abort', abort, { once: true });
+        applicationSignal.addEventListener('abort', abort, { once: true });
       });
     }
   }

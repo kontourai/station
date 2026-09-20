@@ -17,7 +17,7 @@ function fixture() {
       configuredOrigin: 'https://station.example',
       application: { signal: lifetime.signal, fetch: vi.fn() },
       connector,
-      heartbeatMs: 60_000,
+      heartbeatMs: 30_000,
       renewMs: 60_000,
       pollMs: 60_000,
     },
