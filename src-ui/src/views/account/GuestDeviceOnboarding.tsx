@@ -5,11 +5,12 @@ import {
   listProjectViews,
   StationHttpError,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { LazyBoundary } from '../../components/LazyBoundary';
-import { SkeletonList } from '../../components/state';
+import { Empty, SkeletonList } from '../../components/state';
 import {
   classifyGuestReadFailure,
   GuestAccountRequired,
@@ -193,7 +194,7 @@ export function GuestDeviceOnboarding({
             onClick={() => {
               setSelectedProject(undefined);
               setNotice(undefined);
-              setRequest({ clientInstanceId: crypto.randomUUID() });
+              setRequest({ clientInstanceId: randomCorrelationId() });
             }}
           >
             Request access for this browser
@@ -226,7 +227,7 @@ export function GuestDeviceOnboarding({
       </div>
       {notice && <p role="alert">{notice}</p>}
       {projects.data.length === 0 ? (
-        <p>No Projects are currently shared with this account.</p>
+        <Empty variant="compact" label="Nothing shared yet" />
       ) : (
         <ul className="account-entry__project-list">
           {projects.data

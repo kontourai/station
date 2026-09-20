@@ -8,7 +8,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { SkeletonList } from '../../components/state';
+import { Empty, SkeletonList } from '../../components/state';
 import {
   GuestAccountRequired,
   requireGuestAccount,
@@ -253,7 +253,7 @@ export function GuestSharedTaskView({
       </div>
       {notice && <p role="status">{notice}</p>}
       {tasks.data.length === 0 ? (
-        <p>No Tasks are currently shared from this Project.</p>
+        <Empty variant="compact" label="Nothing shared here" />
       ) : (
         <ul className="account-entry__shared-task-list">
           {tasks.data.map((summary: ProjectSharedTaskSummary) => (
@@ -299,7 +299,10 @@ export function GuestSharedTaskView({
                 </p>
               )}
               {history.data.records.length === 0 ? (
-                <p>No human messages were published in this page.</p>
+                <Empty
+                  variant="compact"
+                  label="Nothing published in this page"
+                />
               ) : (
                 <ol>
                   {history.data.records.map((record) => (

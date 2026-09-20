@@ -66,6 +66,7 @@
 .account-entry__guest-heading,
 .account-entry__project-list > li {
   display: flex;
+  flex-wrap: wrap;
   align-items: start;
   justify-content: space-between;
   gap: 1rem;
@@ -111,14 +112,20 @@
 .account-entry__shared-tasks-heading,
 .account-entry__shared-task-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: start;
   justify-content: space-between;
   gap: 1rem;
 }
 .account-entry__shared-task-list > li > div {
   display: grid;
+  flex: 1 1 14rem;
   min-width: 0;
   gap: 0.25rem;
+}
+.account-entry__shared-tasks-heading > h4,
+.account-entry__shared-task-heading > h5 {
+  flex: 1 1 14rem;
 }
 .account-entry__shared-task-list strong,
 .account-entry__shared-task-detail p {
@@ -146,6 +153,7 @@
   background: var(--bg-secondary);
 }
 .account-entry__project-list > li > div {
+  flex: 1 1 14rem;
   min-width: 0;
 }
 .account-entry__project-list strong {
@@ -155,14 +163,4 @@
 .account-entry__guest-access + .button,
 .account-entry__device-onboarding + .button {
   margin-block-start: 1rem;
-}
-@media (max-width: 480px) {
-  .account-entry__guest-heading,
-  .account-entry__project-list > li,
-  .account-entry__shared-task-list > li,
-  .account-entry__shared-tasks-heading,
-  .account-entry__shared-task-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
