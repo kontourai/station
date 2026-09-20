@@ -219,6 +219,80 @@ describe('ChatInputArea', () => {
     expect(onInputChange).not.toHaveBeenCalled();
   });
 
+  test('closes the picker and returns focus after a conversation reference drop', async () => {
+    fetchConversationInventory.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'conversation-a',
+          title: 'Conversation A',
+          referenceEligibility: {
+            eligible: true,
+            visibility: 'personal-private',
+          },
+        },
+      ],
+      hasMore: false,
+    });
+    const onInputChange = vi.fn();
+    const props = renderProps({
+      sessionId: 'session-a',
+      input: '',
+      onInputChange,
+      mentionAuthority: 'authority-a',
+      activeConversationId: 'current-conversation',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner-a',
+        isCurrent: () => true,
+      },
+      secondaryActions: {
+        triggerRef: createRef<HTMLButtonElement>(),
+        commandLauncherDisabled: false,
+        commandLauncherShortcut: '',
+        filesActive: false,
+        taskContextActive: false,
+        onOpenDelegation: vi.fn(),
+        onOpenCommandLauncher: vi.fn(),
+        onToggleFiles: vi.fn(),
+        onToggleTaskContext: vi.fn(),
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatInputArea {...props} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
+    );
+    const option = await screen.findByRole('option', {
+      name: /Conversation A/,
+    });
+    const values = new Map<string, string>();
+    const dataTransfer = {
+      types: ['application/x-station-conversation-reference'],
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+    };
+    fireEvent.dragStart(option, { dataTransfer });
+    const textarea = screen
+      .getByRole('group', { name: 'Message composer' })
+      .querySelector('textarea')!;
+    fireEvent.drop(textarea, { dataTransfer });
+
+    expect(onInputChange).toHaveBeenCalledWith(
+      '@[r:Conversation%20A|conversation-a||authority-a] ',
+    );
+    expect(
+      screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(textarea);
+  });
+
   test('keeps textarea focus while keyboard-selecting the second mention result', async () => {
     function ControlledComposer() {
       const [input, setInput] = useState('');

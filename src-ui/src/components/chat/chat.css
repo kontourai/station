@@ -971,6 +971,17 @@
   min-height: 44px;
 }
 
+/* Keep the native drag source mounted while allowing its payload to cross the
+   full-screen popover layer into the composer beneath it. */
+.composer-popover-overlay.session-reference-picker__drag-passthrough {
+  pointer-events: none;
+}
+
+.session-reference-picker__drag-passthrough
+  .session-reference-picker__drag-source {
+  pointer-events: auto;
+}
+
 @media (max-width: 600px) {
   .composer-mentions__chip,
   .file-mention-picker__option {

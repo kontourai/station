@@ -21,6 +21,7 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
@@ -940,6 +941,8 @@ export function ChatDockBody({
             onOpenBackgroundTasks,
             owner,
             accountableHuman,
+            onQuote: (quote) =>
+              chatDraftsStore.addQuote(activeSession.id, quote),
             onForkFromTurn: forkFromTurn,
             onNewChatFromMessage: onNewChat
               ? (text: string) => {

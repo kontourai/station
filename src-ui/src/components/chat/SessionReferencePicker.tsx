@@ -1,6 +1,6 @@
 import { fetchConversationInventory } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -41,6 +41,36 @@ export function SessionReferencePicker({
   onCandidateDragged: (candidate: SessionReferenceCandidate | null) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const draggingRef = useRef(false);
+  const dragOverlay = useRef<HTMLElement | null>(null);
+  const dragSource = useRef<HTMLElement | null>(null);
+  const finishDrag = useCallback(() => {
+    dragOverlay.current?.classList.remove(
+      'session-reference-picker__drag-passthrough',
+    );
+    dragOverlay.current = null;
+    dragSource.current?.classList.remove(
+      'session-reference-picker__drag-source',
+    );
+    dragSource.current = null;
+    draggingRef.current = false;
+    setDragging(false);
+    onCandidateDragged(null);
+  }, [onCandidateDragged]);
+  useEffect(() => {
+    if (!dragging) return;
+    const onDragEnd = () => finishDrag();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') finishDrag();
+    };
+    window.addEventListener('dragend', onDragEnd, true);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('dragend', onDragEnd, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [dragging, finishDrag]);
   const inventory = useQuery({
     queryKey: [
       'conversation-reference-candidates',
@@ -124,9 +154,12 @@ export function SessionReferencePicker({
     <ResponsiveDialogSurface
       layer="popover"
       ariaLabel="Reference a conversation"
-      onClose={onClose}
+      onClose={() => {
+        if (dragging) finishDrag();
+        onClose();
+      }}
       historyMode="entry"
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName={`composer-popover-overlay composer-popover-overlay--start${dragging ? ' session-reference-picker__drag-passthrough' : ''}`}
       panelClassName="composer-popover-panel"
     >
       <ResponsiveDialogHeader
@@ -180,15 +213,34 @@ export function SessionReferencePicker({
               disabled={!!reason}
               title={reason ?? candidate.title}
               draggable={!reason}
+              onPointerDown={(event) => {
+                if (reason) return;
+                dragOverlay.current = event.currentTarget.closest<HTMLElement>(
+                  '.composer-popover-overlay',
+                );
+                dragOverlay.current?.classList.add(
+                  'session-reference-picker__drag-passthrough',
+                );
+                dragSource.current = event.currentTarget;
+                dragSource.current.classList.add(
+                  'session-reference-picker__drag-source',
+                );
+              }}
+              onPointerUp={() => {
+                if (!draggingRef.current) finishDrag();
+              }}
+              onPointerCancel={finishDrag}
               onDragStart={(event) => {
                 if (reason) return;
+                draggingRef.current = true;
+                setDragging(true);
                 onCandidateDragged(candidate);
                 event.dataTransfer.setData(
                   SESSION_REFERENCE_DRAG_TYPE,
                   candidate.id,
                 );
               }}
-              onDragEnd={() => onCandidateDragged(null)}
+              onDragEnd={finishDrag}
               onClick={() => stage(candidate)}
             >
               <span aria-hidden="true">↗</span>

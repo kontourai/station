@@ -117,7 +117,7 @@ export function FileMentionAutocomplete({
       ) : null}
       {!isLoading && !querySettling && !isError && data?.partial ? (
         <div className="file-mention-picker__status" role="status">
-          Search stopped after scanning 5,000 project entries; refine the path
+          Results are incomplete; refine the path
         </div>
       ) : null}
       {suggestions.map((entry, index) => (

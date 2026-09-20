@@ -180,10 +180,6 @@ export class SemanticDeliveryBuffer {
     held.events += 1;
   }
 
-  flushThread(threadId: string, apiBase = ''): void {
-    this.flushKey(this.key(apiBase, threadId));
-  }
-
   flushApiBase(apiBase: string): void {
     for (const [key, held] of [...this.pending.entries()]) {
       if (held.apiBase === apiBase) this.flushKey(key);

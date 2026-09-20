@@ -87,6 +87,36 @@ describe('FileMentionAutocomplete', () => {
     );
   });
 
+  test('describes every bounded partial result without inventing a scan count', () => {
+    const ready = mentionQuery.result;
+    mentionQuery.result = {
+      ...ready,
+      data: { ...ready.data, partial: true },
+    };
+    const keyboardController = createRef<
+      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+    >();
+    render(
+      <FileMentionAutocomplete
+        workingDirectory="/repo/station"
+        requestScope={{
+          apiBase: 'http://station.test',
+          authorityKey: 'owner',
+          isCurrent: () => true,
+        }}
+        query="src"
+        keyboardController={keyboardController}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText('Results are incomplete; refine the path'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/5,000/)).toBeNull();
+    mentionQuery.result = ready;
+  });
+
   test('retains keyboard navigation while matching suggestions are loading', () => {
     const onSelect = vi.fn();
     const keyboardController = createRef<

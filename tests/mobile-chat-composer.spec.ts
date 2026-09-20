@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
@@ -88,6 +89,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await mockChatShell(page);
   await installMockOrchestrationSse(page);
   const threadId = 'thread-reference-dispatch';
+  const storeId = 'station:reference-dispatch';
   const quote = {
     version: 1,
     sessionId: 'source-session',
@@ -96,23 +98,6 @@ test('ChatDock sends scoped file and conversation references while preserving th
     revision: 'a'.repeat(64),
     excerpt: 'Quoted context stays separate.',
   };
-  await page.addInitScript(
-    ({ id, savedQuote }) => {
-      const stored = JSON.parse(
-        localStorage.getItem('station:chat-drafts:v1') ??
-          '{"sessions":{},"portable":[]}',
-      );
-      stored.sessions ??= {};
-      if (stored.sessions[id]) return;
-      stored.sessions[id] = {
-        text: '',
-        updatedAt: Date.now(),
-        quotes: [{ ...savedQuote, origin: window.location.origin }],
-      };
-      localStorage.setItem('station:chat-drafts:v1', JSON.stringify(stored));
-    },
-    { id: threadId, savedQuote: quote },
-  );
   await page.route('**/api/coding/files/search**', (route) =>
     route.fulfill(
       json({
@@ -128,6 +113,24 @@ test('ChatDock sends scoped file and conversation references while preserving th
         success: true,
         data: {
           items: [
+            {
+              id: threadId,
+              source: 'runtime',
+              agentSlug: 'station',
+              provider: 'bedrock',
+              model: 'model-selected',
+              projectSlug: 'default',
+              title: 'Reference dispatch',
+              createdAt: '2026-09-20T00:02:00.000Z',
+              updatedAt: '2026-09-20T00:03:00.000Z',
+              messageCount: 0,
+              mutable: true,
+              answerability: { answerable: true },
+              referenceEligibility: {
+                eligible: true,
+                visibility: 'personal-private',
+              },
+            },
             {
               id: 'earlier-conversation',
               source: 'runtime',
@@ -150,6 +153,29 @@ test('ChatDock sends scoped file and conversation references while preserving th
       }),
     ),
   );
+  // Persisted tabs are reconciled against the owning agent's durable catalog
+  // during reload. Keep that catalog consistent with the global inventory.
+  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            id: threadId,
+            title: 'Reference dispatch',
+            agentSlug: 'station',
+            updatedAt: '2026-09-20T00:03:00.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  const quoteSourceText = `**${quote.excerpt}**`;
+  const quoteTurns = buildLongSessionTurns({
+    threadId,
+    turnCount: 1,
+    replyText: () => quoteSourceText,
+  });
   await mockRuntimeConversation(page, {
     id: threadId,
     agentSlug: 'station',
@@ -158,18 +184,72 @@ test('ChatDock sends scoped file and conversation references while preserving th
     model: 'model-selected',
     projectSlug: 'default',
     canContinue: true,
-    turns: () => [],
+    turns: () => quoteTurns,
   });
-  await page.route(`**/api/conversations/${threadId}`, (route) =>
+  let quoteMessageId = '';
+  await page.route(
+    `**/api/orchestration/sessions/${threadId}/turns/turn-0/quote-source`,
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            version: 1,
+            sessionId: threadId,
+            turnId: 'turn-0',
+            messageId: quoteMessageId,
+            text: quoteSourceText,
+            revision: quote.revision,
+          },
+        }),
+      ),
+  );
+  await page.route(
+    new RegExp(`/api/conversations/${threadId}(?:\\?.*)?$`),
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            id: threadId,
+            agentSlug: 'station',
+            projectSlug: 'default',
+            title: 'Reference dispatch',
+          },
+        }),
+      ),
+  );
+  await page.route(
+    `**/api/conversations/${threadId}/acknowledgement`,
+    (route) => route.fulfill(json({ success: true })),
+  );
+  await page.route(
+    new RegExp(
+      `/api/orchestration/sessions/${encodeURIComponent(storeId)}/checkpoints(?:\\?.*)?$`,
+    ),
+    (route) => route.fulfill(json({ success: true, data: [] })),
+  );
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
     route.fulfill(
       json({
         success: true,
-        data: {
-          id: threadId,
-          agentSlug: 'station',
-          projectSlug: 'default',
-          title: 'Reference dispatch',
-        },
+        data: [
+          {
+            threadId,
+            provider: 'bedrock',
+            model: 'model-selected',
+            cwd: '/repo/project',
+            projectSlug: 'default',
+            assignedAgentSlug: 'station',
+            status: 'ready',
+            lifecycleState: 'idle',
+            createdAt: '2026-09-20T00:02:00.000Z',
+            updatedAt: '2026-09-20T00:03:00.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 2,
+          },
+        ],
       }),
     ),
   );
@@ -185,22 +265,54 @@ test('ChatDock sends scoped file and conversation references while preserving th
       ),
     );
   });
-  await seedActiveChats(page, [
-    {
-      sessionId: threadId,
-      conversationId: threadId,
-      agentSlug: 'station',
-      projectSlug: 'default',
-      projectName: 'Default',
-      model: 'model-selected',
-      title: 'Reference dispatch',
-      provider: 'bedrock',
-      orchestrationSessionStarted: true,
-    },
-  ]);
+  await seedActiveChats(
+    page,
+    [
+      {
+        sessionId: storeId,
+        conversationId: threadId,
+        agentSlug: 'station',
+        projectSlug: 'default',
+        projectName: 'Default',
+        cwd: '/repo/project',
+        model: 'model-selected',
+        title: 'Reference dispatch',
+        provider: 'bedrock',
+        orchestrationSessionStarted: true,
+      },
+    ],
+    { preserveExisting: true },
+  );
   await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
   await dismissSetupLauncher(page);
+  await page.getByRole('button', { name: /^Switch task/ }).click();
+  const taskSwitcher = page.getByRole('dialog', { name: 'Switch task' });
+  await taskSwitcher
+    .getByRole('button', { name: 'Reference dispatch, default' })
+    .click();
+  const answer = page.getByText(quote.excerpt, { exact: true });
+  await expect(answer).toBeVisible();
+  const quoteSource = answer.locator(
+    'xpath=ancestor-or-self::*[@data-quote-source-message]',
+  );
+  quoteMessageId = (await quoteSource.getAttribute(
+    'data-quote-source-message',
+  ))!;
+  const answerBox = (await answer.boundingBox())!;
+  await page.mouse.move(answerBox.x + 1, answerBox.y + answerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    answerBox.x + answerBox.width - 1,
+    answerBox.y + answerBox.height / 2,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Quote in reply' }).click();
   const composer = page.locator('textarea[placeholder*="Type a message"]');
+  const activeDraftId = await page
+    .getByRole('log', { name: 'Conversation transcript' })
+    .getAttribute('data-chat-session-id');
+  expect(activeDraftId).toBeTruthy();
   await expect(
     page.getByRole('region', { name: 'Quoted context' }),
   ).toContainText(quote.excerpt);
@@ -220,13 +332,61 @@ test('ChatDock sends scoped file and conversation references while preserving th
       .evaluate((element) => getComputedStyle(element).position),
   ).toBe('static');
   await referenceOption.dragTo(composer);
-  await page
-    .getByRole('button', { name: 'Close conversation references' })
-    .click();
-  await expect(composer).toHaveValue('Review @alpha.ts  @Earlier work ');
+  await expect(
+    page.getByRole('dialog', { name: 'Reference a conversation' }),
+  ).toBeHidden();
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue('Review @alpha.ts @Earlier work ');
+  await expect
+    .poll(() =>
+      page.evaluate((draftId) => {
+        const stored = JSON.parse(
+          localStorage.getItem('station:chat-drafts:v1') ?? '{}',
+        );
+        const draft = stored.sessions?.[draftId];
+        return {
+          hasFileReference:
+            typeof draft?.text === 'string' && draft.text.includes('@[m:'),
+          hasConversationReference:
+            typeof draft?.text === 'string' && draft.text.includes('@[r:'),
+          hasQuote:
+            draft?.quotes?.[0]?.excerpt === 'Quoted context stays separate.',
+        };
+      }, activeDraftId!),
+    )
+    .toEqual({
+      hasFileReference: true,
+      hasConversationReference: true,
+      hasQuote: true,
+    });
+  const preReloadIdentity = await page.evaluate(() => ({
+    url: window.location.href,
+    activeChats: JSON.parse(sessionStorage.getItem('activeChats') ?? '[]'),
+  }));
   await page.reload();
   await dismissSetupLauncher(page);
-  await expect(composer).toHaveValue('Review @alpha.ts  @Earlier work ');
+  const postReloadIdentity = await page.evaluate(() => {
+    return {
+      url: window.location.href,
+      activeChats: JSON.parse(sessionStorage.getItem('activeChats') ?? '[]'),
+    };
+  });
+  expect(new URL(preReloadIdentity.url).searchParams.get('chat')).toBe(
+    threadId,
+  );
+  expect(new URL(postReloadIdentity.url).searchParams.get('chat')).toBe(
+    threadId,
+  );
+  expect(postReloadIdentity.activeChats).toEqual(preReloadIdentity.activeChats);
+  expect(
+    await page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .getAttribute('data-chat-session-id'),
+  ).toBe(activeDraftId);
+  const restoredComposer = page.locator(
+    'textarea[placeholder*="Type a message"]',
+  );
+  await expect(restoredComposer).toHaveValue('Review @alpha.ts @Earlier work ');
   await expect(
     page.getByRole('region', { name: 'Quoted context' }),
   ).toContainText(quote.excerpt);
@@ -234,9 +394,15 @@ test('ChatDock sends scoped file and conversation references while preserving th
     path: testInfo.outputPath('conversation-reference-dispatch-390.png'),
     fullPage: true,
   });
+  const evidenceRoot = join(process.cwd(), '.kontourai', 'chat-563');
+  await mkdir(evidenceRoot, { recursive: true });
+  await copyFile(
+    testInfo.outputPath('conversation-reference-dispatch-390.png'),
+    join(evidenceRoot, 'conversation-reference-dispatch-390.png'),
+  );
   await page.getByRole('button', { name: 'Send' }).click();
   await expect.poll(() => dispatched).toBeTruthy();
-  const input = String(dispatched?.input ?? '');
+  const input = String(dispatched?.message ?? '');
   expect(input).toContain('@"');
   expect(input).toContain('src/alpha.ts');
   expect(input).toContain(

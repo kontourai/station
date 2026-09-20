@@ -181,10 +181,21 @@ describe('SessionReferencePicker', () => {
     const option = await screen.findByRole('option', { name: /Earlier work/ });
     const setData = vi.fn();
     fireEvent.dragStart(option, { dataTransfer: { setData } });
+    expect(
+      document.querySelector(
+        '.composer-popover-overlay.session-reference-picker__drag-passthrough',
+      ),
+    ).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(
+      document.querySelector(
+        '.composer-popover-overlay.session-reference-picker__drag-passthrough',
+      ),
+    ).toBeNull();
+    fireEvent.dragStart(option, { dataTransfer: { setData } });
     fireEvent.dragEnd(option);
 
-    expect(onCandidateDragged).toHaveBeenNthCalledWith(
-      1,
+    expect(onCandidateDragged).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'earlier' }),
     );
     expect(onCandidateDragged).toHaveBeenLastCalledWith(null);

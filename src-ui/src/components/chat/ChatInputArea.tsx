@@ -858,6 +858,8 @@ export function ChatInputArea({
               });
               onInputChange(next);
               updateFromInput(next);
+              setSessionReferencesOpen(false);
+              textareaRef.current?.focus();
             }}
             onKeyDown={async (e) => {
               if (isComposing.current || isComposingKeyEvent(e)) return;
