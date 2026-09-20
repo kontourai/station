@@ -1,6 +1,6 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { expect } from '@playwright/test';
+import { expect, type Locator } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { mockChatShell } from './helpers/chat-shell-fixture';
 import { test } from './helpers/fixture-audit';
@@ -12,6 +12,18 @@ const json = (data: unknown) => ({
   contentType: 'application/json',
   body: JSON.stringify({ success: true, data }),
 });
+
+async function touchTargetSize(locator: Locator) {
+  return locator.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  });
+}
+
+function expectTouchTarget(size: { width: number; height: number }) {
+  expect(size.width).toBeGreaterThanOrEqual(44);
+  expect(size.height).toBeGreaterThanOrEqual(44);
+}
 
 test('conversation timeline restores a checkpoint with bounded refusal copy', async ({
   page,
@@ -416,32 +428,28 @@ test('conversation timeline crosses execution history, preserves the live draft,
       .boundingBox();
     expect(timelineBox?.height ?? Infinity).toBeLessThanOrEqual(180);
     expect(transcriptBox?.height ?? 0).toBeGreaterThanOrEqual(140);
-    expect(
-      await page
-        .getByRole('combobox', { name: 'Conversation section' })
-        .evaluate((element) => element.getBoundingClientRect().height),
-    ).toBeGreaterThanOrEqual(44);
-    expect(
-      await page
-        .getByText('Details', { exact: true })
-        .evaluate((element) => element.getBoundingClientRect().height),
-    ).toBeGreaterThanOrEqual(44);
-    expect(
-      await page
-        .getByRole('slider', { name: 'Conversation position' })
-        .evaluate((element) => element.getBoundingClientRect().height),
-    ).toBeGreaterThanOrEqual(44);
+    expectTouchTarget(
+      await touchTargetSize(
+        page.getByRole('combobox', { name: 'Conversation section' }),
+      ),
+    );
+    expectTouchTarget(
+      await touchTargetSize(page.getByText('Details', { exact: true })),
+    );
+    expectTouchTarget(
+      await touchTargetSize(
+        page.getByRole('slider', { name: 'Conversation position' }),
+      ),
+    );
     for (const name of [
       'Previous turn',
       'Next turn',
       'Return to latest',
       'Fork from here…',
     ]) {
-      expect(
-        await page
-          .getByRole('button', { name, exact: true })
-          .evaluate((element) => element.getBoundingClientRect().height),
-      ).toBeGreaterThanOrEqual(44);
+      expectTouchTarget(
+        await touchTargetSize(page.getByRole('button', { name, exact: true })),
+      );
     }
     const screenshot = `timeline-history-${width}.png`;
     await page.screenshot({
@@ -466,16 +474,14 @@ test('conversation timeline crosses execution history, preserves the live draft,
     .boundingBox();
   expect(lightTimelineBox?.height ?? Infinity).toBeLessThanOrEqual(180);
   expect(lightTranscriptBox?.height ?? 0).toBeGreaterThanOrEqual(140);
-  expect(
-    await page
-      .getByText('Details', { exact: true })
-      .evaluate((element) => element.getBoundingClientRect().height),
-  ).toBeGreaterThanOrEqual(44);
-  expect(
-    await page
-      .getByRole('slider', { name: 'Conversation position' })
-      .evaluate((element) => element.getBoundingClientRect().height),
-  ).toBeGreaterThanOrEqual(44);
+  expectTouchTarget(
+    await touchTargetSize(page.getByText('Details', { exact: true })),
+  );
+  expectTouchTarget(
+    await touchTargetSize(
+      page.getByRole('slider', { name: 'Conversation position' }),
+    ),
+  );
   expect(
     await page
       .getByRole('combobox', { name: 'Conversation section' })
@@ -496,6 +502,21 @@ test('conversation timeline crosses execution history, preserves the live draft,
       appearance: 'none',
     }),
   );
+  expectTouchTarget(
+    await touchTargetSize(
+      page.getByRole('combobox', { name: 'Conversation section' }),
+    ),
+  );
+  for (const name of [
+    'Previous turn',
+    'Next turn',
+    'Return to latest',
+    'Fork from here…',
+  ]) {
+    expectTouchTarget(
+      await touchTargetSize(page.getByRole('button', { name, exact: true })),
+    );
+  }
   await page.screenshot({
     path: testInfo.outputPath('timeline-history-390-light.png'),
     animations: 'disabled',
