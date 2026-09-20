@@ -1208,6 +1208,31 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(JSON.stringify(sharedBody)).not.toMatch(
         /workingDirectory|private-provider-marker|private-model-marker/,
       );
+      // Execution offers (review 5, correction 4): the SAME fully
+      // authenticated account-bound collaborator — project read admitted,
+      // session live, device current — is still NOT a delegation receiver.
+      // Shared-human authorization never satisfies the receiver authority,
+      // so the contribution query refuses with the route's own 403 (an
+      // entirely different sentence from the unauthenticated 401 a bare
+      // account-bound bearer earns).
+      const contributionQuery = await request(
+        '/api/project-contributions/query',
+        {
+          portableProjectId: 'prj_shared',
+          resourceId: 'git.example/acme/repo',
+        },
+        {
+          ...(await boundClient.headers(boundSession, {
+            method: 'POST',
+            url: origin + '/api/project-contributions/query',
+          })),
+          Authorization: `Bearer ${replacement.credential}`,
+        },
+      );
+      expect(
+        contributionQuery.status,
+        await contributionQuery.clone().text(),
+      ).toBe(403);
       const guestMutationPath = '/api/projects/example/identity/execution-root';
       const guestMutation = await h.app.request(
         origin + guestMutationPath,

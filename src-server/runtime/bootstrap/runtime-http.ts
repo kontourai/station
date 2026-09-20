@@ -1069,6 +1069,10 @@ const READ_ONLY_DATA_POST_ROUTES = [
   /^\/api\/projects\/[^/]+\/file-preview(?:\/download)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
+  // The receiver-side contribution query is a POST-carried read: it changes
+  // nothing, so broadcasting a key would make the asking client's own
+  // contribution query refetch itself.
+  /^\/api\/project-contributions\/query\/?$/,
 ];
 
 function getInvalidationKeysForRequest(method: string, path: string): string[] {
@@ -1087,6 +1091,9 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
   if (path.includes('/scheduler') || path.includes('/jobs')) {
     keys.push('scheduler-jobs');
   }
+  // An execution offer lives in AppConfig.contribution; the settings surface
+  // (and any other reader of ['config']) must see the change.
+  if (path.startsWith('/api/project-contributions/')) keys.push('config');
   if (path.includes('/projects')) keys.push('projects');
   if (path.includes('/knowledge')) keys.push('knowledge');
   if (path.includes('/registry')) keys.push('skills', 'integrations', 'agents');

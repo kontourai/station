@@ -36,6 +36,10 @@ test.each([
   ['POST', '/api/knowledge/search', 200, []],
   ['POST', '/api/knowledge/index/search', 200, []],
   ['POST', '/api/knowledge/roots/validate', 200, []],
+  // The receiver contribution query is a POST-carried read: no invalidation,
+  // or the query refetches itself. The offer PUT is a real config mutation.
+  ['POST', '/api/project-contributions/query', 200, []],
+  ['PUT', '/api/project-contributions/offer', 200, ['config']],
   ['GET', '/api/projects/demo', 200, []],
   ['PATCH', '/api/projects/demo', 200, ['projects']],
   ['PUT', '/api/projects/demo/file-preview', 200, ['projects']],
