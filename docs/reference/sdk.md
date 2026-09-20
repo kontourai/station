@@ -973,8 +973,10 @@ Tasks an operator explicitly published for the caller's current Project scope.
 messages and attribution; tool events, attachments, paths and room write
 authority are excluded. `readProjectSharedTaskDocument(...)` returns the current
 text snapshot. Each response is limited to one MiB and validated without extra
-fields. An incomplete history page reports `unavailable`; callers must not treat
-it as complete or infer private records from it.
+fields. `hasMore` marks a bounded available page as incomplete; gap, stale or
+invalid cursor results are also incomplete, while unavailable and too-large
+results name their own closed states. Callers must not present any of these as
+an empty complete history or infer private records from them.
 
 These reads require the current account-bound Device, account session and active
 Project membership. Station rechecks the exact Project, publication and Task
