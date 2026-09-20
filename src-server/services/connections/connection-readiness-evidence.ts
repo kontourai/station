@@ -128,34 +128,6 @@ function checkAdjustedLevel(
   return level;
 }
 
-/**
- * True when the evidence's summary reports a failure — a fresh failed smoke,
- * or a check receipt the level lets speak (refused, unreachable, no usable
- * catalog) — rather than the level's own observation sentence. The level
- * alone cannot tell these apart (a fresh failed smoke keeps `catalog-ready`;
- * a grace-window `unreachable` keeps `prerequisite-ready`), so consumers that
- * quote the summary as a refusal need this distinction. Mirrors the copy
- * selection in `deriveConnectionReadinessEvidence`; keep the two in step.
- */
-export function evidenceSummaryNamesFailure(evidence: {
-  level?: ConnectionEvidenceLevel;
-  smoke?: Pick<ConnectionSmokeEvidence, 'status' | 'freshness'>;
-  check?: Pick<ConnectionCheckEvidence, 'status'> | null;
-}): boolean {
-  if (
-    evidence.smoke?.status === 'failed' &&
-    evidence.smoke.freshness === 'fresh'
-  ) {
-    return true;
-  }
-  const spoken = evidence.level === 'smoke-passed' ? null : evidence.check;
-  return (
-    spoken?.status === 'failed' ||
-    spoken?.status === 'unreachable' ||
-    spoken?.status === 'catalog-unavailable'
-  );
-}
-
 export function deriveConnectionReadinessEvidence(
   connection: ConnectionConfig,
   result: StoredConnectionSmokeResult | null,
