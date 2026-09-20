@@ -25,7 +25,7 @@ type applicationPacket struct {
 }
 
 const (
-	applicationIPCVersion = "station.application-ipc/v1"
+	applicationIPCVersion     = "station.application-ipc/v1"
 	applicationIPCPacketBytes = 384 * 1024
 	applicationIPCQueueBytes  = 512 * 1024
 )
