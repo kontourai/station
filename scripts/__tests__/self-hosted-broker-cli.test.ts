@@ -1,5 +1,12 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -39,7 +46,12 @@ describe('self-hosted broker CLI', () => {
       execFileSync(
         resolve('node_modules/.bin/tsx'),
         ['scripts/self-hosted-broker.ts', 'init', configPath],
-        { cwd: resolve(import.meta.dirname, '../..'), windowsHide: true },
+        {
+          cwd: resolve(import.meta.dirname, '../..'),
+          windowsHide: true,
+          timeout: 10_000,
+          maxBuffer: 64 * 1024,
+        },
       );
     try {
       run();
@@ -88,13 +100,16 @@ describe('self-hosted broker CLI', () => {
       const capture = captureOwnedProcessOutput(execution, {
         maxBytes: 16 * 1024,
       });
+      if (!('stdout' in execution.child))
+        throw new Error('broker child did not expose bounded output');
+      const child = execution.child;
       let observed = '';
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const address = await Promise.race([
           new Promise<{ port: number }>((resolveReady, reject) => {
-            execution.child.stdout?.setEncoding('utf8');
-            execution.child.stdout?.on('data', (text: string) => {
+            child.stdout.setEncoding('utf8');
+            child.stdout.on('data', (text: string) => {
               observed += text;
               if (Buffer.byteLength(observed) > 16 * 1024)
                 return reject(
@@ -154,6 +169,49 @@ describe('self-hosted broker CLI', () => {
     try {
       await launch();
       await launch();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('a credential publication failure does not create broker state', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-fault-'));
+    try {
+      const databasePath = join(root, 'broker.sqlite');
+      const credentialsPath = join(root, 'credentials');
+      mkdirSync(credentialsPath, { mode: 0o700 });
+      const configPath = join(root, 'config.json');
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          version: 'station-self-hosted-broker/v1',
+          databasePath,
+          credentialsPath,
+          port: 0,
+          provision: [
+            {
+              stationId: 'station-12345678',
+              enrollmentId: 'enroll-12345678',
+              routingGeneration: 1,
+              browserOrigin: 'http://localhost:4173',
+            },
+          ],
+        }),
+        { mode: 0o600 },
+      );
+      expect(() =>
+        execFileSync(
+          resolve('node_modules/.bin/tsx'),
+          ['scripts/self-hosted-broker.ts', 'init', configPath],
+          {
+            cwd: resolve(import.meta.dirname, '../..'),
+            windowsHide: true,
+            timeout: 10_000,
+            maxBuffer: 64 * 1024,
+            stdio: 'pipe',
+          },
+        ),
+      ).toThrow();
+      expect(existsSync(databasePath)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

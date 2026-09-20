@@ -143,14 +143,17 @@ export class SelfHostedBrokerService {
     const tables = this.db
       .prepare("SELECT count(*) count FROM sqlite_master WHERE type='table'")
       .get() as { count: number };
-    if (tables.count > 0 && application.application_id !== 0x53544252) {
+    if (
+      application.application_id !== 0 &&
+      application.application_id !== 0x53544252
+    ) {
       this.db.close();
       throw new Error('broker_database_schema_refused');
     }
     const version = this.db.prepare('PRAGMA user_version').get() as {
       user_version: number;
     };
-    if (tables.count > 0 && version.user_version !== 1) {
+    if (version.user_version !== 0 && version.user_version !== 1) {
       this.db.close();
       throw new Error('broker_database_version_refused');
     }
@@ -225,7 +228,7 @@ export class SelfHostedBrokerService {
       ON CONFLICT(station_id) DO UPDATE SET enrollment_id=excluded.enrollment_id,generation=excluded.generation,
       browser_origin=excluded.browser_origin,connector_id=excluded.connector_id,connector_hash=excluded.connector_hash,
       routing_id=excluded.routing_id,routing_hash=excluded.routing_hash,
-      expires_at=excluded.expires_at,withdrawn_at=NULL WHERE excluded.generation > broker_leases.generation`)
+      expires_at=excluded.expires_at,lease_revision=0,last_seen_at=NULL,withdrawn_at=NULL WHERE excluded.generation > broker_leases.generation`)
         .run(
           scope.stationId,
           scope.enrollmentId,
@@ -284,7 +287,7 @@ export class SelfHostedBrokerService {
       const lease = this.lease(scope, credential, 'connector');
       if (lease.lease_revision !== expectedRevision)
         throw new Error('lease_conflict');
-      const next = Math.max(this.now(), lease.expires_at as number) + ttlMs;
+      const next = this.now() + ttlMs;
       const result = this.db
         .prepare(
           `UPDATE broker_leases SET expires_at=?,lease_revision=lease_revision+1 WHERE station_id=? AND generation=? AND lease_revision=? AND withdrawn_at IS NULL`,
@@ -356,6 +359,11 @@ export class SelfHostedBrokerService {
         throw new Error('offer_too_large');
       const now = this.now();
       this.db
+        .prepare(
+          "UPDATE broker_connections SET offer_sdp='',answer_sdp=NULL,station_proof=NULL WHERE expires_at<=? AND offer_sdp<>''",
+        )
+        .run(now);
+      this.db
         .prepare('DELETE FROM broker_connections WHERE created_at + 330000 <=?')
         .run(now);
       const total = (
@@ -372,25 +380,33 @@ export class SelfHostedBrokerService {
           )
           .get(scope.stationId, now) as { n: number }
       ).n;
-      if (total >= 1024 || station >= 32) throw new Error('pending_limit');
-      try {
-        this.db
-          .prepare(
-            'INSERT INTO broker_connections VALUES(?,?,?,?,?,?,NULL,NULL,?,?)',
-          )
-          .run(
-            scope.stationId,
-            scope.enrollmentId,
-            scope.routingGeneration,
-            input.clientId,
-            input.nonce,
-            input.offerSdp,
-            now,
-            now + 30_000,
-          );
-      } catch {
-        throw new Error('connection_replayed');
-      }
+      const retained = (
+        this.db.prepare('SELECT count(*) n FROM broker_connections').get() as {
+          n: number;
+        }
+      ).n;
+      if (total >= 1024 || station >= 32 || retained >= 10240)
+        throw new Error('pending_limit');
+      const replay = this.db
+        .prepare(
+          'SELECT 1 found FROM broker_connections WHERE station_id=? AND client_id=? AND nonce=?',
+        )
+        .get(scope.stationId, input.clientId, input.nonce);
+      if (replay) throw new Error('connection_replayed');
+      this.db
+        .prepare(
+          'INSERT INTO broker_connections VALUES(?,?,?,?,?,?,NULL,NULL,?,?)',
+        )
+        .run(
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          input.clientId,
+          input.nonce,
+          input.offerSdp,
+          now,
+          now + 30_000,
+        );
       return { expiresAt: now + 30_000 };
     });
   }
@@ -404,43 +420,49 @@ export class SelfHostedBrokerService {
       stationProof: string;
     },
   ) {
-    this.lease(scope, credential, 'connector');
-    if (
-      typeof input.answerSdp !== 'string' ||
-      input.answerSdp.length === 0 ||
-      typeof input.stationProof !== 'string' ||
-      input.stationProof.length === 0 ||
-      Buffer.byteLength(input.answerSdp) > SDP_LIMIT ||
-      Buffer.byteLength(input.stationProof) > STATION_CONNECTION_PROOF_MAX_BYTES
-    )
-      throw new Error('answer_too_large');
-    const result = this.db
-      .prepare(
-        `UPDATE broker_connections SET answer_sdp=?,station_proof=? WHERE station_id=? AND enrollment_id=? AND generation=? AND client_id=? AND nonce=? AND answer_sdp IS NULL AND expires_at>?`,
+    return this.transaction(() => {
+      this.lease(scope, credential, 'connector');
+      if (
+        typeof input.answerSdp !== 'string' ||
+        input.answerSdp.length === 0 ||
+        typeof input.stationProof !== 'string' ||
+        input.stationProof.length === 0 ||
+        Buffer.byteLength(input.answerSdp) > SDP_LIMIT ||
+        Buffer.byteLength(input.stationProof) >
+          STATION_CONNECTION_PROOF_MAX_BYTES
       )
-      .run(
-        input.answerSdp,
-        input.stationProof,
-        scope.stationId,
-        scope.enrollmentId,
-        scope.routingGeneration,
-        input.clientId,
-        input.nonce,
-        this.now(),
-      );
-    if (result.changes !== 1) throw new Error('connection_unavailable');
+        throw new Error('answer_too_large');
+      const result = this.db
+        .prepare(
+          `UPDATE broker_connections SET answer_sdp=?,station_proof=? WHERE station_id=? AND enrollment_id=? AND generation=? AND client_id=? AND nonce=? AND answer_sdp IS NULL AND expires_at>?`,
+        )
+        .run(
+          input.answerSdp,
+          input.stationProof,
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          input.clientId,
+          input.nonce,
+          this.now(),
+        );
+      if (result.changes !== 1) throw new Error('connection_unavailable');
+    });
   }
   offers(scope: BrokerScope, credential: BrokerCredential) {
-    this.lease(scope, credential, 'connector');
-    return this.db
-      .prepare(`SELECT client_id AS clientId, nonce, offer_sdp AS offerSdp, expires_at AS expiresAt
+    return this.transaction(() => {
+      this.lease(scope, credential, 'connector');
+      const now = this.now();
+      this.db
+        .prepare(
+          "UPDATE broker_connections SET offer_sdp='',answer_sdp=NULL,station_proof=NULL WHERE expires_at<=? AND offer_sdp<>''",
+        )
+        .run(now);
+      return this.db
+        .prepare(`SELECT client_id AS clientId, nonce, offer_sdp AS offerSdp, expires_at AS expiresAt
       FROM broker_connections WHERE station_id=? AND enrollment_id=? AND generation=? AND answer_sdp IS NULL AND expires_at>? ORDER BY created_at LIMIT 32`)
-      .all(
-        scope.stationId,
-        scope.enrollmentId,
-        scope.routingGeneration,
-        this.now(),
-      );
+        .all(scope.stationId, scope.enrollmentId, scope.routingGeneration, now);
+    });
   }
   read(
     scope: BrokerScope,
@@ -448,30 +470,32 @@ export class SelfHostedBrokerService {
     clientId: string,
     nonce: string,
   ) {
-    this.lease(scope, credential, 'routing');
-    const row = this.db
-      .prepare(
-        'SELECT answer_sdp,station_proof,expires_at FROM broker_connections WHERE station_id=? AND enrollment_id=? AND generation=? AND client_id=? AND nonce=?',
-      )
-      .get(
-        scope.stationId,
-        scope.enrollmentId,
-        scope.routingGeneration,
-        clientId,
-        nonce,
-      ) as
-      | {
-          answer_sdp: string | null;
-          station_proof: string | null;
-          expires_at: number;
-        }
-      | undefined;
-    if (!row || row.expires_at <= this.now())
-      throw new Error('connection_unavailable');
-    return {
-      answerSdp: row.answer_sdp,
-      stationProof: row.station_proof,
-      expiresAt: row.expires_at,
-    };
+    return this.transaction(() => {
+      this.lease(scope, credential, 'routing');
+      const row = this.db
+        .prepare(
+          'SELECT answer_sdp,station_proof,expires_at FROM broker_connections WHERE station_id=? AND enrollment_id=? AND generation=? AND client_id=? AND nonce=?',
+        )
+        .get(
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          clientId,
+          nonce,
+        ) as
+        | {
+            answer_sdp: string | null;
+            station_proof: string | null;
+            expires_at: number;
+          }
+        | undefined;
+      if (!row || row.expires_at <= this.now())
+        throw new Error('connection_unavailable');
+      return {
+        answerSdp: row.answer_sdp,
+        stationProof: row.station_proof,
+        expiresAt: row.expires_at,
+      };
+    });
   }
 }

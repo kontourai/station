@@ -1,6 +1,7 @@
-import { mkdtempSync } from 'node:fs';
+import { chmodSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
@@ -166,7 +167,7 @@ describe('self-hosted broker control plane', () => {
       offerSdp: 'offer',
     });
     expect(first.renew(scope, issued.connector, 0, 10_000)).toEqual({
-      expiresAt: 30_000,
+      expiresAt: 20_000,
       revision: 1,
     });
     expect(() => first.renew(scope, issued.connector, 0, 10_000)).toThrow(
@@ -182,6 +183,8 @@ describe('self-hosted broker control plane', () => {
     now = 20_000;
     const nextScope = { ...scope, routingGeneration: 2 };
     const next = first.provision(nextScope, 10_000);
+    expect(first.status(nextScope, next.routing).state).toBe('offline');
+    expect(first.renew(nextScope, next.connector, 0, 10_000).revision).toBe(1);
     expect(() =>
       first.read(scope, issued.routing, 'client-abcdefgh', 'nonce-abcdefgh'),
     ).toThrow('broker_credential_refused');
@@ -221,5 +224,18 @@ describe('self-hosted broker control plane', () => {
     ).toThrow('answer_too_large');
     first.close();
     competing.close();
+  });
+  test('refuses future metadata even when a database has no tables', () => {
+    const path = join(
+      mkdtempSync(join(tmpdir(), 'station-broker-foreign-')),
+      'broker.sqlite',
+    );
+    const database = new DatabaseSync(path);
+    database.exec('PRAGMA user_version=2');
+    database.close();
+    chmodSync(path, 0o600);
+    expect(() => new SelfHostedBrokerService(path)).toThrow(
+      'broker_database_version_refused',
+    );
   });
 });

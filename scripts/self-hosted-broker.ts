@@ -1,5 +1,5 @@
 import { lstatSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { dirname, isAbsolute } from 'node:path';
 import { serve } from '@hono/node-server';
 import {
   mutateJsonFileWithGuardedRead,
@@ -27,6 +27,7 @@ const configInfo = lstatSync(configPath);
 if (
   !configInfo.isFile() ||
   configInfo.isSymbolicLink() ||
+  configInfo.nlink !== 1 ||
   configInfo.uid !== process.getuid?.() ||
   (configInfo.mode & 0o077) !== 0 ||
   configInfo.size > 128 * 1024
@@ -43,8 +44,10 @@ if (
   Object.keys(config).sort().join(',') !==
     'credentialsPath,databasePath,port,provision,version' ||
   config.version !== 'station-self-hosted-broker/v1' ||
-  !isAbsolute(String(config.databasePath)) ||
-  !isAbsolute(String(config.credentialsPath)) ||
+  typeof config.databasePath !== 'string' ||
+  !isAbsolute(config.databasePath) ||
+  typeof config.credentialsPath !== 'string' ||
+  !isAbsolute(config.credentialsPath) ||
   !Number.isInteger(config.port) ||
   (config.port as number) < 0 ||
   (config.port as number) > 65535 ||
@@ -53,6 +56,16 @@ if (
   !Array.isArray(config.provision)
 )
   throw new Error('Invalid broker config');
+const databasePath = config.databasePath as string;
+const credentialsPath = config.credentialsPath as string;
+const credentialsParent = lstatSync(dirname(credentialsPath));
+if (
+  !credentialsParent.isDirectory() ||
+  credentialsParent.isSymbolicLink() ||
+  credentialsParent.uid !== process.getuid?.() ||
+  (credentialsParent.mode & 0o077) !== 0
+)
+  throw new Error('Broker credentials parent must be private');
 if (mode === 'init') {
   if (config.provision.length !== 1)
     throw new Error('Broker init provisions exactly one generation');
@@ -64,10 +77,10 @@ if (mode === 'init') {
     bundle,
   };
   const committed = await mutateJsonFileWithGuardedRead<typeof record | null>(
-    String(config.credentialsPath),
+    credentialsPath,
     null,
     async () => {
-      const info = lstatSync(String(config.credentialsPath));
+      const info = lstatSync(credentialsPath);
       if (
         !info.isFile() ||
         info.isSymbolicLink() ||
@@ -75,11 +88,10 @@ if (mode === 'init') {
         (info.mode & 0o077) !== 0
       )
         throw new Error('Existing broker credentials are not private');
-      return readJsonFile<typeof record>(
-        String(config.credentialsPath),
-        record,
-        { maxBytes: 128 * 1024, label: 'Broker credentials' },
-      );
+      return readJsonFile<typeof record>(credentialsPath, record, {
+        maxBytes: 128 * 1024,
+        label: 'Broker credentials',
+      });
     },
     (prior) => {
       if (prior === null) return record;
@@ -108,10 +120,23 @@ if (mode === 'init') {
         throw new Error('Existing broker credentials name another operation');
       return prior;
     },
-    { maxBytes: 128 * 1024, label: 'Broker credentials' },
+    {
+      maxBytes: 128 * 1024,
+      label: 'Broker credentials',
+      beforeCommit: () => {
+        const current = lstatSync(dirname(credentialsPath));
+        if (
+          current.dev !== credentialsParent.dev ||
+          current.ino !== credentialsParent.ino ||
+          current.isSymbolicLink() ||
+          (current.mode & 0o077) !== 0
+        )
+          throw new Error('Broker credentials parent changed');
+      },
+    },
   );
   if (!committed) throw new Error('Broker credential publication failed');
-  const service = new SelfHostedBrokerService(String(config.databasePath));
+  const service = new SelfHostedBrokerService(databasePath);
   try {
     service.provision(scope, 60_000, committed.bundle);
   } catch (error) {
@@ -124,7 +149,7 @@ if (mode === 'init') {
 if (config.provision.length !== 0)
   throw new Error('Broker serve does not provision credentials');
 const app = new Hono();
-const service = new SelfHostedBrokerService(String(config.databasePath));
+const service = new SelfHostedBrokerService(databasePath);
 app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
 const server = serve({
   fetch: app.fetch,
