@@ -23,7 +23,6 @@ import {
   type ProjectResolutionView,
   type ProjectResourceBindOutcome,
 } from '@kontourai/station-contracts/project-identity';
-import { PROJECT_MEMBER_ACTIONS } from '@kontourai/station-contracts/project-membership';
 import type {
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
@@ -81,54 +80,17 @@ export interface ProjectTerminalCloseResult {
   terminalId: string;
 }
 
-const MEMBER_PROJECT_VIEW_KEYS = new Set([
-  'version',
-  'kind',
-  'id',
-  'slug',
-  'name',
-  'icon',
-  'description',
-  'actions',
-]);
-
-export function isMemberProjectView(
+async function parseProjectView<T extends ProjectMetadata | ProjectConfig>(
   value: unknown,
-): value is MemberProjectView {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const view = value as Record<string, unknown>;
-  return (
-    Object.keys(view).every((key) => MEMBER_PROJECT_VIEW_KEYS.has(key)) &&
-    view.version === 'station.member-project/v1' &&
-    view.kind === 'member-project' &&
-    typeof view.id === 'string' &&
-    typeof view.slug === 'string' &&
-    typeof view.name === 'string' &&
-    (view.icon === undefined || typeof view.icon === 'string') &&
-    (view.description === undefined || typeof view.description === 'string') &&
-    Array.isArray(view.actions) &&
-    view.actions.every(
-      (action) =>
-        typeof action === 'string' &&
-        (PROJECT_MEMBER_ACTIONS as readonly string[]).includes(action),
-    )
-  );
-}
-
-function parseProjectView<T extends ProjectMetadata | ProjectConfig>(
-  value: unknown,
-): T | MemberProjectView {
+): Promise<T | MemberProjectView> {
   const memberShaped =
     !!value &&
     typeof value === 'object' &&
     !Array.isArray(value) &&
     ('kind' in value || 'version' in value);
   if (memberShaped) {
-    if (!isMemberProjectView(value))
-      throw new Error(
-        'This Station returned an unsupported member Project view.',
-      );
-    return value;
+    const { parseMemberProjectView } = await import('./member-project-view');
+    return parseMemberProjectView(value);
   }
   return value as T;
 }
@@ -141,7 +103,7 @@ export async function listProjects(
   const projects = await listProjectViews(apiBase, opts);
   const full: ProjectMetadata[] = [];
   for (const project of projects) {
-    if (isMemberProjectView(project))
+    if ('kind' in project)
       throw new Error('Full Project metadata is unavailable to this member.');
     full.push(project);
   }
@@ -155,7 +117,9 @@ export async function listProjectViews(
   const response = await getJson(`${apiBase}/api/projects`, opts);
   const value = await unwrapOrThrow<unknown>(response);
   if (!Array.isArray(value)) throw new Error('Invalid Project catalogue.');
-  return value.map((project) => parseProjectView<ProjectMetadata>(project));
+  return await Promise.all(
+    value.map((project) => parseProjectView<ProjectMetadata>(project)),
+  );
 }
 
 /** `GET /api/projects/:slug` — get a project. */
@@ -165,7 +129,7 @@ export async function getProject(
   opts?: ClientRequestOptions,
 ): Promise<ProjectConfig> {
   const project = await getProjectView(apiBase, slug, opts);
-  if (isMemberProjectView(project))
+  if ('kind' in project)
     throw new Error(
       'Full Project configuration is unavailable to this member.',
     );
@@ -181,7 +145,7 @@ export async function getProjectView(
     `${apiBase}/api/projects/${encodeURIComponent(slug)}`,
     opts,
   );
-  return parseProjectView<ProjectConfig>(
+  return await parseProjectView<ProjectConfig>(
     await unwrapOrThrow<unknown>(response),
   );
 }
