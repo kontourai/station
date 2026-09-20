@@ -991,6 +991,42 @@ describe('ACP Routes', () => {
     expect(body.detail).not.toContain('/Users/brian');
   });
 
+  test('reconnect reports the new attempt error instead of the prior failure', async () => {
+    const ctx = createMockRuntimeContext();
+    ctx.acpBridge.getStatus
+      .mockReturnValueOnce({
+        connected: false,
+        connections: [
+          {
+            id: 'opencode',
+            lastError: { message: 'old failure', phase: 'spawn' },
+          },
+        ],
+      })
+      .mockReturnValue({
+        connected: false,
+        connections: [
+          {
+            id: 'opencode',
+            lastError: {
+              message: 'new initialize timeout',
+              phase: 'initialize',
+            },
+          },
+        ],
+      });
+    ctx.acpBridge.reconnect.mockResolvedValue(false);
+    const response = await createACPRoutes(ctx as any).request(
+      '/connections/opencode/reconnect',
+      { method: 'POST' },
+    );
+    expect(response.status).toBe(502);
+    const body = await json(response);
+    expect(body.detail).toBe('new initialize timeout');
+    expect(body.phase).toBe('initialize');
+    expect(JSON.stringify(body)).not.toContain('old failure');
+  });
+
   test('POST /connections/:id/reconnect returns a standalone error when the failure carries no diagnostic', async () => {
     const ctx = createMockRuntimeContext();
     ctx.acpBridge.getStatus.mockReturnValue({

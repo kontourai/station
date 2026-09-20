@@ -170,11 +170,10 @@ export function isHonestlyAvailableConnectedAgent(
 }
 
 /**
- * The two evidence levels whose summary states what has been observed, never
- * a failure — quoting it as an unavailability reason reads as a contradiction
+ * The two evidence levels whose default summary states what has been observed — quoting it as an unavailability reason reads as a contradiction
  * ("Error: A live model or capability catalog is available.").
  */
-function isProvenNothingEvidenceLevel(
+function isObservationOnlyEvidenceLevel(
   level: ConnectionEvidenceLevel | undefined,
 ): boolean {
   return level === 'catalog-ready' || level === 'prerequisite-ready';
@@ -237,7 +236,7 @@ export function externalEngineUnavailable(
       // verbatim, decided by typed evidence — a level alone cannot tell the
       // two apart (a fresh failed smoke keeps catalog-ready).
       reason:
-        isProvenNothingEvidenceLevel(connection.readinessLevel) &&
+        isObservationOnlyEvidenceLevel(connection.readinessLevel) &&
         !connection.summaryNamesFailure
           ? unprovenEngineRefusal(connection)
           : connection.readinessReason,

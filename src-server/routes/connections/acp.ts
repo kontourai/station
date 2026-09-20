@@ -542,10 +542,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
     try {
       const result = await ctx.acpBridge.reconnect(id);
       if (!result) {
-        return failure(
-          connection.lastError?.message,
-          connection.lastError?.phase,
-        );
+        const current = ctx.acpBridge
+          .getStatus()
+          .connections.find((entry) => entry.id === id);
+        return failure(current?.lastError?.message, current?.lastError?.phase);
       }
     } catch (error) {
       return failure(sanitizedTransportError(error).message);
