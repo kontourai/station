@@ -158,7 +158,13 @@
 .sidebar__mobile-close {
   margin-left: auto;
   color: var(--text-muted);
-  padding: 4px;
+  /* 44x44 minimum touch target (Apple HIG / WCAG 2.5.8). The previous
+     16px glyph + 4px padding produced a 24x24 button; on the iOS simulator
+     the drawer-close tap at its center was dropped and the drawer stayed
+     open (#2254). The glyph stays 16px; only the hit target grows. */
+  width: 44px;
+  height: 44px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
