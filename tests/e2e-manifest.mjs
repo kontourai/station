@@ -1515,6 +1515,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/project-guest-shared-task-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Project guest shared Task acceptance',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, immutable account-bound Device approval, restricted Project/shared Task reads, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+    exceptions: [],
+  },
+  {
     path: 'tests/interactive-workspace-performance-bridge.spec.ts',
     bucket: 'smoke-live',
     surface: 'Interactive workspace performance reference bridge',
