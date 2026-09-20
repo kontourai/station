@@ -208,21 +208,36 @@ An existing unbound personal Device is not silently converted by login. The
 operator must explicitly approve and exchange the account-bound replacement,
 then revoke any older broad grant retained for that client.
 
+The direct request-access endpoint also accepts `requireAccountBinding: true`
+after sign-in. Station attaches the verified account candidate and makes this
+intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
+Device for that request. Existing ordinary pairing requests remain available.
+
 The first collaborator profile is deliberately read-only. It admits account
-controls and membership-filtered Project catalogue/resource reads, sets
-`Cache-Control: no-store`, and rechecks membership before response delivery and
-each streamed chunk. Project mutations and unrelated personal configuration,
+controls and membership-filtered Project catalogue/detail reads, sets
+`Cache-Control: no-store`, and binds response delivery to the exact local and
+portable Project incarnation. Membership is rechecked before delivery and each
+streamed chunk. Project mutations and unrelated personal configuration,
 plugin, terminal, coding, secret and orchestration surfaces fail closed even if
 the Device scope is broader. Existing unbound local/operator Devices retain
 their prior behavior. Existing Tailnet person bindings remain a separate
 personal-device mechanism; they do not become Project membership through this
 account contract.
 
-This is not the complete guest projection. A permitted `ProjectConfig` can
-still contain receiver-local workspace paths, knowledge configuration and
-provider references. Removing private local bindings from shared projections,
-then proving the full browser/native UI, compute-offer and two-person journey,
-remains owned by #483/#488. Tailnet member integration remains under #1513 and
+For authenticated members, the existing Project catalogue/detail endpoints
+return `station.member-project/v1` views: Project ID, slug, name, optional icon
+and description, and currently effective actions (`view` in this profile).
+Local workspace paths, provider/model configuration, knowledge settings and
+layout metadata are excluded. Unaudited nested Project resources remain denied.
+Personal/operator callers retain their full Project configuration.
+
+SDK consumers use `listProjectViews` and `getProjectView` to handle the typed
+member/full-view union. Legacy `listProjects` and `getProject` refuse member
+projections rather than pretending they contain full configuration. Unknown
+versions, extra fields and malformed member views fail validation.
+
+The full browser/native UI, shared content, compute-offer and two-person journey
+remain owned by #483/#488. Tailnet member integration remains under #1513 and
 #488.
 
 ## Browser invitation entry
