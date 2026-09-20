@@ -11,6 +11,7 @@ export function openTimeline(
   authority: (ApiRequestScope & { isCurrent: () => boolean }) | undefined,
   notify: (message: string, sessionId?: string, duration?: number) => string,
   dismiss: (id: string) => void,
+  isSourceCurrent: () => boolean,
 ) {
   if (opening) return opening;
   const toastId = notify('Loading conversation history…', undefined, 0);
@@ -39,6 +40,7 @@ export function openTimeline(
         projectName: session.projectName,
         requestScope: authority,
         isAuthorityCurrent: authority.isCurrent,
+        isSourceCurrent,
       });
     })
     .then(() => undefined)

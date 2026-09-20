@@ -32,6 +32,7 @@ const currentAuthority = {
     authorityKey: 'authority-1',
   },
   isAuthorityCurrent: () => true,
+  isSourceCurrent: () => true,
 };
 
 function turn(
@@ -254,6 +255,8 @@ test('a chat switch supersedes a pending history open without replacing the read
   navigationStore.setActiveChat('live-chat');
   const opening = openConversationTimeline({
     ...currentAuthority,
+    isSourceCurrent: () =>
+      navigationStore.getSnapshot().activeChat === 'live-chat',
     apiBase: 'http://station.test',
     sourceChatId: 'live-chat',
     sourceConversationId: 'conversation-1',
@@ -296,6 +299,7 @@ test('authority revocation with unchanged chat ids rejects without committing a 
     agentName: 'Codex',
     requestScope: currentAuthority.requestScope,
     isAuthorityCurrent: () => current,
+    isSourceCurrent: () => true,
   });
   current = false;
   resolveConversation({

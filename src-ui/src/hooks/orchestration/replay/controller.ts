@@ -36,6 +36,7 @@ export interface ConversationTimelineContext {
   selectedExecutionId: string;
   requestScope: ApiRequestScope;
   isAuthorityCurrent: () => boolean;
+  isSourceCurrent: () => boolean;
 }
 
 let active: ActiveReplay | null = null;
@@ -223,6 +224,7 @@ export async function openConversationTimeline(input: {
   projectName?: string;
   requestScope: ApiRequestScope;
   isAuthorityCurrent: () => boolean;
+  isSourceCurrent: () => boolean;
 }): Promise<ActiveReplay> {
   if (
     input.requestScope.apiBase !== input.apiBase ||
@@ -282,11 +284,12 @@ export async function openConversationTimeline(input: {
     selectedExecutionId: conversation.currentSessionId,
     requestScope: input.requestScope,
     isAuthorityCurrent: input.isAuthorityCurrent,
+    isSourceCurrent: input.isSourceCurrent,
   };
   try {
     if (
       generation !== timelineGeneration ||
-      navigationStore.getSnapshot().activeChat !== input.sourceChatId ||
+      !input.isSourceCurrent() ||
       !input.isAuthorityCurrent() ||
       activeChatsStore.getSnapshot()[input.sourceChatId]?.conversationId !==
         input.sourceConversationId
@@ -300,7 +303,7 @@ export async function openConversationTimeline(input: {
       beforeOpen: () =>
         generation === timelineGeneration &&
         input.isAuthorityCurrent() &&
-        navigationStore.getSnapshot().activeChat === input.sourceChatId &&
+        input.isSourceCurrent() &&
         activeChatsStore.getSnapshot()[input.sourceChatId]?.conversationId ===
           input.sourceConversationId,
     });
@@ -328,6 +331,7 @@ export async function selectConversationTimelineExecution(
   if (!context || !execution)
     throw new Error('That conversation section is unavailable.');
   const generation = ++timelineGeneration;
+  const sourceReplayId = active?.replayId;
   timelineRequest?.abort();
   const request = new AbortController();
   timelineRequest = request;
@@ -346,7 +350,7 @@ export async function selectConversationTimelineExecution(
         generation === timelineGeneration &&
         context.isAuthorityCurrent() &&
         getConversationTimelineContext() === context &&
-        navigationStore.getSnapshot().activeChat === active?.replayId &&
+        active?.replayId === sourceReplayId &&
         activeChatsStore.getSnapshot()[context.sourceChatId]?.conversationId ===
           context.sourceConversationId,
     });

@@ -406,6 +406,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         credentialState: mentionCredentialEvidence.credentialState,
       })
     : null;
+  const timelineSourceRef = useRef<string | null>(null);
   const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
     // Legacy placement preference remains exposed to the Chat settings
@@ -951,6 +952,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const activeChatAgent = activeSession
     ? agents.find((agent) => agent.slug === activeSession.agentSlug)
     : undefined;
+  timelineSourceRef.current = activeSession?.id ?? null;
 
   // station#3309: the model the dock header names — the same answer the
   // composer's model pill gives, arrived at the same way. `effectiveChatModelId`
@@ -1057,6 +1059,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         requestAuthority,
         showToast,
         dismissToast,
+        () => timelineSourceRef.current === activeSession.id,
       ),
     );
   };
