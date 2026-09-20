@@ -45,6 +45,7 @@ function createMockRuntimeContext() {
       // overrides it explicitly.
       addConnection: vi.fn().mockResolvedValue(true),
       removeConnection: vi.fn().mockResolvedValue(undefined),
+      reconnect: vi.fn().mockResolvedValue(true),
     },
     configLoader: {
       loadACPConfig: vi.fn().mockResolvedValue({ connections: [] }),
@@ -931,5 +932,121 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(400);
     expect(await json(response)).toMatchObject({ success: false });
     expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+  });
+
+  test('POST /connections/:id/reconnect returns success on a completed handshake', async () => {
+    const ctx = createMockRuntimeContext();
+    ctx.acpBridge.getStatus.mockReturnValue({
+      connected: true,
+      connections: [{ id: 'kiro', name: 'Kiro', status: 'unavailable' }],
+    });
+    const app = createACPRoutes(ctx as any);
+
+    const response = await app.request('/connections/kiro/reconnect', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ success: true });
+    expect(ctx.acpBridge.reconnect).toHaveBeenCalledExactlyOnceWith('kiro');
+  });
+
+  // station#2253: a failed reconnect used to answer HTTP 200 with
+  // `{ success: false }` and no `error` field, so the published CLI could
+  // only print "Request failed with HTTP 200". The failure must be a non-2xx
+  // with a bounded, sanitized diagnostic.
+  test('POST /connections/:id/reconnect returns 502 with a sanitized diagnostic on a failed handshake', async () => {
+    const ctx = createMockRuntimeContext();
+    ctx.acpBridge.getStatus.mockReturnValue({
+      connected: false,
+      connections: [
+        {
+          id: 'kiro',
+          name: 'Kiro',
+          status: 'unavailable',
+          lastError: {
+            message:
+              'spawn kiro-cli ENOENT: handshake failed for --api-key=abc123 from /Users/brian/private/project',
+            phase: 'spawn',
+          },
+        },
+      ],
+    });
+    ctx.acpBridge.reconnect.mockResolvedValue(false);
+    const app = createACPRoutes(ctx as any);
+
+    const response = await app.request('/connections/kiro/reconnect', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(502);
+    const body = await json(response);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.phase).toBe('spawn');
+    // Secret-redacted and path-stripped: the raw credential shape and the
+    // absolute path from the probe failure never reach the client.
+    expect(body.detail).toContain('[REDACTED]');
+    expect(body.detail).not.toContain('abc123');
+    expect(body.detail).not.toContain('/Users/brian');
+  });
+
+  test('POST /connections/:id/reconnect returns a standalone error when the failure carries no diagnostic', async () => {
+    const ctx = createMockRuntimeContext();
+    ctx.acpBridge.getStatus.mockReturnValue({
+      connected: false,
+      connections: [{ id: 'kiro', name: 'Kiro', status: 'probing' }],
+    });
+    ctx.acpBridge.reconnect.mockResolvedValue(false);
+    const app = createACPRoutes(ctx as any);
+
+    const response = await app.request('/connections/kiro/reconnect', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(502);
+    expect(await json(response)).toEqual({
+      success: false,
+      error: 'The ACP connection could not be reconnected.',
+    });
+  });
+
+  test('POST /connections/:id/reconnect returns 404 for a connection the bridge does not hold', async () => {
+    const ctx = createMockRuntimeContext();
+    const app = createACPRoutes(ctx as any);
+
+    const response = await app.request('/connections/missing/reconnect', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(404);
+    expect(await json(response)).toEqual({
+      success: false,
+      error: 'Connection not found',
+    });
+    expect(ctx.acpBridge.reconnect).not.toHaveBeenCalled();
+  });
+
+  test('POST /connections/:id/reconnect answers 502 with a sanitized detail when the probe throws', async () => {
+    const ctx = createMockRuntimeContext();
+    ctx.acpBridge.getStatus.mockReturnValue({
+      connected: false,
+      connections: [{ id: 'muse', name: 'Muse', status: 'unavailable' }],
+    });
+    ctx.acpBridge.reconnect.mockRejectedValue(
+      new Error('spawn muse ENOENT: Bearer sk-test1234 leaked in stderr'),
+    );
+    const app = createACPRoutes(ctx as any);
+
+    const response = await app.request('/connections/muse/reconnect', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(502);
+    const body = await json(response);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.detail).toContain('[REDACTED]');
+    expect(body.detail).not.toContain('sk-test1234');
   });
 });
