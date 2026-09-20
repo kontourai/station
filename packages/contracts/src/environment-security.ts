@@ -592,6 +592,8 @@ interface DevicePairingRequestBase {
   status: 'pending' | 'confirmed' | 'denied';
   /** Provider-verified account offered for explicit operator binding. */
   accountCandidate?: DeviceAccountBindingCandidate;
+  /** Immutable requester intent: this ceremony may mint only an account-bound Device. */
+  requireAccountBinding?: true;
 }
 
 export interface DeviceAccountBindingCandidate {
@@ -629,6 +631,8 @@ export interface DevicePairingAccessRequestResponse {
   proof: string;
   requestId: string;
   expiresAt: number;
+  accountCandidate?: DeviceAccountBindingCandidate;
+  requireAccountBinding?: true;
 }
 
 /**

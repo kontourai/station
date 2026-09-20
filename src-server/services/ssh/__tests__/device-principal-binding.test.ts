@@ -164,6 +164,59 @@ test('account approval refuses an unverified or incomplete candidate', () => {
   ).toThrow('invalid_request');
 });
 
+test('required account access intent survives request through exchange and refuses broader approval', () => {
+  const { service } = setup();
+  const candidate = {
+    issuer: 'station-local:environment',
+    subject: 'account-123',
+    displayName: 'Collaborator',
+  };
+  const access = service.requestAccess({
+    endpoint: 'https://station.example.test',
+    deviceName: 'Guest browser',
+    requesterPosition: 'off-box',
+    source: 'pairing-code',
+    requireAccountBinding: true,
+    accountCandidate: candidate,
+    accountCandidateSessionId: 'session-123',
+  });
+  expect(access).toMatchObject({
+    requireAccountBinding: true,
+    accountCandidate: candidate,
+  });
+  expect(service.listRequests()[0]).toMatchObject({
+    requireAccountBinding: true,
+    accountCandidate: candidate,
+  });
+  expect(() =>
+    service.confirmRequest(access.requestId, {
+      kind: 'presented-credential',
+    }),
+  ).toThrow('invalid_request');
+  expect(() =>
+    service.confirmRequest(
+      access.requestId,
+      { kind: 'presented-credential' },
+      approver,
+    ),
+  ).toThrow('invalid_request');
+  service.confirmRequest(
+    access.requestId,
+    { kind: 'presented-credential' },
+    { ...approver, kind: 'account' },
+  );
+  const exchanged = service.exchange({
+    offerId: access.offerId,
+    proof: access.proof,
+    requestId: access.requestId,
+  });
+  expect(exchanged.device.principalBinding).toMatchObject({
+    kind: 'account',
+    issuer: candidate.issuer,
+    subject: candidate.subject,
+  });
+});
+
 test('unverified requests and non-credential approval cannot acquire person identity', () => {
   const { service } = setup();
   const unknown = request(service, false);

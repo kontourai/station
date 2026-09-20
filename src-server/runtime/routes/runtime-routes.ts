@@ -5744,10 +5744,15 @@ export function configureDevicePairingPublicRoutes(
       });
       return c.json({ error: 'rate_limited' }, 429);
     }
-    const body = await readPairingJson(c.req.raw, ['deviceName']);
+    const body = await readPairingJson(c.req.raw, [
+      'deviceName',
+      'requireAccountBinding',
+    ]);
     if (
       !body ||
       typeof body.deviceName !== 'string' ||
+      (body.requireAccountBinding !== undefined &&
+        body.requireAccountBinding !== true) ||
       (body.clientInstanceId !== undefined &&
         typeof body.clientInstanceId !== 'string')
     ) {
@@ -5756,6 +5761,13 @@ export function configureDevicePairingPublicRoutes(
         outcome: 'denied',
       });
       return c.json({ error: 'invalid_request' }, 400);
+    }
+    const account = options.accountAuthentication?.current(c.req.raw);
+    if (
+      body.requireAccountBinding === true &&
+      account?.kind !== 'authenticated'
+    ) {
+      return c.json({ error: 'account_authentication_required' }, 401);
     }
     try {
       // The pairing endpoint is the Station address the requester actually
@@ -5816,6 +5828,18 @@ export function configureDevicePairingPublicRoutes(
         deviceName: body.deviceName,
         clientInstanceId: body.clientInstanceId as string | undefined,
         requesterPosition: pairingRequesterPosition(c),
+        ...(body.requireAccountBinding === true &&
+        account?.kind === 'authenticated'
+          ? {
+              requireAccountBinding: true as const,
+              accountCandidate: {
+                issuer: options.accountAuthentication!.describe().issuer,
+                subject: account.session.subject,
+                displayName: account.session.displayName,
+              },
+              accountCandidateSessionId: account.session.sessionId,
+            }
+          : {}),
       };
       const result = ingressIdentity
         ? pairing.requestAccess({

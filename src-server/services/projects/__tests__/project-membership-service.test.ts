@@ -16,6 +16,7 @@ import {
   ProjectMembershipRefusal,
   ProjectMembershipStore,
 } from '../project-membership-store.js';
+import { guardProjectResponse } from '../project-response-guard.js';
 import { ProjectService } from '../project-service.js';
 
 const owner = humanPrincipal('deployment', 'owner', 'Owner');
@@ -63,6 +64,7 @@ async function harness() {
     createProjectMembershipRoutes(service, () => access),
   );
   return {
+    db,
     storage,
     projects,
     project,
@@ -286,6 +288,59 @@ describe('Project membership through revision and administration routes', () => 
       h.service.requireProjectRead('example', h.access),
     ).rejects.toMatchObject({ code: 'forbidden' });
     expect(privateProject.slug).toBe('private');
+  });
+
+  test('a same-slug replacement with new membership cannot release the old Project response', async () => {
+    const h = await harness();
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const firstOffer = await h.service.invite(
+      view.scope,
+      invitation(),
+      h.access,
+    );
+    h.setActor(invitee);
+    await h.service.accept(firstOffer.token, h.access);
+    const admitted = await h.service.requireProjectRead('example', h.access);
+    const guarded = await guardProjectResponse(
+      Response.json({ name: 'old private marker' }),
+      async () => {
+        try {
+          await h.service.requireProjectScopeRead(admitted, h.access);
+          return true;
+        } catch (error) {
+          if (error instanceof ProjectMembershipRefusal) return false;
+          throw error;
+        }
+      },
+    );
+
+    await h.storage.projectRevision('example').remove();
+    h.db.exec(
+      `DELETE FROM project_invitations;
+       DELETE FROM project_members;
+       DELETE FROM shared_projects;`,
+    );
+    const replacement = await h.projects.createProject({
+      name: 'Replacement',
+      slug: 'example',
+    });
+    h.setActor(owner, true);
+    const replacementView = await h.service.enable(
+      'example',
+      replacement.id,
+      h.access,
+    );
+    const secondOffer = await h.service.invite(
+      replacementView.scope,
+      invitation(),
+      h.access,
+    );
+    h.setActor(invitee);
+    await h.service.accept(secondOffer.token, h.access);
+
+    await expect(guarded.text()).rejects.toThrow(
+      'Project authorization ended before response delivery',
+    );
   });
 
   test('request-supplied principals and scopes cannot redirect a management action', async () => {

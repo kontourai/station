@@ -52,7 +52,7 @@ import {
 } from '@kontourai/station-contracts/deployment-authentication';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
-  PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
 import type { LocalAccountView } from '@kontourai/station-contracts/local-accounts';
@@ -947,22 +947,17 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         acceptedMembership.status,
         await acceptedMembership.clone().text(),
       ).toBe(200);
-      const replacementOffer = h.pairing.createOffer({
-        endpoint: origin,
-        scope: pairingScopePresetString('standard'),
-      });
       const pairingBody = {
-        offerId: replacementOffer.offerId,
-        proof: replacementOffer.challenge,
         deviceName: 'Bound collaborator',
+        requireAccountBinding: true,
       };
       const pairingRequest = await request(
-        PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
+        PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
         pairingBody,
         {
           ...(await client.headers(session, {
             method: 'POST',
-            url: origin + PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
+            url: origin + PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
           })),
           Authorization: `Bearer ${h.paired.credential}`,
         },
@@ -970,7 +965,20 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(pairingRequest.status, await pairingRequest.clone().text()).toBe(
         202,
       );
-      const pending = (await pairingRequest.json()) as { requestId: string };
+      const pending = (await pairingRequest.json()) as {
+        requestId: string;
+        offerId: string;
+        proof: string;
+        requireAccountBinding: true;
+        accountCandidate: { issuer: string; subject: string };
+      };
+      expect(pending).toMatchObject({
+        requireAccountBinding: true,
+        accountCandidate: {
+          issuer: h.localAccounts!.service.describe().issuer,
+          subject: expect.any(String),
+        },
+      });
       const confirmed = await request(
         `/api/pairing/requests/${pending.requestId}/confirm`,
         { bindAccountIdentity: true },
@@ -985,8 +993,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         },
       });
       const replacement = h.pairing.exchange({
-        offerId: replacementOffer.offerId,
-        proof: replacementOffer.challenge,
+        offerId: pending.offerId,
+        proof: pending.proof,
         requestId: pending.requestId,
       });
       expect(replacement.device.principalBinding).toMatchObject({
