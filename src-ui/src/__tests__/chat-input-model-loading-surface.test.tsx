@@ -142,7 +142,9 @@ describe('model popover Suspense fallback (station#1825 item 2)', () => {
     });
     await waitFor(() =>
       expect(
-        screen.getByText('Models unavailable while this Station is unreachable'),
+        screen.getByText(
+          'Models unavailable while this Station is unreachable',
+        ),
       ).toBeTruthy(),
     );
     expect(screen.queryByLabelText('Loading models')).toBeNull();
