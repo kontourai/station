@@ -3,9 +3,11 @@ import type {
   ProjectSharedTaskDocument,
   ProjectSharedTaskHistory,
 } from '@kontourai/station-contracts/project-shared-task';
+import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
+import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type {
   ProjectSharedTaskAuthority,
@@ -30,7 +32,8 @@ export function createProjectSharedTaskRoutes(deps: {
       { status: 404, headers: { 'Cache-Control': 'no-store' } },
     );
   const failure = (error: unknown) =>
-    error instanceof ProjectSharedTaskRefusal && error.code !== 'unavailable'
+    error instanceof ProjectMembershipRefusal ||
+    (error instanceof ProjectSharedTaskRefusal && error.code !== 'unavailable')
       ? missing()
       : Response.json(
           { success: false, error: 'Shared Task unavailable' },
@@ -45,8 +48,13 @@ export function createProjectSharedTaskRoutes(deps: {
       try {
         await deps.service.revalidate(admission, authority);
         return true;
-      } catch {
-        return false;
+      } catch (error) {
+        if (
+          error instanceof ProjectMembershipRefusal ||
+          error instanceof ProjectSharedTaskRefusal
+        )
+          return false;
+        throw error;
       }
     });
   app.put('/:slug/shared-work/:taskId', async (c) => {
@@ -94,6 +102,11 @@ export function createProjectSharedTaskRoutes(deps: {
       const scope = await deps.scope(c.req.raw, c.req.param('slug'));
       const authority = await deps.authority(c.req.raw);
       const data = await deps.service.list(scope, authority);
+      if (
+        Buffer.byteLength(JSON.stringify({ success: true, data })) >
+        1024 * 1024
+      )
+        return failure(new ProjectSharedTaskRefusal('unavailable'));
       return guardProjectResponse(
         Response.json(
           { success: true, data },
@@ -104,8 +117,13 @@ export function createProjectSharedTaskRoutes(deps: {
             for (const summary of data)
               await deps.service.revalidateSummary(summary, authority);
             return true;
-          } catch {
-            return false;
+          } catch (error) {
+            if (
+              error instanceof ProjectMembershipRefusal ||
+              error instanceof ProjectSharedTaskRefusal
+            )
+              return false;
+            throw error;
           }
         },
       );
@@ -128,8 +146,13 @@ export function createProjectSharedTaskRoutes(deps: {
           try {
             await deps.service.revalidate(admission, authority);
             return true;
-          } catch {
-            return false;
+          } catch (error) {
+            if (
+              error instanceof ProjectMembershipRefusal ||
+              error instanceof ProjectSharedTaskRefusal
+            )
+              return false;
+            throw error;
           }
         },
       });
@@ -174,8 +197,13 @@ export function createProjectSharedTaskRoutes(deps: {
           try {
             await deps.service.revalidate(admission, authority);
             return true;
-          } catch {
-            return false;
+          } catch (error) {
+            if (
+              error instanceof ProjectMembershipRefusal ||
+              error instanceof ProjectSharedTaskRefusal
+            )
+              return false;
+            throw error;
           }
         },
       });
@@ -221,12 +249,12 @@ export function createProjectSharedTaskRoutes(deps: {
   return app;
 }
 function humanHistory(value: any): ProjectSharedTaskHistory | undefined {
-  if (value?.kind !== 'available' || !Array.isArray(value.records))
-    return undefined;
-  if (value.hasMore) return { kind: 'unavailable' };
+  const parsed = parseProjectTaskRoomBrowserHistory(value);
+  if (parsed?.kind !== 'available') return undefined;
+  if (parsed.hasMore) return { kind: 'unavailable' };
   return {
     kind: 'available',
-    records: value.records.flatMap((record: any) =>
+    records: parsed.records.flatMap((record) =>
       record?.body?.kind === 'human-message'
         ? [
             {
@@ -242,7 +270,12 @@ function humanHistory(value: any): ProjectSharedTaskHistory | undefined {
           ]
         : [],
     ),
-    checkpoint: value.checkpoint,
+    checkpoint: {
+      throughSeq: parsed.checkpoint.throughSeq,
+      checkpointDigest: parsed.checkpoint.checkpointDigest,
+      retainedAnchorSeq: parsed.checkpoint.retainedAnchorSeq,
+      retainedAnchorDigest: parsed.checkpoint.retainedAnchorDigest,
+    },
     hasMore: false,
   };
 }

@@ -1,7 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
+import { readProjectSharedTaskHistory } from '@kontourai/station-sdk/project-shared-tasks';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import { ProjectMembershipRefusal } from '../../../services/projects/project-membership-store.js';
 import { ProjectSharedTaskService } from '../../../services/projects/project-shared-task-service.js';
 import {
   ProjectSharedTaskRefusal,
@@ -63,6 +65,7 @@ function fixture() {
         retainedAnchorDigest: 'e'.repeat(64),
       },
       hasMore: false,
+      integrity: 'L0',
     })),
     sharedDocument: vi.fn(async () => ({
       kind: 'snapshot',
@@ -105,6 +108,16 @@ describe('project shared Task routes', () => {
     expect(response.status).toBe(404);
     expect(await response.text()).not.toContain('shared document');
     expect(h.room.sharedDocument).toHaveBeenCalledOnce();
+  });
+  test('wrong Project membership remains an opaque 404', async () => {
+    const h = fixture();
+    h.service.admitRead.mockRejectedValue(
+      new ProjectMembershipRefusal('forbidden'),
+    );
+    expect(
+      (await h.app.request('/api/projects/example/shared-work/task-1/history'))
+        .status,
+    ).toBe(404);
   });
   test('operator share and exact unshare reach owning service callbacks', async () => {
     const h = fixture();
@@ -197,6 +210,18 @@ describe('project shared Task routes', () => {
       (await app.request('/api/projects/example/shared-work/task-1/history'))
         .status,
     ).toBe(200);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request, init?: RequestInit) =>
+        app.request(input instanceof Request ? input : String(input), init),
+      ),
+    );
+    await expect(
+      readProjectSharedTaskHistory('http://localhost', 'example', 'task-1', {
+        authentication: 'omit',
+      }),
+    ).resolves.toMatchObject({ kind: 'available' });
+    vi.unstubAllGlobals();
     expect(
       (
         await app.request('/api/projects/example/shared-work/task-1', {
