@@ -29,6 +29,28 @@ type shortWriteCloser struct{}
 func (*shortWriteCloser) Write(value []byte) (int, error) { return len(value) - 1, nil }
 func (*shortWriteCloser) Close() error                    { return nil }
 
+type observedFileWriter struct {
+	*os.File
+	entered  chan struct{}
+	returned chan struct{}
+	once     sync.Once
+}
+
+func (w *observedFileWriter) Write(value []byte) (int, error) {
+	if len(value) > 100*1024 {
+		w.once.Do(func() { close(w.entered) })
+	}
+	n, err := w.File.Write(value)
+	if len(value) > 100*1024 {
+		select {
+		case <-w.returned:
+		default:
+			close(w.returned)
+		}
+	}
+	return n, err
+}
+
 func (w *blockingWriteCloser) Write([]byte) (int, error) {
 	w.once.Do(func() { close(w.started) })
 	<-w.closed
@@ -268,25 +290,25 @@ func TestApplicationCloseUnblocksRealOwnedPipes(t *testing.T) {
 	}
 	defer inputWriter.Close()
 	defer outputReader.Close()
-	bridge := newApplicationBridgeIO(inputReader, outputWriter, func(error) {})
+	observed := &observedFileWriter{
+		File: outputWriter, entered: make(chan struct{}), returned: make(chan struct{}),
+	}
+	bridge := newApplicationBridgeIO(inputReader, observed, func(error) {})
 	channel := &fakeApplicationChannel{ordered: true}
 	bridge.add(channel)
-	body := []byte(strings.Repeat("x", 48*1024))
-	for range 8 {
-		channel.onMessage(webrtc.DataChannelMessage{IsString: true, Data: body})
+	channel.onMessage(webrtc.DataChannelMessage{
+		IsString: true,
+		Data:     []byte(strings.Repeat("\x00", 48*1024)),
+	})
+	select {
+	case <-observed.entered:
+	case <-time.After(time.Second):
+		t.Fatal("bridge writer never entered the full kernel pipe")
 	}
-	deadline := time.Now().Add(time.Second)
-	for {
-		bridge.mu.Lock()
-		pending := bridge.pendingBytes
-		bridge.mu.Unlock()
-		if pending >= 2*48*1024 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("real undrained pipe did not apply writer backpressure")
-		}
-		time.Sleep(time.Millisecond)
+	select {
+	case <-observed.returned:
+		t.Fatal("write to the undrained full kernel pipe returned before close")
+	default:
 	}
 	settled := make(chan struct{})
 	go func() {
