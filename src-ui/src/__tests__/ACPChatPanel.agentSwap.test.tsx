@@ -27,16 +27,21 @@ const capture = vi.hoisted(() => ({
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({ activeConnection: null }),
+  useConnections: () => ({
+    activeConnection: null,
+    captureCredentialEvidence: () => undefined,
+  }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
+  useProjectQuery: () => ({ data: undefined, isLoading: false }),
   // #2144 slice 6: the panel reads the Station-scope default approval
   // mode through `useConfig`. No stored value is the neutral answer here.
   useConfigQuery: () => ({ data: undefined, dataUpdatedAt: 0 }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [
