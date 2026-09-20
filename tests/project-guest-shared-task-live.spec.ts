@@ -131,6 +131,15 @@ test.describe
         'Private ordinary Task marker',
       );
       const messageMarker = 'Guest-visible real human message';
+      const openRoom = await fetch(
+        `${live.api}/api/tasks/${encodeURIComponent(sharedTask.id)}/room`,
+        { headers: operatorHeaders },
+      );
+      expect(
+        openRoom.status,
+        `Room open failed: ${await openRoom.clone().text()}`,
+      ).toBe(200);
+      await openRoom.text();
       const message = await fetch(
         `${live.api}/api/tasks/${encodeURIComponent(sharedTask.id)}/room/messages`,
         {
@@ -142,7 +151,11 @@ test.describe
           }),
         },
       );
-      expect(message.status).toBe(200);
+      expect(
+        message.status,
+        `Message post failed: ${await message.clone().text()}`,
+      ).toBe(200);
+      await message.text();
       const documentMarker = 'Guest-visible real shared document';
       const planResponse = await fetch(
         `${live.api}/api/tasks/${encodeURIComponent(sharedTask.id)}/room/edit-plan`,
@@ -156,7 +169,10 @@ test.describe
           }),
         },
       );
-      expect(planResponse.status).toBe(200);
+      expect(
+        planResponse.status,
+        `Plan post failed: ${await planResponse.clone().text()}`,
+      ).toBe(200);
       const planEnvelope = (await planResponse.json()) as {
         data?: { intentId: string; digest: string };
         intentId?: string;
@@ -176,7 +192,10 @@ test.describe
           }),
         },
       );
-      expect(batch.status).toBe(200);
+      expect(
+        batch.status,
+        `Batch post failed: ${await batch.clone().text()}`,
+      ).toBe(200);
       const enabled = await changeProjectAccess(
         live.api,
         shared.slug,
