@@ -16,7 +16,7 @@ import { getBody, param, validate } from '../schemas/schemas.js';
 
 export function createProjectSharedTaskRoutes(deps: {
   service: ProjectSharedTaskService;
-  room: Pick<ProjectTaskRoomRuntime, 'history' | 'document'>;
+  room: Pick<ProjectTaskRoomRuntime, 'sharedHistory' | 'sharedDocument'>;
   scope(request: Request, slug: string): Promise<ProjectMembershipScope>;
   authority(request: Request): Promise<ProjectSharedTaskAuthority>;
 }) {
@@ -111,13 +111,26 @@ export function createProjectSharedTaskRoutes(deps: {
         c.req.param('taskId'),
         authority,
       );
-      const value = await deps.room.history({
+      const value = await deps.room.sharedHistory({
         taskId: admission.taskId,
         request: c.req.raw,
-        project: true,
+        current: async () => {
+          try {
+            await deps.service.revalidate(admission, authority);
+            return true;
+          } catch {
+            return false;
+          }
+        },
       });
       await deps.service.revalidate(admission, authority);
       const history = humanHistory(value);
+      if (history && Buffer.byteLength(JSON.stringify(history)) > 1024 * 1024)
+        return guarded(
+          Response.json({ success: true, data: { kind: 'too-large' } }),
+          admission,
+          authority,
+        );
       return history
         ? guarded(
             Response.json(
@@ -140,9 +153,17 @@ export function createProjectSharedTaskRoutes(deps: {
         c.req.param('taskId'),
         authority,
       );
-      const value = await deps.room.document({
+      const value = await deps.room.sharedDocument({
         taskId: admission.taskId,
         request: c.req.raw,
+        current: async () => {
+          try {
+            await deps.service.revalidate(admission, authority);
+            return true;
+          } catch {
+            return false;
+          }
+        },
       });
       await deps.service.revalidate(admission, authority);
       if (
@@ -151,6 +172,12 @@ export function createProjectSharedTaskRoutes(deps: {
         typeof value.text !== 'string'
       )
         return missing();
+      if (Buffer.byteLength(value.text) > 1024 * 1024)
+        return guarded(
+          Response.json({ success: true, data: { kind: 'too-large' } }),
+          admission,
+          authority,
+        );
       const data: ProjectSharedTaskDocument = {
         kind: 'snapshot',
         project: {
@@ -178,6 +205,7 @@ export function createProjectSharedTaskRoutes(deps: {
 function humanHistory(value: any): ProjectSharedTaskHistory | undefined {
   if (value?.kind !== 'available' || !Array.isArray(value.records))
     return undefined;
+  if (value.hasMore) return { kind: 'unavailable' };
   return {
     kind: 'available',
     records: value.records.flatMap((record: any) =>
@@ -197,7 +225,6 @@ function humanHistory(value: any): ProjectSharedTaskHistory | undefined {
         : [],
     ),
     checkpoint: value.checkpoint,
-    hasMore: value.hasMore,
-    ...(value.nextCursor ? { nextCursor: value.nextCursor } : {}),
+    hasMore: false,
   };
 }

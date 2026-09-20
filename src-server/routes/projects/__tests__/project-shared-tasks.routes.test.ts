@@ -35,7 +35,7 @@ function fixture() {
     revalidateSummary: vi.fn(async () => {}),
   };
   const room = {
-    history: vi.fn(async () => ({
+    sharedHistory: vi.fn(async () => ({
       kind: 'available',
       records: [
         {
@@ -61,7 +61,7 @@ function fixture() {
       },
       hasMore: false,
     })),
-    document: vi.fn(async () => ({
+    sharedDocument: vi.fn(async () => ({
       kind: 'snapshot',
       revision: 'revision-1',
       text: 'shared document',
@@ -87,7 +87,7 @@ describe('project shared Task routes', () => {
     expect(body.data.records).toHaveLength(1);
     expect(JSON.stringify(body)).toContain('shared note');
     expect(JSON.stringify(body)).not.toContain('private-session');
-    expect(h.room.history).toHaveBeenCalledOnce();
+    expect(h.room.sharedHistory).toHaveBeenCalledOnce();
     expect(h.service.admitRead).toHaveBeenCalledOnce();
     expect(h.service.revalidate).toHaveBeenCalledTimes(3);
   });
@@ -99,7 +99,7 @@ describe('project shared Task routes', () => {
     );
     expect(response.status).toBe(404);
     expect(await response.text()).not.toContain('shared document');
-    expect(h.room.document).toHaveBeenCalledOnce();
+    expect(h.room.sharedDocument).toHaveBeenCalledOnce();
   });
   test('operator share and exact unshare reach owning service callbacks', async () => {
     const h = fixture();

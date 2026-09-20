@@ -30,7 +30,15 @@ export type ProjectSharedTaskHistory =
       hasMore: boolean;
       nextCursor?: string;
     }
-  | { kind: 'gap' | 'stale' | 'invalid-cursor' | 'not-found' | 'unavailable' };
+  | {
+      kind:
+        | 'gap'
+        | 'stale'
+        | 'invalid-cursor'
+        | 'not-found'
+        | 'unavailable'
+        | 'too-large';
+    };
 export type ProjectSharedTaskDocument =
   | {
       kind: 'snapshot';
@@ -39,4 +47,4 @@ export type ProjectSharedTaskDocument =
       revision: string;
       text: string;
     }
-  | { kind: 'not-found' | 'unavailable' };
+  | { kind: 'not-found' | 'unavailable' | 'too-large' };

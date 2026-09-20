@@ -1382,6 +1382,9 @@ export function configureRuntimeRoutes(
         path.startsWith('/assets/') ||
         path === '/api/projects' ||
         /^\/api\/projects\/[^/]+$/.test(path) ||
+        /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document))?$/.test(
+          path,
+        ) ||
         path === '/api/account-auth' ||
         path.startsWith('/api/account-auth/') ||
         path === PUBLIC_DEVICE_PAIRING_REQUEST_PATH ||

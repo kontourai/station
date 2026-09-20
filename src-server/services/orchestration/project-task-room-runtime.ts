@@ -163,6 +163,7 @@ interface IssuedGrant {
   /** A bounded server-minted live-material authority, never a browser key. */
   readonly material?: true;
   readonly receiptId: string;
+  readonly currentSharedRead?: () => Promise<boolean>;
 }
 interface IssuedEditPlan {
   readonly batch: SharedWorkingStateEditBatch;
@@ -866,6 +867,37 @@ export class ProjectTaskRoomRuntime {
       : result;
   }
 
+  async sharedHistory(input: {
+    taskId: string;
+    request: Request;
+    current: () => Promise<boolean>;
+  }) {
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'history-read',
+      input.current,
+    );
+    if (!grant) return { kind: 'not-found' } as const;
+    const result = await this.#history.read({ grant });
+    if (!(await input.current())) return { kind: 'not-found' } as const;
+    if (result.kind === 'denied') return { kind: 'not-found' } as const;
+    return projectHistory(
+      result,
+    ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+  }
+  async sharedDocument(input: {
+    taskId: string;
+    request: Request;
+    current: () => Promise<boolean>;
+  }) {
+    if (!(await input.current())) return { kind: 'not-found' } as const;
+    const value = await this.document({
+      taskId: input.taskId,
+      request: input.request,
+    });
+    return (await input.current()) ? value : ({ kind: 'not-found' } as const);
+  }
   async message(input: {
     taskId: string;
     request: Request;
@@ -2226,6 +2258,7 @@ export class ProjectTaskRoomRuntime {
     taskId: string,
     request: Request,
     capability: K,
+    currentSharedRead?: () => Promise<boolean>,
   ): Promise<ProjectTaskRoomGrant<K> | undefined> {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
@@ -2244,6 +2277,7 @@ export class ProjectTaskRoomRuntime {
       principal,
       request,
       receiptId: requestReceiptId(scope, principal, capability),
+      ...(currentSharedRead ? { currentSharedRead } : {}),
     });
     return Object.freeze({
       schemaVersion: 'station.project-task-room-grant/v1',
@@ -3070,6 +3104,8 @@ export class ProjectTaskRoomRuntime {
       };
     }
     if (!issued.request) return { kind: 'revoked' };
+    if (issued.currentSharedRead && !(await issued.currentSharedRead()))
+      return { kind: 'revoked' };
     const currentPrincipal = await this.#principal(issued.request);
     if (
       !currentScope ||
