@@ -181,8 +181,14 @@ export async function browserRejectWrongBoundAccount() {
       password: state.input.wrongPassword,
     });
     return false;
-  } catch {
-    return true;
+  } catch (error) {
+    if (
+      error instanceof window.stationApplicationChannel.StationHttpError &&
+      error.status === 401 &&
+      error.message === 'application_session_invalid'
+    )
+      return true;
+    throw error;
   }
 }
 export async function browserRenewApplicationAccount() {

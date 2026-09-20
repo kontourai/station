@@ -553,9 +553,9 @@ try {
     import {openDeviceConnectionTrustStore} from '@kontourai/station-connect/connection-trust';
     window.stationConnectionProof = {createStationConnectionProofVerifier, connectionDescriptionDigest, newNonce: createStationProofNonce, openDeviceConnectionTrustStore};
     import {createApplicationChannelFetch, browserApplicationChannel} from '@kontourai/station-connect/application-channel';
-    import {authenticatedFetch, setClientCredentialResolver} from '@kontourai/station-sdk/client';
+    import {authenticatedFetch, setClientCredentialResolver, StationHttpError} from '@kontourai/station-sdk/client';
     import {ApplicationSessionClient, createApplicationSessionKey} from '@kontourai/station-sdk/application-session';
-    window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver, ApplicationSessionClient, createApplicationSessionKey};
+    window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver, StationHttpError, ApplicationSessionClient, createApplicationSessionKey};
   `,
       resolveDir: process.cwd(),
     },
