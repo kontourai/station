@@ -66,10 +66,15 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       throw new Error('broker_credential_refused');
     return { body: record, credential: { id, secret } };
   };
-  const exact = (value: Record<string, unknown>, keys: string[]) => {
+  function exact(
+    value: unknown,
+    keys: string[],
+  ): asserts value is Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new Error('invalid_request');
     if (Object.keys(value).sort().join(',') !== [...keys].sort().join(','))
       throw new Error('invalid_request');
-  };
+  }
   const invoke =
     (fn: (c: Context) => Promise<unknown> | unknown) => async (c: Context) => {
       try {
@@ -135,7 +140,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope', 'connection']);
-      const connection = body.connection as Record<string, unknown>;
+      const connection = body.connection;
       exact(connection, ['clientId', 'nonce', 'offerSdp']);
       return service.open(
         body.scope as BrokerScope,
@@ -149,7 +154,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope', 'connection']);
-      const connection = body.connection as Record<string, unknown>;
+      const connection = body.connection;
       exact(connection, ['clientId', 'nonce', 'answerSdp', 'stationProof']);
       service.answer(
         body.scope as BrokerScope,

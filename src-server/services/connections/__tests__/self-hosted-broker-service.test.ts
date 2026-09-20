@@ -1,7 +1,8 @@
-import { chmodSync, mkdtempSync } from 'node:fs';
+import { chmodSync, linkSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { Worker } from 'node:worker_threads';
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
@@ -26,7 +27,11 @@ describe('self-hosted broker control plane', () => {
     expect(service.status(scope, provisioned.routing).state).toBe('online');
     const app = new Hono();
     app.route('/broker', createSelfHostedBrokerRoutes(service));
-    const post = (route: string, credential: any, body: any) =>
+    const post = (
+      route: string,
+      credential: { id: string; secret: string },
+      body: unknown,
+    ) =>
       app.request(`/broker${route}`, {
         method: 'POST',
         headers: {
@@ -59,6 +64,22 @@ describe('self-hosted broker control plane', () => {
       extra: true,
     });
     expect(malformed.status).toBe(400);
+    const invalidJson = await app.request('/broker/connections', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${provisioned.routing.secret}`,
+        'x-broker-credential-id': provisioned.routing.id,
+        'content-type': 'application/json',
+        origin: scope.browserOrigin,
+      },
+      body: '{',
+    });
+    expect(invalidJson.status).toBe(400);
+    const nullNested = await post('/connections', provisioned.routing, {
+      scope,
+      connection: null,
+    });
+    expect(nullNested.status).toBe(400);
     const wrongStation = await post('/connections', provisioned.routing, {
       scope: { ...scope, stationId: 'station-wrong123' },
       connection: {
@@ -237,5 +258,241 @@ describe('self-hosted broker control plane', () => {
     expect(() => new SelfHostedBrokerService(path)).toThrow(
       'broker_database_version_refused',
     );
+  });
+  test('refuses unsafe database parents, hard links, and symbolic links', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-path-'));
+    try {
+      const path = join(root, 'broker.sqlite');
+      const service = new SelfHostedBrokerService(path);
+      service.close();
+      const hard = join(root, 'hard.sqlite');
+      linkSync(path, hard);
+      expect(() => new SelfHostedBrokerService(hard)).toThrow(
+        'broker_database_must_be_private',
+      );
+      rmSync(hard);
+      const symbolic = join(root, 'symbolic.sqlite');
+      symlinkSync(path, symbolic);
+      expect(() => new SelfHostedBrokerService(symbolic)).toThrow(
+        'broker_database_must_be_private',
+      );
+      rmSync(symbolic);
+      chmodSync(root, 0o755);
+      expect(
+        () => new SelfHostedBrokerService(join(root, 'other.sqlite')),
+      ).toThrow('broker_database_parent_must_be_private');
+    } finally {
+      chmodSync(root, 0o700);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('compacts expired payloads, retains replay keys, and bounds tombstones', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-retention-'));
+    const path = join(root, 'broker.sqlite');
+    let now = 1_000;
+    let service: SelfHostedBrokerService | undefined;
+    try {
+      service = new SelfHostedBrokerService(path, () => now);
+      const issued = service.provision(scope, 600_000);
+      service.open(scope, issued.routing, {
+        clientId: 'client-expired1',
+        nonce: 'nonce-expired1',
+        offerSdp: 'private-offer-marker',
+      });
+      now = 32_000;
+      service.open(scope, issued.routing, {
+        clientId: 'client-current1',
+        nonce: 'nonce-current1',
+        offerSdp: 'current',
+      });
+      expect(() =>
+        service!.open(scope, issued.routing, {
+          clientId: 'client-expired1',
+          nonce: 'nonce-expired1',
+          offerSdp: 'replay',
+        }),
+      ).toThrow('connection_replayed');
+      service.close();
+      service = undefined;
+      const database = new DatabaseSync(path);
+      expect(
+        (
+          database
+            .prepare(
+              'SELECT offer_sdp FROM broker_connections WHERE client_id=?',
+            )
+            .get('client-expired1') as { offer_sdp: string }
+        ).offer_sdp,
+      ).toBe('');
+      database.exec('BEGIN IMMEDIATE');
+      const insert = database.prepare(
+        "INSERT INTO broker_connections VALUES(?,?,?,?,?,'',NULL,NULL,?,?)",
+      );
+      for (let index = 0; index < 10_238; index++)
+        insert.run(
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          `retained-${index}`,
+          `nonce-${index}`,
+          1,
+          2,
+        );
+      database.exec('COMMIT');
+      database.close();
+      service = new SelfHostedBrokerService(path, () => now);
+      expect(() =>
+        service!.open(scope, issued.routing, {
+          clientId: 'client-blocked1',
+          nonce: 'nonce-blocked1',
+          offerSdp: 'offer',
+        }),
+      ).toThrow('pending_limit');
+      now = 700_000;
+      service.provision(scope, 600_000, issued);
+      expect(() => service!.status(scope, issued.routing)).toThrow(
+        'broker_credential_refused',
+      );
+    } finally {
+      service?.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('enforces the per-Station pending quota and stale authority cannot touch a replacement generation', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-quota-'));
+    const path = join(root, 'broker.sqlite');
+    const service = new SelfHostedBrokerService(path, () => 1_000);
+    try {
+      const first = service.provision(scope, 600_000);
+      for (let index = 0; index < 32; index++)
+        service.open(scope, first.routing, {
+          clientId: `client-${index}-aaaa`,
+          nonce: `nonce-${index}-aaaa`,
+          offerSdp: 'offer',
+        });
+      expect(() =>
+        service.open(scope, first.routing, {
+          clientId: 'client-overflow',
+          nonce: 'nonce-overflow',
+          offerSdp: 'offer',
+        }),
+      ).toThrow('pending_limit');
+      const nextScope = { ...scope, routingGeneration: 2 };
+      const next = service.provision(nextScope, 600_000);
+      service.open(nextScope, next.routing, {
+        clientId: 'client-nextgen',
+        nonce: 'nonce-nextgen',
+        offerSdp: 'offer',
+      });
+      expect(() => service.withdraw(scope, first.connector)).toThrow(
+        'broker_credential_refused',
+      );
+      expect(service.offers(nextScope, next.connector)).toHaveLength(1);
+      expect(() =>
+        service.open(
+          nextScope,
+          { ...next.routing, id: first.routing.id },
+          {
+            clientId: 'client-wrongid',
+            nonce: 'nonce-wrongid',
+            offerSdp: 'offer',
+          },
+        ),
+      ).toThrow('broker_credential_refused');
+      expect(() =>
+        service.open(
+          { ...nextScope, enrollmentId: 'enroll-wrong123' },
+          next.routing,
+          {
+            clientId: 'client-wrongen',
+            nonce: 'nonce-wrongen',
+            offerSdp: 'offer',
+          },
+        ),
+      ).toThrow('broker_credential_refused');
+    } finally {
+      service.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('enforces the global live-offer quota independently of one Station', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-global-'));
+    const path = join(root, 'broker.sqlite');
+    let service: SelfHostedBrokerService | undefined;
+    try {
+      service = new SelfHostedBrokerService(path, () => 1_000);
+      const issued = service.provision(scope, 600_000);
+      service.close();
+      service = undefined;
+      const database = new DatabaseSync(path);
+      database.exec('BEGIN IMMEDIATE');
+      const insert = database.prepare(
+        "INSERT INTO broker_connections VALUES(?,?,?,?,?,'offer',NULL,NULL,?,?)",
+      );
+      for (let index = 0; index < 1024; index++)
+        insert.run(
+          `station-${Math.floor(index / 32)}-aaaa`,
+          scope.enrollmentId,
+          1,
+          `client-${index}-aaaa`,
+          `nonce-${index}-aaaa`,
+          1_000,
+          31_000,
+        );
+      database.exec('COMMIT');
+      database.close();
+      service = new SelfHostedBrokerService(path, () => 1_000);
+      expect(() =>
+        service!.open(scope, issued.routing, {
+          clientId: 'client-global1',
+          nonce: 'nonce-global1',
+          offerSdp: 'offer',
+        }),
+      ).toThrow('pending_limit');
+    } finally {
+      service?.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('two independent SQLite owners racing one lease revision produce one winner', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-cas-'));
+    const path = join(root, 'broker.sqlite');
+    const owner = new SelfHostedBrokerService(path, () => 1_000);
+    const issued = owner.provision(scope, 600_000);
+    owner.close();
+    const barrier = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
+    const state = new Int32Array(barrier);
+    const source = `import {parentPort,workerData} from 'node:worker_threads';import {SelfHostedBrokerService} from ${JSON.stringify(new URL('../self-hosted-broker-service.ts', import.meta.url).href)};const state=new Int32Array(workerData.barrier);Atomics.add(state,0,1);Atomics.notify(state,0);Atomics.wait(state,1,0);const service=new SelfHostedBrokerService(workerData.path,()=>1000);try{service.renew(workerData.scope,workerData.credential,0,60000);parentPort.postMessage('won');}catch(error){parentPort.postMessage(error instanceof Error?error.message:'failed');}finally{service.close();}`;
+    const workers = [0, 1].map(
+      () =>
+        new Worker(source, {
+          eval: true,
+          workerData: { barrier, path, scope, credential: issued.connector },
+          execArgv: ['--import', 'tsx'],
+        }),
+    );
+    try {
+      const deadline = Date.now() + 5_000;
+      while (Atomics.load(state, 0) < 2) {
+        if (Date.now() > deadline)
+          throw new Error('CAS workers missed readiness bound');
+        await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
+      }
+      Atomics.store(state, 1, 1);
+      Atomics.notify(state, 1, 2);
+      const results = await Promise.all(
+        workers.map(
+          (worker) =>
+            new Promise<string>((resolveResult, reject) => {
+              worker.once('message', resolveResult);
+              worker.once('error', reject);
+            }),
+        ),
+      );
+      expect(results.sort()).toEqual(['lease_conflict', 'won']);
+    } finally {
+      await Promise.all(workers.map((worker) => worker.terminate()));
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
