@@ -4,6 +4,38 @@ import type { SelfHostedBrokerService } from '../../services/connections/self-ho
 
 export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
   const app = new Hono();
+  app.use('*', async (c, next) => {
+    const origin = c.req.header('origin');
+    if (c.req.method === 'OPTIONS') {
+      const headers = c.req
+        .header('access-control-request-headers')
+        ?.toLowerCase()
+        .split(',')
+        .map((value) => value.trim())
+        .sort()
+        .join(',');
+      if (
+        !origin ||
+        !service.isOriginAllowed(origin) ||
+        c.req.header('access-control-request-method') !== 'POST' ||
+        headers !== 'authorization,content-type,x-broker-credential-id'
+      )
+        return c.json({ error: 'broker_credential_refused' }, 401);
+      c.header('Access-Control-Allow-Origin', origin);
+      c.header('Access-Control-Allow-Methods', 'POST');
+      c.header(
+        'Access-Control-Allow-Headers',
+        'Authorization, Content-Type, X-Broker-Credential-Id',
+      );
+      c.header('Vary', 'Origin');
+      return c.body(null, 204);
+    }
+    await next();
+    if (origin && service.isOriginAllowed(origin)) {
+      c.header('Access-Control-Allow-Origin', origin);
+      c.header('Vary', 'Origin');
+    }
+  });
   app.use(
     '*',
     bodyLimit({
@@ -65,6 +97,22 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         );
       }
     };
+  app.post(
+    '/leases/register',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope']);
+      return service.register(body.scope, credential);
+    }),
+  );
+  app.post(
+    '/stations/status',
+    invoke(async (c) => {
+      const { body, credential } = await parse(c);
+      exact(body, ['scope']);
+      return service.status(body.scope, credential);
+    }),
+  );
   app.post(
     '/connections/offers',
     invoke(async (c) => {

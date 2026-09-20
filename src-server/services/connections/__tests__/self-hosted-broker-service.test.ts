@@ -20,6 +20,9 @@ describe('self-hosted broker control plane', () => {
     );
     const service = new SelfHostedBrokerService(path, () => 1000);
     const provisioned = service.provision(scope);
+    expect(service.status(scope, provisioned.routing).state).toBe('offline');
+    service.register(scope, provisioned.connector);
+    expect(service.status(scope, provisioned.routing).state).toBe('online');
     const app = new Hono();
     app.route('/broker', createSelfHostedBrokerRoutes(service));
     const post = (route: string, credential: any, body: any) =>
@@ -33,6 +36,18 @@ describe('self-hosted broker control plane', () => {
         },
         body: JSON.stringify(body),
       });
+    const preflight = (origin: string) =>
+      app.request('/broker/connections', {
+        method: 'OPTIONS',
+        headers: {
+          origin,
+          'access-control-request-method': 'POST',
+          'access-control-request-headers':
+            'Authorization, Content-Type, X-Broker-Credential-Id',
+        },
+      });
+    expect((await preflight(scope.browserOrigin)).status).toBe(204);
+    expect((await preflight('https://wrong.example')).status).toBe(401);
     expect(
       (
         await post('/connections', provisioned.routing, {

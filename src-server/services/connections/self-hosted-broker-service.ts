@@ -146,7 +146,7 @@ export class SelfHostedBrokerService {
         station_id TEXT PRIMARY KEY, enrollment_id TEXT NOT NULL, generation INTEGER NOT NULL,
         browser_origin TEXT NOT NULL, connector_id TEXT NOT NULL, connector_hash BLOB NOT NULL,
         routing_id TEXT NOT NULL, routing_hash BLOB NOT NULL,
-        expires_at INTEGER NOT NULL, lease_revision INTEGER NOT NULL, withdrawn_at INTEGER);
+        expires_at INTEGER NOT NULL, lease_revision INTEGER NOT NULL, last_seen_at INTEGER, withdrawn_at INTEGER);
       CREATE TABLE IF NOT EXISTS broker_connections(
         station_id TEXT NOT NULL, enrollment_id TEXT NOT NULL, generation INTEGER NOT NULL,
         client_id TEXT NOT NULL, nonce TEXT NOT NULL, offer_sdp TEXT NOT NULL, answer_sdp TEXT,
@@ -157,6 +157,14 @@ export class SelfHostedBrokerService {
   }
   close() {
     this.db.close();
+  }
+  isOriginAllowed(origin: string) {
+    const row = this.db
+      .prepare(
+        'SELECT 1 allowed FROM broker_leases WHERE browser_origin=? AND withdrawn_at IS NULL AND expires_at>? LIMIT 1',
+      )
+      .get(origin, this.now()) as { allowed: number } | undefined;
+    return row?.allowed === 1;
   }
   private transaction<T>(operation: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
@@ -198,7 +206,7 @@ export class SelfHostedBrokerService {
         return { changes: 0, idempotent: true };
       }
       const written = this.db
-        .prepare(`INSERT INTO broker_leases VALUES(?,?,?,?,?,?,?,?,?,0,NULL)
+        .prepare(`INSERT INTO broker_leases VALUES(?,?,?,?,?,?,?,?,?,0,NULL,NULL)
       ON CONFLICT(station_id) DO UPDATE SET enrollment_id=excluded.enrollment_id,generation=excluded.generation,
       browser_origin=excluded.browser_origin,connector_id=excluded.connector_id,connector_hash=excluded.connector_hash,
       routing_id=excluded.routing_id,routing_hash=excluded.routing_hash,
@@ -270,6 +278,30 @@ export class SelfHostedBrokerService {
       if (result.changes !== 1) throw new Error('lease_conflict');
       return { expiresAt: next, revision: expectedRevision + 1 };
     });
+  }
+  register(scope: BrokerScope, credential: BrokerCredential) {
+    return this.transaction(() => {
+      this.lease(scope, credential, 'connector');
+      const result = this.db
+        .prepare(
+          'UPDATE broker_leases SET last_seen_at=? WHERE station_id=? AND enrollment_id=? AND generation=? AND withdrawn_at IS NULL',
+        )
+        .run(this.now(), scope.stationId, scope.enrollmentId, scope.generation);
+      if (result.changes !== 1) throw new Error('lease_conflict');
+      return { registeredAt: this.now() };
+    });
+  }
+  status(scope: BrokerScope, credential: BrokerCredential) {
+    const lease = this.lease(scope, credential, 'routing');
+    return {
+      state:
+        typeof lease.last_seen_at === 'number' &&
+        lease.last_seen_at + 30_000 > this.now()
+          ? 'online'
+          : 'offline',
+      generation: scope.generation,
+      expiresAt: lease.expires_at,
+    };
   }
   withdraw(scope: BrokerScope, credential: BrokerCredential) {
     this.transaction(() => {
