@@ -271,3 +271,67 @@ test('Device loss during detail read hides the whole catalogue and offers approv
     screen.queryByText('This browser has view-only Project access.'),
   ).toBeNull();
 });
+
+test('opens an explicitly shared Task through the mounted Project journey', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path === '/api/account-auth/session') return account(principalA);
+      if (path === '/api/projects')
+        return success([view('Example Project', 'example')]);
+      if (path === '/api/projects/example')
+        return success(view('Example Project', 'example'));
+      if (path.endsWith('/shared-work'))
+        return success([
+          {
+            version: 'station.shared-project-task/v1',
+            project: {
+              stationId: 'station-1',
+              localProjectId: 'example-id',
+              localProjectSlug: 'example',
+              portableProjectId: 'portable-example',
+            },
+            task: {
+              id: 'task-1',
+              title: 'Published Task',
+              status: 'done',
+              createdAt: '2026-09-20T00:00:00.000Z',
+            },
+            shareId: '11111111-1111-4111-8111-111111111111',
+            sharedAt: '2026-09-20T00:01:00.000Z',
+          },
+        ]);
+      if (path.endsWith('/history')) return success({ kind: 'unavailable' });
+      if (path.endsWith('/document'))
+        return success({
+          kind: 'snapshot',
+          project: { id: 'example-id', slug: 'example' },
+          task: { id: 'task-1', createdAt: '2026-09-20T00:00:00.000Z' },
+          revision: 'revision-1',
+          text: 'Published document text',
+        });
+      return new Response(null, { status: 500 });
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <GuestDeviceOnboarding
+        apiBase={apiA}
+        principalId={principalA}
+        onAccountRequired={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Read Project details' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Read shared Task' }),
+  );
+  expect(await screen.findByText('Published document text')).toBeTruthy();
+  expect(screen.getByText('Shared history is unavailable.')).toBeTruthy();
+});
