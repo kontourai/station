@@ -698,6 +698,10 @@ try {
     const privateRead = await page.evaluate(browserApplicationAccountRequest, {
       path: '/api/projects/relay-private',
     });
+    const [bearerOnlyDirect, bearerOnlyVirtual] = await Promise.all([
+      accountStation.readPrivateWithBearerOnlyDirect(),
+      accountStation.readPrivateWithBearerOnlyVirtual(),
+    ]);
     const privateBoundary = {
       status: privateRead.status,
       containsPrivateMarker: privateRead.body.includes(
@@ -706,6 +710,18 @@ try {
       path: '/api/projects/relay-private',
       deviceScope: 'orchestration:read',
       principalId: account.principalId,
+      bearerOnlyDirect: {
+        status: bearerOnlyDirect.status,
+        containsPrivateMarker: bearerOnlyDirect.body.includes(
+          accountStation.browser.privateName,
+        ),
+      },
+      bearerOnlyVirtual: {
+        status: bearerOnlyVirtual.status,
+        containsPrivateMarker: bearerOnlyVirtual.body.includes(
+          accountStation.browser.privateName,
+        ),
+      },
     };
     writeFileSync(
       join(root, 'account-boundary.json'),
@@ -715,11 +731,15 @@ try {
     const privateRefused =
       privateRead.status === 404 &&
       !privateBoundary.containsPrivateMarker &&
-      JSON.parse(privateRead.body).error === 'Project not found';
+      JSON.parse(privateRead.body).error === 'Project not found' &&
+      bearerOnlyDirect.status === 404 &&
+      !privateBoundary.bearerOnlyDirect.containsPrivateMarker &&
+      bearerOnlyVirtual.status === 404 &&
+      !privateBoundary.bearerOnlyVirtual.containsPrivateMarker;
     if (!privateRefused)
       errors.push(
         new Error(
-          `Unshared Project boundary failed: status=${privateRead.status}, containsPrivateMarker=${privateBoundary.containsPrivateMarker}`,
+          `Unshared Project boundary failed: ${JSON.stringify(privateBoundary)}`,
         ),
       );
     await page.evaluate(browserRenewApplicationAccount);

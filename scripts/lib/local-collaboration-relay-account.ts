@@ -223,6 +223,23 @@ export async function startRelayAccountStation(
     const device =
       (await exchange.json()) as DevicePairingBearerExchangeResponse;
     assert.match(device.credential, /^[A-Za-z0-9_-]{43}$/);
+    const bearerOnlyPrivateRead = async (
+      request: typeof fetch,
+      origin: string,
+    ) => {
+      const response = await request(
+        `${current.base}/api/projects/relay-private`,
+        {
+          headers: {
+            Origin: origin,
+            Authorization: `Bearer ${device.credential}`,
+          },
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+          redirect: 'error',
+        },
+      );
+      return { status: response.status, body: await response.text() };
+    };
     return {
       station: current,
       stop,
@@ -251,6 +268,10 @@ export async function startRelayAccountStation(
           ),
         );
       },
+      readPrivateWithBearerOnlyDirect: () =>
+        bearerOnlyPrivateRead(fetch, current.base),
+      readPrivateWithBearerOnlyVirtual: () =>
+        bearerOnlyPrivateRead(transport, browserOrigin),
       async revokeMembership(principalId: string) {
         const access = await getProjectAccess(
           current.base,
