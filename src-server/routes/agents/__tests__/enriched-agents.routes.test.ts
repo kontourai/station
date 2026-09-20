@@ -1113,6 +1113,81 @@ describe('registry-backed enriched Agent routes', () => {
     );
   });
 
+  // The remaining observation-only level: a fresh PASSED smoke outranks an
+  // older failed check, so `deriveConnectionReadinessEvidence` returns
+  // `smoke-passed` — whose canned summary is affirmative — while the
+  // connection's CURRENT status can be bad (typed `error`; stringly
+  // `disconnected` producers take the same path). Neither the passing
+  // summary nor the "has not yet proved it can complete a chat turn"
+  // sentence is truthful there: the engine DID prove a chat turn, and its
+  // current state is what failed. Runs the REAL evidence derivation; the
+  // route request is the exact projection `station delegate` reads.
+  test('a connection whose current state turned bad after a fresh passed smoke refuses with its current state, not the passing summary', async () => {
+    // `error` is the typed-valid current state (e.g. an auth failure observed
+    // after the smoke); stringly `disconnected` producers take the same
+    // fall-through via the status switch below.
+    const connection = acpAgentConnection({ status: 'error' });
+    const smoke: StoredConnectionSmokeResult = {
+      evidenceVersion: 2,
+      connectionId: connection.id,
+      configurationFingerprint: 'b'.repeat(64),
+      status: 'passed',
+      testedAt: '2026-09-20T11:50:00.000Z',
+      freshUntil: '2026-09-21T11:50:00.000Z',
+      provider: 'opencode',
+      durationMs: 900,
+      turnLimit: 1,
+    };
+    const evidence = deriveConnectionReadinessEvidence(
+      connection,
+      smoke,
+      new Date('2026-09-20T12:00:00.000Z'),
+      {
+        status: 'failed',
+        checkedAt: '2026-09-20T11:00:00.000Z',
+        reason: 'The provider refused these settings.',
+      },
+    );
+    // The derivation itself is correct: fresh proof outranks the older
+    // refusal, and the summary is affirmative.
+    expect(evidence.level).toBe('smoke-passed');
+    expect(evidence.summary).toBe(
+      'A bounded chat smoke completed successfully.',
+    );
+
+    const { app } = setup({
+      loadAgent: vi.fn(async (slug: string) => {
+        if (slug === 'writer')
+          return {
+            name: 'Writer',
+            prompt: 'Write.',
+            execution: { agentConnectionId: connection.id },
+          };
+        throw new Error('registry defaults are not stored as authored Agents');
+      }),
+      getRuntimeConnections: vi.fn().mockResolvedValue([
+        runtimeConnectionSummary({
+          ...connection,
+          readinessEvidence: evidence,
+          parseEngineId: (value) => value as never,
+        }),
+      ]),
+    });
+
+    const body = await json(await app.request('/'));
+    const writer = body.data.find((agent: any) => agent.slug === 'writer');
+    expect(writer.available).toBe(false);
+    // The current state is the refusal — never the passing summary, and
+    // never a false claim that the engine never proved a chat turn.
+    expect(writer.unavailableReason).toBe(
+      'OpenCode failed its readiness check.',
+    );
+    expect(writer.unavailableReason).not.toContain('completed successfully');
+    expect(writer.unavailableReason).not.toContain(
+      'has not yet proved it can complete a chat turn',
+    );
+  });
+
   test('keeps a custom dependent visible and invalid after its engine default is deleted', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-agent-dependent-'));
     homes.push(home);
