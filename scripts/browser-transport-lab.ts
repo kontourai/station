@@ -749,6 +749,31 @@ try {
       'Permitted Project is the positive resource control',
     );
     assert(sharedRead.body.includes('Relay shared fixture'));
+    const sharedView = JSON.parse(sharedRead.body).data;
+    assert.equal(sharedView.version, 'station.member-project/v1');
+    assert.equal(sharedView.kind, 'member-project');
+    assert.deepEqual(sharedView.actions, ['view']);
+    const memberKeys = new Set([
+      'version',
+      'kind',
+      'id',
+      'slug',
+      'name',
+      'icon',
+      'description',
+      'actions',
+    ]);
+    assert(Object.keys(sharedView).every((key) => memberKeys.has(key)));
+    const catalogue = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/projects',
+    });
+    assert.equal(catalogue.status, 200);
+    const memberProjects = JSON.parse(catalogue.body).data;
+    assert.equal(memberProjects.length, 1);
+    assert.equal(memberProjects[0].id, sharedView.id);
+    assert.deepEqual(memberProjects[0].actions, ['view']);
+    assert(Object.keys(memberProjects[0]).every((key) => memberKeys.has(key)));
+    assert(!catalogue.body.includes(accountStation.browser.privateName));
     const privateRead = await page.evaluate(browserApplicationAccountRequest, {
       path: '/api/projects/relay-private',
     });
