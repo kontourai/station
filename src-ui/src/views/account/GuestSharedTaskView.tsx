@@ -72,6 +72,7 @@ export function GuestSharedTaskView({
   const client = useQueryClient();
   const [selectedTaskId, setSelectedTaskId] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const taskTriggers = useRef(new Map<string, HTMLButtonElement>());
   const onScopeLostRef = useRef(onScopeLost);
   onScopeLostRef.current = onScopeLost;
   const projectKey = [apiBase, principalId, project.id, project.slug] as const;
@@ -266,6 +267,11 @@ export function GuestSharedTaskView({
                 <small>{summary.task.status.replaceAll('_', ' ')}</small>
               </div>
               <Button
+                ref={(element) => {
+                  if (element)
+                    taskTriggers.current.set(summary.task.id, element);
+                  else taskTriggers.current.delete(summary.task.id);
+                }}
                 onClick={() => {
                   setNotice(undefined);
                   setSelectedTaskId(summary.task.id);
@@ -284,7 +290,17 @@ export function GuestSharedTaskView({
         >
           <div className="account-entry__shared-task-heading">
             <h5>{selected.task.title}</h5>
-            <Button onClick={() => setSelectedTaskId(undefined)}>Close</Button>
+            <Button
+              onClick={() => {
+                const taskId = selected.task.id;
+                setSelectedTaskId(undefined);
+                requestAnimationFrame(() =>
+                  taskTriggers.current.get(taskId)?.focus(),
+                );
+              }}
+            >
+              Close
+            </Button>
           </div>
           {(history.isPending || document.isPending) && (
             <SkeletonList count={2} label="Reading shared Task content" />

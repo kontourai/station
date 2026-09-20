@@ -106,6 +106,12 @@ test('opens only the clicked shared Task human history and document', async () =
   expect(await screen.findByText('Visible message')).toBeTruthy();
   expect(screen.getByText(/<script>not markup<\/script>/)).toBeTruthy();
   expect(document.querySelector('script')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Read shared Task' }),
+    ),
+  );
 });
 
 test('the same Task id in two Projects never reuses content or cache authority', async () => {
