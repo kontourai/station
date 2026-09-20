@@ -239,7 +239,11 @@ export function PluginManagementView({
             plugin.retainedOnRemoval === true,
         )}
         layoutAssignment={layoutAssignment}
-        projects={projects}
+        projects={projects.flatMap((project) =>
+          project.layoutCount === undefined
+            ? []
+            : [{ ...project, layoutCount: project.layoutCount }],
+        )}
         quickProjectName={quickProjectName}
         selectedProjects={selectedProjects}
         assigningLayout={assigningLayout}

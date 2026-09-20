@@ -1,23 +1,27 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import { useProjectQuery, useProjectsQuery } from '@kontourai/station-sdk';
 import { type ReactNode } from 'react';
 
 export interface ProjectMetadata {
+  version?: 'station.member-project/v1';
+  kind?: 'member-project';
   id: string;
   slug: string;
   name: string;
   icon?: string;
   description?: string;
-  hasWorkingDirectory: boolean;
+  hasWorkingDirectory?: boolean;
   workingDirectory?: string;
   defaultWorkspaceIsolation?: WorkspaceIsolationMode;
   defaultEnvironment?: EnvironmentRef;
-  layoutCount: number;
-  hasKnowledge: boolean;
+  layoutCount?: number;
+  hasKnowledge?: boolean;
   defaultProviderId?: string;
   /** Server-owned explicit sidebar position (archive#3315); list is pre-sorted by it. */
   position?: number;
+  actions?: readonly ProjectMemberAction[];
 }
 
 export interface ProjectConfig extends ProjectMetadata {

@@ -14,9 +14,10 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { calculateJwkThumbprint, importJWK, jwtVerify } from 'jose';
 import { z } from 'zod/v3';
 import { parseStrictBearer } from '../../security/runtime-request-security.js';
-import type {
-  DeploymentAuthenticationService,
-  ResolvedDeploymentAuthentication,
+import {
+  type DeploymentAuthenticationService,
+  deploymentAccountPrincipal,
+  type ResolvedDeploymentAuthentication,
 } from './deployment-authentication-service.js';
 
 const digest = (value: string) =>
@@ -499,12 +500,26 @@ export class ApplicationSessionService {
     if (device?.kind !== 'device' || (expected && device.id !== expected))
       throw new ApplicationSessionRefusal('invalid');
     const binding = device.principalBinding;
-    if (
-      binding &&
-      principalId &&
-      humanPrincipal(binding.provider, binding.subject, binding.subject).id !==
-        principalId
-    )
+    const accountBinding =
+      binding && 'kind' in binding && binding.kind === 'account'
+        ? binding
+        : undefined;
+    const ingressBinding =
+      binding && !('kind' in binding) ? binding : undefined;
+    const bindingPrincipalId = accountBinding
+      ? deploymentAccountPrincipal(
+          accountBinding.issuer,
+          accountBinding.subject,
+          accountBinding.displayName,
+        ).id
+      : ingressBinding
+        ? humanPrincipal(
+            ingressBinding.provider,
+            ingressBinding.subject,
+            ingressBinding.subject,
+          ).id
+        : undefined;
+    if (bindingPrincipalId && principalId && bindingPrincipalId !== principalId)
       throw new ApplicationSessionRefusal('invalid');
     return device;
   }
