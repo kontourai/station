@@ -2,7 +2,7 @@
 export interface SelfHostedBrokerScopeV1 {
   stationId: string;
   enrollmentId: string;
-  generation: number;
+  routingGeneration: number;
   browserOrigin: string;
 }
 export interface SelfHostedBrokerConnectionOfferV1 {

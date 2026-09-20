@@ -26,7 +26,7 @@ export function createBrokerCredentialBundle(): BrokerCredentialBundle {
 export type BrokerScope = {
   stationId: string;
   enrollmentId: string;
-  generation: number;
+  routingGeneration: number;
   browserOrigin: string;
 };
 
@@ -53,7 +53,7 @@ export function validateBrokerScope(value: unknown): BrokerScope {
   const scope = value as Record<string, unknown>;
   if (
     Object.keys(scope).sort().join(',') !==
-    'browserOrigin,enrollmentId,generation,stationId'
+    'browserOrigin,enrollmentId,routingGeneration,stationId'
   )
     throw new Error('invalid_scope');
   if (
@@ -64,8 +64,8 @@ export function validateBrokerScope(value: unknown): BrokerScope {
   assertText(scope.stationId, 'station_id');
   assertText(scope.enrollmentId, 'enrollment_id');
   if (
-    !Number.isSafeInteger(scope.generation) ||
-    (scope.generation as number) < 1
+    !Number.isSafeInteger(scope.routingGeneration) ||
+    (scope.routingGeneration as number) < 1
   )
     throw new Error('invalid_generation');
   if (typeof scope.browserOrigin !== 'string')
@@ -188,7 +188,7 @@ export class SelfHostedBrokerService {
       const existing = this.db
         .prepare('SELECT * FROM broker_leases WHERE station_id=?')
         .get(scope.stationId) as any;
-      if (existing?.generation === scope.generation) {
+      if (existing?.generation === scope.routingGeneration) {
         const same =
           existing.enrollment_id === scope.enrollmentId &&
           existing.browser_origin === scope.browserOrigin &&
@@ -214,7 +214,7 @@ export class SelfHostedBrokerService {
         .run(
           scope.stationId,
           scope.enrollmentId,
-          scope.generation,
+          scope.routingGeneration,
           scope.browserOrigin,
           connector.id,
           digest(connector.secret),
@@ -227,7 +227,7 @@ export class SelfHostedBrokerService {
           .prepare(
             'DELETE FROM broker_connections WHERE station_id=? AND generation<>?',
           )
-          .run(scope.stationId, scope.generation);
+          .run(scope.stationId, scope.routingGeneration);
       return { changes: Number(written.changes), idempotent: false };
     });
     if (result.changes !== 1 && !result.idempotent)
@@ -248,7 +248,7 @@ export class SelfHostedBrokerService {
     if (
       !row ||
       row.enrollment_id !== scope.enrollmentId ||
-      row.generation !== scope.generation ||
+      row.generation !== scope.routingGeneration ||
       row.browser_origin !== scope.browserOrigin ||
       row[`${kind}_id`] !== credential.id ||
       row.withdrawn_at !== null ||
@@ -274,7 +274,7 @@ export class SelfHostedBrokerService {
         .prepare(
           `UPDATE broker_leases SET expires_at=?,lease_revision=lease_revision+1 WHERE station_id=? AND generation=? AND lease_revision=? AND withdrawn_at IS NULL`,
         )
-        .run(next, scope.stationId, scope.generation, expectedRevision);
+        .run(next, scope.stationId, scope.routingGeneration, expectedRevision);
       if (result.changes !== 1) throw new Error('lease_conflict');
       return { expiresAt: next, revision: expectedRevision + 1 };
     });
@@ -286,7 +286,12 @@ export class SelfHostedBrokerService {
         .prepare(
           'UPDATE broker_leases SET last_seen_at=? WHERE station_id=? AND enrollment_id=? AND generation=? AND withdrawn_at IS NULL',
         )
-        .run(this.now(), scope.stationId, scope.enrollmentId, scope.generation);
+        .run(
+          this.now(),
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+        );
       if (result.changes !== 1) throw new Error('lease_conflict');
       return { registeredAt: this.now() };
     });
@@ -299,7 +304,7 @@ export class SelfHostedBrokerService {
         lease.last_seen_at + 30_000 > this.now()
           ? 'online'
           : 'offline',
-      generation: scope.generation,
+      routingGeneration: scope.routingGeneration,
       expiresAt: lease.expires_at,
     };
   }
@@ -310,13 +315,13 @@ export class SelfHostedBrokerService {
         .prepare(
           'UPDATE broker_leases SET withdrawn_at=? WHERE station_id=? AND generation=?',
         )
-        .run(this.now(), scope.stationId, scope.generation);
+        .run(this.now(), scope.stationId, scope.routingGeneration);
       if (result.changes !== 1) throw new Error('lease_conflict');
       this.db
         .prepare(
           'DELETE FROM broker_connections WHERE station_id=? AND generation=?',
         )
-        .run(scope.stationId, scope.generation);
+        .run(scope.stationId, scope.routingGeneration);
     });
   }
   open(
@@ -357,7 +362,7 @@ export class SelfHostedBrokerService {
           .run(
             scope.stationId,
             scope.enrollmentId,
-            scope.generation,
+            scope.routingGeneration,
             input.clientId,
             input.nonce,
             input.offerSdp,
@@ -395,7 +400,7 @@ export class SelfHostedBrokerService {
         input.stationProof,
         scope.stationId,
         scope.enrollmentId,
-        scope.generation,
+        scope.routingGeneration,
         input.clientId,
         input.nonce,
         this.now(),
@@ -407,7 +412,12 @@ export class SelfHostedBrokerService {
     return this.db
       .prepare(`SELECT client_id AS clientId, nonce, offer_sdp AS offerSdp, expires_at AS expiresAt
       FROM broker_connections WHERE station_id=? AND enrollment_id=? AND generation=? AND answer_sdp IS NULL AND expires_at>? ORDER BY created_at LIMIT 32`)
-      .all(scope.stationId, scope.enrollmentId, scope.generation, this.now());
+      .all(
+        scope.stationId,
+        scope.enrollmentId,
+        scope.routingGeneration,
+        this.now(),
+      );
   }
   read(
     scope: BrokerScope,
@@ -423,7 +433,7 @@ export class SelfHostedBrokerService {
       .get(
         scope.stationId,
         scope.enrollmentId,
-        scope.generation,
+        scope.routingGeneration,
         clientId,
         nonce,
       ) as any;

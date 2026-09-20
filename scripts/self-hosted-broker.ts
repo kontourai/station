@@ -1,12 +1,10 @@
-import {
-  closeSync,
-  lstatSync,
-  openSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { serve } from '@hono/node-server';
+import {
+  mutateJsonFileWithGuardedRead,
+  readJsonFile,
+} from '@kontourai/station-shared/json-file-storage';
 import { Hono } from 'hono';
 import { createSelfHostedBrokerRoutes } from '../src-server/routes/connections/self-hosted-broker.js';
 import {
@@ -58,74 +56,68 @@ if (mode === 'init') {
   if (config.provision.length !== 1)
     throw new Error('Broker init provisions exactly one generation');
   const scope = validateBrokerScope(config.provision[0]);
-  let bundle = createBrokerCredentialBundle();
+  const bundle = createBrokerCredentialBundle();
   const record = {
     version: 'station-self-hosted-broker-credentials/v1',
     scope,
     bundle,
   };
-  let published = false;
-  try {
-    const output = openSync(String(config.credentialsPath), 'wx', 0o600);
-    try {
-      writeFileSync(output, `${JSON.stringify(record, null, 2)}\n`);
-    } finally {
-      closeSync(output);
-    }
-    published = true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    const info = lstatSync(String(config.credentialsPath));
-    if (
-      !info.isFile() ||
-      info.isSymbolicLink() ||
-      info.uid !== process.getuid?.() ||
-      (info.mode & 0o077) !== 0 ||
-      info.size > 128 * 1024
-    )
-      throw new Error(
-        'Existing broker credentials are not private and bounded',
+  const committed = await mutateJsonFileWithGuardedRead<typeof record | null>(
+    String(config.credentialsPath),
+    null,
+    async () => {
+      const info = lstatSync(String(config.credentialsPath));
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        info.uid !== process.getuid?.() ||
+        (info.mode & 0o077) !== 0
+      )
+        throw new Error('Existing broker credentials are not private');
+      return readJsonFile<typeof record>(
+        String(config.credentialsPath),
+        record,
+        { maxBytes: 128 * 1024, label: 'Broker credentials' },
       );
-    const prior = JSON.parse(
-      readFileSync(String(config.credentialsPath), 'utf8'),
-    ) as typeof record;
-    const credential = (value: unknown) => {
-      const candidate = value as Record<string, unknown>;
-      return Boolean(
-        value &&
-          typeof value === 'object' &&
-          !Array.isArray(value) &&
-          Object.keys(value).sort().join(',') === 'id,secret' &&
-          /^[A-Za-z0-9_-]{22}$/.test(String(candidate.id)) &&
-          /^[A-Za-z0-9_-]{43}$/.test(String(candidate.secret)),
-      );
-    };
-    if (
-      !prior ||
-      typeof prior !== 'object' ||
-      Object.keys(prior).sort().join(',') !== 'bundle,scope,version' ||
-      prior.version !== record.version ||
-      JSON.stringify(prior.scope) !== JSON.stringify(scope) ||
-      !prior.bundle ||
-      Object.keys(prior.bundle).sort().join(',') !== 'connector,routing' ||
-      !credential(prior.bundle.connector) ||
-      !credential(prior.bundle.routing)
-    )
-      throw new Error('Existing broker credentials name another operation');
-    bundle = prior.bundle;
-  }
+    },
+    (prior) => {
+      if (prior === null) return record;
+      const credential = (value: unknown) => {
+        const candidate = value as Record<string, unknown>;
+        return Boolean(
+          value &&
+            typeof value === 'object' &&
+            !Array.isArray(value) &&
+            Object.keys(value).sort().join(',') === 'id,secret' &&
+            /^[A-Za-z0-9_-]{22}$/.test(String(candidate.id)) &&
+            /^[A-Za-z0-9_-]{43}$/.test(String(candidate.secret)),
+        );
+      };
+      if (
+        !prior ||
+        typeof prior !== 'object' ||
+        Object.keys(prior).sort().join(',') !== 'bundle,scope,version' ||
+        prior.version !== record.version ||
+        JSON.stringify(prior.scope) !== JSON.stringify(scope) ||
+        !prior.bundle ||
+        Object.keys(prior.bundle).sort().join(',') !== 'connector,routing' ||
+        !credential(prior.bundle.connector) ||
+        !credential(prior.bundle.routing)
+      )
+        throw new Error('Existing broker credentials name another operation');
+      return prior;
+    },
+    { maxBytes: 128 * 1024, label: 'Broker credentials' },
+  );
+  if (!committed) throw new Error('Broker credential publication failed');
   const service = new SelfHostedBrokerService(String(config.databasePath));
   try {
-    service.provision(scope, 60_000, bundle);
+    service.provision(scope, 60_000, committed.bundle);
   } catch (error) {
     service.close();
     throw error;
   }
   service.close();
-  if (!published)
-    process.stderr.write(
-      'Reused the exact existing credential bundle for idempotent recovery.\n',
-    );
   process.exit(0);
 }
 if (config.provision.length !== 0)

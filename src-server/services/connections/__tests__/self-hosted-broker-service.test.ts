@@ -9,7 +9,7 @@ import { SelfHostedBrokerService } from '../self-hosted-broker-service.js';
 const scope = {
   stationId: 'station-12345678',
   enrollmentId: 'enroll-12345678',
-  generation: 1,
+  routingGeneration: 1,
   browserOrigin: 'https://client.example',
 };
 describe('self-hosted broker control plane', () => {
@@ -132,6 +132,7 @@ describe('self-hosted broker control plane', () => {
     let now = 10_000;
     const first = new SelfHostedBrokerService(path, () => now);
     const issued = first.provision(scope, 10_000);
+    const competing = new SelfHostedBrokerService(path, () => now);
     expect(() =>
       first.open(scope, issued.connector, {
         clientId: 'client-abcdefgh',
@@ -151,12 +152,15 @@ describe('self-hosted broker control plane', () => {
     expect(() => first.renew(scope, issued.connector, 0, 10_000)).toThrow(
       'lease_conflict',
     );
+    expect(() => competing.renew(scope, issued.connector, 0, 10_000)).toThrow(
+      'lease_conflict',
+    );
     now = 30_001;
     expect(() =>
       first.read(scope, issued.routing, 'client-abcdefgh', 'nonce-abcdefgh'),
     ).toThrow('broker_credential_refused');
     now = 20_000;
-    const nextScope = { ...scope, generation: 2 };
+    const nextScope = { ...scope, routingGeneration: 2 };
     const next = first.provision(nextScope, 10_000);
     expect(() =>
       first.read(scope, issued.routing, 'client-abcdefgh', 'nonce-abcdefgh'),
@@ -170,5 +174,6 @@ describe('self-hosted broker control plane', () => {
       }),
     ).not.toThrow();
     first.close();
+    competing.close();
   });
 });
