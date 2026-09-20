@@ -207,6 +207,33 @@ describe('resolveProjectExecutionRoot', () => {
     );
   });
 
+  test('returns the same canonical in-repo symlink target used for containment', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-execution-root-checkout-');
+    const canonicalApp = join(checkout, 'packages', 'app');
+    mkdirSync(canonicalApp, { recursive: true });
+    symlinkSync(canonicalApp, join(checkout, 'app-link'));
+    await saveProject(harness.adapter, {
+      slug: 'acme',
+      workingDirectory: checkout,
+    });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: {
+        repoId: 'github.com/acme/mono',
+        path: 'app-link',
+      },
+    });
+    const resolver = makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    );
+    expect(await resolver.resolveProjectExecutionRoot('acme')).toBe(
+      realpathSync(canonicalApp),
+    );
+  });
+
   test('fails closed when a relative root resolves through a symlink outside the repo', async () => {
     const harness = createHome();
     const checkout = tempDir('station-execution-root-checkout-');

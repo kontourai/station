@@ -176,7 +176,7 @@ import {
 } from '@kontourai/station-contracts/project-identity';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { projectResourceResolutions } from '../../telemetry/metrics.js';
-import { assertExistingPathInside } from '../../utils/path-containment.js';
+import { assertPathInside } from '../../utils/path-containment.js';
 import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
 import {
   type CheckoutRemoteReader,
@@ -299,18 +299,25 @@ export class ProjectResourceResolver {
       .replace(/[\\/]$/, '')
       .split(/[\\/]/);
     const candidate = resolvePath(result.path, ...portableSegments);
-    assertExistingPathInside(result.path, candidate, 'Project execution root');
+    assertPathInside(result.path, candidate, 'Project execution root');
     if (!existsSync(candidate)) {
       throw new Error(
         `Project '${projectSlug}' execution root does not exist: ${selection.path}`,
       );
     }
-    if (!statSync(candidate).isDirectory()) {
+    const canonicalRoot = realpathSync(result.path);
+    const canonicalCandidate = realpathSync(candidate);
+    assertPathInside(
+      canonicalRoot,
+      canonicalCandidate,
+      'Project execution root',
+    );
+    if (!statSync(canonicalCandidate).isDirectory()) {
       throw new Error(
         `Project '${projectSlug}' execution root is not a directory: ${selection.path}`,
       );
     }
-    return realpathSync(candidate);
+    return canonicalCandidate;
   }
 
   private async resolve(
