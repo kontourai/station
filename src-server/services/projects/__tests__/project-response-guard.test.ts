@@ -7,6 +7,7 @@ test('refuses a completed response when membership ended before release', async 
     async () => false,
   );
   expect(response.status).toBe(404);
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
   expect(await response.text()).not.toContain('marker');
 });
 
@@ -25,6 +26,7 @@ test('rechecks before each queued chunk and cancels without waiting', async () =
     async () => current,
   );
   const reader = response.body!.getReader();
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
   expect(new TextDecoder().decode((await reader.read()).value)).toBe('first');
   current = false;
   await expect(reader.read()).rejects.toThrow(

@@ -87,8 +87,10 @@ function isAccountDeviceBinding(
 function principalForDeviceBinding(binding: DevicePrincipalBinding) {
   return isAccountDeviceBinding(binding)
     ? deploymentHumanPrincipal(
-        binding.issuer,
-        binding.subject,
+        'deployment',
+        createHash('sha256')
+          .update(JSON.stringify([binding.issuer, binding.subject]))
+          .digest('hex'),
         binding.displayName,
       )
     : deploymentHumanPrincipal(
@@ -3382,6 +3384,16 @@ export function configureRuntimeRoutes(
           return authority
             ? await context.projectMembership!.readableProjectSlugs(authority)
             : undefined;
+        },
+        projectCatalogueCurrent: async (c, admittedSlugs) => {
+          const authority = await authenticatedProjectMember(c.req.raw);
+          if (!authority) return false;
+          const current =
+            await context.projectMembership!.readableProjectSlugs(authority);
+          return (
+            current.length === admittedSlugs.length &&
+            admittedSlugs.every((slug) => current.includes(slug))
+          );
         },
       },
     ),

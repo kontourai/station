@@ -79,6 +79,7 @@ import {
   type ProjectBindingWriter,
   type ProjectManifestReader,
 } from '../../services/projects/project-resource-binder.js';
+import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import { workspacePaneAvailabilityMetricAttributes } from '../../services/projects/workspace-pane-availability-resolver.js';
@@ -197,6 +198,10 @@ async function registerPluginNamespaces(
 interface ProjectRouteDeps {
   /** Restricts the Project catalogue for an authenticated shared member. */
   readableProjectSlugs?: (c: Context) => Promise<readonly string[] | undefined>;
+  projectCatalogueCurrent?: (
+    c: Context,
+    admittedSlugs: readonly string[],
+  ) => Promise<boolean>;
   listAgents?: () => Promise<AgentOwnershipRef[]> | AgentOwnershipRef[];
   layoutCatalog?: DistributionProfileService;
   /** Existing Kit lifecycle authority; pane discovery only reads its snapshot. */
@@ -615,7 +620,8 @@ export function createProjectRoutes(
       const currentReadable = allowed
         ? new Set((await deps.readableProjectSlugs?.(c)) ?? [])
         : undefined;
-      return c.json({
+      if (allowed) c.header('Cache-Control', 'no-store');
+      const response = c.json({
         success: true,
         data:
           allowed && currentReadable
@@ -626,6 +632,18 @@ export function createProjectRoutes(
               )
             : projects,
       });
+      if (!allowed || !currentReadable) return response;
+      const admitted = projects
+        .filter(
+          (project) =>
+            allowed.has(project.slug) && currentReadable.has(project.slug),
+        )
+        .map((project) => project.slug);
+      return await guardProjectResponse(response, async () =>
+        deps.projectCatalogueCurrent
+          ? await deps.projectCatalogueCurrent(c, admitted)
+          : false,
+      );
     } catch (error: unknown) {
       logger.error('Project storage list failed', {
         error: error instanceof Error ? error.message : 'non-Error thrown',

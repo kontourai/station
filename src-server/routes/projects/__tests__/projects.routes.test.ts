@@ -294,12 +294,16 @@ describe('Project Routes', () => {
       service as any,
       createMockStorageAdapter(['shared', 'private']) as any,
       '/tmp',
-      { readableProjectSlugs },
+      {
+        readableProjectSlugs,
+        projectCatalogueCurrent: async () => true,
+      },
     );
 
     const response = await app.request('/');
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(await json(response)).toEqual({
       success: true,
       data: [{ slug: 'shared', name: 'Shared' }],
