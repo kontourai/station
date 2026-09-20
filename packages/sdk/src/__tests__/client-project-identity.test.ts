@@ -70,6 +70,24 @@ describe('Project identity client', () => {
     ).toEqual(input);
   });
 
+  test('round-trips the portable execution root without a local checkout path', async () => {
+    const data: ProjectIdentityView = {
+      ...view(),
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/web',
+        },
+      },
+    };
+    vi.mocked(fetch).mockResolvedValue(reply(data));
+    expect(
+      await getProjectIdentity('https://station.example', 'local'),
+    ).toEqual(data);
+    expect(JSON.stringify(data.identity)).not.toContain('/Users/');
+  });
+
   test('reads a local-only organizational resource without inventing a checkout', async () => {
     const data: ProjectIdentityView = {
       ...view(),
@@ -101,6 +119,17 @@ describe('Project identity client', () => {
       identity: {
         ...view().identity,
         repos: [{ ...view().identity.repos[0], secret: 'private' }],
+      },
+    },
+    {
+      ...view(),
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/web',
+          localPath: '/private/checkout/apps/web',
+        },
       },
     },
     null,

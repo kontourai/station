@@ -54,8 +54,16 @@ export function parseProjectPortableIdentity(
     )
       throw new Error(message);
   }
-  const { schemaVersion, id, repos, createdAt, updatedAt } = parsed.manifest;
-  return { schemaVersion, id, repos, createdAt, updatedAt };
+  const { schemaVersion, id, repos, executionRoot, createdAt, updatedAt } =
+    parsed.manifest;
+  return {
+    schemaVersion,
+    id,
+    repos,
+    ...(executionRoot === undefined ? {} : { executionRoot }),
+    createdAt,
+    updatedAt,
+  };
 }
 
 function readProjectIdentityView(
