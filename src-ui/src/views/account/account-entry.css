@@ -44,3 +44,51 @@
 .account-entry p {
   overflow-wrap: anywhere;
 }
+.account-entry__device-onboarding {
+  margin-block: 1rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--border-primary);
+}
+.account-entry__guest-access,
+.account-entry__guest-home,
+.account-entry__project-detail {
+  display: grid;
+  gap: 1rem;
+}
+.account-entry__guest-access > *,
+.account-entry__guest-home > *,
+.account-entry__project-detail > * {
+  margin-block: 0;
+}
+.account-entry__guest-heading,
+.account-entry__project-list > li {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.account-entry__guest-heading h2,
+.account-entry__project-detail h3 {
+  margin-block: 0 0.35rem;
+}
+.account-entry__project-list {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.account-entry__project-list > li,
+.account-entry__project-detail {
+  padding: 0.85rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+@media (max-width: 480px) {
+  .account-entry__guest-heading,
+  .account-entry__project-list > li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -24,6 +24,10 @@ import './account-entry.css';
 
 // Read once so React StrictMode cannot consume the URL proof twice.
 const browserFlow = readAccountEntryContinuation();
+const loadGuestDeviceOnboarding = () =>
+  import('./GuestDeviceOnboarding').then(({ GuestDeviceOnboarding }) => ({
+    default: GuestDeviceOnboarding,
+  }));
 
 /** The lazy entry owns a fresh, non-persisted cache and no operator query callbacks. */
 export function AccountEntryPage({ apiBase }: { apiBase: string }) {
@@ -299,7 +303,9 @@ export function AccountEntryView({
                   ? invitationView
                     ? `Join ${invitationView.projectName}`
                     : 'Join your Project'
-                  : 'Sign in to Station',
+                  : session.data
+                    ? 'Projects shared with you'
+                    : 'Sign in to Station',
             subtitle: `${descriptor.data?.displayName ?? 'Your Station account'} · ${new URL(apiBase).host}`,
             width: 'narrow',
             body: 'flow',
@@ -356,13 +362,24 @@ export function AccountEntryView({
                 </Button>
               }
             />
-          ) : joined ? (
+          ) : joined && session.data ? (
             <>
-              <p>
-                Your membership is active. Opening Project work still requires
-                an approved device; joining does not share your computer or
-                files.
-              </p>
+              <LazyBoundary
+                key={`${apiBase}:${session.data?.principal.id ?? 'pending'}`}
+                load={loadGuestDeviceOnboarding}
+                componentProps={{
+                  apiBase,
+                  onAccountRequired: () => {
+                    setJoined(false);
+                    void client.resetQueries({
+                      queryKey: ['account', apiBase, 'session'],
+                    });
+                  },
+                }}
+                pending={
+                  <SkeletonList count={2} label="Opening Device onboarding" />
+                }
+              />
               {endpoint('logout') && (
                 <Button disabled={busy} onClick={() => void signOut()}>
                   Sign out
@@ -399,7 +416,21 @@ export function AccountEntryView({
                   Accept invitation
                 </Button>
               ) : (
-                <p>Open the invitation you received to join its Project.</p>
+                <LazyBoundary
+                  key={`${apiBase}:${session.data.principal.id}`}
+                  load={loadGuestDeviceOnboarding}
+                  componentProps={{
+                    apiBase,
+                    onAccountRequired: () => {
+                      void client.resetQueries({
+                        queryKey: ['account', apiBase, 'session'],
+                      });
+                    },
+                  }}
+                  pending={
+                    <SkeletonList count={2} label="Opening shared Projects" />
+                  }
+                />
               )}
               {endpoint('logout') && (
                 <Button disabled={busy} onClick={() => void signOut()}>
