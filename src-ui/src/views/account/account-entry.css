@@ -63,6 +63,7 @@
 .account-entry__guest-heading,
 .account-entry__project-list > li {
   display: flex;
+  flex-wrap: wrap;
   align-items: start;
   justify-content: space-between;
   gap: 1rem;
@@ -86,6 +87,7 @@
   background: var(--bg-primary);
 }
 .account-entry__project-list > li > div {
+  flex: 1 1 14rem;
   min-width: 0;
 }
 .account-entry__project-list strong {
@@ -95,11 +97,4 @@
 .account-entry__guest-access + .button,
 .account-entry__device-onboarding + .button {
   margin-block-start: 1rem;
-}
-@media (max-width: 480px) {
-  .account-entry__guest-heading,
-  .account-entry__project-list > li {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
