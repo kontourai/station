@@ -713,8 +713,9 @@ try {
       { mode: 0o600 },
     );
     const privateRefused =
-      [401, 403, 404].includes(privateRead.status) &&
-      !privateBoundary.containsPrivateMarker;
+      privateRead.status === 404 &&
+      !privateBoundary.containsPrivateMarker &&
+      JSON.parse(privateRead.body).error === 'Project not found';
     if (!privateRefused)
       errors.push(
         new Error(
@@ -726,10 +727,11 @@ try {
     assert.equal(
       (
         await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/account-auth/session',
+          path: '/api/projects/relay-shared',
         })
       ).status,
       401,
+      'Continuation revocation refuses a permitted Project read',
     );
     assert.equal(
       (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
@@ -739,20 +741,59 @@ try {
     assert.equal(
       (
         await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/account-auth/session',
+          path: '/api/projects/relay-shared',
         })
       ).status,
       401,
+      'Provider-session revocation refuses a permitted Project read',
     );
     assert.equal(
       (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
       account.principalId,
     );
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      200,
+      'A fresh provider session restores the permitted Project read',
+    );
+    await accountStation.revokeMembership(account.principalId);
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      404,
+      'Membership revocation independently refuses the Project read',
+    );
+    const replacementInvitation = await accountStation.inviteAgain();
+    assert.equal(
+      (
+        await page.evaluate(
+          browserAcceptApplicationInvitation,
+          replacementInvitation,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      200,
+      'Restored membership proves Device revocation is independent',
+    );
     await accountStation.revokeDevice();
     assert.equal(
       (
         await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/account-auth/session',
+          path: '/api/projects/relay-shared',
         })
       ).status,
       401,
@@ -778,7 +819,8 @@ try {
         'operator-observed viewer membership and permitted Project read',
         'continuation renewal and revocation',
         'provider-session revocation and stable relogin',
-        'Device revocation',
+        'membership revocation and invitation-based restoration',
+        'Device revocation independently refuses a permitted Project read',
       ],
       privateProject: privateBoundary,
     };

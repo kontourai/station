@@ -251,6 +251,50 @@ export async function startRelayAccountStation(
           ),
         );
       },
+      async revokeMembership(principalId: string) {
+        const access = await getProjectAccess(
+          current.base,
+          shared.slug,
+          current.operator,
+        );
+        const member = access.members.find(
+          (candidate) =>
+            candidate.principal.id === principalId &&
+            candidate.status === 'active',
+        );
+        assert(member);
+        await changeProjectAccess(
+          current.base,
+          shared.slug,
+          {
+            kind: 'change-member',
+            scope: enabled.view.scope,
+            principalId,
+            revision: member.revision,
+            role: member.role,
+            status: 'revoked',
+          },
+          current.operator,
+        );
+      },
+      async inviteAgain() {
+        const next = await changeProjectAccess(
+          current.base,
+          shared.slug,
+          {
+            kind: 'invite',
+            scope: enabled.view.scope,
+            email: null,
+            role: 'viewer',
+            expiresAt: new Date(Date.now() + 600000).toISOString(),
+          },
+          current.operator,
+        );
+        assert.equal(next.kind, 'invited');
+        if (next.kind !== 'invited')
+          throw new Error('Replacement Project invitation failed');
+        return next.token;
+      },
       async revokeAccount() {
         const accounts = await getLocalAccounts(current.base, current.operator);
         assert(accounts.kind === 'local');

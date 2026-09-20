@@ -119,7 +119,7 @@ export async function browserApplicationAccountRequest({
   );
   return { status: response.status, body: await response.text() };
 }
-export async function browserAcceptApplicationInvitation() {
+export async function browserAcceptApplicationInvitation(token) {
   const state = window.stationApplicationAccount;
   const url = `${state.input.apiBase}/api/account-auth/accept-invitation`;
   const headers = await state.client.headers(state.continuation, {
@@ -131,7 +131,7 @@ export async function browserAcceptApplicationInvitation() {
     {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: state.input.invitation }),
+      body: JSON.stringify({ token: token ?? state.input.invitation }),
       timeoutMs: 15000,
     },
   );
