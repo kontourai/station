@@ -285,6 +285,28 @@ function expectProjectEvidencePaneInstances(
 }
 
 describe('Project Routes', () => {
+  test('GET / projects returns only the authenticated member projection', async () => {
+    const service = createMockProjectService();
+    await service.createProject({ slug: 'shared', name: 'Shared' });
+    await service.createProject({ slug: 'private', name: 'Private marker' });
+    const readableProjectSlugs = vi.fn(async () => ['shared']);
+    const app = createProjectRoutes(
+      service as any,
+      createMockStorageAdapter(['shared', 'private']) as any,
+      '/tmp',
+      { readableProjectSlugs },
+    );
+
+    const response = await app.request('/');
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({
+      success: true,
+      data: [{ slug: 'shared', name: 'Shared' }],
+    });
+    expect(readableProjectSlugs).toHaveBeenCalledTimes(2);
+  });
+
   const tempDirs: string[] = [];
 
   afterEach(() => {

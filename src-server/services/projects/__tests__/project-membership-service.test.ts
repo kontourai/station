@@ -240,6 +240,47 @@ describe('Project membership through revision and administration routes', () => 
     );
   });
 
+  test('Project reads expose only current viewer memberships and revocation takes effect immediately', async () => {
+    const h = await harness();
+    const privateProject = await h.projects.createProject({
+      name: 'Private marker',
+      slug: 'private',
+    });
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const offer = await h.service.invite(view.scope, invitation(), h.access);
+    h.setActor(invitee);
+    await h.service.accept(offer.token, h.access);
+
+    expect(await h.service.readableProjectSlugs(h.access)).toEqual(['example']);
+    await expect(
+      h.service.requireProjectRead('example', h.access),
+    ).resolves.toBeUndefined();
+    const privateRead = vi.spyOn(h.storage, 'projectRevision');
+    await expect(
+      h.service.requireProjectRead('private', h.access),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    expect(privateRead).not.toHaveBeenCalledWith('private');
+
+    h.setActor(owner, true);
+    const member = h.store.require(view.scope, invitee, 'view');
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      member.revision,
+      {
+        role: 'viewer',
+        status: 'revoked',
+      },
+      h.access,
+    );
+    h.setActor(invitee);
+    expect(await h.service.readableProjectSlugs(h.access)).toEqual([]);
+    await expect(
+      h.service.requireProjectRead('example', h.access),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    expect(privateProject.slug).toBe('private');
+  });
+
   test('request-supplied principals and scopes cannot redirect a management action', async () => {
     const h = await harness();
     const view = await h.service.enable('example', h.project.id, h.access);

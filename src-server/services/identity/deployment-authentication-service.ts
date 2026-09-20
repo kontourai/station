@@ -88,6 +88,7 @@ export class DeploymentAuthenticationService {
       login: typeof this.provider.sessionReferences?.login === 'function',
     };
   }
+
   async verifySessionReference(
     sessionId: string,
     callerSignal: AbortSignal,

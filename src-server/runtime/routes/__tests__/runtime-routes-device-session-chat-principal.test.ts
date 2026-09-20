@@ -52,6 +52,7 @@ import {
 } from '@kontourai/station-contracts/deployment-authentication';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
+  PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
 import type { LocalAccountView } from '@kontourai/station-contracts/local-accounts';
@@ -414,6 +415,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       name: 'Example shared Project',
       slug: 'example',
     });
+    const privateProject = await membershipProjects?.createProject({
+      name: 'Private marker',
+      slug: 'private-project',
+    });
     const membership = membershipStorage
       ? createProjectMembershipRuntime(
           roomHomeDir,
@@ -453,6 +458,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
+      agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -494,6 +500,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       membership,
       localAccounts,
       sharedProject,
+      privateProject,
       applicationSessions,
       roomRuntime: result.projectTaskRoomRuntime!,
       pairing,
@@ -806,8 +813,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const h = await setup(undefined, false, undefined, true, true);
     let producer: ReadableStreamDefaultController<Uint8Array> | undefined;
     const cancelled = vi.fn();
-    const streamPath = '/api/projects/example/account-session-stream';
-    const expiryPath = '/api/projects/example/account-expiry-result';
+    const streamPath = '/api/orchestration/account-session-stream';
+    const expiryPath = '/api/orchestration/account-expiry-result';
     h.app.get(expiryPath, () => {
       const later = Date.now() + 16 * 60_000;
       vi.setSystemTime(later);
@@ -912,6 +919,102 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(session.deviceId).toBe(h.paired.device.id);
       expect(session.principal.id).toMatch(/^human:deployment:/);
       expect(outgoing.every((headers) => !headers.has('Cookie'))).toBe(true);
+      const acceptPath = '/api/account-auth/accept-invitation';
+      const acceptedMembership = await request(
+        acceptPath,
+        { token: offer.token },
+        {
+          ...(await client.headers(session, {
+            method: 'POST',
+            url: origin + acceptPath,
+            body: JSON.stringify({ token: offer.token }),
+          })),
+          Authorization: `Bearer ${h.paired.credential}`,
+        },
+      );
+      expect(
+        acceptedMembership.status,
+        await acceptedMembership.clone().text(),
+      ).toBe(200);
+      const replacementOffer = h.pairing.createOffer({
+        endpoint: origin,
+        scope: pairingScopePresetString('standard'),
+      });
+      const pairingBody = {
+        offerId: replacementOffer.offerId,
+        proof: replacementOffer.challenge,
+        deviceName: 'Bound collaborator',
+      };
+      const pairingRequest = await request(
+        PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
+        pairingBody,
+        {
+          ...(await client.headers(session, {
+            method: 'POST',
+            url: origin + PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
+            body: JSON.stringify(pairingBody),
+          })),
+          Authorization: `Bearer ${h.paired.credential}`,
+        },
+      );
+      expect(pairingRequest.status, await pairingRequest.clone().text()).toBe(
+        202,
+      );
+      const pending = (await pairingRequest.json()) as { requestId: string };
+      const confirmed = await request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        { bindAccountIdentity: true },
+        operator,
+      );
+      expect(confirmed.status, await confirmed.clone().text()).toBe(200);
+      expect(await confirmed.json()).toMatchObject({
+        principalBinding: {
+          kind: 'account',
+          issuer: h.localAccounts!.service.describe().issuer,
+          approvalId: expect.any(String),
+        },
+      });
+      const replacement = h.pairing.exchange({
+        offerId: replacementOffer.offerId,
+        proof: replacementOffer.challenge,
+        requestId: pending.requestId,
+      });
+      expect(replacement.device.principalBinding).toMatchObject({
+        kind: 'account',
+      });
+      expect(
+        (
+          await request('/api/projects/example', undefined, {
+            Authorization: `Bearer ${replacement.credential}`,
+          })
+        ).status,
+      ).toBe(401);
+      setClientCredentialResolver(() => ({
+        credential: h.paired.credential,
+        origin,
+        onUnauthorized: onDeviceUnauthorized,
+        onAccountUnauthorized,
+      }));
+      const projectRead = async (path: string) =>
+        await request(path, undefined, {
+          ...(await client.headers(session, {
+            method: 'GET',
+            url: origin + path,
+          })),
+          Authorization: `Bearer ${h.paired.credential}`,
+        });
+      const shared = await projectRead('/api/projects/example');
+      expect(shared.status, await shared.clone().text()).toBe(200);
+      const privateProject = await projectRead('/api/projects/private-project');
+      expect(privateProject.status).toBe(404);
+      expect(JSON.stringify(await privateProject.json())).not.toContain(
+        'Private marker',
+      );
+      const catalogue = await projectRead('/api/projects');
+      expect(catalogue.status, await catalogue.clone().text()).toBe(200);
+      expect(await catalogue.json()).toMatchObject({
+        data: [{ slug: 'example' }],
+      });
       const path = '/api/orchestration/attachment-staging/prepare';
       const proof = await client.headers(session, {
         method: 'POST',
@@ -971,7 +1074,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         })),
         Authorization: `Bearer ${h.paired.credential}`,
       });
-      expect(stream.status).toBe(200);
+      expect(
+        stream.status,
+        stream.status === 200 ? '' : await stream.text(),
+      ).toBe(200);
       const reader = stream.body!.getReader();
       expect(new TextDecoder().decode((await reader.read()).value)).toBe(
         'first',

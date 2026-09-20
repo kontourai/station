@@ -248,6 +248,35 @@ export class ProjectMembershipStore {
     return scope;
   }
 
+  readableProjectScopes(actor: PrincipalRef): ProjectMembershipScope[] {
+    if (!isPrincipalRef(actor)) throw new ProjectMembershipRefusal('forbidden');
+    return this.db
+      .prepare(
+        'SELECT shared_projects.local_id, shared_projects.portable_id, shared_projects.local_slug, project_members.record FROM shared_projects JOIN project_members ON project_members.project_id=shared_projects.local_id WHERE project_members.principal_id=? ORDER BY shared_projects.local_slug',
+      )
+      .all(actor.id)
+      .flatMap((row) => {
+        if (
+          typeof row.local_id !== 'string' ||
+          typeof row.portable_id !== 'string' ||
+          typeof row.local_slug !== 'string'
+        )
+          throw new ProjectMembershipRefusal('unavailable');
+        const member = this.parseMember(row.record);
+        return member.status === 'active' &&
+          this.actions(member.role).includes('view')
+          ? [
+              {
+                stationId: this.stationId,
+                localProjectId: row.local_id,
+                portableProjectId: row.portable_id,
+                localProjectSlug: row.local_slug,
+              },
+            ]
+          : [];
+      });
+  }
+
   invitationScope(token: string): ProjectMembershipScope {
     const { scope, invitation } = this.pendingInvitation(token);
     this.requireGrant(scope, invitation.invitedBy, invitation.role);

@@ -195,6 +195,8 @@ async function registerPluginNamespaces(
 }
 
 interface ProjectRouteDeps {
+  /** Restricts the Project catalogue for an authenticated shared member. */
+  readableProjectSlugs?: (c: Context) => Promise<readonly string[] | undefined>;
   listAgents?: () => Promise<AgentOwnershipRef[]> | AgentOwnershipRef[];
   layoutCatalog?: DistributionProfileService;
   /** Existing Kit lifecycle authority; pane discovery only reads its snapshot. */
@@ -607,8 +609,23 @@ export function createProjectRoutes(
   // List all projects
   app.get('/', async (c) => {
     try {
+      const readable = await deps.readableProjectSlugs?.(c);
+      const allowed = readable ? new Set(readable) : undefined;
       const projects = await projectService.listProjects();
-      return c.json({ success: true, data: projects });
+      const currentReadable = allowed
+        ? new Set((await deps.readableProjectSlugs?.(c)) ?? [])
+        : undefined;
+      return c.json({
+        success: true,
+        data:
+          allowed && currentReadable
+            ? projects.filter(
+                (project) =>
+                  allowed.has(project.slug) &&
+                  currentReadable.has(project.slug),
+              )
+            : projects,
+      });
     } catch (error: unknown) {
       logger.error('Project storage list failed', {
         error: error instanceof Error ? error.message : 'non-Error thrown',

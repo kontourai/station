@@ -9,6 +9,7 @@ import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
+import type { DeploymentAuthenticationService } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import type {
@@ -16,6 +17,7 @@ import type {
   ProjectMembershipService,
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
+import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 
 export {
   type BoundedBodyResult,
@@ -39,9 +41,11 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
+import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
+  type DevicePrincipalBinding,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
@@ -73,6 +77,27 @@ import {
   isStationNativeShellOrigin,
   STATION_NATIVE_SHELL_ORIGINS,
 } from '@kontourai/station-shared/native-shell-origin';
+
+function isAccountDeviceBinding(
+  binding: DevicePrincipalBinding,
+): binding is Extract<DevicePrincipalBinding, { kind: 'account' }> {
+  return 'kind' in binding && binding.kind === 'account';
+}
+
+function principalForDeviceBinding(binding: DevicePrincipalBinding) {
+  return isAccountDeviceBinding(binding)
+    ? deploymentHumanPrincipal(
+        binding.issuer,
+        binding.subject,
+        binding.displayName,
+      )
+    : deploymentHumanPrincipal(
+        binding.provider,
+        binding.subject,
+        binding.subject,
+      );
+}
+
 import type { Agent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
 import { setCookie } from 'hono/cookie';
@@ -1129,31 +1154,33 @@ export function configureRuntimeRoutes(
       if (
         binding &&
         (hostedTenantRegistry !== undefined ||
-          (ingressIdentity &&
-            (ingressIdentity.provider !== binding.provider ||
-              ingressIdentity.subject !== binding.subject)))
+          (isAccountDeviceBinding(binding)
+            ? ingressIdentity !== null
+            : ingressIdentity &&
+              (ingressIdentity.provider !== binding.provider ||
+                ingressIdentity.subject !== binding.subject)))
       ) {
         throw new PrincipalUnresolvedError(
           'Device person binding conflicts with the current identity or deployment',
         );
       }
-      const verifiedPerson = binding ?? ingressIdentity;
+      const verifiedPerson = binding
+        ? principalForDeviceBinding(binding)
+        : ingressIdentity
+          ? deploymentHumanPrincipal(
+              ingressIdentity.provider,
+              ingressIdentity.subject,
+              ingressIdentity.subject,
+            )
+          : undefined;
       const account =
         context.deploymentAuthentication?.service.resolvePrincipal(
           c.req.raw,
-          verifiedPerson
-            ? [
-                deploymentHumanPrincipal(
-                  verifiedPerson.provider,
-                  verifiedPerson.subject,
-                  verifiedPerson.subject,
-                ),
-              ]
-            : [],
+          verifiedPerson ? [verifiedPerson] : [],
         );
       if (account) return account;
       return resolveStationPrincipal(
-        (binding
+        (binding && !('kind' in binding)
           ? {
               provider: binding.provider,
               subject: binding.subject,
@@ -1279,38 +1306,84 @@ export function configureRuntimeRoutes(
     const account = context.deploymentAuthentication?.service.current(
       c.req.raw,
     );
+    const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    const binding =
+      runtimePrincipal?.authority === 'device-credential'
+        ? context.environmentSecurityService.identifyDevice(
+            runtimePrincipal.credential,
+          )?.principalBinding
+        : undefined;
+    const accountBinding =
+      binding && 'kind' in binding && binding.kind === 'account'
+        ? binding
+        : undefined;
+    const accountOperation =
+      c.req.path === '/api/account-auth' ||
+      c.req.path.startsWith('/api/account-auth/');
+    if (
+      accountBinding &&
+      !accountOperation &&
+      account?.kind !== 'authenticated'
+    ) {
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+      return c.json(
+        { error: { code: 'account_authentication_required' } },
+        401,
+      );
+    }
     if (account && account.kind !== 'absent') {
       if (account.kind !== 'authenticated')
         return c.json(
           { error: { code: 'account_authentication_invalid' } },
           401,
         );
-      const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(
-        c.req.raw,
-      );
-      const binding =
-        runtimePrincipal?.authority === 'device-credential'
-          ? context.environmentSecurityService.identifyDevice(
-              runtimePrincipal.credential,
-            )?.principalBinding
-          : undefined;
-      const people = [identifyIngress(c), binding].filter(
-        (person) => person !== null && person !== undefined,
-      );
+      const ingress = identifyIngress(c);
+      if (accountBinding && ingress) {
+        return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+      }
+      const people = accountBinding
+        ? [principalForDeviceBinding(accountBinding)]
+        : [ingress, binding]
+            .filter((person) => person !== null && person !== undefined)
+            .map((person) =>
+              principalForDeviceBinding(person as DevicePrincipalBinding),
+            );
       try {
         context.deploymentAuthentication!.service.resolvePrincipal(
           c.req.raw,
-          people.map((person) =>
-            deploymentHumanPrincipal(
-              person.provider,
-              person.subject,
-              person.subject,
-            ),
-          ),
+          people,
         );
       } catch (error) {
         if (!(error instanceof PrincipalUnresolvedError)) throw error;
         return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+      }
+    }
+    if (accountBinding) {
+      const path = c.req.path;
+      if (
+        (path === '/api/projects' || path.startsWith('/api/projects/')) &&
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD'
+      ) {
+        return c.json(
+          { error: { code: 'account_bound_device_route_forbidden' } },
+          403,
+        );
+      }
+      const permitted =
+        path === '/' ||
+        path.startsWith('/assets/') ||
+        path === '/api/projects' ||
+        path.startsWith('/api/projects/') ||
+        path === '/api/account-auth' ||
+        path.startsWith('/api/account-auth/') ||
+        path === PUBLIC_DEVICE_PAIRING_REQUEST_PATH ||
+        path === PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH;
+      if (!permitted) {
+        return c.json(
+          { error: { code: 'account_bound_device_route_forbidden' } },
+          403,
+        );
       }
     }
     await next();
@@ -1465,6 +1538,7 @@ export function configureRuntimeRoutes(
       }),
       resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
         .resolve,
+      accountAuthentication: context.deploymentAuthentication?.service,
     },
   );
   // station#1423. ONE service instance for both families: the operator mints
@@ -1664,6 +1738,7 @@ export function configureRuntimeRoutes(
           request,
           context.environmentSecurityService,
         ),
+      accountAuthentication: context.deploymentAuthentication?.service,
     },
   );
 
@@ -3083,15 +3158,7 @@ export function configureRuntimeRoutes(
         const principal =
           context.deploymentAuthentication!.service.resolvePrincipal(
             request,
-            binding
-              ? [
-                  deploymentHumanPrincipal(
-                    binding.provider,
-                    binding.subject,
-                    binding.subject,
-                  ),
-                ]
-              : [],
+            binding ? [principalForDeviceBinding(binding)] : [],
           );
         if (
           !principal ||
@@ -3155,6 +3222,74 @@ export function configureRuntimeRoutes(
       context.deploymentAuthentication?.publicOrigin,
     ),
   );
+  const authenticatedProjectMember = async (request: Request) => {
+    const account =
+      await context.deploymentAuthentication?.service.authenticate(request);
+    if (account?.kind === 'authenticated') {
+      if (!context.projectMembership)
+        throw new ProjectMembershipRefusal('forbidden');
+      return projectMembershipAuthority(request);
+    }
+    if (account && account.kind !== 'absent')
+      throw new ProjectMembershipRefusal('forbidden');
+    return undefined;
+  };
+  const requireAuthenticatedProjectRead = async (
+    request: Request,
+    slug: string,
+  ) => {
+    const authority = await authenticatedProjectMember(request);
+    if (authority) {
+      await context.projectMembership!.requireProjectRead(slug, authority);
+      return true;
+    }
+    return false;
+  };
+  const projectReadGuard = async (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0] & {
+      req: { method: string; param(name: string): string; raw: Request };
+      json: (body: unknown, status: 403 | 404) => Response;
+      res: Response;
+    },
+    next: () => Promise<void>,
+  ) => {
+    try {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      const restricted = await requireAuthenticatedProjectRead(
+        c.req.raw,
+        c.req.param('slug'),
+      );
+      if (restricted && c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+        return c.json(
+          { success: false, error: 'Project mutation is forbidden' },
+          403,
+        );
+      }
+      await next();
+      if (restricted) {
+        c.res = await guardProjectResponse(c.res, async () => {
+          try {
+            return await requireAuthenticatedProjectRead(
+              c.req.raw,
+              c.req.param('slug'),
+            );
+          } catch (error) {
+            if (error instanceof ProjectMembershipRefusal) return false;
+            throw error;
+          }
+        });
+      }
+    } catch (error) {
+      if (error instanceof ProjectMembershipRefusal)
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      throw error;
+    }
+  };
+  context.app.use('/api/projects/:slug', projectReadGuard);
+  context.app.use('/api/projects/:slug/*', projectReadGuard);
   // #2061: the personal scope. Ownership comes from
   // `resolveOrchestrationRequestPrincipal` — the SAME memoized, fail-closed
   // resolver every other identity-bearing route in this file reads — so no
@@ -3238,6 +3373,16 @@ export function configureRuntimeRoutes(
         // verdict the host renders a placeholder from, and apply,
         // from-plugin and the layout list answer the same way.
         canSeePlugin: canSeePluginForRequest,
+        readableProjectSlugs: async (c) => {
+          roomRequestPrincipals.set(
+            c.req.raw,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const authority = await authenticatedProjectMember(c.req.raw);
+          return authority
+            ? await context.projectMembership!.readableProjectSlugs(authority)
+            : undefined;
+        },
       },
     ),
   );
@@ -5037,6 +5182,7 @@ export function configureDevicePairingPublicRoutes(
      * unresolvable) leaves the previous request-derived behaviour untouched.
      */
     resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
+    accountAuthentication?: DeploymentAuthenticationService;
   } = {},
 ): void {
   if (options.authFailureAudit && !options.authFailureSourceId) {
@@ -5727,6 +5873,19 @@ export function configureDevicePairingPublicRoutes(
         clientInstanceId: body.clientInstanceId as string | undefined,
         source: 'pairing-code',
         requesterPosition: pairingRequesterPosition(c),
+        ...(() => {
+          const account = options.accountAuthentication?.current(c.req.raw);
+          return account?.kind === 'authenticated'
+            ? {
+                accountCandidate: {
+                  issuer: options.accountAuthentication!.describe().issuer,
+                  subject: account.session.subject,
+                  displayName: account.session.displayName,
+                },
+                accountCandidateSessionId: account.session.sessionId,
+              }
+            : {};
+        })(),
       });
       devicePairingRequests.add(1, {
         source: request.source,
@@ -6009,6 +6168,7 @@ export function configureDevicePairingHostRoutes(
      * Making it required lets the compiler answer the question instead.
      */
     isRequestPrincipalCurrent: (request: Request) => boolean;
+    accountAuthentication?: DeploymentAuthenticationService;
   },
 ): void {
   const audit = options.audit;
@@ -6102,17 +6262,29 @@ export function configureDevicePairingHostRoutes(
     try {
       // Existing bodyless approvals remain device-only. Identity binding is an
       // explicit operator action, never inferred from requester provenance.
-      let bindingApproval: { principalId: string } | undefined;
+      let bindingApproval:
+        | {
+            principalId: string;
+            kind: 'verified-ingress' | 'account';
+          }
+        | undefined;
       if (c.req.raw.body !== null) {
         const body = await readPairingOfferJson(
           c.req.raw,
-          new Set(['', 'bindVerifiedIdentity']),
+          new Set(['', 'bindVerifiedIdentity', 'bindAccountIdentity']),
         );
         if (
           !body ||
-          Object.keys(body).some((key) => key !== 'bindVerifiedIdentity') ||
+          Object.keys(body).some(
+            (key) =>
+              key !== 'bindVerifiedIdentity' && key !== 'bindAccountIdentity',
+          ) ||
           (body.bindVerifiedIdentity !== undefined &&
-            typeof body.bindVerifiedIdentity !== 'boolean')
+            typeof body.bindVerifiedIdentity !== 'boolean') ||
+          (body.bindAccountIdentity !== undefined &&
+            typeof body.bindAccountIdentity !== 'boolean') ||
+          (body.bindVerifiedIdentity === true &&
+            body.bindAccountIdentity === true)
         ) {
           return c.json({ error: 'invalid_request' }, 400);
         }
@@ -6148,6 +6320,49 @@ export function configureDevicePairingHostRoutes(
                 : { verifiedOperatorCredential: true },
               undefined,
             ).id,
+            kind: 'verified-ingress',
+          };
+        }
+        if (body.bindAccountIdentity === true) {
+          const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          if (
+            actor?.authority !== 'operator-credential' ||
+            options.verifyOperatorCredential?.(actor.credential) !== true
+          ) {
+            return c.json({ error: 'approval_requires_operator' }, 403);
+          }
+          const candidate = pairing.accountCandidateForRequest(requestId);
+          if (!candidate || !options.accountAuthentication) {
+            return c.json({ error: 'person_binding_unavailable' }, 409);
+          }
+          const verified =
+            await options.accountAuthentication.verifySessionReference(
+              candidate.sessionId,
+              c.req.raw.signal,
+            );
+          if (
+            verified.kind !== 'authenticated' ||
+            options.accountAuthentication.describe().issuer !==
+              candidate.candidate.issuer ||
+            verified.session.subject !== candidate.candidate.subject
+          ) {
+            return c.json({ error: 'person_binding_unavailable' }, 409);
+          }
+          if (
+            options.isApprovalCurrent?.(c.req.raw) !== true ||
+            actor.authority !== 'operator-credential' ||
+            options.verifyOperatorCredential?.(actor.credential) !== true
+          ) {
+            return c.json({ error: 'approval_requires_operator' }, 403);
+          }
+          bindingApproval = {
+            principalId: resolveStationPrincipal(
+              identifyIngress(c),
+              'personal',
+              { verifiedOperatorCredential: true },
+              undefined,
+            ).id,
+            kind: 'account',
           };
         }
       }
