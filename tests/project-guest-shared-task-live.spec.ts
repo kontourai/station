@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createProject } from '@kontourai/station-sdk/client';
 import {
@@ -312,16 +312,23 @@ test.describe
           guest.getByRole('heading', { name: 'Available Projects' }),
         ).toBeVisible({ timeout: 15_000 });
 
-        // Explicit caller-owned evidence directory: when the caller exports
-        // STATION_GUEST_ACCEPTANCE_EVIDENCE_DIR, captures are written there
-        // synchronously, because the canonical runner deletes passing-run
-        // Playwright output roots. Without it, captures stay in the
-        // runner-owned Playwright output as before.
+        // Explicit caller-owned evidence retention: when the caller exports
+        // STATION_GUEST_ACCEPTANCE_EVIDENCE_DIR, each capture is copied there
+        // synchronously right after it is taken, because the canonical runner
+        // deletes passing-run Playwright output roots. Without it, captures
+        // stay in the runner-owned Playwright output as before.
         const evidenceDir = process.env.STATION_GUEST_ACCEPTANCE_EVIDENCE_DIR;
-        const capturePath = (name: string) => {
-          if (!evidenceDir) return testInfo.outputPath(name);
+        const retainCapture = (name: string) => {
+          if (!evidenceDir) return;
           mkdirSync(evidenceDir, { recursive: true });
-          return join(evidenceDir, name);
+          cpSync(testInfo.outputPath(name), join(evidenceDir, name));
+        };
+        const capture = async (name: string) => {
+          await guest.screenshot({
+            path: testInfo.outputPath(name),
+            fullPage: true,
+          });
+          retainCapture(name);
         };
         const readLayout = () =>
           guest.evaluate(() => {
@@ -370,10 +377,7 @@ test.describe
         ).toBe(false);
         expect(darkLayout.smallestTarget).toBeGreaterThanOrEqual(44);
         expect(darkLayout.palette).toBeTruthy();
-        await guest.screenshot({
-          path: capturePath('guest-shared-task-wide-dark.png'),
-          fullPage: true,
-        });
+        await capture('guest-shared-task-wide-dark.png');
 
         // The app theme is the LOCAL device-settings preference, not the
         // media query: seed the exact persisted envelope the canonical
@@ -405,10 +409,7 @@ test.describe
           'light capture must not overflow horizontally',
         ).toBe(false);
         expect(lightLayout.smallestTarget).toBeGreaterThanOrEqual(44);
-        await guest.screenshot({
-          path: capturePath('guest-shared-task-narrow-light.png'),
-          fullPage: true,
-        });
+        await capture('guest-shared-task-narrow-light.png');
 
         const guestRead = (path: string) =>
           guest.evaluate(async (requestPath) => {
