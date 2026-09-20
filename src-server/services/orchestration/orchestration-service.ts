@@ -4764,13 +4764,6 @@ export class OrchestrationService {
             command.input.threadId,
             INTERNAL_SESSION_READ_SCOPE,
           );
-          if (
-            current &&
-            foldedSessionLifecycleState(current.session.lifecycleState) ===
-              'completed'
-          ) {
-            throw new SessionEndedError();
-          }
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: command.input.threadId,
             threadProviders: this.threadProviders,

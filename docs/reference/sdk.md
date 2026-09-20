@@ -1990,6 +1990,37 @@ Live delivery remains owned by the orchestration SSE stream.
 The session-scoped `fetchOrchestrationSessionEventWindow` accepts the same
 option for conversations without a multi-session lineage.
 
+## Workspace checkpoint restore
+
+`previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
+short-lived, owner-bound preview for the turn's settle checkpoint. It includes
+the preview id, repository root, target and currently observed tree hashes,
+bounded changed paths, and expiry. `confirmCheckpointRestore` submits that
+exact preview with `confirmed: true` and the captured current-tree hash.
+
+```ts
+const preview = await previewCheckpointRestore(
+  requestScope.apiBase,
+  sessionId,
+  turnId,
+  requestScope,
+);
+await confirmCheckpointRestore(
+  requestScope.apiBase,
+  sessionId,
+  turnId,
+  preview,
+  requestScope,
+);
+```
+
+The server consumes a preview once and refuses stale authority, expiry,
+session/turn mismatch, workspace changes after preview, or a workspace with an
+active or starting local turn. Restore changes repository files only; it does
+not rewind conversation history or external tool effects. Treat an
+indeterminate response as possible effect and inspect the workspace before
+retrying.
+
 ## Feedback analysis
 
 Use `useFeedbackRatingsQuery`, `useFeedbackGuidelinesQuery`, and

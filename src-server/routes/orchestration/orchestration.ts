@@ -2114,7 +2114,11 @@ export function createOrchestrationRoutes(
       .safeParse(body);
     if (!parsed.success)
       return c.json(
-        { success: false, error: 'Explicit confirmation is required' },
+        {
+          success: false,
+          error:
+            'A current restore preview and explicit confirmation are required',
+        },
         400,
       );
     try {

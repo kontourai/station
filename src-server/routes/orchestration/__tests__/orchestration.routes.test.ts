@@ -4022,7 +4022,25 @@ describe('Orchestration Routes', () => {
       },
     );
     expect(unconfirmed.status).toBe(400);
+    expect(await readJson(unconfirmed)).toEqual({
+      success: false,
+      error: 'A current restore preview and explicit confirmation are required',
+    });
     expect(restore).not.toHaveBeenCalled();
+
+    const missingPreview = await app.request(
+      '/sessions/thread-cp/checkpoints/turn-1/restore',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    );
+    expect(missingPreview.status).toBe(400);
+    expect(await readJson(missingPreview)).toEqual({
+      success: false,
+      error: 'A current restore preview and explicit confirmation are required',
+    });
 
     const ok = await app.request(
       '/sessions/thread-cp/checkpoints/turn-1/restore',

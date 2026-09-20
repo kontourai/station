@@ -11514,7 +11514,11 @@ describe('OrchestrationService', () => {
       });
       claude.sendTurn.mockClear();
       const inFlight = deferred<ProviderTurnStartResult>();
-      claude.sendTurn.mockReturnValueOnce(inFlight.promise);
+      const providerEntered = deferred<void>();
+      claude.sendTurn.mockImplementationOnce(() => {
+        providerEntered.resolve();
+        return inFlight.promise;
+      });
 
       const firstDispatch = service.dispatch({
         type: 'sendTurn',
@@ -11524,12 +11528,9 @@ describe('OrchestrationService', () => {
           clientTurnId: 'client-turn-inflight',
         },
       });
-      // Let the first dispatch's claim land (everything up to
-      // `adapter.sendTurn` is synchronous/microtask work; the deferred
-      // `inFlight` promise is the only thing actually pending) before the
-      // second one starts, so it observes an in-flight (not yet resolved)
-      // claim rather than racing the first claim.
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Workspace identity resolution is intentionally asynchronous. Observe
+      // the actual provider boundary instead of assuming it fits in a timer.
+      await providerEntered.promise;
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
 
       const secondDispatch = service.dispatch({
@@ -15363,27 +15364,36 @@ describe('OrchestrationService', () => {
    * projection before the timeout's `stopSession` dispatch tears it down).
    */
   test('arms internal-stop suppression for a smoke turn that times out mid-flight', async () => {
+    const startedAt = Date.now();
+    let observedNow = startedAt;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => observedNow);
     claude.sendTurn.mockImplementationOnce(async (input) => {
-      queueMicrotask(() => {
-        claude.events.push({
-          eventId: 'suppressed-smoke-started',
-          provider: 'claude',
-          threadId: input.threadId,
-          turnId: 'suppressed-smoke-turn',
-          createdAt: new Date().toISOString(),
-          method: 'turn.started',
-          prompt: input.input,
-        });
+      claude.events.push({
+        eventId: 'suppressed-smoke-started',
+        provider: 'claude',
+        threadId: input.threadId,
+        turnId: 'suppressed-smoke-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: input.input,
       });
+      await waitFor(
+        () => eventStore.listEvents(input.threadId),
+        (events) =>
+          events.some((event) => event.payload.method === 'turn.started'),
+      );
+      observedNow = startedAt + 1_001;
       return { threadId: input.threadId, turnId: 'suppressed-smoke-turn' };
     });
-    const result = await service.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+    const result = await service
+      .runConnectionSmoke({
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 1_000,
+      })
+      .finally(() => now.mockRestore());
 
     expect(result).toMatchObject({ ok: false, reasonCode: 'timeout' });
     expect(claude.stopSession).toHaveBeenCalledOnce();

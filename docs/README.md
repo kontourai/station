@@ -97,6 +97,7 @@ Root-level records: [glossary.md](glossary.md) (vocabulary authority),
 a historical audit retained in the repository archive.
 User-facing docs not named in the audience table:
 [user/native-recovery.md](user/native-recovery.md),
+[user/workspace-checkpoints.md](user/workspace-checkpoints.md),
 [user/work-board.md](user/work-board.md), and
 [user/contributing.md](user/contributing.md).
 
