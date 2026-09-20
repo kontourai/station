@@ -4,6 +4,7 @@ import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-
 import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
+  useConversationInventoryQuery,
 } from '@kontourai/station-sdk';
 import React, {
   useCallback,
@@ -282,6 +283,9 @@ export function ChatDockBody({
         credentialState: mentionCredentialEvidence.credentialState,
       })
     : null;
+  const sessionReferenceInventory = useConversationInventoryQuery({
+    enabled: !!mentionAuthority,
+  });
   const { data: acpConnections = [] } = useACPConnections();
   const advertisedAcpSession = useMemo(
     () =>
@@ -1328,10 +1332,20 @@ export function ChatDockBody({
             draftText={chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
+            activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}
             mentionRequestScope={mentionRequestScope}
             mentionAuthority={mentionAuthority}
+            sessionReferenceCandidates={(
+              sessionReferenceInventory.data ?? []
+            ).map((conversation) => ({
+              id: conversation.id,
+              title: conversation.title,
+              ...(conversation.projectSlug
+                ? { projectSlug: conversation.projectSlug }
+                : {}),
+            }))}
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
             disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}

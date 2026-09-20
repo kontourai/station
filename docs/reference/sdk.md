@@ -44,6 +44,39 @@ and default-Agent migration remain separately tracked by #1372.
 
 All hooks must be called inside a component tree wrapped by `SDKProvider`.
 
+### Scoped coding file mention queries
+
+`@kontourai/station-sdk/coding-file-mentions-query` exports
+`useCodingFileMentionCandidatesQuery`, `fetchCodingFileMentionCandidates`,
+`CodingFileEntry`, and `CodingFileMentionCandidates`. This opt-in subpath is the
+public metadata lookup used by Station's chat composer; it does not read file
+contents.
+
+The hook accepts a workspace path, a search string, and an `ApiRequestScope`
+extended with `isCurrent()`. Its cache identity includes the exact API origin
+and opaque authority key. The request is cancelled or its result withheld when
+that captured authority is no longer current, so a reconnect cannot rebind an
+old result to a new account. Results are bounded to 200 entries. `partial: true`
+means the server stopped at its scan/result budget and the caller should ask the
+user to refine the path.
+
+```tsx
+import { useCodingFileMentionCandidatesQuery } from
+  '@kontourai/station-sdk/coding-file-mentions-query';
+
+const candidates = useCodingFileMentionCandidatesQuery(
+  '/workspace/project',
+  'src/chat',
+  requestScope,
+);
+```
+
+The returned `CodingFileEntry` contains `name`, project-relative `path`, and
+`type: 'file' | 'directory'`, with optional size, modification time, and bounded
+children. A selected path is still subject to the server's workspace
+containment and authorization checks; query metadata does not grant file
+access.
+
 ### Agent Hooks
 
 #### `useAgents(): AgentSummary[]`
@@ -2555,4 +2588,3 @@ account's request scope, bound channel counts/lifetimes, and close the transport
 when its endpoint trust retires. Transport readiness alone does not partition
 account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
-

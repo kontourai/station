@@ -1,4 +1,7 @@
-import { parseComposerMentions } from './composer-mentions';
+import {
+  parseComposerMentions,
+  parseComposerSessionReferences,
+} from './composer-mentions';
 
 export function ComposerMentionChips({
   value,
@@ -10,28 +13,45 @@ export function ComposerMentionChips({
   onFocusInput: () => void;
 }) {
   const mentions = parseComposerMentions(value);
+  const references = parseComposerSessionReferences(value);
+  const tokens = [
+    ...mentions.map((mention) => ({
+      kind: 'mention' as const,
+      token: mention,
+    })),
+    ...references.map((reference) => ({
+      kind: 'reference' as const,
+      token: reference,
+    })),
+  ].sort((a, b) => a.token.canonicalStart - b.token.canonicalStart);
   return (
-    <ul className="composer-mentions" aria-label="Mentioned files and folders">
-      {mentions.map((mention) => (
-        <li
-          key={`${mention.workspace}:${mention.path}:${mention.canonicalStart}`}
-        >
+    <ul className="composer-mentions" aria-label="Composer references">
+      {tokens.map(({ kind, token }) => (
+        <li key={`${kind}:${token.canonicalStart}`}>
           <button
             type="button"
             className="composer-mentions__chip"
-            title={mention.path}
-            aria-label={`Remove ${mention.type} mention ${mention.path}`}
+            title={kind === 'mention' ? token.path : token.label}
+            aria-label={
+              kind === 'mention'
+                ? `Remove ${token.type} mention ${token.path}`
+                : `Remove conversation reference ${token.label}`
+            }
             onClick={() => {
               onChange(
-                `${value.slice(0, mention.canonicalStart)}${value.slice(mention.canonicalEnd)}`,
+                `${value.slice(0, token.canonicalStart)}${value.slice(token.canonicalEnd)}`,
               );
               onFocusInput();
             }}
           >
             <span aria-hidden="true">
-              {mention.type === 'directory' ? '▸' : '@'}
+              {kind === 'reference'
+                ? '↗'
+                : token.type === 'directory'
+                  ? '▸'
+                  : '@'}
             </span>
-            {mention.label}
+            {token.label}
             <span aria-hidden="true">×</span>
           </button>
         </li>

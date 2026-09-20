@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import { expandComposerMentions } from '../composer-mention-wire';
 import {
+  appendComposerSessionReference,
   composerDisplayValue,
   durableMentionAuthority,
   insertComposerMention,
   mentionQueryAt,
   parseComposerMentions,
+  parseComposerSessionReferences,
   reconcileComposerDisplay,
+  sessionReferenceBlockReason,
 } from '../composer-mentions';
 
 describe('composer file mentions', () => {
@@ -168,5 +171,97 @@ describe('composer file mentions', () => {
       query: 'src/com',
     });
     expect(mentionQueryAt('email@example.com', 17)).toBeNull();
+  });
+
+  test('keeps session references as compact persisted chips and sends only a canonical link', () => {
+    const canonical = appendComposerSessionReference('compare', {
+      label: 'Roadmap ](https://evil.test)\nnotes',
+      conversationId: 'conversation/a b',
+      projectSlug: 'private-project',
+      authority: 'authority-1',
+    });
+
+    expect(composerDisplayValue(canonical)).toBe(
+      'compare @Roadmap ](https://evil.test) notes ',
+    );
+    expect(parseComposerSessionReferences(canonical)[0]).toEqual(
+      expect.objectContaining({
+        conversationId: 'conversation/a b',
+        projectSlug: 'private-project',
+      }),
+    );
+    expect(expandComposerMentions(canonical, undefined, 'authority-1')).toEqual(
+      {
+        text: 'compare [Roadmap https://evil.test notes](/activity?session=conversation%2Fa%20b) ',
+      },
+    );
+  });
+
+  test('uses one block reason for revoked, duplicate, self, and capped references', () => {
+    const one = appendComposerSessionReference('', {
+      label: 'One',
+      conversationId: 'one',
+      authority: 'authority-1',
+    });
+    expect(
+      sessionReferenceBlockReason({
+        value: one,
+        conversationId: 'two',
+        authority: 'authority-1',
+        isCurrent: () => false,
+      }),
+    ).toMatch(/access changed/);
+    expect(
+      sessionReferenceBlockReason({
+        value: one,
+        conversationId: 'one',
+        authority: 'authority-1',
+      }),
+    ).toMatch(/already referenced/);
+    expect(
+      sessionReferenceBlockReason({
+        value: '',
+        conversationId: 'self',
+        activeConversationId: 'self',
+        authority: 'authority-1',
+      }),
+    ).toMatch(/already open/);
+    let capped = '';
+    for (let index = 0; index < 8; index += 1)
+      capped = appendComposerSessionReference(capped, {
+        label: `Conversation ${index}`,
+        conversationId: `conversation-${index}`,
+        authority: 'authority-1',
+      });
+    expect(
+      sessionReferenceBlockReason({
+        value: capped,
+        conversationId: 'ninth',
+        authority: 'authority-1',
+      }),
+    ).toMatch(/at most 8/);
+  });
+
+  test('editing a file token preserves a session token and vice versa', () => {
+    const file = insertComposerMention('@file', 0, 5, {
+      label: 'file.ts',
+      path: 'file.ts',
+      workspace: '/repo',
+      authority: 'authority-1',
+      type: 'file',
+    });
+    const both = appendComposerSessionReference(file, {
+      label: 'Earlier work',
+      conversationId: 'earlier',
+      authority: 'authority-1',
+    });
+    const edited = reconcileComposerDisplay(
+      both,
+      composerDisplayValue(both).replace('@file.ts', 'plain'),
+    );
+    expect(parseComposerMentions(edited)).toHaveLength(0);
+    expect(parseComposerSessionReferences(edited)).toEqual([
+      expect.objectContaining({ conversationId: 'earlier' }),
+    ]);
   });
 });

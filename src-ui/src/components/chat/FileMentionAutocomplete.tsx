@@ -29,8 +29,12 @@ export function FileMentionAutocomplete({
 }) {
   const [selected, setSelected] = useState(0);
   const selectedRef = useRef(0);
+  const pendingNavigationRef = useRef(0);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   useEffect(() => {
+    selectedRef.current = 0;
+    pendingNavigationRef.current = 0;
+    setSelected(0);
     const timer = setTimeout(() => setDebouncedQuery(query), 150);
     return () => clearTimeout(timer);
   }, [query]);
@@ -58,6 +62,15 @@ export function FileMentionAutocomplete({
       })
       .slice(0, 8);
   }, [data, isError, query, querySettling]);
+  useEffect(() => {
+    if (suggestions.length === 0 || pendingNavigationRef.current === 0) return;
+    selectedRef.current = Math.max(
+      0,
+      Math.min(pendingNavigationRef.current, suggestions.length - 1),
+    );
+    pendingNavigationRef.current = 0;
+    setSelected(selectedRef.current);
+  }, [suggestions]);
   const active = Math.min(selected, Math.max(0, suggestions.length - 1));
   keyboardController.current = (key) => {
     if (key === 'Enter') {
@@ -66,6 +79,13 @@ export function FileMentionAutocomplete({
       return;
     }
     const delta = key === 'ArrowDown' ? 1 : -1;
+    if (suggestions.length === 0) {
+      pendingNavigationRef.current = Math.max(
+        0,
+        pendingNavigationRef.current + delta,
+      );
+      return;
+    }
     selectedRef.current = Math.max(
       0,
       Math.min(selectedRef.current + delta, suggestions.length - 1),

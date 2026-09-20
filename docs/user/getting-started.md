@@ -114,6 +114,25 @@ message. If a choice was removed or access changed, choose an available option.
 Stations or authorization, and reloading the page end this temporary return
 flow. Connection changes you already saved remain saved.
 
+### Reference project files and earlier conversations
+
+In a project chat, type `@` followed by part of a file or folder path, then
+choose a result. Station keeps a compact chip in the draft and sends the full
+project-relative selection to the Agent. Saved drafts retain the chip. If the
+workspace changes, or you reconnect or re-pair with different access, Station
+refuses to send the stale reference until you remove it or return to its
+original scope.
+
+Use the conversation-reference button beside the composer actions to choose an
+earlier conversation. You can also drag a result from that picker into the
+composer. A message can contain at most eight conversation references. Station
+sends a link to the selected conversation; it never copies that conversation's
+transcript into the prompt. Titles are displayed as plain text, and the link is
+generated from Station's conversation identity. A reference is available only
+while the current signed-in access can still see its source metadata. If access
+changes before send, Station refuses it instead of silently resolving it under
+the new account.
+
 ## Start Your First Task
 
 When Home offers **Start your first task**, it appears only after the durable

@@ -7,6 +7,7 @@ import type { STTState as VoiceState } from '@kontourai/station-sdk';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
@@ -40,12 +41,15 @@ import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
 import {
+  appendComposerSessionReference,
   composerDisplayValue,
   composerMentionWireLength,
   insertComposerMention,
   mentionQueryAt,
   parseComposerMentions,
+  parseComposerSessionReferences,
   reconcileComposerDisplay,
+  sessionReferenceBlockReason,
 } from './composer-mentions';
 import './chat.css';
 import { SkeletonList } from '../state';
@@ -71,6 +75,11 @@ const AcpSessionModeChip = React.lazy(() =>
 const FileMentionAutocomplete = React.lazy(() =>
   import('./FileMentionAutocomplete').then((module) => ({
     default: module.FileMentionAutocomplete,
+  })),
+);
+const SessionReferencePicker = React.lazy(() =>
+  import('./SessionReferencePicker').then((module) => ({
+    default: module.SessionReferencePicker,
   })),
 );
 const ComposerAttachmentStrip = React.lazy(() =>
@@ -121,6 +130,7 @@ interface ChatInputAreaProps {
    * (archive#727 3). Not otherwise read by this component.
    */
   sessionId?: string;
+  activeConversationId?: string;
   // Input state
   hasQuotedContext?: boolean;
   draftText?: string;
@@ -133,6 +143,11 @@ interface ChatInputAreaProps {
     isCurrent: () => boolean;
   };
   mentionAuthority?: string | null;
+  sessionReferenceCandidates?: readonly {
+    id: string;
+    title: string;
+    projectSlug?: string;
+  }[];
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   // Status
@@ -261,10 +276,12 @@ interface ChatInputAreaProps {
 
 export function ChatInputArea({
   sessionId,
+  activeConversationId,
   input,
   workingDirectory,
   mentionRequestScope,
   mentionAuthority,
+  sessionReferenceCandidates = [],
   hasQuotedContext = false,
   draftText,
   quoteContext,
@@ -360,6 +377,7 @@ export function ChatInputArea({
   // Anchors the model picker popover to its trigger on desktop (archive#999).
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const visualViewport = useMobileVisualViewport();
+  const isMobile = useIsMobile();
   // biome-ignore lint/correctness/useExhaustiveDependencies: these identities fence stale mention offsets even though the effect only clears local state.
   useEffect(() => {
     mentionGeneration.current += 1;
@@ -425,13 +443,19 @@ export function ChatInputArea({
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : turnInFlight
       ? busyFollowUp === 'steer'
-        ? 'Steer this turn… (Enter steers; Queue waits)'
+        ? isMobile
+          ? 'Steer this turn…'
+          : 'Steer this turn… (Enter steers; Queue waits)'
         : 'Queue a follow-up…'
       : workingDirectory && mentionRequestScope
         ? 'Type a message — @ files, / for commands…'
         : 'Type a message — / for commands…';
   const displayInput = composerDisplayValue(input);
   const mentions = parseComposerMentions(input);
+  const composerTokens = [
+    ...mentions,
+    ...parseComposerSessionReferences(input),
+  ];
 
   // archive#2807: the draft's size against the same limit every server
   // turn-starting schema derives from (chatSchema AND the orchestration
@@ -643,7 +667,7 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
-          {mentions.length > 0 && (
+          {composerTokens.length > 0 && (
             <React.Suspense
               fallback={
                 <button type="button" disabled aria-label="Loading attachments">
@@ -763,6 +787,39 @@ export function ChatInputArea({
               event.preventDefault();
               void selectAttachmentFiles(files);
             }}
+            onDragOver={(event) => {
+              const id = event.dataTransfer.types.includes(
+                'application/x-station-conversation-reference',
+              );
+              if (id) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const conversationId = event.dataTransfer.getData(
+                'application/x-station-conversation-reference',
+              );
+              if (!conversationId) return;
+              event.preventDefault();
+              const candidate = sessionReferenceCandidates.find(
+                (item) => item.id === conversationId,
+              );
+              if (!candidate) return;
+              const reason = sessionReferenceBlockReason({
+                value: input,
+                conversationId,
+                activeConversationId,
+                authority: mentionAuthority,
+                isCurrent: mentionRequestScope?.isCurrent,
+              });
+              if (reason) return;
+              const next = appendComposerSessionReference(input, {
+                label: candidate.title || 'Conversation',
+                conversationId,
+                projectSlug: candidate.projectSlug,
+                authority: mentionAuthority!,
+              });
+              onInputChange(next);
+              updateFromInput(next);
+            }}
             onKeyDownCapture={(event) => {
               if (
                 mentionQuery &&
@@ -790,7 +847,7 @@ export function ChatInputArea({
                 e.currentTarget.selectionStart === e.currentTarget.selectionEnd
               ) {
                 const cursor = e.currentTarget.selectionStart;
-                const adjacentMention = mentions.find((mention) => {
+                const adjacentMention = composerTokens.find((mention) => {
                   if (e.key === 'Backspace')
                     return cursor === mention.displayEnd;
                   if (e.key === 'Delete')
@@ -912,6 +969,21 @@ export function ChatInputArea({
         </fieldset>
         <div className="chat-controls-row">
           {secondaryActions && <ComposerActionsMenu {...secondaryActions} />}
+          {sessionReferenceCandidates.length > 0 && (
+            <React.Suspense fallback={null}>
+              <SessionReferencePicker
+                value={input}
+                candidates={sessionReferenceCandidates}
+                activeConversationId={activeConversationId}
+                authority={mentionAuthority}
+                isCurrent={mentionRequestScope?.isCurrent}
+                onChange={(next) => {
+                  onInputChange(next);
+                  updateFromInput(next);
+                }}
+              />
+            </React.Suspense>
+          )}
           <React.Suspense fallback={null}>
             <FileAttachmentInput
               attachments={attachments}

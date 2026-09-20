@@ -410,6 +410,41 @@ describe('ChatInputArea', () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
+  test('keeps the mobile steering placeholder free of desktop keyboard instructions', () => {
+    vi.mocked(window.matchMedia).mockImplementation(
+      () =>
+        ({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+          media: '',
+          onchange: null,
+        }) as unknown as MediaQueryList,
+    );
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      input: 'course correct',
+    });
+    expect(screen.getByPlaceholderText('Steer this turn…')).toBeTruthy();
+    vi.mocked(window.matchMedia).mockImplementation(
+      () =>
+        ({
+          matches: false,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+          media: '',
+          onchange: null,
+        }) as unknown as MediaQueryList,
+    );
+  });
+
   test('queue-only busy composer has no Queue control', () => {
     renderChatInputArea({
       turnInFlight: true,
