@@ -319,6 +319,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/sidebar-file-intake.spec.ts',
+    'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
@@ -697,6 +698,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/composer-file-mentions.spec.ts',
+    bucket: 'product',
+    surface: 'Chat composer',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Browser component harness for composer typing, keyboard file/folder selection, compact chips, draft preservation across mounted chat switches, and mobile-width layout. Real dispatch is covered separately.',
     exceptions: [],
   },
   {

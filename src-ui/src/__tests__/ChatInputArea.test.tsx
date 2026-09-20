@@ -11,6 +11,7 @@ import {
 import { createRef, useState } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
+import { mentionToken } from '../components/chat/composer-mentions';
 
 vi.mock('../components/conversation-stats/ConversationStats', () => ({
   ContextPercentage: () => null,
@@ -26,6 +27,20 @@ vi.mock('../components/ModelSelector', () => ({
 
 vi.mock('../components/chat/SlashCommandSelector', () => ({
   SlashCommandSelector: () => null,
+}));
+
+vi.mock('@kontourai/station-sdk/coding-file-mentions-query', () => ({
+  useCodingFileMentionCandidatesQuery: () => ({
+    data: {
+      entries: [
+        { name: 'alpha.ts', path: 'src/alpha.ts', type: 'file' },
+        { name: 'folder (odd)', path: 'src/folder (odd)', type: 'directory' },
+      ],
+      partial: false,
+    },
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 vi.mock('../components/voice/VoiceOrb', () => ({
@@ -99,6 +114,136 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test('keeps textarea focus while keyboard-selecting the second mention result', async () => {
+    function ControlledComposer() {
+      const [input, setInput] = useState('');
+      return (
+        <ChatInputArea
+          {...renderProps({
+            input,
+            onInputChange: setInput,
+            workingDirectory: '/repo',
+            mentionRequestScope: {
+              apiBase: 'http://station.test',
+              authorityKey: 'owner',
+              isCurrent: () => true,
+            },
+            mentionAuthority: 'station-stable',
+          })}
+        />
+      );
+    }
+    render(<ControlledComposer />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    textarea.focus();
+    fireEvent.change(textarea, {
+      target: { value: 'Review @src', selectionStart: 11 },
+    });
+    expect(
+      await screen.findByRole('listbox', { name: 'Files and folders' }),
+    ).toBeTruthy();
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(textarea.value).toBe('Review @folder (odd) '));
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  test('drops mention offsets when the mounted composer switches chats', async () => {
+    const onInputChange = vi.fn();
+    const first = renderProps({
+      sessionId: 'one',
+      input: '',
+      onInputChange,
+      workingDirectory: '/repo',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner',
+        isCurrent: () => true,
+      },
+      mentionAuthority: 'station-stable',
+    });
+    const view = render(<ChatInputArea {...first} />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: '@src', selectionStart: 4 },
+    });
+    expect(
+      await screen.findByRole('listbox', { name: 'Files and folders' }),
+    ).toBeTruthy();
+
+    view.rerender(
+      <ChatInputArea {...first} sessionId="two" input="second draft" />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('listbox', { name: 'Files and folders' }),
+      ).toBeNull(),
+    );
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onInputChange).not.toHaveBeenCalledWith(
+      expect.stringContaining('folder'),
+    );
+  });
+
+  test('renders persisted file mentions as removable compact chips without exposing encoded metadata', async () => {
+    const onInputChange = vi.fn();
+    const mention = mentionToken({
+      label: 'ChatInputArea.tsx',
+      path: 'src-ui/src/components/chat/ChatInputArea.tsx',
+      workspace: '/repo/station',
+      authority: 'http://station.test',
+      type: 'file',
+    });
+    renderChatInputArea({
+      input: `Review ${mention}`,
+      workingDirectory: '/repo/station',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner',
+        isCurrent: () => true,
+      },
+      onInputChange,
+    });
+
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      'Review @ChatInputArea.tsx',
+    );
+    const chip = await screen.findByRole('button', {
+      name: 'Remove file mention src-ui/src/components/chat/ChatInputArea.tsx',
+    });
+    expect(chip.textContent).toContain('ChatInputArea.tsx');
+    fireEvent.click(chip);
+    expect(onInputChange).toHaveBeenCalledWith('Review ');
+  });
+
+  test('backspace beside a compact mention removes the whole token', () => {
+    const onInputChange = vi.fn();
+    const mention = mentionToken({
+      label: 'ChatInputArea.tsx',
+      path: 'src-ui/src/components/chat/ChatInputArea.tsx',
+      workspace: '/repo/station',
+      authority: 'http://station.test',
+      type: 'file',
+    });
+    renderChatInputArea({
+      input: `Review ${mention} next`,
+      workingDirectory: '/repo/station',
+      mentionRequestScope: {
+        apiBase: 'http://station.test',
+        authorityKey: 'owner',
+        isCurrent: () => true,
+      },
+      onInputChange,
+    });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    const cursor = 'Review @ChatInputArea.tsx'.length;
+    textarea.setSelectionRange(cursor, cursor);
+
+    fireEvent.keyDown(textarea, { key: 'Backspace' });
+
+    expect(onInputChange).toHaveBeenCalledWith('Review  next');
+  });
+
   test('surfaces a microphone permission failure in the composer', () => {
     renderChatInputArea({
       voiceState: 'error',
@@ -373,7 +518,9 @@ describe('ChatInputArea', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(
-      screen.getByText('Models unavailable while this Station is unreachable'),
+      await screen.findByText(
+        'Models unavailable while this Station is unreachable',
+      ),
     ).toBeTruthy();
   });
 
@@ -653,7 +800,7 @@ describe('ChatInputArea', () => {
 
     // The paperclip popover is mocked out in this file, so anything found
     // here is the composer's own strip, not the menu behind a click.
-    const strip = screen.getByRole('list', { name: 'Attached files' });
+    const strip = await screen.findByRole('list', { name: 'Attached files' });
     const thumbnail = within(strip).getByRole('img', { name: 'screen.png' });
     expect(thumbnail.getAttribute('src')).toBe('data:image/png;base64,YWJj');
 
@@ -666,7 +813,7 @@ describe('ChatInputArea', () => {
   // a single-attachment fixture cannot tell "removes the one
   // I clicked" from "removes whatever is first". Two attachments, and the
   // second one's button, is what gives the assertion power.
-  test('removing one chip removes that attachment, not its neighbour', () => {
+  test('removing one chip removes that attachment, not its neighbour', async () => {
     const onRemoveAttachment = vi.fn();
     renderChatInputArea({
       onRemoveAttachment,
@@ -690,7 +837,7 @@ describe('ChatInputArea', () => {
       ],
     });
 
-    const strip = screen.getByRole('list', { name: 'Attached files' });
+    const strip = await screen.findByRole('list', { name: 'Attached files' });
     expect(within(strip).getAllByRole('listitem')).toHaveLength(2);
 
     fireEvent.click(

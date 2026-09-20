@@ -15,6 +15,7 @@
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
+    "./coding-file-mentions-query": "./src/query-domains/chatRuntimeCoding.ts",
     "./workspace-pane": "./src/workspace-pane.ts",
     "./task-outputs": "./src/task-outputs.ts",
     "./session-outputs": "./src/session-outputs.ts",

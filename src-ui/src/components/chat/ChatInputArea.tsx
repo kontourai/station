@@ -7,7 +7,6 @@ import type { STTState as VoiceState } from '@kontourai/station-sdk';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
-import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
@@ -38,14 +37,17 @@ import {
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
 import { ArrowDownGlyph } from '../icons/Glyph';
-import { ModelSelectorAutocomplete } from '../ModelSelector';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
-import { ComposerAttachmentStrip } from './ComposerAttachmentStrip';
-import { FileAttachmentInput } from './FileAttachmentInput';
-import { SlashCommandSelector } from './SlashCommandSelector';
+import {
+  composerDisplayValue,
+  composerMentionWireLength,
+  insertComposerMention,
+  mentionQueryAt,
+  parseComposerMentions,
+  reconcileComposerDisplay,
+} from './composer-mentions';
 import './chat.css';
-import { ModelCatalogUnavailableState } from '../session/ModelCatalogUnavailableState';
 import { SkeletonList } from '../state';
 
 const SessionModelPicker = React.lazy(() =>
@@ -63,6 +65,42 @@ const PortableDraftsMenu = React.lazy(() =>
 const AcpSessionModeChip = React.lazy(() =>
   import('../badges/AcpSessionModeChip').then((module) => ({
     default: module.AcpSessionModeChip,
+  })),
+);
+
+const FileMentionAutocomplete = React.lazy(() =>
+  import('./FileMentionAutocomplete').then((module) => ({
+    default: module.FileMentionAutocomplete,
+  })),
+);
+const ComposerAttachmentStrip = React.lazy(() =>
+  import('./ComposerAttachmentStrip').then((module) => ({
+    default: module.ComposerAttachmentStrip,
+  })),
+);
+const FileAttachmentInput = React.lazy(() =>
+  import('./FileAttachmentInput').then((module) => ({
+    default: module.FileAttachmentInput,
+  })),
+);
+const SlashCommandSelector = React.lazy(() =>
+  import('./SlashCommandSelector').then((module) => ({
+    default: module.SlashCommandSelector,
+  })),
+);
+const ModelCatalogUnavailableState = React.lazy(() =>
+  import('../session/ModelCatalogUnavailableState').then((module) => ({
+    default: module.ModelCatalogUnavailableState,
+  })),
+);
+const ModelSelectorAutocomplete = React.lazy(() =>
+  import('../ModelSelector').then((module) => ({
+    default: module.ModelSelectorAutocomplete,
+  })),
+);
+const ComposerMentionChips = React.lazy(() =>
+  import('./ComposerMentionChips').then((module) => ({
+    default: module.ComposerMentionChips,
   })),
 );
 
@@ -88,6 +126,13 @@ interface ChatInputAreaProps {
   draftText?: string;
   quoteContext?: readonly SavedAnswerQuote[];
   input: string;
+  workingDirectory?: string | null;
+  mentionRequestScope?: {
+    apiBase: string;
+    authorityKey: string;
+    isCurrent: () => boolean;
+  };
+  mentionAuthority?: string | null;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   // Status
@@ -217,6 +262,9 @@ interface ChatInputAreaProps {
 export function ChatInputArea({
   sessionId,
   input,
+  workingDirectory,
+  mentionRequestScope,
+  mentionAuthority,
   hasQuotedContext = false,
   draftText,
   quoteContext,
@@ -299,10 +347,24 @@ export function ChatInputArea({
   onStartNewChat,
 }: ChatInputAreaProps) {
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<{
+    start: number;
+    end: number;
+    query: string;
+  } | null>(null);
+  const mentionKeyboardController = useRef<
+    ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+  >(null);
+  const mentionGeneration = useRef(0);
   const isComposing = useRef(false);
   // Anchors the model picker popover to its trigger on desktop (archive#999).
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const visualViewport = useMobileVisualViewport();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these identities fence stale mention offsets even though the effect only clears local state.
+  useEffect(() => {
+    mentionGeneration.current += 1;
+    setMentionQuery(null);
+  }, [sessionId, workingDirectory, mentionAuthority]);
   const isOverride = currentModelSource === 'session override';
   const effectiveModelId = currentModel || agentDefaultModel;
   const effectiveModelInfo = availableModels.find(
@@ -357,7 +419,6 @@ export function ChatInputArea({
     .filter(Boolean)
     .join(' ');
   const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
-  const isMobile = useIsMobile();
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
   const placeholder = workspaceRefused
@@ -366,16 +427,19 @@ export function ChatInputArea({
       ? busyFollowUp === 'steer'
         ? 'Steer this turn… (Enter steers; Queue waits)'
         : 'Queue a follow-up…'
-      : isMobile
-        ? 'Type a message...'
-        : 'Type a message... (Enter to send, Shift+Enter for new line)';
+      : workingDirectory && mentionRequestScope
+        ? 'Type a message — @ files, / for commands…'
+        : 'Type a message — / for commands…';
+  const displayInput = composerDisplayValue(input);
+  const mentions = parseComposerMentions(input);
 
   // archive#2807: the draft's size against the same limit every server
   // turn-starting schema derives from (chatSchema AND the orchestration
   // seam this composer actually posts to). A courtesy check only — the
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
-  const overLimitBy = (draftText ?? input).length - CHAT_INPUT_MAX_CHARS;
+  const overLimitBy =
+    composerMentionWireLength(draftText ?? input) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
 
   useLayoutEffect(() => {
@@ -425,7 +489,11 @@ export function ChatInputArea({
                 />
               </div>
             ) : (
-              <ModelCatalogUnavailableState stale={modelsStale} />
+              <React.Suspense
+                fallback={<div role="status">Loading models…</div>}
+              >
+                <ModelCatalogUnavailableState stale={modelsStale} />
+              </React.Suspense>
             )
           ) : (
             <React.Suspense
@@ -561,41 +629,113 @@ export function ChatInputArea({
           className="chat-input__textarea-wrapper"
           aria-label="Message composer"
         >
-          <ComposerAttachmentStrip
-            attachments={attachments}
-            stages={attachmentStages}
-            onRemove={onRemoveAttachment}
-            onRetry={onRetryAttachmentStage}
-            onCancel={onCancelAttachmentStage}
-            onReplaceFile={onReplaceAttachmentFile}
-          />
+          {(attachments.length > 0 || attachmentStages.length > 0) && (
+            <React.Suspense
+              fallback={<div role="status">Loading attachments…</div>}
+            >
+              <ComposerAttachmentStrip
+                attachments={attachments}
+                stages={attachmentStages}
+                onRemove={onRemoveAttachment}
+                onRetry={onRetryAttachmentStage}
+                onCancel={onCancelAttachmentStage}
+                onReplaceFile={onReplaceAttachmentFile}
+              />
+            </React.Suspense>
+          )}
+          {mentions.length > 0 && (
+            <React.Suspense
+              fallback={
+                <button type="button" disabled aria-label="Loading attachments">
+                  Attach
+                </button>
+              }
+            >
+              <ComposerMentionChips
+                value={input}
+                onChange={(next) => {
+                  onInputChange(next);
+                  updateFromInput(next);
+                }}
+                onFocusInput={() => textareaRef.current?.focus()}
+              />
+            </React.Suspense>
+          )}
+          {mentionQuery && workingDirectory && mentionRequestScope && (
+            <div>
+              <React.Suspense
+                fallback={
+                  <div className="file-mention-picker__status">
+                    Finding files…
+                  </div>
+                }
+              >
+                <FileMentionAutocomplete
+                  workingDirectory={workingDirectory}
+                  requestScope={mentionRequestScope}
+                  query={mentionQuery.query}
+                  keyboardController={mentionKeyboardController}
+                  onSelect={(entry) => {
+                    const generation = mentionGeneration.current;
+                    const next = insertComposerMention(
+                      input,
+                      mentionQuery.start,
+                      mentionQuery.end,
+                      {
+                        label: entry.name,
+                        path: entry.path,
+                        workspace: workingDirectory,
+                        authority: mentionAuthority ?? '',
+                        type: entry.type,
+                      },
+                    );
+                    onInputChange(next);
+                    updateFromInput(next);
+                    setMentionQuery(null);
+                    requestAnimationFrame(() => {
+                      if (mentionGeneration.current !== generation) return;
+                      const textarea = textareaRef.current;
+                      if (!textarea) return;
+                      textarea.focus();
+                      const cursor = mentionQuery.start + entry.name.length + 2;
+                      textarea.setSelectionRange(cursor, cursor);
+                    });
+                  }}
+                />
+              </React.Suspense>
+            </div>
+          )}
           {modelQuery !== null && input.startsWith('/model ') && (
-            <ModelSelectorAutocomplete
-              query={modelQuery}
-              models={availableModels.map((m) => ({
-                ...m,
-                originalId: m.originalId || m.id,
-              }))}
-              currentModel={currentModel}
-              agentDefaultModel={agentDefaultModel}
-              anchorRef={textareaRef}
-              onSelect={onModelSelect}
-              onClose={onModelClose}
-            />
+            <React.Suspense fallback={null}>
+              <ModelSelectorAutocomplete
+                query={modelQuery}
+                models={availableModels.map((m) => ({
+                  ...m,
+                  originalId: m.originalId || m.id,
+                }))}
+                currentModel={currentModel}
+                agentDefaultModel={agentDefaultModel}
+                anchorRef={textareaRef}
+                onSelect={onModelSelect}
+                onClose={onModelClose}
+              />
+            </React.Suspense>
           )}
           {commandQuery !== null && (
-            <SlashCommandSelector
-              query={commandQuery}
-              commands={slashCommands}
-              anchorRef={textareaRef}
-              onSelect={onCommandSelect}
-              onClose={onCommandClose}
-            />
+            <React.Suspense fallback={null}>
+              <SlashCommandSelector
+                query={commandQuery}
+                commands={slashCommands}
+                anchorRef={textareaRef}
+                onSelect={onCommandSelect}
+                onClose={onCommandClose}
+              />
+            </React.Suspense>
           )}
           <textarea
             ref={textareaRef}
             placeholder={placeholder}
-            value={input}
+            value={displayInput}
             disabled={disabled}
             tabIndex={0}
             onFocus={() => {
@@ -607,14 +747,34 @@ export function ChatInputArea({
               closeAll();
             }}
             onChange={(e) => {
-              onInputChange(e.target.value);
-              updateFromInput(e.target.value);
+              const next = reconcileComposerDisplay(input, e.target.value);
+              onInputChange(next);
+              updateFromInput(next);
+              const cursor = e.target.selectionStart ?? e.target.value.length;
+              const trigger =
+                workingDirectory && mentionRequestScope
+                  ? mentionQueryAt(next, cursor)
+                  : null;
+              setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
             }}
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
               event.preventDefault();
               void selectAttachmentFiles(files);
+            }}
+            onKeyDownCapture={(event) => {
+              if (
+                mentionQuery &&
+                (event.key === 'ArrowDown' ||
+                  event.key === 'ArrowUp' ||
+                  (event.key === 'Enter' && !event.shiftKey))
+              ) {
+                event.preventDefault();
+                mentionKeyboardController.current?.(
+                  event.key as 'ArrowDown' | 'ArrowUp' | 'Enter',
+                );
+              }
             }}
             onKeyDown={async (e) => {
               if (e.defaultPrevented) return;
@@ -626,11 +786,57 @@ export function ChatInputArea({
               }
 
               if (
+                !e.shiftKey &&
+                e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+              ) {
+                const cursor = e.currentTarget.selectionStart;
+                const adjacentMention = mentions.find((mention) => {
+                  if (e.key === 'Backspace')
+                    return cursor === mention.displayEnd;
+                  if (e.key === 'Delete')
+                    return cursor === mention.displayStart;
+                  if (e.key === 'ArrowLeft')
+                    return (
+                      cursor > mention.displayStart &&
+                      cursor <= mention.displayEnd
+                    );
+                  if (e.key === 'ArrowRight')
+                    return (
+                      cursor >= mention.displayStart &&
+                      cursor < mention.displayEnd
+                    );
+                  return false;
+                });
+                if (adjacentMention) {
+                  e.preventDefault();
+                  if (e.key === 'Backspace' || e.key === 'Delete') {
+                    const next = `${input.slice(0, adjacentMention.canonicalStart)}${input.slice(adjacentMention.canonicalEnd)}`;
+                    onInputChange(next);
+                    updateFromInput(next);
+                  }
+                  const nextCursor =
+                    e.key === 'ArrowRight'
+                      ? adjacentMention.displayEnd
+                      : adjacentMention.displayStart;
+                  requestAnimationFrame(() =>
+                    textareaRef.current?.setSelectionRange(
+                      nextCursor,
+                      nextCursor,
+                    ),
+                  );
+                  return;
+                }
+              }
+
+              if (
                 e.key === 'Escape' &&
-                (commandQuery !== null || modelQuery !== null)
+                (commandQuery !== null ||
+                  modelQuery !== null ||
+                  mentionQuery !== null)
               ) {
                 e.preventDefault();
                 closeAll();
+                setMentionQuery(null);
                 return;
               }
 
@@ -706,19 +912,21 @@ export function ChatInputArea({
         </fieldset>
         <div className="chat-controls-row">
           {secondaryActions && <ComposerActionsMenu {...secondaryActions} />}
-          <FileAttachmentInput
-            attachments={attachments}
-            onFilesSelected={selectAttachmentFiles}
-            onRemove={onRemoveAttachment}
-            onClearAll={onClearAttachments}
-            disabled={
-              disabled ||
-              isSending ||
-              (!modelSupportsAttachments && !fileAttachmentsSupported)
-            }
-            supportsImages={modelSupportsAttachments}
-            supportsFiles={fileAttachmentsSupported}
-          />
+          <React.Suspense fallback={null}>
+            <FileAttachmentInput
+              attachments={attachments}
+              onFilesSelected={selectAttachmentFiles}
+              onRemove={onRemoveAttachment}
+              onClearAll={onClearAttachments}
+              disabled={
+                disabled ||
+                isSending ||
+                (!modelSupportsAttachments && !fileAttachmentsSupported)
+              }
+              supportsImages={modelSupportsAttachments}
+              supportsFiles={fileAttachmentsSupported}
+            />
+          </React.Suspense>
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}

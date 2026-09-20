@@ -86,6 +86,7 @@ import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
 } from '../agent-selection-policy';
+import { durableMentionAuthority } from '../chat/composer-mentions';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
@@ -395,6 +396,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Get data from contexts
   const { apiBase } = useApiBase();
   const requestAuthority = useHostRequestAuthorityScope();
+  const { captureCredentialEvidence } = useConnections();
+  const mentionCredentialEvidence = captureCredentialEvidence();
+  const mentionAuthority = mentionCredentialEvidence
+    ? durableMentionAuthority({
+        apiBase: mentionCredentialEvidence.origin,
+        connectionId: mentionCredentialEvidence.connectionId,
+        authorityGeneration: mentionCredentialEvidence.authorityGeneration,
+        credentialState: mentionCredentialEvidence.credentialState,
+      })
+    : null;
   const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
     // Legacy placement preference remains exposed to the Chat settings
@@ -909,6 +920,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     runtimeConnection: chatEngineConnection,
     agentDefaultModel: agentDefaultModelId,
     attachmentCapabilities,
+    workingDirectory: sessionDisplayCwd,
+    mentionRequestScope: requestAuthority,
+    mentionAuthority,
     defaultModelSource: activeSessionForHook?.defaultModelSource,
     onSessionMigrate: (newSessionId) => {
       setActiveSessionId(newSessionId);
@@ -2446,6 +2460,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onNewChat={handleStartNewChatWithMessage}
                       onRetryConversationOpen={retryActiveConversationOpen}
                       activeSession={activeSession}
+                      workingDirectory={sessionDisplayCwd}
                       activeOrchestrationSession={activeOrchestrationSession}
                       activeOrchestrationSessionRead={
                         activeOrchestrationSessionRead
@@ -3074,3 +3089,5 @@ export function ChatDock({
     />
   );
 }
+
+import { useConnections } from '@kontourai/station-connect';

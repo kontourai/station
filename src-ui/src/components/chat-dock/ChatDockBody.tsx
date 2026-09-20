@@ -15,7 +15,10 @@ import React, {
 import { verifiedBuildLabel } from '../../build-info';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
@@ -63,6 +66,7 @@ import {
 import { steerRefusalMessage } from '../../utils/steerTurn';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { ChatInputArea } from '../chat/ChatInputArea';
+import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
@@ -140,6 +144,7 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
 
 interface ChatDockBodyProps {
   activeSession: ChatSession;
+  workingDirectory?: string | null;
   /**
    * station#3213: the serving Station's record of this chat, correlated in
    * `useChatDockViewModel`. The dock's own `ChatSession` is local tab state
@@ -231,6 +236,7 @@ export function findPrecedingUserTurn(
 
 export function ChatDockBody({
   activeSession,
+  workingDirectory,
   activeOrchestrationSession,
   activeOrchestrationSessionRead = 'present',
   onRetryOrchestrationSessions,
@@ -261,11 +267,21 @@ export function ChatDockBody({
 }: ChatDockBodyProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
+  const mentionRequestScope = useHostRequestAuthorityScope();
   const { updateChat, clearEphemeralMessages, addEphemeralMessage } =
     useActiveChatActions();
   const { navigate } = useNavigationActions();
   const { user } = useAuth();
-  const { activeConnection } = useConnections();
+  const { activeConnection, captureCredentialEvidence } = useConnections();
+  const mentionCredentialEvidence = captureCredentialEvidence();
+  const mentionAuthority = mentionCredentialEvidence
+    ? durableMentionAuthority({
+        apiBase: mentionCredentialEvidence.origin,
+        connectionId: mentionCredentialEvidence.connectionId,
+        authorityGeneration: mentionCredentialEvidence.authorityGeneration,
+        credentialState: mentionCredentialEvidence.credentialState,
+      })
+    : null;
   const { data: acpConnections = [] } = useACPConnections();
   const advertisedAcpSession = useMemo(
     () =>
@@ -1313,6 +1329,9 @@ export function ChatDockBody({
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
             input={chatInput.input}
+            workingDirectory={workingDirectory}
+            mentionRequestScope={mentionRequestScope}
+            mentionAuthority={mentionAuthority}
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
             disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}

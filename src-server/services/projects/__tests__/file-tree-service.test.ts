@@ -59,7 +59,36 @@ describe('FileTreeService', () => {
 
   test('searchFiles finds matching files', () => {
     const results = svc.searchFiles(dir, 'index');
-    expect(results.some((e) => e.name === 'index.ts')).toBe(true);
+    expect(results.entries.some((e) => e.name === 'index.ts')).toBe(true);
+  });
+
+  test('searchFiles returns nested files and directories within its result bound', () => {
+    const results = svc.searchFiles(dir, '', 2);
+    expect(results.entries).toHaveLength(2);
+    expect(svc.searchFiles(dir, 'src/app').entries).toEqual([
+      expect.objectContaining({ path: join('src', 'app.ts'), type: 'file' }),
+    ]);
+  });
+
+  test('searchFiles finds a path beyond the legacy first-500 listing window', () => {
+    const crowded = join(dir, 'crowded');
+    mkdirSync(crowded);
+    for (let index = 0; index < 520; index += 1)
+      writeFileSync(
+        join(crowded, `filler-${String(index).padStart(3, '0')}`),
+        '',
+      );
+    writeFileSync(join(crowded, 'target-after-window.ts'), '');
+
+    expect(svc.searchFiles(dir, 'crowded/target-after').entries).toEqual([
+      expect.objectContaining({
+        path: join('crowded', 'target-after-window.ts'),
+      }),
+    ]);
+  });
+
+  test('searchFiles reports when its physical scan bound truncates lookup', () => {
+    expect(svc.searchFiles(dir, '', 50, 2).scanTruncated).toBe(true);
   });
 
   describe('mutations', () => {
