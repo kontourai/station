@@ -6,7 +6,7 @@ or implement a connection broker. Building and distributing the binary remains
 a separate release decision.
 
 The standalone Go module pins Pion WebRTC v4.2.20 and its transitive module
-checksums. Go 1.26.7 or newer is required by this fixture's module directive.
+checksums. Go 1.26.7 or newer is required by this module's directive.
 With Go installed, build once from this directory:
 
 ```bash
@@ -17,8 +17,9 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 go build -mod=readonly -trimpath -o ../../../../.kontourai/browser-transport/pion-peer .
 ```
 
-On Windows, use `pion-peer.exe` as the output filename. Rebuild after changes to
-this module. From the repository root, run:
+The Node adapter currently requires POSIX private-descriptor custody and refuses
+Windows before launch. A cross-compiled executable alone does not qualify that
+platform. Rebuild after changes to this module. From the repository root, run:
 
 ```bash
 npm run lab:browser-transport -- --peer=pion --browser-turn=tcp
