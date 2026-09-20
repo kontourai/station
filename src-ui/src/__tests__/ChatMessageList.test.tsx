@@ -302,7 +302,6 @@ describe('ChatMessageList', () => {
     ).toBeLessThan(40);
   });
 
-
   test('keeps a short transcript on the direct DOM layout with identical row order and semantics', () => {
     const messages = [
       { role: 'user' as const, content: 'short question', timestamp: 1 },

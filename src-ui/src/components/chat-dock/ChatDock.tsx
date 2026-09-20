@@ -425,7 +425,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
   const { projects } = useProjects();
-  const { showToast } = useToast();
+  const { showToast, dismissToast } = useToast();
   // station#3687 seams 3/5: an inbox click that opened nothing says so.
   const showInboxOpenFailure = useCallback(
     (message: string) => void showToast(message),
@@ -1037,7 +1037,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const openConversationHistory = () => {
     if (!activeSession) return;
     void import('./timelineOpen').then((module) =>
-      module.openTimeline(apiBase, activeSession, requestAuthority, showToast),
+      module.openTimeline(
+        apiBase,
+        activeSession,
+        requestAuthority,
+        showToast,
+        dismissToast,
+      ),
     );
   };
   /**
