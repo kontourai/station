@@ -29,6 +29,22 @@ export interface PionApplicationAdapterInput {
   signal: AbortSignal;
   maxLifetimeMs: number;
 }
+export interface PionAdapterDependencies {
+  createTemp: typeof createStationTempDir;
+  removeTemp: typeof removeStationTempDir;
+  spawn: typeof spawnOwnedChild;
+  terminate: typeof terminateProcessTree;
+  write: typeof writeFileSync;
+  now: () => number;
+}
+const defaultDependencies: PionAdapterDependencies = {
+  createTemp: createStationTempDir,
+  removeTemp: removeStationTempDir,
+  spawn: spawnOwnedChild,
+  terminate: terminateProcessTree,
+  write: writeFileSync,
+  now: Date.now,
+};
 export function validatePionAdapterProfile(
   profile: PionAdapterProfile | undefined,
   label: string | undefined,
@@ -67,6 +83,7 @@ function boundedOutput(
 }
 export async function startPionApplicationAdapter(
   input: PionApplicationAdapterInput,
+  dependencies: PionAdapterDependencies = defaultDependencies,
 ) {
   validatePionAdapterProfile(input.profile, input.applicationChannelLabel);
   if (
@@ -88,7 +105,7 @@ export async function startPionApplicationAdapter(
   )
     throw new Error('pion_configuration_invalid');
   const resolvedExecutable = executable(input.executable);
-  const directory = await createStationTempDir('pion-application');
+  const directory = await dependencies.createTemp('pion-application');
   for (const path of [dirname(directory), directory]) {
     const info = lstatSync(path);
     if (
@@ -97,7 +114,7 @@ export async function startPionApplicationAdapter(
       info.uid !== process.getuid?.() ||
       (info.mode & 0o022) !== 0
     ) {
-      await removeStationTempDir(directory);
+      await dependencies.removeTemp(directory);
       throw new Error('pion_temp_custody_invalid');
     }
   }
@@ -105,12 +122,12 @@ export async function startPionApplicationAdapter(
   const certificate = join(directory, 'certificate.pem');
   const key = join(directory, 'private-key.pem');
   try {
-    writeFileSync(certificate, input.certificatePem, {
+    dependencies.write(certificate, input.certificatePem, {
       flag: 'wx',
       mode: 0o600,
     });
-    writeFileSync(key, input.privateKeyPem, { flag: 'wx', mode: 0o600 });
-    writeFileSync(
+    dependencies.write(key, input.privateKeyPem, { flag: 'wx', mode: 0o600 });
+    dependencies.write(
       join(directory, 'config.json'),
       JSON.stringify({
         Offer: input.offer,
@@ -130,16 +147,22 @@ export async function startPionApplicationAdapter(
       { flag: 'wx', mode: 0o600 },
     );
   } catch (error) {
-    await removeStationTempDir(directory);
+    await dependencies.removeTemp(directory);
     throw error;
   }
-  const owned = spawnOwnedChild(resolvedExecutable, [directory], {
-    cwd: directory,
-    stdio:
-      input.profile === 'application'
-        ? ['ignore', 'pipe', 'pipe', 'pipe', 'pipe']
-        : ['ignore', 'pipe', 'pipe'],
-  });
+  let owned: ReturnType<typeof spawnOwnedChild>;
+  try {
+    owned = dependencies.spawn(resolvedExecutable, [directory], {
+      cwd: directory,
+      stdio:
+        input.profile === 'application'
+          ? ['ignore', 'pipe', 'pipe', 'pipe', 'pipe']
+          : ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    await dependencies.removeTemp(directory);
+    throw error;
+  }
   const child = owned.proc;
   let failure: Error | undefined;
   let ipc: PionApplicationIpc | undefined;
@@ -152,7 +175,7 @@ export async function startPionApplicationAdapter(
       input.signal.removeEventListener('abort', aborted);
       clearTimeout(lifetime);
       ipc?.close();
-      await terminateProcessTree(child, {
+      await dependencies.terminate(child, {
         graceMs: 2_000,
         killConfirmMs: 3_000,
       });
@@ -161,7 +184,7 @@ export async function startPionApplicationAdapter(
         throw new Error('pion_application_content_diagnostic_boundary');
       if (failure) throw failure;
       owned.release();
-      await removeStationTempDir(directory);
+      await dependencies.removeTemp(directory);
       if (existsSync(directory))
         throw new Error('pion_temp_cleanup_incomplete');
     })());
@@ -203,7 +226,7 @@ export async function startPionApplicationAdapter(
   );
   lifetime.unref();
   try {
-    const deadline = Date.now() + 25_000;
+    const deadline = dependencies.now() + 25_000;
     while (true) {
       input.signal.throwIfAborted();
       if (failure) throw failure;
@@ -240,7 +263,8 @@ export async function startPionApplicationAdapter(
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
-      if (Date.now() >= deadline) throw new Error('pion_answer_timeout');
+      if (dependencies.now() >= deadline)
+        throw new Error('pion_answer_timeout');
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
   } catch (error) {
