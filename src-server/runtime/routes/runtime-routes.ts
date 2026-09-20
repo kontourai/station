@@ -489,12 +489,12 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
+import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
   createPersonalHomeAuthorityDatabase,
   HOME_AUTHORITY_DATABASE_ENV,
 } from '../bootstrap/personal-home-authority-database.js';
-import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
-import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
   configureRuntimeHttp,
   LOOPBACK_DEVICE_SESSION_COOKIE,
@@ -4913,6 +4913,18 @@ function applyPublicCorsHeaders(
   }
 }
 
+// Ingress identity providers, tried in order; the first that recognizes the
+// request wins. Today only the tailnet-WhoIs (Tailscale Serve) source is
+// registered. A future `KontourAccountIdentitySource` (validating a Kontour
+// session token -> provider: 'kontour-account') is registered additively by
+// `INGRESS_IDENTITY_SOURCES` / `identifyIngress` moved to
+// `services/identity/identity-source.ts` (their owning seam) so the
+// canonical principal owner can be extracted out of this module; re-exported
+// here for the existing regression-guard import.
+export {
+  INGRESS_IDENTITY_SOURCES,
+  identifyIngress,
+} from '../../services/identity/identity-source.js';
 /**
  * station#4518 fix round (MED-2): memoizes a per-request derivation, keyed
  * on Request object IDENTITY — the same pattern `roomRequestPrincipals`
@@ -4939,19 +4951,6 @@ function applyPublicCorsHeaders(
 // `memoizePerRequest` moved to `utils/memoize-per-request.ts` (the canonical
 // principal owner now lives outside this module); re-exported here.
 export { memoizePerRequest } from '../../utils/memoize-per-request.js';
-
-// Ingress identity providers, tried in order; the first that recognizes the
-// request wins. Today only the tailnet-WhoIs (Tailscale Serve) source is
-// registered. A future `KontourAccountIdentitySource` (validating a Kontour
-// session token -> provider: 'kontour-account') is registered additively by
-// `INGRESS_IDENTITY_SOURCES` / `identifyIngress` moved to
-// `services/identity/identity-source.ts` (their owning seam) so the
-// canonical principal owner can be extracted out of this module; re-exported
-// here for the existing regression-guard import.
-export {
-  identifyIngress,
-  INGRESS_IDENTITY_SOURCES,
-} from '../../services/identity/identity-source.js';
 
 /**
  * Whether the request came from a process on THIS machine that reached this
