@@ -435,8 +435,31 @@ export function appendObservedToolDenials(
   })();
 }
 
+async function* bindVoltAgentToolPurposes(
+  source: AsyncIterable<IStreamChunk>,
+  purposeEnabledToolNames: ReadonlySet<string>,
+): AsyncGenerator<IStreamChunk> {
+  for await (const chunk of source) {
+    if (
+      chunk.type === 'tool-call' &&
+      typeof chunk.toolCallId === 'string' &&
+      typeof chunk.toolName === 'string' &&
+      purposeEnabledToolNames.has(chunk.toolName)
+    ) {
+      const purposeful = extractToolPurpose(chunk.input);
+      rememberToolPurpose(chunk.toolCallId, purposeful.purpose);
+      yield { ...chunk, input: purposeful.input };
+      continue;
+    }
+    yield chunk;
+  }
+}
+
 class VoltAgentWrapper implements IAgent {
-  constructor(private inner: Agent) {}
+  constructor(
+    private inner: Agent,
+    private purposeEnabledToolNames: ReadonlySet<string> = new Set(),
+  ) {}
 
   get id() {
     return this.inner.name;
@@ -486,7 +509,10 @@ class VoltAgentWrapper implements IAgent {
     return {
       fullStream: appendObservedToolDenials(
         normalizeVoltAgentToolErrors(
-          result.fullStream as AsyncIterable<IStreamChunk>,
+          bindVoltAgentToolPurposes(
+            result.fullStream as AsyncIterable<IStreamChunk>,
+            this.purposeEnabledToolNames,
+          ),
         ),
         observedDenials,
       ),
@@ -956,6 +982,12 @@ export class VoltAgentFramework {
     const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks);
 
     // Build agent
+    const normalizedTools = tools.map(toVoltAgentTool);
+    const purposeEnabledToolNames = new Set(
+      normalizedTools
+        .filter((tool) => purposeEnabledVoltTools.has(tool))
+        .map((tool) => tool.name),
+    );
     const agent = new Agent({
       name: slug,
       instructions: opts.processedPrompt,
@@ -963,7 +995,7 @@ export class VoltAgentFramework {
       memory,
       // Normalize to real VoltAgent Tools so builtin/hand-rolled tools (plain
       // objects) actually forward to the model; MCP/VoltAgent tools pass through.
-      tools: tools.map(toVoltAgentTool),
+      tools: normalizedTools,
       hooks,
       ...(spec.guardrails && {
         temperature: spec.guardrails.temperature,
@@ -985,7 +1017,7 @@ export class VoltAgentFramework {
     });
 
     return {
-      agent: new VoltAgentWrapper(agent),
+      agent: new VoltAgentWrapper(agent, purposeEnabledToolNames),
       tools: tools as ITool[],
       memoryAdapter: opts.memoryAdapter,
       fixedTokens,
@@ -1071,13 +1103,19 @@ export class VoltAgentFramework {
     // the model with no prior context while the UI showed a full transcript.
     // Wired exactly as `createAgent` does, prompt-only view included, so the
     // `[CHAT_ERROR]` marker stays out of the model's reads but still renders.
+    const normalizedTools = (opts.tools || []).map(toVoltAgentTool);
+    const purposeEnabledToolNames = new Set(
+      normalizedTools
+        .filter((tool) => purposeEnabledVoltTools.has(tool))
+        .map((tool) => tool.name),
+    );
     const agent = new Agent({
       name: opts.name,
       instructions: opts.instructions,
       model: opts.model,
       // Temp/default agents bypass persisted-agent loading, but must still
       // register hand-rolled Station tools as real Volt tools.
-      tools: (opts.tools || []).map(toVoltAgentTool),
+      tools: normalizedTools,
       maxSteps: opts.maxSteps,
       // archive#1834: temp agents used to get NO lifecycle hooks, so the
       // default agent (and every scheduler//invoke/CLI call riding it)
@@ -1104,7 +1142,7 @@ export class VoltAgentFramework {
           }
         : {}),
     });
-    return new VoltAgentWrapper(agent);
+    return new VoltAgentWrapper(agent, purposeEnabledToolNames);
   }
 
   async shutdown(): Promise<void> {

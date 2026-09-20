@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
   extractToolPurpose,
+  rememberToolPurpose,
   STATION_TOOL_PURPOSE_KEY,
+  takeToolPurpose,
+  toolPurposeForCall,
   toolSchemaWithPurpose,
 } from '../tool-purpose.js';
 
@@ -36,5 +39,23 @@ describe('tool purpose schema metadata', () => {
     },
   ])('declines ambiguous, nonobject, and collision schemas', (schema) => {
     expect(toolSchemaWithPurpose(schema)).toBe(schema);
+  });
+
+  test('isolates reused call ids by invocation and clears aborted invocation state', () => {
+    const cleanupA: Array<() => void> = [];
+    const cleanupB: Array<() => void> = [];
+    const scopeA = { onClose: (cleanup: () => void) => cleanupA.push(cleanup) };
+    const scopeB = { onClose: (cleanup: () => void) => cleanupB.push(cleanup) };
+
+    rememberToolPurpose('same-call', 'purpose A', scopeA);
+    rememberToolPurpose('same-call', 'purpose B', scopeB);
+    expect(toolPurposeForCall('same-call', scopeA)).toBe('purpose A');
+    expect(takeToolPurpose('same-call', scopeB)).toBe('purpose B');
+
+    // A failed/cancelled foreground invocation closes its companion without a
+    // tool result. Its pending metadata must not survive that boundary.
+    cleanupA.forEach((cleanup) => cleanup());
+    expect(toolPurposeForCall('same-call', scopeA)).toBeUndefined();
+    expect(toolPurposeForCall('same-call', scopeB)).toBeUndefined();
   });
 });

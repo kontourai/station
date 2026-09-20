@@ -133,7 +133,10 @@ The purpose is untrusted display text; it never changes approval or policy.
 The canonical event keeps actual tool identity, arguments, status, provenance,
 and optional stated purpose as separate fields. History, replay, approval
 previews, and live rows therefore agree without treating purpose as evidence
-that a call is safe.
+that a call is safe. The native framework adapter binds the purpose from the
+first real tool-call stream event before Station publishes `tool.started`;
+framework lifecycle hooks may run later and cannot be used as the ordering
+source for the live row.
 
 ---
 

@@ -2,6 +2,8 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { simulateReadableStream } from 'ai';
+import { MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mapStationAgentStreamEvent } from '../../providers/adapters/station-agent-adapter.js';
 import { makeUnattendedGrantResolver } from '../../services/agents/unattended-grant-resolver.js';
@@ -19,6 +21,7 @@ import {
   createVoltAgentLifecycleHooks,
   normalizeVoltAgentToolErrors,
   toVoltAgentTool,
+  VoltAgentFramework,
 } from '../frameworks/voltagent-adapter.js';
 import { createScheduledTurnAdapter } from '../routes/runtime-route-support.js';
 import { normalizeLoadedMCPTools } from '../tools/mcp-tool-names.js';
@@ -44,25 +47,90 @@ function toolOptions(callId: string) {
 }
 
 describe('VoltAgent lifecycle hooks', () => {
-  it('carries decorated purpose through the real hook, executor, relay and durable projection', async () => {
-    const executed = vi.fn().mockResolvedValue('contents');
-    const adapted = toVoltAgentTool({
+  it('carries decorated purpose through real framework execution, relay and durable projection', async () => {
+    let releaseExecution!: () => void;
+    const executionHeld = new Promise<void>((resolve) => {
+      releaseExecution = resolve;
+    });
+    const executed = vi.fn(async () => {
+      await executionHeld;
+      return 'contents';
+    });
+    const tool = {
       name: 'read_file',
+      description: 'Read a project file',
       parameters: { type: 'object', properties: { path: { type: 'string' } } },
       execute: executed,
-    } as any) as any;
+    } as any;
     const beforeToolCall = vi.fn().mockResolvedValue(true);
-    const hooks = createVoltAgentLifecycleHooks('assistant', {
-      beforeToolCall,
+    let modelCall = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: (modelCall++ === 0
+            ? [
+                {
+                  type: 'tool-call' as const,
+                  toolCallId: 'shared-call',
+                  toolName: 'read_file',
+                  input: JSON.stringify({
+                    path: 'README.md',
+                    __station_tool_purpose: 'Inspect project documentation',
+                  }),
+                },
+                {
+                  type: 'finish' as const,
+                  finishReason: {
+                    unified: 'tool-calls' as const,
+                    raw: 'tool_calls',
+                  },
+                  usage: {
+                    inputTokens: {
+                      total: 1,
+                      noCache: 1,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                    },
+                    outputTokens: { total: 1, text: 0, reasoning: 0 },
+                  },
+                },
+              ]
+            : [
+                { type: 'text-start' as const, id: 'answer' },
+                {
+                  type: 'text-delta' as const,
+                  id: 'answer',
+                  delta: 'Done.',
+                },
+                { type: 'text-end' as const, id: 'answer' },
+                {
+                  type: 'finish' as const,
+                  finishReason: { unified: 'stop' as const, raw: 'stop' },
+                  usage: {
+                    inputTokens: {
+                      total: 1,
+                      noCache: 1,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                    },
+                    outputTokens: { total: 1, text: 1, reasoning: 0 },
+                  },
+                },
+              ]) as any,
+        }),
+      }),
+    });
+    const agent = await new VoltAgentFramework().createTempAgent({
+      name: 'assistant',
+      instructions: 'Use tools.',
+      model,
+      tools: [tool],
+      hooks: { beforeToolCall },
     });
     const cleanups: Array<() => void> = [];
     const companion = {
       onClose: (cleanup: () => void) => cleanups.push(cleanup),
     } as any;
-    const raw = {
-      path: 'README.md',
-      __station_tool_purpose: 'Inspect project documentation',
-    };
     const published: any[] = [];
     const map = (event: Record<string, unknown>) =>
       mapStationAgentStreamEvent({
@@ -74,26 +142,35 @@ describe('VoltAgent lifecycle hooks', () => {
       });
 
     await runWithNativeForegroundRelay(companion, async () => {
-      await hooks.onToolStart!({
-        agent: {} as any,
-        tool: adapted,
-        context: operationContext('session-purpose'),
-        args: raw,
-        options: toolOptions('shared-call'),
+      const result = await agent.streamText('Inspect docs', {
+        conversationId: 'session-purpose',
+        userId: 'user-1',
       });
-      map({
-        type: 'tool-call',
-        toolCallId: 'shared-call',
-        toolName: 'read_file',
-        input: raw,
-      });
-      await adapted.execute(raw, toolOptions('shared-call'));
-      map({
-        type: 'tool-result',
-        toolCallId: 'shared-call',
-        toolName: 'read_file',
-        output: 'contents',
-      });
+      const consume = (async () => {
+        for await (const event of result.fullStream) {
+          map(event as Record<string, unknown>);
+        }
+      })();
+      await vi.waitFor(() => expect(executed).toHaveBeenCalledTimes(1));
+      expect(published).toContainEqual(
+        expect.objectContaining({
+          method: 'tool.started',
+          arguments: { path: 'README.md' },
+          purpose: 'Inspect project documentation',
+        }),
+      );
+      releaseExecution();
+      await consume;
+    });
+
+    expect(model.doStreamCalls[0]?.tools?.[0]).toMatchObject({
+      type: 'function',
+      name: 'read_file',
+      inputSchema: {
+        properties: {
+          __station_tool_purpose: { type: 'string', maxLength: 240 },
+        },
+      },
     });
 
     expect(beforeToolCall).toHaveBeenCalledWith(
@@ -107,17 +184,12 @@ describe('VoltAgent lifecycle hooks', () => {
       { path: 'README.md' },
       expect.anything(),
     );
-    expect(published).toEqual([
-      expect.objectContaining({
-        method: 'tool.started',
-        arguments: { path: 'README.md' },
-        purpose: 'Inspect project documentation',
-      }),
+    expect(published).toContainEqual(
       expect.objectContaining({
         method: 'tool.completed',
         purpose: 'Inspect project documentation',
       }),
-    ]);
+    );
     const projected = projectRuntimeEventsToMessages([
       {
         eventId: 'turn-start',
