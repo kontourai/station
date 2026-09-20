@@ -606,7 +606,8 @@ function captureReorderVariables(
   const captured: ReorderProjectsInput = { order: [...variables.order] };
   // Freeze the fail-closed contract: unsetting it on the caller's object
   // mid-flight must not enable an ambient fallback.
-  if (variables.requireRequestScope === true) captured.requireRequestScope = true;
+  if (variables.requireRequestScope === true)
+    captured.requireRequestScope = true;
   const scope = captureProjectScope(variables.requestScope);
   if (scope) captured.requestScope = scope;
   return captured;
@@ -715,8 +716,10 @@ export function useReorderProjectsMutation(
   // straight through.
   return {
     ...mutation,
-    mutate: (variables: ReorderProjectsVariables, options?: Parameters<typeof mutation.mutate>[1]) =>
-      mutation.mutate(captureReorderVariables(variables), options),
+    mutate: (
+      variables: ReorderProjectsVariables,
+      options?: Parameters<typeof mutation.mutate>[1],
+    ) => mutation.mutate(captureReorderVariables(variables), options),
     mutateAsync: (
       variables: ReorderProjectsVariables,
       options?: Parameters<typeof mutation.mutateAsync>[1],

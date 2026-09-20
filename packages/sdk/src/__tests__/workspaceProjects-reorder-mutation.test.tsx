@@ -439,7 +439,9 @@ describe('useReorderProjectsMutation capture-once race (#481 root review)', () =
     const realCancelQueries = client.cancelQueries.bind(client);
     const cancelSpy = vi
       .spyOn(client, 'cancelQueries')
-      .mockImplementation((async (...args: Parameters<QueryClient['cancelQueries']>) => {
+      .mockImplementation((async (
+        ...args: Parameters<QueryClient['cancelQueries']>
+      ) => {
         await cancelGate;
         return realCancelQueries(...(args as []));
       }) as typeof client.cancelQueries);
@@ -492,7 +494,12 @@ describe('useReorderProjectsMutation capture-once race (#481 root review)', () =
     ).toEqual(['other', 'shared']);
     // …and home B was never written by the mutation.
     expect(
-      client.getQueryData(['projects', 'list', scopeB.apiBase, scopeB.authorityKey]),
+      client.getQueryData([
+        'projects',
+        'list',
+        scopeB.apiBase,
+        scopeB.authorityKey,
+      ]),
     ).toEqual(listB);
     cancelSpy.mockRestore();
   });
