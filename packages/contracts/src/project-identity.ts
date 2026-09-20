@@ -318,6 +318,8 @@ export interface ProjectManifest {
   icon?: string;
   description?: string;
   repos: ProjectRepoResource[];
+  /** Portable execution directory, resolved beneath the named destination binding. */
+  executionRoot?: { repoId: string; path: string };
   knowledge: ProjectKnowledgeRef[];
   /** Agent slugs. Referenced by id only; agent bodies stay in the agent store. */
   agents: string[];
@@ -331,7 +333,7 @@ export interface ProjectManifest {
 /** Portable identity/reference snapshot. No local Project ID, path or grants. */
 export type ProjectPortableIdentity = Pick<
   ProjectManifest,
-  'schemaVersion' | 'id' | 'repos' | 'createdAt' | 'updatedAt'
+  'schemaVersion' | 'id' | 'repos' | 'executionRoot' | 'createdAt' | 'updatedAt'
 >;
 
 /** Closed identity wire fields, shared by producers and consumers. */
@@ -339,6 +341,7 @@ export const PROJECT_PORTABLE_IDENTITY_FIELDS = Object.freeze({
   schemaVersion: true,
   id: true,
   repos: true,
+  executionRoot: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Record<keyof ProjectPortableIdentity, true>);
@@ -1917,6 +1920,30 @@ export function validateProjectManifest(
     errors.push('repos: must be an array');
   } else {
     declaredRepoIds = validateRepoCollection(value.repos, errors);
+  }
+
+  if (value.executionRoot !== undefined) {
+    const root = value.executionRoot;
+    if (!isPlainObject(root)) {
+      errors.push('executionRoot: must be an object when present');
+    } else {
+      const unknownFields = Object.keys(root).filter(
+        (field) => field !== 'repoId' && field !== 'path',
+      );
+      if (unknownFields.length > 0) {
+        errors.push(
+          `executionRoot: unknown fields are not allowed (${unknownFields.join(', ')})`,
+        );
+      }
+      if (typeof root.repoId !== 'string' || root.repoId.length === 0) {
+        errors.push('executionRoot.repoId: missing');
+      } else if (declaredRepoIds && !declaredRepoIds.has(root.repoId)) {
+        errors.push(
+          `executionRoot.repoId: names no resource in repos[] (${JSON.stringify(root.repoId)})`,
+        );
+      }
+      validatePathField(root.path, 'executionRoot.path', errors);
+    }
   }
 
   if (!Array.isArray(value.knowledge)) {

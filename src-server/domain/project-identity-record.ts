@@ -73,7 +73,14 @@ export function parseProjectPortableIdentity(
       );
     }
   }
-  const { schemaVersion, id, repos, createdAt, updatedAt } =
+  const { schemaVersion, id, repos, executionRoot, createdAt, updatedAt } =
     validation.manifest;
-  return structuredClone({ schemaVersion, id, repos, createdAt, updatedAt });
+  return structuredClone({
+    schemaVersion,
+    id,
+    repos,
+    ...(executionRoot === undefined ? {} : { executionRoot }),
+    createdAt,
+    updatedAt,
+  });
 }

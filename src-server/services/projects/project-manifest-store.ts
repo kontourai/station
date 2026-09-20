@@ -244,6 +244,9 @@ function validateManifestRecord(
   if (!Array.isArray(value.repos)) {
     problems.push('repos: must be an array');
   }
+  if (value.executionRoot !== undefined && !isRecord(value.executionRoot)) {
+    problems.push('executionRoot: must be an object when present');
+  }
   if (typeof value.createdAt !== 'string' || value.createdAt.length === 0) {
     problems.push('createdAt: must be a non-empty string');
   }
@@ -412,6 +415,9 @@ export class ProjectManifestStore {
         ? {}
         : { description: project.description }),
       repos: record.repos,
+      ...(record.executionRoot === undefined
+        ? {}
+        : { executionRoot: record.executionRoot }),
       // `?? []` here is a composition default, not a decision default: an
       // absent list on the project record means the project declares none.
       //
