@@ -511,6 +511,10 @@ describe('invitation entry through real account SDK requests', () => {
   });
 
   test('an existing account can request an independent browser Device without a new invitation', async () => {
+    const getRandomValues = globalThis.crypto.getRandomValues.bind(
+      globalThis.crypto,
+    );
+    vi.stubGlobal('crypto', { getRandomValues });
     pairingMode = 'approve';
     signedIn = true;
     mount({});

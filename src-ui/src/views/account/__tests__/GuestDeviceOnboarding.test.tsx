@@ -30,6 +30,42 @@ const account = (id: string) =>
 
 afterEach(() => vi.unstubAllGlobals());
 
+test('keeps the canonical empty Project state usable after a narrow rerender', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string) =>
+      new URL(input).pathname === '/api/account-auth/session'
+        ? Promise.resolve(account(principalA))
+        : Promise.resolve(success([])),
+    ),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = (
+    <QueryClientProvider client={client}>
+      <GuestDeviceOnboarding
+        apiBase={apiA}
+        principalId={principalA}
+        onAccountRequired={vi.fn()}
+      />
+    </QueryClientProvider>
+  );
+  const rendered = render(view);
+  expect(
+    await screen.findByText(
+      'Projects are not currently shared with this account.',
+    ),
+  ).toBeTruthy();
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 390,
+  });
+  window.dispatchEvent(new Event('resize'));
+  rendered.rerender(view);
+  expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
+});
+
 test('a late Station A response cannot repopulate Station B UI or query cache', async () => {
   let resolveA!: (response: Response) => void;
   const pendingA = new Promise<Response>((resolve) => {
