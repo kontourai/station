@@ -376,7 +376,11 @@ test.describe
           darkLayout.horizontalOverflow,
           'dark capture must not overflow horizontally',
         ).toBe(false);
-        expect(darkLayout.smallestTarget).toBeGreaterThanOrEqual(44);
+        // The 44px touch floor is the product's MOBILE control rule
+        // (index.css: "Desktop is unaffected … only the mobile control rules
+        // scoped under @media max-width:768px enforce 44px"), so the floor is
+        // asserted on the narrow capture below; at this desktop width the
+        // measured minimum (the room's Close button) is ~41.6px by design.
         expect(darkLayout.palette).toBeTruthy();
         await capture('guest-shared-task-wide-dark.png');
 
