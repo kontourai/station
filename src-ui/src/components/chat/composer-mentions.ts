@@ -250,10 +250,25 @@ export function reconcileComposerDisplay(
   if (!previous.includes('@[m:') && !previous.includes('@[r:'))
     return nextDisplay;
   const tokens = parseComposerTokens(previous);
+  const visibleLabels = tokens.map(
+    (token) => `@${token.label.replaceAll(/\s/gu, ' ')}`,
+  );
+  const duplicateLabels = new Set(
+    visibleLabels.filter(
+      (label, index) => visibleLabels.indexOf(label) !== index,
+    ),
+  );
   let searchFrom = 0;
   const retained: Array<{ token: ComposerToken; start: number }> = [];
-  for (const token of tokens) {
-    const visible = `@${token.label.replaceAll(/\s/gu, ' ')}`;
+  for (const [index, token] of tokens.entries()) {
+    const visible = visibleLabels[index];
+    // Two canonical tokens can render the same label (for example two
+    // `index.ts` mentions from different folders). Once display editing has
+    // collapsed those occurrences, ordered matching cannot prove which
+    // identity remains. Drop the ambiguous tokens rather than silently send
+    // the wrong file to the model; the user can stage the intended token
+    // again from the picker.
+    if (duplicateLabels.has(visible)) continue;
     const start = nextDisplay.indexOf(visible, searchFrom);
     if (start < 0) continue;
     retained.push({ token, start });

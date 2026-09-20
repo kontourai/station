@@ -370,7 +370,7 @@ export function ChatInputArea({
     query: string;
   } | null>(null);
   const mentionKeyboardController = useRef<
-    ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+    ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
   >(null);
   const mentionGeneration = useRef(0);
   const isComposing = useRef(false);
@@ -871,11 +871,14 @@ export function ChatInputArea({
                   e.key === 'ArrowUp' ||
                   (e.key === 'Enter' && !e.shiftKey))
               ) {
-                e.preventDefault();
-                mentionKeyboardController.current?.(
-                  e.key as 'ArrowDown' | 'ArrowUp' | 'Enter',
-                );
-                return;
+                const handled =
+                  mentionKeyboardController.current?.(
+                    e.key as 'ArrowDown' | 'ArrowUp' | 'Enter',
+                  ) ?? false;
+                if (handled || e.key !== 'Enter') {
+                  e.preventDefault();
+                  return;
+                }
               }
 
               if (isPortableDraftShortcut(e)) {

@@ -23,7 +23,7 @@ export function FileMentionAutocomplete({
   };
   query: string;
   keyboardController: React.MutableRefObject<
-    ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+    ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
   >;
   onSelect: (entry: CodingFileEntry) => void;
 }) {
@@ -74,9 +74,11 @@ export function FileMentionAutocomplete({
   const active = Math.min(selected, Math.max(0, suggestions.length - 1));
   keyboardController.current = (key) => {
     if (key === 'Enter') {
-      if (suggestions[selectedRef.current])
+      if (suggestions[selectedRef.current]) {
         onSelect(suggestions[selectedRef.current]);
-      return;
+        return true;
+      }
+      return false;
     }
     const delta = key === 'ArrowDown' ? 1 : -1;
     if (suggestions.length === 0) {
@@ -91,6 +93,7 @@ export function FileMentionAutocomplete({
       Math.min(selectedRef.current + delta, suggestions.length - 1),
     );
     setSelected(selectedRef.current);
+    return true;
   };
   useEffect(() => {
     return () => {

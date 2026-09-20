@@ -331,4 +331,31 @@ describe('composer file mentions', () => {
       expect.objectContaining({ path: 'file.ts' }),
     ]);
   });
+
+  test('drops ambiguous duplicate labels instead of swapping canonical identities', () => {
+    const first = insertComposerMention('@index.ts', 0, 9, {
+      label: 'index.ts',
+      path: 'src/index.ts',
+      workspace: '/repo',
+      authority: 'authority-1',
+      type: 'file',
+    });
+    const both = insertComposerMention(
+      `${first} `,
+      `${first} `.length,
+      `${first} `.length,
+      {
+        label: 'index.ts',
+        path: 'lib/index.ts',
+        workspace: '/repo',
+        authority: 'authority-1',
+        type: 'file',
+      },
+    );
+    const edited = reconcileComposerDisplay(
+      both,
+      composerDisplayValue(both).replace('@index.ts ', ''),
+    );
+    expect(parseComposerMentions(edited)).toEqual([]);
+  });
 });
