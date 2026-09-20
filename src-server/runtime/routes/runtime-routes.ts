@@ -3376,24 +3376,31 @@ export function configureRuntimeRoutes(
         // verdict the host renders a placeholder from, and apply,
         // from-plugin and the layout list answer the same way.
         canSeePlugin: canSeePluginForRequest,
-        readableProjectSlugs: async (c) => {
+        readableProjectScopes: async (c) => {
           roomRequestPrincipals.set(
             c.req.raw,
             resolveOrchestrationRequestPrincipal(c),
           );
           const authority = await authenticatedProjectMember(c.req.raw);
           return authority
-            ? await context.projectMembership!.readableProjectSlugs(authority)
+            ? await context.projectMembership!.readableProjectScopes(authority)
             : undefined;
         },
-        projectCatalogueCurrent: async (c, admittedSlugs) => {
+        projectCatalogueCurrent: async (c, admittedScopes) => {
           const authority = await authenticatedProjectMember(c.req.raw);
           if (!authority) return false;
           const current =
-            await context.projectMembership!.readableProjectSlugs(authority);
+            await context.projectMembership!.readableProjectScopes(authority);
           return (
-            current.length === admittedSlugs.length &&
-            admittedSlugs.every((slug) => current.includes(slug))
+            current.length === admittedScopes.length &&
+            admittedScopes.every((admitted) =>
+              current.some(
+                (scope) =>
+                  scope.localProjectId === admitted.localProjectId &&
+                  scope.portableProjectId === admitted.portableProjectId &&
+                  scope.localProjectSlug === admitted.localProjectSlug,
+              ),
+            )
           );
         },
       },
