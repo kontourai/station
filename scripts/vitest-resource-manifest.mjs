@@ -333,6 +333,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `execFileSync` to prove the manifest derives real revision/branch values
   // — same shape as `content-integrity-gate.test.ts` below.
   'scripts/__tests__/desktop-build-manifest.test.ts',
+  // The execution-offers real-auth integration builds one throwaway git
+  // checkout per setup via bounded single-shot `git` children (init/config/
+  // commit/remote), the same shape as the desktop-build-manifest fixture.
+  'src-server/runtime/routes/__tests__/runtime-routes-project-contribution-auth.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.
@@ -759,6 +763,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // toolbar control x-offsets across connection states).
   'src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx',
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
+  // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved

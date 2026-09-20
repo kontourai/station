@@ -2,10 +2,12 @@ import {
   PROJECT_SHARED_TASK_VERSION,
   type ProjectSharedTaskDocument,
   type ProjectSharedTaskHistory,
+  type ProjectSharedTaskPublication,
+  type ProjectSharedTaskPublicationExpectation,
   type ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
 import { z } from 'zod/v3';
-import { type ClientRequestOptions, getJson } from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { unwrapProjectResponse } from './project-response';
 
 const id = z.string().min(1).max(256);
@@ -43,6 +45,22 @@ const summary = z
     sharedAt: z.string().datetime(),
   })
   .strict();
+const expectation = z
+  .object({
+    project: scope,
+    task: z.object({ id, createdAt: z.string().datetime() }).strict(),
+  })
+  .strict();
+const publication = z.union([
+  z.object({ kind: z.literal('shared'), publication: summary }).strict(),
+  z
+    .object({
+      kind: z.literal('unshared'),
+      project: scope,
+      task: z.object({ id, createdAt: z.string().datetime() }).strict(),
+    })
+    .strict(),
+]);
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const availableHistory = z
   .object({
@@ -143,6 +161,62 @@ export const listProjectSharedTasks = (
     z.array(summary).max(512),
     options,
   );
+export const getProjectSharedTaskPublication = (
+  apiBase: string,
+  slug: string,
+  taskId: string,
+  options?: ClientRequestOptions,
+): Promise<ProjectSharedTaskPublication> =>
+  read(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/publication`,
+    publication,
+    options,
+  );
+export async function shareProjectTask(
+  apiBase: string,
+  slug: string,
+  expected: ProjectSharedTaskPublicationExpectation,
+  options?: ClientRequestOptions,
+): Promise<ProjectSharedTaskPublication> {
+  const captured = expectation.parse(structuredClone(expected));
+  if (
+    captured.project.localProjectSlug !== slug ||
+    captured.task.id !== expected.task.id
+  )
+    throw new Error('Shared Task command names another Project or Task.');
+  const value = await unwrapProjectResponse<unknown>(
+    await mutateJson(
+      `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(captured.task.id)}`,
+      'PUT',
+      { ...options, readOnly: false },
+      captured,
+    ),
+  );
+  return publication.parse(value);
+}
+export async function unshareProjectTask(
+  apiBase: string,
+  slug: string,
+  shareId: string,
+  expected: ProjectSharedTaskPublicationExpectation,
+  options?: ClientRequestOptions,
+): Promise<{ unshared: true }> {
+  const captured = expectation.parse(structuredClone(expected));
+  if (captured.project.localProjectSlug !== slug)
+    throw new Error('Shared Task command names another Project.');
+  const value = await unwrapProjectResponse<unknown>(
+    await mutateJson(
+      `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(captured.task.id)}`,
+      'DELETE',
+      { ...options, readOnly: false },
+      { shareId, expected: captured },
+    ),
+  );
+  return z
+    .object({ unshared: z.literal(true) })
+    .strict()
+    .parse(value);
+}
 export const readProjectSharedTaskHistory = (
   apiBase: string,
   slug: string,

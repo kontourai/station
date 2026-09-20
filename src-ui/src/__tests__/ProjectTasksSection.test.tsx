@@ -126,6 +126,9 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../contexts/ToastContext', () => ({
   toastStore: { show: showToast },
 }));
+vi.mock('../views/project-page/ProjectTaskSharingControl', () => ({
+  ProjectTaskSharingControl: () => null,
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   taskQueries: {
