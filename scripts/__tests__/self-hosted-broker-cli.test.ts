@@ -20,7 +20,25 @@ import {
   waitForSuiteSettlement,
 } from '../lib/owned-process.mjs';
 
-describe('self-hosted broker CLI', () => {
+test.runIf(process.platform === 'win32')(
+  'Windows CLI refuses before creating state or a listener',
+  () => {
+    expect(() =>
+      execFileSync(
+        resolve('node_modules/.bin/tsx'),
+        ['scripts/self-hosted-broker.ts', 'serve', 'C:\\does-not-exist.json'],
+        {
+          cwd: resolve(import.meta.dirname, '../..'),
+          windowsHide: true,
+          timeout: 10_000,
+          maxBuffer: 64 * 1024,
+          stdio: 'pipe',
+        },
+      ),
+    ).toThrow(/self_hosted_broker_private_custody_unavailable_on_windows/);
+  },
+);
+describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
   test('publishes one private bundle and reuses it on an exact init retry', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-broker-cli-'));
     const configPath = join(root, 'config.json');
