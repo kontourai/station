@@ -25,14 +25,15 @@ export function applicationIpcPipes(
     if (failure) return;
     try {
       buffered += decoder.decode(chunk, { stream: true });
-      if (Buffer.byteLength(buffered) > 256 * 1024)
+      if (Buffer.byteLength(buffered) > 512 * 1024)
         throw new Error('IPC input exceeded buffer bound');
       while (true) {
         const end = buffered.indexOf('\n');
         if (end === -1) break;
         const line = buffered.slice(0, end);
         buffered = buffered.slice(end + 1);
-        if (Buffer.byteLength(line) > 128 * 1024)
+        // A 48 KiB body can expand to six JSON bytes per byte when escaped.
+        if (Buffer.byteLength(line) > 384 * 1024)
           throw new Error('IPC packet exceeded bound');
         receive?.(JSON.parse(line));
       }

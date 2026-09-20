@@ -67,4 +67,23 @@ describe('dedicated application IPC pipes', () => {
     expect(() => h.owner.finish()).toThrow('framing or lifecycle');
     h.input.destroy();
   });
+  test('accepts a body-limit frame after worst-case JSON escaping', async () => {
+    const h = fixture();
+    const body = '\0'.repeat(48 * 1024);
+    const packet = `${JSON.stringify({ ...open, kind: 'message', body })}\n`;
+    expect(Buffer.byteLength(packet)).toBeGreaterThan(128 * 1024);
+    h.output.write(`${JSON.stringify(open)}\n`);
+    h.output.write(packet);
+    expect(h.accept).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(Buffer.concat(h.sent).toString().trim())).toMatchObject({
+      kind: 'message',
+      body,
+    });
+    h.owner.prepareClose();
+    const ended = once(h.output, 'end');
+    h.output.end();
+    await ended;
+    expect(() => h.owner.finish()).not.toThrow();
+    h.input.destroy();
+  });
 });

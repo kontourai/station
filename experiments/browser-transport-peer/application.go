@@ -22,6 +22,12 @@ type applicationPacket struct {
 	Kind    string  `json:"kind"`
 	Body    *string `json:"body,omitempty"`
 }
+
+const (
+	applicationIPCPacketBytes = 384 * 1024
+	applicationIPCQueueBytes  = 512 * 1024
+)
+
 type applicationDataChannel interface {
 	Ordered() bool
 	MaxRetransmits() *uint16
@@ -33,32 +39,99 @@ type applicationDataChannel interface {
 	Close() error
 }
 type applicationBridge struct {
-	mu       sync.Mutex
-	writeMu  sync.Mutex
-	channels map[string]applicationDataChannel
-	output   io.Writer
-	closed   bool
-	failed   func(error)
-	done     chan struct{}
+	mu           sync.Mutex
+	channels     map[string]applicationDataChannel
+	input        io.ReadCloser
+	output       io.WriteCloser
+	writes       chan []byte
+	stopWriter   chan struct{}
+	writerDone   chan struct{}
+	pendingBytes int
+	closed       bool
+	failed       func(error)
+	done         chan struct{}
 }
 
 func newApplicationBridge(failed func(error)) *applicationBridge {
-	bridge := &applicationBridge{channels: map[string]applicationDataChannel{}, output: os.NewFile(4, "station-application-output"), failed: failed, done: make(chan struct{})}
-	go bridge.read(os.NewFile(3, "station-application-input"))
+	return newApplicationBridgeIO(
+		os.NewFile(3, "station-application-input"),
+		os.NewFile(4, "station-application-output"),
+		failed,
+	)
+}
+func newApplicationBridgeIO(input io.ReadCloser, output io.WriteCloser, failed func(error)) *applicationBridge {
+	bridge := &applicationBridge{
+		channels: map[string]applicationDataChannel{}, input: input, output: output,
+		writes: make(chan []byte, 32), stopWriter: make(chan struct{}),
+		writerDone: make(chan struct{}), failed: failed, done: make(chan struct{}),
+	}
+	go bridge.write()
+	go bridge.read(input)
 	return bridge
 }
+func encodeApplicationPacket(packet applicationPacket) ([]byte, error) {
+	encoded, err := json.Marshal(packet)
+	if err != nil {
+		return nil, err
+	}
+	return append(encoded, '\n'), nil
+}
+func (b *applicationBridge) enqueueLocked(encoded []byte) error {
+	if b.closed {
+		return nil
+	}
+	if b.pendingBytes+len(encoded) > applicationIPCQueueBytes {
+		return errors.New("application IPC output queue exceeded bound")
+	}
+	select {
+	case b.writes <- encoded:
+		b.pendingBytes += len(encoded)
+		return nil
+	default:
+		return errors.New("application IPC output queue exhausted")
+	}
+}
 func (b *applicationBridge) send(packet applicationPacket) {
-	b.mu.Lock()
-	closed := b.closed
-	b.mu.Unlock()
-	if closed {
+	encoded, err := encodeApplicationPacket(packet)
+	if err != nil {
+		b.failed(errors.New("application IPC packet encoding failed"))
 		return
 	}
-	b.writeMu.Lock()
-	err := json.NewEncoder(b.output).Encode(packet)
-	b.writeMu.Unlock()
+	b.mu.Lock()
+	err = b.enqueueLocked(encoded)
+	b.mu.Unlock()
 	if err != nil {
-		b.failed(errors.New("application IPC write failed"))
+		b.failed(err)
+	}
+}
+func (b *applicationBridge) write() {
+	defer close(b.writerDone)
+	for {
+		select {
+		case <-b.stopWriter:
+			return
+		case encoded := <-b.writes:
+			b.mu.Lock()
+			closed := b.closed
+			b.mu.Unlock()
+			if closed {
+				return
+			}
+			n, err := b.output.Write(encoded)
+			if err == nil && n != len(encoded) {
+				err = io.ErrShortWrite
+			}
+			b.mu.Lock()
+			b.pendingBytes -= len(encoded)
+			b.mu.Unlock()
+			b.mu.Lock()
+			closed = b.closed
+			b.mu.Unlock()
+			if err != nil && !closed {
+				b.failed(errors.New("application IPC write failed"))
+				return
+			}
+		}
 	}
 }
 func (b *applicationBridge) add(channel applicationDataChannel) {
@@ -74,37 +147,58 @@ func (b *applicationBridge) add(channel applicationDataChannel) {
 	nonce[6] = (nonce[6] & 0x0f) | 0x40
 	nonce[8] = (nonce[8] & 0x3f) | 0x80
 	id := fmt.Sprintf("%x-%x-%x-%x-%x", nonce[0:4], nonce[4:6], nonce[6:8], nonce[8:10], nonce[10:16])
+	retired := false
+	channel.OnClose(func() {
+		b.mu.Lock()
+		retired = true
+		_, admitted := b.channels[id]
+		delete(b.channels, id)
+		b.mu.Unlock()
+		if admitted {
+			b.send(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "close"})
+		}
+	})
 	b.mu.Lock()
-	if b.closed || len(b.channels) >= 32 {
+	if b.closed || retired || len(b.channels) >= 32 {
 		b.mu.Unlock()
 		_ = channel.Close()
 		return
 	}
 	b.channels[id] = channel
+	open, err := encodeApplicationPacket(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "open"})
+	if err == nil {
+		err = b.enqueueLocked(open)
+	}
 	b.mu.Unlock()
-	// Publish the ID before registering the message callback; a fast first
-	// browser message must not overtake its open packet on the parent pipe.
-	b.send(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "open"})
+	if err != nil {
+		b.failed(errors.New("application channel open publication failed"))
+		_ = channel.Close()
+		return
+	}
+	// The open packet is queued while admission is locked, so neither a fast
+	// message nor a concurrent close can overtake it on the parent pipe.
 	channel.OnMessage(func(message webrtc.DataChannelMessage) {
 		if !message.IsString || len(message.Data) > 48*1024 || !utf8.Valid(message.Data) {
 			_ = channel.Close()
 			return
 		}
+		b.mu.Lock()
+		active := b.channels[id] == channel
+		b.mu.Unlock()
+		if !active {
+			return
+		}
 		body := string(message.Data)
 		b.send(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "message", Body: &body})
-	})
-	channel.OnClose(func() {
-		b.mu.Lock()
-		delete(b.channels, id)
-		b.mu.Unlock()
-		b.send(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "close"})
 	})
 }
 func (b *applicationBridge) read(input io.ReadCloser) {
 	defer close(b.done)
 	defer input.Close()
 	scanner := bufio.NewScanner(input)
-	scanner.Buffer(make([]byte, 4096), 128*1024)
+	// A 48 KiB UTF-8 body can expand to six JSON bytes per input byte when it
+	// consists entirely of escaped control characters.
+	scanner.Buffer(make([]byte, 4096), applicationIPCPacketBytes)
 	for scanner.Scan() {
 		if !utf8.Valid(scanner.Bytes()) {
 			b.failed(errors.New("application IPC encoding invalid"))
@@ -136,19 +230,33 @@ func (b *applicationBridge) read(input io.ReadCloser) {
 		}
 	}
 	if scanner.Err() != nil {
-		b.failed(errors.New("application IPC read failed"))
+		b.mu.Lock()
+		closed := b.closed
+		b.mu.Unlock()
+		if !closed {
+			b.failed(errors.New("application IPC read failed"))
+		}
 	}
 }
 func (b *applicationBridge) close() {
 	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		return
+	}
 	b.closed = true
 	channels := make([]applicationDataChannel, 0, len(b.channels))
 	for _, channel := range b.channels {
 		channels = append(channels, channel)
 	}
 	b.channels = map[string]applicationDataChannel{}
+	close(b.stopWriter)
 	b.mu.Unlock()
+	_ = b.input.Close()
+	_ = b.output.Close()
 	for _, channel := range channels {
 		_ = channel.Close()
 	}
+	<-b.writerDone
+	<-b.done
 }
