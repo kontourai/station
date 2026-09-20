@@ -5744,10 +5744,7 @@ export function configureDevicePairingPublicRoutes(
       });
       return c.json({ error: 'rate_limited' }, 429);
     }
-    const body = await readPairingJson(c.req.raw, [
-      'deviceName',
-      'requireAccountBinding',
-    ]);
+    const body = await readPairingJson(c.req.raw, ['deviceName']);
     if (
       !body ||
       typeof body.deviceName !== 'string' ||
