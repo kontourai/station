@@ -27,7 +27,10 @@ test('keeps existing non-git and foreign Windows workspaces usable', async () =>
   await expect(resolveWorkspaceIdentity(root)).resolves.toMatchObject({
     kind: 'directory',
   });
-  await expect(resolveWorkspaceIdentity('C:\\remote\\repo')).resolves.toEqual({
-    kind: 'remote',
-  });
+  await expect(
+    resolveWorkspaceIdentity('/peer/windows/repo', 'remote'),
+  ).resolves.toEqual({ kind: 'remote' });
+  await expect(
+    resolveWorkspaceIdentity(join(root, 'missing')),
+  ).rejects.toThrow();
 });

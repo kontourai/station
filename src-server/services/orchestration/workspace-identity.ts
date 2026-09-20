@@ -1,5 +1,4 @@
 import { realpath } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
 import { execGit } from '../../utils/git-exec.js';
 
 const RESOLVE_TIMEOUT_MS = 5_000;
@@ -12,13 +11,9 @@ export type WorkspaceIdentity =
 /** Bounded canonical identity shared by turn admission and checkpoint restore. */
 export async function resolveWorkspaceIdentity(
   cwd: string,
+  executionOwner: 'local' | 'remote' = 'local',
 ): Promise<WorkspaceIdentity> {
-  // A path foreign to this host belongs to the remote execution owner.
-  if (
-    !isAbsolute(cwd) &&
-    (/^[A-Za-z]:[\\/]/.test(cwd) || cwd.startsWith('\\\\'))
-  )
-    return { kind: 'remote' };
+  if (executionOwner === 'remote') return { kind: 'remote' };
   const root = await realpath(cwd);
   try {
     const gitRoot = (
@@ -34,7 +29,10 @@ export async function resolveWorkspaceIdentity(
       key: `git:${canonicalGitRoot}`,
       root: canonicalGitRoot,
     };
-  } catch {
-    return { kind: 'directory', key: `directory:${root}`, root };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/not a git repository/i.test(message))
+      return { kind: 'directory', key: `directory:${root}`, root };
+    throw new Error('workspace_identity_unavailable', { cause: error });
   }
 }

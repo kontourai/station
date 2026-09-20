@@ -2917,7 +2917,10 @@ export class OrchestrationService {
         for (const session of possible) {
           if (!session.cwd)
             throw new Error('workspace_coordination_unavailable');
-          const identity = await resolveWorkspaceIdentity(session.cwd);
+          const identity = await resolveWorkspaceIdentity(
+            session.cwd,
+            session.controlMode === 'read-only-attached' ? 'remote' : 'local',
+          );
           if (identity.kind !== 'remote' && identity.key === workspaceKey)
             sessionIds.push(session.threadId);
         }
@@ -5307,13 +5310,20 @@ export class OrchestrationService {
                     : invoke();
                 },
                 await (async () => {
-                  const cwd =
-                    this.sessionReadModel.get(turnInput.threadId)?.cwd ??
+                  const persisted =
                     this.options.eventStore?.readSessionByThread(
                       turnInput.threadId,
-                    )?.cwd;
+                    );
+                  const cwd =
+                    this.sessionReadModel.get(turnInput.threadId)?.cwd ??
+                    persisted?.cwd;
                   if (!cwd) return undefined;
-                  const identity = await resolveWorkspaceIdentity(cwd);
+                  const identity = await resolveWorkspaceIdentity(
+                    cwd,
+                    persisted?.controlMode === 'read-only-attached'
+                      ? 'remote'
+                      : 'local',
+                  );
                   return identity.kind === 'remote' ? undefined : identity.key;
                 })(),
               );
