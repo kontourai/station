@@ -468,6 +468,13 @@ export interface StationRuntimeOptions {
     origin: string;
     ready: (application: VirtualApplication) => void;
   };
+  /** Explicit self-hosted routing composition; requires virtualApplication. */
+  selfHostedBrokerConnector?: {
+    create(application: VirtualApplication): {
+      start(): Promise<void>;
+      shutdown(): Promise<void>;
+    };
+  };
 
   projectSharing?: boolean;
   authentication?: DeploymentAuthenticationConfiguration;
@@ -493,6 +500,11 @@ export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
   private virtualApplication?: VirtualApplicationIngress;
+  private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
+  private selfHostedBroker?: {
+    start(): Promise<void>;
+    shutdown(): Promise<void>;
+  };
 
   private readonly projectSharingEnabled: boolean;
   private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
@@ -1026,6 +1038,14 @@ export class StationRuntime {
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
+    this.selfHostedBrokerConfiguration = options.selfHostedBrokerConnector;
+    if (
+      this.selfHostedBrokerConfiguration &&
+      !this.virtualApplicationConfiguration
+    )
+      throw new Error(
+        'Self-hosted broker requires virtual application ingress',
+      );
 
     const configuredSharing = process.env.STATION_PROJECT_SHARING;
     if (
@@ -3194,9 +3214,13 @@ export class StationRuntime {
       await inFlight;
       if (virtualApplication) {
         this.virtualApplicationLifetime.signal.throwIfAborted();
-        this.virtualApplicationConfiguration!.ready(
-          virtualApplication.activate(),
-        );
+        const application = virtualApplication.activate();
+        this.virtualApplicationConfiguration!.ready(application);
+        if (this.selfHostedBrokerConfiguration) {
+          const broker = this.selfHostedBrokerConfiguration.create(application);
+          this.selfHostedBroker = broker;
+          await broker.start();
+        }
       }
     } catch (error) {
       virtualApplication?.stop();
@@ -4334,6 +4358,7 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    await this.selfHostedBroker?.shutdown();
     this.virtualApplicationLifetime?.abort();
     this.virtualApplication?.stop();
 
