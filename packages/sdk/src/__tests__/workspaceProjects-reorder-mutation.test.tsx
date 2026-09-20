@@ -390,3 +390,110 @@ describe('useReorderProjectsMutation captured-authority reorder (#481)', () => {
     ).toEqual(['cedar', 'alder', 'birch']);
   });
 });
+
+describe('useReorderProjectsMutation capture-once race (#481 root review)', () => {
+  const scopeA = {
+    apiBase: 'http://station.test',
+    authorityKey: 'home-a:gen-1',
+  };
+  const scopeB = {
+    apiBase: 'http://station.test',
+    authorityKey: 'home-b:gen-2',
+  };
+  const listA = [
+    { slug: 'shared', name: 'A first' },
+    { slug: 'other', name: 'A second' },
+  ];
+  const listB = [
+    { slug: 'other', name: 'B first' },
+    { slug: 'shared', name: 'B second' },
+  ];
+
+  function seededTwoHomeClient(): QueryClient {
+    const client = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+    client.setQueryData(
+      ['projects', 'list', scopeA.apiBase, scopeA.authorityKey],
+      listA,
+    );
+    client.setQueryData(
+      ['projects', 'list', scopeB.apiBase, scopeB.authorityKey],
+      listB,
+    );
+    return client;
+  }
+
+  test('mutating the caller-owned input during the onMutate cancel window cannot retarget optimism or request', async () => {
+    // Deterministically widen the onMutate cancelQueries await: the caller
+    // gets a guaranteed window between the mutation starting and the
+    // optimistic write, mirroring a real cancel on an in-flight query.
+    let releaseCancel: (() => void) | undefined;
+    const cancelGate = new Promise<void>((resolve) => {
+      releaseCancel = resolve;
+    });
+    const client = seededTwoHomeClient();
+    const realCancelQueries = client.cancelQueries.bind(client);
+    const cancelSpy = vi
+      .spyOn(client, 'cancelQueries')
+      .mockImplementation((async (...args: Parameters<QueryClient['cancelQueries']>) => {
+        await cancelGate;
+        return realCancelQueries(...(args as []));
+      }) as typeof client.cancelQueries);
+
+    reorderProjectsMock.mockResolvedValueOnce([]);
+    const { result } = renderHook(() => useReorderProjectsMutation(), {
+      wrapper: wrapperFor(client),
+    });
+
+    // Caller-OWNED input object, mutated after invocation.
+    const input = {
+      order: ['other', 'shared'],
+      requestScope: { ...scopeA },
+      // Widened deliberately: the test unsets it mid-flight.
+      requireRequestScope: true,
+    };
+    act(() => {
+      result.current.mutate(input);
+    });
+    // Parked inside onMutate's awaited cancelQueries.
+    input.order.reverse();
+    input.requestScope.authorityKey = scopeB.authorityKey;
+    // Unsetting the requirement mid-flight must not enable ambient fallback.
+    input.requireRequestScope = false;
+    releaseCancel!();
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // The request went to the CAPTURED origin with the CAPTURED order.
+    expect(reorderProjectsMock).toHaveBeenCalledWith(
+      scopeA.apiBase,
+      ['other', 'shared'],
+      // Still scoped: the mid-flight unsetting must not drop the scope.
+      expect.objectContaining({
+        requestScope: expect.objectContaining({
+          authorityKey: scopeA.authorityKey,
+        }),
+      }),
+    );
+    // The optimistic write under home A used the ORIGINAL order…
+    expect(
+      client
+        .getQueryData<{ slug: string }[]>([
+          'projects',
+          'list',
+          scopeA.apiBase,
+          scopeA.authorityKey,
+        ])
+        ?.map((p) => p.slug),
+    ).toEqual(['other', 'shared']);
+    // …and home B was never written by the mutation.
+    expect(
+      client.getQueryData(['projects', 'list', scopeB.apiBase, scopeB.authorityKey]),
+    ).toEqual(listB);
+    cancelSpy.mockRestore();
+  });
+});

@@ -591,14 +591,46 @@ function captureReorderInput(
   };
 }
 
+/**
+ * One immutable capture, taken ONCE at the public mutate/mutateAsync
+ * invocation. The copy is what every internal callback reads, so a caller
+ * mutating their own input object (order array or scope scalars) during the
+ * mutation lifecycle can neither retarget the request nor corrupt the
+ * optimistic write, rollback, or settle. Internal callbacks re-derive
+ * `scope`/`order` from this private copy — safe by construction.
+ */
+function captureReorderVariables(
+  variables: ReorderProjectsVariables,
+): ReorderProjectsVariables {
+  if (Array.isArray(variables)) return [...variables];
+  const captured: ReorderProjectsInput = { order: [...variables.order] };
+  // Freeze the fail-closed contract: unsetting it on the caller's object
+  // mid-flight must not enable an ambient fallback.
+  if (variables.requireRequestScope === true) captured.requireRequestScope = true;
+  const scope = captureProjectScope(variables.requestScope);
+  if (scope) captured.requestScope = scope;
+  return captured;
+}
+
+interface ReorderMutationContext {
+  previous?: any[];
+  cacheKey: (string | number)[];
+  scoped: boolean;
+}
+
 export function useReorderProjectsMutation(
   options?: MutationOptions<any, ReorderProjectsVariables>,
 ) {
   const queryClient = useQueryClient();
-  return useMutation({
+  const mutation = useMutation<
+    any,
+    Error,
+    ReorderProjectsVariables,
+    ReorderMutationContext
+  >({
     mutationFn: async (variables: ReorderProjectsVariables) => {
-      // Capture before ANY await: the request is authenticated against the
-      // captured authority and never re-resolves ambient state mid-flight.
+      // `variables` is the private capture from `captureReorderVariables`;
+      // deriving scope/order from it can no longer observe caller mutations.
       const { order, scope } = captureReorderInput(variables);
       if (
         !Array.isArray(variables) &&
@@ -646,15 +678,11 @@ export function useReorderProjectsMutation(
         });
         queryClient.setQueryData(cacheKey, next);
       }
-      return { previous, cacheKey };
+      return { previous, cacheKey, scoped: scope !== undefined };
     },
-    onError: (
-      error,
-      variables,
-      context: { previous?: any[]; cacheKey: (string | number)[] } | undefined,
-    ) => {
+    onError: (error, variables, context) => {
       // Rollback touches ONLY the captured authority's cache entry.
-      if (context?.cacheKey && Array.isArray(context.previous)) {
+      if (context && Array.isArray(context.previous)) {
         queryClient.setQueryData(context.cacheKey, context.previous);
       }
       options?.onError?.(error as Error, variables);
@@ -662,20 +690,38 @@ export function useReorderProjectsMutation(
     onSuccess: (data, variables) => {
       options?.onSuccess?.(data, variables);
     },
-    onSettled: (
-      _data,
-      _error,
-      _variables,
-      context: { previous?: any[]; cacheKey: (string | number)[] } | undefined,
-    ) => {
-      // Settle invalidates ONLY the captured authority's entry: a pending
-      // reorder that resolves after a switch must never invalidate or roll
-      // back another home's list.
-      if (context?.cacheKey) {
-        queryClient.invalidateQueries({ queryKey: context.cacheKey });
+    onSettled: (_data, _error, _variables, context) => {
+      // No context ⇒ onMutate rejected before any request or cache work;
+      // there is nothing to reconcile and touching prefixes here would
+      // invalidate OTHER homes' lists.
+      if (!context) return;
+      if (context.scoped) {
+        // Exactly one entry is intended: the captured authority's list.
+        queryClient.invalidateQueries({
+          queryKey: context.cacheKey,
+          exact: true,
+        });
+        return;
       }
+      // Legacy settle surface, byte-for-byte the station#3315 original:
+      // the list prefix plus the bare legacy list, exact.
+      queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'], exact: true });
     },
   });
+  // Capture ONCE at the public invocation. Everything below this wrapper
+  // sees only the frozen copy; the spread preserves the full typed mutation
+  // result (reset/isPending/data/…) and tanstack's per-call options pass
+  // straight through.
+  return {
+    ...mutation,
+    mutate: (variables: ReorderProjectsVariables, options?: Parameters<typeof mutation.mutate>[1]) =>
+      mutation.mutate(captureReorderVariables(variables), options),
+    mutateAsync: (
+      variables: ReorderProjectsVariables,
+      options?: Parameters<typeof mutation.mutateAsync>[1],
+    ) => mutation.mutateAsync(captureReorderVariables(variables), options),
+  };
 }
 
 export function useDeleteProjectMutation(
