@@ -114,7 +114,17 @@ export function DelegatedTaskCoordinator({
     task.delegation?.environmentName ??
     displayEnvironment(task.delegation?.environmentId);
   const isPeerActivityRecord = task.delegation?.environmentKind === 'peer';
-  const mutationError = sendTurn.error ?? stopTask.error;
+  const sendTargetsTask =
+    sendTurn.variables?.apiBase === apiBase &&
+    sendTurn.variables?.threadId === task.threadId;
+  const stopTargetsTask =
+    stopTask.variables?.apiBase === apiBase &&
+    stopTask.variables?.threadId === task.threadId;
+  const sendPending = sendTurn.isPending && sendTargetsTask;
+  const stopPending = stopTask.isPending && stopTargetsTask;
+  const mutationError =
+    (sendTargetsTask ? sendTurn.error : null) ??
+    (stopTargetsTask ? stopTask.error : null);
 
   return (
     <section
@@ -192,7 +202,7 @@ export function DelegatedTaskCoordinator({
           className="sessions-coordinator__compose"
           onSubmit={(event) => {
             event.preventDefault();
-            if (input.trim() && !sendTurn.isPending)
+            if (input.trim() && !sendPending)
               sendTurn.mutate({
                 apiBase,
                 threadId: task.threadId,
@@ -214,9 +224,9 @@ export function DelegatedTaskCoordinator({
           <Button
             type="submit"
             variant="primary"
-            disabled={!input.trim() || sendTurn.isPending}
+            disabled={!input.trim() || sendPending}
           >
-            {sendTurn.isPending ? 'Sending…' : 'Send follow-up'}
+            {sendPending ? 'Sending…' : 'Send follow-up'}
           </Button>
         </form>
       )}
@@ -230,12 +240,12 @@ export function DelegatedTaskCoordinator({
         {!isPeerActivityRecord && isStreaming && !isTerminal && (
           <Button
             variant="danger-outline"
-            disabled={stopTask.isPending}
+            disabled={stopPending}
             onClick={() =>
               stopTask.mutate({ apiBase, threadId: task.threadId })
             }
           >
-            {stopTask.isPending ? 'Stopping…' : 'Stop active task'}
+            {stopPending ? 'Stopping…' : 'Stop active task'}
           </Button>
         )}
         {/* archive#1781: navigation stays available for an unanswerable

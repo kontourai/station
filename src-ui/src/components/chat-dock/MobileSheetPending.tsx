@@ -24,6 +24,8 @@ export function MobileSheetPending({
       overlayStyle={style}
       returnFocusTarget={returnFocusTarget}
       initialFocusPolicy="panel"
+      overlayClassName="mobile-task-switcher__overlay"
+      panelClassName="mobile-task-switcher__panel"
     >
       <ResponsiveDialogHeader
         title={label}
@@ -31,7 +33,7 @@ export function MobileSheetPending({
         closeLabel={`Close ${label.toLowerCase()}`}
         onClose={onClose}
       />
-      <p role="status" aria-busy="true">
+      <p role="status" aria-busy="true" className="mobile-task-switcher__list">
         Loading {label.toLowerCase()}…
       </p>
     </ResponsiveDialogSurface>
