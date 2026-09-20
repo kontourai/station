@@ -2668,11 +2668,11 @@ describe('explicit verified-person pairing consent', () => {
         onCancel={vi.fn()}
       />,
     );
-    const person = await screen.findByRole('checkbox', {
-      name: /Recognize this device as collaborator@example.test/,
+    const person = await screen.findByRole('radio', {
+      name: /Use verified Tailscale identity collaborator@example.test/,
     });
-    const account = screen.getByRole('checkbox', {
-      name: /Bind this device to account Collaborator Account at https:\/\/accounts.example.test/,
+    const account = screen.getByRole('radio', {
+      name: /Use Collaborator Account’s Project access/,
     });
     expect((account as HTMLInputElement).checked).toBe(false);
     const approve = screen.getByRole('button', { name: 'Approve' });
@@ -2728,7 +2728,7 @@ describe('explicit verified-person pairing consent', () => {
     const approve = await screen.findByRole('button', { name: 'Approve' });
     expect((approve as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(
-      screen.getByRole('checkbox', {
+      screen.getByRole('radio', {
         name: /Approve as an ordinary Personal Device/,
       }),
     );
@@ -2771,8 +2771,8 @@ describe('explicit verified-person pairing consent', () => {
       />,
     );
     fireEvent.click(
-      await screen.findByRole('checkbox', {
-        name: /Bind this device to account Stale Account/,
+      await screen.findByRole('radio', {
+        name: /Use Stale Account’s Project access/,
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));

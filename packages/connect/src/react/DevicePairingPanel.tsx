@@ -1484,7 +1484,8 @@ export function HostDevicePairingPanel({
               </small>
               {request.status === 'pending' &&
                 request.source === 'tailnet' &&
-                request.requester && (
+                request.requester &&
+                !request.accountCandidate && (
                   <label
                     style={{
                       display: 'flex',
@@ -1534,124 +1535,188 @@ export function HostDevicePairingPanel({
                   </label>
                 )}
               {request.status === 'pending' && request.accountCandidate && (
-                <label
+                <fieldset
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'auto minmax(0, 1fr)',
-                    columnGap: 8,
-                    minHeight: 44,
+                    gap: 8,
+                    border: '1px solid var(--border-primary, #333)',
+                    borderRadius: 8,
+                    padding: 10,
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={accountBindingRequests.has(request.requestId)}
-                    disabled={requestActionIds.has(request.requestId)}
-                    onChange={(event) => {
-                      const checked = event.currentTarget.checked;
-                      setAccountBindingSelection((current) => {
-                        const next = new Set(
-                          current.apiBase === apiBase ? current.requests : [],
-                        );
-                        if (checked) next.add(request.requestId);
-                        else next.delete(request.requestId);
-                        return { apiBase, requests: next };
-                      });
-                      if (checked)
-                        setPersonBindingSelection((people) => {
-                          const withoutRequest = new Set(
-                            people.apiBase === apiBase ? people.requests : [],
-                          );
-                          withoutRequest.delete(request.requestId);
-                          return { apiBase, requests: withoutRequest };
-                        });
-                      if (checked)
-                        setPersonalApprovalSelection((personal) => {
-                          const withoutRequest = new Set(
-                            personal.apiBase === apiBase
-                              ? personal.requests
-                              : [],
-                          );
-                          withoutRequest.delete(request.requestId);
-                          return { apiBase, requests: withoutRequest };
-                        });
+                  <legend>Choose approval mode</legend>
+                  <label
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto minmax(0, 1fr)',
+                      columnGap: 8,
+                      minHeight: 44,
                     }}
-                  />
-                  <span>
-                    Bind this device to account{' '}
-                    {request.accountCandidate.displayName} at{' '}
-                    {request.accountCandidate.issuer}
-                    <small
-                      style={{
-                        display: 'block',
-                        color: 'var(--text-secondary, #999)',
-                      }}
-                    >
-                      Requires this account to sign in again. This limits the
-                      device to access already granted to the account; it does
-                      not grant Project membership or personal access. Leave
-                      identity binding off for an ordinary Personal Device.
-                      Account subject: {request.accountCandidate.subject}
-                    </small>
-                  </span>
-                </label>
-              )}
-              {request.status === 'pending' && request.accountCandidate && (
-                <label
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'auto minmax(0, 1fr)',
-                    columnGap: 8,
-                    minHeight: 44,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={personalApprovalRequests.has(request.requestId)}
-                    disabled={requestActionIds.has(request.requestId)}
-                    onChange={(event) => {
-                      const checked = event.currentTarget.checked;
-                      setPersonalApprovalSelection((current) => {
-                        const next = new Set(
-                          current.apiBase === apiBase ? current.requests : [],
-                        );
-                        if (checked) next.add(request.requestId);
-                        else next.delete(request.requestId);
-                        return { apiBase, requests: next };
-                      });
-                      if (checked) {
-                        setAccountBindingSelection((accounts) => {
+                  >
+                    <input
+                      type="radio"
+                      name={`approval-mode-${request.requestId}`}
+                      checked={accountBindingRequests.has(request.requestId)}
+                      disabled={requestActionIds.has(request.requestId)}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setAccountBindingSelection((current) => {
                           const next = new Set(
-                            accounts.apiBase === apiBase
-                              ? accounts.requests
-                              : [],
+                            current.apiBase === apiBase ? current.requests : [],
                           );
-                          next.delete(request.requestId);
+                          if (checked) next.add(request.requestId);
+                          else next.delete(request.requestId);
                           return { apiBase, requests: next };
                         });
-                        setPersonBindingSelection((people) => {
-                          const next = new Set(
-                            people.apiBase === apiBase ? people.requests : [],
-                          );
-                          next.delete(request.requestId);
-                          return { apiBase, requests: next };
-                        });
-                      }
-                    }}
-                  />
-                  <span>
-                    Approve as an ordinary Personal Device
-                    <small
+                        if (checked)
+                          setPersonBindingSelection((people) => {
+                            const withoutRequest = new Set(
+                              people.apiBase === apiBase ? people.requests : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
+                        if (checked)
+                          setPersonalApprovalSelection((personal) => {
+                            const withoutRequest = new Set(
+                              personal.apiBase === apiBase
+                                ? personal.requests
+                                : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
+                      }}
+                    />
+                    <span>
+                      Use {request.accountCandidate.displayName}’s Project
+                      access
+                      <small
+                        style={{
+                          display: 'block',
+                          color: 'var(--text-secondary, #999)',
+                        }}
+                      >
+                        Requires this account to sign in again and uses only its
+                        current permissions; it does not grant membership.
+                        <span
+                          style={{ display: 'block', overflowWrap: 'anywhere' }}
+                        >
+                          Issuer: {request.accountCandidate.issuer}
+                          <br />
+                          Subject: {request.accountCandidate.subject}
+                        </span>
+                      </small>
+                    </span>
+                  </label>
+                  {request.source === 'tailnet' && request.requester && (
+                    <label
                       style={{
-                        display: 'block',
-                        color: 'var(--text-secondary, #999)',
+                        display: 'grid',
+                        gridTemplateColumns: 'auto minmax(0, 1fr)',
+                        columnGap: 8,
+                        minHeight: 44,
                       }}
                     >
-                      Uses the selected device scope without account relogin.
-                      Its access is not limited by this account’s Project
-                      membership and remains until the Device is revoked.
-                    </small>
-                  </span>
-                </label>
+                      <input
+                        type="radio"
+                        name={`approval-mode-${request.requestId}`}
+                        checked={personBindingRequests.has(request.requestId)}
+                        disabled={requestActionIds.has(request.requestId)}
+                        onChange={() => {
+                          setPersonBindingSelection((current) => ({
+                            apiBase,
+                            requests: new Set([
+                              ...(current.apiBase === apiBase
+                                ? current.requests
+                                : []),
+                              request.requestId,
+                            ]),
+                          }));
+                          setAccountBindingSelection((current) => {
+                            const next = new Set(
+                              current.apiBase === apiBase
+                                ? current.requests
+                                : [],
+                            );
+                            next.delete(request.requestId);
+                            return { apiBase, requests: next };
+                          });
+                          setPersonalApprovalSelection((current) => {
+                            const next = new Set(
+                              current.apiBase === apiBase
+                                ? current.requests
+                                : [],
+                            );
+                            next.delete(request.requestId);
+                            return { apiBase, requests: next };
+                          });
+                        }}
+                      />
+                      <span>
+                        Use verified Tailscale identity{' '}
+                        {request.requester.login}
+                      </span>
+                    </label>
+                  )}
+                  <label
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto minmax(0, 1fr)',
+                      columnGap: 8,
+                      minHeight: 44,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name={`approval-mode-${request.requestId}`}
+                      checked={personalApprovalRequests.has(request.requestId)}
+                      disabled={requestActionIds.has(request.requestId)}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setPersonalApprovalSelection((current) => {
+                          const next = new Set(
+                            current.apiBase === apiBase ? current.requests : [],
+                          );
+                          if (checked) next.add(request.requestId);
+                          else next.delete(request.requestId);
+                          return { apiBase, requests: next };
+                        });
+                        if (checked) {
+                          setAccountBindingSelection((accounts) => {
+                            const next = new Set(
+                              accounts.apiBase === apiBase
+                                ? accounts.requests
+                                : [],
+                            );
+                            next.delete(request.requestId);
+                            return { apiBase, requests: next };
+                          });
+                          setPersonBindingSelection((people) => {
+                            const next = new Set(
+                              people.apiBase === apiBase ? people.requests : [],
+                            );
+                            next.delete(request.requestId);
+                            return { apiBase, requests: next };
+                          });
+                        }
+                      }}
+                    />
+                    <span>
+                      Approve as an ordinary Personal Device
+                      <small
+                        style={{
+                          display: 'block',
+                          color: 'var(--text-secondary, #999)',
+                        }}
+                      >
+                        Uses the selected device scope without account relogin.
+                        Its access is not limited by this account’s Project
+                        membership and remains until the Device is revoked.
+                      </small>
+                    </span>
+                  </label>
+                </fieldset>
               )}
               {request.status === 'pending' ? (
                 <div
