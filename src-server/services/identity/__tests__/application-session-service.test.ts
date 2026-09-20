@@ -143,6 +143,93 @@ async function harness() {
 }
 
 describe('Device-bound continuation persistence and negative admission', () => {
+  test('an account-bound Device accepts only the matching provider account while cookie-only enrollment stays available', async () => {
+    const h = await harness();
+    const login = await h.accounts().service.handle(
+      new Request(`${origin}/api/account-auth/sign-in/username`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: h.password }),
+      }),
+      '/sign-in/username',
+    );
+    const Cookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
+    const authenticated = await h.accounts().service.authenticate(
+      new Request(`${origin}/api/account-auth/session`, {
+        headers: { Cookie },
+      }),
+    );
+    expect(authenticated.kind).toBe('authenticated');
+    if (authenticated.kind !== 'authenticated') return;
+    const offer = h.pairing.createOffer({ endpoint: origin });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Account-bound device',
+      requesterPosition: 'off-box',
+      accountCandidate: {
+        issuer: authenticated.issuer,
+        subject: authenticated.session.subject,
+        displayName: authenticated.session.displayName,
+      },
+      accountCandidateSessionId: authenticated.session.sessionId,
+    });
+    h.pairing.confirmRequest(
+      pending.requestId,
+      { kind: 'presented-credential' },
+      { principalId: 'human:local:operator', kind: 'account' },
+    );
+    const bound = h.pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    const matching = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {
+        credential: bound.credential,
+        credentialOrigin: origin,
+        headers: { Cookie },
+      },
+      await createApplicationSessionKey(),
+    );
+    await expect(matching.establish()).resolves.toMatchObject({
+      principal: authenticated.principal,
+    });
+
+    const signup = await h.accounts().service.handle(
+      new Request(`${origin}/api/account-auth/sign-up/username`, {
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          'Content-Type': 'application/json',
+          'x-station-invitation': 'second-enrollment',
+        },
+        body: JSON.stringify({
+          username: 'bob',
+          password: 'Second account fixture password',
+        }),
+      }),
+      '/sign-up/username',
+    );
+    expect(signup.status).toBe(200);
+    const wrong = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      { credential: bound.credential, credentialOrigin: origin },
+      await createApplicationSessionKey(),
+    );
+    await expect(
+      wrong.establish({
+        username: 'bob',
+        password: 'Second account fixture password',
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
   test('a cookie exchange keeps cookies private, persists replay refusal across restart and preserves its account identity', async () => {
     const h = await harness();
     const login = await h.accounts().service.handle(

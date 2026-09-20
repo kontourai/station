@@ -24,7 +24,7 @@ import {
   getProjectResolution,
   listProjectIconCandidates,
   listProjectLayouts,
-  listProjects,
+  listProjectViews,
   listProjectWorkspacePanes,
   previewProjectWorkspaceFile,
   reorderProjects as reorderProjectsRaw,
@@ -92,7 +92,7 @@ export function useProjectsQuery(config?: QueryConfig<any>) {
     ['projects'],
     async () => {
       const apiBase = await _getApiBase();
-      return listProjects(apiBase);
+      return listProjectViews(apiBase);
     },
     config,
   );

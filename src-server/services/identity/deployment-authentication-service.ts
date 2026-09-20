@@ -22,6 +22,17 @@ import {
 import { PrincipalUnresolvedError } from './principal-resolver.js';
 
 const logger = createLogger({ name: 'deployment-authentication' });
+export function deploymentAccountPrincipal(
+  issuer: string,
+  subject: string,
+  displayName: string,
+): PrincipalRef {
+  const boundedSubject = createHash('sha256')
+    .update(JSON.stringify([issuer, subject]))
+    .digest('hex');
+  return humanPrincipal('deployment', boundedSubject, displayName);
+}
+
 export type ResolvedDeploymentAuthentication =
   | Exclude<DeploymentAuthenticationResult, { kind: 'authenticated' }>
   | {
@@ -88,6 +99,7 @@ export class DeploymentAuthenticationService {
       login: typeof this.provider.sessionReferences?.login === 'function',
     };
   }
+
   async verifySessionReference(
     sessionId: string,
     callerSignal: AbortSignal,
@@ -357,13 +369,14 @@ export class DeploymentAuthenticationService {
     const session = parsed.session;
     // Hash the unambiguous exact pair to keep PrincipalRef bounded without
     // exposing upstream identifiers. Display/contact changes do not merge people.
-    const subject = createHash('sha256')
-      .update(JSON.stringify([this.description.issuer, session.subject]))
-      .digest('hex');
     return {
       kind: 'authenticated',
       issuer: this.description.issuer,
-      principal: humanPrincipal('deployment', subject, session.displayName),
+      principal: deploymentAccountPrincipal(
+        this.description.issuer,
+        session.subject,
+        session.displayName,
+      ),
       session,
     };
   }

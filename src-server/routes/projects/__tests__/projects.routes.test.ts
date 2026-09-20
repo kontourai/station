@@ -128,7 +128,11 @@ function createMockProjectService() {
   const projects = new Map<string, any>();
   return {
     listProjects: vi.fn(async () =>
-      [...projects.values()].map((p) => ({ slug: p.slug, name: p.name })),
+      [...projects.values()].map((p) => ({
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+      })),
     ),
     getProject: vi.fn(async (slug: string) => {
       const p = projects.get(slug);
@@ -285,6 +289,72 @@ function expectProjectEvidencePaneInstances(
 }
 
 describe('Project Routes', () => {
+  test('GET / projects returns only the authenticated member projection', async () => {
+    const service = createMockProjectService();
+    await service.createProject({ slug: 'shared', name: 'Shared' });
+    await service.createProject({ slug: 'private', name: 'Private marker' });
+    const memberProjectAdmissions = vi.fn(async () => [
+      {
+        scope: {
+          stationId: 'station',
+          localProjectId: 'id-1',
+          portableProjectId: 'portable-shared',
+          localProjectSlug: 'shared',
+        },
+        actions: ['view' as const],
+      },
+    ]);
+    const app = createProjectRoutes(
+      service as any,
+      createMockStorageAdapter(['shared', 'private']) as any,
+      '/tmp',
+      {
+        memberProjectAdmissions,
+        projectCatalogueCurrent: async () => true,
+      },
+    );
+
+    const response = await app.request('/');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await json(response)).toEqual({
+      success: true,
+      data: [
+        {
+          version: 'station.member-project/v1',
+          kind: 'member-project',
+          id: 'id-1',
+          slug: 'shared',
+          name: 'Shared',
+          actions: ['view'],
+        },
+      ],
+    });
+    expect(memberProjectAdmissions).toHaveBeenCalledTimes(2);
+  });
+
+  test('GET /:slug cannot fall back to full config when member admission changes after the read', async () => {
+    const service = createMockProjectService();
+    await service.createProject({
+      slug: 'shared',
+      name: 'Replacement',
+      workingDirectory: '/private/marker',
+      defaultProviderId: 'private-provider',
+    });
+    const app = createProjectRoutes(
+      service as any,
+      createMockStorageAdapter(['shared']) as any,
+      '/tmp',
+      { memberProjectAdmission: async () => null },
+    );
+
+    const response = await app.request('/shared');
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toMatch(/private|workingDirectory/);
+  });
+
   const tempDirs: string[] = [];
 
   afterEach(() => {

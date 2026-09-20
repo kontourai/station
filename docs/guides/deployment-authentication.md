@@ -185,6 +185,61 @@ account identity is carried through the runtime's bounded-body replacement and
 used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
+### Account-bound collaborator Devices
+
+A collaborator Device uses an explicit second pairing ceremony after account
+authentication. The pairing request body remains the ordinary
+`deviceName`/`offerId`/`proof` shape; Station attaches an optional
+`accountCandidate` containing the provider-verified `issuer`, opaque `subject`
+and display name. A client cannot nominate or replace that candidate. The
+operator reviews it and confirms with `{ "bindAccountIdentity": true }`.
+This flag is mutually exclusive with the existing
+`bindVerifiedIdentity` Tailnet-person approval. Confirmation returns the
+bounded `principalBinding` receipt, including its account kind, issuer,
+subject, display name, approval ID, approver and time. Station rechecks the
+provider session and operator credential after reading the confirmation body.
+
+The exchanged Device must present a current account for that exact
+issuer/subject on every protected request. Missing, revoked or conflicting
+account proof is refused before resource authorization. Cookie-only signup and
+login remain available so a person can authenticate before receiving such a
+Device; authentication itself grants neither the Device nor Project access.
+An existing unbound personal Device is not silently converted by login. The
+operator must explicitly approve and exchange the account-bound replacement,
+then revoke any older broad grant retained for that client.
+
+The direct request-access endpoint also accepts `requireAccountBinding: true`
+after sign-in. Station attaches the verified account candidate and makes this
+intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
+Device for that request. Existing ordinary pairing requests remain available.
+
+The first collaborator profile is deliberately read-only. It admits account
+controls and membership-filtered Project catalogue/detail reads, sets
+`Cache-Control: no-store`, and binds response delivery to the exact local and
+portable Project incarnation. Membership is rechecked before delivery and each
+streamed chunk. Project mutations and unrelated personal configuration,
+plugin, terminal, coding, secret and orchestration surfaces fail closed even if
+the Device scope is broader. Existing unbound local/operator Devices retain
+their prior behavior. Existing Tailnet person bindings remain a separate
+personal-device mechanism; they do not become Project membership through this
+account contract.
+
+For authenticated members, the existing Project catalogue/detail endpoints
+return `station.member-project/v1` views: Project ID, slug, name, optional icon
+and description, and currently effective actions (`view` in this profile).
+Local workspace paths, provider/model configuration, knowledge settings and
+layout metadata are excluded. Unaudited nested Project resources remain denied.
+Personal/operator callers retain their full Project configuration.
+
+SDK consumers use `listProjectViews` and `getProjectView` to handle the typed
+member/full-view union. Legacy `listProjects` and `getProject` refuse member
+projections rather than pretending they contain full configuration. Unknown
+versions, extra fields and malformed member views fail validation.
+
+The full browser/native UI, shared content, compute-offer and two-person journey
+remain owned by #483/#488. Tailnet member integration remains under #1513 and
+#488.
+
 ## Browser invitation entry
 
 `/account/join#invitation=<token>` previews the current Project, inviter and

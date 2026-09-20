@@ -1801,7 +1801,7 @@ station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
-station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person] [--api-base=<loopback-url>|--station=<name>]
+station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
@@ -2762,6 +2762,19 @@ Project membership or device scope. Without it, approval remains device-only.
 The CLI requires the server's binding acknowledgment and reports older servers
 that approved access without recognizing the option. Revoke the paired device
 to revoke its binding; existing grants are not silently linked.
+
+When an access request reports a current server-verified account candidate, an
+operator can instead pass `--bind-account`. The confirmation names the account
+and issuer; neither value is accepted from a CLI flag. Account binding requires
+that account to sign in again on the requesting Device. The current pilot can
+view Projects the account may access; editing and running work are unavailable.
+It does not grant Project membership or personal access.
+For a request with an account candidate, the operator must choose exactly one
+of `--bind-account`, `--bind-person` (when verified Tailscale identity is also
+available), or `--personal-device`. The last choice grants an ordinary Device
+the selected scope until revocation; it does not require account relogin and is
+not limited by that account's Project membership. A stale or revoked account
+candidate fails without retrying as ordinary device approval.
 
 
 ### Portable Project identity and attachment

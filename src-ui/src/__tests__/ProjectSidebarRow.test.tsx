@@ -53,6 +53,28 @@ describe('ProjectSidebarRow', () => {
     });
   });
 
+  test('renders an authorized member Project without requiring private host metadata', () => {
+    layoutsQueryMock.mockReturnValue({ data: [] });
+    render(
+      <ProjectSidebarRow
+        project={{
+          version: 'station.member-project/v1',
+          kind: 'member-project',
+          id: 'shared-id',
+          slug: 'shared',
+          name: 'Shared Project',
+          actions: ['view'],
+        }}
+        isActive={false}
+        activeLayout={null}
+        collapsed={false}
+      />,
+    );
+
+    expect(screen.getByText('Shared Project')).toBeTruthy();
+    expect(layoutsQueryMock).toHaveBeenCalledWith('shared', { enabled: false });
+  });
+
   /**
    * #2063 moved the gate from the row's own `expanded` state to selection:
    * the chip row renders for the project the reader is in. The property the
