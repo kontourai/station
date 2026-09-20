@@ -2,6 +2,7 @@ import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-c
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
+import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
@@ -21,6 +22,8 @@ import type {
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
+import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
+import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 
 export {
   type BoundedBodyResult,
@@ -540,6 +543,7 @@ export function pullRequestThreadForProject<
 
 export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
+  projectSharedTasks?: ProjectSharedTaskStore;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
   applicationSessions?: ApplicationSessionService;
@@ -3225,6 +3229,67 @@ export function configureRuntimeRoutes(
       context.deploymentAuthentication?.publicOrigin,
     ),
   );
+  if (
+    context.projectMembership &&
+    context.projectSharedTasks &&
+    projectTaskRoomRuntime
+  ) {
+    const sharedTasks = new ProjectSharedTaskService({
+      store: context.projectSharedTasks,
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      projectCandidates: (identity) =>
+        context.projectService
+          .listProjects()
+          .filter(
+            (project) => project.id === identity || project.slug === identity,
+          )
+          .map((project) => ({ id: project.id, slug: project.slug })),
+    });
+    const sharedAuthority = (request: Request) => {
+      const membership = projectMembershipAuthority(request);
+      return {
+        current: async () => ({
+          principalId: (await membership.current()).principal.id,
+        }),
+        operator: () => membership.operator(),
+        requireProjectRead: (
+          scope: import('@kontourai/station-contracts/project-membership').ProjectMembershipScope,
+        ) =>
+          context.projectMembership!.requireProjectScopeRead(scope, membership),
+      };
+    };
+    const primeSharedTaskPrincipal = async (
+      c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      next: () => Promise<void>,
+    ) => {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      await next();
+    };
+    context.app.use(
+      '/api/projects/:slug/shared-work',
+      primeSharedTaskPrincipal,
+    );
+    context.app.use(
+      '/api/projects/:slug/shared-work/*',
+      primeSharedTaskPrincipal,
+    );
+    context.app.route(
+      '/api/projects',
+      createProjectSharedTaskRoutes({
+        service: sharedTasks,
+        room: projectTaskRoomRuntime,
+        scope: (request, slug) =>
+          context.projectMembership!.requireProjectRead(
+            slug,
+            projectMembershipAuthority(request),
+          ),
+        authority: async (request) => sharedAuthority(request),
+      }),
+    );
+  }
   const authenticatedProjectMember = async (request: Request) => {
     const account =
       await context.deploymentAuthentication?.service.authenticate(request);
