@@ -5,8 +5,8 @@ import {
 } from '@kontourai/station-contracts/project';
 import { useProjectIconCandidatesQuery } from '@kontourai/station-sdk';
 import { useApiBase } from '../contexts/ApiBaseContext';
-import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useNewProjectDraft } from './useNewProjectDraft';
 import { useNewProjectStarter } from './useNewProjectStarter';
 import { useNewProjectSubmit } from './useNewProjectSubmit';

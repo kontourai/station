@@ -6,8 +6,8 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Button } from '../Button';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
+import { Button } from '../Button';
 import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,

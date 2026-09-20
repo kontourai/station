@@ -22,11 +22,11 @@ import {
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
 } from '../contexts/open-chats-store';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';

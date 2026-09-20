@@ -16,8 +16,8 @@ import {
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useScopedProjectQuery } from '../contexts/ProjectsContext';
 import { LAST_PROJECT_LAYOUT_KEY } from '../contexts/navigation-store';
+import { useScopedProjectQuery } from '../contexts/ProjectsContext';
 import { SDKAdapter } from '../core/SDKAdapter';
 import {
   useCreateChatSession,

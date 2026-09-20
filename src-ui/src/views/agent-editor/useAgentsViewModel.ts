@@ -13,7 +13,6 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { AgentFixRoute } from '../../components/AgentReadinessCell';
-import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import {
   type AgentRunnability,
   agentRunnability,
@@ -26,6 +25,7 @@ import {
 } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useAIEnrich } from '../../hooks/useAIEnrich';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';

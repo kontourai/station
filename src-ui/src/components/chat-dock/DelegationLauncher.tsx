@@ -9,8 +9,8 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
+import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { Button } from '../Button';
 import {
   ENVIRONMENTS_UNAVAILABLE_NOTICE,

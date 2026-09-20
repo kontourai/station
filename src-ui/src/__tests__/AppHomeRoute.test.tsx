@@ -370,9 +370,8 @@ vi.mock('../contexts/NavigationContext', () => {
   };
 });
 vi.mock('../contexts/ProjectsContext', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('../contexts/ProjectsContext')
-  >();
+  const actual =
+    await importOriginal<typeof import('../contexts/ProjectsContext')>();
   return {
     ...actual,
     ProjectsProvider: ({ children }: { children: ReactNode }) => (
