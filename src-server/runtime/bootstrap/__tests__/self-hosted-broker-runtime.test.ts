@@ -1,9 +1,16 @@
-import { describe, expect, test, vi } from 'vitest';
-import { SelfHostedBrokerRuntime } from '../self-hosted-broker-runtime.js';
+import { describe, expect, type Mock, test, vi } from 'vitest';
+import {
+  type BrokerConnectorLifecycle,
+  SelfHostedBrokerRuntime,
+} from '../self-hosted-broker-runtime.js';
+
+type ConnectorMock = {
+  [K in keyof BrokerConnectorLifecycle]: Mock<BrokerConnectorLifecycle[K]>;
+};
 
 function fixture() {
   const lifetime = new AbortController();
-  const connector = {
+  const connector: ConnectorMock = {
     register: vi.fn(async () => {}),
     renew: vi.fn(async () => {}),
     poll: vi.fn(async () => {}),
@@ -34,15 +41,24 @@ describe('self-hosted broker runtime lifecycle', () => {
     await runtime.shutdown();
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
-  test('refuses an origin mismatch and inactive virtual application', () => {
+  test('refuses a malformed origin and inactive virtual application', () => {
     const f = fixture();
     expect(
       () =>
         new SelfHostedBrokerRuntime({
           ...f.options,
-          configuredOrigin: 'https://other.example',
+          configuredOrigin: 'https://other.example/with-path',
         }),
     ).toThrow('broker_runtime_origin_mismatch');
+    // The factory binds distinct well-formed origins (application vs browser
+    // scope), so shape alone is validated here, not equality.
+    expect(
+      () =>
+        new SelfHostedBrokerRuntime({
+          ...f.options,
+          configuredOrigin: 'https://browser.example',
+        }),
+    ).not.toThrow();
     f.lifetime.abort();
     expect(() => new SelfHostedBrokerRuntime(f.options)).toThrow(
       'broker_runtime_application_unavailable',
@@ -67,6 +83,94 @@ describe('self-hosted broker runtime lifecycle', () => {
     await runtime.start();
     await vi.waitFor(() => expect(f.connector.poll).toHaveBeenCalled());
     await expect(runtime.shutdown()).rejects.toThrow('poll failed');
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('shutdown during a blocked registration retires promptly with a single withdraw', async () => {
+    const f = fixture();
+    let releaseRegistration = () => {};
+    const blocked = new Promise<unknown>((resolve) => {
+      releaseRegistration = () => resolve(undefined);
+    });
+    const seen: AbortSignal[] = [];
+    f.connector.register.mockImplementationOnce((signal: AbortSignal) => {
+      seen.push(signal);
+      return blocked;
+    });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      operationSettleMs: 50,
+    });
+    const started = runtime.start();
+    await vi.waitFor(() => expect(f.connector.register).toHaveBeenCalled());
+    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    await expect(started).rejects.toThrow('broker_runtime_register_unsettled');
+    expect(seen[0]?.aborted).toBe(true);
+    expect(f.connector.renew).not.toHaveBeenCalled();
+    expect(f.connector.poll).not.toHaveBeenCalled();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+    releaseRegistration();
+  });
+  test('application abort cancels a blocked poll and withdraws without waiting for shutdown', async () => {
+    const f = fixture();
+    const seen: AbortSignal[] = [];
+    f.connector.poll.mockImplementation((signal: AbortSignal) => {
+      seen.push(signal);
+      return new Promise<unknown>(() => {
+        // Hangs deliberately: ignores the abort signal and never settles, so
+        // the runtime must bound the join instead of waiting forever.
+      });
+    });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      pollMs: 1_000,
+      operationSettleMs: 50,
+    });
+    await runtime.start();
+    await vi.waitFor(() => expect(f.connector.poll).toHaveBeenCalled());
+    f.lifetime.abort(new Error('application gone'));
+    await vi.waitFor(
+      () => expect(f.connector.withdraw).toHaveBeenCalledOnce(),
+      { timeout: 5_000 },
+    );
+    expect(seen[0]?.aborted).toBe(true);
+    await expect(runtime.shutdown()).rejects.toThrow(
+      'broker_runtime_poll_unsettled',
+    );
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('background poll failure withdraws automatically before any shutdown call', async () => {
+    const f = fixture();
+    f.connector.poll.mockRejectedValueOnce(new Error('poll failed'));
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      pollMs: 1_000,
+    });
+    await runtime.start();
+    await vi.waitFor(
+      () => expect(f.connector.withdraw).toHaveBeenCalledOnce(),
+      { timeout: 5_000 },
+    );
+    await expect(runtime.shutdown()).rejects.toThrow('poll failed');
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('startup failure preserves the compensation withdraw error as cause', async () => {
+    const f = fixture();
+    f.connector.register.mockRejectedValueOnce(
+      new Error('registration failed'),
+    );
+    f.connector.withdraw.mockRejectedValueOnce(new Error('withdraw failed'));
+    const runtime = new SelfHostedBrokerRuntime(f.options);
+    const error = await runtime.start().then(
+      () => {
+        throw new Error('expected start to reject');
+      },
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('registration failed');
+    expect((error as Error).cause).toMatchObject({
+      message: 'withdraw failed',
+    });
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
 });
