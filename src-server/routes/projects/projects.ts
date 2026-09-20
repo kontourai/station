@@ -29,6 +29,7 @@ import {
   type ProjectConfig,
 } from '@kontourai/station-contracts/project';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
 import {
   normalizeProjectAgentScope,
@@ -197,10 +198,12 @@ async function registerPluginNamespaces(
 
 interface ProjectRouteDeps {
   /** Restricts the Project catalogue for an authenticated shared member. */
-  readableProjectSlugs?: (c: Context) => Promise<readonly string[] | undefined>;
+  readableProjectScopes?: (
+    c: Context,
+  ) => Promise<readonly ProjectMembershipScope[] | undefined>;
   projectCatalogueCurrent?: (
     c: Context,
-    admittedSlugs: readonly string[],
+    admittedScopes: readonly ProjectMembershipScope[],
   ) => Promise<boolean>;
   listAgents?: () => Promise<AgentOwnershipRef[]> | AgentOwnershipRef[];
   layoutCatalog?: DistributionProfileService;
@@ -614,11 +617,16 @@ export function createProjectRoutes(
   // List all projects
   app.get('/', async (c) => {
     try {
-      const readable = await deps.readableProjectSlugs?.(c);
-      const allowed = readable ? new Set(readable) : undefined;
+      const readable = await deps.readableProjectScopes?.(c);
+      const allowed = readable
+        ? new Set(readable.map((scope) => scope.localProjectSlug))
+        : undefined;
       const projects = await projectService.listProjects();
-      const currentReadable = allowed
-        ? new Set((await deps.readableProjectSlugs?.(c)) ?? [])
+      const currentScopes = allowed
+        ? ((await deps.readableProjectScopes?.(c)) ?? [])
+        : undefined;
+      const currentReadable = currentScopes
+        ? new Set(currentScopes.map((scope) => scope.localProjectSlug))
         : undefined;
       if (allowed) c.header('Cache-Control', 'no-store');
       const response = c.json({
@@ -632,13 +640,16 @@ export function createProjectRoutes(
               )
             : projects,
       });
-      if (!allowed || !currentReadable) return response;
-      const admitted = projects
-        .filter(
-          (project) =>
-            allowed.has(project.slug) && currentReadable.has(project.slug),
-        )
-        .map((project) => project.slug);
+      if (!allowed || !currentReadable || !readable || !currentScopes)
+        return response;
+      const admitted = readable.filter((scope) =>
+        currentScopes.some(
+          (current) =>
+            current.localProjectId === scope.localProjectId &&
+            current.portableProjectId === scope.portableProjectId &&
+            current.localProjectSlug === scope.localProjectSlug,
+        ),
+      );
       return await guardProjectResponse(response, async () =>
         deps.projectCatalogueCurrent
           ? await deps.projectCatalogueCurrent(c, admitted)

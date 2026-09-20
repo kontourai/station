@@ -289,13 +289,20 @@ describe('Project Routes', () => {
     const service = createMockProjectService();
     await service.createProject({ slug: 'shared', name: 'Shared' });
     await service.createProject({ slug: 'private', name: 'Private marker' });
-    const readableProjectSlugs = vi.fn(async () => ['shared']);
+    const readableProjectScopes = vi.fn(async () => [
+      {
+        stationId: 'station',
+        localProjectId: 'shared-id',
+        portableProjectId: 'portable-shared',
+        localProjectSlug: 'shared',
+      },
+    ]);
     const app = createProjectRoutes(
       service as any,
       createMockStorageAdapter(['shared', 'private']) as any,
       '/tmp',
       {
-        readableProjectSlugs,
+        readableProjectScopes,
         projectCatalogueCurrent: async () => true,
       },
     );
@@ -308,7 +315,7 @@ describe('Project Routes', () => {
       success: true,
       data: [{ slug: 'shared', name: 'Shared' }],
     });
-    expect(readableProjectSlugs).toHaveBeenCalledTimes(2);
+    expect(readableProjectScopes).toHaveBeenCalledTimes(2);
   });
 
   const tempDirs: string[] = [];

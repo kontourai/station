@@ -84,11 +84,19 @@ export class ProjectMembershipService {
   async readableProjectSlugs(
     authority: ProjectMembershipAuthority,
   ): Promise<readonly string[]> {
+    return (await this.readableProjectScopes(authority)).map(
+      (scope) => scope.localProjectSlug,
+    );
+  }
+
+  async readableProjectScopes(
+    authority: ProjectMembershipAuthority,
+  ): Promise<readonly ProjectMembershipScope[]> {
     const actor = await authority.current();
     const scopes = this.members.readableProjectScopes(actor.principal);
     const current = await this.currentActor(authority, actor.principal.id);
     const currentScopes = this.members.readableProjectScopes(current.principal);
-    const admitted: string[] = [];
+    const admitted: ProjectMembershipScope[] = [];
     for (const scope of scopes) {
       if (
         !currentScopes.some(
@@ -104,15 +112,20 @@ export class ProjectMembershipService {
           const live = await this.currentActor(authority, actor.principal.id);
           this.members.require(scope, live.principal, 'view');
         });
-        admitted.push(scope.localProjectSlug);
+        admitted.push(scope);
       } catch (error) {
         if (!(error instanceof ProjectMembershipRefusal)) throw error;
       }
     }
     const final = await this.currentActor(authority, actor.principal.id);
     const finalScopes = this.members.readableProjectScopes(final.principal);
-    return admitted.filter((slug) =>
-      finalScopes.some((scope) => scope.localProjectSlug === slug),
+    return admitted.filter((admittedScope) =>
+      finalScopes.some(
+        (scope) =>
+          scope.localProjectId === admittedScope.localProjectId &&
+          scope.portableProjectId === admittedScope.portableProjectId &&
+          scope.localProjectSlug === admittedScope.localProjectSlug,
+      ),
     );
   }
 
