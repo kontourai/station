@@ -420,11 +420,15 @@ async function exchange(
         channel.close();
         return;
       }
-      bridgeApplicationChannels(
-        nodeApplicationChannel(channel),
-        accountStation.station.openApplicationChannel(),
-        abort.signal,
-      );
+      try {
+        bridgeApplicationChannels(
+          nodeApplicationChannel(channel),
+          accountStation.station.openApplicationChannel(),
+          abort.signal,
+        );
+      } catch {
+        channel.close();
+      }
       return;
     }
     if (channel.getLabel() === 'station-application-protocol-fixture') {

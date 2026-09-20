@@ -99,6 +99,28 @@ describe('owned application IPC', () => {
     h.client.close();
     h.server.close();
   });
+  test('a refused destination closes that channel while later admission can proceed', async () => {
+    const accept = vi.fn((channel: ApplicationChannel) => {
+      channel.subscribe((message) => channel.send(String(message)), vi.fn());
+    });
+    accept.mockImplementationOnce(() => {
+      throw new Error('destination unavailable');
+    });
+    const h = peers(accept);
+    const refused = h.client.open();
+    const closed = vi.fn();
+    refused.subscribe(vi.fn(), closed);
+    await vi.waitFor(() => expect(closed).toHaveBeenCalledTimes(1));
+    const next = h.client.open();
+    const received = vi.fn();
+    next.subscribe(received, vi.fn());
+    next.send('permitted');
+    await vi.waitFor(() =>
+      expect(received).toHaveBeenCalledExactlyOnceWith('permitted'),
+    );
+    h.client.close();
+    h.server.close();
+  });
   test('failed IPC delivery settles locally without recursive cleanup', () => {
     const send = vi.fn(
       (_packet: Packet, done: (error: Error | null) => void) => {

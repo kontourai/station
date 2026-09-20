@@ -133,7 +133,12 @@ export class ApplicationIpc {
         this.close();
         return;
       }
-      this.accept(this.create(packet.id));
+      const channel = this.create(packet.id);
+      try {
+        this.accept(channel);
+      } catch {
+        channel.close();
+      }
       return;
     }
     const entry = this.channels.get(packet.id);
