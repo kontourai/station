@@ -3,6 +3,7 @@ import { closeSync, lstatSync, openSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { STATION_CONNECTION_PROOF_MAX_BYTES } from '@kontourai/station-contracts/connection-proof';
+import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
 
 const ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SDP_LIMIT = 128 * 1024;
@@ -50,12 +51,7 @@ function posixUid() {
   assertSelfHostedBrokerPlatform();
   return process.getuid!();
 }
-export type BrokerScope = {
-  stationId: string;
-  enrollmentId: string;
-  routingGeneration: number;
-  browserOrigin: string;
-};
+export type BrokerScope = SelfHostedBrokerScopeV1;
 
 function digest(secret: string) {
   return createHash('sha256').update(secret).digest();
@@ -115,7 +111,12 @@ export function validateBrokerScope(value: unknown): BrokerScope {
     !(origin.protocol === 'https:' || (origin.protocol === 'http:' && loopback))
   )
     throw new Error('invalid_browser_origin');
-  return scope as BrokerScope;
+  return {
+    stationId: scope.stationId,
+    enrollmentId: scope.enrollmentId,
+    routingGeneration: scope.routingGeneration as number,
+    browserOrigin: scope.browserOrigin,
+  };
 }
 
 /** Metadata-only broker authority. It never stores Station credentials, account identity or content. */

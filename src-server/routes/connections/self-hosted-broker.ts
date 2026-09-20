@@ -83,6 +83,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
         const candidate = error instanceof Error ? error.message : '';
         const known = new Set([
           'invalid_request',
+          'invalid_scope',
           'invalid_station_id',
           'invalid_enrollment_id',
           'invalid_generation',
