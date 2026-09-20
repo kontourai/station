@@ -483,6 +483,13 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       })),
       supplementalMessages,
       retainedLiveAnswer ? [retainedLiveAnswer] : [],
+    ).map((message) =>
+      message.changedFiles || !message.turnId
+        ? message
+        : {
+            ...message,
+            changedFiles: changedFilesByTurn.get(message.turnId),
+          },
     );
   }, [
     enabled,
