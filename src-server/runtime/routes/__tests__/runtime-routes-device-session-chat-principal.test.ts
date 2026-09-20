@@ -386,23 +386,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         transcripts: orchestration,
       });
     }
-    const project = {
-      id: task.projectId,
-      slug: task.projectId,
-      name: 'Project',
-      workingDirectory: roomHomeDir,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-    };
-    const taskGraph = taskReferences
-      ? new TaskGraphService(roomHomeDir, {
-          projectService: { getProject: () => project },
-        })
-      : undefined;
-    const referenceTask = await taskGraph?.createTask({
-      projectId: task.projectId,
-      title: 'Kept answer',
-    });
     const membershipStorage = withMembership
       ? new FileStorageAdapter(roomHomeDir)
       : undefined;
@@ -422,6 +405,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const privateProject = await membershipProjects?.createProject({
       name: 'Private marker',
       slug: 'private-project',
+    });
+    const project = sharedProject ?? {
+      id: task.projectId,
+      slug: task.projectId,
+      name: 'Project',
+      workingDirectory: roomHomeDir,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+    };
+    const taskGraph =
+      taskReferences || withMembership
+        ? new TaskGraphService(roomHomeDir, {
+            projectService: { getProject: () => project },
+          })
+        : undefined;
+    const referenceTask = await taskGraph?.createTask({
+      projectId: project.id,
+      title: 'Kept answer',
     });
     const membership = membershipStorage
       ? createProjectMembershipRuntime(
@@ -449,6 +450,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       : undefined;
     const context = deepStub({
       projectMembership: membership?.service,
+      projectSharedTasks: membership?.sharedTasks,
       ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
       deploymentAuthentication: localAccounts ?? deploymentAuthentication,
       localAccounts,
@@ -513,6 +515,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       pairing,
       paired,
       referenceTask,
+      taskGraph,
     };
   }
 
@@ -1033,6 +1036,74 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           })),
           Authorization: `Bearer ${replacement.credential}`,
         });
+      const sharedTaskId = h.referenceTask!.id;
+      expect(
+        (
+          await h.app.request(`${origin}/api/tasks/${sharedTaskId}/room`, {
+            headers: {
+              Origin: origin,
+              Authorization: `Bearer ${OPERATOR_SECRET}`,
+            },
+          })
+        ).status,
+      ).toBe(200);
+      const sharedTask = await h.app.request(
+        `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
+        {
+          method: 'PUT',
+          headers: {
+            Origin: origin,
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
+          },
+        },
+      );
+      expect(sharedTask.status, await sharedTask.clone().text()).toBe(201);
+      const sharedTaskReceipt = (await sharedTask.json()) as {
+        data: { shareId: string };
+      };
+      expect(
+        (await projectRead('/api/projects/example/shared-work')).status,
+      ).toBe(200);
+      expect(
+        (
+          await projectRead(
+            `/api/projects/example/shared-work/${sharedTaskId}/history`,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await projectRead(
+            '/api/projects/example/shared-work/private-task/history',
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (await projectRead(`/api/tasks/${sharedTaskId}/room/history`)).status,
+      ).toBe(403);
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
+            {
+              method: 'DELETE',
+              headers: {
+                Origin: origin,
+                Authorization: `Bearer ${OPERATOR_SECRET}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ shareId: sharedTaskReceipt.data.shareId }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await projectRead(
+            `/api/projects/example/shared-work/${sharedTaskId}/history`,
+          )
+        ).status,
+      ).toBe(404);
       const shared = await projectRead('/api/projects/example');
       expect(shared.status, await shared.clone().text()).toBe(200);
       const sharedBody = await shared.json();
