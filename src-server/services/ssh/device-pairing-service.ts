@@ -21,7 +21,9 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_PROTOCOL_VERSION,
   DEVICE_PAIRING_SCOPE,
+  type DeviceAccountBindingCandidate,
   type DevicePairingOffer,
+  type DevicePairingConfirmation,
   type DevicePairingRequest,
   type DevicePrincipalBinding,
   isPairingScopeSubset,
@@ -146,6 +148,7 @@ const PRE_ACTIVITY_DEVICE_RECORD_KEYS = new Set([
   'requester',
 ]);
 const TAILNET_REQUESTER_KEYS = new Set(['provider', 'login', 'displayName']);
+const ACCOUNT_CANDIDATE_KEYS = new Set(['issuer', 'subject', 'displayName']);
 const NOT_REVOKED_KEYS = new Set(['state']);
 const UNOBSERVED_REVOCATION_KEYS = new Set(['state']);
 const RECORDED_REVOCATION_KEYS = new Set(['state', 'actor', 'reason']);
@@ -202,6 +205,8 @@ interface PairingOfferState extends DevicePairingOffer {
    * network identity; `station.device_pairing.requests` holds the same line.
    */
   requesterPosition?: PairingRequesterPosition;
+  /** PRIVATE provider session used to revalidate an account candidate at approval. */
+  accountCandidateSessionId?: string;
 }
 
 type PairingProvenance =
@@ -468,23 +473,44 @@ function publicDevice(device: StoredDevice): PairedDevice {
   };
 }
 
-function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
-  if (!value || typeof value !== 'object' || !isValidStoredRequester(requester))
-    return false;
-  const binding = value as Record<string, unknown>;
+function isValidAccountCandidate(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
   return (
+    hasOnlyKnownKeys(candidate, ACCOUNT_CANDIDATE_KEYS) &&
+    typeof candidate.issuer === 'string' &&
+    safeRequesterText(candidate.issuer, 254) &&
+    typeof candidate.subject === 'string' &&
+    safeRequesterText(candidate.subject, 254) &&
+    typeof candidate.displayName === 'string' &&
+    safeRequesterText(candidate.displayName, 128)
+  );
+}
+
+function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const binding = value as Record<string, unknown>;
+  const common =
     hasOnlyKnownKeys(
       binding,
-      new Set([
-        'provider',
-        'subject',
-        'approvedAt',
-        'approvalId',
-        'approvedBy',
-      ]),
+      binding.kind === 'account'
+        ? new Set([
+            'kind',
+            'issuer',
+            'subject',
+            'displayName',
+            'approvedAt',
+            'approvalId',
+            'approvedBy',
+          ])
+        : new Set([
+            'provider',
+            'subject',
+            'approvedAt',
+            'approvalId',
+            'approvedBy',
+          ]),
     ) &&
-    binding.provider === 'tailscale-serve' &&
-    binding.subject === (requester as TailscaleServeRequester).login &&
     typeof binding.approvedAt === 'number' &&
     Number.isSafeInteger(binding.approvedAt) &&
     binding.approvedAt >= 0 &&
@@ -494,7 +520,23 @@ function isValidPrincipalBinding(value: unknown, requester: unknown): boolean {
       id: binding.approvedBy,
       kind: 'human',
       display: 'approver',
-    })
+    });
+  if (!common) return false;
+  if (binding.kind === 'account') {
+    return (
+      typeof binding.issuer === 'string' &&
+      safeRequesterText(binding.issuer, 254) &&
+      typeof binding.subject === 'string' &&
+      safeRequesterText(binding.subject, 254) &&
+      typeof binding.displayName === 'string' &&
+      safeRequesterText(binding.displayName, 128)
+    );
+  }
+  return (
+    binding.kind === undefined &&
+    isValidStoredRequester(requester) &&
+    binding.provider === 'tailscale-serve' &&
+    binding.subject === (requester as TailscaleServeRequester).login
   );
 }
 
@@ -547,9 +589,13 @@ function pairingProvenance(input: {
 }
 
 function cloneRequest(request: DevicePairingRequest): DevicePairingRequest {
-  return request.source === 'tailnet'
-    ? { ...request, requester: { ...request.requester } }
-    : { ...request };
+  const cloned =
+    request.source === 'tailnet'
+      ? { ...request, requester: { ...request.requester } }
+      : { ...request };
+  return request.accountCandidate
+    ? { ...cloned, accountCandidate: { ...request.accountCandidate } }
+    : cloned;
 }
 
 function safeRequesterText(value: string, maxLength: number): boolean {
@@ -714,8 +760,9 @@ function validateRegistry(
       (device.source === 'tailnet' &&
         !isValidStoredRequester(device.requester)) ||
       (device.principalBinding !== undefined &&
-        (device.source !== 'tailnet' ||
-          device.kind !== 'device' ||
+        (device.kind !== 'device' ||
+          ((device.principalBinding as { kind?: string }).kind !== 'account' &&
+            device.source !== 'tailnet') ||
           !isValidPrincipalBinding(
             device.principalBinding,
             device.requester,
@@ -975,6 +1022,8 @@ export class DevicePairingService {
       deviceName: string;
       clientInstanceId?: string;
       requesterPosition: PairingRequesterPosition;
+      accountCandidate?: DeviceAccountBindingCandidate;
+      accountCandidateSessionId?: string;
     } & PairingProvenance,
   ): DevicePairingRequest {
     const offer = input.offerId
@@ -990,11 +1039,17 @@ export class DevicePairingService {
         !CLIENT_INSTANCE_ID_PATTERN.test(input.clientInstanceId)) ||
       (input.offerId !== '' && !OFFER_ID_PATTERN.test(input.offerId)) ||
       (!equalSecret(input.proof, offer.challenge) &&
-        !equalSecret(input.proof.toUpperCase(), offer.manualCode))
+        !equalSecret(input.proof.toUpperCase(), offer.manualCode)) ||
+      (input.accountCandidate === undefined) !==
+        (input.accountCandidateSessionId === undefined) ||
+      (input.accountCandidate !== undefined &&
+        (!isValidAccountCandidate(input.accountCandidate) ||
+          !safeRequesterText(input.accountCandidateSessionId!, 512)))
     ) {
       throw new DevicePairingError('invalid_request');
     }
     offer.clientInstanceId = input.clientInstanceId;
+    offer.accountCandidateSessionId = input.accountCandidateSessionId;
     const provenance = pairingProvenance(input);
     const request: DevicePairingRequest = {
       requestId: randomUUID(),
@@ -1008,6 +1063,9 @@ export class DevicePairingService {
       createdAt: this.#now(),
       expiresAt: offer.expiresAt,
       ...provenance,
+      ...(input.accountCandidate
+        ? { accountCandidate: structuredClone(input.accountCandidate) }
+        : {}),
       status: 'pending',
     };
     offer.request = request;
@@ -1070,6 +1128,18 @@ export class DevicePairingService {
       .flatMap((offer) => (offer.request ? [cloneRequest(offer.request)] : []));
   }
 
+  accountCandidateForRequest(requestId: string) {
+    const offer = [...this.#offers.values()].find(
+      (candidate) => candidate.request?.requestId === requestId,
+    );
+    if (!offer?.request?.accountCandidate || !offer.accountCandidateSessionId)
+      return undefined;
+    return {
+      candidate: structuredClone(offer.request.accountCandidate),
+      sessionId: offer.accountCandidateSessionId,
+    };
+  }
+
   /**
    * @param approval Who is approving — see {@link PairingApproval}. Required
    *   on purpose: archive#1490 historically found an approval with no caller
@@ -1079,8 +1149,11 @@ export class DevicePairingService {
   confirmRequest(
     requestId: string,
     approval: PairingApproval,
-    personBindingApproval?: { readonly principalId: string },
-  ): DevicePairingRequest {
+    personBindingApproval?: {
+      readonly principalId: string;
+      readonly kind?: 'verified-ingress' | 'account';
+    },
+  ): DevicePairingConfirmation {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
     );
@@ -1105,8 +1178,6 @@ export class DevicePairingService {
       if (
         approval.kind !== 'presented-credential' ||
         offer.kind !== 'device' ||
-        offer.request.source !== 'tailnet' ||
-        !isValidStoredRequester(offer.request.requester) ||
         !isPrincipalRef({
           id: personBindingApproval.principalId,
           kind: 'human',
@@ -1115,17 +1186,40 @@ export class DevicePairingService {
       ) {
         throw new DevicePairingError('invalid_request');
       }
-      offer.principalBinding = {
-        provider: 'tailscale-serve',
-        subject: offer.request.requester.login,
+      const common = {
         approvedAt: this.#now(),
         approvalId: randomUUID(),
         approvedBy: personBindingApproval.principalId,
       };
+      if (personBindingApproval.kind === 'account') {
+        if (!isValidAccountCandidate(offer.request.accountCandidate))
+          throw new DevicePairingError('invalid_request');
+        offer.principalBinding = {
+          kind: 'account',
+          ...offer.request.accountCandidate!,
+          ...common,
+        };
+      } else {
+        if (
+          offer.request.source !== 'tailnet' ||
+          !isValidStoredRequester(offer.request.requester)
+        )
+          throw new DevicePairingError('invalid_request');
+        offer.principalBinding = {
+          provider: 'tailscale-serve',
+          subject: offer.request.requester.login,
+          ...common,
+        };
+      }
     }
     offer.status = 'confirmed';
     offer.request.status = 'confirmed';
-    return cloneRequest(offer.request);
+    return {
+      ...cloneRequest(offer.request),
+      ...(offer.principalBinding
+        ? { principalBinding: structuredClone(offer.principalBinding) }
+        : {}),
+    };
   }
 
   denyRequest(requestId: string): DevicePairingRequest {

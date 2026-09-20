@@ -590,6 +590,14 @@ interface DevicePairingRequestBase {
   createdAt: number;
   expiresAt: number;
   status: 'pending' | 'confirmed' | 'denied';
+  /** Provider-verified account offered for explicit operator binding. */
+  accountCandidate?: DeviceAccountBindingCandidate;
+}
+
+export interface DeviceAccountBindingCandidate {
+  issuer: string;
+  subject: string;
+  displayName: string;
 }
 
 export interface TailscaleServeRequester {
@@ -609,6 +617,10 @@ export type DevicePairingRequest = DevicePairingRequestBase &
         requester?: never;
       }
   );
+
+export type DevicePairingConfirmation = DevicePairingRequest & {
+  readonly principalBinding?: DevicePrincipalBinding;
+};
 
 /** A public access request is pending until explicit authority confirms it. */
 export interface DevicePairingAccessRequestResponse {
@@ -660,13 +672,23 @@ export interface ConnectedClientProjection {
 /** Explicit operator approval to recognize this device as a verified person.
  * Separate from wire scopes and Project membership; valid only while its device
  * grant is active. Historical requester provenance alone never creates it. */
-export interface DevicePrincipalBinding {
-  readonly provider: 'tailscale-serve';
-  readonly subject: string;
-  readonly approvedAt: number;
-  readonly approvalId: string;
-  readonly approvedBy: string;
-}
+export type DevicePrincipalBinding =
+  | {
+      readonly provider: 'tailscale-serve';
+      readonly subject: string;
+      readonly approvedAt: number;
+      readonly approvalId: string;
+      readonly approvedBy: string;
+    }
+  | {
+      readonly kind: 'account';
+      readonly issuer: string;
+      readonly subject: string;
+      readonly displayName: string;
+      readonly approvedAt: number;
+      readonly approvalId: string;
+      readonly approvedBy: string;
+    };
 
 export interface PairedDevice {
   readonly principalBinding?: DevicePrincipalBinding;

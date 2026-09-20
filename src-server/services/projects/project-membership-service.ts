@@ -81,6 +81,46 @@ export class ProjectMembershipService {
     );
   }
 
+  async readableProjectSlugs(
+    authority: ProjectMembershipAuthority,
+  ): Promise<readonly string[]> {
+    const actor = await authority.current();
+    const scopes = this.members.readableProjectScopes(actor.principal);
+    const current = await this.currentActor(authority, actor.principal.id);
+    const currentScopes = this.members.readableProjectScopes(current.principal);
+    const admitted: string[] = [];
+    for (const scope of scopes) {
+      if (
+        !currentScopes.some(
+          (candidate) =>
+            candidate.localProjectId === scope.localProjectId &&
+            candidate.portableProjectId === scope.portableProjectId &&
+            candidate.localProjectSlug === scope.localProjectSlug,
+        )
+      )
+        continue;
+      try {
+        await this.withProject(scope.localProjectSlug, scope, async () => {});
+        admitted.push(scope.localProjectSlug);
+      } catch (error) {
+        if (!(error instanceof ProjectMembershipRefusal)) throw error;
+      }
+    }
+    return admitted;
+  }
+
+  async requireProjectRead(
+    slug: string,
+    authority: ProjectMembershipAuthority,
+  ): Promise<void> {
+    const actor = await authority.current();
+    const scope = this.members.scopeForMember(slug, actor.principal, 'view');
+    await this.withProject(slug, scope, async () => {
+      const current = await this.currentActor(authority, actor.principal.id);
+      this.members.require(scope, current.principal, 'view');
+    });
+  }
+
   async invite(
     scope: ProjectMembershipScope,
     input: {

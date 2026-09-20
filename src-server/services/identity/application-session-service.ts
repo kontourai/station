@@ -499,12 +499,26 @@ export class ApplicationSessionService {
     if (device?.kind !== 'device' || (expected && device.id !== expected))
       throw new ApplicationSessionRefusal('invalid');
     const binding = device.principalBinding;
-    if (
-      binding &&
-      principalId &&
-      humanPrincipal(binding.provider, binding.subject, binding.subject).id !==
-        principalId
-    )
+    const accountBinding =
+      binding && 'kind' in binding && binding.kind === 'account'
+        ? binding
+        : undefined;
+    const ingressBinding =
+      binding && !('kind' in binding) ? binding : undefined;
+    const bindingPrincipalId = accountBinding
+      ? humanPrincipal(
+          accountBinding.issuer,
+          accountBinding.subject,
+          accountBinding.displayName,
+        ).id
+      : ingressBinding
+        ? humanPrincipal(
+            ingressBinding.provider,
+            ingressBinding.subject,
+            ingressBinding.subject,
+          ).id
+        : undefined;
+    if (bindingPrincipalId && principalId && bindingPrincipalId !== principalId)
       throw new ApplicationSessionRefusal('invalid');
     return device;
   }
