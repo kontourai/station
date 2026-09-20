@@ -85,6 +85,17 @@
   border-radius: 8px;
   background: var(--bg-primary);
 }
+.account-entry__project-list > li > div {
+  min-width: 0;
+}
+.account-entry__project-list strong {
+  overflow-wrap: anywhere;
+}
+.account-entry__guest-home + .button,
+.account-entry__guest-access + .button,
+.account-entry__device-onboarding + .button {
+  margin-block-start: 1rem;
+}
 @media (max-width: 480px) {
   .account-entry__guest-heading,
   .account-entry__project-list > li {

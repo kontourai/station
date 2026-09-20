@@ -1,4 +1,4 @@
-import { JoinDevicePairingPanel } from '@kontourai/station-connect/device-pairing-panel';
+import { JoinDevicePairingPanel } from '@kontourai/station-connect';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import {
   getProjectView,
@@ -23,20 +23,48 @@ const options = (signal: AbortSignal) => ({
 });
 
 function member(value: unknown): MemberProjectView {
-  if (!value || typeof value !== 'object' || !('kind' in value))
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !('version' in value) ||
+    value.version !== 'station.member-project/v1' ||
+    !('kind' in value) ||
+    value.kind !== 'member-project'
+  )
     throw new Error('Station returned a personal Project view to guest entry.');
   return value as MemberProjectView;
+}
+
+async function requireAccountAuthority(
+  apiBase: string,
+  principalId: string,
+  signal: AbortSignal,
+) {
+  try {
+    const account = await getAccountSession(apiBase, { signal });
+    if (!account || account.principal.id !== principalId)
+      throw new GuestAccountRequired();
+  } catch (cause) {
+    if (
+      cause instanceof GuestAccountRequired ||
+      (cause instanceof DOMException && cause.name === 'AbortError')
+    )
+      throw cause;
+    throw new GuestAccountUnavailable();
+  }
 }
 
 async function classifyReadFailure(
   cause: unknown,
   apiBase: string,
+  principalId: string,
   signal: AbortSignal,
 ): Promise<never> {
   if (!(cause instanceof StationHttpError) || cause.status !== 401) throw cause;
   try {
     const account = await getAccountSession(apiBase, { signal });
-    if (!account) throw new GuestAccountRequired();
+    if (!account || account.principal.id !== principalId)
+      throw new GuestAccountRequired();
     throw new GuestApprovalRequired();
   } catch (accountFailure) {
     if (
@@ -70,10 +98,12 @@ export function GuestDeviceOnboarding({
     queryKey: ['guest-projects', apiBase, principalId],
     queryFn: async ({ signal }) => {
       try {
+        await requireAccountAuthority(apiBase, principalId, signal);
         const values = await listProjectViews(apiBase, options(signal));
+        await requireAccountAuthority(apiBase, principalId, signal);
         return values.map(member);
       } catch (cause) {
-        return classifyReadFailure(cause, apiBase, signal);
+        return classifyReadFailure(cause, apiBase, principalId, signal);
       }
     },
     retry: false,
@@ -83,11 +113,14 @@ export function GuestDeviceOnboarding({
     queryKey: ['guest-project', apiBase, principalId, selectedProject],
     queryFn: async ({ signal }) => {
       try {
-        return member(
+        await requireAccountAuthority(apiBase, principalId, signal);
+        const value = member(
           await getProjectView(apiBase, selectedProject!, options(signal)),
         );
+        await requireAccountAuthority(apiBase, principalId, signal);
+        return value;
       } catch (cause) {
-        return classifyReadFailure(cause, apiBase, signal);
+        return classifyReadFailure(cause, apiBase, principalId, signal);
       }
     },
     enabled: !!selectedProject,
@@ -214,7 +247,7 @@ export function GuestDeviceOnboarding({
     >
       <div className="account-entry__guest-heading">
         <div>
-          <h2 id="shared-projects-title">Projects shared with you</h2>
+          <h2 id="shared-projects-title">Available Projects</h2>
           <p role="status">This browser has view-only Project access.</p>
         </div>
         <Button
@@ -256,7 +289,7 @@ export function GuestDeviceOnboarding({
           <Button onClick={() => setSelectedProject(undefined)}>Close</Button>
         </section>
       )}
-      {detail.isSuccess && (
+      {detail.isSuccess && selectedProject && (
         <section
           className="account-entry__project-detail"
           aria-label={`${detail.data.name} details`}

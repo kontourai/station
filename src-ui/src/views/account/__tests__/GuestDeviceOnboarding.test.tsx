@@ -6,6 +6,8 @@ import { GuestDeviceOnboarding } from '../GuestDeviceOnboarding';
 
 const apiA = 'https://a.example.test';
 const apiB = 'https://b.example.test';
+const principalA = `human:deployment:${'a'.repeat(64)}`;
+const principalB = `human:deployment:${'b'.repeat(64)}`;
 const view = (name: string, slug = name.toLowerCase()) => ({
   version: 'station.member-project/v1',
   kind: 'member-project',
@@ -16,6 +18,15 @@ const view = (name: string, slug = name.toLowerCase()) => ({
   actions: ['view'],
 });
 const success = (data: unknown) => Response.json({ success: true, data });
+const account = (id: string) =>
+  Response.json({
+    data: {
+      principal: { id, kind: 'human', display: id },
+      issuer: 'station:test',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      contacts: [],
+    },
+  });
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -26,11 +37,16 @@ test('a late Station A response cannot repopulate Station B UI or query cache', 
   });
   vi.stubGlobal(
     'fetch',
-    vi.fn((input: string) =>
-      input.startsWith(apiA)
+    vi.fn((input: string) => {
+      const url = new URL(input);
+      if (url.pathname === '/api/account-auth/session')
+        return Promise.resolve(
+          account(url.origin === apiA ? principalA : principalB),
+        );
+      return url.origin === apiA
         ? pendingA
-        : Promise.resolve(success([view('Beta')])),
-    ),
+        : Promise.resolve(success([view('Beta')]));
+    }),
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -39,9 +55,9 @@ test('a late Station A response cannot repopulate Station B UI or query cache', 
   const rendered = render(
     <QueryClientProvider client={client}>
       <GuestDeviceOnboarding
-        key={`${apiA}:person-a`}
+        key={`${apiA}:${principalA}`}
         apiBase={apiA}
-        principalId="person-a"
+        principalId={principalA}
         onAccountRequired={onAccountRequired}
       />
     </QueryClientProvider>,
@@ -49,9 +65,9 @@ test('a late Station A response cannot repopulate Station B UI or query cache', 
   rendered.rerender(
     <QueryClientProvider client={client}>
       <GuestDeviceOnboarding
-        key={`${apiB}:person-b`}
+        key={`${apiB}:${principalB}`}
         apiBase={apiB}
-        principalId="person-b"
+        principalId={principalB}
         onAccountRequired={onAccountRequired}
       />
     </QueryClientProvider>,
@@ -60,11 +76,11 @@ test('a late Station A response cannot repopulate Station B UI or query cache', 
   resolveA(success([view('Alpha')]));
   await waitFor(() =>
     expect(
-      client.getQueryData(['guest-projects', apiA, 'person-a']),
+      client.getQueryData(['guest-projects', apiA, principalA]),
     ).toBeUndefined(),
   );
   expect(screen.queryByText('Alpha')).toBeNull();
-  expect(client.getQueryData(['guest-projects', apiB, 'person-b'])).toEqual([
+  expect(client.getQueryData(['guest-projects', apiB, principalB])).toEqual([
     view('Beta'),
   ]);
   expect(onAccountRequired).not.toHaveBeenCalled();
@@ -77,11 +93,14 @@ test('a Project removed during detail read leaves no stale detail in UI or cache
   });
   vi.stubGlobal(
     'fetch',
-    vi.fn((input: string) =>
-      new URL(input).pathname === '/api/projects/example'
+    vi.fn((input: string) => {
+      const path = new URL(input).pathname;
+      if (path === '/api/account-auth/session')
+        return Promise.resolve(account(principalA));
+      return path === '/api/projects/example'
         ? pendingDetail
-        : Promise.resolve(success([view('Example Project', 'example')])),
-    ),
+        : Promise.resolve(success([view('Example Project', 'example')]));
+    }),
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -90,7 +109,7 @@ test('a Project removed during detail read leaves no stale detail in UI or cache
     <QueryClientProvider client={client}>
       <GuestDeviceOnboarding
         apiBase={apiA}
-        principalId="person-a"
+        principalId={principalA}
         onAccountRequired={vi.fn()}
       />
     </QueryClientProvider>,
@@ -115,11 +134,55 @@ test('a Project removed during detail read leaves no stale detail in UI or cache
   const state = client.getQueryState([
     'guest-project',
     apiA,
-    'person-a',
+    principalA,
     'example',
   ]);
   expect(state?.status).toBe('error');
   expect(state?.data).toBeUndefined();
+});
+
+test('a same-origin account replacement discards the in-flight Project response', async () => {
+  let currentPrincipal = principalA;
+  let resolveProjects!: (response: Response) => void;
+  const pendingProjects = new Promise<Response>((resolve) => {
+    resolveProjects = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string) => {
+      const path = new URL(input).pathname;
+      if (path === '/api/account-auth/session')
+        return Promise.resolve(account(currentPrincipal));
+      return pendingProjects;
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const onAccountRequired = vi.fn();
+  render(
+    <QueryClientProvider client={client}>
+      <GuestDeviceOnboarding
+        apiBase={apiA}
+        principalId={principalA}
+        onAccountRequired={onAccountRequired}
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(
+      (fetch as ReturnType<typeof vi.fn>).mock.calls.some(([input]) =>
+        String(input).endsWith('/api/projects'),
+      ),
+    ).toBe(true),
+  );
+  currentPrincipal = principalB;
+  resolveProjects(success([view('Alpha')]));
+  await waitFor(() => expect(onAccountRequired).toHaveBeenCalledOnce());
+  expect(screen.queryByText('Alpha')).toBeNull();
+  expect(
+    client.getQueryData(['guest-projects', apiA, principalA]),
+  ).toBeUndefined();
 });
 
 test('Device loss during detail read hides the whole catalogue and offers approval', async () => {
@@ -154,7 +217,7 @@ test('Device loss during detail read hides the whole catalogue and offers approv
     <QueryClientProvider client={client}>
       <GuestDeviceOnboarding
         apiBase={apiA}
-        principalId="person-a"
+        principalId={principalA}
         onAccountRequired={vi.fn()}
       />
     </QueryClientProvider>,

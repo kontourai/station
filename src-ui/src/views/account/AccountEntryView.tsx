@@ -13,6 +13,7 @@ import {
 } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { Button } from '../../components/Button';
+import { LazyBoundary } from '../../components/LazyBoundary';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';

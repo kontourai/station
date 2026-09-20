@@ -61,7 +61,7 @@ let signInFails: boolean;
 let joinFails: boolean;
 let previewFails: boolean;
 let provider: unknown;
-let pairingMode: 'none' | 'approve' | 'deny';
+let pairingMode: 'none' | 'approve' | 'deny' | 'personal';
 let deviceReady: boolean;
 let projectFailureStatus: number | undefined;
 
@@ -140,6 +140,9 @@ beforeEach(() => {
             proof: 'account-proof',
             requestId: 'account-request',
             expiresAt: Date.now() + 60_000,
+            ...(pairingMode === 'personal'
+              ? {}
+              : { requireAccountBinding: true }),
             accountCandidate: {
               issuer: descriptor.issuer,
               subject: 'invitee',
@@ -154,7 +157,7 @@ beforeEach(() => {
       ) {
         if (pairingMode === 'deny')
           return Response.json({ error: 'request_denied' }, { status: 403 });
-        deviceReady = true;
+        deviceReady = pairingMode === 'approve';
         return Response.json({
           environmentId: 'environment-account',
           delivery: 'browser-cookie',
@@ -165,15 +168,19 @@ beforeEach(() => {
             scope: 'orchestration:read',
             createdAt: Date.now(),
             revokedAt: null,
-            principalBinding: {
-              kind: 'account',
-              issuer: descriptor.issuer,
-              subject: 'invitee',
-              displayName: 'Invited person',
-              approvedAt: Date.now(),
-              approvalId: 'approval-1',
-              approvedBy: 'human:deployment:operator',
-            },
+            ...(pairingMode === 'approve'
+              ? {
+                  principalBinding: {
+                    kind: 'account',
+                    issuer: descriptor.issuer,
+                    subject: 'invitee',
+                    displayName: 'Invited person',
+                    approvedAt: Date.now(),
+                    approvalId: 'approval-1',
+                    approvedBy: 'human:deployment:operator',
+                  },
+                }
+              : {}),
           },
         });
       }
@@ -464,7 +471,7 @@ describe('invitation entry through real account SDK requests', () => {
       /approval|waiting/i,
     );
     expect(
-      await screen.findByText(/Projects shared with you/, undefined, {
+      await screen.findByText(/Available Projects/, undefined, {
         timeout: 5_000,
       }),
     ).toBeTruthy();
@@ -516,7 +523,7 @@ describe('invitation entry through real account SDK requests', () => {
       await screen.findByRole('button', { name: 'Request access' }),
     );
     expect(
-      await screen.findByRole('heading', { name: 'Projects shared with you' }),
+      await screen.findByRole('heading', { name: 'Available Projects' }),
     ).toBeTruthy();
     expect(
       calls.find((call) => call.path.endsWith('/pairing/access-request'))?.body,
@@ -557,7 +564,43 @@ describe('invitation entry through real account SDK requests', () => {
     expect(
       screen.getByRole('heading', { name: 'You joined the Project' }),
     ).toBeTruthy();
-    expect(screen.queryByText(/Projects shared with you/)).toBeNull();
+    expect(
+      screen.queryByRole('heading', {
+        level: 2,
+        name: 'Available Projects',
+      }),
+    ).toBeNull();
+  });
+
+  test('refuses a personal Device receipt instead of falling back to host access', async () => {
+    pairingMode = 'personal';
+    signedIn = true;
+    mount({});
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Request access for this browser',
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Request access' }),
+    );
+    expect(
+      await screen.findByText(
+        'This Station did not confirm the signed-in account for Device approval.',
+        undefined,
+        { timeout: 5_000 },
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('heading', {
+        level: 2,
+        name: 'Available Projects',
+      }),
+    ).toBeNull();
+    expect(deviceReady).toBe(false);
+    expect(calls.some((call) => call.path.endsWith('/pairing/exchange'))).toBe(
+      false,
+    );
   });
 
   test('failed sign-in clears the password and does not accept the invitation', async () => {
