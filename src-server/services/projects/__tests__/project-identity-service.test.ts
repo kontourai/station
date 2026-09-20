@@ -99,6 +99,7 @@ function harness(
 }
 
 describe('portable Project attachment', () => {
+<<<<<<< HEAD
   test('sets and clears an execution root without requiring a current binding', async () => {
     const { service, manifests } = harness();
     const attached = await service.attach({
@@ -300,6 +301,8 @@ describe('portable Project attachment', () => {
     );
   });
 
+=======
+>>>>>>> origin/main
   test('attachment persists and reads a portable execution root on the destination', async () => {
     const checkout = directory();
     const app = join(checkout, 'apps', 'web');

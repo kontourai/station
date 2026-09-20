@@ -167,6 +167,22 @@ describe('completePendingPairing interface', () => {
     expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct');
   });
 
+  test('refuses an incomplete restored account-bound request before exchange', async () => {
+    const exchange = vi.fn().mockResolvedValue(pairedResult());
+    const { clearPending, complete } = harness(exchange);
+    await expect(
+      complete(
+        pending({
+          requireAccountBinding: true,
+          clientInstanceId: '22222222-2222-4222-8222-222222222222',
+        }),
+        completionOptions(),
+      ),
+    ).resolves.toEqual({ status: 'failed' });
+    expect(exchange).not.toHaveBeenCalled();
+    expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct');
+  });
+
   test('runs one completion owner for concurrent subscribers and clears only after it settles', async () => {
     const durableCompletion = deferred<{ status: 'completed' }>();
     const completePaired = vi.fn(() => durableCompletion.promise);

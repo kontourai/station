@@ -233,6 +233,41 @@ describe('pairing client-instance identity', () => {
     ).toBe(true);
   });
 
+  test('keeps fresh account-bound intent independent from an old origin identity', async () => {
+    const oldId = '11111111-1111-4111-8111-111111111111';
+    const freshId = '22222222-2222-4222-8222-222222222222';
+    const bodies: Record<string, unknown>[] = [];
+    vi.stubGlobal('localStorage', {
+      getItem: () => oldId,
+      setItem: vi.fn(),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: URL | string, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({}), { status: 202 });
+      }),
+    );
+    try {
+      await requestCurrentStationAccess({
+        endpoint: 'https://station.example.test',
+        deviceName: 'Guest browser',
+        clientInstanceId: freshId,
+        requireAccountBinding: true,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(bodies).toEqual([
+      {
+        clientInstanceId: freshId,
+        deviceName: 'Guest browser',
+        requireAccountBinding: true,
+      },
+    ]);
+    expect(JSON.stringify(bodies)).not.toContain(oldId);
+  });
+
   test('keeps request and exchange identity stable when browser storage is unavailable', () => {
     const unavailableStorage = {
       getItem: () => {
