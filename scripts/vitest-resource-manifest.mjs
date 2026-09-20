@@ -122,6 +122,12 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Runs the source CLI twice against one private SQLite root to prove init recovery.
+  'scripts/__tests__/self-hosted-broker-cli.test.ts',
+  // Races two real worker-owned SQLite connections at one lease CAS barrier.
+  'src-server/services/connections/__tests__/self-hosted-broker-service.test.ts',
+  // Exercises owned Pion child lifecycle and injected teardown faults.
+  'src-server/services/connections/__tests__/pion-application-adapter.test.ts',
   // Launches real descendant trees and verifies signal/early-exit cleanup.
   'scripts/__tests__/dev-desktop-process.test.ts',
   // Real framework signal handlers run in bounded, isolated child processes.
