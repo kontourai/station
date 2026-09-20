@@ -20,6 +20,29 @@ async function touchTargetSize(locator: Locator) {
   });
 }
 
+async function visibleReaderAnchor(transcript: Locator) {
+  return transcript.evaluate((element) => {
+    const viewport = element.getBoundingClientRect();
+    const visible = [
+      ...element.querySelectorAll<HTMLElement>('[data-chat-message-key]'),
+    ]
+      .map((row) => ({ row, box: row.getBoundingClientRect() }))
+      .filter(
+        ({ box }) => box.bottom > viewport.top && box.top < viewport.bottom,
+      )
+      .sort(
+        (left, right) =>
+          Math.abs(left.box.top - viewport.top) -
+          Math.abs(right.box.top - viewport.top),
+      )[0];
+    if (!visible) return null;
+    return {
+      key: visible.row.dataset.chatMessageKey ?? '',
+      offset: visible.box.top - viewport.top,
+    };
+  });
+}
+
 function expectTouchTarget(size: { width: number; height: number }) {
   expect(size.width).toBeGreaterThanOrEqual(44);
   expect(size.height).toBeGreaterThanOrEqual(44);
@@ -391,6 +414,19 @@ test('conversation timeline crosses execution history, preserves the live draft,
   await dismissSetupLauncher(page);
   const composer = page.locator('textarea[placeholder*="Type a message"]');
   await composer.fill('Keep this live draft');
+  const liveTranscript = page.getByRole('log', {
+    name: 'Conversation transcript',
+  });
+  const tailScrollTop = await liveTranscript.evaluate(
+    (element) => element.scrollTop,
+  );
+  await liveTranscript.hover();
+  await page.mouse.wheel(0, -640);
+  await expect
+    .poll(() => liveTranscript.evaluate((element) => element.scrollTop))
+    .toBeLessThan(tailScrollTop);
+  const liveAnchor = await visibleReaderAnchor(liveTranscript);
+  expect(liveAnchor?.key).toBeTruthy();
   const openHistory = async () => {
     await page.getByRole('button', { name: 'Chat actions' }).click();
     await page.getByRole('menuitem', { name: 'Conversation history' }).click();
@@ -528,6 +564,32 @@ test('conversation timeline crosses execution history, preserves the live draft,
   await page.evaluate(() =>
     document.documentElement.setAttribute('data-theme', 'dark'),
   );
+  await page.getByRole('button', { name: 'Return to latest' }).click();
+  await expect(composer).toHaveValue('Keep this live draft');
+  await expect
+    .poll(async () => {
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      return (await visibleReaderAnchor(liveTranscript))?.key;
+    })
+    .toBe(liveAnchor!.key);
+  await expect
+    .poll(async () => {
+      const restored = await visibleReaderAnchor(liveTranscript);
+      return restored
+        ? Math.abs(restored.offset - liveAnchor!.offset)
+        : Infinity;
+    })
+    .toBeLessThanOrEqual(2);
+
+  await openHistory();
+  await page
+    .getByRole('combobox', { name: 'Conversation section' })
+    .selectOption('older-execution');
   await page.getByRole('button', { name: 'Fork from here…' }).click();
   await expect(
     page.getByRole('heading', { name: 'Fork from here' }),

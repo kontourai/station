@@ -24,6 +24,7 @@ export interface ConversationTimelineContext {
   sourceConversationId: string;
   sourceThreadId: string;
   sourceScrollTop: number;
+  sourceReaderAnchor?: { key: string; offset: number };
   sourceProjectSlug?: string;
   sourceProjectName?: string;
   apiBase: string;
@@ -245,6 +246,24 @@ export async function openConversationTimeline(input: {
       '[role="log"][aria-label="Conversation transcript"]',
     ),
   ].find((element) => element.dataset.chatSessionId === input.sourceChatId);
+  const transcriptBox = transcript?.getBoundingClientRect();
+  const sourceReaderAnchor = transcriptBox
+    ? [...transcript!.querySelectorAll<HTMLElement>('[data-chat-message-key]')]
+        .map((row) => ({ row, box: row.getBoundingClientRect() }))
+        .filter(
+          ({ box }) =>
+            box.bottom > transcriptBox.top && box.top < transcriptBox.bottom,
+        )
+        .sort(
+          (left, right) =>
+            Math.abs(left.box.top - transcriptBox.top) -
+            Math.abs(right.box.top - transcriptBox.top),
+        )
+        .map(({ row, box }) => ({
+          key: row.dataset.chatMessageKey ?? '',
+          offset: box.top - transcriptBox.top,
+        }))[0]
+    : undefined;
   const { getOrchestrationConversationEventWindow } = await import(
     '@kontourai/station-sdk/client'
   );
@@ -278,6 +297,7 @@ export async function openConversationTimeline(input: {
     sourceConversationId: input.sourceConversationId,
     sourceThreadId: input.sourceThreadId,
     sourceScrollTop: transcript?.scrollTop ?? 0,
+    ...(sourceReaderAnchor?.key ? { sourceReaderAnchor } : {}),
     sourceProjectSlug: input.projectSlug,
     sourceProjectName: input.projectName,
     apiBase: input.apiBase,
@@ -384,6 +404,8 @@ export function returnToLatestConversation(): void {
   navigationStore.setActiveChat(context.sourceChatId);
   navigationStore.setDockState(true);
   let attempts = 0;
+  let settlementFrames = 0;
+  let readerIntentRestored = false;
   const restoreReader = () => {
     if (navigationStore.getSnapshot().activeChat !== context.sourceChatId)
       return;
@@ -393,7 +415,30 @@ export function returnToLatestConversation(): void {
       ),
     ].find((element) => element.dataset.chatSessionId === context.sourceChatId);
     if (transcript) {
-      transcript.scrollTop = context.sourceScrollTop;
+      if (!readerIntentRestored && context.sourceReaderAnchor) {
+        readerIntentRestored = true;
+        // Reapply the captured reader intent before the virtualizer's first
+        // follow-tail layout pass; otherwise that pass overwrites the anchor
+        // restoration with the newest turn.
+        transcript.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+      }
+      const anchor = context.sourceReaderAnchor;
+      const row = anchor
+        ? [
+            ...transcript.querySelectorAll<HTMLElement>(
+              '[data-chat-message-key]',
+            ),
+          ].find((element) => element.dataset.chatMessageKey === anchor.key)
+        : undefined;
+      if (row && anchor) {
+        const transcriptTop = transcript.getBoundingClientRect().top;
+        transcript.scrollTop +=
+          row.getBoundingClientRect().top - transcriptTop - anchor.offset;
+      } else {
+        transcript.scrollTop = context.sourceScrollTop;
+      }
+      settlementFrames += 1;
+      if (settlementFrames < 20) requestAnimationFrame(restoreReader);
       return;
     }
     attempts += 1;
