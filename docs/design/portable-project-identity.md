@@ -798,6 +798,14 @@ Receiver admission, home location, membership and the integrated target picker
 retain their separate implementation and acceptance boundaries. See the
 [SDK identity API](../reference/sdk.md#portable-project-identity).
 
+The authenticated execution-root mutation carries the caller's complete current
+portable identity and receiver-local Project ID as optimistic guards. The
+Project storage owner checks both and the current local Project revision under one mutation lock before
+atomically replacing the sidecar. Setting a root validates only its declared
+resource and relative path; the resource may be intentionally unbound. Clearing
+removes only the selection, and an exact replay performs no write. Neither action
+changes the portable ID, bindings, membership, history, or compute authority.
+
 `POST /api/projects/:slug/bind` holds the selected Project revision while it
 verifies the checkout, publishes the binding and derives the response view.
 A Project changed before admission returns 409 without recording a binding;

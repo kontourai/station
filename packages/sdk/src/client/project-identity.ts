@@ -5,6 +5,7 @@ import {
   PROJECT_PORTABLE_IDENTITY_FIELDS,
   type ProjectAttachRequest,
   type ProjectAttachResult,
+  type ProjectExecutionRootMutationRequest,
   type ProjectIdentityView,
   type ProjectPortableIdentity,
   validateProjectManifest,
@@ -123,6 +124,38 @@ export async function prepareProjectIdentity(
     { ...opts, readOnly: false },
   );
   return readProjectIdentityView(await unwrapOrThrow<unknown>(response), slug);
+}
+
+/** Set or clear the portable execution root under an exact identity guard. */
+export async function updateProjectExecutionRoot(
+  apiBase: string,
+  slug: string,
+  input: ProjectExecutionRootMutationRequest,
+  opts?: ClientRequestOptions,
+): Promise<ProjectIdentityView> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/identity/execution-root`,
+    'PUT',
+    { ...opts, readOnly: false },
+    structuredClone(input),
+  );
+  const view = readProjectIdentityView(
+    await unwrapOrThrow<unknown>(response),
+    slug,
+  );
+  const requested = input.executionRoot;
+  const actual = view.identity.executionRoot;
+  if (
+    view.identity.id !== input.expectedIdentity.id ||
+    view.association.localProjectId !== input.expectedLocalProjectId ||
+    (requested === null
+      ? actual !== undefined
+      : actual?.repoId !== requested.repoId || actual.path !== requested.path)
+  )
+    throw new Error(
+      'This Station did not confirm the requested Project execution root mutation.',
+    );
+  return view;
 }
 
 /** Create a destination-local Project carrying an existing portable identity. */

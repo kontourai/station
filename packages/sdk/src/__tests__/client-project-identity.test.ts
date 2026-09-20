@@ -3,6 +3,7 @@ import {
   attachProject,
   getProjectIdentity,
   prepareProjectIdentity,
+  updateProjectExecutionRoot,
 } from '@kontourai/station-sdk/project-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -38,6 +39,75 @@ beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Project identity client', () => {
+  test('updates an execution root with the exact identity snapshot', async () => {
+    const updated: ProjectIdentityView = {
+      ...view(),
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/web',
+        },
+      },
+    };
+    vi.mocked(fetch).mockResolvedValue(reply(updated));
+    expect(
+      await updateProjectExecutionRoot('https://station.example', 'local', {
+        expectedIdentity: view().identity,
+        expectedLocalProjectId: view().association.localProjectId,
+        executionRoot: updated.identity.executionRoot ?? null,
+      }),
+    ).toEqual(updated);
+    expect(fetch).toHaveBeenCalledWith(
+      'https://station.example/api/projects/local/identity/execution-root',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          expectedIdentity: view().identity,
+          expectedLocalProjectId: view().association.localProjectId,
+          executionRoot: updated.identity.executionRoot,
+        }),
+      }),
+    );
+  });
+
+  test.each([
+    {
+      association: {
+        ...view().association,
+        localProjectId: 'replacement-project',
+      },
+    },
+    {
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/other',
+        },
+      },
+    },
+  ])('refuses an unconfirmed execution-root mutation', async (override) => {
+    const requested = {
+      repoId: 'git.example/acme/repo',
+      path: 'apps/web',
+    };
+    vi.mocked(fetch).mockResolvedValue(
+      reply({
+        ...view(),
+        identity: { ...view().identity, executionRoot: requested },
+        ...override,
+      }),
+    );
+    await expect(
+      updateProjectExecutionRoot('https://station.example', 'local', {
+        expectedIdentity: view().identity,
+        expectedLocalProjectId: view().association.localProjectId,
+        executionRoot: requested,
+      }),
+    ).rejects.toThrow('did not confirm');
+  });
+
   test('reads and explicitly prepares against the supplied environment', async () => {
     vi.mocked(fetch).mockResolvedValue(reply(view()));
     expect(

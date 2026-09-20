@@ -864,7 +864,8 @@ Fetches live ACP slash-command autocomplete options.
 ## Portable Project identity
 
 The React-free `@kontourai/station-sdk/project-identity` entry point exports
-`getProjectIdentity`, `prepareProjectIdentity`, and `attachProject`. Each takes
+`getProjectIdentity`, `prepareProjectIdentity`, `attachProject`, and
+`updateProjectExecutionRoot`. Each takes
 an explicit Station API base and `ClientRequestOptions`; pass the authenticated
 request scope and credential options for that particular Station. Identity reads
 use the Project family's read permission; preparation and attachment require its
@@ -925,6 +926,13 @@ captures attachment input before asynchronous work. An incompatible or older
 server produces an error, never an ordinary local-creation fallback. The full
 portable target picker, shared-member authorization and cross-machine execution
 admission remain separate consumers of this identity API.
+
+`updateProjectExecutionRoot(apiBase, slug, input, options)` sets a declared
+resource and repo-relative directory, or clears the selection with `null`.
+`input.expectedIdentity` and `input.expectedLocalProjectId` must come from one
+current identity view; a concurrent Project or identity change returns a conflict. The mutation
+is idempotent and does not inspect, create, or bind a checkout. The selected
+directory is verified only when execution later resolves it on that Station.
 
 ## Project access administration and account entry
 
@@ -2569,4 +2577,3 @@ account's request scope, bound channel counts/lifetimes, and close the transport
 when its endpoint trust retires. Transport readiness alone does not partition
 account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
-
