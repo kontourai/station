@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./self-hosted-broker": "./src/self-hosted-broker.ts",
     "./connection-proof": "./src/connection-proof.ts",
     "./mobile-device": "./src/mobile-device.ts",
     ".": "./src/index.ts",
