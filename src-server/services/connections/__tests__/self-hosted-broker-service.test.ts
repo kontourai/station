@@ -115,8 +115,12 @@ describe.runIf(process.platform !== 'win32')(
         false,
       );
       expect(
-        (await post('/connections/offers', provisioned.connector, { scope }))
-          .status,
+        (
+          await post('/connections/offers', provisioned.connector, {
+            scope,
+            limit: 32,
+          })
+        ).status,
       ).toBe(200);
       expect(
         (

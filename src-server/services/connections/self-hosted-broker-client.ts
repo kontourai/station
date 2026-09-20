@@ -1,7 +1,9 @@
 import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
 import type { BrokerCredential } from './self-hosted-broker-service.js';
 
-const MAX_RESPONSE_BYTES = 256 * 1024;
+const MAX_RESPONSE_BYTES = 1024 * 1024;
+const ID = /^[A-Za-z0-9_-]{8,128}$/;
+const SDP_LIMIT = 128 * 1024;
 export interface BrokerOffer {
   clientId: string;
   nonce: string;
@@ -32,36 +34,70 @@ function exact(value: unknown, keys: string[]) {
     throw new Error('broker_response_invalid');
   return candidate;
 }
+async function readBounded(response: Response) {
+  if (!response.body) throw new Error('broker_response_invalid');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const item = await reader.read();
+      if (item.done) break;
+      total += item.value.byteLength;
+      if (total > MAX_RESPONSE_BYTES)
+        throw new Error('broker_response_too_large');
+      chunks.push(item.value);
+    }
+  } finally {
+    if (total > MAX_RESPONSE_BYTES) await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
 export class SelfHostedBrokerClient {
   readonly #base: string;
+  readonly #scope: Readonly<SelfHostedBrokerScopeV1>;
+  readonly #credential: Readonly<BrokerCredential>;
   constructor(
     base: string,
-    private readonly scope: SelfHostedBrokerScopeV1,
-    private readonly credential: BrokerCredential,
+    scope: SelfHostedBrokerScopeV1,
+    credential: BrokerCredential,
     private readonly request: typeof fetch = fetch,
+    private readonly now: () => number = Date.now,
   ) {
     this.#base = canonicalBase(base);
+    this.#scope = Object.freeze(structuredClone(scope));
+    this.#credential = Object.freeze(structuredClone(credential));
   }
   async #post(
     path: string,
     body: Record<string, unknown>,
     signal: AbortSignal,
   ) {
+    signal.throwIfAborted();
+    const boundedSignal = AbortSignal.any([
+      signal,
+      AbortSignal.timeout(15_000),
+    ]);
     const response = await this.request(`${this.#base}/broker/v1${path}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.credential.secret}`,
-        'X-Broker-Credential-Id': this.credential.id,
+        Authorization: `Bearer ${this.#credential.secret}`,
+        'X-Broker-Credential-Id': this.#credential.id,
         'Content-Type': 'application/json',
-        Origin: this.scope.browserOrigin,
+        Origin: this.#scope.browserOrigin,
       },
-      body: JSON.stringify({ ...body, scope: this.scope }),
+      body: JSON.stringify({ ...body, scope: this.#scope }),
       redirect: 'error',
-      signal,
+      signal: boundedSignal,
     });
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES)
-      throw new Error('broker_response_too_large');
+    const bytes = await readBounded(response);
     let value: unknown;
     try {
       value = JSON.parse(
@@ -77,10 +113,21 @@ export class SelfHostedBrokerClient {
   async register(signal: AbortSignal) {
     const value = exact(await this.#post('/leases/register', {}, signal), [
       'registeredAt',
+      'revision',
+      'expiresAt',
     ]);
-    if (!Number.isSafeInteger(value.registeredAt))
+    if (
+      !Number.isSafeInteger(value.registeredAt) ||
+      !Number.isSafeInteger(value.revision) ||
+      !Number.isSafeInteger(value.expiresAt) ||
+      (value.expiresAt as number) <= this.now()
+    )
       throw new Error('broker_response_invalid');
-    return { registeredAt: value.registeredAt as number };
+    return {
+      registeredAt: value.registeredAt as number,
+      revision: value.revision as number,
+      expiresAt: value.expiresAt as number,
+    };
   }
   async renew(expectedRevision: number, signal: AbortSignal) {
     const value = exact(
@@ -89,7 +136,9 @@ export class SelfHostedBrokerClient {
     );
     if (
       !Number.isSafeInteger(value.revision) ||
-      !Number.isSafeInteger(value.expiresAt)
+      !Number.isSafeInteger(value.expiresAt) ||
+      (value.revision as number) !== expectedRevision + 1 ||
+      (value.expiresAt as number) <= this.now()
     )
       throw new Error('broker_response_invalid');
     return {
@@ -98,18 +147,24 @@ export class SelfHostedBrokerClient {
     };
   }
   async offers(signal: AbortSignal) {
-    const value = exact(await this.#post('/connections/offers', {}, signal), [
-      'offers',
-    ]);
-    if (!Array.isArray(value.offers) || value.offers.length > 32)
+    const value = exact(
+      await this.#post('/connections/offers', { limit: 1 }, signal),
+      ['offers'],
+    );
+    if (!Array.isArray(value.offers) || value.offers.length > 1)
       throw new Error('broker_response_invalid');
     return value.offers.map((item) => {
       const offer = exact(item, ['clientId', 'nonce', 'offerSdp', 'expiresAt']);
       if (
         typeof offer.clientId !== 'string' ||
+        !ID.test(offer.clientId) ||
         typeof offer.nonce !== 'string' ||
+        !ID.test(offer.nonce) ||
         typeof offer.offerSdp !== 'string' ||
-        !Number.isSafeInteger(offer.expiresAt)
+        offer.offerSdp.length === 0 ||
+        Buffer.byteLength(offer.offerSdp) > SDP_LIMIT ||
+        !Number.isSafeInteger(offer.expiresAt) ||
+        (offer.expiresAt as number) <= this.now()
       )
         throw new Error('broker_response_invalid');
       return offer as unknown as BrokerOffer;

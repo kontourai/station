@@ -132,8 +132,14 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     '/connections/offers',
     invoke(async (c) => {
       const { body, credential } = await parse(c);
-      exact(body, ['scope']);
-      return { offers: service.offers(body.scope as BrokerScope, credential) };
+      exact(body, ['scope', 'limit']);
+      return {
+        offers: service.offers(
+          body.scope as BrokerScope,
+          credential,
+          Number(body.limit),
+        ),
+      };
     }),
   );
   app.post(

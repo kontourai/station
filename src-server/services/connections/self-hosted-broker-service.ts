@@ -313,7 +313,7 @@ export class SelfHostedBrokerService {
   }
   register(scope: BrokerScope, credential: BrokerCredential) {
     return this.transaction(() => {
-      this.lease(scope, credential, 'connector');
+      const lease = this.lease(scope, credential, 'connector');
       const result = this.db
         .prepare(
           'UPDATE broker_leases SET last_seen_at=? WHERE station_id=? AND enrollment_id=? AND generation=? AND withdrawn_at IS NULL',
@@ -325,7 +325,11 @@ export class SelfHostedBrokerService {
           scope.routingGeneration,
         );
       if (result.changes !== 1) throw new Error('lease_conflict');
-      return { registeredAt: this.now() };
+      return {
+        registeredAt: this.now(),
+        revision: lease.lease_revision,
+        expiresAt: lease.expires_at,
+      };
     });
   }
   status(scope: BrokerScope, credential: BrokerCredential) {
@@ -463,8 +467,10 @@ export class SelfHostedBrokerService {
       if (result.changes !== 1) throw new Error('connection_unavailable');
     });
   }
-  offers(scope: BrokerScope, credential: BrokerCredential) {
+  offers(scope: BrokerScope, credential: BrokerCredential, limit = 32) {
     return this.transaction(() => {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 32)
+        throw new Error('invalid_request');
       this.lease(scope, credential, 'connector');
       const now = this.now();
       this.db
@@ -474,8 +480,14 @@ export class SelfHostedBrokerService {
         .run(now);
       return this.db
         .prepare(`SELECT client_id AS clientId, nonce, offer_sdp AS offerSdp, expires_at AS expiresAt
-      FROM broker_connections WHERE station_id=? AND enrollment_id=? AND generation=? AND answer_sdp IS NULL AND expires_at>? ORDER BY created_at LIMIT 32`)
-        .all(scope.stationId, scope.enrollmentId, scope.routingGeneration, now);
+      FROM broker_connections WHERE station_id=? AND enrollment_id=? AND generation=? AND answer_sdp IS NULL AND expires_at>? ORDER BY created_at,client_id LIMIT ?`)
+        .all(
+          scope.stationId,
+          scope.enrollmentId,
+          scope.routingGeneration,
+          now,
+          limit,
+        );
     });
   }
   read(

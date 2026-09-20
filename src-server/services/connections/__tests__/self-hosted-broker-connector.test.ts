@@ -52,6 +52,11 @@ describe.runIf(process.platform !== 'win32')(
           nonce: 'nonce-12345678',
           offerSdp: 'offer',
         });
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-second12',
+          nonce: 'nonce-second12',
+          offerSdp: 'offer-two',
+        });
         let current = true;
         const answer = vi.fn(async () => ({
           answerSdp: 'answer',
@@ -64,6 +69,7 @@ describe.runIf(process.platform !== 'win32')(
             scope,
             f.credentials.connector,
             f.request,
+            () => 1_000,
           ),
           { current: () => descriptor, isCurrent: () => current },
           answer,
@@ -72,8 +78,8 @@ describe.runIf(process.platform !== 'win32')(
         await connector.register(signal);
         expect((await connector.renew(signal)).revision).toBe(1);
         expect(await connector.poll(signal)).toEqual({
-          observed: 1,
-          answered: 1,
+          observed: 2,
+          answered: 2,
         });
         expect(answer).toHaveBeenCalledWith(
           expect.objectContaining({ offerSdp: 'offer' }),
@@ -93,9 +99,29 @@ describe.runIf(process.platform !== 'win32')(
           'broker_connector_trust_retired',
         );
         current = true;
+        const restarted = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          answer,
+        );
+        expect((await restarted.register(signal)).revision).toBe(1);
+        expect((await restarted.renew(signal)).revision).toBe(2);
         await connector.withdraw(signal);
         expect(() => f.service.status(scope, f.credentials.routing)).toThrow(
           'broker_credential_refused',
+        );
+        await expect(connector.renew(signal)).rejects.toThrow(
+          'broker_connector_withdrawn',
+        );
+        await expect(connector.register(signal)).rejects.toThrow(
+          'broker_connector_withdrawn',
         );
       } finally {
         f.service.close();
@@ -111,6 +137,7 @@ describe.runIf(process.platform !== 'win32')(
             scope,
             f.credentials.connector,
             f.request,
+            () => 1_000,
           ),
           {
             current: () => ({ ...descriptor, stationId: 'station-other123' }),
@@ -118,6 +145,7 @@ describe.runIf(process.platform !== 'win32')(
           },
           vi.fn(),
         );
+        await connector.register(new AbortController().signal);
         await expect(
           connector.poll(new AbortController().signal),
         ).rejects.toThrow('broker_connector_trust_unavailable');
@@ -134,7 +162,7 @@ describe.runIf(process.platform !== 'win32')(
           status: 302,
           headers: { Location: 'https://other.example' },
         }),
-        new Response('x'.repeat(256 * 1024 + 1), { status: 200 }),
+        new Response('x'.repeat(1024 * 1024 + 1), { status: 200 }),
       ]) {
         const client = new SelfHostedBrokerClient(
           'https://broker.example',
@@ -143,6 +171,40 @@ describe.runIf(process.platform !== 'win32')(
           async () => response,
         );
         await expect(client.register(signal)).rejects.toThrow();
+      }
+    });
+    test('disposes provisional answer resources when publication fails', async () => {
+      const f = fixture();
+      try {
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-dispose1',
+          nonce: 'nonce-dispose1',
+          offerSdp: 'offer',
+        });
+        const dispose = vi.fn();
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async () => {
+            f.service.withdraw(scope, f.credentials.connector);
+            return { answerSdp: 'answer', stationProof: 'proof', dispose };
+          },
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.poll(signal)).rejects.toThrow(
+          'broker_request_refused_401',
+        );
+        expect(dispose).toHaveBeenCalledOnce();
+      } finally {
+        f.service.close();
       }
     });
   },
