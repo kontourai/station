@@ -262,7 +262,10 @@ export function GuestDeviceOnboarding({
       </div>
       {notice && <p role="alert">{notice}</p>}
       {projects.data.length === 0 ? (
-        <Empty variant="compact" label="Nothing shared yet" />
+        <Empty
+          variant="compact"
+          label="Projects are not currently shared with this account."
+        />
       ) : (
         <ul className="account-entry__project-list">
           {projects.data
