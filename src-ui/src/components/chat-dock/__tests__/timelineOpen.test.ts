@@ -35,6 +35,7 @@ test('shows one persistent loading notice and coalesces duplicate opens', async 
     notify,
     dismiss,
     () => true,
+    vi.fn(),
   );
   const duplicate = openTimeline(
     'http://station.test',
@@ -43,6 +44,7 @@ test('shows one persistent loading notice and coalesces duplicate opens', async 
     notify,
     dismiss,
     () => true,
+    vi.fn(),
   );
   expect(first).toBe(duplicate);
   expect(notify).toHaveBeenCalledWith(
@@ -68,6 +70,7 @@ test('turns an unavailable authority into visible feedback without an unhandled 
       notify,
       dismiss,
       () => true,
+      vi.fn(),
     ),
   ).resolves.toBeUndefined();
   expect(notify).toHaveBeenLastCalledWith(

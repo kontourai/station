@@ -36,7 +36,8 @@ export interface ConversationTimelineContext {
   selectedExecutionId: string;
   requestScope: ApiRequestScope;
   isAuthorityCurrent: () => boolean;
-  isSourceCurrent: () => boolean;
+  isChatCurrent: (id: string) => boolean;
+  selectChat: (storeId: string, routeId: string) => void;
 }
 
 let active: ActiveReplay | null = null;
@@ -224,7 +225,8 @@ export async function openConversationTimeline(input: {
   projectName?: string;
   requestScope: ApiRequestScope;
   isAuthorityCurrent: () => boolean;
-  isSourceCurrent: () => boolean;
+  isChatCurrent: (id: string) => boolean;
+  selectChat: (storeId: string, routeId: string) => void;
 }): Promise<ActiveReplay> {
   if (
     input.requestScope.apiBase !== input.apiBase ||
@@ -284,12 +286,13 @@ export async function openConversationTimeline(input: {
     selectedExecutionId: conversation.currentSessionId,
     requestScope: input.requestScope,
     isAuthorityCurrent: input.isAuthorityCurrent,
-    isSourceCurrent: input.isSourceCurrent,
+    isChatCurrent: input.isChatCurrent,
+    selectChat: input.selectChat,
   };
   try {
     if (
       generation !== timelineGeneration ||
-      !input.isSourceCurrent() ||
+      !input.isChatCurrent(input.sourceChatId) ||
       !input.isAuthorityCurrent() ||
       activeChatsStore.getSnapshot()[input.sourceChatId]?.conversationId !==
         input.sourceConversationId
@@ -303,11 +306,12 @@ export async function openConversationTimeline(input: {
       beforeOpen: () =>
         generation === timelineGeneration &&
         input.isAuthorityCurrent() &&
-        input.isSourceCurrent() &&
+        input.isChatCurrent(input.sourceChatId) &&
         activeChatsStore.getSnapshot()[input.sourceChatId]?.conversationId ===
           input.sourceConversationId,
     });
     timelineContext = candidate;
+    input.selectChat(replay.replayId, replay.replayId);
     const chat = activeChatsStore.getSnapshot()[replay.replayId];
     if (chat?.replay) {
       activeChatsStore.updateChat(replay.replayId, {
@@ -351,6 +355,7 @@ export async function selectConversationTimelineExecution(
         context.isAuthorityCurrent() &&
         getConversationTimelineContext() === context &&
         active?.replayId === sourceReplayId &&
+        context.isChatCurrent(sourceReplayId!) &&
         activeChatsStore.getSnapshot()[context.sourceChatId]?.conversationId ===
           context.sourceConversationId,
     });
@@ -358,6 +363,7 @@ export async function selectConversationTimelineExecution(
     if (timelineRequest === request) timelineRequest = null;
   }
   timelineContext = retained;
+  context.selectChat(replay.replayId, replay.replayId);
   const chat = activeChatsStore.getSnapshot()[replay.replayId];
   if (chat?.replay)
     activeChatsStore.updateChat(replay.replayId, {
@@ -374,6 +380,7 @@ export function returnToLatestConversation(): void {
   timelineRequest?.abort();
   timelineRequest = null;
   closeActiveReplay();
+  context.selectChat(context.sourceChatId, context.sourceConversationId);
   navigationStore.setActiveChat(context.sourceChatId);
   navigationStore.setDockState(true);
   let attempts = 0;

@@ -1059,7 +1059,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         requestAuthority,
         showToast,
         dismissToast,
-        () => timelineSourceRef.current === activeSession.id,
+        (id) => timelineSourceRef.current === id,
+        (storeId, routeId) => {
+          setActiveSessionId(storeId);
+          setActiveChat(routeId);
+        },
       ),
     );
   };
