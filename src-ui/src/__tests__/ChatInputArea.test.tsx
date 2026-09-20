@@ -253,6 +253,51 @@ describe('ChatInputArea', () => {
     expect(document.activeElement).toBe(textarea);
   });
 
+  test('leaves active mention navigation and Enter to the IME until composition ends', async () => {
+    const onSend = vi.fn(async () => {});
+    const onHistoryUp = vi.fn();
+    function ControlledComposer() {
+      const [input, setInput] = useState('');
+      return (
+        <ChatInputArea
+          {...renderProps({
+            input,
+            onInputChange: setInput,
+            onSend,
+            onHistoryUp,
+            workingDirectory: '/repo',
+            mentionRequestScope: {
+              apiBase: 'http://station.test',
+              authorityKey: 'owner',
+              isCurrent: () => true,
+            },
+            mentionAuthority: 'station-stable',
+          })}
+        />
+      );
+    }
+    render(<ControlledComposer />);
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: 'Review @src', selectionStart: 11 },
+    });
+    await screen.findByRole('listbox', { name: 'Files and folders' });
+
+    fireEvent.compositionStart(textarea);
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'ArrowUp', isComposing: true });
+    fireEvent.keyDown(textarea, { key: 'Enter', keyCode: 229 });
+    expect(textarea.value).toBe('Review @src');
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onHistoryUp).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(textarea);
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    await waitFor(() => expect(textarea.value).toBe('Review @folder (odd) '));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   test('drops mention offsets when the mounted composer switches chats', async () => {
     const onInputChange = vi.fn();
     const first = renderProps({
@@ -348,6 +393,44 @@ describe('ChatInputArea', () => {
 
     expect(onInputChange).toHaveBeenCalledWith('Review  next');
   });
+
+  test.each([
+    { key: 'Backspace', cursor: 'end' as const },
+    { key: 'Delete', cursor: 'start' as const },
+  ])(
+    'does not remove a compact mention with $key during composition',
+    ({ key, cursor }) => {
+      const onInputChange = vi.fn();
+      const mention = mentionToken({
+        label: 'ChatInputArea.tsx',
+        path: 'src-ui/src/components/chat/ChatInputArea.tsx',
+        workspace: '/repo/station',
+        authority: 'http://station.test',
+        type: 'file',
+      });
+      renderChatInputArea({
+        input: `Review ${mention} next`,
+        workingDirectory: '/repo/station',
+        mentionRequestScope: {
+          apiBase: 'http://station.test',
+          authorityKey: 'owner',
+          isCurrent: () => true,
+        },
+        onInputChange,
+      });
+      const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+      const start = 'Review '.length;
+      const end = 'Review @ChatInputArea.tsx'.length;
+      const position = cursor === 'start' ? start : end;
+      textarea.setSelectionRange(position, position);
+
+      fireEvent.compositionStart(textarea);
+      fireEvent.keyDown(textarea, { key });
+      fireEvent.compositionEnd(textarea);
+
+      expect(onInputChange).not.toHaveBeenCalled();
+    },
+  );
 
   test('surfaces a microphone permission failure in the composer', () => {
     renderChatInputArea({

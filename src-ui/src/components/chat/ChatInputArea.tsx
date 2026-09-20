@@ -859,21 +859,22 @@ export function ChatInputArea({
               onInputChange(next);
               updateFromInput(next);
             }}
-            onKeyDownCapture={(event) => {
+            onKeyDown={async (e) => {
+              if (isComposing.current || isComposingKeyEvent(e)) return;
+              if (e.defaultPrevented) return;
+
               if (
                 mentionQuery &&
-                (event.key === 'ArrowDown' ||
-                  event.key === 'ArrowUp' ||
-                  (event.key === 'Enter' && !event.shiftKey))
+                (e.key === 'ArrowDown' ||
+                  e.key === 'ArrowUp' ||
+                  (e.key === 'Enter' && !e.shiftKey))
               ) {
-                event.preventDefault();
+                e.preventDefault();
                 mentionKeyboardController.current?.(
-                  event.key as 'ArrowDown' | 'ArrowUp' | 'Enter',
+                  e.key as 'ArrowDown' | 'ArrowUp' | 'Enter',
                 );
+                return;
               }
-            }}
-            onKeyDown={async (e) => {
-              if (e.defaultPrevented) return;
 
               if (isPortableDraftShortcut(e)) {
                 e.preventDefault();
@@ -950,12 +951,7 @@ export function ChatInputArea({
                 return;
               }
 
-              if (
-                e.key === 'Enter' &&
-                !e.shiftKey &&
-                !isComposing.current &&
-                !isComposingKeyEvent(e)
-              ) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
