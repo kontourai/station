@@ -53,6 +53,10 @@ export async function startPionFixture(input: {
       URL: `turn:127.0.0.1:${input.turnPort}?transport=tcp`,
       Username: input.username,
       Password: input.password,
+      Profile: input.application ? 'application' : 'diagnosticEcho',
+      ProtocolVersion: input.application
+        ? 'station.application-ipc/v1'
+        : 'station.diagnostic-echo/v1',
       ...(input.application
         ? { ApplicationChannelLabel: input.application.label }
         : {}),

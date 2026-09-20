@@ -25,6 +25,7 @@ type applicationPacket struct {
 }
 
 const (
+	applicationIPCVersion = "station.application-ipc/v1"
 	applicationIPCPacketBytes = 384 * 1024
 	applicationIPCQueueBytes  = 512 * 1024
 )
@@ -156,7 +157,7 @@ func (b *applicationBridge) add(channel applicationDataChannel) {
 		delete(b.channels, id)
 		b.mu.Unlock()
 		if admitted {
-			b.send(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "close"})
+			b.send(applicationPacket{Version: applicationIPCVersion, ID: id, Kind: "close"})
 		}
 	})
 	b.mu.Lock()
@@ -166,7 +167,7 @@ func (b *applicationBridge) add(channel applicationDataChannel) {
 		return
 	}
 	b.channels[id] = channel
-	open, err := encodeApplicationPacket(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "open"})
+	open, err := encodeApplicationPacket(applicationPacket{Version: applicationIPCVersion, ID: id, Kind: "open"})
 	if err == nil {
 		err = b.enqueueLocked(open)
 	}
@@ -190,7 +191,7 @@ func (b *applicationBridge) add(channel applicationDataChannel) {
 			return
 		}
 		body := string(message.Data)
-		b.send(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "message", Body: &body})
+		b.send(applicationPacket{Version: applicationIPCVersion, ID: id, Kind: "message", Body: &body})
 	})
 }
 func (b *applicationBridge) read(input io.ReadCloser) {
@@ -208,7 +209,7 @@ func (b *applicationBridge) read(input io.ReadCloser) {
 		var packet applicationPacket
 		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))
 		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&packet); err != nil || decoder.Decode(new(any)) != io.EOF || packet.Version != "station.lab-ipc/v1" || len(packet.ID) != 36 || (packet.Kind != "close" && packet.Kind != "message") || (packet.Kind == "close" && packet.Body != nil) || (packet.Kind == "message" && (packet.Body == nil || len(*packet.Body) > 48*1024)) {
+		if err := decoder.Decode(&packet); err != nil || decoder.Decode(new(any)) != io.EOF || packet.Version != applicationIPCVersion || len(packet.ID) != 36 || (packet.Kind != "close" && packet.Kind != "message") || (packet.Kind == "close" && packet.Body != nil) || (packet.Kind == "message" && (packet.Body == nil || len(*packet.Body) > 48*1024)) {
 			b.failed(errors.New("application IPC packet invalid"))
 			return
 		}

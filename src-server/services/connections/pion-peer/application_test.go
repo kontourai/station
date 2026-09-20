@@ -143,11 +143,11 @@ func readApplication(bridge *applicationBridge, input io.ReadCloser) {
 func TestApplicationIPCRejectsMalformedPackets(t *testing.T) {
 	for _, input := range []string{
 		`{"version":"foreign","id":"12345678-1234-1234-1234-123456789012","kind":"close"}`,
-		`{"version":"station.lab-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"open"}`,
-		`{"version":"station.lab-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"message"}`,
-		`{"version":"station.lab-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"close","body":"not allowed"}`,
-		`{"version":"station.lab-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"close","extra":true}`,
-		`{"version":"station.lab-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"close"} {}`,
+		`{"version":"station.application-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"open"}`,
+		`{"version":"station.application-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"message"}`,
+		`{"version":"station.application-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"close","body":"not allowed"}`,
+		`{"version":"station.application-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"close","extra":true}`,
+		`{"version":"station.application-ipc/v1","id":"12345678-1234-1234-1234-123456789012","kind":"close"} {}`,
 		string([]byte{0xff}), strings.Repeat("x", 128*1024+1),
 	} {
 		failures := 0
@@ -168,7 +168,7 @@ func TestApplicationIPCLateCloseCannotReopenChannel(t *testing.T) {
 	failures := 0
 	bridge := testApplicationBridge(t, &bufferWriteCloser{})
 	bridge.failed = func(error) { failures++ }
-	readApplication(bridge, io.NopCloser(strings.NewReader("{\"version\":\"station.lab-ipc/v1\",\"id\":\"12345678-1234-1234-1234-123456789012\",\"kind\":\"close\"}\n")))
+	readApplication(bridge, io.NopCloser(strings.NewReader("{\"version\":\"station.application-ipc/v1\",\"id\":\"12345678-1234-1234-1234-123456789012\",\"kind\":\"close\"}\n")))
 	if failures != 0 || len(bridge.channels) != 0 {
 		t.Fatal("late close changed channel state")
 	}
@@ -209,7 +209,7 @@ func TestApplicationSendQueueAndCleanup(t *testing.T) {
 	bridge.add(channel)
 	id := firstApplicationID(t, bridge)
 	message := "x"
-	packet, err := json.Marshal(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "message", Body: &message})
+	packet, err := json.Marshal(applicationPacket{Version: applicationIPCVersion, ID: id, Kind: "message", Body: &message})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestApplicationSendQueueAndCleanup(t *testing.T) {
 	bridge = testApplicationBridge(t, &bufferWriteCloser{})
 	bridge.add(channel)
 	id = firstApplicationID(t, bridge)
-	packet, err = json.Marshal(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "message", Body: &message})
+	packet, err = json.Marshal(applicationPacket{Version: applicationIPCVersion, ID: id, Kind: "message", Body: &message})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestApplicationIPCAdmitsEscapedFrameAtBodyLimit(t *testing.T) {
 	bridge.add(channel)
 	id := firstApplicationID(t, bridge)
 	body := strings.Repeat("\x00", 48*1024)
-	packet, err := json.Marshal(applicationPacket{Version: "station.lab-ipc/v1", ID: id, Kind: "message", Body: &body})
+	packet, err := json.Marshal(applicationPacket{Version: applicationIPCVersion, ID: id, Kind: "message", Body: &body})
 	if err != nil {
 		t.Fatal(err)
 	}

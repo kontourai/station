@@ -22,6 +22,8 @@ type config struct {
 	Offer                                     webrtc.SessionDescription
 	Certificate, Key, URL, Username, Password string
 	ApplicationChannelLabel                   string
+	Profile                                   string
+	ProtocolVersion                           string
 }
 
 func publish(dir, name string, value any) error {
@@ -96,13 +98,16 @@ func run(dir string) error {
 	}
 	var application *applicationBridge
 	var applicationDone <-chan struct{}
-	if cfg.ApplicationChannelLabel != "" {
-		if cfg.ApplicationChannelLabel != "station-application-protocol-fixture" && cfg.ApplicationChannelLabel != "station-application-account-fixture" {
-			return errors.New("unknown application channel profile")
-		}
+	switch cfg.Profile {
+	case "application":
+		if cfg.ProtocolVersion != "station.application-ipc/v1" || cfg.ApplicationChannelLabel == "" { return errors.New("invalid application profile") }
 		application = newApplicationBridge(reportFailure)
 		applicationDone = application.done
 		defer application.close()
+	case "diagnosticEcho":
+		if cfg.ProtocolVersion != "station.diagnostic-echo/v1" || cfg.ApplicationChannelLabel != "" { return errors.New("invalid diagnostic profile") }
+	default:
+		return errors.New("unknown peer profile")
 	}
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		stateMu.Lock()
@@ -112,11 +117,11 @@ func run(dir string) error {
 		}
 	})
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		if application != nil && dc.Label() == cfg.ApplicationChannelLabel {
-			application.add(dc)
+		if cfg.Profile == "application" {
+			if dc.Label() == cfg.ApplicationChannelLabel { application.add(dc) } else { _ = dc.Close() }
 			return
 		}
-		if dc.Label() != "station-lab-v1" {
+		if cfg.Profile != "diagnosticEcho" || dc.Label() != "station-lab-v1" {
 			_ = dc.Close()
 			return
 		}

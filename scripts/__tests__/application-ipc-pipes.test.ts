@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { applicationIpcPipes } from '../lib/application-ipc-pipes.js';
 
 const open = {
-  version: 'station.lab-ipc/v1',
+  version: 'station.application-ipc/v1',
   id: '11111111-1111-4111-8111-111111111111',
   kind: 'open',
 };
@@ -53,7 +53,7 @@ describe('dedicated application IPC pipes', () => {
       const ended = once(h.output, 'end');
       h.output.end();
       await ended;
-      expect(() => h.owner.finish()).toThrow('framing or lifecycle');
+      expect(() => h.owner.finish()).toThrow('pion_application_ipc_failed');
       h.input.destroy();
     },
   );
@@ -64,7 +64,7 @@ describe('dedicated application IPC pipes', () => {
     h.output.end();
     await ended;
     h.owner.prepareClose();
-    expect(() => h.owner.finish()).toThrow('framing or lifecycle');
+    expect(() => h.owner.finish()).toThrow('pion_application_ipc_failed');
     h.input.destroy();
   });
   test('accepts a body-limit frame after worst-case JSON escaping', async () => {
