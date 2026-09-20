@@ -56,7 +56,9 @@ export function createProjectContributionRoutes(
     try {
       return c.json({
         success: true,
-        data: await service.setExecutionOffer(getBody(c)),
+        data: await service.setExecutionOffer(getBody(c), () =>
+          authority.canManage(c.req.raw),
+        ),
       });
     } catch (error) {
       if (error instanceof FileStorageConflictError)
@@ -75,7 +77,21 @@ export function createProjectContributionRoutes(
   app.post('/query', validate(querySchema), async (c) => {
     if (!authority.canQuery(c.req.raw))
       return c.json({ success: false, error: 'Forbidden' }, 403);
-    return c.json({ success: true, data: await service.query(getBody(c)) });
+    try {
+      return c.json({
+        success: true,
+        data: await service.query(getBody(c), () =>
+          authority.canQuery(c.req.raw),
+        ),
+      });
+    } catch (error) {
+      if (error instanceof FileStorageConflictError)
+        return c.json(
+          { success: false, error: 'Query authority changed.' },
+          403,
+        );
+      throw error;
+    }
   });
   return app;
 }

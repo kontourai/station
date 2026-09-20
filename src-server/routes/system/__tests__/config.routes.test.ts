@@ -1202,6 +1202,77 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
     expect(loader.updateAppConfig).not.toHaveBeenCalled();
   });
 
+  // ── review correction: the bound-operator requirement is scope-independent ──
+
+  function appWithOperator(
+    loader: ReturnType<typeof createMockConfigLoader>,
+    authorizeContributionMutation?: (request: Request) => boolean,
+  ) {
+    return createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      authorizeContributionMutation,
+    );
+  }
+
+  const OFFER_BODY = {
+    contribution: {
+      'project:prj_1': {
+        enabled: true,
+        execution: { repoIds: ['github.com/acme/api'] },
+      },
+    },
+  };
+
+  test('a semantic contribution change with NO presented scope refuses without a bound-operator callback (undefined is NOT operator)', async () => {
+    const loader = createMockConfigLoader();
+    const response = await put(appWithOperator(loader), OFFER_BODY);
+    expect(response.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+  });
+
+  test('a bound-operator callback authorizes the same semantic change from an unscoped caller', async () => {
+    const loader = createMockConfigLoader();
+    const authorize = vi.fn(() => true);
+    const response = await put(appWithOperator(loader, authorize), OFFER_BODY);
+    expect(response.status).toBe(200);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  test('a bound-operator callback that refuses still refuses', async () => {
+    const loader = createMockConfigLoader();
+    const response = await put(
+      appWithOperator(loader, () => false),
+      OFFER_BODY,
+    );
+    expect(response.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+  });
+
+  test('an unscoped unchanged full-settings round-trip still succeeds without any callback', async () => {
+    const contribution = OFFER_BODY.contribution;
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      region: 'us-east-1',
+      contribution,
+    });
+    const response = await put(appWithOperator(loader), {
+      defaultModel: 'claude-4',
+      contribution,
+    });
+    expect(response.status).toBe(200);
+    expect(loader.updateAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultModel: 'claude-4', contribution }),
+    );
+  });
+
   test('a `contribution.fleet` entry is REFUSED, and told where the value belongs', async () => {
     // The refusal existed on the read (`resolveScopedContribution`) and was
     // undiscoverable: no consumer, no UI, and the schema permitted any key — so
@@ -1237,16 +1308,30 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
     expect(loader.updateAppConfig).not.toHaveBeenCalled();
   });
 
-  test('a well-formed project scope key is accepted', async () => {
+  test('a well-formed project scope key is accepted from a bound operator', async () => {
     const loader = createMockConfigLoader();
-    const response = await put(appWithPresentedScope(loader, undefined), {
-      contribution: {
-        'project:prj_7f3a': {
-          enabled: true,
-          execution: { repoIds: ['github.com/acme/api'] },
+    const response = await put(
+      createConfigRoutes(
+        loader as any,
+        mockLogger,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        () => true,
+      ),
+      {
+        contribution: {
+          'project:prj_7f3a': {
+            enabled: true,
+            execution: { repoIds: ['github.com/acme/api'] },
+          },
         },
       },
-    });
+    );
 
     expect(response.status).toBe(200);
     expect(loader.updateAppConfig).toHaveBeenCalled();

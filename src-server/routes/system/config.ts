@@ -557,9 +557,16 @@ export function createConfigRoutes(
       const update = (beginMutation: () => void) => {
         beginMutation();
         return configLoader.mutateAppConfig((current) => {
+          // A semantic contribution change needs the BOUND-OPERATOR verdict,
+          // whatever scope the presenting credential claims — an absent
+          // presented scope is NOT an operator, it is an unscoped caller, so
+          // it must not widen the exemption. The equality check runs INSIDE
+          // the serialized mutation against the CURRENT config, so a
+          // full-settings round-trip that is still byte-equal when it lands
+          // is permitted, while a queued save whose target changed under it
+          // refuses here rather than racing the operator's newer offer.
           if (
             contributionRequested &&
-            presentedScope !== undefined &&
             !isDeepStrictEqual(accepted.contribution, current.contribution) &&
             authorizeContributionMutation?.(c.req.raw) !== true
           ) {
