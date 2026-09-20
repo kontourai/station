@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
@@ -7,6 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -213,6 +215,55 @@ describe('self-hosted broker CLI', () => {
       ).toThrow();
       expect(existsSync(databasePath)).toBe(false);
     } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('a bind conflict leaves the unrelated listener alive', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-listener-'));
+    const listener = createServer((_request, response) =>
+      response.end('unrelated'),
+    );
+    try {
+      listener.listen(0, '127.0.0.1');
+      await once(listener, 'listening');
+      const address = listener.address();
+      if (!address || typeof address === 'string')
+        throw new Error('missing listener address');
+      const configPath = join(root, 'config.json');
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          version: 'station-self-hosted-broker/v1',
+          databasePath: join(root, 'broker.sqlite'),
+          credentialsPath: join(root, 'unused.json'),
+          port: address.port,
+          provision: [],
+        }),
+        { mode: 0o600 },
+      );
+      expect(() =>
+        execFileSync(
+          resolve('node_modules/.bin/tsx'),
+          ['scripts/self-hosted-broker.ts', 'serve', configPath],
+          {
+            cwd: resolve(import.meta.dirname, '../..'),
+            windowsHide: true,
+            timeout: 10_000,
+            maxBuffer: 64 * 1024,
+            stdio: 'pipe',
+          },
+        ),
+      ).toThrow();
+      const response = await fetch(`http://127.0.0.1:${address.port}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      expect(await response.text()).toBe('unrelated');
+    } finally {
+      listener.closeAllConnections();
+      if (listener.listening)
+        await new Promise<void>((resolveClose) =>
+          listener.close(() => resolveClose()),
+        );
       rmSync(root, { recursive: true, force: true });
     }
   });
