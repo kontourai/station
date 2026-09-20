@@ -1739,7 +1739,7 @@ async function runLocalAccessCommand(
     }
     const confirmed = await dependencies.confirm(
       `${action === 'approve' ? 'Approve' : 'Deny'} device access for ${accessRequestLabel(selected)} ` +
-        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again and does not grant Project membership or personal access` : personalDevice ? '; approve it as an ordinary Personal Device whose selected scope remains until revocation and is not limited by account Project membership' : ''}?`,
+        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again, currently supports viewing permitted Projects only, and does not grant Project membership or personal access` : personalDevice ? '; approve it as an ordinary Personal Device whose selected scope remains until revocation and is not limited by account Project membership' : ''}?`,
     );
     if (!confirmed) {
       (dependencies.stdout ?? console.log)('Cancelled.');

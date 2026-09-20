@@ -1550,6 +1550,7 @@ export function HostDevicePairingPanel({
                       display: 'grid',
                       gridTemplateColumns: 'auto minmax(0, 1fr)',
                       columnGap: 8,
+                      alignItems: 'start',
                       minHeight: 44,
                     }}
                   >
@@ -1597,8 +1598,9 @@ export function HostDevicePairingPanel({
                           color: 'var(--text-secondary, #999)',
                         }}
                       >
-                        Requires this account to sign in again and uses only its
-                        current permissions; it does not grant membership.
+                        Requires this account to sign in again. This pilot can
+                        view permitted Projects; editing and running work are
+                        unavailable. It does not grant membership.
                         <span
                           style={{ display: 'block', overflowWrap: 'anywhere' }}
                         >
@@ -1615,6 +1617,7 @@ export function HostDevicePairingPanel({
                         display: 'grid',
                         gridTemplateColumns: 'auto minmax(0, 1fr)',
                         columnGap: 8,
+                        alignItems: 'start',
                         minHeight: 44,
                       }}
                     >
@@ -1664,6 +1667,7 @@ export function HostDevicePairingPanel({
                       display: 'grid',
                       gridTemplateColumns: 'auto minmax(0, 1fr)',
                       columnGap: 8,
+                      alignItems: 'start',
                       minHeight: 44,
                     }}
                   >

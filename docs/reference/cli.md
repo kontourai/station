@@ -2761,9 +2761,9 @@ to revoke its binding; existing grants are not silently linked.
 When an access request reports a current server-verified account candidate, an
 operator can instead pass `--bind-account`. The confirmation names the account
 and issuer; neither value is accepted from a CLI flag. Account binding requires
-that account to sign in again on the requesting Device and limits the Device to
-access already granted to the account. It does not grant Project membership or
-personal access. Leave both binding flags off for an ordinary Personal Device.
+that account to sign in again on the requesting Device. The current pilot can
+view Projects the account may access; editing and running work are unavailable.
+It does not grant Project membership or personal access.
 For a request with an account candidate, the operator must choose exactly one
 of `--bind-account`, `--bind-person` (when verified Tailscale identity is also
 available), or `--personal-device`. The last choice grants an ordinary Device
