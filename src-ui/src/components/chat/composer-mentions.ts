@@ -68,7 +68,8 @@ function decodeMentionFields(fields: string[]): MentionIdentity | null {
       identity.label.length > MAX_LABEL_CHARS ||
       identity.path.length > MAX_PATH_CHARS ||
       identity.workspace.length > MAX_SCOPE_CHARS ||
-      identity.authority.length > MAX_SCOPE_CHARS
+      identity.authority.length > MAX_SCOPE_CHARS ||
+      (identity.type !== 'file' && identity.type !== 'directory')
     )
       return null;
     return identity;
@@ -179,7 +180,7 @@ export function sessionReferenceBlockReason(input: {
   authority?: string | null;
   isCurrent?: () => boolean;
 }): string | null {
-  if (!input.authority || input.isCurrent?.() === false)
+  if (!input.authority || input.isCurrent?.() !== true)
     return 'Conversation references are unavailable because this Station access changed.';
   if (input.conversationId === input.activeConversationId)
     return 'This conversation is already open.';

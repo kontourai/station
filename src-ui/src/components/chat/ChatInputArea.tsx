@@ -143,11 +143,6 @@ interface ChatInputAreaProps {
     isCurrent: () => boolean;
   };
   mentionAuthority?: string | null;
-  sessionReferenceCandidates?: readonly {
-    id: string;
-    title: string;
-    projectSlug?: string;
-  }[];
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   // Status
@@ -281,7 +276,6 @@ export function ChatInputArea({
   workingDirectory,
   mentionRequestScope,
   mentionAuthority,
-  sessionReferenceCandidates = [],
   hasQuotedContext = false,
   draftText,
   quoteContext,
@@ -365,6 +359,11 @@ export function ChatInputArea({
 }: ChatInputAreaProps) {
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
   const [sessionReferencesOpen, setSessionReferencesOpen] = useState(false);
+  const [draggedSessionReference, setDraggedSessionReference] = useState<{
+    id: string;
+    title: string;
+    projectSlug?: string;
+  } | null>(null);
   const [mentionQuery, setMentionQuery] = useState<{
     start: number;
     end: number;
@@ -798,9 +797,10 @@ export function ChatInputArea({
               const conversationId = event.dataTransfer.getData(
                 'application/x-station-conversation-reference',
               );
-              const candidate = sessionReferenceCandidates.find(
-                (item) => item.id === conversationId,
-              );
+              const candidate =
+                draggedSessionReference?.id === conversationId
+                  ? draggedSessionReference
+                  : null;
               if (
                 (!conversationId || candidate) &&
                 !sessionReferenceBlockReason({
@@ -819,9 +819,10 @@ export function ChatInputArea({
               );
               if (!conversationId) return;
               event.preventDefault();
-              const candidate = sessionReferenceCandidates.find(
-                (item) => item.id === conversationId,
-              );
+              const candidate =
+                draggedSessionReference?.id === conversationId
+                  ? draggedSessionReference
+                  : null;
               if (!candidate) return;
               const reason = sessionReferenceBlockReason({
                 value: input,
@@ -992,7 +993,7 @@ export function ChatInputArea({
             <ComposerActionsMenu
               {...secondaryActions}
               onOpenConversationReference={
-                mentionAuthority && sessionReferenceCandidates.length > 0
+                mentionAuthority && mentionRequestScope?.isCurrent() === true
                   ? () => setSessionReferencesOpen(true)
                   : undefined
               }
@@ -1178,18 +1179,24 @@ export function ChatInputArea({
           )}
         </div>
         {sessionReferencesOpen && (
-          <React.Suspense fallback={null}>
+          <React.Suspense
+            fallback={
+              <div className="chat-input__attachment-error" role="status">
+                Loading conversation references…
+              </div>
+            }
+          >
             <SessionReferencePicker
               value={input}
-              candidates={sessionReferenceCandidates}
               activeConversationId={activeConversationId}
               authority={mentionAuthority}
-              isCurrent={mentionRequestScope?.isCurrent}
+              requestScope={mentionRequestScope}
               onChange={(next) => {
                 onInputChange(next);
                 updateFromInput(next);
               }}
               onClose={() => setSessionReferencesOpen(false)}
+              onCandidateDragged={setDraggedSessionReference}
             />
           </React.Suspense>
         )}

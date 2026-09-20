@@ -82,7 +82,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   page,
 }) => {
   test.setTimeout(60_000);
-  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
   await installMockOrchestrationSse(page);
   const threadId = 'thread-reference-dispatch';
@@ -182,7 +182,17 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await page.getByRole('option', { name: /alpha\.ts/ }).click();
   await page.getByRole('button', { name: 'Composer actions' }).click();
   await page.getByRole('menuitem', { name: 'Reference conversation…' }).click();
-  await page.getByRole('option', { name: /Earlier work/ }).click();
+  const referenceOption = page.getByRole('option', { name: /Earlier work/ });
+  await expect(referenceOption).toBeVisible();
+  expect(
+    (await referenceOption.boundingBox())?.height ?? 0,
+  ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(
+    await page
+      .locator('.session-reference-picker__list')
+      .evaluate((element) => getComputedStyle(element).position),
+  ).toBe('static');
+  await referenceOption.click();
   await expect(composer).toHaveValue('Review @alpha.ts  @Earlier work ');
   await page.reload();
   await dismissSetupLauncher(page);

@@ -1,3 +1,5 @@
+import { fetchConversationInventory } from '@kontourai/station-sdk';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   ResponsiveDialogHeader,
@@ -19,29 +21,68 @@ export interface SessionReferenceCandidate {
 
 export function SessionReferencePicker({
   value,
-  candidates,
   activeConversationId,
   authority,
-  isCurrent,
+  requestScope,
   onChange,
   onClose,
+  onCandidateDragged,
 }: {
   value: string;
-  candidates: readonly SessionReferenceCandidate[];
   activeConversationId?: string;
   authority?: string | null;
-  isCurrent?: () => boolean;
+  requestScope?: {
+    apiBase: string;
+    authorityKey: string;
+    isCurrent: () => boolean;
+  };
   onChange: (value: string) => void;
   onClose: () => void;
+  onCandidateDragged: (candidate: SessionReferenceCandidate) => void;
 }) {
   const [query, setQuery] = useState('');
+  const inventory = useQuery({
+    queryKey: [
+      'conversation-reference-candidates',
+      requestScope?.apiBase ?? '',
+      requestScope?.authorityKey ?? '',
+    ],
+    queryFn: async ({ signal }) => {
+      try {
+        return {
+          page: await fetchConversationInventory(requestScope?.apiBase, {
+            limit: 25,
+            signal,
+            requestScope,
+          }),
+          unavailable: false as const,
+        };
+      } catch {
+        return { page: null, unavailable: true as const };
+      }
+    },
+    enabled: !!authority && requestScope?.isCurrent() === true,
+    staleTime: 0,
+    retry: false,
+  });
+  const candidates = (
+    inventory.isFetching ? [] : (inventory.data?.page?.items ?? [])
+  )
+    .filter((conversation) => conversation.referenceEligibility?.eligible)
+    .map((conversation) => ({
+      id: conversation.id,
+      title: conversation.title,
+      ...(conversation.projectSlug
+        ? { projectSlug: conversation.projectSlug }
+        : {}),
+    }));
   const stage = (candidate: SessionReferenceCandidate) => {
     const reason = sessionReferenceBlockReason({
       value,
       conversationId: candidate.id,
       activeConversationId,
       authority,
-      isCurrent,
+      isCurrent: requestScope?.isCurrent,
     });
     if (reason) return;
     onChange(
@@ -80,14 +121,27 @@ export function SessionReferencePicker({
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Find a conversation"
-        disabled={!authority || isCurrent?.() === false}
+        disabled={!authority || requestScope?.isCurrent() !== true}
       />
       <div
         className="file-mention-picker session-reference-picker__list"
         role="listbox"
         aria-label="Conversations"
       >
-        {visible.length === 0 ? (
+        {inventory.isFetching ? (
+          <div className="file-mention-picker__status" role="status">
+            Loading conversations…
+          </div>
+        ) : null}
+        {!inventory.isFetching && inventory.data?.unavailable ? (
+          <div className="file-mention-picker__status" role="alert">
+            Conversations are unavailable. Close and try again.
+          </div>
+        ) : null}
+        {!inventory.isFetching &&
+        inventory.isSuccess &&
+        !inventory.data.unavailable &&
+        visible.length === 0 ? (
           <div className="file-mention-picker__status">
             No matching conversations
           </div>
@@ -98,7 +152,7 @@ export function SessionReferencePicker({
             conversationId: candidate.id,
             activeConversationId,
             authority,
-            isCurrent,
+            isCurrent: requestScope?.isCurrent,
           });
           return (
             <button
@@ -112,6 +166,7 @@ export function SessionReferencePicker({
               draggable={!reason}
               onDragStart={(event) => {
                 if (reason) return;
+                onCandidateDragged(candidate);
                 event.dataTransfer.setData(
                   SESSION_REFERENCE_DRAG_TYPE,
                   candidate.id,

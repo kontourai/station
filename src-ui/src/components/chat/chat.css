@@ -959,6 +959,18 @@
   color: var(--text-secondary);
 }
 
+.session-reference-picker__list {
+  position: static;
+  width: 100%;
+  max-height: min(320px, 42vh);
+  margin-top: var(--space-3);
+  box-shadow: none;
+}
+
+.session-reference-picker__list .file-mention-picker__option {
+  min-height: 44px;
+}
+
 @media (max-width: 600px) {
   .composer-mentions__chip,
   .file-mention-picker__option {

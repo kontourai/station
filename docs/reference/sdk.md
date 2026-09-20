@@ -77,6 +77,28 @@ children. A selected path is still subject to the server's workspace
 containment and authorization checks; query metadata does not grant file
 access.
 
+### Conversation input-origin support
+
+`OrchestrationSessionSummary.inputOrigin` is a closed, optional server-issued
+union. The current supported arm is `delegation`. The orchestration read model
+derives it from the same persisted `session.started` / `session.configured`
+metadata that produces `OrchestrationSessionSummary.delegation` in
+`src-server/services/orchestration/orchestration-session-state.ts`. Missing or
+unrecognized origin evidence leaves the member absent; clients must not infer
+it from a local tab's source label or a reported device surface.
+
+Schedule and voice attribution are not currently projected onto conversation
+summaries. Scheduled occurrences are projected as independent run IDs by
+`src-server/services/orchestration/run-projection.ts` and read through
+`run-service.ts`; that projection carries no durable conversation identity.
+Voice effects are retained in `voice_turn_runs` by
+`src-server/services/orchestration/event-store.ts`; `voice-session.ts` records
+the provider session/prompt/turn tuple and uses the Agent slug as `sourceId`,
+not a Station conversation ID. Until those ledgers publish an authorized,
+durable conversation join, their `inputOrigin` remains absent. Browser
+microphone dictation follows the ordinary foreground-message path and does not
+prove a voice-session origin.
+
 ### Agent Hooks
 
 #### `useAgents(): AgentSummary[]`

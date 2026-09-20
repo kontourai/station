@@ -505,28 +505,17 @@ export function useConversationsQuery(
  * consumer.
  */
 export function useConversationInventoryQuery(
-  config?: QueryConfig<ConversationListItem[]> & {
-    requestScope?: ApiRequestScope & { isCurrent: () => boolean };
-    apiBase?: string;
-  },
+  config?: QueryConfig<ConversationListItem[]>,
 ) {
   const queryClient = useQueryClient();
-  const queryKey =
-    config?.apiBase || config?.requestScope
-      ? [
-          ...conversationQueries.inventory().queryKey,
-          config?.apiBase ?? '',
-          config?.requestScope?.authorityKey ?? '',
-        ]
-      : conversationQueries.inventory().queryKey;
+  const queryKey = conversationQueries.inventory().queryKey;
   const enabled = config?.enabled ?? true;
   const query = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam, signal }) =>
-      fetchConversationInventory(config?.apiBase, {
+      fetchConversationInventory(undefined, {
         ...(typeof pageParam === 'string' ? { cursor: pageParam } : {}),
         signal,
-        ...(config?.requestScope ? { requestScope: config.requestScope } : {}),
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => (page.hasMore ? page.nextCursor : undefined),

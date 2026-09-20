@@ -166,6 +166,19 @@ describe('composer file mentions', () => {
     });
   });
 
+  test('rejects a persisted file token with an unknown entry type', () => {
+    expect(
+      expandComposerMentions(
+        '@[m:file.ts|file.ts|%2Frepo|authority|symlink]',
+        '/repo',
+        'authority',
+      ),
+    ).toEqual({
+      error:
+        'A saved file mention is damaged. Remove its visible token and select the file again.',
+    });
+  });
+
   test('finds only the active whitespace-delimited at trigger', () => {
     expect(mentionQueryAt('ask @src/com', 12)).toEqual({
       start: 4,
@@ -217,6 +230,7 @@ describe('composer file mentions', () => {
         value: one,
         conversationId: 'one',
         authority: 'authority-1',
+        isCurrent: () => true,
       }),
     ).toMatch(/already referenced/);
     expect(
@@ -225,6 +239,7 @@ describe('composer file mentions', () => {
         conversationId: 'self',
         activeConversationId: 'self',
         authority: 'authority-1',
+        isCurrent: () => true,
       }),
     ).toMatch(/already open/);
     let capped = '';
@@ -239,6 +254,7 @@ describe('composer file mentions', () => {
         value: capped,
         conversationId: 'ninth',
         authority: 'authority-1',
+        isCurrent: () => true,
       }),
     ).toMatch(/at most 8/);
   });
