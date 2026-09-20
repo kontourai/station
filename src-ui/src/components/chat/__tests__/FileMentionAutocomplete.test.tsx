@@ -38,7 +38,7 @@ describe('FileMentionAutocomplete', () => {
   test('filters the bounded project tree and supports pointer selection', () => {
     const onSelect = vi.fn();
     const keyboardController = createRef<
-      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
     >();
     render(
       <FileMentionAutocomplete
@@ -64,7 +64,7 @@ describe('FileMentionAutocomplete', () => {
   test('moves through results by keyboard and selects the active row', () => {
     const onSelect = vi.fn();
     const keyboardController = createRef<
-      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
     >();
     render(
       <FileMentionAutocomplete
@@ -94,7 +94,7 @@ describe('FileMentionAutocomplete', () => {
       data: { ...ready.data, partial: true },
     };
     const keyboardController = createRef<
-      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
     >();
     render(
       <FileMentionAutocomplete
@@ -120,7 +120,7 @@ describe('FileMentionAutocomplete', () => {
   test('retains keyboard navigation while matching suggestions are loading', () => {
     const onSelect = vi.fn();
     const keyboardController = createRef<
-      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => void) | null
+      ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
     >();
     const ready = mentionQuery.result;
     mentionQuery.result = {

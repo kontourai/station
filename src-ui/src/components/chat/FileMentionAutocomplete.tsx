@@ -86,7 +86,7 @@ export function FileMentionAutocomplete({
         0,
         pendingNavigationRef.current + delta,
       );
-      return;
+      return true;
     }
     selectedRef.current = Math.max(
       0,
