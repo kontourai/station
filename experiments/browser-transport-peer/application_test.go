@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -251,6 +252,51 @@ func TestApplicationCloseUnblocksOwnedPipeWriter(t *testing.T) {
 	case <-settled:
 	case <-time.After(time.Second):
 		t.Fatal("bridge close did not unblock pipe writer")
+	}
+}
+
+func TestApplicationCloseUnblocksRealOwnedPipes(t *testing.T) {
+	inputReader, inputWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputReader, outputWriter, err := os.Pipe()
+	if err != nil {
+		_ = inputReader.Close()
+		_ = inputWriter.Close()
+		t.Fatal(err)
+	}
+	defer inputWriter.Close()
+	defer outputReader.Close()
+	bridge := newApplicationBridgeIO(inputReader, outputWriter, func(error) {})
+	channel := &fakeApplicationChannel{ordered: true}
+	bridge.add(channel)
+	body := []byte(strings.Repeat("x", 48*1024))
+	for range 8 {
+		channel.onMessage(webrtc.DataChannelMessage{IsString: true, Data: body})
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		bridge.mu.Lock()
+		pending := bridge.pendingBytes
+		bridge.mu.Unlock()
+		if pending >= 2*48*1024 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("real undrained pipe did not apply writer backpressure")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	settled := make(chan struct{})
+	go func() {
+		bridge.close()
+		close(settled)
+	}()
+	select {
+	case <-settled:
+	case <-time.After(time.Second):
+		t.Fatal("bridge close did not join real pipe reader and writer")
 	}
 }
 
