@@ -38,6 +38,18 @@ export function createBrokerCredentialBundle(): BrokerCredentialBundle {
     },
   };
 }
+export function assertSelfHostedBrokerPlatform(platform = process.platform) {
+  if (platform === 'win32')
+    throw new Error(
+      'self_hosted_broker_private_custody_unavailable_on_windows',
+    );
+  if (process.getuid === undefined)
+    throw new Error('self_hosted_broker_private_custody_unavailable');
+}
+function posixUid() {
+  assertSelfHostedBrokerPlatform();
+  return process.getuid!();
+}
 export type BrokerScope = {
   stationId: string;
   enrollmentId: string;
@@ -54,7 +66,7 @@ function assertPrivateFile(path: string) {
     !file.isFile() ||
     file.isSymbolicLink() ||
     file.nlink !== 1 ||
-    file.uid !== process.getuid?.() ||
+    file.uid !== posixUid() ||
     (file.mode & 0o077) !== 0
   )
     throw new Error('broker_database_must_be_private');
@@ -113,13 +125,14 @@ export class SelfHostedBrokerService {
     path: string,
     private readonly now = () => Date.now(),
   ) {
+    assertSelfHostedBrokerPlatform();
     if (!isAbsolute(path))
       throw new Error('broker_database_path_must_be_absolute');
     const parent = lstatSync(dirname(path));
     if (
       !parent.isDirectory() ||
       parent.isSymbolicLink() ||
-      parent.uid !== process.getuid?.() ||
+      parent.uid !== posixUid() ||
       (parent.mode & 0o077) !== 0
     )
       throw new Error('broker_database_parent_must_be_private');

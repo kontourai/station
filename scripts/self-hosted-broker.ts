@@ -8,12 +8,14 @@ import {
 import { Hono } from 'hono';
 import { createSelfHostedBrokerRoutes } from '../src-server/routes/connections/self-hosted-broker.js';
 import {
+  assertSelfHostedBrokerPlatform,
   createBrokerCredentialBundle,
   SelfHostedBrokerService,
   validateBrokerScope,
 } from '../src-server/services/connections/self-hosted-broker-service.js';
 
 const mode = process.argv[2];
+assertSelfHostedBrokerPlatform();
 const configPath = process.argv[3];
 if (!['init', 'serve'].includes(mode ?? ''))
   throw new Error(
@@ -28,7 +30,7 @@ if (
   !configInfo.isFile() ||
   configInfo.isSymbolicLink() ||
   configInfo.nlink !== 1 ||
-  configInfo.uid !== process.getuid?.() ||
+  configInfo.uid !== process.getuid!() ||
   (configInfo.mode & 0o077) !== 0 ||
   configInfo.size > 128 * 1024
 )
@@ -62,7 +64,7 @@ const credentialsParent = lstatSync(dirname(credentialsPath));
 if (
   !credentialsParent.isDirectory() ||
   credentialsParent.isSymbolicLink() ||
-  credentialsParent.uid !== process.getuid?.() ||
+  credentialsParent.uid !== process.getuid!() ||
   (credentialsParent.mode & 0o077) !== 0
 )
   throw new Error('Broker credentials parent must be private');
@@ -84,7 +86,7 @@ if (mode === 'init') {
       if (
         !info.isFile() ||
         info.isSymbolicLink() ||
-        info.uid !== process.getuid?.() ||
+        info.uid !== process.getuid!() ||
         (info.mode & 0o077) !== 0
       )
         throw new Error('Existing broker credentials are not private');

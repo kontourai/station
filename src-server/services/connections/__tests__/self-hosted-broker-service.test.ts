@@ -6,7 +6,10 @@ import { Worker } from 'node:worker_threads';
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
 import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
-import { SelfHostedBrokerService } from '../self-hosted-broker-service.js';
+import {
+  assertSelfHostedBrokerPlatform,
+  SelfHostedBrokerService,
+} from '../self-hosted-broker-service.js';
 
 const scope = {
   stationId: 'station-12345678',
@@ -15,6 +18,11 @@ const scope = {
   browserOrigin: 'https://client.example',
 };
 describe('self-hosted broker control plane', () => {
+  test('fails closed where private path custody is not implemented', () => {
+    expect(() => assertSelfHostedBrokerPlatform('win32')).toThrow(
+      'self_hosted_broker_private_custody_unavailable_on_windows',
+    );
+  });
   test('persists exact routing, refuses replay and invalidates pending work on withdrawal', async () => {
     const path = join(
       mkdtempSync(join(tmpdir(), 'station-broker-')),
