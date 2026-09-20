@@ -953,12 +953,14 @@ export function ChatInputArea({
             onCompositionEnd={() => {
               isComposing.current = false;
             }}
-            style={{
-              fontSize: `${fontSize}px`,
-              flex: 1,
-              resize: 'none',
-              minHeight: 0,
-            }}
+            style={
+              {
+                '--composer-font-size': `${fontSize}px`,
+                flex: 1,
+                resize: 'none',
+                minHeight: 0,
+              } as React.CSSProperties
+            }
           />
           {isOverLimit && (
             <div className="chat-input__attachment-error" role="alert">

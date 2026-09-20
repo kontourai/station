@@ -114,6 +114,17 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test('exposes the configured composer size for the responsive mobile floor', () => {
+    renderChatInputArea({ fontSize: 20 });
+
+    expect(
+      screen
+        .getByRole('textbox')
+        .style.getPropertyValue('--composer-font-size'),
+    ).toBe('20px');
+    expect(screen.getByRole('textbox').style.fontSize).toBe('');
+  });
+
   test('keeps textarea focus while keyboard-selecting the second mention result', async () => {
     function ControlledComposer() {
       const [input, setInput] = useState('');

@@ -5123,7 +5123,7 @@ button.tool-call__line:hover {
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--text-lg);
+  font-size: var(--composer-font-size, var(--text-lg));
   resize: none;
   min-height: 48px;
   max-height: 160px;
@@ -6264,6 +6264,31 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
        shared geometry token honest for dock offsets and fixed overlays. */
     --app-toolbar-height: 52px;
+  }
+
+  /* Mobile Safari zooms the whole page when an editable control below 16px
+     receives focus. Keep browser/user pinch zoom enabled and prevent only
+     that focus-triggered jump. Attribute/not selectors intentionally outrank
+     compact component classes without an !important override. */
+  :is(
+    input:not([type]),
+    input[type="text"],
+    input[type="search"],
+    input[type="email"],
+    input[type="password"],
+    input[type="url"],
+    input[type="tel"],
+    input[type="number"],
+    textarea:not([readonly]),
+    select:not([multiple])
+  ) {
+    font-size: 16px;
+  }
+
+  /* Chat text size is user-configurable from 10–24px. Preserve larger choices
+     while applying the iOS focus floor only on phone-sized/short touch views. */
+  .chat-input textarea {
+    font-size: max(16px, var(--composer-font-size, var(--text-lg)));
   }
 
   /* The collapsed chat dock renders as a bottom bar on mobile. At the desktop
