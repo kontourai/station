@@ -2817,8 +2817,17 @@ export function configureRuntimeRoutes(
           checkpointRefStore,
           threadId,
         ),
-      restoreThreadCheckpoint: (input) =>
-        checkpointRestoreService.restore(input),
+      previewThreadCheckpointRestore: (input) =>
+        checkpointRestoreService.preview(input),
+      restoreThreadCheckpoint: (input) => {
+        const workspace = checkpointRestoreService.workspaceForPreview(
+          input.previewId,
+          input.ownerKey,
+        );
+        return context.orchestrationService.runWorkspaceRestore(workspace, () =>
+          checkpointRestoreService.restore(input),
+        );
+      },
       listCheckpointRestoreEvents: (threadId) =>
         checkpointRestoreService.listEvents(threadId),
       delegateTask: (input) =>

@@ -13,6 +13,8 @@ import type { CheckpointRefStore } from './checkpoint-ref-store.js';
 import { CHECKPOINT_MUTATION_LOCK } from './checkpoint-retention.js';
 
 const RESTORE_GIT_TIMEOUT_MS = 60_000;
+const RESTORE_PREVIEW_TTL_MS = 5 * 60_000;
+const RESTORE_PREVIEW_PATH_LIMIT = 200;
 export const RESTORE_LOCK_TIMEOUT_MS = 15 * 60_000;
 type AcquireRestoreLock = typeof acquireFileMutationLockAsync;
 
@@ -26,6 +28,9 @@ type CheckpointRestoreEvent = {
   treeSha: string;
   repoRoot: string;
   restoredAt: string;
+  previewId: string;
+  previousTreeSha: string;
+  recoveryRef: string;
 };
 
 type CheckpointRestoreReceipt = CheckpointRestoreEvent & {
@@ -34,10 +39,27 @@ type CheckpointRestoreReceipt = CheckpointRestoreEvent & {
 
 type RestoreDocument = { version: 1; events: CheckpointRestoreEvent[] };
 
+export type CheckpointRestorePreview = {
+  previewId: string;
+  threadId: string;
+  turnId: string;
+  phase: TurnCheckpointPhase;
+  checkpointId: string;
+  repoRoot: string;
+  targetTreeSha: string;
+  currentTreeSha: string;
+  paths: Array<{ path: string; status: string }>;
+  pathsTruncated: boolean;
+  expiresAt: string;
+};
+
+type StoredPreview = CheckpointRestorePreview & { ownerKey: string };
+
 export class CheckpointRestoreService {
   private readonly audit: JsonFileStore<RestoreDocument>;
   private readonly lockPath: string;
   private readonly acquireLock: AcquireRestoreLock;
+  private readonly previews = new Map<string, StoredPreview>();
 
   constructor(
     private readonly indexStore: Pick<CheckpointIndexStore, 'readTurn'>,
@@ -57,10 +79,41 @@ export class CheckpointRestoreService {
     this.acquireLock = options.acquireLock ?? acquireFileMutationLockAsync;
   }
 
-  async restore(input: {
+  async preview(input: {
     threadId: string;
     turnId: string;
     phase: TurnCheckpointPhase;
+    ownerKey: string;
+  }): Promise<CheckpointRestorePreview> {
+    const target = await this.resolveTarget(input);
+    const currentTreeSha = await snapshotWorkingTree(target.repoRoot);
+    const paths = await changedPaths(
+      target.repoRoot,
+      currentTreeSha,
+      target.treeSha,
+    );
+    const preview: StoredPreview = {
+      previewId: randomUUID(),
+      ...input,
+      checkpointId: target.checkpointId,
+      repoRoot: target.repoRoot,
+      targetTreeSha: target.treeSha,
+      currentTreeSha,
+      paths: paths.slice(0, RESTORE_PREVIEW_PATH_LIMIT),
+      pathsTruncated: paths.length > RESTORE_PREVIEW_PATH_LIMIT,
+      expiresAt: new Date(Date.now() + RESTORE_PREVIEW_TTL_MS).toISOString(),
+    };
+    this.previews.set(preview.previewId, preview);
+    const { ownerKey: _ownerKey, ...publicPreview } = preview;
+    return publicPreview;
+  }
+
+  async restore(input: {
+    threadId: string;
+    turnId: string;
+    previewId: string;
+    expectedCurrentTreeSha: string;
+    ownerKey: string;
     confirmed: true;
   }): Promise<CheckpointRestoreReceipt> {
     // One restore can legitimately spend several bounded 60s Git calls
@@ -85,14 +138,91 @@ export class CheckpointRestoreService {
       .map((event) => structuredClone(event));
   }
 
+  workspaceForPreview(previewId: string, ownerKey: string): string {
+    const preview = this.previews.get(previewId);
+    if (
+      !preview ||
+      preview.ownerKey !== ownerKey ||
+      Date.parse(preview.expiresAt) <= Date.now()
+    )
+      throw new CheckpointRestoreError('preview_invalid');
+    return preview.repoRoot;
+  }
+
   private async restoreExclusive(input: {
     threadId: string;
     turnId: string;
-    phase: TurnCheckpointPhase;
+    previewId: string;
+    expectedCurrentTreeSha: string;
+    ownerKey: string;
     confirmed: true;
   }): Promise<CheckpointRestoreReceipt> {
     if (input.confirmed !== true)
       throw new CheckpointRestoreError('confirmation_required');
+    const preview = this.previews.get(input.previewId);
+    this.previews.delete(input.previewId);
+    if (
+      !preview ||
+      preview.ownerKey !== input.ownerKey ||
+      preview.threadId !== input.threadId ||
+      preview.turnId !== input.turnId ||
+      Date.parse(preview.expiresAt) <= Date.now()
+    )
+      throw new CheckpointRestoreError('preview_invalid');
+    if (input.expectedCurrentTreeSha !== preview.currentTreeSha)
+      throw new CheckpointRestoreError('workspace_changed');
+    const target = await this.resolveTarget(preview);
+    if (
+      target.checkpointId !== preview.checkpointId ||
+      target.treeSha !== preview.targetTreeSha ||
+      target.repoRoot !== preview.repoRoot
+    )
+      throw new CheckpointRestoreError('checkpoint_identity_mismatch');
+    const currentTree = await snapshotWorkingTree(preview.repoRoot);
+    if (currentTree !== preview.currentTreeSha)
+      throw new CheckpointRestoreError('workspace_changed');
+    const recoveryRef = `refs/station/restore-recovery/${input.previewId}`;
+    await execGit(['update-ref', recoveryRef, currentTree], {
+      cwd: preview.repoRoot,
+      timeout: RESTORE_GIT_TIMEOUT_MS,
+      encoding: 'utf-8',
+    });
+    const previous = [...this.audit.read().events]
+      .reverse()
+      .find((event) => event.previewId === input.previewId);
+    if (currentTree === preview.targetTreeSha && previous)
+      return { ...previous, restored: false };
+    if (currentTree !== preview.targetTreeSha)
+      await materializeTree(preview.repoRoot, target.commitSha);
+
+    const verifiedTree = await snapshotWorkingTree(preview.repoRoot);
+    if (verifiedTree !== preview.targetTreeSha)
+      throw new CheckpointRestoreError('restore_verification_failed');
+    const event: CheckpointRestoreEvent = {
+      id: randomUUID(),
+      threadId: preview.threadId,
+      turnId: preview.turnId,
+      phase: preview.phase,
+      checkpointId: preview.checkpointId,
+      commitSha: target.commitSha,
+      treeSha: preview.targetTreeSha,
+      repoRoot: preview.repoRoot,
+      restoredAt: new Date().toISOString(),
+      previewId: preview.previewId,
+      previousTreeSha: currentTree,
+      recoveryRef,
+    };
+    const document = this.audit.read();
+    document.events.push(event);
+    this.audit.write(document);
+    return { ...event, restored: currentTree !== preview.targetTreeSha };
+  }
+
+  private async resolveTarget(input: {
+    threadId: string;
+    turnId: string;
+    phase: TurnCheckpointPhase;
+  }) {
     const record = this.indexStore.readTurn(input.threadId, input.turnId);
     const phase = record?.[input.phase];
     if (!phase) throw new CheckpointRestoreError('checkpoint_missing');
@@ -116,41 +246,22 @@ export class CheckpointRestoreService {
     )
       throw new CheckpointRestoreError('checkpoint_identity_mismatch');
 
-    const currentTree = await snapshotWorkingTree(phase.repoRoot);
-    const previous = [...this.audit.read().events]
-      .reverse()
-      .find(
-        (event: CheckpointRestoreEvent) =>
-          event.threadId === input.threadId &&
-          event.turnId === input.turnId &&
-          event.phase === input.phase &&
-          event.checkpointId === phase.checkpointId &&
-          event.treeSha === phase.treeSha,
-      );
-    if (currentTree === phase.treeSha && previous)
-      return { ...previous, restored: false };
-    if (currentTree !== phase.treeSha)
-      await materializeTree(phase.repoRoot, phase.commitSha);
-
-    const verifiedTree = await snapshotWorkingTree(phase.repoRoot);
-    if (verifiedTree !== phase.treeSha)
-      throw new CheckpointRestoreError('restore_verification_failed');
-    const event: CheckpointRestoreEvent = {
-      id: randomUUID(),
-      threadId: input.threadId,
-      turnId: input.turnId,
-      phase: input.phase,
-      checkpointId: phase.checkpointId,
-      commitSha: phase.commitSha,
-      treeSha: phase.treeSha,
-      repoRoot: phase.repoRoot,
-      restoredAt: new Date().toISOString(),
-    };
-    const document = this.audit.read();
-    document.events.push(event);
-    this.audit.write(document);
-    return { ...event, restored: currentTree !== phase.treeSha };
+    return phase;
   }
+}
+
+async function changedPaths(repoRoot: string, current: string, target: string) {
+  const output = await execGit(
+    ['diff', '--name-status', '--no-renames', current, target, '--'],
+    { cwd: repoRoot, timeout: RESTORE_GIT_TIMEOUT_MS, encoding: 'utf-8' },
+  );
+  return output.stdout
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [status = 'M', ...parts] = line.split('\t');
+      return { status, path: parts.join('\t') };
+    });
 }
 
 async function withTemporaryIndex<T>(
@@ -207,7 +318,9 @@ class CheckpointRestoreError extends Error {
       | 'checkpoint_failed'
       | 'checkpoint_pruned'
       | 'checkpoint_identity_mismatch'
-      | 'restore_verification_failed',
+      | 'restore_verification_failed'
+      | 'preview_invalid'
+      | 'workspace_changed',
   ) {
     super(reason);
   }

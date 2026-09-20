@@ -3941,12 +3941,18 @@ describe('Orchestration Routes', () => {
       listProviders: vi.fn(),
       listSessions: vi.fn().mockResolvedValue([]),
       canUserReadSession: vi.fn().mockReturnValue(true),
+      canUserMutateSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
     };
     const app = createOrchestrationRoutes(service as any, {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
       getUserId: () => ROUTE_TEST_USER_ID,
+      isRequestPrincipalCurrent: () => true,
+      previewThreadCheckpointRestore: vi.fn().mockResolvedValue({
+        previewId: '11111111-1111-4111-8111-111111111111',
+        currentTreeSha: 'a'.repeat(40),
+      }),
       listThreadCheckpoints: async (threadId: string) =>
         threadId === 'thread-cp' ? checkpoints : [],
     });
@@ -3987,6 +3993,7 @@ describe('Orchestration Routes', () => {
       listProviders: vi.fn(),
       listSessions: vi.fn().mockResolvedValue([]),
       canUserReadSession: vi.fn().mockReturnValue(true),
+      canUserMutateSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
     };
     const restore = vi
@@ -3996,6 +4003,11 @@ describe('Orchestration Routes', () => {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
       getUserId: () => ROUTE_TEST_USER_ID,
+      isRequestPrincipalCurrent: () => true,
+      previewThreadCheckpointRestore: vi.fn().mockResolvedValue({
+        previewId: '11111111-1111-4111-8111-111111111111',
+        currentTreeSha: 'a'.repeat(40),
+      }),
       restoreThreadCheckpoint: restore,
       listCheckpointRestoreEvents: (threadId) => [
         { id: 'restore-1', threadId },
@@ -4017,14 +4029,20 @@ describe('Orchestration Routes', () => {
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ confirmed: true, phase: 'baseline' }),
+        body: JSON.stringify({
+          confirmed: true,
+          previewId: '11111111-1111-4111-8111-111111111111',
+          expectedCurrentTreeSha: 'a'.repeat(40),
+        }),
       },
     );
     expect(ok.status).toBe(200);
     expect(restore).toHaveBeenCalledWith({
       threadId: 'thread-cp',
       turnId: 'turn-1',
-      phase: 'baseline',
+      ownerKey: JSON.stringify([ROUTE_TEST_USER_ID, null]),
+      previewId: '11111111-1111-4111-8111-111111111111',
+      expectedCurrentTreeSha: 'a'.repeat(40),
       confirmed: true,
     });
     const audit = await app.request('/sessions/thread-cp/checkpoint-restores');
@@ -4033,7 +4051,7 @@ describe('Orchestration Routes', () => {
       success: true,
       data: [{ id: 'restore-1', threadId: 'thread-cp' }],
     });
-    service.canUserReadSession.mockReturnValue(false);
+    service.canUserMutateSession.mockReturnValue(false);
     const denied = await app.request(
       '/sessions/thread-other/checkpoints/turn-1/restore',
       {

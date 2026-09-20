@@ -7122,6 +7122,16 @@ export class EventStore {
     return row ? mapPersistedSessionRow(row as any) : undefined;
   }
 
+  /** Internal workspace-mutation barrier inventory; never exposed to callers. */
+  listSessionIdsByCwd(cwd: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT thread_id FROM provider_session_state WHERE cwd = ? ORDER BY created_at ASC`,
+      )
+      .all(cwd) as Array<{ thread_id: string }>;
+    return rows.map((row) => row.thread_id);
+  }
+
   /**
    * Intent-shaped continuation seam. The caller can observe durable lineage
    * and reserve one successor, but cannot mutate arbitrary SQLite rows.

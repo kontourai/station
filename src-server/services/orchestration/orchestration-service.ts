@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
@@ -2895,6 +2895,26 @@ export class OrchestrationService {
     return sessions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
+  async runWorkspaceRestore<T>(
+    workspaceKey: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.sessionExecutionCoordinator.runWorkspaceExclusive(
+      workspaceKey,
+      async () => {
+        const sessionIds =
+          this.options.eventStore?.listSessionIdsByCwd(workspaceKey) ?? [];
+        if (
+          sessionIds.some((threadId) =>
+            this.sessionExecutionCoordinator.hasActiveTurn(threadId),
+          )
+        )
+          throw new Error('workspace_has_active_turn');
+        return operation();
+      },
+    );
+  }
+
   /**
    * Persist the delegating Station's own dispatch receipt for work owned by a
    * paired peer. This is a compact Activity record, not a copy of the peer's
@@ -3920,6 +3940,19 @@ export class OrchestrationService {
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {
     this.initialize();
     return this.sessionAuthz.canReadSession(threadId, authority);
+  }
+
+  canUserMutateSession(
+    threadId: string,
+    userId: string | undefined,
+    tenantExecutionContext: TenantExecutionContext | undefined,
+  ): boolean {
+    this.initialize();
+    return this.sessionAuthz.canReadSessionForCommand(
+      threadId,
+      userId,
+      tenantExecutionContext,
+    );
   }
 
   /**
@@ -5256,6 +5289,19 @@ export class OrchestrationService {
                       )
                     : invoke();
                 },
+                (() => {
+                  const cwd =
+                    this.sessionReadModel.get(turnInput.threadId)?.cwd ??
+                    this.options.eventStore?.readSessionByThread(
+                      turnInput.threadId,
+                    )?.cwd;
+                  if (!cwd) return undefined;
+                  try {
+                    return realpathSync(cwd);
+                  } catch {
+                    return undefined;
+                  }
+                })(),
               );
             } catch (error) {
               if (!(error instanceof SessionTurnStartIndeterminateError)) {
