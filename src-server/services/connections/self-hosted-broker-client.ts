@@ -34,31 +34,45 @@ function exact(value: unknown, keys: string[]) {
     throw new Error('broker_response_invalid');
   return candidate;
 }
-async function readBounded(response: Response) {
+async function readBounded(response: Response, signal: AbortSignal) {
   if (!response.body) throw new Error('broker_response_invalid');
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const bytes = new Uint8Array(MAX_RESPONSE_BYTES);
+  let chunks = 0;
   let total = 0;
   try {
     while (true) {
-      const item = await reader.read();
+      signal.throwIfAborted();
+      const item = await new Promise<Awaited<ReturnType<typeof reader.read>>>(
+        (resolve, reject) => {
+          const aborted = () => reject(signal.reason);
+          signal.addEventListener('abort', aborted, { once: true });
+          reader.read().then(
+            (value) => {
+              signal.removeEventListener('abort', aborted);
+              resolve(value);
+            },
+            (error) => {
+              signal.removeEventListener('abort', aborted);
+              reject(error);
+            },
+          );
+        },
+      );
       if (item.done) break;
+      if (++chunks > 1024) throw new Error('broker_response_too_large');
       total += item.value.byteLength;
       if (total > MAX_RESPONSE_BYTES)
         throw new Error('broker_response_too_large');
-      chunks.push(item.value);
+      bytes.set(item.value, total - item.value.byteLength);
     }
   } finally {
-    if (total > MAX_RESPONSE_BYTES) await reader.cancel().catch(() => {});
+    if (signal.aborted || total > MAX_RESPONSE_BYTES)
+      void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+  signal.throwIfAborted();
+  return bytes.subarray(0, total);
 }
 export class SelfHostedBrokerClient {
   readonly #base: string;
@@ -97,7 +111,8 @@ export class SelfHostedBrokerClient {
       redirect: 'error',
       signal: boundedSignal,
     });
-    const bytes = await readBounded(response);
+    const bytes = await readBounded(response, boundedSignal);
+    boundedSignal.throwIfAborted();
     let value: unknown;
     try {
       value = JSON.parse(

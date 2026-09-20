@@ -61,6 +61,7 @@ describe.runIf(process.platform !== 'win32')(
         const answer = vi.fn(async () => ({
           answerSdp: 'answer',
           stationProof: 'opaque-proof',
+          dispose: async () => {},
         }));
         const connector = new SelfHostedBrokerConnector(
           scope,
@@ -84,7 +85,7 @@ describe.runIf(process.platform !== 'win32')(
         expect(answer).toHaveBeenCalledWith(
           expect.objectContaining({ offerSdp: 'offer' }),
           descriptor,
-          signal,
+          expect.any(AbortSignal),
         );
         expect(
           f.service.read(
@@ -210,6 +211,27 @@ describe.runIf(process.platform !== 'win32')(
         'caller stopped',
       );
     });
+    test('caller cancellation interrupts a blocked body and requests cleanup', async () => {
+      const cancelled = vi.fn();
+      const response = new Response(
+        new ReadableStream<Uint8Array>({
+          pull: () => new Promise(() => {}),
+          cancel: cancelled,
+        }),
+      );
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        async () => response,
+        () => 1_000,
+      );
+      const controller = new AbortController();
+      const pending = client.register(controller.signal);
+      controller.abort(new Error('caller stopped'));
+      await expect(pending).rejects.toThrow('caller stopped');
+      await vi.waitFor(() => expect(cancelled).toHaveBeenCalled());
+    });
     test('disposes provisional answer resources when publication fails', async () => {
       const f = fixture();
       try {
@@ -240,6 +262,85 @@ describe.runIf(process.platform !== 'win32')(
           'broker_request_refused_401',
         );
         expect(dispose).toHaveBeenCalledOnce();
+      } finally {
+        f.service.close();
+      }
+    });
+    test('withdraw retires local state immediately and aborts an in-flight poll', async () => {
+      const f = fixture();
+      try {
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-pending1',
+          nonce: 'nonce-pending1',
+          offerSdp: 'offer',
+        });
+        let entered!: () => void;
+        const started = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async (_offer, _trust, signal) => {
+            entered();
+            return await new Promise((_resolve, reject) =>
+              signal.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              }),
+            );
+          },
+        );
+        const caller = new AbortController().signal;
+        await connector.register(caller);
+        const poll = connector.poll(caller);
+        await started;
+        await connector.withdraw(caller);
+        await expect(poll).rejects.toThrow('broker_connector_withdrawn');
+        await expect(connector.renew(caller)).rejects.toThrow(
+          'broker_connector_withdrawn',
+        );
+      } finally {
+        f.service.close();
+      }
+    });
+    test('a lost withdrawal reply cannot restore local connector authority', async () => {
+      const f = fixture();
+      try {
+        const request: typeof fetch = async (input, init) => {
+          const response = await f.request(input, init);
+          if (String(input).endsWith('/leases/withdraw'))
+            throw new Error('reply lost');
+          return response;
+        };
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async () => ({
+            answerSdp: 'answer',
+            stationProof: 'proof',
+            dispose: async () => {},
+          }),
+        );
+        const signal = new AbortController().signal;
+        await connector.register(signal);
+        await expect(connector.withdraw(signal)).rejects.toThrow('reply lost');
+        await expect(connector.register(signal)).rejects.toThrow(
+          'broker_connector_withdrawn',
+        );
       } finally {
         f.service.close();
       }

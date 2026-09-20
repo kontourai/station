@@ -8,12 +8,13 @@ import type {
 type Answer = {
   answerSdp: string;
   stationProof: string;
-  dispose?: () => void | Promise<void>;
+  dispose: () => void | Promise<void>;
 };
 export class SelfHostedBrokerConnector {
   #revision = 0;
   #state: 'new' | 'registered' | 'withdrawn' = 'new';
-  #tail: Promise<void> = Promise.resolve();
+  #busy = false;
+  readonly #lifetime = new AbortController();
   readonly #scope: Readonly<SelfHostedBrokerScopeV1>;
   constructor(
     scope: SelfHostedBrokerScopeV1,
@@ -30,13 +31,9 @@ export class SelfHostedBrokerConnector {
   ) {
     this.#scope = Object.freeze(structuredClone(scope));
   }
-  #run<T>(operation: () => Promise<T>) {
-    const result = this.#tail.then(operation);
-    this.#tail = result.then(
-      () => {},
-      () => {},
-    );
-    return result;
+  #notWithdrawn() {
+    if (this.#state === 'withdrawn')
+      throw new Error('broker_connector_withdrawn');
   }
   #active() {
     if (this.#state !== 'registered')
@@ -46,30 +43,51 @@ export class SelfHostedBrokerConnector {
           : 'broker_connector_not_registered',
       );
   }
+  async #run<T>(
+    caller: AbortSignal,
+    operation: (signal: AbortSignal) => Promise<T>,
+  ) {
+    this.#notWithdrawn();
+    if (this.#busy) throw new Error('broker_connector_busy');
+    this.#busy = true;
+    try {
+      return await operation(AbortSignal.any([caller, this.#lifetime.signal]));
+    } finally {
+      this.#busy = false;
+    }
+  }
   async register(signal: AbortSignal) {
-    return this.#run(async () => {
-      if (this.#state === 'withdrawn')
-        throw new Error('broker_connector_withdrawn');
-      signal.throwIfAborted();
-      const result = await this.client.register(signal);
-      signal.throwIfAborted();
+    return this.#run(signal, async (current) => {
+      current.throwIfAborted();
+      const result = await this.client.register(current);
+      current.throwIfAborted();
       this.#revision = result.revision;
       this.#state = 'registered';
       return result;
     });
   }
   async renew(signal: AbortSignal) {
-    return this.#run(async () => {
+    return this.#run(signal, async (current) => {
       this.#active();
-      signal.throwIfAborted();
-      const result = await this.client.renew(this.#revision, signal);
-      signal.throwIfAborted();
+      const result = await this.client.renew(this.#revision, current);
+      current.throwIfAborted();
       this.#revision = result.revision;
       return result;
     });
   }
+  async #dispose(result: Answer) {
+    await Promise.race([
+      Promise.resolve().then(() => result.dispose()),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('broker_connector_cleanup_timeout')),
+          2_000,
+        ),
+      ),
+    ]);
+  }
   async poll(signal: AbortSignal) {
-    return this.#run(async () => {
+    return this.#run(signal, async (currentSignal) => {
       this.#active();
       const descriptor = this.trust.current();
       if (
@@ -79,20 +97,20 @@ export class SelfHostedBrokerConnector {
       )
         throw new Error('broker_connector_trust_unavailable');
       const current = () => {
-        signal.throwIfAborted();
+        currentSignal.throwIfAborted();
         if (!this.trust.isCurrent(descriptor))
           throw new Error('broker_connector_trust_retired');
       };
       current();
-      let observed = 0;
-      let answered = 0;
+      let observed = 0,
+        answered = 0;
       while (observed < 32) {
-        const offers = await this.client.offers(signal);
+        const offers = await this.client.offers(currentSignal);
         current();
-        if (offers.length === 0) break;
+        if (!offers.length) break;
         const offer = offers[0]!;
         observed++;
-        const result = await this.answer(offer, descriptor, signal);
+        const result = await this.answer(offer, descriptor, currentSignal);
         try {
           current();
           await this.client.answer(
@@ -102,25 +120,24 @@ export class SelfHostedBrokerConnector {
               answerSdp: result.answerSdp,
               stationProof: result.stationProof,
             },
-            signal,
+            currentSignal,
           );
+          current();
         } catch (error) {
-          await result.dispose?.();
+          await this.#dispose(result);
           throw error;
         }
-        current();
         answered++;
       }
       return { observed, answered };
     });
   }
   async withdraw(signal: AbortSignal) {
-    return this.#run(async () => {
-      this.#active();
-      signal.throwIfAborted();
-      await this.client.withdraw(signal);
-      signal.throwIfAborted();
-      this.#state = 'withdrawn';
-    });
+    this.#active();
+    this.#state = 'withdrawn';
+    this.#lifetime.abort(new Error('broker_connector_withdrawn'));
+    signal.throwIfAborted();
+    await this.client.withdraw(signal);
+    signal.throwIfAborted();
   }
 }
