@@ -108,6 +108,8 @@ export async function startStation(
     runtimeFramework?: 'voltagent' | 'strands';
     deterministicReadiness?: boolean;
     logFile?: string;
+    /** Explicit inherited environment; live security fixtures pass a sanitized set. */
+    environment?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<string> {
   const args = [
@@ -120,14 +122,15 @@ export async function startStation(
   ];
   if (options.logFile) args.push(`--log=${options.logFile}`);
   if (clean) args.splice(3, 0, '--clean');
+  const inherited = options.environment ?? process.env;
   const startup = await runCommand(...stationCommand(args), {
     // The diagnostic production UI is intentionally a distinct tree-shaken
     // build. A cold Windows or low-disk cache can exceed the ordinary helper's
     // two-minute command budget without the Station process being unhealthy.
     timeoutMs: options.performanceReference ? 300_000 : 120_000,
     env: {
-      ...process.env,
-      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
+      ...inherited,
+      PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
       STATION_E2E_SYSTEM_STATUS_READY:
@@ -135,7 +138,7 @@ export async function startStation(
       ...(options.runtimeFramework
         ? {
             STATION_FEATURES: [
-              ...(process.env.STATION_FEATURES ?? '')
+              ...(inherited.STATION_FEATURES ?? '')
                 .split(',')
                 .filter((feature) => feature && feature !== 'strands-runtime'),
               ...(options.runtimeFramework === 'strands'
