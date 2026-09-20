@@ -6,8 +6,11 @@ import {
 
 test('refuses restore while any same-workspace turn is active and admits another workspace', async () => {
   const barrier = new WorkspaceExecutionBarrier();
-  const started = await barrier.runTurnStart('/repo', 'thread-a', async () =>
-    Promise.resolve('started'),
+  const started = await barrier.runTurnStart(
+    '/repo',
+    'thread-a',
+    async () => Promise.resolve('started'),
+    () => true,
   );
   expect(started).toBe('started');
   await expect(
@@ -30,7 +33,13 @@ test('blocks a new second-session start for the entire restore transaction', asy
     () => new Promise<void>((resolve) => (finishRestore = resolve)),
   );
   const start = vi.fn(async () => 'started');
-  const pendingStart = barrier.runTurnStart('/repo', 'thread-b', start);
+  const pendingStart = barrier.runTurnStart(
+    '/repo',
+    'thread-b',
+    start,
+    () => true,
+  );
+  // The admitted provider turn remains active after start acknowledgement.
   await Promise.resolve();
   expect(start).not.toHaveBeenCalled();
   finishRestore();
@@ -40,7 +49,12 @@ test('blocks a new second-session start for the entire restore transaction', asy
 
 test('terminal and runtime-error release the workspace reservation', async () => {
   const barrier = new WorkspaceExecutionBarrier();
-  await barrier.runTurnStart('/repo', 'thread-a', async () => undefined);
+  await barrier.runTurnStart(
+    '/repo',
+    'thread-a',
+    async () => undefined,
+    () => true,
+  );
   barrier.releaseThread('thread-a');
   await expect(
     barrier.runExclusive('/repo', async () => 'released'),
@@ -54,6 +68,7 @@ test('does not resurrect a turn that terminates before start acknowledgement', a
     '/repo',
     'thread-fast',
     () => new Promise<void>((resolve) => (acknowledge = resolve)),
+    () => true,
   );
   barrier.releaseThread('thread-fast');
   acknowledge();

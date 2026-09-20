@@ -48,18 +48,22 @@ export function CheckpointRestoreButton({
       >
         {busy ? 'Checking workspace…' : 'Restore workspace to here…'}
       </button>
-      {error && <span role="alert">{error}</span>}
+      {error && !preview && <span role="alert">{error}</span>}
       {preview && (
         <Dialog
           title="Restore workspace?"
           closeLabel="Cancel workspace restore"
-          onClose={() => setPreview(undefined)}
+          onClose={() => {
+            if (!busy) setPreview(undefined);
+          }}
+          dismissible={!busy}
           role="alertdialog"
           footer={
             <>
               <button
                 type="button"
                 className="button button--secondary"
+                disabled={busy}
                 onClick={() => setPreview(undefined)}
               >
                 Cancel
@@ -98,6 +102,13 @@ export function CheckpointRestoreButton({
             This changes files only. Conversation history and external tool
             effects are not undone.
           </p>
+          {busy && <p role="status">Restoring workspace…</p>}
+          {error && (
+            <p role="alert">
+              Restore outcome not confirmed: {error}. Inspect the workspace
+              before trying again.
+            </p>
+          )}
           <ul>
             {preview.paths.map((path) => (
               <li key={`${path.status}:${path.path}`}>

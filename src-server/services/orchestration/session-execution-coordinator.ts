@@ -54,8 +54,11 @@ export class SessionExecutionCoordinator {
     workspaceKey?: string,
   ): Promise<T> {
     if (workspaceKey)
-      return this.workspaces.runTurnStart(workspaceKey, threadId, () =>
-        this.runThreadTurnStart(threadId, operation),
+      return this.workspaces.runTurnStart(
+        workspaceKey,
+        threadId,
+        () => this.runThreadTurnStart(threadId, operation),
+        () => this.hasActiveTurn(threadId),
       );
     return this.runThreadTurnStart(threadId, operation);
   }

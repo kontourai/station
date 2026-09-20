@@ -995,6 +995,7 @@ export function createOrchestrationRoutes(
       expectedCurrentTreeSha: string;
       ownerKey: string;
       confirmed: true;
+      isAuthorized?: () => boolean;
     }) => Promise<unknown>;
     listCheckpointRestoreEvents?: (threadId: string) => unknown[];
     /** Shared status envelope for the existing attached-session handoff. */
@@ -2123,6 +2124,13 @@ export function createOrchestrationRoutes(
           threadId,
           turnId: param(c, 'turnId'),
           ownerKey: identity.ownerKey,
+          isAuthorized: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+            orchestrationService.canUserMutateSession(
+              threadId,
+              identity.userId,
+              identity.tenant,
+            ),
           ...parsed.data,
         }),
       });

@@ -4044,6 +4044,7 @@ describe('Orchestration Routes', () => {
       previewId: '11111111-1111-4111-8111-111111111111',
       expectedCurrentTreeSha: 'a'.repeat(40),
       confirmed: true,
+      isAuthorized: expect.any(Function),
     });
     const audit = await app.request('/sessions/thread-cp/checkpoint-restores');
     expect(audit.status).toBe(200);

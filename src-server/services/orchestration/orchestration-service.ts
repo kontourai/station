@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
@@ -326,6 +327,7 @@ import {
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
+import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 
 type UsageTelemetryObserver = {
   trackSessionRecovery(
@@ -1115,6 +1117,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly workspaceExecutionBarrier = new WorkspaceExecutionBarrier();
   private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
   private readonly nativeOutputGrants = createNativeOutputGrantAuthority();
@@ -1481,6 +1484,7 @@ export class OrchestrationService {
       createInMemorySessionTurnBoundaryAuthority();
     this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
       this.sessionStartBoundaries,
+      this.workspaceExecutionBarrier,
     );
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
@@ -2902,8 +2906,25 @@ export class OrchestrationService {
     return this.sessionExecutionCoordinator.runWorkspaceExclusive(
       workspaceKey,
       async () => {
-        const sessionIds =
-          this.options.eventStore?.listSessionIdsByCwd(workspaceKey) ?? [];
+        if (!this.options.eventStore)
+          throw new Error('workspace_coordination_unavailable');
+        const sessionIds = this.options.eventStore
+          .readSessions()
+          .filter((session) => {
+            if (!session.cwd) return false;
+            try {
+              return (
+                execFileSync(
+                  'git',
+                  ['-C', session.cwd, 'rev-parse', '--show-toplevel'],
+                  { encoding: 'utf-8', windowsHide: true },
+                ).trim() === workspaceKey
+              );
+            } catch {
+              throw new Error('workspace_coordination_unavailable');
+            }
+          })
+          .map((session) => session.threadId);
         if (
           sessionIds.some((threadId) =>
             this.sessionExecutionCoordinator.hasActiveTurn(threadId),
@@ -5296,11 +5317,11 @@ export class OrchestrationService {
                       turnInput.threadId,
                     )?.cwd;
                   if (!cwd) return undefined;
-                  try {
-                    return realpathSync(cwd);
-                  } catch {
-                    return undefined;
-                  }
+                  return execFileSync(
+                    'git',
+                    ['-C', cwd, 'rev-parse', '--show-toplevel'],
+                    { encoding: 'utf-8', windowsHide: true },
+                  ).trim();
                 })(),
               );
             } catch (error) {

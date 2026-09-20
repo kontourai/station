@@ -15,6 +15,7 @@ export class WorkspaceExecutionBarrier {
     workspaceKey: string,
     threadId: string,
     operation: () => Promise<T>,
+    retain: () => boolean,
   ): Promise<T> {
     const state = this.state(workspaceKey);
     while (state.exclusive) await this.wait(state);
@@ -22,8 +23,9 @@ export class WorkspaceExecutionBarrier {
     this.workspaceByThread.set(threadId, workspaceKey);
     try {
       const result = await operation();
-      if (!state.terminalDuringStart.delete(threadId))
+      if (!state.terminalDuringStart.delete(threadId) && retain())
         state.activeThreads.add(threadId);
+      else this.workspaceByThread.delete(threadId);
       return result;
     } catch (error) {
       this.releaseThread(threadId);

@@ -15,6 +15,8 @@ import { CHECKPOINT_MUTATION_LOCK } from './checkpoint-retention.js';
 const RESTORE_GIT_TIMEOUT_MS = 60_000;
 const RESTORE_PREVIEW_TTL_MS = 5 * 60_000;
 const RESTORE_PREVIEW_PATH_LIMIT = 200;
+const RESTORE_PREVIEW_LIMIT = 128;
+const RESTORE_PREVIEW_OWNER_LIMIT = 16;
 export const RESTORE_LOCK_TIMEOUT_MS = 15 * 60_000;
 type AcquireRestoreLock = typeof acquireFileMutationLockAsync;
 
@@ -47,6 +49,7 @@ export type CheckpointRestorePreview = {
   checkpointId: string;
   repoRoot: string;
   targetTreeSha: string;
+  targetCommitSha: string;
   currentTreeSha: string;
   paths: Array<{ path: string; status: string }>;
   pathsTruncated: boolean;
@@ -85,6 +88,7 @@ export class CheckpointRestoreService {
     phase: TurnCheckpointPhase;
     ownerKey: string;
   }): Promise<CheckpointRestorePreview> {
+    this.prunePreviews(input.ownerKey);
     const target = await this.resolveTarget(input);
     const currentTreeSha = await snapshotWorkingTree(target.repoRoot);
     const paths = await changedPaths(
@@ -98,6 +102,7 @@ export class CheckpointRestoreService {
       checkpointId: target.checkpointId,
       repoRoot: target.repoRoot,
       targetTreeSha: target.treeSha,
+      targetCommitSha: target.commitSha,
       currentTreeSha,
       paths: paths.slice(0, RESTORE_PREVIEW_PATH_LIMIT),
       pathsTruncated: paths.length > RESTORE_PREVIEW_PATH_LIMIT,
@@ -115,6 +120,7 @@ export class CheckpointRestoreService {
     expectedCurrentTreeSha: string;
     ownerKey: string;
     confirmed: true;
+    isAuthorized?: () => boolean;
   }): Promise<CheckpointRestoreReceipt> {
     // One restore can legitimately spend several bounded 60s Git calls
     // resolving, snapshotting, materializing, and verifying. The shared
@@ -156,9 +162,12 @@ export class CheckpointRestoreService {
     expectedCurrentTreeSha: string;
     ownerKey: string;
     confirmed: true;
+    isAuthorized?: () => boolean;
   }): Promise<CheckpointRestoreReceipt> {
     if (input.confirmed !== true)
       throw new CheckpointRestoreError('confirmation_required');
+    if (input.isAuthorized?.() === false)
+      throw new CheckpointRestoreError('authorization_changed');
     const preview = this.previews.get(input.previewId);
     this.previews.delete(input.previewId);
     if (
@@ -175,6 +184,7 @@ export class CheckpointRestoreService {
     if (
       target.checkpointId !== preview.checkpointId ||
       target.treeSha !== preview.targetTreeSha ||
+      target.commitSha !== preview.targetCommitSha ||
       target.repoRoot !== preview.repoRoot
     )
       throw new CheckpointRestoreError('checkpoint_identity_mismatch');
@@ -246,22 +256,43 @@ export class CheckpointRestoreService {
     )
       throw new CheckpointRestoreError('checkpoint_identity_mismatch');
 
-    return phase;
+    const canonicalRoot = (
+      await execGit(['rev-parse', '--show-toplevel'], {
+        cwd: phase.repoRoot,
+        timeout: RESTORE_GIT_TIMEOUT_MS,
+        encoding: 'utf-8',
+      })
+    ).stdout.trim();
+    return { ...phase, repoRoot: canonicalRoot };
+  }
+
+  private prunePreviews(ownerKey: string): void {
+    const now = Date.now();
+    for (const [id, preview] of this.previews)
+      if (Date.parse(preview.expiresAt) <= now) this.previews.delete(id);
+    const ownerEntries = [...this.previews.entries()].filter(
+      ([, preview]) => preview.ownerKey === ownerKey,
+    );
+    for (const [id] of ownerEntries.slice(
+      0,
+      Math.max(0, ownerEntries.length - RESTORE_PREVIEW_OWNER_LIMIT + 1),
+    ))
+      this.previews.delete(id);
+    while (this.previews.size >= RESTORE_PREVIEW_LIMIT)
+      this.previews.delete(this.previews.keys().next().value!);
   }
 }
 
 async function changedPaths(repoRoot: string, current: string, target: string) {
   const output = await execGit(
-    ['diff', '--name-status', '--no-renames', current, target, '--'],
+    ['diff', '--name-status', '--no-renames', '-z', current, target, '--'],
     { cwd: repoRoot, timeout: RESTORE_GIT_TIMEOUT_MS, encoding: 'utf-8' },
   );
-  return output.stdout
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const [status = 'M', ...parts] = line.split('\t');
-      return { status, path: parts.join('\t') };
-    });
+  const fields = output.stdout.split('\0').filter(Boolean);
+  return fields.flatMap((field, index) => {
+    if (index % 2 !== 0) return [];
+    return [{ status: field, path: fields[index + 1] ?? '' }];
+  });
 }
 
 async function withTemporaryIndex<T>(
@@ -320,7 +351,8 @@ class CheckpointRestoreError extends Error {
       | 'checkpoint_identity_mismatch'
       | 'restore_verification_failed'
       | 'preview_invalid'
-      | 'workspace_changed',
+      | 'workspace_changed'
+      | 'authorization_changed',
   ) {
     super(reason);
   }
