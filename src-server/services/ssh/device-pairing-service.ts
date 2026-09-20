@@ -22,6 +22,7 @@ import {
   DEVICE_PAIRING_PROTOCOL_VERSION,
   DEVICE_PAIRING_SCOPE,
   type DeviceAccountBindingCandidate,
+  type DevicePairingAccessRequestResponse,
   type DevicePairingConfirmation,
   type DevicePairingOffer,
   type DevicePairingRequest,
@@ -1024,6 +1025,7 @@ export class DevicePairingService {
       requesterPosition: PairingRequesterPosition;
       accountCandidate?: DeviceAccountBindingCandidate;
       accountCandidateSessionId?: string;
+      requireAccountBinding?: true;
     } & PairingProvenance,
   ): DevicePairingRequest {
     const offer = input.offerId
@@ -1042,6 +1044,8 @@ export class DevicePairingService {
         !equalSecret(input.proof.toUpperCase(), offer.manualCode)) ||
       (input.accountCandidate === undefined) !==
         (input.accountCandidateSessionId === undefined) ||
+      (input.requireAccountBinding === true &&
+        input.accountCandidate === undefined) ||
       (input.accountCandidate !== undefined &&
         (!isValidAccountCandidate(input.accountCandidate) ||
           !safeRequesterText(input.accountCandidateSessionId!, 512)))
@@ -1066,6 +1070,9 @@ export class DevicePairingService {
       ...(input.accountCandidate
         ? { accountCandidate: structuredClone(input.accountCandidate) }
         : {}),
+      ...(input.requireAccountBinding === true
+        ? { requireAccountBinding: true as const }
+        : {}),
       status: 'pending',
     };
     offer.request = request;
@@ -1081,14 +1088,11 @@ export class DevicePairingService {
       clientInstanceId?: string;
       scope?: string;
       requesterPosition: PairingRequesterPosition;
+      accountCandidate?: DeviceAccountBindingCandidate;
+      accountCandidateSessionId?: string;
+      requireAccountBinding?: true;
     } & PairingProvenance,
-  ): {
-    environmentId: string;
-    offerId: string;
-    proof: string;
-    requestId: string;
-    expiresAt: number;
-  } {
+  ): DevicePairingAccessRequestResponse {
     const offer = this.createOffer({
       endpoint: input.endpoint,
       scope: input.scope,
@@ -1104,6 +1108,9 @@ export class DevicePairingService {
         offerId: offer.offerId,
         proof: offer.challenge,
         requesterPosition: input.requesterPosition,
+        accountCandidate: input.accountCandidate,
+        accountCandidateSessionId: input.accountCandidateSessionId,
+        requireAccountBinding: input.requireAccountBinding,
         ...provenance,
       });
       return {
@@ -1112,6 +1119,12 @@ export class DevicePairingService {
         proof: offer.challenge,
         requestId: request.requestId,
         expiresAt: offer.expiresAt,
+        ...(request.accountCandidate
+          ? { accountCandidate: structuredClone(request.accountCandidate) }
+          : {}),
+        ...(request.requireAccountBinding
+          ? { requireAccountBinding: true as const }
+          : {}),
       };
     } catch (error) {
       this.#offers.delete(offer.offerId);
@@ -1174,6 +1187,11 @@ export class DevicePairingService {
     ) {
       throw new DevicePairingError('approval_requires_operator');
     }
+    if (
+      offer.request.requireAccountBinding &&
+      personBindingApproval?.kind !== 'account'
+    )
+      throw new DevicePairingError('invalid_request');
     if (personBindingApproval) {
       if (
         approval.kind !== 'presented-credential' ||
@@ -1296,6 +1314,13 @@ export class DevicePairingService {
     // exchange decisions.
     const request = offer.request;
     if (!request) throw new DevicePairingError('request_not_confirmed');
+    if (
+      request.requireAccountBinding &&
+      (!offer.principalBinding ||
+        !('kind' in offer.principalBinding) ||
+        offer.principalBinding.kind !== 'account')
+    )
+      throw new DevicePairingError('invalid_request');
     const requestProvenance = pairingProvenance(request);
     if (
       !equalSecret(input.proof, offer.challenge) &&
