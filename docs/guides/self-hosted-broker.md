@@ -29,3 +29,9 @@ This tranche provisions one operator-owned routing credential for one Station an
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 
 The service binds only to loopback. TLS termination, reverse-proxy hardening, public deployment, production connector lifecycle, and application transport remain later integration work under #1963.
+
+## Connector lifecycle library
+
+`SelfHostedBrokerClient` fixes one configured broker origin and refuses redirects, oversized responses, and response fields outside the v1 contract. `SelfHostedBrokerConnector` registers, renews by revision, polls at most 32 offers, answers once, and withdraws. Before reading or answering it requires a caller-owned current `ApprovedStationConnectionTrust` for the exact Station and enrollment, and rechecks that descriptor around asynchronous answer construction.
+
+This library does not launch a connector, integrate `StationRuntime`, open WebRTC, distribute routing credentials, enroll a Device, or approve a signing key. Its answer callback remains an uncomposed capability until the Pion adapter has a reviewed production owner.
