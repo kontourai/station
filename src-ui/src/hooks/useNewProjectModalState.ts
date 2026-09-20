@@ -3,11 +3,9 @@ import {
   findProjectSlugConflict,
   type ProjectMetadata,
 } from '@kontourai/station-contracts/project';
-import {
-  useProjectIconCandidatesQuery,
-  useProjectsQuery,
-} from '@kontourai/station-sdk';
+import { useProjectIconCandidatesQuery } from '@kontourai/station-sdk';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useNewProjectDraft } from './useNewProjectDraft';
 import { useNewProjectStarter } from './useNewProjectStarter';
@@ -71,7 +69,9 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   );
   // Shares the `['projects']` cache the sidebar already holds, so opening the
   // modal usually costs no request at all.
-  const projects = useProjectsQuery({ enabled: isOpen }) as ProjectsQueryResult;
+  const projects = useScopedProjectsQuery({
+    enabled: isOpen,
+  }) as ProjectsQueryResult;
   const nameAdvisory = useCachedSlugConflictNotice(
     draft.derivedSlug,
     draft.resolvedName,

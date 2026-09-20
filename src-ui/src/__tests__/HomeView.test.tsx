@@ -1,6 +1,14 @@
 /** @vitest-environment jsdom */
 
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import {
   afterEach,
@@ -20,6 +28,26 @@ import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
 const showSurface = vi.hoisted(() => vi.fn());
+// Mutable so the authority-switching test can move the mounted Home between
+// two same-origin authorities (and to none).
+const authorityRef = vi.hoisted(() => ({
+  current: {
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  } as
+    | {
+        apiBase: string;
+        authorityKey: string;
+        isCurrent: () => boolean;
+      }
+    | undefined,
+}));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => authorityRef.current,
+}));
+
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
@@ -32,6 +60,10 @@ function renderHomeView(props: ComponentProps<typeof HomeView>) {
 
 const fixtures = vi.hoisted(() => ({
   projects: [{ id: 'p1', slug: 'station', name: 'Station' }],
+  projectsByAuthority: {} as Record<
+    string,
+    Array<{ id: string; slug: string; name: string }>
+  >,
   projectsLoading: false,
   sessions: [] as any[],
   tasks: [] as any[],
@@ -121,10 +153,19 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: fixtures.inventoryRefetch,
   }),
   useAcknowledgeConversationMutation: () => ({ mutate: vi.fn() }),
-  useProjectsQuery: () => ({
-    data: fixtures.projects,
-    isLoading: fixtures.projectsLoading,
-  }),
+  useProjectsQuery: (config?: {
+    requestScope?: { authorityKey: string } | undefined;
+    requireRequestScope?: boolean;
+  }) => {
+    const byAuthority = fixtures.projectsByAuthority as Record<
+      string,
+      Array<{ id: string; slug: string; name: string }>
+    >;
+    const data = config?.requestScope
+      ? (byAuthority[config.requestScope.authorityKey] ?? fixtures.projects)
+      : undefined;
+    return { data, isLoading: fixtures.projectsLoading };
+  },
   useOrchestrationSessionsQuery: () => ({
     data: fixtures.sessions,
     isError: fixtures.sessionsError,
@@ -1218,5 +1259,43 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
 
     expect(document.querySelector('.home-view__environment-badge')).toBeNull();
     expect(document.querySelector('.home-view__remote-note')).toBeNull();
+  });
+});
+
+describe('Home project data follows the host authority (#481 slice A)', () => {
+  test('a colliding slug resolves to the ACTIVE authority project after a switch, and to nothing without one', async () => {
+    const { useHomeViewModel } = await import('../views/home/useHomeViewModel');
+    fixtures.projectsByAuthority = {
+      'authority-a': [{ id: 'home-a-id', slug: 'station', name: 'Home A' }],
+      'authority-b': [{ id: 'home-b-id', slug: 'station', name: 'Home B' }],
+    };
+    authorityRef.current = {
+      apiBase: 'http://station.test',
+      authorityKey: 'authority-a',
+      isCurrent: () => true,
+    };
+    const { result, rerender } = renderHook(() => useHomeViewModel(vi.fn()));
+    expect(result.current.projects).toEqual([
+      { id: 'home-a-id', slug: 'station', name: 'Home A' },
+    ]);
+
+    authorityRef.current = {
+      apiBase: 'http://station.test',
+      authorityKey: 'authority-b',
+      isCurrent: () => true,
+    };
+    rerender();
+    await waitFor(() => {
+      expect(result.current.projects).toEqual([
+        { id: 'home-b-id', slug: 'station', name: 'Home B' },
+      ]);
+    });
+
+    // Missing authority: fail closed. No ambient data from either home.
+    authorityRef.current = undefined;
+    rerender();
+    await waitFor(() => {
+      expect(result.current.projects).toEqual([]);
+    });
   });
 });

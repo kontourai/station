@@ -13,7 +13,6 @@ import {
   type TaskWorkspaceBinding,
   telemetry,
   usePluginsQuery,
-  useProjectsQuery,
   useQueryClient,
   useTaskGraphQuery,
 } from '@kontourai/station-sdk';
@@ -39,6 +38,7 @@ import {
   SkeletonList,
 } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
@@ -192,7 +192,7 @@ function statusBadgeVariant(status: string) {
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
-  const projectsQuery = useProjectsQuery() as {
+  const projectsQuery = useScopedProjectsQuery() as {
     data?: Array<{ id: string; slug: string }>;
     isLoading: boolean;
     error?: unknown;

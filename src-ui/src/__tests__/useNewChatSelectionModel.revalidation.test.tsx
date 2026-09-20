@@ -13,6 +13,15 @@ const state = vi.hoisted(() => ({
     modelConnections: [] as unknown[],
   },
 }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => ({
     data: state.agents,

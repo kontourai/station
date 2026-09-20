@@ -10,8 +10,6 @@ import {
   useConfigProvenanceQuery,
   useInvalidateQuery,
   usePluginVisibilityQuery,
-  useProjectQuery,
-  useProjectsQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { updateAppLogLevel } from '@kontourai/station-sdk/app-config';
@@ -47,6 +45,10 @@ import {
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
 import { useNavigationActions } from '../contexts/NavigationContext';
+import {
+  useScopedProjectQuery,
+  useScopedProjectsQuery,
+} from '../contexts/ProjectsContext';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
@@ -191,13 +193,16 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     null,
   );
   const [overrideDraft, setOverrideDraft] = useState<ProjectOverrideDraft>({});
-  const { data: projects } = useProjectsQuery();
+  const { data: projects } = useScopedProjectsQuery();
   const projectList: { slug: string; name?: string }[] = Array.isArray(projects)
     ? projects
     : [];
-  const { data: selectedProject } = useProjectQuery(selectedProjectSlug ?? '', {
-    enabled: Boolean(selectedProjectSlug),
-  });
+  const { data: selectedProject } = useScopedProjectQuery(
+    selectedProjectSlug ?? '',
+    {
+      enabled: Boolean(selectedProjectSlug),
+    },
+  );
   const savedOverrides = savedOverridesFor(
     selectedProjectSlug ? selectedProject : undefined,
   );

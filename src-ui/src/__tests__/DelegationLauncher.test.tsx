@@ -27,6 +27,15 @@ let peerCredentials:
     }>
   | undefined;
 
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({
     data: projectLoading

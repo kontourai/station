@@ -4,7 +4,6 @@ import {
   FullScreenLoader,
   LayoutNavigationProvider,
   useProjectLayoutQuery,
-  useProjectQuery,
 } from '@kontourai/station-sdk';
 import { useWorkspacePaneHostActionsQuery } from '@kontourai/station-sdk/workspace-pane';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +16,7 @@ import {
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useScopedProjectQuery } from '../contexts/ProjectsContext';
 import { LAST_PROJECT_LAYOUT_KEY } from '../contexts/navigation-store';
 import { SDKAdapter } from '../core/SDKAdapter';
 import {
@@ -81,7 +81,7 @@ export function LayoutView({
   // "ready"; a still-loading or permanently-errored query stays 'unknown'
   // forever, so launches stay refused rather than failing open.
   const { data: projectConfig, isSuccess: projectConfigReady } =
-    useProjectQuery(projectSlug);
+    useScopedProjectQuery(projectSlug);
   const hostAuthority = useHostRequestAuthorityScope();
   const hostActions = useWorkspacePaneHostActionsQuery(projectSlug, {
     requestScope: hostAuthority,

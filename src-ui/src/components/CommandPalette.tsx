@@ -1,7 +1,6 @@
 import {
   useAgentsQuery,
   useMessageSearchQuery,
-  useProjectsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
 import {
@@ -23,6 +22,7 @@ import {
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
@@ -270,7 +270,7 @@ export function CommandPalette() {
   // Command sources. Palette is global, so these queries are always mounted;
   // they share react-query cache with the views that own them.
   const { data: agents = [] } = useAgentsQuery();
-  const { data: projects = [] } = useProjectsQuery();
+  const { data: projects = [] } = useScopedProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
