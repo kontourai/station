@@ -235,6 +235,11 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           category: 'optional',
         },
       ];
+      // archive#3054: the handshake's model config option IS this engine's
+      // catalog — project it so the composer's wire-channel gate sees the
+      // observed evidence it requires instead of an absent field. Hoisted so
+      // the not-ready state reason below can quote the same observation.
+      const runtimeCatalog = acpRuntimeCatalogStatus(liveStatus);
       connections.push({
         id: identity.id,
         kind: 'agent',
@@ -262,6 +267,22 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         },
         config: {
           engineId: 'acp',
+          // `readinessReason` mirrors what `inspectAdapter` projects for
+          // runtime adapters: WHY this connection is not ready, from the
+          // engine's own observation. For ACP that is the probe's actual
+          // failure (e.g. the initialize handshake that did not settle), not
+          // the readiness evidence's summary of what HAS been proven —
+          // consumers quote this as an unavailability reason, where a
+          // proven-nothing evidence summary ("a live model catalog is
+          // available") reads as a contradiction.
+          ...(status === 'ready'
+            ? {}
+            : {
+                readinessReason:
+                  liveStatus?.lastError?.message ??
+                  runtimeCatalog.reason ??
+                  undefined,
+              }),
         },
         setup: {
           state: status === 'ready' ? 'ready' : 'configured',
@@ -275,10 +296,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           enabled,
         }),
         controlPlaneObservation: projectControlPlaneObservation(liveStatus),
-        // archive#3054: the handshake's model config option IS this engine's
-        // catalog — project it so the composer's wire-channel gate sees the
-        // observed evidence it requires instead of an absent field.
-        runtimeCatalog: acpRuntimeCatalogStatus(liveStatus),
+        runtimeCatalog,
         providerRouting: acpProviderRoutingStatus(liveStatus),
         prerequisites,
         status,

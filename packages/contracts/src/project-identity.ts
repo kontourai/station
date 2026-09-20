@@ -385,6 +385,15 @@ export interface ProjectAttachResult extends ProjectIdentityView {
   outcome: 'created' | 'existing';
 }
 
+export interface ProjectExecutionRootMutationRequest {
+  /** Exact optimistic guard returned by the preceding identity read. */
+  expectedIdentity: ProjectPortableIdentity;
+  /** Receiver-local guard; prevents a stale edit from targeting a replacement Project. */
+  expectedLocalProjectId: string;
+  /** `null` clears the selection without changing resources or bindings. */
+  executionRoot: NonNullable<ProjectManifest['executionRoot']> | null;
+}
+
 // ---------------------------------------------------------------------------
 // Binding store (§3.5) — private, per-Station, per-member. Never leaves the
 // machine (never replicated, never part of a manifest, never what a peer

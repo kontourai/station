@@ -1,10 +1,12 @@
 import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { isRepoRelativePath } from '@kontourai/station-contracts/project-identity';
 import {
   attachProject,
   getProjectIdentity,
   parseProjectPortableIdentity,
   prepareProjectIdentity,
+  updateProjectExecutionRoot,
 } from '@kontourai/station-sdk/project-identity';
 import {
   type ParsedCoreArgs,
@@ -54,13 +56,60 @@ export async function runProjectIdentityCommand(
     'json',
     ...(action === 'attach'
       ? ['identity-file', 'name', 'target-workspace']
-      : []),
+      : action === 'execution-root'
+        ? ['repo-id', 'path', 'clear']
+        : []),
   ]);
   for (const flag of Object.keys(parsed.flags))
     if (!allowed.has(flag))
       throw new Error(`Unsupported Project identity flag: --${flag}`);
 
   const options = { authentication: 'required' as const };
+  if (action === 'execution-root') {
+    const clear = parsed.flags.clear === true;
+    const repoId = parsed.flags['repo-id'];
+    const path = parsed.flags.path;
+    if (parsed.flags.clear !== undefined && parsed.flags.clear !== true)
+      throw new Error('--clear does not accept a value.');
+    if (clear && (repoId !== undefined || path !== undefined))
+      throw new Error('Choose --clear or --repo-id with --path, not both.');
+    if (
+      !clear &&
+      (typeof repoId !== 'string' ||
+        !repoId.trim() ||
+        typeof path !== 'string' ||
+        !path.trim())
+    )
+      throw new Error(
+        'Setting an execution root requires --repo-id=<id> and --path=<relative-path>.',
+      );
+    if (!clear && !isRepoRelativePath(path))
+      throw new Error('Execution root --path must stay relative to its repo.');
+    printResolvedTarget();
+    const current = await getProjectIdentity(apiBase, slug, options);
+    if (
+      !clear &&
+      !current.identity.repos.some((resource) => resource.id === repoId)
+    )
+      throw new Error(
+        `Project '${slug}' does not declare resource '${String(repoId)}'.`,
+      );
+    printFetched(
+      await updateProjectExecutionRoot(
+        apiBase,
+        slug,
+        {
+          expectedIdentity: current.identity,
+          expectedLocalProjectId: current.association.localProjectId,
+          executionRoot: clear
+            ? null
+            : { repoId: String(repoId), path: String(path) },
+        },
+        options,
+      ),
+    );
+    return;
+  }
   if (action === 'identity' || action === 'prepare-identity') {
     if (action === 'prepare-identity') printResolvedTarget();
     const view =

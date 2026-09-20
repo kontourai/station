@@ -5,16 +5,24 @@ import {
   listProjectViews,
   StationHttpError,
 } from '@kontourai/station-sdk';
-import { getAccountSession } from '@kontourai/station-sdk/account-authentication';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { LazyBoundary } from '../../components/LazyBoundary';
 import { Empty, SkeletonList } from '../../components/state';
+import {
+  classifyGuestReadFailure,
+  GuestAccountRequired,
+  GuestAccountUnavailable,
+  GuestApprovalRequired,
+  requireGuestAccount,
+} from './guest-account-authority';
 
-class GuestApprovalRequired extends Error {}
-class GuestAccountRequired extends Error {}
-class GuestAccountUnavailable extends Error {}
+const loadSharedTasks = () =>
+  import('./GuestSharedTaskView').then(({ GuestSharedTaskView }) => ({
+    default: GuestSharedTaskView,
+  }));
 
 const options = (signal: AbortSignal) => ({
   authentication: 'omit' as const,
@@ -34,49 +42,6 @@ function member(value: unknown): MemberProjectView {
   )
     throw new Error('Station returned a personal Project view to guest entry.');
   return value as MemberProjectView;
-}
-
-async function requireAccountAuthority(
-  apiBase: string,
-  principalId: string,
-  signal: AbortSignal,
-) {
-  try {
-    const account = await getAccountSession(apiBase, { signal });
-    if (!account || account.principal.id !== principalId)
-      throw new GuestAccountRequired();
-  } catch (cause) {
-    if (
-      cause instanceof GuestAccountRequired ||
-      (cause instanceof DOMException && cause.name === 'AbortError')
-    )
-      throw cause;
-    throw new GuestAccountUnavailable();
-  }
-}
-
-async function classifyReadFailure(
-  cause: unknown,
-  apiBase: string,
-  principalId: string,
-  signal: AbortSignal,
-): Promise<never> {
-  if (!(cause instanceof StationHttpError) || cause.status !== 401) throw cause;
-  try {
-    const account = await getAccountSession(apiBase, { signal });
-    if (!account || account.principal.id !== principalId)
-      throw new GuestAccountRequired();
-    throw new GuestApprovalRequired();
-  } catch (accountFailure) {
-    if (
-      accountFailure instanceof GuestAccountRequired ||
-      accountFailure instanceof GuestApprovalRequired ||
-      (accountFailure instanceof DOMException &&
-        accountFailure.name === 'AbortError')
-    )
-      throw accountFailure;
-    throw new GuestAccountUnavailable();
-  }
 }
 
 export function GuestDeviceOnboarding({
@@ -99,12 +64,12 @@ export function GuestDeviceOnboarding({
     queryKey: ['guest-projects', apiBase, principalId],
     queryFn: async ({ signal }) => {
       try {
-        await requireAccountAuthority(apiBase, principalId, signal);
+        await requireGuestAccount(apiBase, principalId, signal);
         const values = await listProjectViews(apiBase, options(signal));
-        await requireAccountAuthority(apiBase, principalId, signal);
+        await requireGuestAccount(apiBase, principalId, signal);
         return values.map(member);
       } catch (cause) {
-        return classifyReadFailure(cause, apiBase, principalId, signal);
+        return classifyGuestReadFailure(cause, apiBase, principalId, signal);
       }
     },
     retry: false,
@@ -114,14 +79,14 @@ export function GuestDeviceOnboarding({
     queryKey: ['guest-project', apiBase, principalId, selectedProject],
     queryFn: async ({ signal }) => {
       try {
-        await requireAccountAuthority(apiBase, principalId, signal);
+        await requireGuestAccount(apiBase, principalId, signal);
         const value = member(
           await getProjectView(apiBase, selectedProject!, options(signal)),
         );
-        await requireAccountAuthority(apiBase, principalId, signal);
+        await requireGuestAccount(apiBase, principalId, signal);
         return value;
       } catch (cause) {
-        return classifyReadFailure(cause, apiBase, principalId, signal);
+        return classifyGuestReadFailure(cause, apiBase, principalId, signal);
       }
     },
     enabled: !!selectedProject,
@@ -301,6 +266,24 @@ export function GuestDeviceOnboarding({
           <h3>{detail.data.name}</h3>
           {detail.data.description && <p>{detail.data.description}</p>}
           <p>Available action: View</p>
+          <LazyBoundary
+            key={`${principalId}:${detail.data.id}:${detail.data.slug}`}
+            load={loadSharedTasks}
+            componentProps={{
+              apiBase,
+              principalId,
+              project: {
+                id: detail.data.id,
+                slug: detail.data.slug,
+              },
+              onScopeLost: () => {
+                setSelectedProject(undefined);
+                setNotice('Shared Project access changed. Projects refreshed.');
+                void projects.refetch();
+              },
+            }}
+            pending={<SkeletonList count={1} label="Opening shared Tasks" />}
+          />
         </section>
       )}
     </section>
