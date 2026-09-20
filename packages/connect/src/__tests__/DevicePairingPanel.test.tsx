@@ -2617,4 +2617,168 @@ describe('explicit verified-person pairing consent', () => {
       );
     },
   );
+
+  test('account binding requires an explicit click, excludes Tailscale binding, and sends only the account signal', async () => {
+    const request = {
+      requestId: 'account-request',
+      offerId: 'account-offer',
+      deviceName: 'Collaborator phone',
+      status: 'pending',
+      source: 'tailnet',
+      requester: {
+        provider: 'tailscale-serve',
+        login: 'collaborator@example.test',
+      },
+      accountCandidate: {
+        issuer: 'https://accounts.example.test',
+        subject: 'account-123',
+        displayName: 'Collaborator Account',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    let approved = false;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) => {
+        const path = new URL(String(input)).pathname;
+        if (path === '/api/pairing/requests')
+          return response({ requests: approved ? [] : [request] });
+        if (path === '/api/pairing/devices') return response({ devices: [] });
+        if (path === '/api/pairing/requests/account-request/confirm') {
+          approved = true;
+          return response({
+            ...request,
+            status: 'confirmed',
+            principalBinding: {
+              kind: 'account',
+              issuer: request.accountCandidate.issuer,
+              subject: request.accountCandidate.subject,
+              displayName: request.accountCandidate.displayName,
+              approvalId: 'approval-1',
+            },
+          });
+        }
+        return response({ error: 'unexpected' }, 500);
+      });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    const person = await screen.findByRole('radio', {
+      name: /Use verified Tailscale identity collaborator@example.test/,
+    });
+    const account = screen.getByRole('radio', {
+      name: /Use Collaborator Account’s Project access/,
+    });
+    expect((account as HTMLInputElement).checked).toBe(false);
+    const approve = screen.getByRole('button', { name: 'Approve' });
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(person);
+    expect((person as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(account);
+    expect((account as HTMLInputElement).checked).toBe(true);
+    expect((person as HTMLInputElement).checked).toBe(false);
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(approve);
+    await waitFor(() => expect(approved).toBe(true));
+    const call = fetchSpy.mock.calls.find(([input]) =>
+      new URL(String(input)).pathname.endsWith('/account-request/confirm'),
+    );
+    expect(call![1]?.body).toBe(JSON.stringify({ bindAccountIdentity: true }));
+    expect(screen.queryByText(/did not confirm/)).toBeNull();
+  });
+
+  test('an account candidate requires explicit Personal Device approval when it is not bound', async () => {
+    const request = {
+      requestId: 'personal-account-request',
+      deviceName: 'Personal tablet',
+      status: 'pending',
+      source: 'pairing-code',
+      accountCandidate: {
+        issuer: 'https://accounts.example.test',
+        subject: 'account-123',
+        displayName: 'Collaborator Account',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    let body: BodyInit | null | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path.endsWith('/confirm')) {
+        body = init?.body;
+        return response({ ...request, status: 'confirmed' });
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole('radio', {
+        name: /Approve as an ordinary Personal Device/,
+      }),
+    );
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(approve);
+    await waitFor(() => expect(body).toBeUndefined());
+  });
+
+  test('account-binding refusal does not retry as ordinary device approval', async () => {
+    const request = {
+      requestId: 'stale-account-request',
+      deviceName: 'Stale account phone',
+      status: 'pending',
+      source: 'pairing-code',
+      accountCandidate: {
+        issuer: 'https://accounts.example.test',
+        subject: 'stale-account',
+        displayName: 'Stale Account',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    let confirms = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path.endsWith('/confirm')) {
+        confirms += 1;
+        return response({ error: 'person_binding_unavailable' }, 409);
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', {
+        name: /Use Stale Account’s Project access/,
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText(/Identity binding is no longer available/),
+    ).toBeTruthy();
+    expect(confirms).toBe(1);
+  });
 });
