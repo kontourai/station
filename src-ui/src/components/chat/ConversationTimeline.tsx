@@ -121,17 +121,28 @@ export function ConversationTimeline({
       aria-label="Historical conversation view"
     >
       <div className="conversation-timeline__status" role="status">
-        <strong>Earlier in this conversation</strong>
-        <span>
-          {activeIndex + 1} of {landmarks.length} user turns
-        </span>
-        {dateRange && <span>{dateRange}</span>}
-        {replay.player.tape.stoppedReason && (
-          <span>Archive incomplete: {replay.player.tape.stoppedReason}</span>
-        )}
+        <div className="conversation-timeline__summary">
+          <strong>Earlier in this conversation</strong>
+          <span>
+            {activeIndex + 1} of {landmarks.length} user turns
+          </span>
+          {(dateRange || replay.player.tape.stoppedReason) && (
+            <details className="conversation-timeline__details">
+              <summary>Details</summary>
+              <div>
+                {dateRange && <span>{dateRange}</span>}
+                {replay.player.tape.stoppedReason && (
+                  <span>
+                    Archive incomplete: {replay.player.tape.stoppedReason}
+                  </span>
+                )}
+              </div>
+            </details>
+          )}
+        </div>
         {context.executions.length > 1 && (
-          <label>
-            Conversation section{' '}
+          <label className="conversation-timeline__execution">
+            <span>Conversation section</span>
             <select
               value={context.selectedExecutionId}
               disabled={switchingExecution}
@@ -179,29 +190,42 @@ export function ConversationTimeline({
         <button
           type="button"
           className="button button--secondary"
+          aria-label="Previous turn"
           disabled={activeIndex <= 0}
           onClick={() => seekFromControl(activeIndex - 1)}
         >
-          Previous turn
+          <span className="conversation-timeline__action-full">
+            Previous turn
+          </span>
+          <span className="conversation-timeline__action-compact">
+            Previous
+          </span>
         </button>
         <button
           type="button"
           className="button button--secondary"
+          aria-label="Next turn"
           disabled={activeIndex < 0 || activeIndex >= landmarks.length - 1}
           onClick={() => seekFromControl(activeIndex + 1)}
         >
-          Next turn
+          <span className="conversation-timeline__action-full">Next turn</span>
+          <span className="conversation-timeline__action-compact">Next</span>
         </button>
         <button
           type="button"
           className="button button--secondary"
+          aria-label="Return to latest"
           onClick={returnToLatestConversation}
         >
-          Return to latest
+          <span className="conversation-timeline__action-full">
+            Return to latest
+          </span>
+          <span className="conversation-timeline__action-compact">Latest</span>
         </button>
         <button
           type="button"
           className="button button--primary"
+          aria-label="Fork from here…"
           disabled={!forkSource || !onForkFromTurn}
           title={
             forkSource && onForkFromTurn
@@ -210,7 +234,10 @@ export function ConversationTimeline({
           }
           onClick={() => forkSource && onForkFromTurn?.(forkSource)}
         >
-          Fork from here…
+          <span className="conversation-timeline__action-full">
+            Fork from here…
+          </span>
+          <span className="conversation-timeline__action-compact">Fork</span>
         </button>
       </div>
     </section>

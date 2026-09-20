@@ -400,14 +400,44 @@ test('conversation timeline crosses execution history, preserves the live draft,
     basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
   );
   mkdirSync(evidenceRoot, { recursive: true });
-  await page.screenshot({
-    path: testInfo.outputPath('timeline-history-mobile.png'),
-    animations: 'disabled',
-  });
-  copyFileSync(
-    testInfo.outputPath('timeline-history-mobile.png'),
-    join(evidenceRoot, 'timeline-history-mobile.png'),
-  );
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    const timelineBox = await page
+      .getByRole('region', { name: 'Historical conversation view' })
+      .boundingBox();
+    const transcriptBox = await page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .boundingBox();
+    expect(timelineBox?.height ?? Infinity).toBeLessThanOrEqual(180);
+    expect(transcriptBox?.height ?? 0).toBeGreaterThanOrEqual(140);
+    expect(
+      await page
+        .getByRole('combobox', { name: 'Conversation section' })
+        .evaluate((element) => element.getBoundingClientRect().height),
+    ).toBeGreaterThanOrEqual(44);
+    for (const name of [
+      'Previous turn',
+      'Next turn',
+      'Return to latest',
+      'Fork from here…',
+    ]) {
+      expect(
+        await page
+          .getByRole('button', { name, exact: true })
+          .evaluate((element) => element.getBoundingClientRect().height),
+      ).toBeGreaterThanOrEqual(44);
+    }
+    const screenshot = `timeline-history-${width}.png`;
+    await page.screenshot({
+      path: testInfo.outputPath(screenshot),
+      animations: 'disabled',
+    });
+    copyFileSync(
+      testInfo.outputPath(screenshot),
+      join(evidenceRoot, screenshot),
+    );
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Fork from here…' }).click();
   await expect(
     page.getByRole('heading', { name: 'Fork from here' }),

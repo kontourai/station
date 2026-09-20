@@ -149,6 +149,7 @@ test('mounted history controls seek canonical replay turns, fork with durable id
   );
 
   expect(screen.getByText('Earlier in this conversation')).toBeTruthy();
+  expect(screen.getByText('Details')).toBeTruthy();
   expect(
     screen.getByRole('combobox', { name: 'Conversation section' }),
   ).toBeTruthy();
