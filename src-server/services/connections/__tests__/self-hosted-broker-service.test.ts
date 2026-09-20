@@ -48,18 +48,38 @@ describe('self-hosted broker control plane', () => {
       });
     expect((await preflight(scope.browserOrigin)).status).toBe(204);
     expect((await preflight('https://wrong.example')).status).toBe(401);
-    expect(
-      (
-        await post('/connections', provisioned.routing, {
-          scope,
-          connection: {
-            clientId: 'client-12345678',
-            nonce: 'nonce-12345678',
-            offerSdp: 'offer',
-          },
-        })
-      ).status,
-    ).toBe(200);
+    const malformed = await post('/connections', provisioned.routing, {
+      scope,
+      connection: {
+        clientId: 'client-12345678',
+        nonce: 'nonce-12345678',
+        offerSdp: 'offer',
+      },
+      extra: true,
+    });
+    expect(malformed.status).toBe(400);
+    const wrongStation = await post('/connections', provisioned.routing, {
+      scope: { ...scope, stationId: 'station-wrong123' },
+      connection: {
+        clientId: 'client-12345678',
+        nonce: 'nonce-wrong123',
+        offerSdp: 'offer',
+      },
+    });
+    expect(wrongStation.status).toBe(401);
+    const opened = await post('/connections', provisioned.routing, {
+      scope,
+      connection: {
+        clientId: 'client-12345678',
+        nonce: 'nonce-12345678',
+        offerSdp: 'offer',
+      },
+    });
+    expect(opened.status).toBe(200);
+    expect(opened.headers.get('access-control-allow-origin')).toBe(
+      scope.browserOrigin,
+    );
+    expect(opened.headers.has('access-control-allow-credentials')).toBe(false);
     expect(
       (await post('/connections/offers', provisioned.connector, { scope }))
         .status,
@@ -173,6 +193,32 @@ describe('self-hosted broker control plane', () => {
         offerSdp: 'offer',
       }),
     ).not.toThrow();
+    first.open(nextScope, next.routing, {
+      clientId: 'client-boundary',
+      nonce: 'nonce-boundary',
+      offerSdp: 'o'.repeat(128 * 1024),
+    });
+    first.answer(nextScope, next.connector, {
+      clientId: 'client-boundary',
+      nonce: 'nonce-boundary',
+      answerSdp: 'a'.repeat(128 * 1024),
+      stationProof: 'p'.repeat(4096),
+    });
+    expect(() =>
+      first.open(nextScope, next.routing, {
+        clientId: 'client-oversize',
+        nonce: 'nonce-oversize',
+        offerSdp: 'o'.repeat(128 * 1024 + 1),
+      }),
+    ).toThrow('offer_too_large');
+    expect(() =>
+      first.answer(nextScope, next.connector, {
+        clientId: 'client-abcdefgh',
+        nonce: 'nonce-abcdefgh',
+        answerSdp: 'answer',
+        stationProof: 'p'.repeat(4097),
+      }),
+    ).toThrow('answer_too_large');
     first.close();
     competing.close();
   });

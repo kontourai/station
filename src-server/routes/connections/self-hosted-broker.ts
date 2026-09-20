@@ -1,6 +1,9 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import type { SelfHostedBrokerService } from '../../services/connections/self-hosted-broker-service.js';
+import type {
+  BrokerScope,
+  SelfHostedBrokerService,
+} from '../../services/connections/self-hosted-broker-service.js';
 
 export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
   const app = new Hono();
@@ -43,8 +46,13 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       onError: (c) => c.json({ error: 'request_too_large' }, 413),
     }),
   );
-  const parse = async (c: any) => {
-    const body = await c.req.json();
+  const parse = async (c: Context) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      throw new Error('invalid_request');
+    }
     if (!body || typeof body !== 'object' || Array.isArray(body))
       throw new Error('invalid_request');
     const secret = c.req
@@ -52,17 +60,18 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
       ?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
     const id = c.req.header('x-broker-credential-id');
     if (!secret || !id) throw new Error('broker_credential_refused');
-    const scope = (body as Record<string, any>).scope;
+    const record = body as Record<string, unknown>;
+    const scope = record.scope as Record<string, unknown> | undefined;
     if (!scope || c.req.header('origin') !== scope.browserOrigin)
       throw new Error('broker_credential_refused');
-    return { body, credential: { id, secret } };
+    return { body: record, credential: { id, secret } };
   };
   const exact = (value: Record<string, unknown>, keys: string[]) => {
     if (Object.keys(value).sort().join(',') !== [...keys].sort().join(','))
       throw new Error('invalid_request');
   };
   const invoke =
-    (fn: (c: any) => Promise<unknown> | unknown) => async (c: any) => {
+    (fn: (c: Context) => Promise<unknown> | unknown) => async (c: Context) => {
       try {
         return c.json(await fn(c));
       } catch (error) {
@@ -102,7 +111,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope']);
-      return service.register(body.scope, credential);
+      return service.register(body.scope as BrokerScope, credential);
     }),
   );
   app.post(
@@ -110,7 +119,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope']);
-      return service.status(body.scope, credential);
+      return service.status(body.scope as BrokerScope, credential);
     }),
   );
   app.post(
@@ -118,7 +127,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope']);
-      return { offers: service.offers(body.scope, credential) };
+      return { offers: service.offers(body.scope as BrokerScope, credential) };
     }),
   );
   app.post(
@@ -126,8 +135,13 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope', 'connection']);
-      exact(body.connection, ['clientId', 'nonce', 'offerSdp']);
-      return service.open(body.scope, credential, body.connection);
+      const connection = body.connection as Record<string, unknown>;
+      exact(connection, ['clientId', 'nonce', 'offerSdp']);
+      return service.open(
+        body.scope as BrokerScope,
+        credential,
+        connection as { clientId: string; nonce: string; offerSdp: string },
+      );
     }),
   );
   app.post(
@@ -135,13 +149,18 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope', 'connection']);
-      exact(body.connection, [
-        'clientId',
-        'nonce',
-        'answerSdp',
-        'stationProof',
-      ]);
-      service.answer(body.scope, credential, body.connection);
+      const connection = body.connection as Record<string, unknown>;
+      exact(connection, ['clientId', 'nonce', 'answerSdp', 'stationProof']);
+      service.answer(
+        body.scope as BrokerScope,
+        credential,
+        connection as {
+          clientId: string;
+          nonce: string;
+          answerSdp: string;
+          stationProof: string;
+        },
+      );
       return { accepted: true };
     }),
   );
@@ -150,7 +169,12 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope', 'clientId', 'nonce']);
-      return service.read(body.scope, credential, body.clientId, body.nonce);
+      return service.read(
+        body.scope as BrokerScope,
+        credential,
+        String(body.clientId),
+        String(body.nonce),
+      );
     }),
   );
   app.post(
@@ -158,7 +182,11 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope', 'expectedRevision']);
-      return service.renew(body.scope, credential, body.expectedRevision);
+      return service.renew(
+        body.scope as BrokerScope,
+        credential,
+        Number(body.expectedRevision),
+      );
     }),
   );
   app.post(
@@ -166,7 +194,7 @@ export function createSelfHostedBrokerRoutes(service: SelfHostedBrokerService) {
     invoke(async (c) => {
       const { body, credential } = await parse(c);
       exact(body, ['scope']);
-      service.withdraw(body.scope, credential);
+      service.withdraw(body.scope as BrokerScope, credential);
       return { withdrawn: true };
     }),
   );

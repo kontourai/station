@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { closeSync, lstatSync, openSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { STATION_CONNECTION_PROOF_MAX_BYTES } from '@kontourai/station-contracts/connection-proof';
 
 const ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SDP_LIMIT = 128 * 1024;
@@ -11,6 +12,20 @@ export type BrokerCredentialBundle = {
   connector: BrokerCredential;
   routing: BrokerCredential;
 };
+interface LeaseRow {
+  station_id: string;
+  enrollment_id: string;
+  generation: number;
+  browser_origin: string;
+  connector_id: string;
+  connector_hash: Uint8Array;
+  routing_id: string;
+  routing_hash: Uint8Array;
+  expires_at: number;
+  lease_revision: number;
+  last_seen_at: number | null;
+  withdrawn_at: number | null;
+}
 export function createBrokerCredentialBundle(): BrokerCredentialBundle {
   return {
     connector: {
@@ -187,7 +202,7 @@ export class SelfHostedBrokerService {
     const result = this.transaction(() => {
       const existing = this.db
         .prepare('SELECT * FROM broker_leases WHERE station_id=?')
-        .get(scope.stationId) as any;
+        .get(scope.stationId) as LeaseRow | undefined;
       if (existing?.generation === scope.routingGeneration) {
         const same =
           existing.enrollment_id === scope.enrollmentId &&
@@ -243,7 +258,7 @@ export class SelfHostedBrokerService {
     assertText(credential.id, 'credential_id');
     const row = this.db
       .prepare(`SELECT * FROM broker_leases WHERE station_id=?`)
-      .get(scope.stationId) as any;
+      .get(scope.stationId) as LeaseRow | undefined;
     const hash = row?.[`${kind}_hash`] as Uint8Array | undefined;
     if (
       !row ||
@@ -333,7 +348,11 @@ export class SelfHostedBrokerService {
       this.lease(scope, credential, 'routing');
       assertText(input.clientId, 'client_id');
       assertText(input.nonce, 'nonce');
-      if (Buffer.byteLength(input.offerSdp) > SDP_LIMIT)
+      if (
+        typeof input.offerSdp !== 'string' ||
+        input.offerSdp.length === 0 ||
+        Buffer.byteLength(input.offerSdp) > SDP_LIMIT
+      )
         throw new Error('offer_too_large');
       const now = this.now();
       this.db
@@ -344,14 +363,14 @@ export class SelfHostedBrokerService {
           .prepare(
             'SELECT count(*) n FROM broker_connections WHERE expires_at>?',
           )
-          .get(now) as any
+          .get(now) as { n: number }
       ).n;
       const station = (
         this.db
           .prepare(
             'SELECT count(*) n FROM broker_connections WHERE station_id=? AND expires_at>?',
           )
-          .get(scope.stationId, now) as any
+          .get(scope.stationId, now) as { n: number }
       ).n;
       if (total >= 1024 || station >= 32) throw new Error('pending_limit');
       try {
@@ -387,8 +406,12 @@ export class SelfHostedBrokerService {
   ) {
     this.lease(scope, credential, 'connector');
     if (
+      typeof input.answerSdp !== 'string' ||
+      input.answerSdp.length === 0 ||
+      typeof input.stationProof !== 'string' ||
+      input.stationProof.length === 0 ||
       Buffer.byteLength(input.answerSdp) > SDP_LIMIT ||
-      Buffer.byteLength(input.stationProof) > 256 * 1024
+      Buffer.byteLength(input.stationProof) > STATION_CONNECTION_PROOF_MAX_BYTES
     )
       throw new Error('answer_too_large');
     const result = this.db
@@ -436,7 +459,13 @@ export class SelfHostedBrokerService {
         scope.routingGeneration,
         clientId,
         nonce,
-      ) as any;
+      ) as
+      | {
+          answer_sdp: string | null;
+          station_proof: string | null;
+          expires_at: number;
+        }
+      | undefined;
     if (!row || row.expires_at <= this.now())
       throw new Error('connection_unavailable');
     return {

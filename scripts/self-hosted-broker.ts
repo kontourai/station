@@ -130,6 +130,13 @@ const server = serve({
   hostname: '127.0.0.1',
   port: config.port as number,
 });
+server.once('listening', () => {
+  const address = server.address();
+  if (address && typeof address !== 'string')
+    process.stdout.write(
+      `STATION_SELF_HOSTED_BROKER ${JSON.stringify({ host: '127.0.0.1', port: address.port })}\n`,
+    );
+});
 const stop = () =>
   server.close(() => {
     service.close();
