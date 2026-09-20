@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/pion/webrtc/v4"
@@ -253,6 +254,9 @@ func (b *applicationBridge) close() {
 	close(b.stopWriter)
 	b.mu.Unlock()
 	_ = b.input.Close()
+	if output, ok := b.output.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		_ = output.SetWriteDeadline(time.Now())
+	}
 	_ = b.output.Close()
 	for _, channel := range channels {
 		_ = channel.Close()
