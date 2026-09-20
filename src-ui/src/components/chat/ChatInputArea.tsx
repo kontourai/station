@@ -358,7 +358,7 @@ export function ChatInputArea({
 }: ChatInputAreaProps) {
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
   const [sessionReferencesOpen, setSessionReferencesOpen] = useState(false);
-  const [draggedSessionReference, setDraggedSessionReference] = useState<{
+  const draggedSessionReference = useRef<{
     id: string;
     title: string;
     projectSlug?: string;
@@ -388,7 +388,7 @@ export function ChatInputArea({
   useEffect(() => {
     mentionGeneration.current += 1;
     setMentionQuery(null);
-    setDraggedSessionReference(null);
+    draggedSessionReference.current = null;
     setSessionReferencesOpen(false);
   }, [
     sessionId,
@@ -811,9 +811,10 @@ export function ChatInputArea({
                 'application/x-station-conversation-reference',
               );
               const candidate =
-                draggedSessionReference?.id === conversationId &&
-                draggedSessionReference.ownerKey === sessionReferenceOwnerKey
-                  ? draggedSessionReference
+                draggedSessionReference.current?.id === conversationId &&
+                draggedSessionReference.current.ownerKey ===
+                  sessionReferenceOwnerKey
+                  ? draggedSessionReference.current
                   : null;
               if (
                 (!conversationId || candidate) &&
@@ -834,11 +835,12 @@ export function ChatInputArea({
               if (!conversationId) return;
               event.preventDefault();
               const candidate =
-                draggedSessionReference?.id === conversationId &&
-                draggedSessionReference.ownerKey === sessionReferenceOwnerKey
-                  ? draggedSessionReference
+                draggedSessionReference.current?.id === conversationId &&
+                draggedSessionReference.current.ownerKey ===
+                  sessionReferenceOwnerKey
+                  ? draggedSessionReference.current
                   : null;
-              setDraggedSessionReference(null);
+              draggedSessionReference.current = null;
               if (!candidate) return;
               const reason = sessionReferenceBlockReason({
                 value: input,
@@ -1215,11 +1217,9 @@ export function ChatInputArea({
               }}
               onClose={() => setSessionReferencesOpen(false)}
               onCandidateDragged={(candidate) =>
-                setDraggedSessionReference(
-                  candidate
-                    ? { ...candidate, ownerKey: sessionReferenceOwnerKey }
-                    : null,
-                )
+                (draggedSessionReference.current = candidate
+                  ? { ...candidate, ownerKey: sessionReferenceOwnerKey }
+                  : null)
               }
             />
           </React.Suspense>

@@ -96,20 +96,18 @@ test('ChatDock sends scoped file and conversation references while preserving th
   };
   await page.addInitScript(
     ({ id, savedQuote }) => {
-      if (localStorage.getItem('station:chat-drafts:v1')) return;
-      localStorage.setItem(
-        'station:chat-drafts:v1',
-        JSON.stringify({
-          sessions: {
-            [id]: {
-              text: '',
-              updatedAt: Date.now(),
-              quotes: [{ ...savedQuote, origin: window.location.origin }],
-            },
-          },
-          portable: [],
-        }),
+      const stored = JSON.parse(
+        localStorage.getItem('station:chat-drafts:v1') ??
+          '{"sessions":{},"portable":[]}',
       );
+      stored.sessions ??= {};
+      if (stored.sessions[id]) return;
+      stored.sessions[id] = {
+        text: '',
+        updatedAt: Date.now(),
+        quotes: [{ ...savedQuote, origin: window.location.origin }],
+      };
+      localStorage.setItem('station:chat-drafts:v1', JSON.stringify(stored));
     },
     { id: threadId, savedQuote: quote },
   );
@@ -146,6 +144,29 @@ test('ChatDock sends scoped file and conversation references while preserving th
             },
           ],
           hasMore: false,
+        },
+      }),
+    ),
+  );
+  await mockRuntimeConversation(page, {
+    id: threadId,
+    agentSlug: 'station',
+    title: 'Reference dispatch',
+    provider: 'bedrock',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => [],
+  });
+  await page.route(`**/api/conversations/${threadId}`, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: {
+          id: threadId,
+          agentSlug: 'station',
+          projectSlug: 'default',
+          title: 'Reference dispatch',
         },
       }),
     ),
@@ -196,7 +217,10 @@ test('ChatDock sends scoped file and conversation references while preserving th
       .locator('.session-reference-picker__list')
       .evaluate((element) => getComputedStyle(element).position),
   ).toBe('static');
-  await referenceOption.click();
+  await referenceOption.dragTo(composer);
+  await page
+    .getByRole('button', { name: 'Close conversation references' })
+    .click();
   await expect(composer).toHaveValue('Review @alpha.ts  @Earlier work ');
   await page.reload();
   await dismissSetupLauncher(page);

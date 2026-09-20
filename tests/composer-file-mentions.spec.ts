@@ -107,10 +107,10 @@ test('keyboard-selects a scoped mention and preserves it across mounted chat swi
     page.getByRole('listbox', { name: 'Files and folders' }),
   ).toBeVisible();
   await composer.press('ArrowDown');
-  await expect(page.getByRole('option').nth(1)).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await composer.press('ArrowDown');
+  await expect(
+    page.getByRole('option', { name: /folder \(odd\)/ }),
+  ).toHaveAttribute('aria-selected', 'true');
   await composer.press('Enter');
   await expect(composer).toHaveValue('Review @folder (odd) ');
   await expect(composer).toBeFocused();

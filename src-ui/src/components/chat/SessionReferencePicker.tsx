@@ -10,7 +10,7 @@ import {
   sessionReferenceBlockReason,
 } from './composer-mentions';
 
-export const SESSION_REFERENCE_DRAG_TYPE =
+const SESSION_REFERENCE_DRAG_TYPE =
   'application/x-station-conversation-reference';
 
 export interface SessionReferenceCandidate {

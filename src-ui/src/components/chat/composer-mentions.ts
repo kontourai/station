@@ -29,7 +29,7 @@ type MentionIdentity = Omit<
 >;
 const COMPOSER_TOKEN = /@\[(m|r):([^\]]{1,49152})\]/gu;
 const MAX_MENTIONS = 64;
-export const MAX_SESSION_REFERENCES = 8;
+const MAX_SESSION_REFERENCES = 8;
 const MAX_LABEL_CHARS = 512;
 const MAX_PATH_CHARS = 4096;
 const MAX_SCOPE_CHARS = 4096;
