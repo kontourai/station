@@ -285,8 +285,13 @@ test.describe
         );
         expect(confirmation.status).toBe(200);
 
+        await expect(
+          guest.getByRole('heading', { name: 'Available Projects' }),
+        ).toBeVisible({ timeout: 15_000 });
+
         // Exact admitted Device identity, read from the real operator
-        // inventory right after the real approval: the one account-bound,
+        // inventory once the guest's exchange has completed (the binding is
+        // attached at exchange, not at approval): the one account-bound,
         // non-revoked Device this approval admitted. Its id is what the
         // post-revocation assertions below must find unchanged.
         const listDevices = async () => {
@@ -307,10 +312,6 @@ test.describe
         );
         expect(accountBoundDevices).toHaveLength(1);
         const admittedDeviceId = accountBoundDevices[0].id;
-
-        await expect(
-          guest.getByRole('heading', { name: 'Available Projects' }),
-        ).toBeVisible({ timeout: 15_000 });
 
         // Explicit caller-owned evidence retention: when the caller exports
         // STATION_GUEST_ACCEPTANCE_EVIDENCE_DIR, each capture is copied there
