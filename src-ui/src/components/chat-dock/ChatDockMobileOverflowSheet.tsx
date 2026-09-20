@@ -79,6 +79,16 @@ export function ChatDockMobileOverflowSheet({
         >
           Chats
         </button>
+        {overflow.onOpenConversationHistory && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(overflow.onOpenConversationHistory!)}
+          >
+            Conversation history
+          </button>
+        )}
         {overflow.onOpenProject && (
           <button
             type="button"

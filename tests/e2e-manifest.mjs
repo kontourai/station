@@ -340,6 +340,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/default-agent-workflow.spec.ts',
     'tests/mobile-chat-composer.spec.ts',
     'tests/chat-replay.spec.ts',
+    'tests/conversation-timeline.spec.ts',
     'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
@@ -913,6 +914,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Replay runtime, history, connection, timing, tool, error and multi-turn scenarios through the real mobile transcript, with frame-bound screenshots and loading animation evidence.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-timeline.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Read-only multi-execution conversation history uses canonical replay, preserves the live draft, and returns through the explicit fork and latest-state controls.',
     exceptions: [],
   },
   {

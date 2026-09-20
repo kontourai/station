@@ -101,6 +101,11 @@ const loadReplayTransport = () =>
     default: ReplayTransport,
   }));
 
+const loadConversationTimeline = () =>
+  import('../chat/ConversationTimeline').then(({ ConversationTimeline }) => ({
+    default: ConversationTimeline,
+  }));
+
 const loadSourceQuoteDrafts = () =>
   import('../chat/SourceQuoteDrafts').then((module) => ({
     default: module.SourceQuoteDrafts,
@@ -329,7 +334,10 @@ export function ChatDockBody({
    * unconditional stayed green — a guard nothing can reach reads as a
    * guarantee and is not one.
    */
-  const forkFromTurn = activeSession.replay ? undefined : onForkFromTurn;
+  const forkFromTurn =
+    activeSession.replay && activeSession.replay.mode !== 'timeline'
+      ? undefined
+      : onForkFromTurn;
   const renderedSession = useMemo(
     () =>
       transcript.enabled
@@ -1269,7 +1277,16 @@ export function ChatDockBody({
             .
           </div>
         )}
-      {activeSession.replay ? (
+      {activeSession.replay?.mode === 'timeline' ? (
+        <LazyBoundary
+          load={loadConversationTimeline}
+          pending={<SkeletonList count={1} label="Loading timeline controls" />}
+          componentProps={{
+            sessionId: activeSession.id,
+            onForkFromTurn: forkFromTurn,
+          }}
+        />
+      ) : activeSession.replay ? (
         <LazyBoundary
           load={loadReplayTransport}
           pending={null}

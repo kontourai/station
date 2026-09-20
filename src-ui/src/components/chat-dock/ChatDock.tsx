@@ -27,7 +27,10 @@ import {
   useAgents,
   useAgentsLoaded,
 } from '../../contexts/AgentsContext';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
 import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
@@ -390,6 +393,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
+  const requestAuthority = useHostRequestAuthorityScope();
   const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
     // Legacy placement preference remains exposed to the Chat settings
@@ -1023,6 +1027,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: activeSession?.currentSessionId,
     workingDirectory: sessionDisplayCwd,
   });
+  const openConversationHistory = () => {
+    if (!activeSession) return;
+    void import('./timelineOpen').then((module) =>
+      module.openTimeline(apiBase, activeSession, requestAuthority, showToast),
+    );
+  };
   /**
    * #1536 F: rows whose subject is the active CONVERSATION rather than the
    * dock's chrome, so the header takes them as data instead of deriving them.
@@ -1044,6 +1054,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    */
   const dockMoreActions: DockMoreAction[] = [
     ...copyActions,
+    ...(activeSession?.conversationId && !activeSession.replay
+      ? [
+          {
+            key: 'conversation-history',
+            label: 'Conversation history',
+            onSelect: openConversationHistory,
+          },
+        ]
+      : []),
     ...(!scopedProjectSlug && sessionCodingLayout && activeSession?.projectSlug
       ? [
           {
@@ -2072,6 +2091,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
                 onOpenChatSettings: openChatSettings,
+                onOpenConversationHistory:
+                  activeSession?.conversationId && !activeSession.replay
+                    ? openConversationHistory
+                    : undefined,
                 onOpenProject: activeSession?.projectSlug
                   ? () => setProject(activeSession.projectSlug!)
                   : null,
@@ -2468,19 +2491,27 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         openUserSelectedConversationInScopedPane
                       }
                       onForkFromTurn={(source) => {
-                        if (!activeSession?.conversationId) return;
-                        const conversationId = activeSession.conversationId;
                         const generation = ++forkGenerationRef.current;
                         void Promise.all([
                           import('./forkAttemptKey'),
                           import('./forkSourceExecution'),
+                          import('../../hooks/orchestration/replay/controller'),
                         ]).then(
                           ([
                             { getOrCreateForkAttemptKey },
                             { resolveHistoricalForkExecution },
+                            {
+                              getConversationTimelineContext,
+                              returnToLatestConversation,
+                            },
                           ]) => {
                             if (generation !== forkGenerationRef.current)
                               return;
+                            const timeline = getConversationTimelineContext();
+                            const conversationId =
+                              activeSession?.conversationId ??
+                              timeline?.sourceConversationId;
+                            if (!conversationId) return;
                             const sourceExecution =
                               resolveHistoricalForkExecution(
                                 source.sessionId,
@@ -2490,8 +2521,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               id: conversationId,
                               agentSlug: source.agentSlug,
                               turnId: source.turnId,
-                              projectSlug: activeSession.projectSlug,
-                              projectName: activeSession.projectName,
+                              projectSlug:
+                                activeSession?.projectSlug ??
+                                timeline?.sourceProjectSlug,
+                              projectName:
+                                activeSession?.projectName ??
+                                timeline?.sourceProjectName,
                               model: source.model,
                               modelSource: source.model ? 'runtime' : undefined,
                               defaultModel: source.model,
@@ -2509,6 +2544,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               ),
                             });
                             setForkOperation({ pending: false, error: null });
+                            if (timeline) returnToLatestConversation();
                             setShowNewChatModal(true);
                           },
                         );

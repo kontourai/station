@@ -1,3 +1,5 @@
+import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
+import type { ApiRequestScope } from '@kontourai/station-sdk';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { navigationStore } from '../../../contexts/navigation-store';
 import {
@@ -17,7 +19,33 @@ export interface ActiveReplay {
   player: SessionTapePlayer;
 }
 
+export interface ConversationTimelineContext {
+  sourceChatId: string;
+  sourceConversationId: string;
+  sourceThreadId: string;
+  sourceScrollTop: number;
+  sourceProjectSlug?: string;
+  sourceProjectName?: string;
+  apiBase: string;
+  title?: string;
+  executions: Array<{
+    sessionId: string;
+    agentSlug?: string;
+    agentName?: string;
+  }>;
+  selectedExecutionId: string;
+  requestScope: ApiRequestScope;
+  isAuthorityCurrent: () => boolean;
+}
+
 let active: ActiveReplay | null = null;
+let timelineContext: ConversationTimelineContext | null = null;
+let timelineGeneration = 0;
+let timelineRequest: AbortController | null = null;
+
+export function getConversationTimelineContext(): ConversationTimelineContext | null {
+  return timelineContext;
+}
 
 export function getActiveReplay(): ActiveReplay | null {
   return active;
@@ -91,6 +119,11 @@ export async function openReplayFromThread(input: {
   agentName: string;
   title?: string;
   provider?: string;
+  projectSlug?: string;
+  projectName?: string;
+  signal?: AbortSignal;
+  beforeOpen?: () => boolean;
+  requestScope?: ApiRequestScope;
 }): Promise<ActiveReplay> {
   const { getOrchestrationSessionEventPage } = await import(
     '@kontourai/station-sdk/client'
@@ -106,14 +139,23 @@ export async function openReplayFromThread(input: {
   let afterSequence = 0;
   let bytes = new TextEncoder().encode(JSON.stringify(tape)).length;
   for (;;) {
+    if (input.beforeOpen && !input.beforeOpen())
+      throw new DOMException('Timeline request was superseded', 'AbortError');
     const page = await getOrchestrationSessionEventPage<
       import('@kontourai/station-contracts/orchestration').OrchestrationSessionEventPage
     >(
       input.apiBase,
       input.sourceThreadId,
       { afterSequence, limit: 100 },
-      { maxResponseBytes: 8 * 1024 * 1024, timeoutMs: 10_000 },
+      {
+        maxResponseBytes: 8 * 1024 * 1024,
+        timeoutMs: 10_000,
+        signal: input.signal,
+        requestScope: input.requestScope,
+      },
     );
+    if (input.beforeOpen && !input.beforeOpen())
+      throw new DOMException('Timeline request was superseded', 'AbortError');
     if (
       !Array.isArray(page.events) ||
       page.events.length > 100 ||
@@ -147,6 +189,11 @@ export async function openReplayFromThread(input: {
       ) {
         tape.stoppedReason =
           'Archive stopped at its 16 MiB / 20,000 event limit; later activity is not included.';
+        if (input.beforeOpen && !input.beforeOpen())
+          throw new DOMException(
+            'Timeline request was superseded',
+            'AbortError',
+          );
         return openReplayFromTape(tape, input);
       }
       tape.events.push(entry.event);
@@ -158,7 +205,190 @@ export async function openReplayFromThread(input: {
     afterSequence = page.nextSequence;
   }
 
+  if (input.beforeOpen && !input.beforeOpen())
+    throw new DOMException('Timeline request was superseded', 'AbortError');
   return openReplayFromTape(tape, input);
+}
+
+export async function openConversationTimeline(input: {
+  apiBase: string;
+  sourceChatId: string;
+  sourceConversationId: string;
+  sourceThreadId: string;
+  agentSlug: string;
+  agentName: string;
+  title?: string;
+  provider?: string;
+  projectSlug?: string;
+  projectName?: string;
+  requestScope: ApiRequestScope;
+  isAuthorityCurrent: () => boolean;
+}): Promise<ActiveReplay> {
+  if (
+    input.requestScope.apiBase !== input.apiBase ||
+    !input.isAuthorityCurrent()
+  )
+    throw new DOMException(
+      'Conversation history authorization changed',
+      'AbortError',
+    );
+  const generation = ++timelineGeneration;
+  timelineRequest?.abort();
+  const request = new AbortController();
+  timelineRequest = request;
+  const transcript = [
+    ...document.querySelectorAll<HTMLElement>(
+      '[role="log"][aria-label="Conversation transcript"]',
+    ),
+  ].find((element) => element.dataset.chatSessionId === input.sourceChatId);
+  const { getOrchestrationConversationEventWindow } = await import(
+    '@kontourai/station-sdk/client'
+  );
+  const conversation =
+    await getOrchestrationConversationEventWindow<OrchestrationConversationEventWindow>(
+      input.apiBase,
+      input.sourceConversationId,
+      { direction: 'newest', turnLimit: 1 },
+      {
+        maxResponseBytes: 1024 * 1024,
+        timeoutMs: 10_000,
+        signal: request.signal,
+        requestScope: input.requestScope,
+      },
+    );
+  const executions = conversation.sessionLineage?.length
+    ? conversation.sessionLineage.map((entry) => ({
+        sessionId: entry.sessionId,
+        agentSlug: entry.agentSlug,
+        agentName: entry.agentDisplayName,
+      }))
+    : [
+        {
+          sessionId: input.sourceThreadId,
+          agentSlug: input.agentSlug,
+          agentName: input.agentName,
+        },
+      ];
+  const candidate: ConversationTimelineContext = {
+    sourceChatId: input.sourceChatId,
+    sourceConversationId: input.sourceConversationId,
+    sourceThreadId: input.sourceThreadId,
+    sourceScrollTop: transcript?.scrollTop ?? 0,
+    sourceProjectSlug: input.projectSlug,
+    sourceProjectName: input.projectName,
+    apiBase: input.apiBase,
+    title: input.title,
+    executions,
+    selectedExecutionId: conversation.currentSessionId,
+    requestScope: input.requestScope,
+    isAuthorityCurrent: input.isAuthorityCurrent,
+  };
+  try {
+    if (
+      generation !== timelineGeneration ||
+      navigationStore.getSnapshot().activeChat !== input.sourceChatId ||
+      !input.isAuthorityCurrent() ||
+      activeChatsStore.getSnapshot()[input.sourceChatId]?.conversationId !==
+        input.sourceConversationId
+    )
+      throw new DOMException('Timeline request was superseded', 'AbortError');
+    const replay = await openReplayFromThread({
+      ...input,
+      sourceThreadId: conversation.currentSessionId,
+      signal: request.signal,
+      requestScope: input.requestScope,
+      beforeOpen: () =>
+        generation === timelineGeneration &&
+        input.isAuthorityCurrent() &&
+        navigationStore.getSnapshot().activeChat === input.sourceChatId &&
+        activeChatsStore.getSnapshot()[input.sourceChatId]?.conversationId ===
+          input.sourceConversationId,
+    });
+    timelineContext = candidate;
+    const chat = activeChatsStore.getSnapshot()[replay.replayId];
+    if (chat?.replay) {
+      activeChatsStore.updateChat(replay.replayId, {
+        replay: { ...chat.replay, mode: 'timeline' },
+      });
+    }
+    replay.player.seek(replay.player.eventCount - 1);
+    return replay;
+  } finally {
+    if (timelineRequest === request) timelineRequest = null;
+  }
+}
+
+export async function selectConversationTimelineExecution(
+  sessionId: string,
+): Promise<ActiveReplay> {
+  const context = timelineContext;
+  const execution = context?.executions.find(
+    (candidate) => candidate.sessionId === sessionId,
+  );
+  if (!context || !execution)
+    throw new Error('That conversation section is unavailable.');
+  const generation = ++timelineGeneration;
+  timelineRequest?.abort();
+  const request = new AbortController();
+  timelineRequest = request;
+  const retained = { ...context, selectedExecutionId: sessionId };
+  let replay: ActiveReplay;
+  try {
+    replay = await openReplayFromThread({
+      apiBase: context.apiBase,
+      sourceThreadId: sessionId,
+      agentSlug: execution.agentSlug ?? 'unknown-agent',
+      agentName: execution.agentName ?? 'Agent',
+      title: context.title,
+      signal: request.signal,
+      requestScope: context.requestScope,
+      beforeOpen: () =>
+        generation === timelineGeneration &&
+        context.isAuthorityCurrent() &&
+        getConversationTimelineContext() === context &&
+        navigationStore.getSnapshot().activeChat === active?.replayId &&
+        activeChatsStore.getSnapshot()[context.sourceChatId]?.conversationId ===
+          context.sourceConversationId,
+    });
+  } finally {
+    if (timelineRequest === request) timelineRequest = null;
+  }
+  timelineContext = retained;
+  const chat = activeChatsStore.getSnapshot()[replay.replayId];
+  if (chat?.replay)
+    activeChatsStore.updateChat(replay.replayId, {
+      replay: { ...chat.replay, mode: 'timeline' },
+    });
+  replay.player.seek(replay.player.eventCount - 1);
+  return replay;
+}
+
+export function returnToLatestConversation(): void {
+  const context = timelineContext;
+  if (!context) return;
+  timelineGeneration += 1;
+  timelineRequest?.abort();
+  timelineRequest = null;
+  closeActiveReplay();
+  navigationStore.setActiveChat(context.sourceChatId);
+  navigationStore.setDockState(true);
+  let attempts = 0;
+  const restoreReader = () => {
+    if (navigationStore.getSnapshot().activeChat !== context.sourceChatId)
+      return;
+    const transcript = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[role="log"][aria-label="Conversation transcript"]',
+      ),
+    ].find((element) => element.dataset.chatSessionId === context.sourceChatId);
+    if (transcript) {
+      transcript.scrollTop = context.sourceScrollTop;
+      return;
+    }
+    attempts += 1;
+    if (attempts < 20) requestAnimationFrame(restoreReader);
+  };
+  requestAnimationFrame(restoreReader);
 }
 
 export function openReplayFromTape(
@@ -194,6 +424,9 @@ export function openReplayFromTape(
 }
 
 export function closeActiveReplay(): void {
+  timelineGeneration += 1;
+  timelineRequest?.abort();
+  timelineRequest = null;
   if (!active) return;
   const { replayId, player } = active;
   player.dispose();
@@ -203,5 +436,6 @@ export function closeActiveReplay(): void {
     navigationStore.setActiveChat(null);
   }
   active = null;
+  timelineContext = null;
   publishReplayApi();
 }

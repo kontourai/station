@@ -18,6 +18,7 @@ export interface ChatDockMobileOverflowActions {
   onOpenConversation: () => void;
   onToggleHistory: () => void;
   onOpenChatSettings: () => void;
+  onOpenConversationHistory?: () => void;
   onOpenProject: (() => void) | null;
   openProjectName: string | null;
   onOpenProfile: () => void;
