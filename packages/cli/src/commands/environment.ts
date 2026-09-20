@@ -223,7 +223,7 @@ const USAGE = `Usage:
   station environment credential rotate [--force]
   station environment reset [--force]
   station environment access list [--api-base=<loopback-url>|--station=<name>]
-  station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account] [--api-base=<loopback-url>|--station=<name>]
+  station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
   station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
@@ -1475,12 +1475,16 @@ async function runLocalAccessCommand(
         'station',
         'latest',
         'force',
-        ...(action === 'approve' ? ['bind-person', 'bind-account'] : []),
+        ...(action === 'approve'
+          ? ['bind-person', 'bind-account', 'personal-device']
+          : []),
       ]) ||
       (parsed.flags['bind-person'] !== undefined &&
         parsed.flags['bind-person'] !== true) ||
       (parsed.flags['bind-account'] !== undefined &&
         parsed.flags['bind-account'] !== true) ||
+      (parsed.flags['personal-device'] !== undefined &&
+        parsed.flags['personal-device'] !== true) ||
       (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
       (parsed.flags.force !== undefined && parsed.flags.force !== true))
   ) {
@@ -1493,8 +1497,11 @@ async function runLocalAccessCommand(
   }
   const bindPerson = parsed.flags['bind-person'] === true;
   const bindAccount = parsed.flags['bind-account'] === true;
-  if (bindPerson && bindAccount) {
-    throw new Error('Choose --bind-person or --bind-account, not both.');
+  const personalDevice = parsed.flags['personal-device'] === true;
+  if ([bindPerson, bindAccount, personalDevice].filter(Boolean).length > 1) {
+    throw new Error(
+      'Choose --bind-person, --bind-account, or --personal-device; use only one.',
+    );
   }
   // station#4515: `resolveApiBaseDetailed` (unlike the bare `resolveApiBase`
   // these verbs used to call) also names the saved Station a target resolved
@@ -1695,6 +1702,21 @@ async function runLocalAccessCommand(
       'Account binding requires a request with a current server-verified account candidate.',
     );
   }
+  if (
+    selected.accountCandidate &&
+    !bindPerson &&
+    !bindAccount &&
+    !personalDevice
+  ) {
+    throw new Error(
+      'This request has a server-verified account candidate. Choose --bind-account to limit the Device to that account, --bind-person for its verified Tailscale identity, or --personal-device for ordinary Device access that remains until revocation and is not limited by account Project membership.',
+    );
+  }
+  if (personalDevice && !selected.accountCandidate) {
+    throw new Error(
+      '--personal-device is required only when a request presents an account-binding choice.',
+    );
+  }
   const force = parsed.flags.force === true;
   if (!force) {
     if (!dependencies.isInteractive) {
@@ -1707,7 +1729,7 @@ async function runLocalAccessCommand(
       throw new Error(
         `${action === 'approve' ? 'Approving' : 'Denying'} device access requires --force when stdin is non-interactive, ` +
           `so a script can never silently grant a stranger's device access to this Station without a human confirming ` +
-          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : ''}${rerunTarget}`,
+          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : personalDevice ? ' --personal-device' : ''}${rerunTarget}`,
       );
     }
     if (!dependencies.confirm) {
@@ -1717,7 +1739,7 @@ async function runLocalAccessCommand(
     }
     const confirmed = await dependencies.confirm(
       `${action === 'approve' ? 'Approve' : 'Deny'} device access for ${accessRequestLabel(selected)} ` +
-        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again and does not grant Project membership or personal access` : ''}?`,
+        `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again and does not grant Project membership or personal access` : personalDevice ? '; approve it as an ordinary Personal Device whose selected scope remains until revocation and is not limited by account Project membership' : ''}?`,
     );
     if (!confirmed) {
       (dependencies.stdout ?? console.log)('Cancelled.');

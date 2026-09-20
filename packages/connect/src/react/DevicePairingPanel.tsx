@@ -1086,6 +1086,14 @@ export function HostDevicePairingPanel({
     accountBindingSelection.apiBase === apiBase
       ? accountBindingSelection.requests
       : new Set<string>();
+  const [personalApprovalSelection, setPersonalApprovalSelection] = useState<{
+    apiBase: string;
+    requests: ReadonlySet<string>;
+  }>(() => ({ apiBase, requests: new Set() }));
+  const personalApprovalRequests =
+    personalApprovalSelection.apiBase === apiBase
+      ? personalApprovalSelection.requests
+      : new Set<string>();
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
   // True only when `error` came from an authentication rejection of THIS
@@ -1509,6 +1517,16 @@ export function HostDevicePairingPanel({
                             withoutRequest.delete(request.requestId);
                             return { apiBase, requests: withoutRequest };
                           });
+                        if (checked)
+                          setPersonalApprovalSelection((personal) => {
+                            const withoutRequest = new Set(
+                              personal.apiBase === apiBase
+                                ? personal.requests
+                                : [],
+                            );
+                            withoutRequest.delete(request.requestId);
+                            return { apiBase, requests: withoutRequest };
+                          });
                       }}
                     />
                     Recognize this device as {request.requester.login} at this
@@ -1546,6 +1564,16 @@ export function HostDevicePairingPanel({
                           withoutRequest.delete(request.requestId);
                           return { apiBase, requests: withoutRequest };
                         });
+                      if (checked)
+                        setPersonalApprovalSelection((personal) => {
+                          const withoutRequest = new Set(
+                            personal.apiBase === apiBase
+                              ? personal.requests
+                              : [],
+                          );
+                          withoutRequest.delete(request.requestId);
+                          return { apiBase, requests: withoutRequest };
+                        });
                     }}
                   />
                   <span>
@@ -1567,6 +1595,64 @@ export function HostDevicePairingPanel({
                   </span>
                 </label>
               )}
+              {request.status === 'pending' && request.accountCandidate && (
+                <label
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto minmax(0, 1fr)',
+                    columnGap: 8,
+                    minHeight: 44,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={personalApprovalRequests.has(request.requestId)}
+                    disabled={requestActionIds.has(request.requestId)}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      setPersonalApprovalSelection((current) => {
+                        const next = new Set(
+                          current.apiBase === apiBase ? current.requests : [],
+                        );
+                        if (checked) next.add(request.requestId);
+                        else next.delete(request.requestId);
+                        return { apiBase, requests: next };
+                      });
+                      if (checked) {
+                        setAccountBindingSelection((accounts) => {
+                          const next = new Set(
+                            accounts.apiBase === apiBase
+                              ? accounts.requests
+                              : [],
+                          );
+                          next.delete(request.requestId);
+                          return { apiBase, requests: next };
+                        });
+                        setPersonBindingSelection((people) => {
+                          const next = new Set(
+                            people.apiBase === apiBase ? people.requests : [],
+                          );
+                          next.delete(request.requestId);
+                          return { apiBase, requests: next };
+                        });
+                      }
+                    }}
+                  />
+                  <span>
+                    Approve as an ordinary Personal Device
+                    <small
+                      style={{
+                        display: 'block',
+                        color: 'var(--text-secondary, #999)',
+                      }}
+                    >
+                      Uses the selected device scope without account relogin.
+                      Its access is not limited by this account’s Project
+                      membership and remains until the Device is revoked.
+                    </small>
+                  </span>
+                </label>
+              )}
               {request.status === 'pending' ? (
                 <div
                   style={{
@@ -1578,7 +1664,13 @@ export function HostDevicePairingPanel({
                   <button
                     type="button"
                     style={primaryBtnStyle}
-                    disabled={requestActionIds.has(request.requestId)}
+                    disabled={
+                      requestActionIds.has(request.requestId) ||
+                      (request.accountCandidate !== undefined &&
+                        !accountBindingRequests.has(request.requestId) &&
+                        !personBindingRequests.has(request.requestId) &&
+                        !personalApprovalRequests.has(request.requestId))
+                    }
                     onClick={() => void actOnRequest(request, 'approve')}
                   >
                     Approve

@@ -616,6 +616,66 @@ describe('environment CLI commands', () => {
     );
   });
 
+  test('account candidates require an explicit Personal Device choice before unbound approval', async () => {
+    const pending = {
+      requestId: 'personal-account-request',
+      deviceName: 'Personal tablet',
+      source: 'pairing-code' as const,
+      accountCandidate: {
+        issuer: 'https://accounts.example.test',
+        subject: 'account-123',
+        displayName: 'Collaborator Account',
+      },
+      createdAt: 10,
+      expiresAt: 30,
+      status: 'pending' as const,
+    };
+    const withoutMode = makeAccessApi([pending], {
+      ...pending,
+      status: 'confirmed',
+    });
+    await expect(
+      runEnvironmentCommand(['access', 'approve', '--force'], {
+        createService: () => makeService(),
+        projectHome: '/tmp/station-home',
+        request: withoutMode,
+        stdout,
+        stderr,
+        isInteractive: false,
+      }),
+    ).rejects.toThrow('Choose --bind-account');
+    expect(
+      withoutMode.mock.calls.filter(([, path]) =>
+        String(path).includes('/confirm'),
+      ),
+    ).toHaveLength(0);
+
+    const explicitPersonal = makeAccessApi([pending], {
+      ...pending,
+      status: 'confirmed',
+    });
+    await runEnvironmentCommand(
+      ['access', 'approve', '--personal-device', '--force'],
+      {
+        createService: () => makeService(),
+        projectHome: '/tmp/station-home',
+        request: explicitPersonal,
+        stdout,
+        stderr,
+        isInteractive: false,
+      },
+    );
+    const confirmation = explicitPersonal.mock.calls.at(-1);
+    expect(confirmation?.[0]).toBe(DEFAULT_LOOPBACK_API_BASE);
+    expect(confirmation?.[1]).toBe(
+      '/api/pairing/requests/personal-account-request/confirm',
+    );
+    expect(confirmation?.[2]).toEqual(
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(confirmation?.[2]?.body).toBeUndefined();
+  });
+
   test('account binding refuses missing candidates, conflicting modes, and mismatched acknowledgments without fallback', async () => {
     const base = {
       requestId: 'account-request',
@@ -678,7 +738,7 @@ describe('environment CLI commands', () => {
           isInteractive: false,
         },
       ),
-    ).rejects.toThrow('not both');
+    ).rejects.toThrow('use only one');
     expect(conflicting).not.toHaveBeenCalled();
 
     const accountCandidate = {
@@ -2185,6 +2245,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
           'approve:force',
           'approve:bind-account',
           'approve:bind-person',
+          'approve:personal-device',
           'approve:api-base',
           'approve:station',
           'deny:latest',

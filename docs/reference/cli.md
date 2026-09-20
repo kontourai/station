@@ -1801,7 +1801,7 @@ station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
-station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account] [--api-base=<loopback-url>|--station=<name>]
+station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
@@ -2764,8 +2764,12 @@ and issuer; neither value is accepted from a CLI flag. Account binding requires
 that account to sign in again on the requesting Device and limits the Device to
 access already granted to the account. It does not grant Project membership or
 personal access. Leave both binding flags off for an ordinary Personal Device.
-`--bind-account` and `--bind-person` are mutually exclusive, and a stale or
-revoked account candidate fails without retrying as ordinary device approval.
+For a request with an account candidate, the operator must choose exactly one
+of `--bind-account`, `--bind-person` (when verified Tailscale identity is also
+available), or `--personal-device`. The last choice grants an ordinary Device
+the selected scope until revocation; it does not require account relogin and is
+not limited by that account's Project membership. A stale or revoked account
+candidate fails without retrying as ordinary device approval.
 
 
 ### Portable Project identity and attachment

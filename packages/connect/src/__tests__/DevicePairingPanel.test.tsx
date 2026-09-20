@@ -2675,18 +2675,66 @@ describe('explicit verified-person pairing consent', () => {
       name: /Bind this device to account Collaborator Account at https:\/\/accounts.example.test/,
     });
     expect((account as HTMLInputElement).checked).toBe(false);
+    const approve = screen.getByRole('button', { name: 'Approve' });
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(person);
     expect((person as HTMLInputElement).checked).toBe(true);
     fireEvent.click(account);
     expect((account as HTMLInputElement).checked).toBe(true);
     expect((person as HTMLInputElement).checked).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(approve);
     await waitFor(() => expect(approved).toBe(true));
     const call = fetchSpy.mock.calls.find(([input]) =>
       new URL(String(input)).pathname.endsWith('/account-request/confirm'),
     );
     expect(call![1]?.body).toBe(JSON.stringify({ bindAccountIdentity: true }));
     expect(screen.queryByText(/did not confirm/)).toBeNull();
+  });
+
+  test('an account candidate requires explicit Personal Device approval when it is not bound', async () => {
+    const request = {
+      requestId: 'personal-account-request',
+      deviceName: 'Personal tablet',
+      status: 'pending',
+      source: 'pairing-code',
+      accountCandidate: {
+        issuer: 'https://accounts.example.test',
+        subject: 'account-123',
+        displayName: 'Collaborator Account',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    let body: BodyInit | null | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path.endsWith('/confirm')) {
+        body = init?.body;
+        return response({ ...request, status: 'confirmed' });
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: /Approve as an ordinary Personal Device/,
+      }),
+    );
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(approve);
+    await waitFor(() => expect(body).toBeUndefined());
   });
 
   test('account-binding refusal does not retry as ordinary device approval', async () => {
