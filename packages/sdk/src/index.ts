@@ -1065,16 +1065,16 @@ export {
   useAttentionQuery,
 } from './query-domains/attention.js';
 export {
-  fetchCodingFileMentionCandidates,
-  useCodingFileMentionCandidatesQuery,
-} from './query-domains/chatRuntimeCoding.js';
-export type { CodingFileMentionCandidates } from './query-domains/chatRuntimeCoding.js';
-export {
   useBoardQuery,
   useMoveBoardWidget,
   usePinBoardWidget,
   useUnpinBoardWidget,
 } from './query-domains/board.js';
+export type { CodingFileMentionCandidates } from './query-domains/chatRuntimeCoding.js';
+export {
+  fetchCodingFileMentionCandidates,
+  useCodingFileMentionCandidatesQuery,
+} from './query-domains/chatRuntimeCoding.js';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
