@@ -36,6 +36,59 @@ export interface RuntimeConnectionSummary {
   readinessReason?: string;
 }
 
+/**
+ * The shape of `ConnectionReadinessEvidence` this projection reads. Structural
+ * on purpose: the route consumes only what it needs and the full contract type
+ * carries the smoke/check detail bundles wholesale.
+ */
+export interface ProjectedReadinessEvidence {
+  level?: string;
+  summary?: string;
+  smoke?: { status?: string; freshness?: string };
+  check?: { status?: string };
+}
+
+/**
+ * `readinessEvidence.summary` is written for the connection card, where it
+ * names the strongest evidence Station holds — including when that evidence is
+ * AFFIRMATIVE ("A live model or capability catalog is available.").
+ * `readinessReason` is consumed only as an unavailable reason (`/
+ * externalEngineUnavailable`, delegation target discovery), so an affirmative
+ * summary crossing that seam produced the contradictory state where an
+ * unavailable OpenCode target carried the reason that a live catalog is
+ * available. Only a summary that describes a gap or a failure may cross.
+ *
+ * The failure branches mirror `deriveConnectionReadinessEvidence`'s copy
+ * selection: a fresh failed smoke, a spoken check that refused / could not be
+ * reached / offered no catalog, or the not-yet-proved `discovered` level. An
+ * affirmative level (`catalog-ready`, `prerequisite-ready`, `smoke-passed`)
+ * without a failure observation stays undefined — the honest fallback is the
+ * status-derived copy, not a sentence asserting availability.
+ */
+export function evidenceUnavailableSummary(
+  evidence: ProjectedReadinessEvidence | undefined,
+): string | undefined {
+  if (!evidence || typeof evidence.summary !== 'string' || !evidence.summary) {
+    return undefined;
+  }
+  if (evidence.level === 'discovered') return evidence.summary;
+  if (
+    evidence.smoke?.status === 'failed' &&
+    evidence.smoke?.freshness === 'fresh'
+  ) {
+    return evidence.summary;
+  }
+  if (
+    evidence.level !== 'smoke-passed' &&
+    (evidence.check?.status === 'failed' ||
+      evidence.check?.status === 'unreachable' ||
+      evidence.check?.status === 'catalog-unavailable')
+  ) {
+    return evidence.summary;
+  }
+  return undefined;
+}
+
 type UnavailableFix = NonNullable<EnrichedAgentProjection['unavailableFix']>;
 
 /**
@@ -56,7 +109,7 @@ export function runtimeConnectionSummary(connection: {
   enabled: boolean;
   status: string;
   config: Record<string, unknown>;
-  readinessEvidence?: { summary?: string };
+  readinessEvidence?: ProjectedReadinessEvidence;
   parseEngineId: (value: unknown) => EngineId | undefined;
 }): RuntimeConnectionSummary {
   return {
@@ -73,7 +126,7 @@ export function runtimeConnectionSummary(connection: {
     // projecting it onto registry-backed Agent rows.
     engineId: connection.parseEngineId(connection.config.engineId),
     readinessReason:
-      connection.readinessEvidence?.summary ||
+      evidenceUnavailableSummary(connection.readinessEvidence) ||
       (typeof connection.config.readinessReason === 'string'
         ? connection.config.readinessReason
         : undefined),

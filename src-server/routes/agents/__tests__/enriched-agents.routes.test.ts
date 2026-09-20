@@ -1001,6 +1001,120 @@ describe('registry-backed enriched Agent routes', () => {
 
     expect(summary.provider).toBeUndefined();
   });
+
+  /**
+   * The contradictory live state: an OpenCode connection whose readiness
+   * evidence is AFFIRMATIVE (`catalog-ready`, whose canned summary is "A live
+   * model or capability catalog is available.") while its `status` is not
+   * ready. `readinessReason` is consumed only as an unavailable reason, so the
+   * affirmative summary must not cross that seam — the observed bug was an
+   * unavailable delegation target whose `unavailableReason` asserted a live
+   * catalog was available.
+   */
+  test('an affirmative readiness-evidence summary never becomes an unavailable reason', () => {
+    const summary = runtimeConnectionSummary({
+      id: 'opencode' as never,
+      type: 'acp-runtime',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'degraded',
+      config: {},
+      readinessEvidence: {
+        level: 'catalog-ready',
+        summary: 'A live model or capability catalog is available.',
+        smoke: { status: 'not-tested' },
+      },
+      parseEngineId: (value) => value as never,
+    });
+
+    expect(summary.readinessReason).toBeUndefined();
+    // The consumer falls through to the status-derived copy, which says what
+    // is true instead of asserting availability.
+    const { reason } = externalEngineUnavailable(
+      'opencode',
+      new Map([['opencode', summary]]),
+    );
+    expect(reason).toBe('OpenCode is only partly working.');
+  });
+
+  /**
+   * Positive control for the same seam: evidence that names a REAL gap or
+   * failure still reaches `readinessReason` — the fix may not mute genuine
+   * problem text, and a ready external connection stays honestly available.
+   */
+  test('gap and failure evidence summaries still flow through as unavailable reasons', () => {
+    const base = {
+      id: 'opencode' as never,
+      type: 'acp-runtime',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'unprobed',
+      config: {},
+      parseEngineId: (value) => value as never,
+    };
+    const discovered = runtimeConnectionSummary({
+      ...base,
+      readinessEvidence: {
+        level: 'discovered',
+        summary:
+          'Station discovered this client, but has not proved chat readiness.',
+        smoke: { status: 'not-tested' },
+      },
+    });
+    const smokeFailed = runtimeConnectionSummary({
+      ...base,
+      status: 'ready',
+      readinessEvidence: {
+        level: 'catalog-ready',
+        summary: 'The bounded chat smoke failed: empty response.',
+        smoke: { status: 'failed', freshness: 'fresh' },
+      },
+    });
+    const checkRefused = runtimeConnectionSummary({
+      ...base,
+      readinessEvidence: {
+        level: 'prerequisite-ready',
+        summary: 'The provider refused these settings.',
+        smoke: { status: 'not-tested' },
+        check: { status: 'failed' },
+      },
+    });
+
+    expect(discovered.readinessReason).toBe(
+      'Station discovered this client, but has not proved chat readiness.',
+    );
+    expect(smokeFailed.readinessReason).toBe(
+      'The bounded chat smoke failed: empty response.',
+    );
+    expect(checkRefused.readinessReason).toBe(
+      'The provider refused these settings.',
+    );
+  });
+
+  test('a ready external connection with affirmative evidence stays honestly available', () => {
+    const summary = runtimeConnectionSummary({
+      id: 'opencode' as never,
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'ready',
+      config: { provider: 'opencode' },
+      readinessEvidence: {
+        level: 'catalog-ready',
+        summary: 'A live model or capability catalog is available.',
+        smoke: { status: 'not-tested' },
+      },
+      parseEngineId: (value) => value as never,
+    });
+
+    expect(summary.readinessReason).toBeUndefined();
+    expect(
+      isHonestlyAvailableConnectedAgent(
+        { execution: { agentConnectionId: 'opencode' } } as never,
+        new Map([['opencode', summary]]),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('the built-in engine selection is the RUNTIME projection (#3662 review HIGH-3)', () => {
