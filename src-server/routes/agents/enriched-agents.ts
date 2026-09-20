@@ -14,6 +14,7 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
+import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { selectEngineAgentAdoption } from '../../domain/agent-registry.js';
 import type { AgentMetadata } from '../../services/agents/agent-service.js';
@@ -37,44 +38,40 @@ export interface RuntimeConnectionSummary {
 }
 
 /**
- * The shape of `ConnectionReadinessEvidence` this projection reads. Structural
- * on purpose: the route consumes only what it needs and the full contract type
- * carries the smoke/check detail bundles wholesale.
+ * The slice of the contract's `ConnectionReadinessEvidence` this projection
+ * reads — derived from the contract, not restated.
  */
-export interface ProjectedReadinessEvidence {
-  level?: string;
-  summary?: string;
-  smoke?: { status?: string; freshness?: string };
-  check?: { status?: string };
-}
+type ProjectedReadinessEvidence = Pick<
+  ConnectionReadinessEvidence,
+  'level' | 'summary' | 'smoke' | 'check'
+>;
 
 /**
- * `readinessEvidence.summary` is written for the connection card, where it
- * names the strongest evidence Station holds — including when that evidence is
- * AFFIRMATIVE ("A live model or capability catalog is available.").
- * `readinessReason` is consumed only as an unavailable reason (`/
- * externalEngineUnavailable`, delegation target discovery), so an affirmative
- * summary crossing that seam produced the contradictory state where an
- * unavailable OpenCode target carried the reason that a live catalog is
- * available. Only a summary that describes a gap or a failure may cross.
+ * `readinessEvidence.summary` names the strongest evidence Station holds —
+ * including AFFIRMATIVE evidence ("A live model or capability catalog is
+ * available.") — while `readinessReason` is consumed only as an unavailable
+ * reason. Only a summary describing a gap or a failure may cross; otherwise
+ * the honest fallback is status-derived copy, never a sentence asserting
+ * availability.
  *
- * The failure branches mirror `deriveConnectionReadinessEvidence`'s copy
- * selection: a fresh failed smoke, a spoken check that refused / could not be
- * reached / offered no catalog, or the not-yet-proved `discovered` level. An
- * affirmative level (`catalog-ready`, `prerequisite-ready`, `smoke-passed`)
- * without a failure observation stays undefined — the honest fallback is the
- * status-derived copy, not a sentence asserting availability.
+ * The branches mirror `deriveConnectionReadinessEvidence`'s copy selection,
+ * including its precedence (`connectionCheckGatesReadiness` /
+ * `connectionCheckOutranksSmoke`): a fresh failed smoke is failure copy only
+ * while fresh; a check's refusal is spoken only when it outranks the smoke —
+ * an affirmative `smoke-passed` level stays affirmative even over an older
+ * refusal. `gatesReadiness` deliberately differs from this: an unreachable
+ * refusal inside its grace window or a `catalog-unavailable` answer does not
+ * gate READY, but its copy is still a problem statement, not an availability
+ * claim, so it may cross this seam.
  */
-export function evidenceUnavailableSummary(
+function evidenceUnavailableSummary(
   evidence: ProjectedReadinessEvidence | undefined,
 ): string | undefined {
-  if (!evidence || typeof evidence.summary !== 'string' || !evidence.summary) {
-    return undefined;
-  }
+  if (!evidence?.summary) return undefined;
   if (evidence.level === 'discovered') return evidence.summary;
   if (
     evidence.smoke?.status === 'failed' &&
-    evidence.smoke?.freshness === 'fresh'
+    evidence.smoke.freshness === 'fresh'
   ) {
     return evidence.summary;
   }

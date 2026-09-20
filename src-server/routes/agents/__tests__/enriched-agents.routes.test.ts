@@ -5,6 +5,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
@@ -33,6 +34,27 @@ afterEach(() => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+/**
+ * A fully-typed affirmative evidence fixture — the exact shape
+ * `deriveConnectionReadinessEvidence` emits for a connection with a live
+ * catalog, including the canned summary that used to cross the
+ * unavailable-reason seam.
+ */
+function catalogReadyEvidence(
+  overrides: Partial<ConnectionReadinessEvidence> = {},
+): ConnectionReadinessEvidence {
+  return {
+    evidenceVersion: 1,
+    level: 'catalog-ready',
+    observedAt: new Date().toISOString(),
+    freshness: 'fresh',
+    summary: 'A live model or capability catalog is available.',
+    action: 'Run an explicit smoke to prove a complete chat turn.',
+    smoke: { status: 'not-tested', freshness: 'unknown', turnLimit: 1 },
+    ...overrides,
+  };
+}
 
 function setup(overrides: Record<string, unknown> = {}) {
   const metadata = [
@@ -1019,11 +1041,7 @@ describe('registry-backed enriched Agent routes', () => {
       enabled: true,
       status: 'degraded',
       config: {},
-      readinessEvidence: {
-        level: 'catalog-ready',
-        summary: 'A live model or capability catalog is available.',
-        smoke: { status: 'not-tested' },
-      },
+      readinessEvidence: catalogReadyEvidence(),
       parseEngineId: (value) => value as never,
     });
 
@@ -1040,7 +1058,7 @@ describe('registry-backed enriched Agent routes', () => {
   /**
    * Positive control for the same seam: evidence that names a REAL gap or
    * failure still reaches `readinessReason` — the fix may not mute genuine
-   * problem text, and a ready external connection stays honestly available.
+   * problem text.
    */
   test('gap and failure evidence summaries still flow through as unavailable reasons', () => {
     const base = {
@@ -1050,34 +1068,36 @@ describe('registry-backed enriched Agent routes', () => {
       enabled: true,
       status: 'unprobed',
       config: {},
-      parseEngineId: (value) => value as never,
+      parseEngineId: (value: unknown) => value as never,
     };
     const discovered = runtimeConnectionSummary({
       ...base,
-      readinessEvidence: {
+      readinessEvidence: catalogReadyEvidence({
         level: 'discovered',
         summary:
           'Station discovered this client, but has not proved chat readiness.',
-        smoke: { status: 'not-tested' },
-      },
+      }),
     });
     const smokeFailed = runtimeConnectionSummary({
       ...base,
       status: 'ready',
-      readinessEvidence: {
-        level: 'catalog-ready',
+      readinessEvidence: catalogReadyEvidence({
         summary: 'The bounded chat smoke failed: empty response.',
-        smoke: { status: 'failed', freshness: 'fresh' },
-      },
+        smoke: {
+          status: 'failed',
+          freshness: 'fresh',
+          turnLimit: 1,
+          reasonCode: 'empty-response',
+        },
+      }),
     });
     const checkRefused = runtimeConnectionSummary({
       ...base,
-      readinessEvidence: {
+      readinessEvidence: catalogReadyEvidence({
         level: 'prerequisite-ready',
         summary: 'The provider refused these settings.',
-        smoke: { status: 'not-tested' },
         check: { status: 'failed' },
-      },
+      }),
     });
 
     expect(discovered.readinessReason).toBe(
@@ -1099,11 +1119,7 @@ describe('registry-backed enriched Agent routes', () => {
       enabled: true,
       status: 'ready',
       config: { provider: 'opencode' },
-      readinessEvidence: {
-        level: 'catalog-ready',
-        summary: 'A live model or capability catalog is available.',
-        smoke: { status: 'not-tested' },
-      },
+      readinessEvidence: catalogReadyEvidence(),
       parseEngineId: (value) => value as never,
     });
 
@@ -1114,6 +1130,82 @@ describe('registry-backed enriched Agent routes', () => {
         new Map([['opencode', summary]]),
       ),
     ).toBe(true);
+  });
+
+  /**
+   * The delegate-facing projection end to end: `/api/agents` is what
+   * `discoverDelegationOptions` reads `agent.unavailableReason` from, so the
+   * contradictory connection must reach the ROUTE response as an unavailable
+   * Agent whose reason is the truthful status copy — never the affirmative
+   * catalog sentence. The ready control runs through the same route.
+   */
+  test('the agent catalog projects the contradictory connection as unavailable with a truthful reason', async () => {
+    const { app } = setup({
+      loadAgent: vi.fn(async (slug: string) => {
+        if (slug === 'writer')
+          return {
+            name: 'Writer',
+            prompt: 'Write.',
+            execution: { agentConnectionId: engineConnectionId('opencode') },
+          };
+        throw new Error('registry defaults are not stored as authored Agents');
+      }),
+      getRuntimeConnections: vi.fn().mockResolvedValue([
+        {
+          id: 'opencode',
+          type: 'opencode',
+          provider: 'opencode',
+          name: 'OpenCode',
+          status: 'degraded',
+          enabled: true,
+          engineId: engineId('opencode'),
+          readinessEvidence: catalogReadyEvidence(),
+        },
+      ]),
+    });
+
+    const body = await json(await app.request('/'));
+    const writer = body.data.find((agent: any) => agent.slug === 'writer');
+    expect(writer).toMatchObject({
+      available: false,
+      unavailableReason: 'OpenCode is only partly working.',
+    });
+    expect(writer.unavailableReason).not.toContain(
+      'A live model or capability catalog is available.',
+    );
+  });
+
+  test('the agent catalog keeps a ready external engine honestly available over affirmative evidence', async () => {
+    const { app } = setup({
+      loadAgent: vi.fn(async (slug: string) => {
+        if (slug === 'writer')
+          return {
+            name: 'Writer',
+            prompt: 'Write.',
+            execution: { agentConnectionId: engineConnectionId('opencode') },
+          };
+        throw new Error('registry defaults are not stored as authored Agents');
+      }),
+      getRuntimeConnections: vi.fn().mockResolvedValue([
+        {
+          id: 'opencode',
+          type: 'opencode',
+          provider: 'opencode',
+          name: 'OpenCode',
+          status: 'ready',
+          enabled: true,
+          engineId: engineId('opencode'),
+          readinessEvidence: catalogReadyEvidence(),
+        },
+      ]),
+    });
+
+    const body = await json(await app.request('/'));
+    const writer = body.data.find((agent: any) => agent.slug === 'writer');
+    // An honestly available external binding carries no unavailable row at
+    // all — the affirmative evidence must not resurrect one.
+    expect(writer?.available).not.toBe(false);
+    expect(writer?.unavailableReason).toBeUndefined();
   });
 });
 
