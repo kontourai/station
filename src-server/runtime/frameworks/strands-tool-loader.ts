@@ -23,6 +23,7 @@ import {
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { sameMCPConnectionDefinition } from '../mcp/mcp-definition-currentness.js';
+import { NATIVE_OUTPUT_DECLARATION_TOOL } from '../native-output-declaration.js';
 import { runWithCurrentNativeOutputCall } from '../native-output-turn-grant.js';
 import {
   copyLoadedMCPToolProvenance,
@@ -416,9 +417,11 @@ export function createStrandsFunctionTools(
   purposeEnabledToolNames: Set<string> = new Set(),
 ): FunctionTool[] {
   return tools.map((tool) => {
-    const inputSchema = getLoadedMCPToolProvenance(tool)
-      ? tool.parameters
-      : toolSchemaWithPurpose(tool.parameters);
+    const inputSchema =
+      getLoadedMCPToolProvenance(tool) ||
+      tool.name === NATIVE_OUTPUT_DECLARATION_TOOL
+        ? tool.parameters
+        : toolSchemaWithPurpose(tool.parameters);
     const purposeEnabled = inputSchema !== tool.parameters;
     if (purposeEnabled) purposeEnabledToolNames.add(tool.name);
     return new FunctionTool({

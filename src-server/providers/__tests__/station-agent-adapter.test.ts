@@ -185,6 +185,7 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
   function relay(
     events: Array<Record<string, unknown>>,
     pendingIdlessToolCalls: PendingIdlessToolCall[] = [],
+    purposeScope?: object,
   ) {
     const published: CanonicalRuntimeEvent[] = [];
     const reports = events.map((event) =>
@@ -194,6 +195,7 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
         turnId: 'turn-1',
         publish: (e) => published.push(e),
         pendingIdlessToolCalls,
+        purposeScope,
       }),
     );
     return { published, reports, pendingIdlessToolCalls };
@@ -224,18 +226,23 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
   });
 
   test('publishes bounded purpose separately and keeps reserved metadata out of arguments', () => {
-    rememberToolPurpose('purpose-call', 'inspect project docs');
-    const { published } = relay([
-      {
-        type: 'tool-call',
-        toolCallId: 'purpose-call',
-        toolName: 'repo_read',
-        input: {
-          path: 'README.md',
-          __station_tool_purpose: '  inspect   project docs ',
+    const purposeScope = {};
+    rememberToolPurpose('purpose-call', 'inspect project docs', purposeScope);
+    const { published } = relay(
+      [
+        {
+          type: 'tool-call',
+          toolCallId: 'purpose-call',
+          toolName: 'repo_read',
+          input: {
+            path: 'README.md',
+            __station_tool_purpose: '  inspect   project docs ',
+          },
         },
-      },
-    ]);
+      ],
+      [],
+      purposeScope,
+    );
     expect(published[0]).toMatchObject({
       method: 'tool.started',
       toolName: 'repo_read',
@@ -257,6 +264,63 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
       arguments: { __station_tool_purpose: 'real provider argument' },
     });
     expect(published[0]).not.toHaveProperty('purpose');
+  });
+
+  test('same provider call id cannot move purpose across invocation scopes', () => {
+    const ownedScope = {};
+    const nativeScope = {};
+    rememberToolPurpose('same-call', 'owned purpose', ownedScope);
+    const event = {
+      type: 'tool-call',
+      toolCallId: 'same-call',
+      toolName: 'provider_tool',
+      input: { __station_tool_purpose: 'provider argument' },
+    };
+    const owned = relay([event], [], ownedScope).published[0] as any;
+    const native = relay([event], [], nativeScope).published[0] as any;
+    expect(owned).toMatchObject({ purpose: 'owned purpose', arguments: {} });
+    expect(native).toMatchObject({
+      arguments: { __station_tool_purpose: 'provider argument' },
+    });
+    expect(native.purpose).toBeUndefined();
+  });
+
+  test('a lifecycle hook that runs after tool input still carries purpose on completion', () => {
+    const scope = {};
+    const start = relay(
+      [
+        {
+          type: 'tool-call',
+          toolCallId: 'late-purpose',
+          toolName: 'read_file',
+          input: {
+            path: 'README.md',
+            __station_tool_purpose: 'raw before custody',
+          },
+        },
+      ],
+      [],
+      scope,
+    ).published[0] as any;
+    expect(start.purpose).toBeUndefined();
+    expect(start.arguments.__station_tool_purpose).toBe('raw before custody');
+    rememberToolPurpose('late-purpose', 'Inspect documentation', scope);
+    const completed = relay(
+      [
+        {
+          type: 'tool-result',
+          toolCallId: 'late-purpose',
+          toolName: 'read_file',
+          output: 'done',
+        },
+      ],
+      [],
+      scope,
+    ).published[0];
+    expect(completed).toMatchObject({
+      method: 'tool.completed',
+      purpose: 'Inspect documentation',
+    });
   });
 
   test('two id-less calls pair with their results in order', () => {

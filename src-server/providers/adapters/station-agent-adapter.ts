@@ -531,6 +531,8 @@ export function mapStationAgentStreamEvent(options: {
    * way, and nothing in the chunks that would distinguish them.
    */
   pendingIdlessToolCalls: PendingIdlessToolCall[];
+  /** Test/internal explicit scope; production resolves the native relay ALS. */
+  purposeScope?: object;
 }): {
   outputDelta?: string;
   finishReason?: ReturnType<typeof finishReason>;
@@ -602,7 +604,7 @@ export function mapStationAgentStreamEvent(options: {
     // "no result was reported". Paired, the call is ordinary: tracked at the
     // start, deleted by its result, and settled honestly if neither arrives.
     const toolCallId = reportedCallId ?? crypto.randomUUID();
-    const trustedPurpose = toolPurposeForCall(toolCallId);
+    const trustedPurpose = toolPurposeForCall(toolCallId, options.purposeScope);
     const purposeful = trustedPurpose
       ? extractToolPurpose(event.input)
       : { input: event.input };
@@ -644,7 +646,7 @@ export function mapStationAgentStreamEvent(options: {
           reportedToolName(event),
         )?.toolCallId;
     const toolCallId = reportedCallId ?? pairedCallId ?? crypto.randomUUID();
-    const purpose = takeToolPurpose(toolCallId);
+    const purpose = takeToolPurpose(toolCallId, options.purposeScope);
     const error = stringField(event.error);
     // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's

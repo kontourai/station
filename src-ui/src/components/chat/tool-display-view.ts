@@ -15,14 +15,20 @@ export function toolDisplayView(value: unknown) {
     string,
     any
   >;
+  const purpose = toolPurposeView(row);
+  const rawArgs = row.args ?? row.input;
+  const args =
+    purpose && rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)
+      ? (({ __station_tool_purpose: _purpose, ...clean }) => clean)(rawArgs)
+      : rawArgs;
   return {
     toolName:
       row.toolName ||
       row.name ||
       (typeof row.type === 'string' ? row.type.replace(/^tool-/, '') : ''),
-    args: row.args ?? row.input,
+    args,
     result: row.result ?? row.output,
     error: row.error ?? row.errorText,
-    purpose: toolPurposeView(row),
+    purpose,
   };
 }

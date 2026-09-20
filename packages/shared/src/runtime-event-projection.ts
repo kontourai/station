@@ -642,7 +642,14 @@ export function projectRuntimeEventsToMessages(
           if (text !== undefined) existing.result = text;
           else if (existing === superseded) delete existing.result;
           existing.isError = isError;
-          if (ev.purpose !== undefined) existing.purpose = ev.purpose;
+          if (ev.purpose !== undefined) {
+            existing.purpose = ev.purpose;
+            if (existing.args && typeof existing.args === 'object') {
+              const { __station_tool_purpose: _purpose, ...clean } =
+                existing.args;
+              existing.args = clean;
+            }
+          }
           // Overrides any earlier call-time approvalStatus (e.g. an
           // optimistic 'auto-approved') — Station's own policy can deny a
           // call the client believed pre-approved, and this is the

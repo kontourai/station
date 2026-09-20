@@ -596,7 +596,10 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
     type: 'object',
     properties: {},
   };
-  const purposeParameters = toolSchemaWithPurpose(sourceParameters);
+  const purposeParameters =
+    tool.name === NATIVE_OUTPUT_DECLARATION_TOOL
+      ? sourceParameters
+      : toolSchemaWithPurpose(sourceParameters);
   const purposeEnabled = purposeParameters !== sourceParameters;
   const parameters = jsonSchema(purposeParameters as any) as never;
   const execute =

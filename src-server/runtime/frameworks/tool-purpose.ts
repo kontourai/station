@@ -1,7 +1,8 @@
 export const STATION_TOOL_PURPOSE_KEY = '__station_tool_purpose';
 const MAX_PURPOSE_CHARS = 240;
 const COMPOSED = ['$ref', 'allOf', 'anyOf', 'oneOf', 'not', 'if'];
-const purposeByCallId = new Map<string, string>();
+const purposesByScope = new WeakMap<object, Map<string, string>>();
+const registeredCleanup = new WeakSet<object>();
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -40,19 +41,48 @@ export function extractToolPurpose(input: unknown): {
   return { input: clean, ...(purpose ? { purpose } : {}) };
 }
 
-export function rememberToolPurpose(callId: string, purpose?: string): void {
-  if (!callId || !purpose) return;
-  if (purposeByCallId.size >= 1_000)
-    purposeByCallId.delete(purposeByCallId.keys().next().value!);
-  purposeByCallId.set(callId, purpose);
+const scopeOf = (explicit?: object) =>
+  explicit ?? currentNativeForegroundRelay();
+
+export function rememberToolPurpose(
+  callId: string,
+  purpose?: string,
+  explicitScope?: object,
+): void {
+  const scope = scopeOf(explicitScope);
+  if (!scope || !callId || !purpose) return;
+  let purposes = purposesByScope.get(scope);
+  if (!purposes) {
+    purposes = new Map();
+    purposesByScope.set(scope, purposes);
+  }
+  if (purposes.size >= 1_000) purposes.delete(purposes.keys().next().value!);
+  purposes.set(callId, purpose);
+  if (!registeredCleanup.has(scope) && 'onClose' in scope) {
+    registeredCleanup.add(scope);
+    (scope as { onClose(cleanup: () => void): void }).onClose(() =>
+      purposesByScope.delete(scope),
+    );
+  }
 }
 
-export function takeToolPurpose(callId: string): string | undefined {
-  const purpose = purposeByCallId.get(callId);
-  purposeByCallId.delete(callId);
+export function takeToolPurpose(
+  callId: string,
+  explicitScope?: object,
+): string | undefined {
+  const scope = scopeOf(explicitScope);
+  const purposes = scope ? purposesByScope.get(scope) : undefined;
+  const purpose = purposes?.get(callId);
+  purposes?.delete(callId);
   return purpose;
 }
 
-export function toolPurposeForCall(callId: string): string | undefined {
-  return purposeByCallId.get(callId);
+export function toolPurposeForCall(
+  callId: string,
+  explicitScope?: object,
+): string | undefined {
+  const scope = scopeOf(explicitScope);
+  return scope ? purposesByScope.get(scope)?.get(callId) : undefined;
 }
+
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
