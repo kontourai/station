@@ -144,6 +144,7 @@ export function ConversationTimeline({
           <label className="conversation-timeline__execution">
             <span>Conversation section</span>
             <select
+              className="editor-select"
               value={context.selectedExecutionId}
               disabled={switchingExecution}
               onChange={(event) => {

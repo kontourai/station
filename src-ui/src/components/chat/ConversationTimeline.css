@@ -129,6 +129,7 @@
   .conversation-timeline__execution select {
     width: 100%;
     min-width: 0;
+    font-size: 16px;
   }
 
   .conversation-timeline__map {

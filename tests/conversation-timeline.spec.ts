@@ -400,6 +400,9 @@ test('conversation timeline crosses execution history, preserves the live draft,
     basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
   );
   mkdirSync(evidenceRoot, { recursive: true });
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('data-theme', 'dark'),
+  );
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     const timelineBox = await page
@@ -438,6 +441,49 @@ test('conversation timeline crosses execution history, preserves the live draft,
     );
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('data-theme', 'light'),
+  );
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  const lightTimelineBox = await page
+    .getByRole('region', { name: 'Historical conversation view' })
+    .boundingBox();
+  const lightTranscriptBox = await page
+    .getByRole('log', { name: 'Conversation transcript' })
+    .boundingBox();
+  expect(lightTimelineBox?.height ?? Infinity).toBeLessThanOrEqual(180);
+  expect(lightTranscriptBox?.height ?? 0).toBeGreaterThanOrEqual(140);
+  expect(
+    await page
+      .getByRole('combobox', { name: 'Conversation section' })
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          height: element.getBoundingClientRect().height,
+          fontSize: style.fontSize,
+          borderRadius: style.borderRadius,
+          appearance: style.appearance,
+        };
+      }),
+  ).toEqual(
+    expect.objectContaining({
+      height: expect.any(Number),
+      fontSize: '16px',
+      borderRadius: '6px',
+      appearance: 'none',
+    }),
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('timeline-history-390-light.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('timeline-history-390-light.png'),
+    join(evidenceRoot, 'timeline-history-390-light.png'),
+  );
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('data-theme', 'dark'),
+  );
   await page.getByRole('button', { name: 'Fork from here…' }).click();
   await expect(
     page.getByRole('heading', { name: 'Fork from here' }),
