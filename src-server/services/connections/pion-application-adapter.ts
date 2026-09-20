@@ -1,5 +1,5 @@
-import { lstatSync, realpathSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { existsSync, lstatSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type { ApplicationChannel } from '@kontourai/station-connect/application-channel';
 import { readJsonFile } from '@kontourai/station-shared/json-file-storage';
@@ -32,7 +32,10 @@ export function validatePionAdapterProfile(
   profile: PionAdapterProfile | undefined,
   label: string | undefined,
 ) {
-  if (!profile) throw new Error('pion_profile_required');
+  if (profile !== 'application' && profile !== 'diagnosticEcho')
+    throw new Error(
+      profile === undefined ? 'pion_profile_required' : 'pion_profile_unknown',
+    );
   if (profile === 'application' && !label)
     throw new Error('pion_application_label_required');
   if (profile === 'diagnosticEcho' && label)
@@ -65,6 +68,8 @@ export async function startPionApplicationAdapter(
   input: PionApplicationAdapterInput,
 ) {
   validatePionAdapterProfile(input.profile, input.applicationChannelLabel);
+  if (process.platform === 'win32')
+    throw new Error('pion_private_pipe_custody_unavailable_on_windows');
   input.signal.throwIfAborted();
   if (
     Buffer.byteLength(input.offer.sdp) > 128 * 1024 ||
@@ -77,28 +82,49 @@ export async function startPionApplicationAdapter(
     throw new Error('pion_configuration_invalid');
   const resolvedExecutable = executable(input.executable);
   const directory = await createStationTempDir('pion-application');
+  for (const path of [dirname(directory), directory]) {
+    const info = lstatSync(path);
+    if (
+      !info.isDirectory() ||
+      info.isSymbolicLink() ||
+      info.uid !== process.getuid?.() ||
+      (info.mode & 0o022) !== 0
+    ) {
+      await removeStationTempDir(directory);
+      throw new Error('pion_temp_custody_invalid');
+    }
+  }
+  input.signal.throwIfAborted();
   const certificate = join(directory, 'certificate.pem');
   const key = join(directory, 'private-key.pem');
-  writeFileSync(certificate, input.certificatePem, { flag: 'wx', mode: 0o600 });
-  writeFileSync(key, input.privateKeyPem, { flag: 'wx', mode: 0o600 });
-  writeFileSync(
-    join(directory, 'config.json'),
-    JSON.stringify({
-      Offer: input.offer,
-      Certificate: certificate,
-      Key: key,
-      URL: input.turn.url,
-      Username: input.turn.username,
-      Password: input.turn.password,
-      Profile: input.profile,
-      ProtocolVersion:
-        input.profile === 'application'
-          ? PION_APPLICATION_IPC_VERSION
-          : 'station.diagnostic-echo/v1',
-      ApplicationChannelLabel: input.applicationChannelLabel ?? '',
-    }),
-    { flag: 'wx', mode: 0o600 },
-  );
+  try {
+    writeFileSync(certificate, input.certificatePem, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    writeFileSync(key, input.privateKeyPem, { flag: 'wx', mode: 0o600 });
+    writeFileSync(
+      join(directory, 'config.json'),
+      JSON.stringify({
+        Offer: input.offer,
+        Certificate: certificate,
+        Key: key,
+        URL: input.turn.url,
+        Username: input.turn.username,
+        Password: input.turn.password,
+        Profile: input.profile,
+        ProtocolVersion:
+          input.profile === 'application'
+            ? PION_APPLICATION_IPC_VERSION
+            : 'station.diagnostic-echo/v1',
+        ApplicationChannelLabel: input.applicationChannelLabel ?? '',
+      }),
+      { flag: 'wx', mode: 0o600 },
+    );
+  } catch (error) {
+    await removeStationTempDir(directory);
+    throw error;
+  }
   const owned = spawnOwnedChild(resolvedExecutable, [directory], {
     cwd: directory,
     stdio:
@@ -108,34 +134,14 @@ export async function startPionApplicationAdapter(
   });
   const child = owned.proc;
   let failure: Error | undefined;
-  const fail = (error: Error) => {
-    failure ??= error;
-    void terminateProcessTree(child).catch(() => {});
-  };
-  child.once('error', () => fail(new Error('pion_process_failed')));
-  const stdout = boundedOutput(child.stdout ?? undefined, fail);
-  boundedOutput(child.stderr ?? undefined, fail);
   let ipc: PionApplicationIpc | undefined;
-  if (input.profile === 'application') {
-    const write = child.stdio?.[3];
-    const read = child.stdio?.[4];
-    if (!write || !read || !('write' in write) || !('read' in read))
-      throw new Error('pion_application_pipes_unavailable');
-    ipc = new PionApplicationIpc(
-      write as Writable,
-      read as Readable,
-      input.accept,
-    );
-  }
-  const aborted = () => fail(new Error('pion_application_aborted'));
-  input.signal.addEventListener('abort', aborted, { once: true });
-  let closed = false;
-  const close = async () => {
-    if (closed) return;
-    closed = true;
-    input.signal.removeEventListener('abort', aborted);
-    ipc?.close();
-    try {
+  let shutdown: Promise<void> | undefined;
+  let stdout = () => '';
+  let aborted = () => {};
+  const close = () =>
+    (shutdown ??= (async () => {
+      input.signal.removeEventListener('abort', aborted);
+      ipc?.close();
       await terminateProcessTree(child, {
         graceMs: 2_000,
         killConfirmMs: 3_000,
@@ -144,11 +150,43 @@ export async function startPionApplicationAdapter(
       if (input.profile === 'application' && stdout() !== '')
         throw new Error('pion_application_content_diagnostic_boundary');
       if (failure) throw failure;
-    } finally {
       owned.release();
       await removeStationTempDir(directory);
-    }
+      if (existsSync(directory))
+        throw new Error('pion_temp_cleanup_incomplete');
+    })());
+  const fail = (error: Error) => {
+    failure ??= error;
+    void close().catch(() => {});
   };
+  child.once('error', () => fail(new Error('pion_process_failed')));
+  child.once('exit', () => {
+    if (!shutdown) fail(new Error('pion_process_exited'));
+  });
+  stdout = boundedOutput(child.stdout ?? undefined, fail);
+  boundedOutput(child.stderr ?? undefined, fail);
+  try {
+    if (input.profile === 'application') {
+      const write = child.stdio?.[3];
+      const read = child.stdio?.[4];
+      if (!write || !read || !('write' in write) || !('read' in read))
+        throw new Error('pion_application_pipes_unavailable');
+      ipc = new PionApplicationIpc(
+        write as Writable,
+        read as Readable,
+        input.accept,
+      );
+    }
+  } catch (error) {
+    failure =
+      error instanceof Error
+        ? error
+        : new Error('pion_application_setup_failed');
+    await close().catch(() => {});
+    throw error;
+  }
+  aborted = () => fail(new Error('pion_application_aborted'));
+  input.signal.addEventListener('abort', aborted, { once: true });
   try {
     const deadline = Date.now() + 25_000;
     while (true) {
@@ -160,11 +198,30 @@ export async function startPionApplicationAdapter(
           { type: null, sdp: null },
           { maxBytes: 128 * 1024, label: 'Pion answer' },
         );
-        if (answer.type === 'answer' && typeof answer.sdp === 'string')
+        if (
+          Object.keys(answer).sort().join(',') === 'sdp,type' &&
+          answer.type === 'answer' &&
+          typeof answer.sdp === 'string' &&
+          answer.sdp.length > 0 &&
+          Buffer.byteLength(answer.sdp) <= 128 * 1024
+        ) {
+          const version = readJsonFile<Record<string, unknown>>(
+            join(directory, 'version.json'),
+            {},
+            { maxBytes: 4096, label: 'Pion version' },
+          );
+          if (
+            Object.keys(version).sort().join(',') !== 'go,pion' ||
+            version.pion !== 'v4.2.20' ||
+            typeof version.go !== 'string' ||
+            !version.go.startsWith('go1.26')
+          )
+            throw new Error('pion_version_invalid');
           return {
             answer: { type: 'answer' as const, sdp: answer.sdp },
             close,
           };
+        }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
@@ -172,7 +229,14 @@ export async function startPionApplicationAdapter(
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
   } catch (error) {
-    await close().catch(() => {});
+    try {
+      await close();
+    } catch (cleanup) {
+      throw new AggregateError(
+        [error, cleanup],
+        'pion_adapter_startup_cleanup_failed',
+      );
+    }
     throw error;
   }
 }

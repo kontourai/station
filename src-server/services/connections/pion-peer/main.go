@@ -175,6 +175,8 @@ func run(dir string) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(signals)
+	var lifetime <-chan time.Time
+	if cfg.Profile == "diagnosticEcho" { lifetime = time.After(90 * time.Second) }
 	select {
 	case <-signals:
 		return nil
@@ -187,7 +189,7 @@ func run(dir string) error {
 		}
 	case err := <-asyncErrors:
 		return err
-	case <-time.After(90 * time.Second):
+	case <-lifetime:
 		return errors.New("peer lifetime exceeded")
 	}
 }
