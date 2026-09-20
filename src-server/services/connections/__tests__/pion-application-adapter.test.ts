@@ -15,6 +15,7 @@ import {
 import {
   type PionAdapterDependencies,
   type PionApplicationAdapterInput,
+  pionProcessEnvironment,
   startPionApplicationAdapter,
   validatePionAdapterProfile,
 } from '../pion-application-adapter.js';
@@ -76,6 +77,18 @@ function child(directory: string, application = false) {
 }
 
 describe('production Pion application adapter ownership', () => {
+  test('child environment omits Station, account, provider and model secrets', () => {
+    expect(
+      pionProcessEnvironment({
+        TMPDIR: '/tmp',
+        LANG: 'C',
+        STATION_OPERATOR_CREDENTIAL: 'canary',
+        OPENAI_API_KEY: 'canary',
+        ANTHROPIC_API_KEY: 'canary',
+        HOME: '/private',
+      }),
+    ).toEqual({ TMPDIR: '/tmp', LANG: 'C' });
+  });
   test('profiles and lifetime fail closed', () => {
     expect(() => validatePionAdapterProfile(undefined, undefined)).toThrow(
       'pion_profile_required',

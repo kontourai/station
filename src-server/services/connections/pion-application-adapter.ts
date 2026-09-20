@@ -45,6 +45,22 @@ const defaultDependencies: PionAdapterDependencies = {
   write: writeFileSync,
   now: Date.now,
 };
+export function pionProcessEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+) {
+  const result: NodeJS.ProcessEnv = {};
+  for (const key of [
+    'TMPDIR',
+    'TMP',
+    'TEMP',
+    'LANG',
+    'LC_ALL',
+    'SSL_CERT_FILE',
+    'SSL_CERT_DIR',
+  ])
+    if (source[key]) result[key] = source[key];
+  return result;
+}
 export function validatePionAdapterProfile(
   profile: PionAdapterProfile | undefined,
   label: string | undefined,
@@ -159,6 +175,7 @@ export async function startPionApplicationAdapter(
   try {
     owned = dependencies.spawn(resolvedExecutable, [directory], {
       cwd: directory,
+      env: pionProcessEnvironment(),
       stdio:
         input.profile === 'application'
           ? ['ignore', 'pipe', 'pipe', 'pipe', 'pipe']
