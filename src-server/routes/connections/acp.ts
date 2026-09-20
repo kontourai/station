@@ -5,6 +5,7 @@ import {
   ACPStatus,
 } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import { Hono } from 'hono';
 import {
   loadOrCreateAgentRegistry,
@@ -21,6 +22,7 @@ import {
   SecretBindingResolutionError,
 } from '../../services/secrets/secret-binding-administration.js';
 import { acpOps } from '../../telemetry/metrics.js';
+import { sanitizedTransportError } from '../../utils/outward-error.js';
 import {
   acpConnectionSchema,
   acpDisableProviderSchema,
@@ -512,8 +514,43 @@ export function createACPRoutes(ctx: RuntimeContext) {
 
   app.post('/connections/:id/reconnect', async (c) => {
     const id = param(c, 'id');
-    const result = await ctx.acpBridge.reconnect(id);
-    return c.json({ success: result });
+    // Existence is judged by the bridge's live probe set — the same
+    // projection GET /status serves. Reconnect acts on a live connection;
+    // a config entry that never onboarded has no probe to reconnect, and
+    // the bridge's own `false` cannot distinguish that from a failed
+    // handshake, so the explicit 404 is resolved here.
+    const connection = ctx.acpBridge
+      .getStatus()
+      .connections.find((entry) => entry.id === id);
+    if (!connection) {
+      return c.json({ success: false, error: 'Connection not found' }, 404);
+    }
+    // The probe contract already redacts secrets in `lastError.message`
+    // (acp-probe.ts); the client-facing channel additionally runs it through
+    // `sanitizeFreeText`, which strips paths/URLs and bounds the length. The
+    // raw command/args are never echoed.
+    const failure = (detail?: string, phase?: string) =>
+      c.json(
+        {
+          success: false,
+          error: 'The ACP connection could not be reconnected.',
+          ...(phase ? { phase } : {}),
+          ...(detail ? { detail: sanitizeFreeText(detail) } : {}),
+        },
+        502,
+      );
+    try {
+      const result = await ctx.acpBridge.reconnect(id);
+      if (!result) {
+        const current = ctx.acpBridge
+          .getStatus()
+          .connections.find((entry) => entry.id === id);
+        return failure(current?.lastError?.message, current?.lastError?.phase);
+      }
+    } catch (error) {
+      return failure(sanitizedTransportError(error).message);
+    }
+    return c.json({ success: true });
   });
 
   app.post(

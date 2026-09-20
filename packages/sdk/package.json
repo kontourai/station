@@ -45,6 +45,7 @@
     "./project-access-client": "./src/client/project-access.ts",
     "./account-authentication": "./src/client/account-authentication.ts",
     "./project-task-rooms": "./src/query-domains/projectTaskRooms.ts",
+    "./project-shared-tasks": "./src/client/project-shared-tasks.ts",
     "./live-activity": "./src/live-activity.ts",
     "./action-operations": "./src/action-operations.ts",
     "./resource-posture": "./src/query-domains/resourcePosture.ts",

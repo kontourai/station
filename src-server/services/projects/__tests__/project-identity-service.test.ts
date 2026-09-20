@@ -17,7 +17,10 @@ import {
   FileStorageConflictError,
   type ProjectFileTransactionFaults,
 } from '../../../domain/project-file-transactions.js';
-import { parseProjectPortableIdentity } from '../../../domain/project-identity-record.js';
+import {
+  ProjectIdentityValidationError,
+  parseProjectPortableIdentity,
+} from '../../../domain/project-identity-record.js';
 import { createProjectIdentityRoutes } from '../../../routes/projects/project-identity-routes.js';
 import { execGit } from '../../../utils/git-exec.js';
 import {
@@ -96,6 +99,207 @@ function harness(
 }
 
 describe('portable Project attachment', () => {
+  test('sets and clears an execution root without requiring a current binding', async () => {
+    const { service, manifests } = harness();
+    const attached = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    const set = await service.updateExecutionRoot('local', {
+      expectedIdentity: attached.identity,
+      expectedLocalProjectId: attached.association.localProjectId,
+      executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/web' },
+    });
+    expect(set.identity.executionRoot).toEqual({
+      repoId: 'git.example/acme/repo',
+      path: 'apps/web',
+    });
+    expect(manifests.readRecord('local')?.id).toBe('prj_shared');
+    const cleared = await service.updateExecutionRoot('local', {
+      expectedIdentity: set.identity,
+      expectedLocalProjectId: set.association.localProjectId,
+      executionRoot: null,
+    });
+    expect(cleared.identity.executionRoot).toBeUndefined();
+    expect(cleared.identity.id).toBe('prj_shared');
+  });
+
+  test('an exact replay is idempotent and does not advance identity time', async () => {
+    const { service } = harness();
+    const attached = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    const first = await service.updateExecutionRoot('local', {
+      expectedIdentity: attached.identity,
+      expectedLocalProjectId: attached.association.localProjectId,
+      executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/web' },
+    });
+    expect(
+      await service.updateExecutionRoot('local', {
+        expectedIdentity: first.identity,
+        expectedLocalProjectId: first.association.localProjectId,
+        executionRoot: first.identity.executionRoot ?? null,
+      }),
+    ).toEqual(first);
+  });
+
+  test('a no-op waiter refuses an identity changed after its read and before its lock', async () => {
+    let inject = false;
+    const fixture = harness({
+      faults: {
+        afterLockAcquired: () => {
+          if (!inject) return;
+          inject = false;
+          const path = projectManifestPath(fixture.home, 'local');
+          const current = JSON.parse(readFileSync(path, 'utf8')) as Record<
+            string,
+            unknown
+          >;
+          writeFileSync(
+            path,
+            JSON.stringify({
+              ...current,
+              executionRoot: {
+                repoId: 'git.example/acme/repo',
+                path: 'apps/winner',
+              },
+              updatedAt: '2026-09-20T12:00:00.000Z',
+            }),
+          );
+        },
+      },
+    });
+    const attached = await fixture.service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    inject = true;
+    await expect(
+      fixture.service.updateExecutionRoot('local', {
+        expectedIdentity: attached.identity,
+        expectedLocalProjectId: attached.association.localProjectId,
+        executionRoot: null,
+      }),
+    ).rejects.toBeInstanceOf(FileStorageConflictError);
+    expect(
+      (await fixture.service.read('local')).identity.executionRoot,
+    ).toEqual({
+      repoId: 'git.example/acme/repo',
+      path: 'apps/winner',
+    });
+  });
+
+  test('stale concurrent identity mutation loses without replacing the winner', async () => {
+    const { service } = harness();
+    const attached = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    const [first, second] = await Promise.allSettled([
+      service.updateExecutionRoot('local', {
+        expectedIdentity: attached.identity,
+        expectedLocalProjectId: attached.association.localProjectId,
+        executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/web' },
+      }),
+      service.updateExecutionRoot('local', {
+        expectedIdentity: attached.identity,
+        expectedLocalProjectId: attached.association.localProjectId,
+        executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/api' },
+      }),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([
+      'fulfilled',
+      'rejected',
+    ]);
+    const winner =
+      first.status === 'fulfilled'
+        ? first.value
+        : second.status === 'fulfilled'
+          ? second.value
+          : undefined;
+    expect((await service.read('local')).identity).toEqual(winner?.identity);
+  });
+
+  test('a stale local guard cannot edit a same-slug replacement with the same portable identity', async () => {
+    const { service, projects } = harness();
+    const original = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    await projects.deleteProject('local');
+    const replacement = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    expect(replacement.association.localProjectId).not.toBe(
+      original.association.localProjectId,
+    );
+    await expect(
+      service.updateExecutionRoot('local', {
+        expectedIdentity: original.identity,
+        expectedLocalProjectId: original.association.localProjectId,
+        executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/web' },
+      }),
+    ).rejects.toBeInstanceOf(FileStorageConflictError);
+    expect(
+      (await service.read('local')).identity.executionRoot,
+    ).toBeUndefined();
+  });
+
+  test('invalid execution root input writes nothing', async () => {
+    const { service } = harness();
+    const attached = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    await expect(
+      service.updateExecutionRoot('local', {
+        expectedIdentity: attached.identity,
+        expectedLocalProjectId: attached.association.localProjectId,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: '../outside',
+        },
+      }),
+    ).rejects.toBeInstanceOf(ProjectIdentityValidationError);
+    expect((await service.read('local')).identity).toEqual(attached.identity);
+  });
+
+  test('unsupported manifest mutation capability refuses before writing', async () => {
+    const fixture = harness();
+    const attached = await fixture.service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    const originalRevision = fixture.storage.projectRevision.bind(
+      fixture.storage,
+    );
+    vi.spyOn(fixture.storage, 'projectRevision').mockImplementation((slug) => {
+      const { replaceManifest: _unsupported, ...revision } =
+        originalRevision(slug);
+      return revision;
+    });
+    await expect(
+      fixture.service.updateExecutionRoot('local', {
+        expectedIdentity: attached.identity,
+        expectedLocalProjectId: attached.association.localProjectId,
+        executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/web' },
+      }),
+    ).rejects.toThrow('cannot atomically update');
+    expect((await fixture.service.read('local')).identity).toEqual(
+      attached.identity,
+    );
+  });
+
   test('attachment persists and reads a portable execution root on the destination', async () => {
     const checkout = directory();
     const app = join(checkout, 'apps', 'web');
@@ -412,6 +616,43 @@ describe('portable Project attachment', () => {
       (await createProjectIdentityRoutes(undefined).request('/local/identity'))
         .status,
     ).toBe(501);
+  });
+
+  test('HTTP execution-root mutation returns the guarded current identity', async () => {
+    const { service } = harness();
+    const attached = await service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    const response = await createProjectIdentityRoutes(service).request(
+      '/local/identity/execution-root',
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          expectedIdentity: attached.identity,
+          expectedLocalProjectId: attached.association.localProjectId,
+          executionRoot: {
+            repoId: 'git.example/acme/repo',
+            path: 'apps/web',
+          },
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: 'prj_shared',
+          executionRoot: {
+            repoId: 'git.example/acme/repo',
+            path: 'apps/web',
+          },
+        },
+      },
+    });
   });
 
   test('HTTP conflict responses do not reflect internal exception text', async () => {
