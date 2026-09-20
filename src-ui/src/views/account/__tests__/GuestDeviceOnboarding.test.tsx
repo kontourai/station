@@ -105,7 +105,9 @@ test('a Project removed during detail read leaves no stale detail in UI or cache
     ),
   );
   expect(
-    await screen.findByText('This Project is no longer shared with you.'),
+    await screen.findByText(
+      'Project details are unavailable. Shared Projects were refreshed.',
+    ),
   ).toBeTruthy();
   expect(
     screen.queryByRole('region', { name: 'Example Project details' }),
@@ -118,4 +120,55 @@ test('a Project removed during detail read leaves no stale detail in UI or cache
   ]);
   expect(state?.status).toBe('error');
   expect(state?.data).toBeUndefined();
+});
+
+test('Device loss during detail read hides the whole catalogue and offers approval', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string) => {
+      const path = new URL(input).pathname;
+      if (path === '/api/projects/example')
+        return Promise.resolve(new Response(null, { status: 401 }));
+      if (path === '/api/account-auth/session')
+        return Promise.resolve(
+          Response.json({
+            data: {
+              principal: {
+                id: `human:deployment:${'a'.repeat(64)}`,
+                kind: 'human',
+                display: 'Person A',
+              },
+              issuer: 'station:test',
+              expiresAt: '2099-01-01T00:00:00.000Z',
+              contacts: [],
+            },
+          }),
+        );
+      return Promise.resolve(success([view('Example Project', 'example')]));
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <GuestDeviceOnboarding
+        apiBase={apiA}
+        principalId="person-a"
+        onAccountRequired={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Read Project details' }),
+  );
+  expect(
+    await screen.findByRole('button', {
+      name: 'Request access for this browser',
+    }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Example Project')).toBeNull();
+  expect(
+    screen.queryByText('This browser has view-only Project access.'),
+  ).toBeNull();
 });

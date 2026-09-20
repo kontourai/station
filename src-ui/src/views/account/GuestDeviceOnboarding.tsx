@@ -62,6 +62,8 @@ export function GuestDeviceOnboarding({
   const client = useQueryClient();
   const [request, setRequest] = useState<{ clientInstanceId: string }>();
   const [selectedProject, setSelectedProject] = useState<string>();
+  const [hiddenProject, setHiddenProject] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const onAccountRequiredRef = useRef(onAccountRequired);
   onAccountRequiredRef.current = onAccountRequired;
   const projects = useQuery({
@@ -95,10 +97,34 @@ export function GuestDeviceOnboarding({
   const accountRequired =
     projects.error instanceof GuestAccountRequired ||
     detail.error instanceof GuestAccountRequired;
+  const approvalRequired =
+    projects.error instanceof GuestApprovalRequired ||
+    detail.error instanceof GuestApprovalRequired;
   useEffect(() => {
     if (!accountRequired) return;
     onAccountRequiredRef.current();
   }, [accountRequired]);
+  useEffect(() => {
+    if (
+      !selectedProject ||
+      !(detail.error instanceof StationHttpError) ||
+      detail.error.status !== 404
+    )
+      return;
+    let current = true;
+    const slug = selectedProject;
+    setSelectedProject(undefined);
+    setHiddenProject(slug);
+    setNotice(
+      'Project details are unavailable. Shared Projects were refreshed.',
+    );
+    void projects.refetch().finally(() => {
+      if (current) setHiddenProject(undefined);
+    });
+    return () => {
+      current = false;
+    };
+  }, [detail.error, projects, selectedProject]);
   useEffect(
     () => () => {
       void client.cancelQueries({
@@ -140,6 +166,8 @@ export function GuestDeviceOnboarding({
                 'Station did not issue the requested account-bound Device.',
               );
             setRequest(undefined);
+            setSelectedProject(undefined);
+            setNotice(undefined);
             void projects.refetch();
           }}
         />
@@ -149,8 +177,7 @@ export function GuestDeviceOnboarding({
   if (projects.isPending || accountRequired)
     return <SkeletonList count={2} label="Checking browser access" />;
 
-  if (projects.error) {
-    const approval = projects.error instanceof GuestApprovalRequired;
+  if (approvalRequired || projects.error) {
     return (
       <section className="account-entry__guest-access">
         <p>
@@ -159,15 +186,17 @@ export function GuestDeviceOnboarding({
         </p>
         {projects.error instanceof GuestAccountUnavailable ? (
           <p role="alert">Station could not verify the current account.</p>
-        ) : !approval ? (
+        ) : !approvalRequired ? (
           <p role="alert">Shared Projects are unavailable.</p>
         ) : null}
-        {approval ? (
+        {approvalRequired ? (
           <Button
             variant="primary"
-            onClick={() =>
-              setRequest({ clientInstanceId: crypto.randomUUID() })
-            }
+            onClick={() => {
+              setSelectedProject(undefined);
+              setNotice(undefined);
+              setRequest({ clientInstanceId: crypto.randomUUID() });
+            }}
           >
             Request access for this browser
           </Button>
@@ -197,37 +226,33 @@ export function GuestDeviceOnboarding({
           Refresh
         </Button>
       </div>
+      {notice && <p role="alert">{notice}</p>}
       {projects.data.length === 0 ? (
         <p>No Projects are currently shared with this account.</p>
       ) : (
         <ul className="account-entry__project-list">
-          {projects.data.map((project) => (
-            <li key={project.id}>
-              <div>
-                <strong>{project.name}</strong>
-                {project.description && <p>{project.description}</p>}
-                <small>View only</small>
-              </div>
-              <Button onClick={() => setSelectedProject(project.slug)}>
-                Read Project details
-              </Button>
-            </li>
-          ))}
+          {projects.data
+            .filter((project) => project.slug !== hiddenProject)
+            .map((project) => (
+              <li key={project.id}>
+                <div>
+                  <strong>{project.name}</strong>
+                  {project.description && <p>{project.description}</p>}
+                  <small>View only</small>
+                </div>
+                <Button onClick={() => setSelectedProject(project.slug)}>
+                  Read Project details
+                </Button>
+              </li>
+            ))}
         </ul>
       )}
       {detail.isPending && selectedProject && (
         <SkeletonList count={1} label="Reading Project details" />
       )}
-      {detail.isError && !accountRequired && (
+      {detail.isError && !accountRequired && !approvalRequired && (
         <section className="account-entry__project-detail" role="alert">
-          <p>
-            {detail.error instanceof StationHttpError &&
-            detail.error.status === 404
-              ? 'This Project is no longer shared with you.'
-              : detail.error instanceof GuestApprovalRequired
-                ? 'This browser needs new Device approval.'
-                : 'Project details are unavailable.'}
-          </p>
+          <p>Project details are unavailable.</p>
           <Button onClick={() => setSelectedProject(undefined)}>Close</Button>
         </section>
       )}
