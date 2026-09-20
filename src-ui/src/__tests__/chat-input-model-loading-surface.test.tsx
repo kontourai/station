@@ -25,7 +25,7 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
 
@@ -133,16 +133,18 @@ describe('model popover Suspense fallback (station#1825 item 2)', () => {
     expect(screen.getByLabelText('Loading models')).toBeTruthy();
   });
 
-  test('uses the eager unavailable state for a settled empty offline catalog', () => {
+  test('uses the eager unavailable state for a settled empty offline catalog', async () => {
     renderChatInputArea({
       availableModels: [],
       modelsLoading: false,
       modelsStale: true,
       modelQuery: '',
     });
-    expect(
-      screen.getByText('Models unavailable while this Station is unreachable'),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByText('Models unavailable while this Station is unreachable'),
+      ).toBeTruthy(),
+    );
     expect(screen.queryByLabelText('Loading models')).toBeNull();
   });
 

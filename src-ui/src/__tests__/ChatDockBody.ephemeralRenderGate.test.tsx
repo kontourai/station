@@ -22,6 +22,7 @@ import { describe, expect, test, vi } from 'vitest';
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
     activeConnection: { id: 'test', name: 'Test Station' },
+    captureCredentialEvidence: () => undefined,
   }),
 }));
 vi.mock('../contexts/AgentsContext', () => ({
@@ -30,6 +31,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
