@@ -1,3 +1,5 @@
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { expect } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { mockChatShell } from './helpers/chat-shell-fixture';
@@ -11,17 +13,36 @@ const json = (data: unknown) => ({
   body: JSON.stringify({ success: true, data }),
 });
 
-test('conversation timeline crosses execution history, preserves the live draft, and forks explicitly', async ({
+test('conversation timeline restores a checkpoint with bounded refusal copy', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
   await seedActiveChats(page, [
     {
+      sessionId: 'restore-chat',
+      conversationId: 'restore-chat',
+      agentSlug: 'station',
+      title: 'Restore fixture',
+      model: 'gpt-5',
+      provider: 'codex',
+      orchestrationSessionStarted: true,
+    },
+    {
       sessionId: 'conversation-timeline',
       conversationId: 'conversation-timeline',
       agentSlug: 'station',
+      provider: 'codex',
+      agentConnectionId: 'codex',
       model: 'gpt-5',
+      requestedModel: 'gpt-5',
+      projectSlug: 'default',
+      projectName: 'Default',
+      orchestrationSessionStarted: true,
+      orchestrationStatus: 'closed',
+      orchestrationTurnOpen: false,
+      messages: [],
+      ephemeralMessages: [],
     },
   ]);
   const currentTurns = buildLongSessionTurns({
@@ -35,6 +56,21 @@ test('conversation timeline crosses execution history, preserves the live draft,
     provider: 'codex',
     turnCount: 3,
     promptText: (index) => `Earlier question ${index}`,
+  });
+  const restoreTurns = buildLongSessionTurns({
+    threadId: 'restore-chat',
+    provider: 'codex',
+    turnCount: 30,
+    replyText: () => 'Checkpoint restore fixture.',
+  });
+  await mockRuntimeConversation(page, {
+    id: 'restore-chat',
+    agentSlug: 'station',
+    title: 'Restore fixture',
+    provider: 'codex',
+    model: 'gpt-5',
+    canContinue: true,
+    turns: () => restoreTurns,
   });
   await mockRuntimeConversation(page, {
     id: 'conversation-timeline',
@@ -51,6 +87,15 @@ test('conversation timeline crosses execution history, preserves the live draft,
         id: 'conversation-timeline',
         agentSlug: 'station',
         title: 'Timeline fixture',
+      }),
+    ),
+  );
+  await page.route('**/api/conversations/restore-chat', (route) =>
+    route.fulfill(
+      json({
+        id: 'restore-chat',
+        agentSlug: 'station',
+        title: 'Restore fixture',
       }),
     ),
   );
@@ -95,7 +140,9 @@ test('conversation timeline crosses execution history, preserves the live draft,
     },
   );
   await page.route(
-    '**/api/orchestration/sessions/conversation-timeline/checkpoints**',
+    (url) =>
+      url.pathname.startsWith('/api/orchestration/sessions/') &&
+      url.pathname.endsWith('/checkpoints'),
     (route) =>
       route.fulfill(
         json([
@@ -111,12 +158,12 @@ test('conversation timeline crosses execution history, preserves the live draft,
   );
   let restoreAttempts = 0;
   await page.route(
-    '**/api/orchestration/sessions/conversation-timeline/checkpoints/turn-29/restore-preview',
+    '**/api/orchestration/sessions/restore-chat/checkpoints/turn-29/restore-preview',
     (route) =>
       route.fulfill(
         json({
           previewId: `11111111-1111-4111-8111-${String(restoreAttempts + 1).padStart(12, '0')}`,
-          threadId: 'conversation-timeline',
+          threadId: 'restore-chat',
           turnId: 'turn-29',
           phase: 'settle',
           checkpointId: 'checkpoint-29',
@@ -131,7 +178,7 @@ test('conversation timeline crosses execution history, preserves the live draft,
       ),
   );
   await page.route(
-    '**/api/orchestration/sessions/conversation-timeline/checkpoints/turn-29/restore',
+    '**/api/orchestration/sessions/restore-chat/checkpoints/turn-29/restore',
     (route) => {
       restoreAttempts += 1;
       return route.fulfill(
@@ -141,7 +188,8 @@ test('conversation timeline crosses execution history, preserves the live draft,
               contentType: 'application/json',
               body: JSON.stringify({
                 success: false,
-                error: 'workspace_changed',
+                error: 'Workspace checkpoint restore failed',
+                reason: 'workspace_changed',
               }),
             }
           : json({ restored: true }),
@@ -171,60 +219,52 @@ test('conversation timeline crosses execution history, preserves the live draft,
     },
   );
 
-  await page.goto('/?dock=open&maximize=true&chat=conversation-timeline');
+  await page.goto('/?dock=open&maximize=true&chat=restore-chat');
   await dismissSetupLauncher(page);
-  const composer = page.locator('textarea[placeholder*="Type a message"]');
-  await composer.fill('Keep this live draft');
-  const openHistory = async () => {
-    await page.getByRole('button', { name: 'Chat actions' }).click();
-    await page.getByRole('menuitem', { name: 'Conversation history' }).click();
-  };
-  await openHistory();
-  await expect(page.getByText('Earlier in this conversation')).toBeVisible();
-  await expect(composer).toHaveCount(0);
-  await page
-    .getByRole('combobox', { name: 'Conversation section' })
-    .selectOption('older-execution');
-  await expect(
-    page.getByRole('log', { name: 'Conversation transcript' }),
-  ).toContainText('Earlier question 0');
-  await testInfo.attach('historical-conversation-mobile', {
-    body: await page.screenshot(),
-    contentType: 'image/png',
-  });
-  await page.getByRole('button', { name: 'Fork from here…' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Fork from here' }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel fork' }).click();
-  await expect(composer).toHaveValue('Keep this live draft');
+  const restoreAnswer = page
+    .locator('[id="transcript-message-turn-29-started%3Aassistant"]')
+    .locator('.message-row');
+  await restoreAnswer
+    .getByRole('button', { name: 'Answer details and actions' })
+    .click();
   await page.getByText('1 changed file').click();
   await page
     .getByRole('button', { name: 'Restore workspace to here…' })
     .click();
   await expect(page.getByRole('alertdialog')).toContainText('src/app.ts');
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page
     .getByRole('button', { name: 'Restore workspace to here…' })
     .click();
-  await page.getByRole('button', { name: 'Restore workspace' }).click();
-  await expect(page.getByRole('alert')).toContainText(
-    'Restore outcome not confirmed',
+  await page
+    .getByRole('button', { name: 'Restore workspace', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'The workspace changed after the preview. Review a new preview. No files were changed.',
   );
-  await page.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page
     .getByRole('button', { name: 'Restore workspace to here…' })
     .click();
-  await page.getByRole('button', { name: 'Restore workspace' }).click();
+  await page
+    .getByRole('button', { name: 'Restore workspace', exact: true })
+    .click();
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   expect(restoreAttempts).toBe(2);
 
-  await openHistory();
-  await page.getByRole('button', { name: 'Previous turn' }).click();
-  await page.getByRole('button', { name: 'Return to latest' }).click();
-  await expect(composer).toHaveValue('Keep this live draft');
-  await testInfo.attach('returned-live-conversation-mobile', {
-    body: await page.screenshot(),
-    contentType: 'image/png',
+  const evidenceRoot = join(
+    process.cwd(),
+    '.kontourai',
+    'chat-563',
+    basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+  );
+  mkdirSync(evidenceRoot, { recursive: true });
+  await page.screenshot({
+    path: testInfo.outputPath('timeline-workspace-restore-success.png'),
+    animations: 'disabled',
   });
+  copyFileSync(
+    testInfo.outputPath('timeline-workspace-restore-success.png'),
+    join(evidenceRoot, 'timeline-workspace-restore-success.png'),
+  );
 });

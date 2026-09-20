@@ -341,7 +341,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/default-agent-workflow.spec.ts',
     'tests/mobile-chat-composer.spec.ts',
     'tests/chat-replay.spec.ts',
-    'tests/conversation-timeline.spec.ts',
     'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
@@ -390,6 +389,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
+    'tests/conversation-timeline.spec.ts',
     // E2E regression lane: every one of these seeds and reads LIVE
     // Station state (agents, skills, model connections) through the
     // authenticated API, because the claim under test is that the surface
