@@ -17,6 +17,17 @@ export interface ProjectSharedTaskHumanMessage {
   digests: { proposal: string; checkpoint: string };
   integrity: 'L0';
 }
+export type ProjectSharedTaskPublication =
+  | { kind: 'shared'; publication: ProjectSharedTaskSummary }
+  | {
+      kind: 'unshared';
+      project: ProjectMembershipScope;
+      task: { id: string; createdAt: string };
+    };
+export interface ProjectSharedTaskPublicationExpectation {
+  project: ProjectMembershipScope;
+  task: { id: string; createdAt: string };
+}
 export type ProjectSharedTaskHistory =
   | {
       kind: 'available';
