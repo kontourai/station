@@ -390,16 +390,50 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await expect(
     page.getByRole('region', { name: 'Quoted context' }),
   ).toContainText(quote.excerpt);
-  await page.screenshot({
-    path: testInfo.outputPath('conversation-reference-dispatch-390.png'),
-    fullPage: true,
-  });
   const evidenceRoot = join(process.cwd(), '.kontourai', 'chat-563');
   await mkdir(evidenceRoot, { recursive: true });
-  await copyFile(
-    testInfo.outputPath('conversation-reference-dispatch-390.png'),
-    join(evidenceRoot, 'conversation-reference-dispatch-390.png'),
-  );
+  const transcript = page.getByRole('log', {
+    name: 'Conversation transcript',
+  });
+  const renderedAnswer = transcript.getByText(quote.excerpt, { exact: true });
+  await expect(renderedAnswer).toBeVisible();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const theme of ['dark', 'light'] as const) {
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      await expect(renderedAnswer).toBeVisible();
+      expect(await contrastRatio(renderedAnswer)).toBeGreaterThanOrEqual(4.5);
+
+      const wrapper = page.getByRole('group', { name: 'Message composer' });
+      const wrapperBox = (await wrapper.boundingBox())!;
+      const textareaBox = (await restoredComposer.boundingBox())!;
+      expect(Math.abs(wrapperBox.x - textareaBox.x)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(wrapperBox.width - textareaBox.width),
+      ).toBeLessThanOrEqual(1);
+      const chips = page.getByRole('list', { name: 'Composer references' });
+      const chipsBox = (await chips.boundingBox())!;
+      expect(chipsBox.y + chipsBox.height).toBeLessThanOrEqual(textareaBox.y);
+      for (const chip of await chips.getByRole('button').all()) {
+        const chipBox = (await chip.boundingBox())!;
+        expect(chipBox.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+      }
+
+      const screenshotName = `conversation-reference-dispatch-${width}-${theme}.png`;
+      await page.screenshot({
+        path: testInfo.outputPath(screenshotName),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await copyFile(
+        testInfo.outputPath(screenshotName),
+        join(evidenceRoot, screenshotName),
+      );
+    }
+  }
   await page.getByRole('button', { name: 'Send' }).click();
   await expect.poll(() => dispatched).toBeTruthy();
   const input = String(dispatched?.message ?? '');
