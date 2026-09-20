@@ -69,7 +69,9 @@ test('confirms the exact preview and surfaces restore failures', async () => {
   await screen.findByRole('alertdialog');
   fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('workspace_changed'),
+    expect(screen.getByRole('alert').textContent).toContain(
+      'workspace_changed',
+    ),
   );
   expect(confirm).toHaveBeenCalledWith(
     'http://station.test',
