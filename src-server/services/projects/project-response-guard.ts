@@ -10,7 +10,14 @@ export async function guardProjectResponse(
       { status: 404, headers: { 'Cache-Control': 'no-store' } },
     );
   }
-  if (!response.body) return response;
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-store');
+  if (!response.body)
+    return new Response(null, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   const reader = response.body.getReader();
   let closed = false;
   const body = new ReadableStream<Uint8Array>(
@@ -45,6 +52,6 @@ export async function guardProjectResponse(
   return new Response(body, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers,
+    headers,
   });
 }

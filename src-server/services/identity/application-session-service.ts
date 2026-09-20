@@ -507,8 +507,12 @@ export class ApplicationSessionService {
       binding && !('kind' in binding) ? binding : undefined;
     const bindingPrincipalId = accountBinding
       ? humanPrincipal(
-          accountBinding.issuer,
-          accountBinding.subject,
+          'deployment',
+          createHash('sha256')
+            .update(
+              JSON.stringify([accountBinding.issuer, accountBinding.subject]),
+            )
+            .digest('hex'),
           accountBinding.displayName,
         ).id
       : ingressBinding

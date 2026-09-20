@@ -100,13 +100,20 @@ export class ProjectMembershipService {
       )
         continue;
       try {
-        await this.withProject(scope.localProjectSlug, scope, async () => {});
+        await this.withProject(scope.localProjectSlug, scope, async () => {
+          const live = await this.currentActor(authority, actor.principal.id);
+          this.members.require(scope, live.principal, 'view');
+        });
         admitted.push(scope.localProjectSlug);
       } catch (error) {
         if (!(error instanceof ProjectMembershipRefusal)) throw error;
       }
     }
-    return admitted;
+    const final = await this.currentActor(authority, actor.principal.id);
+    const finalScopes = this.members.readableProjectScopes(final.principal);
+    return admitted.filter((slug) =>
+      finalScopes.some((scope) => scope.localProjectSlug === slug),
+    );
   }
 
   async requireProjectRead(
