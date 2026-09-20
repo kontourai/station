@@ -136,7 +136,7 @@ async function mount(page: Page) {
     'http://station.test/api/orchestration/attachment-staging/prepare',
     (route) => {
       const descriptor = route.request().postDataJSON();
-      const stageId = 'stage-' + prepared.size;
+      const stageId = `stage-${prepared.size}`;
       const entry = {
         ...descriptor,
         stageId,
@@ -163,7 +163,7 @@ async function mount(page: Page) {
         body: JSON.stringify({
           ...descriptor,
           source: 'current-composer',
-          digest: 'sha256-' + 'a'.repeat(64),
+          digest: `sha256-${'a'.repeat(64)}`,
         }),
       });
     },
@@ -186,7 +186,7 @@ async function mount(page: Page) {
               reference: {
                 ...descriptor,
                 source: 'current-composer',
-                digest: 'sha256-' + 'a'.repeat(64),
+                digest: `sha256-${'a'.repeat(64)}`,
               },
             };
           }),
