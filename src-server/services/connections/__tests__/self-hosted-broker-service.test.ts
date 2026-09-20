@@ -29,6 +29,7 @@ describe('self-hosted broker control plane', () => {
           authorization: `Bearer ${credential.secret}`,
           'x-broker-credential-id': credential.id,
           'content-type': 'application/json',
+          origin: scope.browserOrigin,
         },
         body: JSON.stringify(body),
       });
@@ -44,6 +45,24 @@ describe('self-hosted broker control plane', () => {
         })
       ).status,
     ).toBe(200);
+    expect(
+      (await post('/connections/offers', provisioned.connector, { scope }))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request('/broker/connections/offers', {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${provisioned.connector.secret}`,
+            'x-broker-credential-id': provisioned.connector.id,
+            'content-type': 'application/json',
+            origin: 'https://wrong.example',
+          },
+          body: JSON.stringify({ scope }),
+        })
+      ).status,
+    ).toBe(401);
     expect(
       (
         await post('/connections', provisioned.routing, {
@@ -89,5 +108,52 @@ describe('self-hosted broker control plane', () => {
       ),
     ).toThrow('broker_credential_refused');
     restarted.close();
+  });
+  test('binds credential direction, generation, expiry and renewal revision', () => {
+    const path = join(
+      mkdtempSync(join(tmpdir(), 'station-broker-')),
+      'broker.sqlite',
+    );
+    let now = 10_000;
+    const first = new SelfHostedBrokerService(path, () => now);
+    const issued = first.provision(scope, 10_000);
+    expect(() =>
+      first.open(scope, issued.connector, {
+        clientId: 'client-abcdefgh',
+        nonce: 'nonce-abcdefgh',
+        offerSdp: 'offer',
+      }),
+    ).toThrow('broker_credential_refused');
+    first.open(scope, issued.routing, {
+      clientId: 'client-abcdefgh',
+      nonce: 'nonce-abcdefgh',
+      offerSdp: 'offer',
+    });
+    expect(first.renew(scope, issued.connector, 0, 10_000)).toEqual({
+      expiresAt: 30_000,
+      revision: 1,
+    });
+    expect(() => first.renew(scope, issued.connector, 0, 10_000)).toThrow(
+      'lease_conflict',
+    );
+    now = 30_001;
+    expect(() =>
+      first.read(scope, issued.routing, 'client-abcdefgh', 'nonce-abcdefgh'),
+    ).toThrow('broker_credential_refused');
+    now = 20_000;
+    const nextScope = { ...scope, generation: 2 };
+    const next = first.provision(nextScope, 10_000);
+    expect(() =>
+      first.read(scope, issued.routing, 'client-abcdefgh', 'nonce-abcdefgh'),
+    ).toThrow('broker_credential_refused');
+    expect(() => first.provision(scope, 10_000)).toThrow('stale_generation');
+    expect(() =>
+      first.open(nextScope, next.routing, {
+        clientId: 'client-abcdefgh',
+        nonce: 'nonce-abcdefgh',
+        offerSdp: 'offer',
+      }),
+    ).not.toThrow();
+    first.close();
   });
 });
