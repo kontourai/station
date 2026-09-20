@@ -57,20 +57,20 @@ describe('FileTreeService', () => {
     expect(() => svc.readFile(join(dir, 'nope.ts'))).toThrow('File not found');
   });
 
-  test('searchFiles finds matching files', () => {
-    const results = svc.searchFiles(dir, 'index');
+  test('searchFiles finds matching files', async () => {
+    const results = await svc.searchFiles(dir, 'index');
     expect(results.entries.some((e) => e.name === 'index.ts')).toBe(true);
   });
 
-  test('searchFiles returns nested files and directories within its result bound', () => {
-    const results = svc.searchFiles(dir, '', 2);
+  test('searchFiles returns nested files and directories within its result bound', async () => {
+    const results = await svc.searchFiles(dir, '', 2);
     expect(results.entries).toHaveLength(2);
-    expect(svc.searchFiles(dir, 'src/app').entries).toEqual([
+    expect((await svc.searchFiles(dir, 'src/app')).entries).toEqual([
       expect.objectContaining({ path: join('src', 'app.ts'), type: 'file' }),
     ]);
   });
 
-  test('searchFiles finds a path beyond the legacy first-500 listing window', () => {
+  test('searchFiles finds a path beyond the legacy first-500 listing window', async () => {
     const crowded = join(dir, 'crowded');
     mkdirSync(crowded);
     for (let index = 0; index < 520; index += 1)
@@ -80,15 +80,42 @@ describe('FileTreeService', () => {
       );
     writeFileSync(join(crowded, 'target-after-window.ts'), '');
 
-    expect(svc.searchFiles(dir, 'crowded/target-after').entries).toEqual([
+    expect(
+      (await svc.searchFiles(dir, 'crowded/target-after')).entries,
+    ).toEqual([
       expect.objectContaining({
         path: join('crowded', 'target-after-window.ts'),
       }),
     ]);
   });
 
-  test('searchFiles reports when its physical scan bound truncates lookup', () => {
-    expect(svc.searchFiles(dir, '', 50, 2).scanTruncated).toBe(true);
+  test('searchFiles reports when its physical scan bound truncates lookup', async () => {
+    expect((await svc.searchFiles(dir, '', 50, 2)).scanTruncated).toBe(true);
+  });
+
+  test('searchFiles yields to the event loop while scanning the full physical bound', async () => {
+    for (let directory = 0; directory < 50; directory += 1) {
+      const crowded = join(dir, `scan-${String(directory).padStart(2, '0')}`);
+      mkdirSync(crowded);
+      for (let file = 0; file < 100; file += 1) {
+        writeFileSync(
+          join(crowded, `entry-${String(file).padStart(3, '0')}.ts`),
+          '',
+        );
+      }
+    }
+    let heartbeats = 0;
+    const timer = setInterval(() => {
+      heartbeats += 1;
+    }, 1);
+    try {
+      const result = await svc.searchFiles(dir, 'not-present', 50, 5_000);
+      expect(result.entries).toEqual([]);
+      expect(result.scanTruncated).toBe(true);
+      expect(heartbeats).toBeGreaterThan(0);
+    } finally {
+      clearInterval(timer);
+    }
   });
 
   describe('mutations', () => {

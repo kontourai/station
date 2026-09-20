@@ -134,7 +134,7 @@ export function createCodingRoutes(
     }
   });
 
-  app.get('/files/search', (c) => {
+  app.get('/files/search', async (c) => {
     codingOps.add(1, { operation: 'search' });
     try {
       const dir = validatePath(c.req.query('path'));
@@ -145,7 +145,7 @@ export function createCodingRoutes(
       const maxResults = Number.isInteger(requestedMax)
         ? Math.min(Math.max(requestedMax, 1), 201)
         : 50;
-      const result = fileTreeService.searchFiles(dir, query, maxResults);
+      const result = await fileTreeService.searchFiles(dir, query, maxResults);
       return c.json({
         success: true,
         data: result.entries,

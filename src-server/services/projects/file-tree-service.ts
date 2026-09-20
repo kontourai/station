@@ -11,6 +11,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import {
+  lstat as lstatAsync,
+  readdir as readdirAsync,
+  realpath as realpathAsync,
+  stat as statAsync,
+} from 'node:fs/promises';
+import {
   basename,
   dirname,
   isAbsolute,
@@ -136,23 +142,23 @@ export class FileTreeService {
     }
   }
 
-  searchFiles(
+  async searchFiles(
     dirPath: string,
     query: string,
     maxResults = 50,
     maxScanned = 5_000,
-  ): { entries: FileEntry[]; scanTruncated: boolean } {
+  ): Promise<{ entries: FileEntry[]; scanTruncated: boolean }> {
     fileTreeOps.add(1, { operation: 'searchFiles' });
     const lower = query.replaceAll('\\', '/').toLowerCase();
     const base = this._realWorkspaceRoot(dirPath);
     const entries: FileEntry[] = [];
     let scanned = 0;
     let scanTruncated = false;
-    const walk = (current: string, depth: number): void => {
+    const walk = async (current: string, depth: number): Promise<void> => {
       if (depth < 0 || entries.length >= maxResults || scanTruncated) return;
       let names: string[];
       try {
-        names = readdirSync(current);
+        names = await readdirAsync(current);
       } catch {
         scanTruncated = true;
         return;
@@ -169,12 +175,12 @@ export class FileTreeService {
         }
         const fullPath = join(current, name);
         let resolvedPath: string;
-        let stat: ReturnType<typeof statSync>;
+        let stat: Awaited<ReturnType<typeof statAsync>>;
         try {
-          if (lstatSync(fullPath).isSymbolicLink()) continue;
-          resolvedPath = realpathSync(fullPath);
+          if ((await lstatAsync(fullPath)).isSymbolicLink()) continue;
+          resolvedPath = await realpathAsync(fullPath);
           this._assertWithin(base, resolvedPath, name);
-          stat = statSync(resolvedPath);
+          stat = await statAsync(resolvedPath);
         } catch {
           continue;
         }
@@ -193,11 +199,11 @@ export class FileTreeService {
             modified: stat.mtime.toISOString(),
           });
         }
-        if (isDir && depth > 0) walk(resolvedPath, depth - 1);
+        if (isDir && depth > 0) await walk(resolvedPath, depth - 1);
         else if (isDir) scanTruncated = true;
       }
     };
-    walk(base, 10);
+    await walk(base, 10);
     return { entries, scanTruncated };
   }
 
