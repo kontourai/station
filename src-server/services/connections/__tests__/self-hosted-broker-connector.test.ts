@@ -173,6 +173,43 @@ describe.runIf(process.platform !== 'win32')(
         await expect(client.register(signal)).rejects.toThrow();
       }
     });
+    test('snapshots routing authority and combines caller cancellation with its request', async () => {
+      const mutableScope = { ...scope };
+      const mutableCredential = {
+        id: 'credential-12345678',
+        secret: 's'.repeat(43),
+      };
+      let observed: Request | undefined;
+      const request: typeof fetch = async (input, init) => {
+        observed = new Request(input, init);
+        return Response.json({
+          registeredAt: 1,
+          revision: 0,
+          expiresAt: 30_000,
+        });
+      };
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        mutableScope,
+        mutableCredential,
+        request,
+        () => 1_000,
+      );
+      mutableScope.stationId = 'station-mutated1';
+      mutableCredential.secret = 'x'.repeat(43);
+      await client.register(new AbortController().signal);
+      expect(observed?.headers.get('Authorization')).toBe(
+        `Bearer ${'s'.repeat(43)}`,
+      );
+      expect(await observed?.clone().json()).toMatchObject({
+        scope: { stationId: scope.stationId },
+      });
+      const aborted = new AbortController();
+      aborted.abort(new Error('caller stopped'));
+      await expect(client.register(aborted.signal)).rejects.toThrow(
+        'caller stopped',
+      );
+    });
     test('disposes provisional answer resources when publication fails', async () => {
       const f = fixture();
       try {
