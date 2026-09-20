@@ -2551,6 +2551,50 @@ test('pending approval counts down from its saved expiry without announcing ever
 });
 
 describe('explicit verified-person pairing consent', () => {
+  test('immutable guest intent offers only explicit account-bound approval', async () => {
+    const request = {
+      requestId: 'guest-account-request',
+      offerId: 'guest-account-offer',
+      deviceName: 'Guest browser',
+      status: 'pending',
+      source: 'same-origin',
+      requireAccountBinding: true,
+      accountCandidate: {
+        issuer: 'https://accounts.example.test',
+        subject: 'guest-123',
+        displayName: 'Guest Account',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(
+      await screen.findByRole('group', {
+        name: 'Approve account-bound Device',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('radio', { name: /ordinary Personal Device/ }),
+    ).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   test.each([
     [false, false],
     [true, true],

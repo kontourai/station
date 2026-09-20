@@ -188,8 +188,9 @@ member/resource authorization implementation.
 ### Account-bound collaborator Devices
 
 A collaborator Device uses an explicit second pairing ceremony after account
-authentication. The pairing request body remains the ordinary
-`deviceName`/`offerId`/`proof` shape; Station attaches an optional
+authentication. Ordinary requests retain the existing pairing shape. Guest
+entry sends `requireAccountBinding: true` with a fresh client-instance
+correlation; Station attaches an optional
 `accountCandidate` containing the provider-verified `issuer`, opaque `subject`
 and display name. A client cannot nominate or replace that candidate. The
 operator reviews it and confirms with `{ "bindAccountIdentity": true }`.
@@ -263,8 +264,13 @@ A new invitation fragment received in an already open tab replaces the current
 entry and clears its form state. An earlier acceptance finishing afterward clears
 only its own saved continuation, never the newly received invitation.
 
-This entry currently confirms membership; the complete shared-work/device
-admission journey remains under #488. Optional native opening, compatible
+After acceptance, this entry requests an immutable account-bound Device and
+shows only validated `station.member-project/v1` catalogue and detail metadata.
+It rechecks the exact signed-in principal around each read, removes stale query
+authority when the Station or account changes, and returns to Device approval
+when that grant is revoked. It never mounts the personal Station provider tree
+or treats a personal Device receipt as guest access. Shared Task content,
+mutation and execution remain outside this metadata-only entry. Optional native opening, compatible
 platform downloads and installation continuation are required follow-up
 acceptance under #488 and #497. Their completion requires real browser/native
 evidence and published artifacts; the account page does not establish that an
