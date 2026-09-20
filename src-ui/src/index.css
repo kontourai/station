@@ -9563,7 +9563,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .app__main .chat-dock--bottom .chat-input textarea {
-    flex: 0 0 auto !important;
+    flex: 0 0 auto;
     height: 44px;
     max-height: 44px;
   }

@@ -976,7 +976,6 @@ export function ChatInputArea({
             style={
               {
                 '--composer-font-size': `${fontSize}px`,
-                flex: 1,
                 resize: 'none',
                 minHeight: 0,
               } as React.CSSProperties

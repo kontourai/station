@@ -2002,7 +2002,7 @@ for (const viewport of [
 ]) {
   test(`stacks the composer and contains the session-actions strip at ${viewport.width}x${viewport.height}`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(20_000);
     await page.setViewportSize(viewport);
     await mockChatShell(page);
@@ -2074,6 +2074,26 @@ for (const viewport of [
         return hit === button || button.contains(hit);
       }),
     ).toBe(true);
+    const reconnectStatus = page.locator('.chat-stream-status');
+    await expect(reconnectStatus).toContainText('Reconnecting live updates');
+    const reconnectBox = await reconnectStatus.boundingBox();
+    const composerBox = await page.locator('.chat-input').boundingBox();
+    expect(reconnectBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(reconnectBox!.y + reconnectBox!.height).toBeLessThanOrEqual(
+      composerBox!.y,
+    );
+    if (viewport.width === 320) {
+      const screenshotName = 'short-composer-reconnect-visible.png';
+      await page.screenshot({
+        path: testInfo.outputPath(screenshotName),
+        animations: 'disabled',
+      });
+      await testInfo.attach('short-composer-reconnect-visible', {
+        path: testInfo.outputPath(screenshotName),
+        contentType: 'image/png',
+      });
+    }
     const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
