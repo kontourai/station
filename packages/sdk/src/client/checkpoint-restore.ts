@@ -1,3 +1,4 @@
+import { apiErrorMessage } from './api-error-message';
 import { type ApiRequestScope, mutateJson, StationHttpError } from './http';
 
 export type CheckpointRestoreRefusalReason =
@@ -28,7 +29,14 @@ export interface CheckpointRestorePreview {
 }
 
 async function unwrap<T>(response: Response): Promise<T> {
-  let body: { success?: boolean; data?: T; error?: string; reason?: unknown };
+  let body: {
+    success?: boolean;
+    data?: T;
+    error?: unknown;
+    message?: unknown;
+    details?: { formErrors?: unknown; fieldErrors?: unknown };
+    reason?: unknown;
+  };
   try {
     body = await response.json();
   } catch {
@@ -40,7 +48,7 @@ async function unwrap<T>(response: Response): Promise<T> {
   if (!response.ok || !body.success) {
     const error = new StationHttpError(
       response.status,
-      body.error ?? `Checkpoint restore failed: ${response.status}`,
+      apiErrorMessage(body, `Checkpoint restore failed: ${response.status}`),
     );
     if (typeof body.reason === 'string')
       Object.assign(error, { reason: body.reason });
