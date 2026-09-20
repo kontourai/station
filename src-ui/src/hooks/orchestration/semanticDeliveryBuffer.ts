@@ -156,6 +156,7 @@ export class SemanticDeliveryBuffer {
       this.flushKey(key);
       held = {
         apiBase,
+        owner: this.ownerOf(event.threadId),
         segments: [],
         chars: 0,
         events: 0,

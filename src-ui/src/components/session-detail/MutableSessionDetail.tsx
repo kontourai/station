@@ -11,6 +11,7 @@ import {
   clientOriginDetail,
   clientOriginSummary,
 } from '../../utils/clientOrigin';
+import { errorAgentDraft } from '../../utils/errorAgentDraft';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import {
   builderRunIdentityLabel,
@@ -206,6 +207,24 @@ export function MutableSessionDetail({
           stopTaskError={stopTask.error}
           sendTurnError={sendTurn.error}
           respondError={respond.error}
+          onDraftSendError={
+            sendTurn.error
+              ? () => {
+                  const draft = errorAgentDraft({
+                    attempted: 'Continue session',
+                    error: sendTurn.error,
+                    context: {
+                      threadId,
+                      provider: session.provider,
+                      lifecycleState: session.lifecycleState,
+                    },
+                  });
+                  setInput((current) =>
+                    current.trim() ? `${current}\n\n${draft}` : draft,
+                  );
+                }
+              : undefined
+          }
         />
 
         <SessionDetailAttention

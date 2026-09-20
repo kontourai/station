@@ -125,6 +125,7 @@ import {
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
+import { MobileSheetPending } from './MobileSheetPending';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
 import { NewChatUnavailableError } from './newChatErrors';
 import {
@@ -522,6 +523,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const openChatItems = useOpenChats(agents, orchestrationSessions);
   const inventory = useConversationInventoryQuery();
+  const taskItemsPending =
+    orchestrationSessionsStatus === 'pending' ||
+    inventory.isPending ||
+    !agentsLoaded;
   const acknowledgeConversation = useAcknowledgeConversationMutation();
   const inventoryById = useMemo(
     () =>
@@ -2595,6 +2600,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               open: isMobile && isTaskSwitcherOpen,
               mode: taskSwitcherMode,
               tasks: taskItems,
+              pending: taskItemsPending,
               agents,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
@@ -2620,7 +2626,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 openImportedSessionInPane(threadId);
               },
             }}
-            pending={null}
+            pending={
+              <MobileSheetPending
+                label={
+                  taskSwitcherMode === 'activity' ? 'Activity' : 'Switch task'
+                }
+                style={visualViewport.style}
+              />
+            }
           />
         )}
       </ChatPaneFileDropBoundary>

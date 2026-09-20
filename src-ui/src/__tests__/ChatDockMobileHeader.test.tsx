@@ -161,7 +161,8 @@ beforeAll(async () => {
 
 async function openActions() {
   fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
-  return screen.findByRole('dialog', { name: 'Chat actions' });
+  await screen.findByRole('menu');
+  return screen.getByRole('dialog', { name: 'Chat actions' });
 }
 
 describe('mobile conversation focus', () => {

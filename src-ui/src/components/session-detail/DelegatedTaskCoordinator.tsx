@@ -1,3 +1,7 @@
+import {
+  foldedSessionLifecycleState,
+  isSessionLifecycleStateTerminal,
+} from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import {
   interruptOrchestrationTurn,
@@ -35,17 +39,23 @@ export function DelegatedTaskCoordinator({
   onTaskChanged: () => void;
 }) {
   const task = tasks[0];
-  const [input, setInput] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const input = drafts[task.threadId] ?? '';
 
   const sendTurn = useMutation({
-    mutationFn: () =>
+    mutationFn: (turn: { threadId: string; text: string }) =>
       sendOrchestrationTurn({
-        threadId: task.threadId,
-        text: input,
+        threadId: turn.threadId,
+        text: turn.text,
         apiBase,
       }),
-    onSuccess: () => {
-      setInput('');
+    onSuccess: (_result, turn) => {
+      setDrafts((current) => {
+        if (current[turn.threadId] !== turn.text) return current;
+        const next = { ...current };
+        delete next[turn.threadId];
+        return next;
+      });
       onTaskChanged();
     },
   });
@@ -66,6 +76,9 @@ export function DelegatedTaskCoordinator({
   const state = sessionStatusWord(task);
   const isStreaming = isStreamingSession(task);
   const isTerminal = isTerminalSession(task);
+  const canResume = !isSessionLifecycleStateTerminal(
+    foldedSessionLifecycleState(task.lifecycleState),
+  );
   // archive#1781: `needsReview` is the raw fold, and since archive#1791 it
   // stays true forever for a session nothing can answer. `liveReview` is the
   // one that may drive an affordance; `needsReview` still drives the copy,
@@ -168,19 +181,25 @@ export function DelegatedTaskCoordinator({
           suppressing the composer for it left the card with no way to act at
           all. Sending still round-trips and fails loudly server-side —
           enforcement stays there, never here. */}
-      {!isPeerActivityRecord && !liveReview && !isStreaming && !isTerminal && (
+      {!isPeerActivityRecord && !liveReview && !isStreaming && canResume && (
         <form
           className="sessions-coordinator__compose"
           onSubmit={(event) => {
             event.preventDefault();
-            if (input.trim() && !sendTurn.isPending) sendTurn.mutate();
+            if (input.trim() && !sendTurn.isPending)
+              sendTurn.mutate({ threadId: task.threadId, text: input });
           }}
         >
           <input
             aria-label="Direct worker follow-up"
             placeholder="Give the next instruction…"
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) =>
+              setDrafts((current) => ({
+                ...current,
+                [task.threadId]: event.target.value,
+              }))
+            }
           />
           <Button
             type="submit"

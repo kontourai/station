@@ -115,6 +115,17 @@ describe('DelegatedTaskCoordinator answerability', () => {
   test('AC5 (control): a retriable `failed` task is NOT treated as unanswerable', () => {
     renderCard(task({ lifecycleState: 'failed', pendingReview: false }));
     expect(screen.queryByTestId('coordinator-answerability')).toBeNull();
+    expect(screen.getByLabelText('Direct worker follow-up')).toBeTruthy();
+  });
+
+  test('failed and canceled stay follow-up capable while completed stays closed', () => {
+    for (const lifecycleState of ['failed', 'canceled'] as const) {
+      const view = renderCard(task({ lifecycleState, pendingReview: false }));
+      expect(screen.getByLabelText('Direct worker follow-up')).toBeTruthy();
+      view.unmount();
+    }
+    renderCard(task({ lifecycleState: 'completed', pendingReview: false }));
+    expect(screen.queryByLabelText('Direct worker follow-up')).toBeNull();
   });
 
   /**

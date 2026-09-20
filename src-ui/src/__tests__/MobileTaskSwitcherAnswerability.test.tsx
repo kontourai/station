@@ -34,11 +34,12 @@ function task(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   };
 }
 
-function renderSheet(tasks: HomeWorkItem[]) {
+function renderSheet(tasks: HomeWorkItem[], pending = false) {
   return render(
     <MobileTaskSwitcher
       open
       tasks={tasks}
+      pending={pending}
       activeChatSessionId={null}
       visualViewportStyle={{}}
       triggerRef={createRef<HTMLButtonElement>()}
@@ -52,6 +53,21 @@ function renderSheet(tasks: HomeWorkItem[]) {
 }
 
 describe('MobileTaskSwitcher answerability basis', () => {
+  test('reports pending reads instead of claiming there are no chats', () => {
+    renderSheet([], true);
+    expect(
+      screen
+        .getByRole('status', { name: 'Loading chats and tasks' })
+        .getAttribute('aria-busy'),
+    ).toBe('true');
+    expect(screen.queryByText('No chats yet.')).toBeNull();
+  });
+
+  test('claims the settled empty state only after pending clears', () => {
+    renderSheet([]);
+    expect(screen.getByText('No chats yet.')).toBeTruthy();
+  });
+
   test('renders the observation, not just the label', () => {
     renderSheet([task()]);
     // The shared inbox row (archive#3312) carries the observation
