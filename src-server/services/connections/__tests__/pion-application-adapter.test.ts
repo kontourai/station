@@ -243,6 +243,7 @@ describe('production Pion application adapter ownership', () => {
       })) as typeof spawnOwnedChild,
     };
     const adapter = await startPionApplicationAdapter(input(), dependencies);
+    expect(adapter.readMessages()).toEqual([]);
     writeFileSync(
       `${directory}/messages.json`,
       JSON.stringify({ messages: ['echo'], local: 'relay', remote: 'relay' }),

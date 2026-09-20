@@ -107,7 +107,7 @@ function boundedOutput(
 function diagnosticMessages(directory: string) {
   const value = readJsonFile<Record<string, unknown>>(
     join(directory, 'messages.json'),
-    {},
+    { messages: [], local: '', remote: '' },
     { maxBytes: 128 * 1024, label: 'Pion diagnostic messages' },
   );
   if (
