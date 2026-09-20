@@ -284,6 +284,7 @@ export async function startRelayAccountStation(
             candidate.status === 'active',
         );
         assert(member);
+        assert.equal(member.role, 'viewer');
         await changeProjectAccess(
           current.base,
           shared.slug,
@@ -292,7 +293,7 @@ export async function startRelayAccountStation(
             scope: enabled.view.scope,
             principalId,
             revision: member.revision,
-            role: member.role,
+            role: 'viewer',
             status: 'revoked',
           },
           current.operator,
