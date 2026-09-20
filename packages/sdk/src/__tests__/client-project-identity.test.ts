@@ -3,6 +3,7 @@ import {
   attachProject,
   getProjectIdentity,
   prepareProjectIdentity,
+  updateProjectExecutionRoot,
 } from '@kontourai/station-sdk/project-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -38,6 +39,75 @@ beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Project identity client', () => {
+  test('updates an execution root with the exact identity snapshot', async () => {
+    const updated: ProjectIdentityView = {
+      ...view(),
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/web',
+        },
+      },
+    };
+    vi.mocked(fetch).mockResolvedValue(reply(updated));
+    expect(
+      await updateProjectExecutionRoot('https://station.example', 'local', {
+        expectedIdentity: view().identity,
+        expectedLocalProjectId: view().association.localProjectId,
+        executionRoot: updated.identity.executionRoot ?? null,
+      }),
+    ).toEqual(updated);
+    expect(fetch).toHaveBeenCalledWith(
+      'https://station.example/api/projects/local/identity/execution-root',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          expectedIdentity: view().identity,
+          expectedLocalProjectId: view().association.localProjectId,
+          executionRoot: updated.identity.executionRoot,
+        }),
+      }),
+    );
+  });
+
+  test.each([
+    {
+      association: {
+        ...view().association,
+        localProjectId: 'replacement-project',
+      },
+    },
+    {
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/other',
+        },
+      },
+    },
+  ])('refuses an unconfirmed execution-root mutation', async (override) => {
+    const requested = {
+      repoId: 'git.example/acme/repo',
+      path: 'apps/web',
+    };
+    vi.mocked(fetch).mockResolvedValue(
+      reply({
+        ...view(),
+        identity: { ...view().identity, executionRoot: requested },
+        ...override,
+      }),
+    );
+    await expect(
+      updateProjectExecutionRoot('https://station.example', 'local', {
+        expectedIdentity: view().identity,
+        expectedLocalProjectId: view().association.localProjectId,
+        executionRoot: requested,
+      }),
+    ).rejects.toThrow('did not confirm');
+  });
+
   test('reads and explicitly prepares against the supplied environment', async () => {
     vi.mocked(fetch).mockResolvedValue(reply(view()));
     expect(
@@ -68,6 +138,24 @@ describe('Project identity client', () => {
     expect(
       JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
     ).toEqual(input);
+  });
+
+  test('round-trips the portable execution root without a local checkout path', async () => {
+    const data: ProjectIdentityView = {
+      ...view(),
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/web',
+        },
+      },
+    };
+    vi.mocked(fetch).mockResolvedValue(reply(data));
+    expect(
+      await getProjectIdentity('https://station.example', 'local'),
+    ).toEqual(data);
+    expect(JSON.stringify(data.identity)).not.toContain('/Users/');
   });
 
   test('reads a local-only organizational resource without inventing a checkout', async () => {
@@ -101,6 +189,17 @@ describe('Project identity client', () => {
       identity: {
         ...view().identity,
         repos: [{ ...view().identity.repos[0], secret: 'private' }],
+      },
+    },
+    {
+      ...view(),
+      identity: {
+        ...view().identity,
+        executionRoot: {
+          repoId: 'git.example/acme/repo',
+          path: 'apps/web',
+          localPath: '/private/checkout/apps/web',
+        },
       },
     },
     null,

@@ -749,6 +749,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['POST', '/api/tasks/task-1/references', 'orchestration:operate'],
     ['GET', '/api/projects/my-proj/knowledge/status', 'orchestration:read'],
     ['POST', '/api/projects', 'orchestration:operate'],
+    [
+      'PUT',
+      '/api/projects/my-proj/identity/execution-root',
+      'orchestration:operate',
+    ],
     ['GET', '/api/usage-telemetry/disclosure', 'orchestration:read'],
     [
       'POST',

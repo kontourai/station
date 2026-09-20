@@ -864,7 +864,8 @@ Fetches live ACP slash-command autocomplete options.
 ## Portable Project identity
 
 The React-free `@kontourai/station-sdk/project-identity` entry point exports
-`getProjectIdentity`, `prepareProjectIdentity`, and `attachProject`. Each takes
+`getProjectIdentity`, `prepareProjectIdentity`, `attachProject`, and
+`updateProjectExecutionRoot`. Each takes
 an explicit Station API base and `ClientRequestOptions`; pass the authenticated
 request scope and credential options for that particular Station. Identity reads
 use the Project family's read permission; preparation and attachment require its
@@ -926,6 +927,13 @@ server produces an error, never an ordinary local-creation fallback. The full
 portable target picker, shared-member authorization and cross-machine execution
 admission remain separate consumers of this identity API.
 
+`updateProjectExecutionRoot(apiBase, slug, input, options)` sets a declared
+resource and repo-relative directory, or clears the selection with `null`.
+`input.expectedIdentity` and `input.expectedLocalProjectId` must come from one
+current identity view; a concurrent Project or identity change returns a conflict. The mutation
+is idempotent and does not inspect, create, or bind a checkout. The selected
+directory is verified only when execution later resolves it on that Station.
+
 ## Project access administration and account entry
 
 For a verified virtual transport, `@kontourai/station-sdk/application-session`
@@ -966,6 +974,26 @@ the view API and narrow its variant before using full-configuration fields.
 The first account-bound Device profile exposes only the `view` action; it does
 not imply edit, execution or administration support.
 
+`@kontourai/station-sdk/project-shared-tasks` exposes the first bounded shared
+Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
+Tasks an operator explicitly published for the caller's current Project scope.
+`readProjectSharedTaskHistory(...)` returns a closed projection of bounded human
+messages and attribution; structured tool events, attachment metadata and room
+write authority are excluded. Shared text is verbatim and is not redacted. `readProjectSharedTaskDocument(...)` returns the current
+text snapshot. Each response is limited to one MiB and validated without extra
+fields. The current server reports an incomplete history page as `unavailable`.
+Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
+unavailable and too-large results retain their named states. None is an empty
+complete history, and none permits inferring private records.
+
+These reads require the current account-bound Device, account session and active
+Project membership. Station rechecks the exact Project, publication and Task
+incarnation during admission and before response delivery, so membership,
+Device or publication revocation closes an in-flight read. A Project membership
+does not publish every Task. This slice provides no shared Task write API;
+publication administration remains an operator-only server route while Project
+owner/admin controls are still pending.
+
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project
 slug and explicit `ClientRequestOptions`. Reads return the acting principal,
@@ -982,13 +1010,15 @@ administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.
 
 `@kontourai/station-sdk/account-authentication` exports
-`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase)` and
+`getAccountAuthentication(apiBase)`, `getAccountSession(apiBase, { signal? })` and
 `runAccountOperation(apiBase, endpoint, body, invitation?)`. These use the fixed
 account namespace with account cookies and explicitly omit ambient operator
 bearers. Use the account page's own browser origin. A session read returns
 `null` for an unauthenticated account; an unavailable or incompatible service
 remains an error. Choose operations from the provider descriptor; the optional
 invitation argument is registration eligibility, not authentication or membership.
+Abort the session read when its Station or expected account context changes;
+delivery after that boundary must not repopulate guest authority or query data.
 The [deployment authentication guide](../guides/deployment-authentication.md)
 defines the provider interface and separate invitation-acceptance operation.
 
@@ -2569,4 +2599,3 @@ account's request scope, bound channel counts/lifetimes, and close the transport
 when its endpoint trust retires. Transport readiness alone does not partition
 account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
-

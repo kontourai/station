@@ -23,6 +23,16 @@ const attachSchema = z
     identity: z.unknown(),
   })
   .strict();
+const executionRootMutationSchema = z
+  .object({
+    expectedIdentity: z.record(z.string(), z.unknown()),
+    expectedLocalProjectId: z.string().min(1),
+    executionRoot: z
+      .object({ repoId: z.string(), path: z.string() })
+      .strict()
+      .nullable(),
+  })
+  .strict();
 
 /** Mounted under the existing Project read/write authorization boundary. */
 export function createProjectIdentityRoutes(
@@ -103,6 +113,16 @@ export function createProjectIdentityRoutes(
   );
   app.post('/:slug/identity/prepare', (c) =>
     run(c, (owner) => owner.prepare(param(c, 'slug'))),
+  );
+  app.put(
+    '/:slug/identity/execution-root',
+    validate(executionRootMutationSchema),
+    (c) => {
+      const input: z.infer<typeof executionRootMutationSchema> = getBody(c);
+      return run(c, (owner) =>
+        owner.updateExecutionRoot(param(c, 'slug'), input),
+      );
+    },
   );
   app.post('/attach', validate(attachSchema), (c) => {
     const input: z.infer<typeof attachSchema> = getBody(c);

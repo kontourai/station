@@ -1884,6 +1884,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
+    // #488 Explicitly shared Task reads retain the Project family's read tier;
+    // exact membership/share/Task checks own resource visibility. Administration
+    // retains the family's operate tier and separately requires Station operator.
+    { method: 'GET', path: '/api/projects/:slug/shared-work' },
+    { method: 'GET', path: '/api/projects/:slug/shared-work/:taskId/history' },
+    { method: 'GET', path: '/api/projects/:slug/shared-work/:taskId/document' },
+    { method: 'PUT', path: '/api/projects/:slug/shared-work/:taskId' },
+    { method: 'DELETE', path: '/api/projects/:slug/shared-work/:taskId' },
     { method: 'PUT', path: '/api/me/layouts/:layoutSlug' },
     { method: 'DELETE', path: '/api/me/layouts/:layoutSlug' },
     // #2062 promote is the one leaf in this family that writes OUTSIDE the
@@ -2450,6 +2458,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // the Project family's operate scope and grant no peer/member authority.
     { method: 'GET', path: '/api/projects/:slug/identity' },
     { method: 'POST', path: '/api/projects/:slug/identity/prepare' },
+    {
+      method: 'PUT',
+      path: '/api/projects/:slug/identity/execution-root',
+    },
     { method: 'POST', path: '/api/projects/attach' },
     { method: 'PUT', path: '/api/project-contributions/offer' },
     { method: 'POST', path: '/api/project-contributions/query' },
