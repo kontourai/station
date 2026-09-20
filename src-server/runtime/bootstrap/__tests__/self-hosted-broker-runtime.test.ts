@@ -85,7 +85,7 @@ describe('self-hosted broker runtime lifecycle', () => {
     await expect(runtime.shutdown()).rejects.toThrow('poll failed');
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
-  test('shutdown during a blocked registration retires promptly with a single withdraw', async () => {
+  test('shutdown during a blocked registration fails with unsettled instead of resolving', async () => {
     const f = fixture();
     let releaseRegistration = () => {};
     const blocked = new Promise<unknown>((resolve) => {
@@ -102,7 +102,9 @@ describe('self-hosted broker runtime lifecycle', () => {
     });
     const started = runtime.start();
     await vi.waitFor(() => expect(f.connector.register).toHaveBeenCalled());
-    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    await expect(runtime.shutdown()).rejects.toThrow(
+      'broker_runtime_register_unsettled',
+    );
     await expect(started).rejects.toThrow('broker_runtime_register_unsettled');
     expect(seen[0]?.aborted).toBe(true);
     expect(f.connector.renew).not.toHaveBeenCalled();
@@ -171,6 +173,61 @@ describe('self-hosted broker runtime lifecycle', () => {
     expect((error as Error).cause).toMatchObject({
       message: 'withdraw failed',
     });
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('application abort during idle withdraws automatically without shutdown', async () => {
+    const f = fixture();
+    const runtime = new SelfHostedBrokerRuntime(f.options);
+    await runtime.start();
+    await vi.waitFor(() => expect(f.connector.poll).toHaveBeenCalled());
+    f.lifetime.abort(new Error('application gone'));
+    await vi.waitFor(
+      () => expect(f.connector.withdraw).toHaveBeenCalledOnce(),
+      { timeout: 5_000 },
+    );
+    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('clean abort-aware poll during shutdown resolves without reporting shutdown as failure', async () => {
+    const f = fixture();
+    f.connector.poll.mockImplementation(
+      (signal: AbortSignal) =>
+        new Promise<unknown>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      pollMs: 1_000,
+      operationSettleMs: 50,
+    });
+    await runtime.start();
+    await vi.waitFor(() => expect(f.connector.poll).toHaveBeenCalled());
+    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('non-Error primary preserves cleanup failure in AggregateError', async () => {
+    const f = fixture();
+    f.connector.register.mockRejectedValueOnce(
+      'registration string failure' as never,
+    );
+    f.connector.withdraw.mockRejectedValueOnce(new Error('withdraw failed'));
+    const runtime = new SelfHostedBrokerRuntime(f.options);
+    const error = await runtime.start().then(
+      () => {
+        throw new Error('expected start to reject');
+      },
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(AggregateError);
+    const aggregate = error as AggregateError;
+    expect(aggregate.message).toBe('registration string failure');
+    expect(aggregate.errors).toContain('registration string failure');
+    expect(aggregate.errors).toContainEqual(
+      expect.objectContaining({ message: 'withdraw failed' }),
+    );
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
 });

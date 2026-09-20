@@ -33,7 +33,11 @@ function withCleanupCause(primary: unknown, cleanup: unknown): unknown {
     if (primary.stack !== undefined) combined.stack = primary.stack;
     return combined;
   }
-  return primary;
+  // A non-Error primary cannot carry a `cause`, so dropping the cleanup
+  // would lose the compensation failure. Retain both explicitly.
+  const message =
+    typeof primary === 'string' ? primary : 'broker_runtime_cleanup_failed';
+  return new AggregateError([primary, cleanup], message);
 }
 
 export class SelfHostedBrokerRuntime {
@@ -92,9 +96,24 @@ export class SelfHostedBrokerRuntime {
         this.#loop = this.#run().then(
           () => {
             this.#unlinkApplicationAbort();
+            // An idle abort (sleep resolved by the abort event) exits the
+            // loop normally. That is still a retirement, not a leak: withdraw
+            // without recording a failure.
+            if (
+              this.#abort.signal.aborted ||
+              this.options.application.signal.aborted
+            ) {
+              this.#retireAutomatically();
+            }
           },
           (error: unknown) => {
             this.#unlinkApplicationAbort();
+            // A clean abort cancellation (an abort-aware operation rejecting
+            // with the abort reason) is an orderly shutdown, not a failure.
+            if (this.#isCleanAbortCancellation(error)) {
+              this.#retireAutomatically();
+              return;
+            }
             this.#recordFailure(error);
             this.#abort.abort(error);
             this.#retireAutomatically();
@@ -153,13 +172,20 @@ export class SelfHostedBrokerRuntime {
       this.#shutdownRequested = true;
       if (!this.#abort.signal.aborted)
         this.#abort.abort(new Error('broker_runtime_shutdown'));
-      // Join startup and the background loop without adopting their errors:
-      // start() reports its own failure to its caller, and the background
-      // failure is reported below from the recorded value. Joining here only
-      // guarantees the in-flight work actually settled before withdrawal.
+      // Join startup and the background loop without adopting clean abort
+      // cancellations: start() reports its own failure to its caller, and
+      // the background failure is reported below from the recorded value.
+      // Joining here only guarantees the in-flight work actually settled
+      // before withdrawal. A startup that never settles (unsettled
+      // registration) must still fail shutdown instead of resolving clean.
+      let startError: unknown;
+      let hasStartError = false;
       await this.#start?.then(
         () => undefined,
-        () => undefined,
+        (error: unknown) => {
+          hasStartError = true;
+          startError = error;
+        },
       );
       await this.#loop?.then(
         () => undefined,
@@ -179,6 +205,18 @@ export class SelfHostedBrokerRuntime {
           this.#failure,
           withdrawFailed ? withdrawError : undefined,
         );
+      if (hasStartError && !this.#isCleanAbortCancellation(startError)) {
+        // start() already combined its own withdraw attempt into startError.
+        // The shared memoized withdrawal below joins the same promise, so
+        // rethrow the combined start error instead of masking it as success.
+        if (withdrawFailed) {
+          const startCause =
+            startError instanceof Error ? startError.cause : undefined;
+          if (withdrawError !== startCause)
+            throw withCleanupCause(startError, withdrawError);
+        }
+        throw startError;
+      }
       if (withdrawFailed) throw withdrawError;
     })());
   }
@@ -208,6 +246,19 @@ export class SelfHostedBrokerRuntime {
       this.#hasFailure = true;
       this.#failure = error;
     }
+  }
+  #isCleanAbortCancellation(error: unknown): boolean {
+    if (!this.#abort.signal.aborted) return false;
+    const reason = this.#abort.signal.reason;
+    if (error === reason) return true;
+    // Defensive: a connector may reject with an equal-valued shutdown error
+    // instead of the exact reason instance.
+    return (
+      error instanceof Error &&
+      reason instanceof Error &&
+      error.message === reason.message &&
+      error.message === 'broker_runtime_shutdown'
+    );
   }
   #retireAutomatically(): void {
     // A background failure retires the registration immediately instead of
