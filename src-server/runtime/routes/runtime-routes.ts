@@ -47,7 +47,6 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
-import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
@@ -270,7 +269,6 @@ import {
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-  type RuntimeAuthenticatedRequestPrincipal,
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
@@ -339,12 +337,7 @@ import {
   FileStationSurveyReviewSessionStore,
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
-import {
-  type IdentitySource,
-  identifyIngress,
-  TailscaleServeIdentitySource,
-  type VerifiedIdentity,
-} from '../../services/identity/identity-source.js';
+import { identifyIngress } from '../../services/identity/identity-source.js';
 import {
   PrincipalUnresolvedError,
   resolvePrincipal as resolveStationPrincipal,
@@ -980,26 +973,9 @@ export function configureRuntimeRoutes(
   // `home-possession` locality fact alone (a device credential deliberately
   // never carries that fact; see `CredentialLocality`'s docs — a phone is not
   // the operator's own machine, and this path does not grant that authority).
-  const deviceSessionIdentity = (
-    runtimePrincipal: RuntimeAuthenticatedRequestPrincipal | undefined,
-  ): VerifiedIdentity | null => {
-    if (runtimePrincipal?.authority !== 'device-credential') return null;
-    const device = context.environmentSecurityService.identifyDevice(
-      runtimePrincipal.credential,
-    );
-    if (!device) return null;
-    // LOW-1 (station#4518 fix round): a blank/whitespace-only stored device
-    // name is registry corruption, not a reason to throw an untranslated
-    // TypeError out of a principal-resolution seam — fall back to the
-    // (always-present) device id rather than let `''.trim()` mint an empty
-    // `displayName` or a missing `.name` field (a test double's shape) throw
-    // on `.trim()`.
-    return {
-      provider: 'device',
-      subject: device.id,
-      displayName: device.name?.trim() || device.id,
-    };
-  };
+  // The device-session fallback used to live here; it now lives with the
+  // canonical owner (`bootstrap/orchestration-request-principal.ts`), which
+  // carries the derivation rationale above verbatim.
   // station#4075 stage 2: the fail-closed principal resolver, wired at the
   // single production `createOrchestrationRoutes` call site below (the
   // stage-2 probe's finding 2 — this deps literal never wired anything into
@@ -1010,9 +986,10 @@ export function configureRuntimeRoutes(
   // (`classifyRuntimePairedDeviceActivity`, `resolveClientOriginForRequest`)
   // — this resolver adds no third derivation of "who is calling", it
   // composes the existing two into stage 1's `resolvePrincipal` contract.
-  // station#4518: a THIRD ingress fact — `deviceSessionIdentity` above — is
-  // consulted only when Tailscale Serve WhoIs found nothing AND this request
-  // carries no `home-possession` authority fact. `resolvePrincipal`'s own
+  // station#4518: a THIRD ingress fact — the device-session fallback in the
+  // canonical owner — is consulted only when Tailscale Serve WhoIs found
+  // nothing AND this request carries no `home-possession` authority fact.
+  // `resolvePrincipal`'s own
   // precedence is "identity always wins when present" (module docs), so
   // feeding it a device identity unconditionally would have OUTRANKED
   // home-possession — wrong: home-possession means "this credential was
