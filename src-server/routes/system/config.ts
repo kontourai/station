@@ -2,6 +2,7 @@
  * Config Routes - app configuration management
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   describeFirstRunTransitionViolation,
@@ -200,6 +201,7 @@ export function createConfigRoutes(
   // supplies `createConfigProjectReader` above. Optional so callers and tests
   // that never ask about a project see no behavior change.
   readProject?: (slug: string) => ProjectConfig | undefined,
+  authorizeContributionMutation?: (request: Request) => boolean,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -551,9 +553,20 @@ export function createConfigRoutes(
       const priorConfig = await configLoader.loadAppConfig();
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
+      const contributionRequested = Object.hasOwn(accepted, 'contribution');
       const update = (beginMutation: () => void) => {
         beginMutation();
-        return configLoader.updateAppConfig(accepted);
+        return configLoader.mutateAppConfig((current) => {
+          if (
+            contributionRequested &&
+            presentedScope !== undefined &&
+            !isDeepStrictEqual(accepted.contribution, current.contribution) &&
+            authorizeContributionMutation?.(c.req.raw) !== true
+          ) {
+            throw new Error('PROJECT_CONTRIBUTION_OPERATOR_REQUIRED');
+          }
+          return accepted;
+        });
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,
@@ -595,6 +608,18 @@ export function createConfigRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.message === 'PROJECT_CONTRIBUTION_OPERATOR_REQUIRED'
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only this Station’s local operator can change Project execution offers.',
+          },
+          403,
+        );
       logger.error('Failed to update app config', { error });
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

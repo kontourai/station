@@ -1304,6 +1304,28 @@ Three consequences, each checkable:
 The migration rule in §5 is the same invariant expressed in data: an existing
 project does not acquire a contribution because it had a path.
 
+### Receiver execution offers
+
+Project execution offers are stored only in
+`AppConfig.contribution["project:<portableProjectId>"]` and default off. The
+dedicated offer mutation requires Station's bound local-operator authority and
+an exact current local/portable Project association plus the expected current
+offer. A remote operate credential may round-trip an unchanged contribution map
+while saving another setting, but cannot add, remove, replace, enable, or disable
+consent. The comparison occurs inside ConfigLoader's serialized mutation owner,
+so a queued stale save cannot overwrite a newer local offer.
+
+The scoped query accepts only a portable Project ID and resource ID. Its caller
+identity comes from a current authenticated paired-device credential whose
+server record is `kind: "delegation"`; the body carries no Station or environment
+identity. This is the existing broad personal-peer grant narrowed by the exact
+receiver-owned offer. It is not shared-human membership authorization.
+Disabled or unnamed queries return no association or inventory. Offered entries
+carry the stored binding `verifiedAt`, or `null` for the compatibility working
+directory; `projectedAt` is never substituted for source observation time.
+This projection does not invoke a provider or authorize a Task attempt. Receiver
+admission must recheck it immediately before execution in the next #484 slice.
+
 ### 4.7 The backing view (sketch, not a full design)
 
 A project — and later a channel — can render its **backing Stations** as

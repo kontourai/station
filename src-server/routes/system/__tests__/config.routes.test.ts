@@ -38,13 +38,21 @@ function createMockConfigLoader(
 ) {
   let config = initial;
   const projectHome = mkdtempSync(join(tmpdir(), 'station-config-route-'));
-  return {
+  const loader = {
     getProjectHomeDir: vi.fn(() => projectHome),
     loadAppConfig: vi.fn().mockImplementation(async () => ({ ...config })),
     updateAppConfig: vi.fn().mockImplementation(async (updates: any) => {
       config = { ...config, ...updates };
       return config;
     }),
+  };
+  return {
+    ...loader,
+    mutateAppConfig: vi
+      .fn()
+      .mockImplementation(async (mutate: any) =>
+        loader.updateAppConfig(mutate({ ...config })),
+      ),
   };
 }
 
@@ -1120,6 +1128,76 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
       },
     );
 
+    expect(response.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+  });
+
+  test('an operate-only remote cannot author an execution offer', async () => {
+    const loader = createMockConfigLoader();
+    const response = await put(appWithPresentedScope(loader, OPERATE_ONLY), {
+      contribution: {
+        'project:prj_1': {
+          enabled: true,
+          execution: { repoIds: ['github.com/acme/api'] },
+        },
+      },
+    });
+    expect(response.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+  });
+
+  test('an unchanged contribution round-trip does not block another setting save', async () => {
+    const contribution = {
+      'project:prj_1': {
+        enabled: true,
+        execution: { repoIds: ['github.com/acme/api'] },
+      },
+    };
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      region: 'us-east-1',
+      contribution,
+    });
+    const response = await put(appWithPresentedScope(loader, OPERATE_ONLY), {
+      defaultModel: 'claude-4',
+      contribution,
+    });
+    expect(response.status).toBe(200);
+    expect(loader.updateAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultModel: 'claude-4', contribution }),
+    );
+  });
+
+  test('a queued remote round-trip cannot overwrite an intervening local offer', async () => {
+    const stale = {
+      'project:prj_1': {
+        enabled: true,
+        execution: { repoIds: ['github.com/acme/api'] },
+      },
+    };
+    const winner = {
+      'project:prj_1': {
+        enabled: true,
+        execution: { repoIds: ['github.com/acme/web'] },
+      },
+    };
+    const loader = createMockConfigLoader({
+      defaultModel: 'claude-3',
+      region: 'us-east-1',
+      contribution: stale,
+    });
+    loader.mutateAppConfig.mockImplementation(async (mutate: any) => {
+      mutate({
+        defaultModel: 'claude-3',
+        region: 'us-east-1',
+        contribution: winner,
+      });
+      throw new Error('PROJECT_CONTRIBUTION_OPERATOR_REQUIRED');
+    });
+    const response = await put(appWithPresentedScope(loader, OPERATE_ONLY), {
+      defaultModel: 'claude-4',
+      contribution: stale,
+    });
     expect(response.status).toBe(403);
     expect(loader.updateAppConfig).not.toHaveBeenCalled();
   });

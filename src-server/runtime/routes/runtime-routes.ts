@@ -214,6 +214,10 @@ import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
 import {
+  createProjectContributionRoutes,
+  delegationContributionQueryAuthorized,
+} from '../../routes/projects/project-contribution-routes.js';
+import {
   createProjectRoutes,
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
@@ -264,6 +268,7 @@ import {
   classifyDirectDeviceActivityPeer,
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
+  isBoundRuntimeLocalOperator,
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
@@ -389,6 +394,7 @@ import { DiffCommentService } from '../../services/projects/diff-comment-service
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
+import { ProjectContributionService } from '../../services/projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
@@ -3225,6 +3231,31 @@ export function configureRuntimeRoutes(
       context.deploymentAuthentication?.publicOrigin,
     ),
   );
+  const contributionResolution = buildProjectResolutionRouteDeps(context);
+  context.app.route(
+    '/api/project-contributions',
+    createProjectContributionRoutes(
+      new ProjectContributionService({
+        source: context.storageAdapter,
+        manifests: contributionResolution.manifests as ProjectManifestStore,
+        bindings: contributionResolution.bindings as ProjectBindingsStore,
+        resolver: contributionResolution.resolver as ProjectResourceResolver,
+        config: context.configLoader,
+      }),
+      {
+        canManage: (request) =>
+          isBoundRuntimeLocalOperator(request) &&
+          isRequestPrincipalCurrent(request),
+        canQuery: (request) => {
+          return delegationContributionQueryAuthorized(request, {
+            current: isRequestPrincipalCurrent,
+            identify: (credential) =>
+              context.environmentSecurityService.identifyDevice(credential),
+          });
+        },
+      },
+    ),
+  );
   const authenticatedProjectMember = async (request: Request) => {
     const account =
       await context.deploymentAuthentication?.service.authenticate(request);
@@ -4100,6 +4131,9 @@ export function configureRuntimeRoutes(
       // #2144 slice 2: one project record for `GET /config/app?project=`.
       // The reader owns which failures become "absent"; see its docblock.
       createConfigProjectReader(context.storageAdapter),
+      (request) =>
+        isBoundRuntimeLocalOperator(request) &&
+        isRequestPrincipalCurrent(request),
     ),
   );
   context.app.route(
