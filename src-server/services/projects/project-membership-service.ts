@@ -3,6 +3,7 @@ import type {
   ProjectInvitationPreview,
   ProjectMemberRole,
   ProjectMembershipScope,
+  ProjectMemberView,
 } from '@kontourai/station-contracts/project-membership';
 import {
   FileStorageConflictError,
@@ -79,6 +80,84 @@ export class ProjectMembershipService {
         (await this.currentActor(authority, actor.principal.id)).principal,
       ),
     );
+  }
+
+  async readableProjectScopes(
+    authority: ProjectMembershipAuthority,
+  ): Promise<readonly ProjectMembershipScope[]> {
+    const actor = await authority.current();
+    const scopes = this.members.readableProjectScopes(actor.principal);
+    const current = await this.currentActor(authority, actor.principal.id);
+    const currentScopes = this.members.readableProjectScopes(current.principal);
+    const admitted: ProjectMembershipScope[] = [];
+    for (const scope of scopes) {
+      if (
+        !currentScopes.some(
+          (candidate) =>
+            candidate.localProjectId === scope.localProjectId &&
+            candidate.portableProjectId === scope.portableProjectId &&
+            candidate.localProjectSlug === scope.localProjectSlug,
+        )
+      )
+        continue;
+      try {
+        await this.withProject(scope.localProjectSlug, scope, async () => {
+          const live = await this.currentActor(authority, actor.principal.id);
+          this.members.require(scope, live.principal, 'view');
+        });
+        admitted.push(scope);
+      } catch (error) {
+        if (!(error instanceof ProjectMembershipRefusal)) throw error;
+      }
+    }
+    const final = await this.currentActor(authority, actor.principal.id);
+    const finalScopes = this.members.readableProjectScopes(final.principal);
+    return admitted.filter((admittedScope) =>
+      finalScopes.some(
+        (scope) =>
+          scope.localProjectId === admittedScope.localProjectId &&
+          scope.portableProjectId === admittedScope.portableProjectId &&
+          scope.localProjectSlug === admittedScope.localProjectSlug,
+      ),
+    );
+  }
+
+  async readableProjectAdmissions(
+    authority: ProjectMembershipAuthority,
+  ): Promise<
+    readonly { scope: ProjectMembershipScope; member: ProjectMemberView }[]
+  > {
+    const scopes = await this.readableProjectScopes(authority);
+    const actor = await authority.current();
+    return scopes.map((scope) => ({
+      scope,
+      member: this.members.require(scope, actor.principal, 'view'),
+    }));
+  }
+
+  async requireProjectRead(
+    slug: string,
+    authority: ProjectMembershipAuthority,
+  ): Promise<ProjectMembershipScope> {
+    const actor = await authority.current();
+    const scope = this.members.scopeForMember(slug, actor.principal, 'view');
+    await this.requireProjectScopeRead(scope, authority, actor.principal.id);
+    return scope;
+  }
+
+  async requireProjectScopeRead(
+    scope: ProjectMembershipScope,
+    authority: ProjectMembershipAuthority,
+    expectedPrincipalId?: string,
+  ): Promise<void> {
+    const actor = await authority.current();
+    if (expectedPrincipalId && actor.principal.id !== expectedPrincipalId)
+      throw new ProjectMembershipRefusal('forbidden');
+    this.members.require(scope, actor.principal, 'view');
+    await this.withProject(scope.localProjectSlug, scope, async () => {
+      const current = await this.currentActor(authority, actor.principal.id);
+      this.members.require(scope, current.principal, 'view');
+    });
   }
 
   async invite(

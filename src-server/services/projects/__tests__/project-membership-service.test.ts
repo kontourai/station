@@ -16,6 +16,7 @@ import {
   ProjectMembershipRefusal,
   ProjectMembershipStore,
 } from '../project-membership-store.js';
+import { guardProjectResponse } from '../project-response-guard.js';
 import { ProjectService } from '../project-service.js';
 
 const owner = humanPrincipal('deployment', 'owner', 'Owner');
@@ -63,6 +64,7 @@ async function harness() {
     createProjectMembershipRoutes(service, () => access),
   );
   return {
+    db,
     storage,
     projects,
     project,
@@ -201,6 +203,9 @@ describe('Project membership through revision and administration routes', () => 
       slug: 'example',
     });
     expect(replacement.id).not.toBe(h.project.id);
+    await expect(
+      h.service.requireProjectScopeRead(view.scope, h.access),
+    ).rejects.toMatchObject({ code: 'conflict' });
     expect(
       await h.service.mayRegister({
         invitation: offered.token,
@@ -237,6 +242,104 @@ describe('Project membership through revision and administration routes', () => 
     ).rejects.toMatchObject({ code: 'forbidden' });
     expect(h.store.administration(view.scope, owner).invitations).toHaveLength(
       0,
+    );
+  });
+
+  test('Project reads expose only current viewer memberships and revocation takes effect immediately', async () => {
+    const h = await harness();
+    const privateProject = await h.projects.createProject({
+      name: 'Private marker',
+      slug: 'private',
+    });
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const offer = await h.service.invite(view.scope, invitation(), h.access);
+    h.setActor(invitee);
+    await h.service.accept(offer.token, h.access);
+
+    expect(
+      (await h.service.readableProjectScopes(h.access)).map(
+        (scope) => scope.localProjectSlug,
+      ),
+    ).toEqual(['example']);
+    await expect(
+      h.service.requireProjectRead('example', h.access),
+    ).resolves.toEqual(view.scope);
+    const privateRead = vi.spyOn(h.storage, 'projectRevision');
+    await expect(
+      h.service.requireProjectRead('private', h.access),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    expect(privateRead).not.toHaveBeenCalledWith('private');
+
+    h.setActor(owner, true);
+    const member = h.store.require(view.scope, invitee, 'view');
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      member.revision,
+      {
+        role: 'viewer',
+        status: 'revoked',
+      },
+      h.access,
+    );
+    h.setActor(invitee);
+    expect(await h.service.readableProjectScopes(h.access)).toEqual([]);
+    await expect(
+      h.service.requireProjectRead('example', h.access),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    expect(privateProject.slug).toBe('private');
+  });
+
+  test('a same-slug replacement with new membership cannot release the old Project response', async () => {
+    const h = await harness();
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const firstOffer = await h.service.invite(
+      view.scope,
+      invitation(),
+      h.access,
+    );
+    h.setActor(invitee);
+    await h.service.accept(firstOffer.token, h.access);
+    const admitted = await h.service.requireProjectRead('example', h.access);
+    const guarded = await guardProjectResponse(
+      Response.json({ name: 'old private marker' }),
+      async () => {
+        try {
+          await h.service.requireProjectScopeRead(admitted, h.access);
+          return true;
+        } catch (error) {
+          if (error instanceof ProjectMembershipRefusal) return false;
+          throw error;
+        }
+      },
+    );
+
+    await h.storage.projectRevision('example').remove();
+    h.db.exec(
+      `DELETE FROM project_invitations;
+       DELETE FROM project_members;
+       DELETE FROM shared_projects;`,
+    );
+    const replacement = await h.projects.createProject({
+      name: 'Replacement',
+      slug: 'example',
+    });
+    h.setActor(owner, true);
+    const replacementView = await h.service.enable(
+      'example',
+      replacement.id,
+      h.access,
+    );
+    const secondOffer = await h.service.invite(
+      replacementView.scope,
+      invitation(),
+      h.access,
+    );
+    h.setActor(invitee);
+    await h.service.accept(secondOffer.token, h.access);
+
+    await expect(guarded.text()).rejects.toThrow(
+      'Project authorization ended before response delivery',
     );
   });
 

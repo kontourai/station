@@ -1,6 +1,7 @@
 import type { AgentId } from './agent-identity.js';
 import type { EnvironmentRef } from './execution-target.js';
 import type { KnowledgeNamespaceConfig } from './knowledge.js';
+import type { ProjectMemberAction } from './project-membership.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
 export interface ProjectConfig {
@@ -45,6 +46,17 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */
   position?: number;
+}
+
+export interface MemberProjectView {
+  version: 'station.member-project/v1';
+  kind: 'member-project';
+  id: string;
+  slug: string;
+  name: string;
+  icon?: string;
+  description?: string;
+  actions: readonly ProjectMemberAction[];
 }
 
 export interface ProjectIconCandidate {

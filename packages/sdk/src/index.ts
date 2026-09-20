@@ -178,6 +178,8 @@ export {
   bindProjectResource,
   closeProjectTerminal,
   getProjectResolution,
+  getProjectView,
+  listProjectViews,
 } from './client/projects';
 export {
   getReviewReceipt,

@@ -952,6 +952,20 @@ account cookies, proof verification or membership logic. See the
 [application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
 for expiry, origin, replay and revocation behavior.
 
+`listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
+from `@kontourai/station-sdk/client` return either the personal/operator Project
+shape or a validated `MemberProjectView` from
+`@kontourai/station-contracts/project`. The member variant has
+`kind: 'member-project'`, `version: 'station.member-project/v1'`, identity/display
+fields and effective `actions`; it excludes local paths, provider configuration
+and other private Project settings. Unknown versions, additional fields and
+malformed member data are refused. `useProjectsQuery` uses this union for the
+catalogue. Legacy `listProjects`, `getProject` and the full-configuration
+`useProjectQuery` refuse member views; callers that support guests must choose
+the view API and narrow its variant before using full-configuration fields.
+The first account-bound Device profile exposes only the `view` action; it does
+not imply edit, execution or administration support.
+
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project
 slug and explicit `ClientRequestOptions`. Reads return the acting principal,
