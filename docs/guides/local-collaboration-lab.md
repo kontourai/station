@@ -439,18 +439,22 @@ Device revocation, and an unshared Project refusal. It retains
 `account-boundary.json` and `account-scenario.json` separately from transport
 receipts so positive account checks cannot hide a failed privacy boundary.
 
-**Current acceptance failure: [#2030](https://github.com/kontourai/station/issues/2030).**
-The authenticated viewer with the existing `orchestration:read` Device grant
-can currently receive unshared Project metadata. The diagnostic exits 1 and
-keeps that assertion; it does not treat the grant as collaborator-scoped or
-claim safe shared application access. #488 owns the person/Project admission
-correction. The independent login, replay, membership and revocation checks may
-complete while the overall result remains failed.
+The scoped [#2030](https://github.com/kontourai/station/issues/2030) acceptance
+now uses an explicit operator-approved account-bound replacement Device. A
+matching current account reads its shared Project and receives a causeless 404
+for the unshared Project. The same Device without account proof is refused with
+401 over direct and virtual application paths; a different account is also
+refused. Continuation, provider-session, membership and Device revocation each
+independently stop a later permitted-Project read. Earlier retained runs that
+returned the private marker remain failure evidence rather than being rewritten.
 
-This remains a free synthetic Node UDP/source-runtime diagnostic. It does not
-prove the rendered guest UI, a supported Pion application adapter, native or
-remote delivery, offered compute/plugins, or hostile-process isolation. The
-production connector remains disabled until the required boundaries qualify.
+This remains a free synthetic source-runtime diagnostic. The full account path
+has run through the Node UDP peer and the Pion adapter with browser TURN over
+UDP and TCP. It does not prove the rendered guest UI, native or remote delivery,
+legacy unbound personal-Device collaboration, Tailscale-bound account identity,
+offered compute/plugins, public broker deployment, or hostile-process isolation.
+The production connector remains disabled until those separately owned
+boundaries qualify.
 
 ### Full collaboration
 
