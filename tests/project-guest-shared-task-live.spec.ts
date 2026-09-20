@@ -121,11 +121,11 @@ test.describe
         };
       };
       const sharedTask = await createTask(
-        shared.id,
+        shared.slug,
         'Guest-visible acceptance Task',
       );
       const privateTask = await createTask(
-        privateProject.id,
+        privateProject.slug,
         'Private ordinary Task marker',
       );
       const messageMarker = 'Guest-visible real human message';
