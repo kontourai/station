@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rename, rm, unlink } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isSafePathSegment } from '../knowledge-index/path-safety.js';
@@ -69,6 +70,8 @@ export interface ProjectStoredFileRevision<T> extends StoredFileRevision<T> {
   createLayout(layoutSlug: string, value: unknown): Promise<void>;
   /** Server-only read admission under the existing Project mutation owner. */
   withCurrentRead?<R>(operation: (value: T) => Promise<R>): Promise<R>;
+  /** Atomically replace this Project's manifest under this exact Project revision. */
+  replaceManifest?(expected: unknown, next: unknown): Promise<void>;
 }
 
 export interface ProjectFileTransactionFaults {
@@ -397,6 +400,53 @@ export class ProjectFileTransactions {
                 }
                 return operation(structuredClone(admissionValue as T));
               }),
+            replaceManifest: (expectedManifest: unknown, next: unknown) => {
+              const manifestPath = join(
+                this.projectDirectory(projectSlug),
+                'manifest.json',
+              );
+              const expectedSerialized = JSON.stringify(expectedManifest);
+              const ownedExpected = JSON.parse(expectedSerialized) as unknown;
+              const serialized = JSON.stringify(next);
+              const ownedNext = JSON.parse(serialized) as unknown;
+              return runIntent(
+                `replace-manifest:${expectedSerialized}:${serialized}`,
+                () =>
+                  this.#withProjectLock(projectSlug, async () => {
+                    if (readFingerprint(path) !== expected) {
+                      throw new FileStorageConflictError(
+                        'Project changed before the manifest could update',
+                      );
+                    }
+                    let current: unknown;
+                    let currentFingerprint: string | null;
+                    try {
+                      const currentBytes = readFileSync(manifestPath, 'utf8');
+                      currentFingerprint = fingerprint(currentBytes);
+                      current = JSON.parse(currentBytes);
+                    } catch (error) {
+                      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+                        throw new FileStorageNotFoundError(
+                          `Project '${projectSlug}' has no portable identity`,
+                        );
+                      }
+                      throw error;
+                    }
+                    if (!isDeepStrictEqual(current, ownedExpected)) {
+                      throw new FileStorageConflictError(
+                        'Project identity changed before the manifest could update',
+                      );
+                    }
+                    if (readFingerprint(manifestPath) !== currentFingerprint) {
+                      throw new FileStorageConflictError(
+                        'Project identity changed before the manifest could publish',
+                      );
+                    }
+                    if (isDeepStrictEqual(current, ownedNext)) return;
+                    await this.#publish(manifestPath, ownedNext);
+                  }),
+              );
+            },
           }
         : {}),
       replace: (next: T): Promise<void> => {
