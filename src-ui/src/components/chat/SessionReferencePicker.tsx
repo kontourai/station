@@ -38,7 +38,7 @@ export function SessionReferencePicker({
   };
   onChange: (value: string) => void;
   onClose: () => void;
-  onCandidateDragged: (candidate: SessionReferenceCandidate) => void;
+  onCandidateDragged: (candidate: SessionReferenceCandidate | null) => void;
 }) {
   const [query, setQuery] = useState('');
   const inventory = useQuery({
@@ -102,6 +102,24 @@ export function SessionReferencePicker({
         .includes(query.toLocaleLowerCase()),
     )
     .slice(0, 8);
+  const inventoryPage = inventory.data?.page;
+  const emptyMessage = (() => {
+    if (!inventoryPage || visible.length > 0) return null;
+    const searched = inventoryPage.items.length;
+    const hasQuery = query.trim().length > 0;
+    if (hasQuery)
+      return inventoryPage.hasMore
+        ? `No matches in the ${searched} most recent conversations. Older conversations aren’t searched.`
+        : 'No matching conversations';
+    if (candidates.length === 0) {
+      if (inventoryPage.hasMore)
+        return `No referenceable conversations in the ${searched} most recent. Older conversations aren’t shown.`;
+      return searched === 0
+        ? 'No conversations yet'
+        : 'No conversations available to reference';
+    }
+    return null;
+  })();
   return (
     <ResponsiveDialogSurface
       layer="popover"
@@ -141,10 +159,8 @@ export function SessionReferencePicker({
         {!inventory.isFetching &&
         inventory.isSuccess &&
         !inventory.data.unavailable &&
-        visible.length === 0 ? (
-          <div className="file-mention-picker__status">
-            No matching conversations
-          </div>
+        emptyMessage ? (
+          <div className="file-mention-picker__status">{emptyMessage}</div>
         ) : null}
         {visible.map((candidate) => {
           const reason = sessionReferenceBlockReason({
@@ -172,6 +188,7 @@ export function SessionReferencePicker({
                   candidate.id,
                 );
               }}
+              onDragEnd={() => onCandidateDragged(null)}
               onClick={() => stage(candidate)}
             >
               <span aria-hidden="true">↗</span>

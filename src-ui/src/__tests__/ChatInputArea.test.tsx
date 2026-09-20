@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   fireEvent,
   render,
@@ -12,6 +13,12 @@ import { createRef, useState } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
 import { mentionToken } from '../components/chat/composer-mentions';
+
+const fetchConversationInventory = vi.hoisted(() => vi.fn());
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchConversationInventory,
+}));
 
 vi.mock('../components/conversation-stats/ConversationStats', () => ({
   ContextPercentage: () => null,
@@ -123,6 +130,93 @@ describe('ChatInputArea', () => {
         .style.getPropertyValue('--composer-font-size'),
     ).toBe('20px');
     expect(screen.getByRole('textbox').style.fontSize).toBe('');
+  });
+
+  test('drops dragged conversation custody when the composer authority changes', async () => {
+    fetchConversationInventory.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'conversation-a',
+          title: 'Conversation A',
+          referenceEligibility: {
+            eligible: true,
+            visibility: 'personal-private',
+          },
+        },
+      ],
+      hasMore: false,
+    });
+    const scopeA = {
+      apiBase: 'http://station-a.test',
+      authorityKey: 'owner-a',
+      isCurrent: () => true,
+    };
+    const scopeB = {
+      apiBase: 'http://station-b.test',
+      authorityKey: 'owner-b',
+      isCurrent: () => true,
+    };
+    const onInputChange = vi.fn();
+    const actions = {
+      triggerRef: createRef<HTMLButtonElement>(),
+      commandLauncherDisabled: false,
+      commandLauncherShortcut: '',
+      filesActive: false,
+      taskContextActive: false,
+      onOpenDelegation: vi.fn(),
+      onOpenCommandLauncher: vi.fn(),
+      onToggleFiles: vi.fn(),
+      onToggleTaskContext: vi.fn(),
+    };
+    const first = renderProps({
+      sessionId: 'session-a',
+      input: '',
+      onInputChange,
+      mentionAuthority: 'authority-a',
+      mentionRequestScope: scopeA,
+      secondaryActions: actions,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatInputArea {...first} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
+    );
+    const option = await screen.findByRole('option', {
+      name: /Conversation A/,
+    });
+    const values = new Map<string, string>();
+    const dataTransfer = {
+      types: ['application/x-station-conversation-reference'],
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+    };
+    fireEvent.dragStart(option, { dataTransfer });
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChatInputArea
+          {...first}
+          sessionId="session-b"
+          mentionAuthority="authority-b"
+          mentionRequestScope={scopeB}
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+      ).toBeNull(),
+    );
+    fireEvent.drop(screen.getByRole('textbox'), { dataTransfer });
+
+    expect(onInputChange).not.toHaveBeenCalled();
   });
 
   test('keeps textarea focus while keyboard-selecting the second mention result', async () => {

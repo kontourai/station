@@ -362,6 +362,7 @@ export function ChatInputArea({
     id: string;
     title: string;
     projectSlug?: string;
+    ownerKey: string;
   } | null>(null);
   const [mentionQuery, setMentionQuery] = useState<{
     start: number;
@@ -377,11 +378,25 @@ export function ChatInputArea({
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const visualViewport = useMobileVisualViewport();
   const isMobile = useIsMobile();
+  const sessionReferenceOwnerKey = JSON.stringify([
+    sessionId ?? '',
+    mentionAuthority ?? '',
+    mentionRequestScope?.apiBase ?? '',
+    mentionRequestScope?.authorityKey ?? '',
+  ]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: these identities fence stale mention offsets even though the effect only clears local state.
   useEffect(() => {
     mentionGeneration.current += 1;
     setMentionQuery(null);
-  }, [sessionId, workingDirectory, mentionAuthority]);
+    setDraggedSessionReference(null);
+    setSessionReferencesOpen(false);
+  }, [
+    sessionId,
+    workingDirectory,
+    mentionAuthority,
+    mentionRequestScope?.apiBase,
+    mentionRequestScope?.authorityKey,
+  ]);
   const isOverride = currentModelSource === 'session override';
   const effectiveModelId = currentModel || agentDefaultModel;
   const effectiveModelInfo = availableModels.find(
@@ -796,7 +811,8 @@ export function ChatInputArea({
                 'application/x-station-conversation-reference',
               );
               const candidate =
-                draggedSessionReference?.id === conversationId
+                draggedSessionReference?.id === conversationId &&
+                draggedSessionReference.ownerKey === sessionReferenceOwnerKey
                   ? draggedSessionReference
                   : null;
               if (
@@ -818,9 +834,11 @@ export function ChatInputArea({
               if (!conversationId) return;
               event.preventDefault();
               const candidate =
-                draggedSessionReference?.id === conversationId
+                draggedSessionReference?.id === conversationId &&
+                draggedSessionReference.ownerKey === sessionReferenceOwnerKey
                   ? draggedSessionReference
                   : null;
+              setDraggedSessionReference(null);
               if (!candidate) return;
               const reason = sessionReferenceBlockReason({
                 value: input,
@@ -1196,7 +1214,13 @@ export function ChatInputArea({
                 updateFromInput(next);
               }}
               onClose={() => setSessionReferencesOpen(false)}
-              onCandidateDragged={setDraggedSessionReference}
+              onCandidateDragged={(candidate) =>
+                setDraggedSessionReference(
+                  candidate
+                    ? { ...candidate, ownerKey: sessionReferenceOwnerKey }
+                    : null,
+                )
+              }
             />
           </React.Suspense>
         )}
