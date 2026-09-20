@@ -755,6 +755,7 @@ export {
   layoutCatalogRetryDelay,
   type ModelConnectionMutationInput,
   type ModelConnectionSmokeInput,
+  type ProjectReadQueryConfig,
   shouldRetryLayoutCatalog,
   shouldRetryProjectLayout,
   useAgentConnectionCatalogQuery,
