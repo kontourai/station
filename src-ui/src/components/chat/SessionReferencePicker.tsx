@@ -1,11 +1,11 @@
 import { fetchConversationInventory } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SkeletonList } from '../state';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { SkeletonList } from '../state';
 import {
   appendComposerSessionReference,
   sessionReferenceBlockReason,

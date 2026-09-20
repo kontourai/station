@@ -1197,9 +1197,7 @@ export function ChatInputArea({
         </div>
         {sessionReferencesOpen && (
           <React.Suspense
-            fallback={
-              <SkeletonBlock label="Conversation reference picker" />
-            }
+            fallback={<SkeletonBlock label="Conversation reference picker" />}
           >
             <SessionReferencePicker
               value={input}
