@@ -8,7 +8,12 @@ import type {
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  type MutateOptions,
+  type UseMutationResult,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { _getApiBase, fetchAvailableLayouts } from '../api';
 import {
@@ -592,25 +597,37 @@ function captureReorderInput(
 }
 
 /**
- * One immutable capture, taken ONCE at the public mutate/mutateAsync
+ * One private owned copy, taken ONCE at the public mutate/mutateAsync
  * invocation. The copy is what every internal callback reads, so a caller
  * mutating their own input object (order array or scope scalars) during the
  * mutation lifecycle can neither retarget the request nor corrupt the
  * optimistic write, rollback, or settle. Internal callbacks re-derive
  * `scope`/`order` from this private copy — safe by construction.
+ *
+ * The copy is privately owned, not frozen: callers keep full ownership of
+ * their own input (including mutating it, which the race test exercises),
+ * and only this copy travels downstream.
  */
-function captureReorderVariables(
-  variables: ReorderProjectsVariables,
-): ReorderProjectsVariables {
-  if (Array.isArray(variables)) return [...variables];
-  const captured: ReorderProjectsInput = { order: [...variables.order] };
-  // Freeze the fail-closed contract: unsetting it on the caller's object
+function captureReorderVariables<TVariables extends ReorderProjectsVariables>(
+  variables: TVariables,
+): TVariables {
+  if (Array.isArray(variables)) {
+    // Bare-array shape: copy the array itself. The assertion restores the
+    // caller's narrowed shape after a copy that provably preserves it —
+    // an array in, an array out.
+    return [...variables] as TVariables;
+  }
+  // Object shape: the input is provably not an array here, so the
+  // object-shaped read below cannot observe the other variant. Copy the
+  // order array plus the captured scalar scope and the fail-closed flag.
+  const input = variables as ReorderProjectsInput;
+  const captured: ReorderProjectsInput = { order: [...input.order] };
+  // Pin the fail-closed contract: unsetting it on the caller's object
   // mid-flight must not enable an ambient fallback.
-  if (variables.requireRequestScope === true)
-    captured.requireRequestScope = true;
-  const scope = captureProjectScope(variables.requestScope);
+  if (input.requireRequestScope === true) captured.requireRequestScope = true;
+  const scope = captureProjectScope(input.requestScope);
   if (scope) captured.requestScope = scope;
-  return captured;
+  return captured as TVariables;
 }
 
 interface ReorderMutationContext {
@@ -619,23 +636,119 @@ interface ReorderMutationContext {
   scoped: boolean;
 }
 
+/**
+ * Reorder mutation handle for one declared variables shape. Narrowing the
+ * handle (not widening the callbacks) is what keeps the legacy contract
+ * sound: a caller that declares bare-array callbacks receives a handle
+ * that truthfully accepts only bare arrays, so a scoped object can never
+ * arrive at a callback that cannot read it.
+ */
+interface ReorderProjectsMutation<TVariables extends ReorderProjectsVariables>
+  extends Omit<
+    UseMutationResult<any, Error, TVariables, ReorderMutationContext>,
+    'mutate' | 'mutateAsync'
+  > {
+  mutate: (
+    variables: TVariables,
+    options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
+  ) => void;
+  mutateAsync: (
+    variables: TVariables,
+    options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
+  ) => Promise<any>;
+}
+
+/**
+ * Union handle: both variables shapes stay available, and each per-call
+ * callback is tied to the variables of its own call, so a legacy per-call
+ * callback observes only the bare array it was passed with.
+ */
+interface UnionReorderProjectsMutation
+  extends Omit<
+    UseMutationResult<
+      any,
+      Error,
+      ReorderProjectsVariables,
+      ReorderMutationContext
+    >,
+    'mutate' | 'mutateAsync'
+  > {
+  mutate: {
+    (
+      variables: string[],
+      options?: MutateOptions<any, Error, string[], ReorderMutationContext>,
+    ): void;
+    (
+      variables: ReorderProjectsInput,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsInput,
+        ReorderMutationContext
+      >,
+    ): void;
+    (
+      variables: ReorderProjectsVariables,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsVariables,
+        ReorderMutationContext
+      >,
+    ): void;
+  };
+  mutateAsync: {
+    (
+      variables: string[],
+      options?: MutateOptions<any, Error, string[], ReorderMutationContext>,
+    ): Promise<any>;
+    (
+      variables: ReorderProjectsInput,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsInput,
+        ReorderMutationContext
+      >,
+    ): Promise<any>;
+    (
+      variables: ReorderProjectsVariables,
+      options?: MutateOptions<
+        any,
+        Error,
+        ReorderProjectsVariables,
+        ReorderMutationContext
+      >,
+    ): Promise<any>;
+  };
+}
+
 export function useReorderProjectsMutation(
   options?: MutationOptions<any, ReorderProjectsVariables>,
-) {
+): UnionReorderProjectsMutation;
+export function useReorderProjectsMutation(
+  options?: MutationOptions<any, string[]>,
+): ReorderProjectsMutation<string[]>;
+export function useReorderProjectsMutation(
+  options?: MutationOptions<any, ReorderProjectsInput>,
+): ReorderProjectsMutation<ReorderProjectsInput>;
+export function useReorderProjectsMutation<
+  TVariables extends ReorderProjectsVariables,
+>(
+  options?: MutationOptions<any, TVariables>,
+): ReorderProjectsMutation<TVariables> {
   const queryClient = useQueryClient();
-  const mutation = useMutation<
-    any,
-    Error,
-    ReorderProjectsVariables,
-    ReorderMutationContext
-  >({
-    mutationFn: async (variables: ReorderProjectsVariables) => {
-      // `variables` is the private capture from `captureReorderVariables`;
+  const mutation = useMutation<any, Error, TVariables, ReorderMutationContext>({
+    mutationFn: async (variables: TVariables) => {
+      // `variables` is the private copy from `captureReorderVariables`;
       // deriving scope/order from it can no longer observe caller mutations.
       const { order, scope } = captureReorderInput(variables);
+      // `Array.isArray` cannot narrow generic `TVariables`; the object
+      // shape is asserted only after the bare-array shape is excluded at
+      // runtime. The assertion is compile-time only and emits no code.
       if (
         !Array.isArray(variables) &&
-        variables.requireRequestScope === true &&
+        (variables as ReorderProjectsInput).requireRequestScope === true &&
         !scope
       )
         throw new StationRequestAuthorityError();
@@ -646,10 +759,12 @@ export function useReorderProjectsMutation(
       const apiBase = await _getApiBase();
       return reorderProjectsRaw(apiBase, order);
     },
-    onMutate: async (variables: ReorderProjectsVariables) => {
+    onMutate: async (variables: TVariables) => {
       const { order, scope } = captureReorderInput(variables);
+      // Same guarded object-shape assertion as `mutationFn` above.
       const required =
-        !Array.isArray(variables) && variables.requireRequestScope === true;
+        !Array.isArray(variables) &&
+        (variables as ReorderProjectsInput).requireRequestScope === true;
       // Reject BEFORE any await or cache work: an absent required scope must
       // not touch any home's cache.
       if (required && !scope) throw new StationRequestAuthorityError();
@@ -711,18 +826,18 @@ export function useReorderProjectsMutation(
     },
   });
   // Capture ONCE at the public invocation. Everything below this wrapper
-  // sees only the frozen copy; the spread preserves the full typed mutation
-  // result (reset/isPending/data/…) and tanstack's per-call options pass
-  // straight through.
+  // sees only the private owned copy; the spread preserves the full typed
+  // mutation result (reset/isPending/data/…) and tanstack's per-call options
+  // pass straight through.
   return {
     ...mutation,
     mutate: (
-      variables: ReorderProjectsVariables,
-      options?: Parameters<typeof mutation.mutate>[1],
+      variables: TVariables,
+      options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
     ) => mutation.mutate(captureReorderVariables(variables), options),
     mutateAsync: (
-      variables: ReorderProjectsVariables,
-      options?: Parameters<typeof mutation.mutateAsync>[1],
+      variables: TVariables,
+      options?: MutateOptions<any, Error, TVariables, ReorderMutationContext>,
     ) => mutation.mutateAsync(captureReorderVariables(variables), options),
   };
 }
