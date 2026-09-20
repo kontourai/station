@@ -1,7 +1,8 @@
 # Free local collaboration lab
 
 > Status: transport/enrollment and real local-account/member scenarios are
-> implemented. Shared content, approved Device access, UI, compute and plugin
+> implemented. The optional encrypted account diagnostic also exercises an
+> explicitly account-bound Device. Shared content, UI, compute and plugin
 > integration remains under
 > [#1985](https://github.com/kontourai/station/issues/1985) and its feature owners.
 
@@ -117,8 +118,9 @@ pairs of disposable homes; the report names each stage under `scenarios` and
 marks unselected stages `not-run`. The full command still exits 3 because approved
 Device/content access, compute/plugin integration, the production relay adapter
 and real-human/native/network acceptance are not complete. The account stage
-uses direct loopback HTTP; it does not claim to carry account sessions through
-the encrypted broker before the owning continuation contract lands.
+uses direct loopback HTTP. The separate `--application-accounts` browser
+transport profile below exercises the landed continuation contract through an
+encrypted application channel.
 
 ## Output and retained evidence
 
@@ -370,9 +372,10 @@ versions, capture size and completed checks. The report is published after
 cleanup. Failure exits 1 and retains private protocol diagnostics; `--keep`
 also retains successful evidence. Fixture ICE credentials and keys stay in the
 private temporary home, not in the public report. Production key enrollment,
-signaling authentication, renewal/recovery, native app delivery and Station
-request/stream integration remain unimplemented. The fixture's out-of-band
-trust setup does not implement those contracts.
+signaling authentication, renewal/recovery and native app delivery remain
+separate delivery requirements. The fixture's out-of-band trust setup does not
+implement those contracts. The optional application profiles below exercise
+SDK framing and protected Station requests.
 
 ### SDK application framing over the encrypted channel
 
@@ -392,9 +395,10 @@ transport runs report it as `not-run`.
 
 This is a Fetch/framing qualification, **not an account or full Station API
 journey**. It does not grant a person, Device or Project authority. The Pion
-profile currently refuses this option; its existing echo fixture is not an
-application adapter. Production TCP/native/remote and full account/Device/Project
-requests must qualify separately.
+profile supports the same option after building the pinned peer; its application
+frames travel through private inherited pipes. Browser TURN/TCP and TURN/UDP
+have separate local qualification receipts. Native/remote delivery must qualify
+separately, and the full account/Device/Project profile follows below.
 
 The initial wire profile has one request per reliable ordered DataChannel,
 48 KiB JSON frames, at most 64 headers/16 KiB header text, and a **16 KiB request
@@ -412,8 +416,9 @@ records whether dispatch may have occurred; disconnection is not proof that a
 mutation did not execute. Account-session signing and authorization remain with
 the SDK/provider and protected Station application. The opt-in
 [virtual application ingress](../design/connection-broker.md#protected-application-dispatch)
-is the server integration seam; composing the two against the full runtime is
-still required before enabling application relay access.
+is the server integration seam. The full-runtime diagnostic below composes
+these owners; product onboarding, approved endpoint trust and broker lifecycle
+remain necessary before enabling managed application access.
 
 ### Full runtime account relay diagnostic
 
