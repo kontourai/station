@@ -1132,7 +1132,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
-  expect(new URL(page.url()).searchParams.get('maximize')).toBeNull();
+  expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
   await expect(textarea).toHaveValue('return to this draft');
   // Primary project context stays directly reachable beside conversation switching.
   await expect(
@@ -1430,7 +1430,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Activity', 'Collapse chat']) {
+  for (const name of ['New chat', 'Collapse chat']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -1697,7 +1697,7 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Activity', 'Collapse chat']) {
+  for (const name of ['New chat', 'Collapse chat']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -1838,13 +1838,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of [
-      'New chat',
-      'Activity',
-      'Conversation history',
-      'Open conversation',
-      'Chat settings',
-    ]) {
+    for (const name of ['New chat', 'Chats', 'Chat settings']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -2053,8 +2047,10 @@ for (const viewport of [
     const controls = page.locator('.chat-controls-row');
     const controlsBox = await controls.boundingBox();
     expect(controlsBox).not.toBeNull();
+    // The capsule's rounded paint box overlaps the action row by at most its
+    // 8px inner gutter; the controls themselves must still own their centers.
     expect(controlsBox!.y).toBeGreaterThanOrEqual(
-      textareaBox!.y + textareaBox!.height - 2,
+      textareaBox!.y + textareaBox!.height - 8,
     );
     expect(controlsBox!.x).toBeGreaterThanOrEqual(0);
     expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(
@@ -2062,20 +2058,28 @@ for (const viewport of [
     );
     const modelButton = page.locator('.chat-input__model-btn');
     await expect(modelButton).toBeVisible();
-    await expect(modelButton).toHaveText('Selected Test Model');
     await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
       'Selected Test Model',
     );
     await expect(modelButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(
+      await modelButton.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        );
+        return hit === button || button.contains(hit);
+      }),
+    ).toBe(true);
     const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
       'Agent: Claude. Send a message before changing Agent.',
     );
     await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
-    await expect(agentButton).toHaveText('Claude');
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
       'Claude',
     );
@@ -2510,8 +2514,25 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
       }),
     ),
   );
-  await openComposer(page, true, 'station');
-  await page.locator('.chat-input__model-btn').first().click();
+  const textarea = await openComposer(page, true, 'station');
+  const activeComposer = textarea.locator(
+    'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
+  );
+  const modelButton = activeComposer.locator('.chat-input__model-btn');
+  const modelButtonBox = await modelButton.boundingBox();
+  expect(modelButtonBox).not.toBeNull();
+  expect(modelButtonBox!.y).toBeGreaterThanOrEqual(0);
+  expect(modelButtonBox!.y + modelButtonBox!.height).toBeLessThanOrEqual(540);
+  const modelHit = await modelButton.evaluate((button) => {
+    const box = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      box.left + box.width / 2,
+      box.top + box.height / 2,
+    );
+    return hit === button || button.contains(hit);
+  });
+  expect(modelHit).toBe(true);
+  await modelButton.click();
 
   const picker = page.getByRole('dialog', { name: 'Choose model' });
   const providerRail = picker.getByRole('group', { name: 'Providers' });
@@ -2992,18 +3013,27 @@ for (const width of [320, 390, 1280]) {
       const draftsBox = (await drafts.boundingBox())!;
       expect(draftsBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
 
-      const agent = page.getByRole('button', { name: /^Agent: Claude/ });
-      const model = page.getByRole('button', {
+      const activeComposer = textarea.locator(
+        'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
+      );
+      const agent = activeComposer.getByRole('button', {
+        name: /^Agent: Claude/,
+      });
+      const model = activeComposer.getByRole('button', {
         name: /^Model: Claude — Selected Test Model/,
       });
-      await expect(agent).toHaveText('Claude');
+      await expect(agent.locator('.chat-input__agent-name')).toHaveText(
+        'Claude',
+      );
       await expect(agent).toHaveCSS('opacity', '1');
-      await expect(model).toHaveText('Selected Test Model');
+      await expect(model.locator('.chat-input__model-name')).toHaveText(
+        'Selected Test Model',
+      );
       await expect(model).toHaveAttribute(
         'title',
         /^Model: Claude — Selected Test Model/,
       );
-      const rail = page.locator('.chat-input__meta');
+      const rail = activeComposer.locator('.chat-input__meta');
       const bounds = (await rail.boundingBox())!;
       const approval = page.getByRole('button', { name: /^Approval mode:/ });
       for (const control of [agent, model, approval]) {

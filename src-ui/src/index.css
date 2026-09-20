@@ -9476,7 +9476,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    its saved Half/Full preference. The keyboard may leave only ~150 CSS pixels:
    preserve the header and a single-line composer instead of clipping Send. */
 @media (max-height: 540px) and (pointer: coarse) {
-  .app__main > .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
+  .app__main .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
     top: calc(var(--chat-visual-viewport-top, 0px) + var(--safe-top));
     bottom: auto;
     height: calc(
@@ -9493,49 +9493,83 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   /* This short-window chat fills the work area just like a maximized dock.
      Passive notices yield to its input; explicit system blockers retain
      BannerHost's higher layer and their repair controls. */
-  .app__main:has(> .chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
+  .app__main:has(.chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
   > .banner-host:not(.banner-host--critical-chrome) {
     z-index: var(--layer-notice);
   }
 
-  .app__main > .chat-dock--bottom .chat-input {
+  .app__main .chat-dock--bottom .chat-input {
+    position: relative;
+    z-index: 1;
     flex-shrink: 0;
+    background: var(--bg-secondary);
     padding-bottom: max(
       0px,
       calc(var(--safe-bottom) - var(--chat-visual-viewport-bottom, 0px))
     );
   }
 
-  .app__main > .chat-dock--bottom .chat-input__capsule {
+  .app__main .chat-dock--bottom .chat-input__capsule {
     flex-direction: row;
     align-items: flex-end;
   }
 
-  .app__main > .chat-dock--bottom .chat-input textarea {
+  .app__main .chat-dock--bottom .chat-input textarea {
     max-height: max(44px, calc(1lh + 20px));
     padding: 10px 12px;
   }
 
-  .app__main > .chat-dock--bottom .chat-messages {
+  .app__main .chat-dock--bottom .chat-messages {
     padding-block: 0;
   }
 
   /* A passive connection label does not need a 44px interaction row. Keep
      the message visible while preserving the composer's available height;
      a connection-repair button retains the standard touch target. */
-  .app__main > .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+  .app__main .chat-dock--bottom .chat-stream-status:not(:has(button)) {
     min-height: 0;
     padding: 0 8px;
     line-height: 1.2;
+    pointer-events: none;
   }
 
   /* Editing gets the limited height. Blurring the textarea restores the
      model/agent selectors; input and Send keep their full touch targets. */
   .app__main
-    > .chat-dock--bottom
+    .chat-dock--bottom
     .chat-input:has(textarea:focus)
     > .chat-input__meta {
     display: none;
+  }
+}
+
+/* A short browser viewport can retain a fine primary pointer in automation or
+   desktop responsive mode. Keep the session rail above the capsule and make a
+   passive reconnect label observational, so neither can steal the model and
+   approval controls' hit area. */
+@media (max-width: 600px) and (max-height: 600px) {
+  .app__main .chat-dock--bottom .chat-input {
+    position: relative;
+    z-index: 3;
+    flex: 0 0 auto;
+    min-height: max-content;
+    background: var(--bg-secondary);
+  }
+
+  .app__main .chat-dock--bottom .chat-input__meta {
+    position: relative;
+    z-index: 2;
+    background: var(--bg-secondary);
+  }
+
+  .app__main .chat-dock--bottom .chat-input textarea {
+    flex: 0 0 auto !important;
+    height: 44px;
+    max-height: 44px;
+  }
+
+  .app__main .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+    pointer-events: none;
   }
 }
 
