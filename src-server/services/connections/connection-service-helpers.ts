@@ -99,6 +99,13 @@ export type ACPConnectionStatus = {
   providerRouting?: ACPProviderInfo[];
   /** False means a provider mutation outdates the retained observation. */
   providerRoutingCurrent?: boolean;
+  /**
+   * Why the most recent probe failed, verbatim from the manager status
+   * (`getACPManagerStatus`); absent when the last probe succeeded or never
+   * ran. The initialize phase's message is the engine's own observation of
+   * WHY the connection is unavailable.
+   */
+  lastError?: { message: string; phase: string };
 };
 
 export const MODEL_CAPABILITY_SET = new Set<ConnectionCapability>([

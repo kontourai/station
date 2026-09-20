@@ -438,3 +438,18 @@ The adapter always calls `connection.newSession()` when an orchestration session
 If the subprocess keeps exiting and reconnecting, check:
 - The subprocess is not crashing on startup (run it manually)
 - `maxReconnectAttempts` may be exhausted — after repeated failures the connection stops retrying and stays in `error` state. Restart Station or use `POST /acp/connections/:id/reconnect` to trigger a fresh start.
+
+### When delegation reports an unavailable ACP connection
+
+A discovered model catalogue does not establish that an ACP engine can accept
+work. If `station delegate targets --json` reports an unavailable engine, inspect
+its current handshake result with `station acp connections list --json`. Retry
+initialization with `station acp connections reconnect <connection-id>` after
+addressing the reported failure. A failed reconnect returns an explicit error;
+its bounded diagnostic describes the latest attempt. A missing connection
+returns not-found.
+
+OpenCode's own model listing and Station's ACP model listing are different
+observations. Station obtains model options through its ACP connection. An
+initialization timeout can therefore leave Station's model list empty even when
+`opencode models` works. Do not treat that listing as a readiness override.

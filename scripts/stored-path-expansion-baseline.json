@@ -351,9 +351,9 @@
       "reason": "Deliberately exact comparison of existing and requested local configuration for unchanged attachment reuse. It does not access the filesystem. Expanding here would silently accept a different authored configuration; the tilde retry regression requires that spelling change to remain a conflict."
     },
     {
-      "entry": "src-server/services/projects/project-session-directory.ts :: workingDirectory :: !project.workingDirectory &&",
+      "entry": "src-server/services/projects/project-resource-resolver.ts :: workingDirectory :: !project.workingDirectory",
       "category": 1,
-      "reason": "Presence-only classification of a directory-less organizational Project; no path is used here. ProjectResourceResolver expands and verifies all paths before returning a bound result."
+      "reason": "Presence-only classification of a directory-less organizational Project; no path is used here. This row moved with the classification from project-session-directory.ts into ProjectResourceResolver.resolveProjectExecutionRoot(), while all paths still expand and verify before a bound result is returned."
     },
     {
       "entry": "src-server/routes/projects/project-layout-admission.ts :: workingDirectory :: const supplied = layout.config?.workingDirectory;",
