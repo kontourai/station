@@ -388,7 +388,7 @@ const VERBS: Record<string, VerbSpec> = {
       'station environment offer [--tailscale] [--tailscale-serve-port=<port>]',
       'station environment access request --api-base=<url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]',
       'station environment access list [--api-base=<loopback-url>|--station=<name>]',
-      'station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person] [--api-base=<loopback-url>|--station=<name>]',
+      'station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]',
       'station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]',
       'station environment hosts',
       'station environment list',
