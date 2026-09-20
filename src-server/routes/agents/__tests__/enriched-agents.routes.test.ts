@@ -5,6 +5,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
@@ -18,6 +19,8 @@ import {
   AgentService,
   runtimeStationEngineExecution,
 } from '../../../services/agents/agent-service.js';
+import { deriveConnectionReadinessEvidence } from '../../../services/connections/connection-readiness-evidence.js';
+import type { StoredConnectionSmokeResult } from '../../../services/connections/connection-smoke-evidence-store.js';
 import {
   CATALOG_REFRESHING_REASON,
   createEnrichedAgentRoutes,
@@ -75,6 +78,35 @@ function setup(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
   return { app: createEnrichedAgentRoutes(deps as any), deps };
+}
+
+/** An ACP agent connection with a live capability catalog. */
+function acpAgentConnection(
+  overrides: Partial<AgentConnectionView> = {},
+): AgentConnectionView {
+  return {
+    id: engineConnectionId('opencode'),
+    kind: 'agent',
+    type: 'acp',
+    name: 'OpenCode',
+    enabled: true,
+    capabilities: ['agent-runtime'],
+    config: { engineId: 'acp' },
+    status: 'ready',
+    prerequisites: [],
+    runtimeCatalog: {
+      source: 'live',
+      fetchedAt: '2026-09-20T11:00:00.000Z',
+      models: [],
+      builtInModels: [],
+    },
+    ...overrides,
+    setup: overrides.setup ?? {
+      state: 'ready',
+      detected: true,
+      configured: false,
+    },
+  };
 }
 
 describe('registry-backed enriched Agent routes', () => {
@@ -939,6 +971,145 @@ describe('registry-backed enriched Agent routes', () => {
     );
     expect(summary.stateReason).toBe(
       'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+    );
+  });
+
+  // The level alone cannot tell a failure summary from an observation
+  // summary: a fresh failed smoke keeps `catalog-ready` (capability freshness
+  // is live), so the refusal must carry the smoke's own reason, not the
+  // generic proof sentence. Runs the REAL evidence derivation.
+  test('a fresh failed smoke at catalog-ready keeps its failure summary verbatim', () => {
+    const connection = acpAgentConnection();
+    const smoke: StoredConnectionSmokeResult = {
+      evidenceVersion: 2,
+      connectionId: connection.id,
+      configurationFingerprint: 'a'.repeat(64),
+      status: 'failed',
+      testedAt: '2026-09-20T11:59:00.000Z',
+      freshUntil: '2026-09-21T11:59:00.000Z',
+      provider: 'opencode',
+      durationMs: 1200,
+      reasonCode: 'turn-failed',
+      reason: 'The engine exited before producing a turn.',
+      action: 'Check the engine logs, then smoke it again.',
+      turnLimit: 1,
+    };
+    const evidence = deriveConnectionReadinessEvidence(
+      connection,
+      smoke,
+      new Date('2026-09-20T12:00:00.000Z'),
+    );
+    expect(evidence.level).toBe('catalog-ready');
+    expect(evidence.summary).toBe('The engine exited before producing a turn.');
+    const summary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: evidence,
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.summaryNamesFailure).toBe(true);
+    const refusal = externalEngineUnavailable(
+      summary.id,
+      new Map([[summary.id, summary]]),
+    );
+    expect(refusal.reason).toBe('The engine exited before producing a turn.');
+    expect(refusal.fix).toEqual({
+      kind: 'connection-broken',
+      target: connection.id,
+    });
+  });
+
+  // Same class, check receipts: `unreachable` inside its grace window and
+  // `catalog-unavailable` both keep `prerequisite-ready`, and both summaries
+  // name a failure — they must not be replaced by the proof sentence.
+  test('unreachable and catalog-unavailable receipts keep their summaries verbatim', () => {
+    const connection = acpAgentConnection({
+      runtimeCatalog: { source: 'none', models: [], builtInModels: [] },
+    });
+    const unreachable = deriveConnectionReadinessEvidence(
+      connection,
+      null,
+      new Date('2026-09-20T12:00:00.000Z'),
+      {
+        status: 'unreachable',
+        checkedAt: '2026-09-20T11:59:00.000Z',
+        retrying: true,
+        reason: 'getaddrinfo EAI_AGAIN catalog.example.invalid',
+      },
+    );
+    expect(unreachable.level).toBe('prerequisite-ready');
+    const summary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: unreachable,
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.summaryNamesFailure).toBe(true);
+    const refusal = externalEngineUnavailable(
+      summary.id,
+      new Map([[summary.id, summary]]),
+    );
+    expect(refusal.reason).toBe(
+      'getaddrinfo EAI_AGAIN catalog.example.invalid',
+    );
+
+    const catalogMissing = deriveConnectionReadinessEvidence(
+      connection,
+      null,
+      new Date('2026-09-20T12:00:00.000Z'),
+      {
+        status: 'catalog-unavailable',
+        checkedAt: '2026-09-20T11:59:00.000Z',
+        reason: 'Model catalog request failed with HTTP 404.',
+        source: 'catalog-discovery',
+      },
+    );
+    expect(catalogMissing.level).toBe('prerequisite-ready');
+    const missingSummary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: catalogMissing,
+      parseEngineId: (value) => value as never,
+    });
+    const missingRefusal = externalEngineUnavailable(
+      missingSummary.id,
+      new Map([[missingSummary.id, missingSummary]]),
+    );
+    expect(missingRefusal.reason).toBe(
+      'Model catalog request failed with HTTP 404.',
+    );
+  });
+
+  // Baseline: the original defect shape — an ACP initialize timeout with a
+  // live catalog — must still refuse with the probe's actual observation and
+  // the reconnect action, never the positive summary.
+  test('an ACP initialize timeout still refuses with the probe observation', () => {
+    const probeFailure =
+      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.';
+    const connection = acpAgentConnection({
+      status: 'degraded',
+      config: { engineId: 'acp', readinessReason: probeFailure },
+    });
+    const evidence = deriveConnectionReadinessEvidence(
+      connection,
+      null,
+      new Date('2026-09-20T12:00:00.000Z'),
+    );
+    expect(evidence.level).toBe('catalog-ready');
+    const summary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: evidence,
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.summaryNamesFailure).toBe(false);
+    const refusal = externalEngineUnavailable(
+      summary.id,
+      new Map([[summary.id, summary]]),
+    );
+    expect(refusal.reason).toContain(
+      'has not yet proved it can complete a chat turn',
+    );
+    expect(refusal.reason).toContain(probeFailure);
+    expect(refusal.reason).toContain('station acp connections reconnect');
+    expect(refusal.reason).not.toContain(
+      'A live model or capability catalog is available',
     );
   });
 

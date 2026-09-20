@@ -14,10 +14,15 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
-import type { ConnectionEvidenceLevel } from '@kontourai/station-contracts/tool';
+import type {
+  ConnectionCheckEvidence,
+  ConnectionEvidenceLevel,
+  ConnectionSmokeEvidence,
+} from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { selectEngineAgentAdoption } from '../../domain/agent-registry.js';
 import type { AgentMetadata } from '../../services/agents/agent-service.js';
+import { evidenceSummaryNamesFailure } from '../../services/connections/connection-readiness-evidence.js';
 import { sessionAgentStartUnavailableReason } from '../../services/orchestration/session-agent-resolution.js';
 import type { Logger } from '../../utils/logger.js';
 import { sleep } from '../../utils/sleep.js';
@@ -35,11 +40,7 @@ export interface RuntimeConnectionSummary {
   defaultModel?: string;
   engineId?: EngineId;
   readinessReason?: string;
-  /**
-   * The readiness evidence's level, projected alongside `readinessReason` so
-   * a consumer can tell a summary that names a failure (a refused check) from
-   * a proven-nothing level's summary of what HAS been observed.
-   */
+  /** The readiness evidence's level; the failure distinction is `summaryNamesFailure`. */
   readinessLevel?: ConnectionEvidenceLevel;
   /**
    * The connection's own observed-state reason (`config.readinessReason`):
@@ -48,6 +49,13 @@ export interface RuntimeConnectionSummary {
    * summary, which states the strongest proof the connection HAS earned.
    */
   stateReason?: string;
+  /**
+   * True when the evidence summary reports a failed smoke or check, rather
+   * than the level's own observation sentence. Derived from the typed
+   * evidence, since a level alone cannot tell the two apart. Producers that
+   * do not project it get the level-only refusal decision.
+   */
+  summaryNamesFailure?: boolean;
 }
 
 type UnavailableFix = NonNullable<EnrichedAgentProjection['unavailableFix']>;
@@ -70,7 +78,12 @@ export function runtimeConnectionSummary(connection: {
   enabled: boolean;
   status: string;
   config: Record<string, unknown>;
-  readinessEvidence?: { summary?: string; level?: ConnectionEvidenceLevel };
+  readinessEvidence?: {
+    summary?: string;
+    level?: ConnectionEvidenceLevel;
+    smoke?: Pick<ConnectionSmokeEvidence, 'status' | 'freshness'>;
+    check?: Pick<ConnectionCheckEvidence, 'status'> | null;
+  };
   parseEngineId: (value: unknown) => EngineId | undefined;
 }): RuntimeConnectionSummary {
   return {
@@ -92,6 +105,9 @@ export function runtimeConnectionSummary(connection: {
         ? connection.config.readinessReason
         : undefined),
     readinessLevel: connection.readinessEvidence?.level,
+    summaryNamesFailure: evidenceSummaryNamesFailure(
+      connection.readinessEvidence ?? {},
+    ),
     stateReason:
       typeof connection.config.readinessReason === 'string' &&
       connection.config.readinessReason.trim()
@@ -154,14 +170,9 @@ export function isHonestlyAvailableConnectedAgent(
 }
 
 /**
- * A proven-nothing evidence level's summary states what HAS been observed (a
- * live model catalog exists, required prerequisites are satisfied) — never
- * what is missing. Quoted as an unavailability reason it read as a
- * contradiction: a live Station refused every `station delegate` dispatch to
- * opencode with "Error: A live model or capability catalog is available."
- * because the ACP connection sat at `catalog-ready` evidence while its
- * initialize handshake had never succeeded. These levels are exactly the two
- * whose summary cannot name a failure.
+ * The two evidence levels whose summary states what has been observed, never
+ * a failure — quoting it as an unavailability reason reads as a contradiction
+ * ("Error: A live model or capability catalog is available.").
  */
 function isProvenNothingEvidenceLevel(
   level: ConnectionEvidenceLevel | undefined,
@@ -170,13 +181,11 @@ function isProvenNothingEvidenceLevel(
 }
 
 /**
- * The honest refusal for a connection whose evidence says nothing has been
- * proven yet: name the missing proof, carry the engine's own observed-state
- * reason (an ACP probe's actual initialize failure, say), and give the
- * supported action. For a command-backed ACP engine the first action is the
- * free handshake retry — `station acp connections reconnect <id>` — because
- * its readiness gate is the probe's `available` observation, which a billable
- * smoke does not flip. Every other engine keeps the generic proof action.
+ * The refusal for a connection whose evidence has not proven a chat turn:
+ * name the missing proof, the engine's own observation, and the supported
+ * action — for an ACP engine the free handshake retry (`station acp
+ * connections reconnect <id>`), since a billable smoke does not flip its
+ * probe gate.
  */
 function unprovenEngineRefusal(connection: RuntimeConnectionSummary): string {
   const engine = connection.name?.trim() || 'This agent\u2019s engine';
@@ -223,14 +232,15 @@ export function externalEngineUnavailable(
   }
   if (connection.readinessReason) {
     return {
-      // A proven-nothing evidence summary is not a refusal; refuse with the
-      // missing proof and the engine's actual observation instead. A summary
-      // that DOES name a failure (a refused check, a failed smoke) keeps
-      // travelling verbatim — that is the one case where the evidence
-      // summary is itself the reason the agent is unavailable.
-      reason: isProvenNothingEvidenceLevel(connection.readinessLevel)
-        ? unprovenEngineRefusal(connection)
-        : connection.readinessReason,
+      // Replace only a summary that states what the level has observed. A
+      // summary naming a failed smoke or check IS the reason; it travels
+      // verbatim, decided by typed evidence — a level alone cannot tell the
+      // two apart (a fresh failed smoke keeps catalog-ready).
+      reason:
+        isProvenNothingEvidenceLevel(connection.readinessLevel) &&
+        !connection.summaryNamesFailure
+          ? unprovenEngineRefusal(connection)
+          : connection.readinessReason,
       fix: {
         kind:
           connection.status === 'missing_prerequisites'
