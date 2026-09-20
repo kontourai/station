@@ -76,15 +76,20 @@ export class SelfHostedBrokerConnector {
     });
   }
   async #dispose(result: Answer) {
-    await Promise.race([
-      Promise.resolve().then(() => result.dispose()),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error('broker_connector_cleanup_timeout')),
-          2_000,
-        ),
-      ),
-    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve().then(() => result.dispose()),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('broker_connector_cleanup_timeout')),
+            2_000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
   async poll(signal: AbortSignal) {
     return this.#run(signal, async (currentSignal) => {
