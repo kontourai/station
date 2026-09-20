@@ -10,6 +10,7 @@ import {
   parseComposerSessionReferences,
   reconcileComposerDisplay,
   sessionReferenceBlockReason,
+  sessionReferenceToken,
 } from '../composer-mentions';
 
 describe('composer file mentions', () => {
@@ -262,6 +263,34 @@ describe('composer file mentions', () => {
     expect(parseComposerMentions(edited)).toHaveLength(0);
     expect(parseComposerSessionReferences(edited)).toEqual([
       expect.objectContaining({ conversationId: 'earlier' }),
+    ]);
+
+    const referenceFirst = `${sessionReferenceToken({
+      label: 'First reference',
+      conversationId: 'first',
+      authority: 'authority-1',
+    })} ${file}`;
+    expect(composerDisplayValue(referenceFirst)).toBe(
+      '@First reference @file.ts ',
+    );
+    expect(parseComposerMentions(referenceFirst)[0]).toEqual(
+      expect.objectContaining({ displayStart: 17, displayEnd: 25 }),
+    );
+
+    const twoReferences = appendComposerSessionReference(referenceFirst, {
+      label: 'Second reference',
+      conversationId: 'second',
+      authority: 'authority-1',
+    });
+    const withoutFirst = reconcileComposerDisplay(
+      twoReferences,
+      composerDisplayValue(twoReferences).replace('@First reference ', ''),
+    );
+    expect(parseComposerSessionReferences(withoutFirst)).toEqual([
+      expect.objectContaining({ conversationId: 'second' }),
+    ]);
+    expect(parseComposerMentions(withoutFirst)).toEqual([
+      expect.objectContaining({ path: 'file.ts' }),
     ]);
   });
 });

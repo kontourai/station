@@ -108,7 +108,10 @@ vi.mock('../hooks/useActiveChatSessions', async () => {
   };
 });
 
-import { mentionToken } from '../components/chat/composer-mentions';
+import {
+  mentionToken,
+  sessionReferenceToken,
+} from '../components/chat/composer-mentions';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { useChatInput } from '../hooks/useChatInput';
@@ -289,6 +292,34 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
       undefined,
       undefined,
       undefined,
+    );
+  });
+
+  test('expands a reference-only draft at the actual send boundary', async () => {
+    const hook = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+          mentionRequestScope: {
+            apiBase: 'http://station.test',
+            authorityKey: 'owner',
+            isCurrent: () => true,
+          },
+          mentionAuthority: 'station-stable',
+        }),
+      { wrapper },
+    );
+    const reference = sessionReferenceToken({
+      label: 'Earlier work',
+      conversationId: 'conversation-a',
+      authority: 'station-stable',
+    });
+    await act(() => hook.result.current.handleSend(reference));
+    expect(sendMessageMock.mock.calls[0]?.[3]).toBe(
+      '[Earlier work](/activity?session=conversation-a)',
     );
   });
 

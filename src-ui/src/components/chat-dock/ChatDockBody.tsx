@@ -285,6 +285,9 @@ export function ChatDockBody({
     : null;
   const sessionReferenceInventory = useConversationInventoryQuery({
     enabled: !!mentionAuthority,
+    apiBase: mentionRequestScope?.apiBase,
+    requestScope: mentionRequestScope,
+    staleTime: 0,
   });
   const { data: acpConnections = [] } = useACPConnections();
   const advertisedAcpSession = useMemo(
@@ -1337,15 +1340,32 @@ export function ChatDockBody({
             workingDirectory={workingDirectory}
             mentionRequestScope={mentionRequestScope}
             mentionAuthority={mentionAuthority}
-            sessionReferenceCandidates={(
-              sessionReferenceInventory.data ?? []
-            ).map((conversation) => ({
-              id: conversation.id,
-              title: conversation.title,
-              ...(conversation.projectSlug
-                ? { projectSlug: conversation.projectSlug }
-                : {}),
-            }))}
+            sessionReferenceCandidates={
+              mentionRequestScope?.isCurrent() &&
+              sessionReferenceInventory.status === 'success'
+                ? (sessionReferenceInventory.data ?? [])
+                    .map((conversation) =>
+                      conversation.referenceEligibility?.eligible
+                        ? {
+                            id: conversation.id,
+                            title: conversation.title,
+                            ...(conversation.projectSlug
+                              ? { projectSlug: conversation.projectSlug }
+                              : {}),
+                          }
+                        : null,
+                    )
+                    .filter(
+                      (
+                        candidate,
+                      ): candidate is {
+                        id: string;
+                        title: string;
+                        projectSlug?: string;
+                      } => candidate !== null,
+                    )
+                : []
+            }
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
             disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}

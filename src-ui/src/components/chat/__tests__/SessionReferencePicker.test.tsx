@@ -20,10 +20,8 @@ describe('SessionReferencePicker', () => {
         authority="authority-1"
         isCurrent={() => true}
         onChange={onChange}
+        onClose={vi.fn()}
       />,
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Reference a conversation' }),
     );
     fireEvent.click(screen.getByRole('option', { name: /Earlier work/ }));
     const persisted = onChange.mock.calls[0]?.[0] as string;
@@ -41,10 +39,8 @@ describe('SessionReferencePicker', () => {
         authority="authority-1"
         isCurrent={() => true}
         onChange={onChange}
+        onClose={vi.fn()}
       />,
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Reference a conversation' }),
     );
     rerender(
       <SessionReferencePicker
@@ -53,6 +49,7 @@ describe('SessionReferencePicker', () => {
         authority="authority-1"
         isCurrent={() => false}
         onChange={onChange}
+        onClose={vi.fn()}
       />,
     );
     const option = screen.getByRole('option', { name: /Earlier work/ });

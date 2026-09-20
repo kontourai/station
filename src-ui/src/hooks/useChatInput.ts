@@ -476,7 +476,7 @@ export function useChatInput({
         text?: string;
         error?: string;
       };
-      if (canonicalDraft.includes('@[m:')) {
+      if (canonicalDraft.includes('@[m:') || canonicalDraft.includes('@[r:')) {
         const { expandComposerMentions } = await import(
           '../components/chat/composer-mention-wire'
         );

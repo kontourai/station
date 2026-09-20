@@ -14,6 +14,7 @@ import {
   listAgentConversations,
   listConversationInventory,
 } from '../client/conversations';
+import type { ApiRequestScope } from '../client/http';
 import {
   type MutationOptions,
   PERSISTED_QUERY_GC_TIME_MS,
@@ -295,7 +296,12 @@ export async function fetchAgentConversationPage(
  */
 export async function fetchConversationInventory(
   apiBase?: string,
-  options?: { cursor?: string; limit?: number; signal?: AbortSignal },
+  options?: {
+    cursor?: string;
+    limit?: number;
+    signal?: AbortSignal;
+    requestScope?: ApiRequestScope;
+  },
 ): Promise<{
   items: ConversationListItem[];
   hasMore: boolean;
@@ -309,6 +315,7 @@ export async function fetchConversationInventory(
     limit: options?.limit ?? 100,
     ...(options?.cursor ? { cursor: options.cursor } : {}),
     ...(options?.signal ? { signal: options.signal } : {}),
+    ...(options?.requestScope ? { requestScope: options.requestScope } : {}),
   })) as {
     items: ConversationListItem[];
     hasMore: boolean;
@@ -498,17 +505,28 @@ export function useConversationsQuery(
  * consumer.
  */
 export function useConversationInventoryQuery(
-  config?: QueryConfig<ConversationListItem[]>,
+  config?: QueryConfig<ConversationListItem[]> & {
+    requestScope?: ApiRequestScope & { isCurrent: () => boolean };
+    apiBase?: string;
+  },
 ) {
   const queryClient = useQueryClient();
-  const queryKey = conversationQueries.inventory().queryKey;
+  const queryKey =
+    config?.apiBase || config?.requestScope
+      ? [
+          ...conversationQueries.inventory().queryKey,
+          config?.apiBase ?? '',
+          config?.requestScope?.authorityKey ?? '',
+        ]
+      : conversationQueries.inventory().queryKey;
   const enabled = config?.enabled ?? true;
   const query = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam, signal }) =>
-      fetchConversationInventory(undefined, {
+      fetchConversationInventory(config?.apiBase, {
         ...(typeof pageParam === 'string' ? { cursor: pageParam } : {}),
         signal,
+        ...(config?.requestScope ? { requestScope: config.requestScope } : {}),
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => (page.hasMore ? page.nextCursor : undefined),

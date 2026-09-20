@@ -22,6 +22,7 @@ export interface ChatDockMobileOverflowActions {
   onOpenConversationHistory?: () => void;
   onOpenProject: (() => void) | null;
   openProjectName: string | null;
+  inputOriginLabel?: string;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
   sessionInventory?: {

@@ -131,7 +131,9 @@ transcript into the prompt. Titles are displayed as plain text, and the link is
 generated from Station's conversation identity. A reference is available only
 while the current signed-in access can still see its source metadata. If access
 changes before send, Station refuses it instead of silently resolving it under
-the new account.
+the new account. Hosted/shared destinations do not offer conversation
+references until the server can prove that exposing the source title and link
+to that destination is permitted.
 
 ## Start Your First Task
 

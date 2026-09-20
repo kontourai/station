@@ -78,6 +78,132 @@ async function openComposer(
   return textarea;
 }
 
+test('ChatDock sends scoped file and conversation references while preserving the saved quote across reload', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await mockChatShell(page);
+  await installMockOrchestrationSse(page);
+  const threadId = 'thread-reference-dispatch';
+  const quote = {
+    version: 1,
+    origin: 'http://localhost:3000',
+    sessionId: 'source-session',
+    turnId: 'source-turn',
+    messageId: 'source-message',
+    revision: 'a'.repeat(64),
+    excerpt: 'Quoted context stays separate.',
+  };
+  await page.addInitScript(
+    ({ id, savedQuote }) => {
+      localStorage.setItem(
+        'station:chat-drafts:v1',
+        JSON.stringify({
+          sessions: {
+            [id]: { text: '', updatedAt: Date.now(), quotes: [savedQuote] },
+          },
+          portable: [],
+        }),
+      );
+    },
+    { id: threadId, savedQuote: quote },
+  );
+  await page.route('**/api/coding/files/search**', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [{ name: 'alpha.ts', path: 'src/alpha.ts', type: 'file' }],
+        scanTruncated: false,
+      }),
+    ),
+  );
+  await page.route(/\/api\/conversations(?:\?.*)?$/, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: {
+          items: [
+            {
+              id: 'earlier-conversation',
+              source: 'runtime',
+              agentSlug: 'station',
+              projectSlug: 'other-project',
+              title: 'Earlier work',
+              createdAt: '2026-09-20T00:00:00.000Z',
+              updatedAt: '2026-09-20T00:01:00.000Z',
+              messageCount: 2,
+              mutable: false,
+              answerability: { answerable: true },
+              referenceEligibility: {
+                eligible: true,
+                visibility: 'personal-private',
+              },
+            },
+          ],
+          hasMore: false,
+        },
+      }),
+    ),
+  );
+  let dispatched: Record<string, unknown> | undefined;
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill(
+      json(
+        foregroundMessageReceiptEnvelope({
+          conversationId: threadId,
+          agent: 'agent:station',
+        }),
+      ),
+    );
+  });
+  await seedActiveChats(page, [
+    {
+      sessionId: threadId,
+      conversationId: threadId,
+      agentSlug: 'station',
+      projectSlug: 'default',
+      projectName: 'Default',
+      model: 'model-selected',
+      title: 'Reference dispatch',
+      provider: 'bedrock',
+      orchestrationSessionStarted: true,
+    },
+  ]);
+  await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
+  await dismissSetupLauncher(page);
+  const composer = page.locator('textarea[placeholder*="Type a message"]');
+  await expect(
+    page.getByRole('region', { name: 'Quoted context' }),
+  ).toContainText(quote.excerpt);
+  await composer.fill('Review @alpha');
+  await expect(page.getByRole('option', { name: /alpha\.ts/ })).toBeVisible();
+  await page.getByRole('option', { name: /alpha\.ts/ }).click();
+  await page.getByRole('button', { name: 'Composer actions' }).click();
+  await page.getByRole('menuitem', { name: 'Reference conversation…' }).click();
+  await page.getByRole('option', { name: /Earlier work/ }).click();
+  await expect(composer).toHaveValue('Review @alpha.ts  @Earlier work ');
+  await page.reload();
+  await dismissSetupLauncher(page);
+  await expect(composer).toHaveValue('Review @alpha.ts  @Earlier work ');
+  await expect(
+    page.getByRole('region', { name: 'Quoted context' }),
+  ).toContainText(quote.excerpt);
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(() => dispatched).toBeTruthy();
+  const input = String(dispatched?.input ?? '');
+  expect(input).toContain('@"');
+  expect(input).toContain('src/alpha.ts');
+  expect(input).toContain(
+    '[Earlier work](/activity?session=earlier-conversation)',
+  );
+  expect(input).toContain('Quoted context stays separate.');
+  expect(input.indexOf('[Earlier work]')).toBeLessThan(
+    input.indexOf('[Quoted answer]'),
+  );
+});
+
 test('virtualizes a long real transcript while preserving reader controls on mobile', async ({
   page,
 }, testInfo) => {

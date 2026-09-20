@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../ResponsiveDialogSurface';
+import {
   appendComposerSessionReference,
   sessionReferenceBlockReason,
 } from './composer-mentions';
@@ -20,6 +24,7 @@ export function SessionReferencePicker({
   authority,
   isCurrent,
   onChange,
+  onClose,
 }: {
   value: string;
   candidates: readonly SessionReferenceCandidate[];
@@ -27,8 +32,9 @@ export function SessionReferencePicker({
   authority?: string | null;
   isCurrent?: () => boolean;
   onChange: (value: string) => void;
+  onClose: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const stage = (candidate: SessionReferenceCandidate) => {
     const reason = sessionReferenceBlockReason({
       value,
@@ -46,67 +52,79 @@ export function SessionReferencePicker({
         authority: authority!,
       }),
     );
-    setOpen(false);
+    onClose();
   };
+  const visible = candidates
+    .filter((candidate) =>
+      `${candidate.title} ${candidate.projectSlug ?? ''}`
+        .toLocaleLowerCase()
+        .includes(query.toLocaleLowerCase()),
+    )
+    .slice(0, 8);
   return (
-    <div className="session-reference-picker">
-      <button
-        type="button"
-        className="composer-actions-menu__trigger"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Reference a conversation"
+    <ResponsiveDialogSurface
+      layer="popover"
+      ariaLabel="Reference a conversation"
+      onClose={onClose}
+      historyMode="entry"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      panelClassName="composer-popover-panel"
+    >
+      <ResponsiveDialogHeader
         title="Reference a conversation"
+        closeLabel="Close conversation references"
+        onClose={onClose}
+      />
+      <input
+        aria-label="Find conversations"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Find a conversation"
         disabled={!authority || isCurrent?.() === false}
-        onClick={() => setOpen((current) => !current)}
+      />
+      <div
+        className="file-mention-picker session-reference-picker__list"
+        role="listbox"
+        aria-label="Conversations"
       >
-        <span aria-hidden="true">↗</span>
-      </button>
-      {open ? (
-        <div
-          className="file-mention-picker session-reference-picker__list"
-          role="listbox"
-          aria-label="Conversations"
-        >
-          {candidates.length === 0 ? (
-            <div className="file-mention-picker__status">
-              No conversations available
-            </div>
-          ) : null}
-          {candidates.slice(0, 100).map((candidate) => {
-            const reason = sessionReferenceBlockReason({
-              value,
-              conversationId: candidate.id,
-              activeConversationId,
-              authority,
-              isCurrent,
-            });
-            return (
-              <button
-                key={candidate.id}
-                type="button"
-                role="option"
-                aria-selected="false"
-                className="file-mention-picker__option"
-                disabled={!!reason}
-                title={reason ?? candidate.title}
-                draggable={!reason}
-                onDragStart={(event) => {
-                  if (reason) return;
-                  event.dataTransfer.setData(
-                    SESSION_REFERENCE_DRAG_TYPE,
-                    candidate.id,
-                  );
-                }}
-                onClick={() => stage(candidate)}
-              >
-                <span aria-hidden="true">↗</span>
-                <span>{candidate.title || 'Conversation'}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
+        {visible.length === 0 ? (
+          <div className="file-mention-picker__status">
+            No matching conversations
+          </div>
+        ) : null}
+        {visible.map((candidate) => {
+          const reason = sessionReferenceBlockReason({
+            value,
+            conversationId: candidate.id,
+            activeConversationId,
+            authority,
+            isCurrent,
+          });
+          return (
+            <button
+              key={candidate.id}
+              type="button"
+              role="option"
+              aria-selected="false"
+              className="file-mention-picker__option"
+              disabled={!!reason}
+              title={reason ?? candidate.title}
+              draggable={!reason}
+              onDragStart={(event) => {
+                if (reason) return;
+                event.dataTransfer.setData(
+                  SESSION_REFERENCE_DRAG_TYPE,
+                  candidate.id,
+                );
+              }}
+              onClick={() => stage(candidate)}
+            >
+              <span aria-hidden="true">↗</span>
+              <span>{candidate.title || 'Conversation'}</span>
+            </button>
+          );
+        })}
+      </div>
+    </ResponsiveDialogSurface>
   );
 }

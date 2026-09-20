@@ -27,10 +27,7 @@ type MentionIdentity = Omit<
   ComposerMention,
   'canonicalStart' | 'canonicalEnd' | 'displayStart' | 'displayEnd'
 >;
-const MENTION =
-  /@\[m:([^|\]]{1,1536})\|([^|\]]{1,12288})\|([^|\]]{1,12288})\|([^|\]]{1,12288})\|(file|directory)\]/gu;
-const SESSION_REFERENCE =
-  /@\[r:([^|\]]{1,1536})\|([^|\]]{1,1536})\|([^|\]]{0,1536})\|([^|\]]{1,12288})\]/gu;
+const COMPOSER_TOKEN = /@\[(m|r):([^\]]{1,49152})\]/gu;
 const MAX_MENTIONS = 64;
 export const MAX_SESSION_REFERENCES = 8;
 const MAX_LABEL_CHARS = 512;
@@ -53,14 +50,15 @@ function strictEncode(value: string): string {
   );
 }
 
-function decodeIdentity(match: RegExpMatchArray): MentionIdentity | null {
+function decodeMentionFields(fields: string[]): MentionIdentity | null {
   try {
+    if (fields.length !== 5) return null;
     const identity: MentionIdentity = {
-      label: decodeURIComponent(match[1]),
-      path: decodeURIComponent(match[2]),
-      workspace: decodeURIComponent(match[3]),
-      authority: decodeURIComponent(match[4]),
-      type: match[5] as MentionIdentity['type'],
+      label: decodeURIComponent(fields[0]),
+      path: decodeURIComponent(fields[1]),
+      workspace: decodeURIComponent(fields[2]),
+      authority: decodeURIComponent(fields[3]),
+      type: fields[4] as MentionIdentity['type'],
     };
     if (
       !identity.label ||
@@ -94,30 +92,51 @@ export function mentionToken(input: MentionIdentity): string {
   return `@[m:${strictEncode(input.label)}|${strictEncode(input.path)}|${strictEncode(input.workspace)}|${strictEncode(input.authority)}|${input.type}]`;
 }
 
-export function parseComposerMentions(value: string): ComposerMention[] {
-  if (!value.includes('@[m:')) return [];
-  const mentions: ComposerMention[] = [];
+function parseComposerTokens(value: string): ComposerToken[] {
+  if (!value.includes('@[m:') && !value.includes('@[r:')) return [];
+  const tokens: ComposerToken[] = [];
+  let mentionCount = 0;
+  let referenceCount = 0;
   let hiddenBefore = 0;
-  for (const match of value.matchAll(MENTION)) {
-    if (mentions.length >= MAX_MENTIONS) break;
-    const identity = decodeIdentity(match);
-    if (!identity || match.index === undefined) continue;
+  for (const match of value.matchAll(COMPOSER_TOKEN)) {
+    if (match.index === undefined) continue;
+    const fields = match[2].split('|');
+    let identity:
+      | MentionIdentity
+      | Omit<
+          ComposerSessionReference,
+          'canonicalStart' | 'canonicalEnd' | 'displayStart' | 'displayEnd'
+        >
+      | null = null;
+    if (match[1] === 'm' && mentionCount < MAX_MENTIONS) {
+      identity = decodeMentionFields(fields);
+      if (identity) mentionCount += 1;
+    } else if (match[1] === 'r' && referenceCount < MAX_SESSION_REFERENCES) {
+      try {
+        if (fields.length !== 4) continue;
+        const label = decodeURIComponent(fields[0]);
+        const conversationId = decodeURIComponent(fields[1]);
+        const projectSlug = decodeURIComponent(fields[2]) || undefined;
+        const authority = decodeURIComponent(fields[3]);
+        if (!label || !conversationId || !authority) continue;
+        identity = {
+          label: label.slice(0, MAX_LABEL_CHARS),
+          conversationId,
+          ...(projectSlug ? { projectSlug } : {}),
+          authority,
+        };
+        referenceCount += 1;
+      } catch {
+        identity = null;
+      }
+    }
+    if (!identity) continue;
     const canonicalStart = match.index;
     const canonicalEnd = canonicalStart + match[0].length;
-    const referenceHiddenBefore = rawSessionReferences(value)
-      .filter((reference) => reference.canonicalEnd <= canonicalStart)
-      .reduce(
-        (sum, reference) =>
-          sum -
-          (reference.canonicalEnd -
-            reference.canonicalStart -
-            (reference.label.length + 1)),
-        0,
-      );
-    const displayStart = canonicalStart - hiddenBefore - referenceHiddenBefore;
+    const displayStart = canonicalStart - hiddenBefore;
     const displayEnd = displayStart + identity.label.length + 1;
     hiddenBefore += match[0].length - (identity.label.length + 1);
-    mentions.push({
+    tokens.push({
       ...identity,
       canonicalStart,
       canonicalEnd,
@@ -125,81 +144,21 @@ export function parseComposerMentions(value: string): ComposerMention[] {
       displayEnd,
     });
   }
-  return mentions;
+  return tokens;
 }
 
-function rawSessionReferences(value: string): Array<{
-  label: string;
-  conversationId: string;
-  projectSlug?: string;
-  authority: string;
-  canonicalStart: number;
-  canonicalEnd: number;
-}> {
-  if (!value.includes('@[r:')) return [];
-  const raw: ReturnType<typeof rawSessionReferences> = [];
-  for (const match of value.matchAll(SESSION_REFERENCE)) {
-    if (raw.length >= MAX_SESSION_REFERENCES || match.index === undefined)
-      break;
-    try {
-      const label = decodeURIComponent(match[1]);
-      const conversationId = decodeURIComponent(match[2]);
-      const projectSlug = decodeURIComponent(match[3]) || undefined;
-      const authority = decodeURIComponent(match[4]);
-      if (!label || !conversationId || !authority) continue;
-      raw.push({
-        label: label.slice(0, MAX_LABEL_CHARS),
-        conversationId,
-        ...(projectSlug ? { projectSlug } : {}),
-        authority,
-        canonicalStart: match.index,
-        canonicalEnd: match.index + match[0].length,
-      });
-    } catch {}
-  }
-  return raw;
+export function parseComposerMentions(value: string): ComposerMention[] {
+  return parseComposerTokens(value).filter(
+    (token): token is ComposerMention => 'path' in token,
+  );
 }
 
 export function parseComposerSessionReferences(
   value: string,
 ): ComposerSessionReference[] {
-  if (!value.includes('@[r:')) return [];
-  return positionComposerTokens(
-    value,
-    rawSessionReferences(value),
-  ) as ComposerSessionReference[];
-}
-
-function positionComposerTokens<
-  T extends { canonicalStart: number; canonicalEnd: number; label: string },
->(
-  value: string,
-  selected: T[],
-): Array<T & { displayStart: number; displayEnd: number }> {
-  const all = [
-    ...parseComposerMentions(value).map((token) => ({
-      ...token,
-      marker: 'mention' as const,
-    })),
-    ...selected.map((token) => ({ ...token, marker: 'reference' as const })),
-  ].sort((a, b) => a.canonicalStart - b.canonicalStart);
-  let hiddenBefore = 0;
-  const positioned = new Map<
-    number,
-    { displayStart: number; displayEnd: number }
-  >();
-  for (const token of all) {
-    const visibleLength = token.label.length + 1;
-    const displayStart = token.canonicalStart - hiddenBefore;
-    const displayEnd = displayStart + visibleLength;
-    hiddenBefore += token.canonicalEnd - token.canonicalStart - visibleLength;
-    if (token.marker === 'reference')
-      positioned.set(token.canonicalStart, { displayStart, displayEnd });
-  }
-  return selected.map((token) => ({
-    ...token,
-    ...positioned.get(token.canonicalStart)!,
-  }));
+  return parseComposerTokens(value).filter(
+    (token): token is ComposerSessionReference => 'conversationId' in token,
+  );
 }
 
 export function sessionReferenceToken(input: {
@@ -294,67 +253,28 @@ export function reconcileComposerDisplay(
 ): string {
   if (!previous.includes('@[m:') && !previous.includes('@[r:'))
     return nextDisplay;
-  const previousDisplay = composerDisplayValue(previous);
-  let prefix = 0;
-  while (
-    prefix < previousDisplay.length &&
-    prefix < nextDisplay.length &&
-    previousDisplay[prefix] === nextDisplay[prefix]
-  )
-    prefix += 1;
-  let suffix = 0;
-  while (
-    suffix < previousDisplay.length - prefix &&
-    suffix < nextDisplay.length - prefix &&
-    previousDisplay.at(-1 - suffix) === nextDisplay.at(-1 - suffix)
-  )
-    suffix += 1;
-  const changedStart = prefix;
-  const changedEnd = previousDisplay.length - suffix;
-  if (
-    [
-      ...parseComposerMentions(previous),
-      ...parseComposerSessionReferences(previous),
-    ].some(
-      (token) =>
-        (changedStart > token.displayStart &&
-          changedStart < token.displayEnd) ||
-        (changedEnd > token.displayStart && changedEnd < token.displayEnd),
-    )
-  ) {
-    const delta = nextDisplay.length - previousDisplay.length;
-    let preserved = nextDisplay;
-    const unaffected = [
-      ...parseComposerMentions(previous),
-      ...parseComposerSessionReferences(previous),
-    ].filter(
-      (token) =>
-        token.displayEnd <= changedStart || token.displayStart >= changedEnd,
-    );
-    for (const mention of [...unaffected].reverse()) {
-      const start =
-        mention.displayStart >= changedEnd
-          ? mention.displayStart + delta
-          : mention.displayStart;
-      const end = start + mention.label.length + 1;
-      preserved =
-        preserved.slice(0, start) +
-        previous.slice(mention.canonicalStart, mention.canonicalEnd) +
-        preserved.slice(end);
-    }
-    return preserved;
+  const tokens = [
+    ...parseComposerMentions(previous),
+    ...parseComposerSessionReferences(previous),
+  ].sort((a, b) => a.displayStart - b.displayStart);
+  let searchFrom = 0;
+  const retained: Array<{ token: ComposerToken; start: number }> = [];
+  for (const token of tokens) {
+    const visible = `@${token.label.replaceAll(/\s/gu, ' ')}`;
+    const start = nextDisplay.indexOf(visible, searchFrom);
+    if (start < 0) continue;
+    retained.push({ token, start });
+    searchFrom = start + visible.length;
   }
-  const start = displayToCanonical(previous, prefix, false);
-  const end = displayToCanonical(
-    previous,
-    previousDisplay.length - suffix,
-    true,
-  );
-  return (
-    previous.slice(0, start) +
-    nextDisplay.slice(prefix, nextDisplay.length - suffix) +
-    previous.slice(end)
-  );
+  let preserved = nextDisplay;
+  for (const { token, start } of retained.reverse()) {
+    const end = start + token.label.replaceAll(/\s/gu, ' ').length + 1;
+    preserved =
+      preserved.slice(0, start) +
+      previous.slice(token.canonicalStart, token.canonicalEnd) +
+      preserved.slice(end);
+  }
+  return preserved;
 }
 
 export function composerMentionWireLength(value: string): number {

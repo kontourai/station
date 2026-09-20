@@ -364,6 +364,7 @@ export function ChatInputArea({
   onStartNewChat,
 }: ChatInputAreaProps) {
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
+  const [sessionReferencesOpen, setSessionReferencesOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<{
     start: number;
     end: number;
@@ -788,10 +789,29 @@ export function ChatInputArea({
               void selectAttachmentFiles(files);
             }}
             onDragOver={(event) => {
-              const id = event.dataTransfer.types.includes(
+              if (
+                !event.dataTransfer.types.includes(
+                  'application/x-station-conversation-reference',
+                )
+              )
+                return;
+              const conversationId = event.dataTransfer.getData(
                 'application/x-station-conversation-reference',
               );
-              if (id) event.preventDefault();
+              const candidate = sessionReferenceCandidates.find(
+                (item) => item.id === conversationId,
+              );
+              if (
+                (!conversationId || candidate) &&
+                !sessionReferenceBlockReason({
+                  value: input,
+                  conversationId: conversationId || '__dragged__',
+                  activeConversationId,
+                  authority: mentionAuthority,
+                  isCurrent: mentionRequestScope?.isCurrent,
+                })
+              )
+                event.preventDefault();
             }}
             onDrop={(event) => {
               const conversationId = event.dataTransfer.getData(
@@ -968,21 +988,15 @@ export function ChatInputArea({
           )}
         </fieldset>
         <div className="chat-controls-row">
-          {secondaryActions && <ComposerActionsMenu {...secondaryActions} />}
-          {sessionReferenceCandidates.length > 0 && (
-            <React.Suspense fallback={null}>
-              <SessionReferencePicker
-                value={input}
-                candidates={sessionReferenceCandidates}
-                activeConversationId={activeConversationId}
-                authority={mentionAuthority}
-                isCurrent={mentionRequestScope?.isCurrent}
-                onChange={(next) => {
-                  onInputChange(next);
-                  updateFromInput(next);
-                }}
-              />
-            </React.Suspense>
+          {secondaryActions && (
+            <ComposerActionsMenu
+              {...secondaryActions}
+              onOpenConversationReference={
+                mentionAuthority && sessionReferenceCandidates.length > 0
+                  ? () => setSessionReferencesOpen(true)
+                  : undefined
+              }
+            />
           )}
           <React.Suspense fallback={null}>
             <FileAttachmentInput
@@ -1163,6 +1177,22 @@ export function ChatInputArea({
             </button>
           )}
         </div>
+        {sessionReferencesOpen && (
+          <React.Suspense fallback={null}>
+            <SessionReferencePicker
+              value={input}
+              candidates={sessionReferenceCandidates}
+              activeConversationId={activeConversationId}
+              authority={mentionAuthority}
+              isCurrent={mentionRequestScope?.isCurrent}
+              onChange={(next) => {
+                onInputChange(next);
+                updateFromInput(next);
+              }}
+              onClose={() => setSessionReferencesOpen(false)}
+            />
+          </React.Suspense>
+        )}
       </div>
     </div>
   );

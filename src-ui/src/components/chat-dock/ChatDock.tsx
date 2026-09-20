@@ -1097,6 +1097,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           },
         ]
       : []),
+    ...(activeOrchestrationSession?.inputOrigin
+      ? [
+          {
+            key: 'input-origin',
+            label: `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`,
+            disabled: true,
+            onSelect: () => {},
+          },
+        ]
+      : []),
     ...(!scopedProjectSlug && sessionCodingLayout && activeSession?.projectSlug
       ? [
           {
@@ -2135,6 +2145,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 openProjectName: activeSession?.projectSlug
                   ? (sessionProjectName ?? activeSession.projectSlug)
                   : null,
+                inputOriginLabel: activeOrchestrationSession?.inputOrigin
+                  ? `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`
+                  : undefined,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
                 sessionInventory:
@@ -2188,6 +2201,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     session={activeSession}
                     agent={activeChatAgent}
                     modelLabel={activeChatModelLabel}
+                    inputOrigin={activeOrchestrationSession?.inputOrigin}
                     onClose={removeSession}
                   />
                 ) : null

@@ -29,6 +29,7 @@ export interface ComposerActionsMenuProps {
   handoffDisabledReason?: string;
   onOpenContextReset?: () => void;
   contextBoundaryStatus?: string;
+  onOpenConversationReference?: () => void;
 }
 
 /**
@@ -56,6 +57,7 @@ export function ComposerActionsMenu({
   handoffDisabledReason,
   onOpenContextReset,
   contextBoundaryStatus,
+  onOpenConversationReference,
 }: ComposerActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -119,6 +121,19 @@ export function ComposerActionsMenu({
                 >
                   Another Agent
                 </span>
+              </button>
+            )}
+            {onOpenConversationReference && (
+              <button
+                type="button"
+                role="menuitem"
+                className="composer-actions-menu__item"
+                onClick={() => {
+                  close();
+                  onOpenConversationReference();
+                }}
+              >
+                Reference conversation…
               </button>
             )}
             {onOpenContextReset && (
