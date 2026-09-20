@@ -166,6 +166,8 @@ test.describe('buffered answer delivery (#585)', () => {
       fullPage: true,
     });
     await page.setViewportSize({ width: 1280, height: 720 });
+    await openChatRegion(page);
+    await expect(transcript).toBeVisible();
 
     await emit(page, 'content.text-delta', {
       itemId: 'answer-1',
