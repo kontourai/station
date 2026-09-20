@@ -33,6 +33,12 @@ export function CheckpointRestoreButton({
     ownerRef.current = owner;
     generation.current += 1;
   }
+  useEffect(() => {
+    if (ownerRef.current !== owner) return;
+    setPreview(undefined);
+    setError(undefined);
+    setBusy(false);
+  }, [owner]);
   useEffect(
     () => () => {
       generation.current += 1;
@@ -40,7 +46,7 @@ export function CheckpointRestoreButton({
     [],
   );
   const load = async () => {
-    if (!authority || !authority.isCurrent()) return;
+    if (!authority?.isCurrent()) return;
     setBusy(true);
     setError(undefined);
     const operation = ++generation.current;
@@ -54,9 +60,11 @@ export function CheckpointRestoreButton({
       if (operation === generation.current && authority.isCurrent())
         setPreview(result);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      if (operation === generation.current && authority.isCurrent())
+        setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setBusy(false);
+      if (operation === generation.current && authority.isCurrent())
+        setBusy(false);
     }
   };
   return (
@@ -94,31 +102,51 @@ export function CheckpointRestoreButton({
                 className="button button--danger"
                 disabled={busy}
                 onClick={() => {
+                  const operation = ++generation.current;
+                  const capturedPreview = preview;
+                  const capturedAuthority = authority!;
                   setBusy(true);
                   void confirmCheckpointRestore(
                     apiBase,
                     sessionId,
                     turnId,
-                    preview,
-                    authority!,
+                    capturedPreview,
+                    capturedAuthority,
                   )
                     .then(() => {
-                      if (!authority?.isCurrent()) return;
-                      void queryClient.invalidateQueries({
-                        queryKey: ['git-status', preview.repoRoot],
-                      });
-                      void queryClient.invalidateQueries({
-                        queryKey: ['git-log', preview.repoRoot],
-                      });
+                      if (
+                        operation !== generation.current ||
+                        !capturedAuthority.isCurrent()
+                      )
+                        return;
+                      for (const queryKey of [
+                        ['coding-files', capturedPreview.repoRoot],
+                        ['coding-diff', capturedPreview.repoRoot],
+                        ['git-status', capturedPreview.repoRoot],
+                        ['git-log', capturedPreview.repoRoot],
+                      ])
+                        void queryClient.invalidateQueries({ queryKey });
                       setPreview(undefined);
                       showToast('Workspace restored.');
                     })
-                    .catch((cause: unknown) =>
-                      setError(
-                        cause instanceof Error ? cause.message : String(cause),
-                      ),
-                    )
-                    .finally(() => setBusy(false));
+                    .catch((cause: unknown) => {
+                      if (
+                        operation === generation.current &&
+                        capturedAuthority.isCurrent()
+                      )
+                        setError(
+                          cause instanceof Error
+                            ? cause.message
+                            : String(cause),
+                        );
+                    })
+                    .finally(() => {
+                      if (
+                        operation === generation.current &&
+                        capturedAuthority.isCurrent()
+                      )
+                        setBusy(false);
+                    });
                 }}
               >
                 Restore workspace

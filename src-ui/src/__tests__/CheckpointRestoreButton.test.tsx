@@ -4,10 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
-const { preview, confirm, toast } = vi.hoisted(() => ({
+const { preview, confirm, toast, host } = vi.hoisted(() => ({
   preview: vi.fn(),
   confirm: vi.fn(),
   toast: vi.fn(),
+  host: {
+    authorityKey: 'authority-1',
+    currentAuthorityKey: 'authority-1',
+  },
 }));
 vi.mock('@kontourai/station-sdk/client', () => ({
   previewCheckpointRestore: preview,
@@ -17,8 +21,8 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station.test',
-    authorityKey: 'authority-1',
-    isCurrent: () => true,
+    authorityKey: host.authorityKey,
+    isCurrent: () => host.authorityKey === host.currentAuthorityKey,
   }),
 }));
 vi.mock('../contexts/ToastContext', () => ({
@@ -56,6 +60,8 @@ beforeEach(() => {
   preview.mockReset().mockResolvedValue(result);
   confirm.mockReset().mockResolvedValue({ restored: true });
   toast.mockReset();
+  host.authorityKey = 'authority-1';
+  host.currentAuthorityKey = 'authority-1';
 });
 
 test('previews current workspace effects and cancellation performs no restore', async () => {
@@ -104,11 +110,18 @@ test('refreshes only captured workspace query families after confirmed success',
   fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(invalidate).toHaveBeenCalledWith({
+    queryKey: ['coding-files', '/repo'],
+  });
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: ['coding-diff', '/repo'],
+  });
+  expect(invalidate).toHaveBeenCalledWith({
     queryKey: ['git-status', '/repo'],
   });
   expect(invalidate).toHaveBeenCalledWith({
     queryKey: ['git-log', '/repo'],
   });
+  expect(invalidate).toHaveBeenCalledTimes(4);
 });
 
 test('does not publish a late preview after the owning turn changes', async () => {
@@ -130,5 +143,55 @@ test('does not publish a late preview after the owning turn changes', async () =
   );
   finish(result);
   await Promise.resolve();
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+});
+
+test('closes an open preview when its session owner changes', async () => {
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <CheckpointRestoreButton sessionId="session-1" turnId="turn-1" />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Restore workspace to here…' }),
+  );
+  await screen.findByRole('alertdialog');
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <CheckpointRestoreButton sessionId="session-2" turnId="turn-2" />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+});
+
+test('a late confirmation from an expired authority cannot invalidate or reopen UI', async () => {
+  let finish!: () => void;
+  confirm.mockReturnValueOnce(
+    new Promise<void>((resolve) => (finish = resolve)),
+  );
+  const client = new QueryClient();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  const view = render(
+    <QueryClientProvider client={client}>
+      <CheckpointRestoreButton sessionId="session-1" turnId="turn-1" />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Restore workspace to here…' }),
+  );
+  await screen.findByRole('alertdialog');
+  fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
+  host.currentAuthorityKey = 'authority-2';
+  host.authorityKey = 'authority-2';
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <CheckpointRestoreButton sessionId="session-2" turnId="turn-2" />
+    </QueryClientProvider>,
+  );
+  finish();
+  await Promise.resolve();
+  expect(invalidate).not.toHaveBeenCalled();
+  expect(toast).not.toHaveBeenCalled();
   expect(screen.queryByRole('alertdialog')).toBeNull();
 });

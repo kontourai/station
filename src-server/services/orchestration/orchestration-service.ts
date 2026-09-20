@@ -5247,20 +5247,26 @@ export class OrchestrationService {
                       if (earlyOriginEvent) {
                         this.projectAndPublishEvent(earlyOriginEvent);
                       }
-                      const settled = boundary.accepted(
-                        accepted.turnId,
-                        new Date().toISOString(),
-                      );
-                      if (settled.kind !== 'applied') {
-                        claimOutcome = 'retain';
-                        throw new SessionTurnStartIndeterminateError();
-                      }
                       if (
                         !this.sessionExecutionCoordinator.markTurnAccepted(
                           turnInput.threadId,
                           accepted.turnId,
                         )
                       ) {
+                        const settled = boundary.terminalObserved(
+                          accepted.turnId,
+                        );
+                        if (settled.kind !== 'applied') {
+                          claimOutcome = 'retain';
+                          throw new SessionTurnStartIndeterminateError();
+                        }
+                        return accepted;
+                      }
+                      const settled = boundary.accepted(
+                        accepted.turnId,
+                        new Date().toISOString(),
+                      );
+                      if (settled.kind !== 'applied') {
                         claimOutcome = 'retain';
                         throw new SessionTurnStartIndeterminateError();
                       }
