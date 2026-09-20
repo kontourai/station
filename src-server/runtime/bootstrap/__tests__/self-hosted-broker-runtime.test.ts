@@ -57,4 +57,16 @@ describe('self-hosted broker runtime lifecycle', () => {
     await expect(runtime.start()).rejects.toThrow('registration failed');
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
+  test('records background poll failure and still withdraws before reporting it', async () => {
+    const f = fixture();
+    f.connector.poll.mockRejectedValueOnce(new Error('poll failed'));
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      pollMs: 1_000,
+    });
+    await runtime.start();
+    await vi.waitFor(() => expect(f.connector.poll).toHaveBeenCalled());
+    await expect(runtime.shutdown()).rejects.toThrow('poll failed');
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
 });

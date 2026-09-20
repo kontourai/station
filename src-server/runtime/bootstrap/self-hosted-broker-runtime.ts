@@ -20,6 +20,7 @@ export class SelfHostedBrokerRuntime {
   #start: Promise<void> | undefined;
   #shutdown: Promise<void> | undefined;
   #loop: Promise<void> | undefined;
+  #failure: unknown;
   constructor(private readonly options: SelfHostedBrokerRuntimeOptions) {
     if (
       new URL(options.origin).origin !== options.origin ||
@@ -36,7 +37,10 @@ export class SelfHostedBrokerRuntime {
     return (this.#start ??= (async () => {
       try {
         await this.options.connector.register(this.#abort.signal);
-        this.#loop = this.#run();
+        this.#loop = this.#run().catch((error) => {
+          this.#failure = error;
+          this.#abort.abort(error);
+        });
       } catch (error) {
         this.#abort.abort(error);
         await this.options.connector
@@ -47,8 +51,8 @@ export class SelfHostedBrokerRuntime {
     })());
   }
   async #run() {
-    let heartbeat = 0,
-      renew = 0,
+    let heartbeat = Date.now() + this.options.heartbeatMs,
+      renew = Date.now() + this.options.renewMs,
       poll = 0;
     while (
       !this.#abort.signal.aborted &&
@@ -91,6 +95,7 @@ export class SelfHostedBrokerRuntime {
       this.#abort.abort(new Error('broker_runtime_shutdown'));
       await this.#loop?.catch(() => {});
       await this.options.connector.withdraw(AbortSignal.timeout(5_000));
+      if (this.#failure) throw this.#failure;
     })());
   }
 }
