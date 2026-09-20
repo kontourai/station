@@ -2086,6 +2086,19 @@ for (const viewport of [
       composerBox!.y,
     );
     if (viewport.width === 320) {
+      const readyEmptyState = page.locator(
+        '.chat-messages--empty .empty-state:not([data-testid="chat-empty-state-unconfigured"])',
+      );
+      const readyHint = readyEmptyState.locator('h3 + p');
+      await expect(readyHint).toHaveText(
+        'Type a message below to chat with Claude',
+      );
+      await expect(readyEmptyState.locator('p:last-child')).toBeHidden();
+      expect(
+        await readyHint.evaluate(
+          (hint) => hint.scrollWidth <= hint.clientWidth,
+        ),
+      ).toBe(true);
       const screenshotName = 'short-composer-reconnect-visible.png';
       await page.screenshot({
         path: testInfo.outputPath(screenshotName),

@@ -9548,6 +9548,35 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    passive reconnect label observational, so neither can steal the model and
    approval controls' hit area. */
 @media (max-width: 600px) and (max-height: 600px) {
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"]) {
+    flex: 0 0 auto;
+    min-height: 0;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > h3,
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > p:last-child {
+    display: none;
+  }
+
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > h3
+    + p {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--text-sm);
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .app__main .chat-dock--bottom .chat-input {
     position: relative;
     z-index: 3;
