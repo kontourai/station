@@ -140,4 +140,37 @@ describe('ProjectSharedTaskService', () => {
     expect(h.store.admission('task-1')).toBeUndefined();
     h.db.close();
   });
+  test('stale entries do not hide valid neighbors and unshare works after Task deletion', async () => {
+    const h = fixture();
+    h.tasks.set('task-2', task({ id: 'task-2', title: 'Neighbor' }));
+    const stale = await h.service.share(scope, 'task-1', h.authority);
+    await h.service.share(scope, 'task-2', h.authority);
+    h.tasks.delete('task-1');
+    expect(
+      (await h.service.list(scope, h.authority)).map((item) => item.task.id),
+    ).toEqual(['task-2']);
+    await expect(
+      h.service.unshare(scope, 'task-1', stale.shareId, h.authority),
+    ).resolves.toEqual({ unshared: true });
+    h.db.close();
+  });
+  test('unshare and reshare during list recheck cannot authorize the old summary', async () => {
+    const h = fixture();
+    const first = await h.service.share(scope, 'task-1', h.authority);
+    let checks = 0;
+    h.authority.requireProjectRead.mockClear();
+    h.authority.requireProjectRead.mockImplementation(async () => {
+      checks += 1;
+      if (checks !== 2) return;
+      h.store.unshare('task-1', first.shareId);
+      h.store.share({
+        scope,
+        taskId: 'task-1',
+        taskCreatedAt: task().createdAt,
+        sharedBy: 'human:owner',
+      });
+    });
+    expect(await h.service.list(scope, h.authority)).toEqual([]);
+    h.db.close();
+  });
 });

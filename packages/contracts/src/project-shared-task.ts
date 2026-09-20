@@ -33,7 +33,7 @@ export type ProjectSharedTaskHistory =
   | { kind: 'gap' | 'stale' | 'invalid-cursor' | 'not-found' | 'unavailable' };
 export type ProjectSharedTaskDocument =
   | {
-      kind: 'snapshot' | 'delta';
+      kind: 'snapshot';
       project: { id: string; slug: string };
       task: { id: string; createdAt: string };
       revision: string;

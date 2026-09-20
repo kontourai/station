@@ -25,6 +25,7 @@ export class ProjectSharedTaskStore {
     );
   }
   share(input: Omit<ProjectSharedTaskAdmission, 'shareId' | 'sharedAt'>) {
+    validateInput(input);
     const existing = this.admission(input.taskId);
     if (existing) {
       if (sameAdmission(existing, input)) return existing;
@@ -36,6 +37,11 @@ export class ProjectSharedTaskStore {
       sharedAt: new Date(this.now()).toISOString(),
     };
     try {
+      const count = this.db
+        .prepare('SELECT COUNT(*) AS count FROM project_shared_tasks')
+        .get()?.count;
+      if (typeof count !== 'number' || count >= 512)
+        throw new ProjectSharedTaskRefusal('unavailable');
       this.db
         .prepare('INSERT INTO project_shared_tasks VALUES (?,?,?,?,?,?,?,?,?)')
         .run(
@@ -69,10 +75,10 @@ export class ProjectSharedTaskStore {
     return row ? parse(row) : undefined;
   }
   list(scope: ProjectMembershipScope): ProjectSharedTaskAdmission[] {
-    return [
+    const rows = [
       ...this.db
         .prepare(
-          'SELECT * FROM project_shared_tasks WHERE station_id=? AND local_project_id=? AND local_project_slug=? AND portable_project_id=? ORDER BY task_id',
+          'SELECT * FROM project_shared_tasks WHERE station_id=? AND local_project_id=? AND local_project_slug=? AND portable_project_id=? ORDER BY task_id LIMIT 513',
         )
         .iterate(
           scope.stationId,
@@ -80,7 +86,12 @@ export class ProjectSharedTaskStore {
           scope.localProjectSlug,
           scope.portableProjectId,
         ),
-    ].map((row) => parse(row as Record<string, unknown>));
+    ];
+    if (rows.length > 512) throw new ProjectSharedTaskRefusal('unavailable');
+    const parsed = rows.map((row) => parse(row as Record<string, unknown>));
+    if (Buffer.byteLength(JSON.stringify(parsed)) > 1024 * 1024)
+      throw new ProjectSharedTaskRefusal('unavailable');
+    return parsed;
   }
 }
 function parse(row: Record<string, unknown>): ProjectSharedTaskAdmission {
@@ -95,7 +106,7 @@ function parse(row: Record<string, unknown>): ProjectSharedTaskAdmission {
     'shared_at',
     'shared_by',
   ];
-  if (keys.some((key) => typeof row[key] !== 'string' || !(row[key] as string)))
+  if (keys.some((key) => !bounded(row[key], key === 'shared_by' ? 512 : 256)))
     throw new ProjectSharedTaskRefusal('unavailable');
   return {
     shareId: row.share_id as string,
@@ -110,6 +121,25 @@ function parse(row: Record<string, unknown>): ProjectSharedTaskAdmission {
     sharedAt: row.shared_at as string,
     sharedBy: row.shared_by as string,
   };
+}
+function bounded(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === 'string' && value.length > 0 && value.length <= maximum
+  );
+}
+function validateInput(
+  input: Omit<ProjectSharedTaskAdmission, 'shareId' | 'sharedAt'>,
+) {
+  if (
+    !bounded(input.taskId, 256) ||
+    !bounded(input.taskCreatedAt, 64) ||
+    !bounded(input.sharedBy, 512) ||
+    !bounded(input.scope.stationId, 256) ||
+    !bounded(input.scope.localProjectId, 256) ||
+    !bounded(input.scope.localProjectSlug, 256) ||
+    !bounded(input.scope.portableProjectId, 256)
+  )
+    throw new ProjectSharedTaskRefusal('unavailable');
 }
 function sameAdmission(
   left: ProjectSharedTaskAdmission,

@@ -66,7 +66,9 @@ export class ProjectSharedTaskService {
     if (current.principalId !== initial.principalId)
       throw new ProjectSharedTaskRefusal('conflict');
     await authority.requireProjectRead(scope);
-    this.assertCurrent(admission);
+    const stored = this.admission(scope, taskId);
+    if (stored.shareId !== shareId)
+      throw new ProjectSharedTaskRefusal('conflict');
     this.deps.store.unshare(taskId, shareId);
     return { unshared: true as const };
   }
@@ -76,11 +78,26 @@ export class ProjectSharedTaskService {
   ): Promise<ProjectSharedTaskSummary[]> {
     await authority.requireProjectRead(scope);
     const admitted = this.deps.store.list(scope);
-    const summaries = admitted.map((entry) => this.summary(entry));
+    const visible: {
+      admission: ProjectSharedTaskAdmission;
+      summary: ProjectSharedTaskSummary;
+    }[] = [];
+    for (const admission of admitted) {
+      try {
+        visible.push({ admission, summary: this.summary(admission) });
+      } catch (error) {
+        if (
+          error instanceof ProjectSharedTaskRefusal &&
+          error.code === 'not-found'
+        )
+          continue;
+        throw error;
+      }
+    }
     await authority.requireProjectRead(scope);
-    return summaries.filter((_summary, index) =>
-      this.current(admitted[index]!),
-    );
+    return visible
+      .filter(({ admission }) => this.current(admission))
+      .map(({ summary }) => summary);
   }
   async admitRead(
     scope: ProjectMembershipScope,
@@ -133,10 +150,22 @@ export class ProjectSharedTaskService {
   }
   private current(admission: ProjectSharedTaskAdmission) {
     try {
+      const stored = this.deps.store.admission(admission.taskId);
+      if (
+        !stored ||
+        stored.shareId !== admission.shareId ||
+        !sameScope(stored.scope, admission.scope)
+      )
+        return false;
       this.assertCurrent(admission);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (
+        error instanceof ProjectSharedTaskRefusal &&
+        error.code === 'not-found'
+      )
+        return false;
+      throw error;
     }
   }
   private assertCurrent(admission: ProjectSharedTaskAdmission) {
