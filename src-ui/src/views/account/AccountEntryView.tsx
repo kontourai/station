@@ -369,6 +369,7 @@ export function AccountEntryView({
                 load={loadGuestDeviceOnboarding}
                 componentProps={{
                   apiBase,
+                  principalId: session.data.principal.id,
                   onAccountRequired: () => {
                     setJoined(false);
                     void client.resetQueries({
@@ -421,6 +422,7 @@ export function AccountEntryView({
                   load={loadGuestDeviceOnboarding}
                   componentProps={{
                     apiBase,
+                    principalId: session.data.principal.id,
                     onAccountRequired: () => {
                       void client.resetQueries({
                         queryKey: ['account', apiBase, 'session'],

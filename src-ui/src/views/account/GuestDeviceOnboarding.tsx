@@ -6,9 +6,14 @@ import {
   StationHttpError,
 } from '@kontourai/station-sdk';
 import { getAccountSession } from '@kontourai/station-sdk/account-authentication';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonList } from '../../components/state';
+
+class GuestApprovalRequired extends Error {}
+class GuestAccountRequired extends Error {}
+class GuestAccountUnavailable extends Error {}
 
 const options = (signal: AbortSignal) => ({
   authentication: 'omit' as const,
@@ -17,152 +22,101 @@ const options = (signal: AbortSignal) => ({
   maxResponseBytes: 64 * 1024,
 });
 
-function members(values: Awaited<ReturnType<typeof listProjectViews>>) {
-  if (values.some((value) => !('kind' in value)))
+function member(value: unknown): MemberProjectView {
+  if (!value || typeof value !== 'object' || !('kind' in value))
     throw new Error('Station returned a personal Project view to guest entry.');
-  return values as MemberProjectView[];
+  return value as MemberProjectView;
+}
+
+async function classifyReadFailure(
+  cause: unknown,
+  apiBase: string,
+  signal: AbortSignal,
+): Promise<never> {
+  if (!(cause instanceof StationHttpError) || cause.status !== 401) throw cause;
+  try {
+    const account = await getAccountSession(apiBase, { signal });
+    if (!account) throw new GuestAccountRequired();
+    throw new GuestApprovalRequired();
+  } catch (accountFailure) {
+    if (
+      accountFailure instanceof GuestAccountRequired ||
+      accountFailure instanceof GuestApprovalRequired ||
+      (accountFailure instanceof DOMException &&
+        accountFailure.name === 'AbortError')
+    )
+      throw accountFailure;
+    throw new GuestAccountUnavailable();
+  }
 }
 
 export function GuestDeviceOnboarding({
   apiBase,
+  principalId,
   onAccountRequired,
 }: {
   apiBase: string;
+  principalId: string;
   onAccountRequired: () => void;
 }) {
+  const client = useQueryClient();
   const [request, setRequest] = useState<{ clientInstanceId: string }>();
-  const [projects, setProjects] = useState<MemberProjectView[]>();
-  const [detail, setDetail] = useState<MemberProjectView>();
-  const [error, setError] = useState<string>();
-  const [canRequest, setCanRequest] = useState<boolean>();
-  const active = useRef<AbortController | undefined>(undefined);
-  const nextSignal = useCallback(() => {
-    active.current?.abort();
-    const controller = new AbortController();
-    active.current = controller;
-    return controller.signal;
-  }, []);
-  const handleFailure = useCallback(
-    async (cause: unknown) => {
-      if (cause instanceof DOMException && cause.name === 'AbortError') return;
-      if (cause instanceof StationHttpError && cause.status === 401) {
-        try {
-          const account = await getAccountSession(
-            apiBase,
-            options(nextSignal()),
-          );
-          if (!account) return onAccountRequired();
-          setCanRequest(true);
-          setRequest(undefined);
-          setProjects(undefined);
-          setDetail(undefined);
-          setError('This browser needs new Device approval.');
-          return;
-        } catch (accountFailure) {
-          if (
-            accountFailure instanceof DOMException &&
-            accountFailure.name === 'AbortError'
-          )
-            return;
-          setError('Station could not verify the current account. Try again.');
-          setCanRequest(false);
-          return;
-        }
+  const [selectedProject, setSelectedProject] = useState<string>();
+  const onAccountRequiredRef = useRef(onAccountRequired);
+  onAccountRequiredRef.current = onAccountRequired;
+  const projects = useQuery({
+    queryKey: ['guest-projects', apiBase, principalId],
+    queryFn: async ({ signal }) => {
+      try {
+        const values = await listProjectViews(apiBase, options(signal));
+        return values.map(member);
+      } catch (cause) {
+        return classifyReadFailure(cause, apiBase, signal);
       }
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Shared Projects are unavailable.',
-      );
-      setCanRequest(false);
     },
-    [apiBase, nextSignal, onAccountRequired],
-  );
-  const loadProjects = useCallback(async () => {
-    setError(undefined);
-    setDetail(undefined);
-    setCanRequest(undefined);
-    try {
-      setProjects(
-        members(await listProjectViews(apiBase, options(nextSignal()))),
-      );
-      setCanRequest(false);
-    } catch (cause) {
-      await handleFailure(cause);
-    }
-  }, [apiBase, handleFailure, nextSignal]);
+    retry: false,
+    gcTime: 0,
+  });
+  const detail = useQuery({
+    queryKey: ['guest-project', apiBase, principalId, selectedProject],
+    queryFn: async ({ signal }) => {
+      try {
+        return member(
+          await getProjectView(apiBase, selectedProject!, options(signal)),
+        );
+      } catch (cause) {
+        return classifyReadFailure(cause, apiBase, signal);
+      }
+    },
+    enabled: !!selectedProject,
+    retry: false,
+    gcTime: 0,
+  });
+  const accountRequired =
+    projects.error instanceof GuestAccountRequired ||
+    detail.error instanceof GuestAccountRequired;
   useEffect(() => {
-    setRequest(undefined);
-    setProjects(undefined);
-    setDetail(undefined);
-    setError(undefined);
-    setCanRequest(undefined);
-    void loadProjects();
-    return () => active.current?.abort();
-  }, [loadProjects]);
+    if (!accountRequired) return;
+    onAccountRequiredRef.current();
+  }, [accountRequired]);
+  useEffect(
+    () => () => {
+      void client.cancelQueries({
+        queryKey: ['guest-projects', apiBase, principalId],
+      });
+      void client.removeQueries({
+        queryKey: ['guest-projects', apiBase, principalId],
+      });
+      void client.cancelQueries({
+        queryKey: ['guest-project', apiBase, principalId],
+      });
+      void client.removeQueries({
+        queryKey: ['guest-project', apiBase, principalId],
+      });
+    },
+    [apiBase, client, principalId],
+  );
 
-  if (projects) {
-    return (
-      <section
-        className="account-entry__guest-home"
-        aria-labelledby="shared-projects-title"
-      >
-        <div className="account-entry__guest-heading">
-          <div>
-            <h2 id="shared-projects-title">Projects shared with you</h2>
-            <p role="status">This browser has view-only Project access.</p>
-          </div>
-          <Button onClick={() => void loadProjects()}>Refresh</Button>
-        </div>
-        {projects.length === 0 ? (
-          <p>No Projects are currently shared with this account.</p>
-        ) : (
-          <ul className="account-entry__project-list">
-            {projects.map((project) => (
-              <li key={project.id}>
-                <div>
-                  <strong>{project.name}</strong>
-                  {project.description && <p>{project.description}</p>}
-                  <small>View only</small>
-                </div>
-                <Button
-                  onClick={async () => {
-                    setError(undefined);
-                    try {
-                      const value = await getProjectView(
-                        apiBase,
-                        project.slug,
-                        options(nextSignal()),
-                      );
-                      if (!('kind' in value))
-                        throw new Error(
-                          'Station returned a personal Project view to guest entry.',
-                        );
-                      setDetail(value);
-                    } catch (cause) {
-                      await handleFailure(cause);
-                    }
-                  }}
-                >
-                  Read Project details
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {detail && (
-          <section
-            className="account-entry__project-detail"
-            aria-label={`${detail.name} details`}
-          >
-            <h3>{detail.name}</h3>
-            {detail.description && <p>{detail.description}</p>}
-            <p>Available action: View</p>
-          </section>
-        )}
-      </section>
-    );
-  }
   if (request)
     return (
       <div className="account-entry__device-onboarding">
@@ -186,32 +140,106 @@ export function GuestDeviceOnboarding({
                 'Station did not issue the requested account-bound Device.',
               );
             setRequest(undefined);
-            void loadProjects();
+            void projects.refetch();
           }}
         />
       </div>
     );
-  if (canRequest === undefined)
+
+  if (projects.isPending || accountRequired)
     return <SkeletonList count={2} label="Checking browser access" />;
+
+  if (projects.error) {
+    const approval = projects.error instanceof GuestApprovalRequired;
+    return (
+      <section className="account-entry__guest-access">
+        <p>
+          Access is limited to Projects shared with this account. Editing and
+          running work are unavailable.
+        </p>
+        {projects.error instanceof GuestAccountUnavailable ? (
+          <p role="alert">Station could not verify the current account.</p>
+        ) : !approval ? (
+          <p role="alert">Shared Projects are unavailable.</p>
+        ) : null}
+        {approval ? (
+          <Button
+            variant="primary"
+            onClick={() =>
+              setRequest({ clientInstanceId: crypto.randomUUID() })
+            }
+          >
+            Request access for this browser
+          </Button>
+        ) : (
+          <Button onClick={() => void projects.refetch()}>Try again</Button>
+        )}
+      </section>
+    );
+  }
+
   return (
-    <section className="account-entry__guest-access">
-      <p>
-        Access is limited to Projects shared with this account. Editing and
-        running work are unavailable.
-      </p>
-      {error && <p role="alert">{error}</p>}
-      {canRequest ? (
+    <section
+      className="account-entry__guest-home"
+      aria-labelledby="shared-projects-title"
+    >
+      <div className="account-entry__guest-heading">
+        <div>
+          <h2 id="shared-projects-title">Projects shared with you</h2>
+          <p role="status">This browser has view-only Project access.</p>
+        </div>
         <Button
-          variant="primary"
           onClick={() => {
-            setError(undefined);
-            setRequest({ clientInstanceId: crypto.randomUUID() });
+            setSelectedProject(undefined);
+            void projects.refetch();
           }}
         >
-          Request access for this browser
+          Refresh
         </Button>
+      </div>
+      {projects.data.length === 0 ? (
+        <p>No Projects are currently shared with this account.</p>
       ) : (
-        <Button onClick={() => void loadProjects()}>Try again</Button>
+        <ul className="account-entry__project-list">
+          {projects.data.map((project) => (
+            <li key={project.id}>
+              <div>
+                <strong>{project.name}</strong>
+                {project.description && <p>{project.description}</p>}
+                <small>View only</small>
+              </div>
+              <Button onClick={() => setSelectedProject(project.slug)}>
+                Read Project details
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {detail.isPending && selectedProject && (
+        <SkeletonList count={1} label="Reading Project details" />
+      )}
+      {detail.isError && !accountRequired && (
+        <section className="account-entry__project-detail" role="alert">
+          <p>
+            {detail.error instanceof StationHttpError &&
+            detail.error.status === 404
+              ? 'This Project is no longer shared with you.'
+              : detail.error instanceof GuestApprovalRequired
+                ? 'This browser needs new Device approval.'
+                : 'Project details are unavailable.'}
+          </p>
+          <Button onClick={() => setSelectedProject(undefined)}>Close</Button>
+        </section>
+      )}
+      {detail.isSuccess && (
+        <section
+          className="account-entry__project-detail"
+          aria-label={`${detail.data.name} details`}
+        >
+          <h3>{detail.data.name}</h3>
+          {detail.data.description && <p>{detail.data.description}</p>}
+          <p>Available action: View</p>
+        </section>
       )}
     </section>
   );
