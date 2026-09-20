@@ -1999,6 +1999,11 @@ bounded changed paths, and expiry. `confirmCheckpointRestore` submits that
 exact preview with `confirmed: true` and the captured current-tree hash.
 
 ```ts
+import {
+  confirmCheckpointRestore,
+  previewCheckpointRestore,
+} from '@kontourai/station-sdk/client/checkpoint-restore';
+
 const preview = await previewCheckpointRestore(
   requestScope.apiBase,
   sessionId,

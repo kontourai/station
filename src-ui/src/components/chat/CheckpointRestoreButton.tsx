@@ -2,7 +2,7 @@ import {
   type CheckpointRestorePreview,
   confirmCheckpointRestore,
   previewCheckpointRestore,
-} from '@kontourai/station-sdk/client';
+} from '@kontourai/station-sdk/client/checkpoint-restore';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -11,6 +11,35 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useToast } from '../../contexts/ToastContext';
 import { Dialog } from '../Dialog';
+
+function restoreFailureMessage(cause: unknown): string {
+  const refusal =
+    cause && typeof cause === 'object'
+      ? (cause as { reason?: unknown })
+      : undefined;
+  if (
+    typeof refusal?.reason === 'string' &&
+    /^(?:workspace_(?:changed|has_active_turn)|preview_invalid|checkpoint_(?:missing|pruned|identity_mismatch)|authorization_changed)$/u.test(
+      refusal.reason,
+    )
+  ) {
+    const action =
+      refusal.reason === 'workspace_changed'
+        ? 'The workspace changed after the preview. Review a new preview.'
+        : refusal.reason === 'workspace_has_active_turn'
+          ? 'Wait for the active workspace turn to finish, then review a new preview.'
+          : refusal.reason === 'checkpoint_missing' ||
+              refusal.reason === 'checkpoint_pruned'
+            ? 'That checkpoint is no longer available. Choose another checkpoint.'
+            : refusal.reason === 'authorization_changed' ||
+                refusal.reason === 'preview_invalid'
+              ? 'The preview expired or its authority changed. Review a new preview.'
+              : 'The checkpoint identity changed. Review a new preview.';
+    return `${action} No files were changed.`;
+  }
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return `Restore outcome not confirmed: ${detail}. Inspect the workspace before trying again.`;
+}
 
 export function CheckpointRestoreButton({
   sessionId,
@@ -61,7 +90,7 @@ export function CheckpointRestoreButton({
         setPreview(result);
     } catch (cause) {
       if (operation === generation.current && authority.isCurrent())
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(restoreFailureMessage(cause));
     } finally {
       if (operation === generation.current && authority.isCurrent())
         setBusy(false);
@@ -134,11 +163,7 @@ export function CheckpointRestoreButton({
                         operation === generation.current &&
                         capturedAuthority.isCurrent()
                       )
-                        setError(
-                          cause instanceof Error
-                            ? cause.message
-                            : String(cause),
-                        );
+                        setError(restoreFailureMessage(cause));
                     })
                     .finally(() => {
                       if (
@@ -159,12 +184,7 @@ export function CheckpointRestoreButton({
             effects are not undone.
           </p>
           {busy && <p role="status">Restoring workspace…</p>}
-          {error && (
-            <p role="alert">
-              Restore outcome not confirmed: {error}. Inspect the workspace
-              before trying again.
-            </p>
-          )}
+          {error && <p role="alert">{error}</p>}
           <ul>
             {preview.paths.map((path) => (
               <li key={`${path.status}:${path.path}`}>

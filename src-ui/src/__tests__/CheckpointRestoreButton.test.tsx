@@ -13,7 +13,7 @@ const { preview, confirm, toast, host } = vi.hoisted(() => ({
     currentAuthorityKey: 'authority-1',
   },
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client/checkpoint-restore', () => ({
   previewCheckpointRestore: preview,
   confirmCheckpointRestore: confirm,
 }));
@@ -79,8 +79,13 @@ test('previews current workspace effects and cancellation performs no restore', 
   expect(confirm).not.toHaveBeenCalled();
 });
 
-test('confirms the exact preview and surfaces restore failures', async () => {
-  confirm.mockRejectedValueOnce(new Error('workspace_changed'));
+test('confirms the exact preview and explains a proven pre-effect refusal', async () => {
+  confirm.mockRejectedValueOnce(
+    Object.assign(new Error('Workspace checkpoint restore failed'), {
+      status: 409,
+      reason: 'workspace_changed',
+    }),
+  );
   mount();
   fireEvent.click(
     screen.getByRole('button', { name: 'Restore workspace to here…' }),
@@ -88,8 +93,8 @@ test('confirms the exact preview and surfaces restore failures', async () => {
   await screen.findByRole('alertdialog');
   fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain(
-      'workspace_changed',
+    expect(screen.getByRole('alert').textContent).toBe(
+      'The workspace changed after the preview. Review a new preview. No files were changed.',
     ),
   );
   expect(confirm).toHaveBeenCalledWith(
@@ -98,6 +103,24 @@ test('confirms the exact preview and surfaces restore failures', async () => {
     'turn-1',
     result,
     expect.objectContaining({ authorityKey: 'authority-1' }),
+  );
+});
+
+test('keeps an uncertain transport failure outcome unconfirmed', async () => {
+  confirm.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Restore workspace to here…' }),
+  );
+  await screen.findByRole('alertdialog');
+  fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Restore outcome not confirmed: Failed to fetch. Inspect the workspace before trying again.',
+    ),
+  );
+  expect(screen.getByRole('alert').textContent).not.toContain(
+    'No files were changed',
   );
 });
 

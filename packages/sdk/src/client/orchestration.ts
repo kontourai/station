@@ -197,55 +197,6 @@ export async function getOrchestrationSessionEventPage<T>(
   return unwrapOrchestrationResponse<T>(response);
 }
 
-export interface CheckpointRestorePreview {
-  previewId: string;
-  threadId: string;
-  turnId: string;
-  phase: 'baseline' | 'settle';
-  checkpointId: string;
-  repoRoot: string;
-  targetTreeSha: string;
-  currentTreeSha: string;
-  paths: Array<{ path: string; status: string }>;
-  pathsTruncated: boolean;
-  expiresAt: string;
-}
-
-export async function previewCheckpointRestore(
-  apiBase: string,
-  threadId: string,
-  turnId: string,
-  requestScope: import('./http').ApiRequestScope,
-): Promise<CheckpointRestorePreview> {
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/checkpoints/${encodeURIComponent(turnId)}/restore-preview`,
-    'POST',
-    { requestScope },
-    { phase: 'settle' },
-  );
-  return unwrapOrchestrationResponse<CheckpointRestorePreview>(response);
-}
-
-export async function confirmCheckpointRestore(
-  apiBase: string,
-  threadId: string,
-  turnId: string,
-  preview: Pick<CheckpointRestorePreview, 'previewId' | 'currentTreeSha'>,
-  requestScope: import('./http').ApiRequestScope,
-): Promise<unknown> {
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/checkpoints/${encodeURIComponent(turnId)}/restore`,
-    'POST',
-    { requestScope },
-    {
-      confirmed: true,
-      previewId: preview.previewId,
-      expectedCurrentTreeSha: preview.currentTreeSha,
-    },
-  );
-  return unwrapOrchestrationResponse(response);
-}
-
 /** Versioned, bounded newest-turn snapshot with keyset pagination. */
 export async function getOrchestrationSessionEventWindow<T>(
   apiBase: string,
