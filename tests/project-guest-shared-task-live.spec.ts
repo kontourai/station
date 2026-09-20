@@ -83,6 +83,7 @@ test.describe
       const operatorOptions = {
         origin: live.api,
         credential: operatorCredential,
+        credentialOrigin: live.api,
         authentication: 'required' as const,
         timeoutMs: 15_000,
       };
