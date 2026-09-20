@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { serve } from '@hono/node-server';
 import {
@@ -32,9 +32,10 @@ if (
   configInfo.size > 128 * 1024
 )
   throw new Error('Broker config must be a private bounded file');
-const bytes = readFileSync(configPath);
-if (bytes.length > 128 * 1024) throw new Error('Broker config exceeds 128 KiB');
-const input: unknown = JSON.parse(bytes.toString('utf8'));
+const input: unknown = readJsonFile(configPath, null, {
+  maxBytes: 128 * 1024,
+  label: 'Broker config',
+});
 if (!input || typeof input !== 'object' || Array.isArray(input))
   throw new Error('Invalid broker config');
 const config = input as Record<string, unknown>;
