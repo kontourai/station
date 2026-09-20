@@ -282,6 +282,7 @@ import {
 } from './session-authorization.js';
 import {
   createSessionCommandModule,
+  type ReceiverExecutionEffectAdmission,
   type SessionCommand,
   type SessionCommandContext,
   type SessionCommandImplementation,
@@ -359,6 +360,12 @@ interface OrchestrationDispatchInternalOptions {
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  /**
+   * #484 phase A: receiver-owned portable-execution recheck, awaited inside
+   * the provider-effect path (start/sendTurn) adjacent to the adapter
+   * invocation. Server-composed only; never reachable from an HTTP body.
+   */
+  receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
@@ -4353,6 +4360,17 @@ export class OrchestrationService {
                   internal?.sessionStartAdmission,
                 ),
               );
+            // #484 phase A: the receiver-owned offer/binding recheck runs
+            // INSIDE the provider-effect path — after every preceding await
+            // and adjacent to the adapter invocation — so a withdrawn offer
+            // or lost binding refuses instead of starting a session it no
+            // longer authorizes. Carried as the effect closure passed into
+            // the foreground admission when both are present, so neither
+            // guard is bypassed.
+            const invokeWithReceiverAdmission = () =>
+              internal?.receiverExecutionAdmission
+                ? internal.receiverExecutionAdmission.recheck().then(invoke)
+                : invoke();
             session = await (internal?.foregroundInvocationAdmission
               ? internal.foregroundInvocationAdmission.invoke(
                   'start',
@@ -4362,9 +4380,9 @@ export class OrchestrationService {
                     agentId: input.metadata?.agentSlug,
                     projectSlug: input.metadata?.projectSlug,
                   },
-                  invoke,
+                  invokeWithReceiverAdmission,
                 )
-              : invoke());
+              : invokeWithReceiverAdmission());
           } finally {
             admissionLease?.release();
           }
@@ -5235,6 +5253,16 @@ export class OrchestrationService {
                       throw new SessionTurnStartIndeterminateError();
                     }
                   };
+                  // #484 phase A: the receiver-owned offer/binding recheck runs
+                  // INSIDE the turn-effect path, adjacent to the adapter
+                  // sendTurn invocation — a revocation that lands after the
+                  // session start still refuses before the provider effect.
+                  const invokeWithReceiverAdmission = () =>
+                    internal?.receiverExecutionAdmission
+                      ? internal.receiverExecutionAdmission
+                          .recheck()
+                          .then(invoke)
+                      : invoke();
                   return internal?.foregroundInvocationAdmission
                     ? internal.foregroundInvocationAdmission.invoke(
                         adapter.provider === 'station-agent'
@@ -5252,9 +5280,9 @@ export class OrchestrationService {
                             internal.foregroundInvocationAdmission.project.slug,
                           message: turnInput.displayInput ?? turnInput.input,
                         },
-                        invoke,
+                        invokeWithReceiverAdmission,
                       )
-                    : invoke();
+                    : invokeWithReceiverAdmission();
                 },
               );
             } catch (error) {

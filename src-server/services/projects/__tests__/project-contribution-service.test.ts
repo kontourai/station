@@ -509,4 +509,126 @@ describe('ProjectContributionService', () => {
       execution: [{ bound: false, verifiedAt: null }],
     });
   });
+
+  test('in-place offer withdrawal during the admission capture refuses', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+      duringResolve: () => {
+        // The operator withdraws the offer (in place) while the binding
+        // resolver runs.
+        delete f!.getConfig().contribution['project:prj_shared'];
+      },
+    });
+    const pending = f.service.authorizeReceiverExecution(QUERY, () => true);
+    f.resolveResolution();
+    await expect(pending).rejects.toMatchObject({
+      code: 'receiver_execution_not_offered',
+    });
+  });
+
+  test('admission recheck refuses after the offer is withdrawn in place', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    delete f.getConfig().contribution['project:prj_shared'].enabled;
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_not_offered',
+    });
+  });
+
+  test('admission recheck refuses when the workingDirectory changed under the same slug', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.workingDirectory).toBe(
+      '/fixture/checkout',
+    );
+    f.setProject({
+      id: 'local-id',
+      slug: 'local',
+      workingDirectory: '/fixture/other-checkout',
+    });
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
+  test('admission recheck refuses when the authority is revoked at the effect boundary', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    let current = true;
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => current,
+    );
+    current = false;
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_not_offered',
+    });
+  });
+
+  test('admission expands the stored tilde workingDirectory and never returns an empty root', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    f.setProject({
+      id: 'local-id',
+      slug: 'local',
+      workingDirectory: '~/fixture/tilde-checkout',
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.workingDirectory).not.toMatch(/^~/);
+    expect(
+      admission.admittedProject.workingDirectory.endsWith(
+        'fixture/tilde-checkout',
+      ),
+    ).toBe(true);
+  });
+
+  test('the admission captures the exact consent identity it was admitted for', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.portableProjectId).toBe(QUERY.portableProjectId);
+    expect(admission.resourceId).toBe(QUERY.resourceId);
+  });
+
+  test('admission refuses an unoffered resource and a present-but-unoffered binding', async () => {
+    const f = fixture({ bound: true, verifiedAt: 1000 });
+    await expect(
+      f.service.authorizeReceiverExecution(QUERY, () => true),
+    ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+    const g = fixture({ offered: true, verifiedAt: 1000 });
+    await expect(
+      g.service.authorizeReceiverExecution(QUERY, () => true),
+    ).rejects.toMatchObject({ code: 'receiver_execution_unavailable' });
+  });
 });

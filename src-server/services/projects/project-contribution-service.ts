@@ -35,6 +35,49 @@ export interface ProjectContributionQuery {
   resourceId: string;
 }
 
+/**
+ * A peer's explicit portable-execution intent was REFUSED at the receiving
+ * boundary (#484 phase A). Mapped to 403 by the delegation route; the
+ * message is operator-actionable contribution diagnostic vocabulary and
+ * never carries a local path or binding inventory.
+ */
+export class ReceiverExecutionRefusal extends Error {
+  constructor(
+    readonly code:
+      | 'receiver_execution_not_offered'
+      | 'receiver_execution_unavailable',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ReceiverExecutionRefusal';
+  }
+}
+
+/**
+ * The receiver-owned admission for one explicit portable-execution intent:
+ * the captured receiver-local Project binding (its `workingDirectory` is the
+ * execution root) plus a `recheck` that must be awaited before EVERY
+ * irreversible effect (session start, turn dispatch, workspace
+ * provisioning). The recheck compares freshly-read state against the
+ * CAPTURED scalars, so a withdrawn offer, a replaced checkout, or a lost
+ * binding refuses instead of re-resolving to a different workspace.
+ */
+export interface ReceiverExecutionAdmission {
+  /**
+   * The EXACT consent identity this admission was captured for — the caller
+   * sent portable Project id plus offered resource id. Consumers must
+   * refuse when the workspace they are about to execute names a different
+   * pair rather than re-targeting the admitted project.
+   */
+  readonly portableProjectId: string;
+  readonly resourceId: string;
+  readonly admittedProject: {
+    readonly slug: string;
+    readonly workingDirectory: string;
+  };
+  readonly recheck: () => Promise<void>;
+}
+
 interface Deps {
   source: Pick<IStorageAdapter, 'listProjects' | 'projectRevision'>;
   manifests: Pick<ProjectManifestStore, 'readProjectManifest'>;
@@ -329,6 +372,171 @@ export class ProjectContributionService {
           message: 'The offered Project resource is unavailable.',
         },
       ],
+    };
+  }
+
+  /**
+   * #484 phase A: admit (or refuse) ONE explicit portable-execution intent
+   * against this Station's operator offer. The predicate is the same chain
+   * the projection query uses — offer on, exactly this resource declared,
+   * content-identical Project association, resource currently `bound` —
+   * evaluated with the same snapshot discipline: scalars and nested objects
+   * are owned by `structuredClone` before any await, and the `recheck`
+   * re-runs the WHOLE chain against the captured scalars so a withdrawn
+   * offer, a replaced checkout, or a lost binding refuses instead of
+   * re-resolving to a different workspace. There is no slug/path fallback:
+   * absence of a current explicit offer refuses.
+   *
+   * The returned admission carries the receiver-local Project binding; its
+   * `workingDirectory` is stored tilde-literal in the project record and is
+   * returned here EXPANDED (station#3155) so consumers compare or execute
+   * only against the absolute path.
+   */
+  async authorizeReceiverExecution(
+    input: ProjectContributionQuery,
+    authorityCurrent: () => boolean,
+  ): Promise<ReceiverExecutionAdmission> {
+    const requested = structuredClone(input);
+    const admitted = await this.captureReceiverAdmission(
+      requested,
+      authorityCurrent,
+    );
+    return {
+      portableProjectId: requested.portableProjectId,
+      resourceId: requested.resourceId,
+      admittedProject: admitted,
+      recheck: async () => {
+        await this.captureReceiverAdmission(requested, authorityCurrent, {
+          admittedProject: admitted,
+        });
+      },
+    };
+  }
+
+  private async captureReceiverAdmission(
+    input: ProjectContributionQuery,
+    authorityCurrent: () => boolean,
+    expect?: { admittedProject: ReceiverExecutionAdmission['admittedProject'] },
+  ): Promise<ReceiverExecutionAdmission['admittedProject']> {
+    const unavailable = () =>
+      new ReceiverExecutionRefusal(
+        'receiver_execution_unavailable',
+        'The offered Project resource is unavailable.',
+      );
+    const requested = structuredClone(input);
+    const scope = {
+      kind: 'project' as const,
+      projectId: requested.portableProjectId,
+    };
+    const config = await this.deps.config.loadAppConfig();
+    const selected = resolveScopedContribution(config, scope);
+    const offered =
+      isContributionEnabled(selected.config) &&
+      declaredContributionIds(selected.config, 'execution').includes(
+        requested.resourceId,
+      );
+    if (!offered)
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+    let association: ReturnType<ProjectContributionService['association']>;
+    try {
+      association = this.association(requested.portableProjectId);
+    } catch {
+      throw unavailable();
+    }
+    if (
+      !association.manifest.repos.some(
+        (resource) => resource.id === requested.resourceId,
+      )
+    )
+      throw unavailable();
+    const captured = {
+      projectId: association.project.id,
+      projectSlug: association.project.slug,
+      workingDirectory:
+        association.project.workingDirectory === undefined
+          ? undefined
+          : resolve(expandTilde(association.project.workingDirectory)),
+      manifest: structuredClone({
+        id: association.manifest.id,
+        slug: association.manifest.slug,
+        repos: association.manifest.repos,
+      }),
+      binding: structuredClone(
+        this.deps.bindings.findBinding(
+          requested.portableProjectId,
+          requested.resourceId,
+        ),
+      ),
+    };
+    const resolution = await this.deps.resolver.resolveProjectResource(
+      association.project.slug,
+      requested.resourceId,
+    );
+    if (resolution.state !== 'bound') throw unavailable();
+    const currentConfig = await this.deps.config.loadAppConfig();
+    const currentSelected = resolveScopedContribution(currentConfig, scope);
+    const stillOffered =
+      isContributionEnabled(currentSelected.config) &&
+      declaredContributionIds(currentSelected.config, 'execution').includes(
+        requested.resourceId,
+      );
+    let sameAssociation = false;
+    try {
+      const currentAssociation = this.association(requested.portableProjectId);
+      const currentWorkingDirectory =
+        currentAssociation.project.workingDirectory === undefined
+          ? undefined
+          : resolve(expandTilde(currentAssociation.project.workingDirectory));
+      sameAssociation =
+        currentAssociation.project.id === captured.projectId &&
+        currentAssociation.project.slug === captured.projectSlug &&
+        currentWorkingDirectory === captured.workingDirectory &&
+        isDeepStrictEqual(
+          {
+            id: currentAssociation.manifest.id,
+            slug: currentAssociation.manifest.slug,
+            repos: currentAssociation.manifest.repos,
+          },
+          captured.manifest,
+        );
+    } catch {}
+    const afterBinding = structuredClone(
+      this.deps.bindings.findBinding(
+        requested.portableProjectId,
+        requested.resourceId,
+      ),
+    );
+    if (!stillOffered)
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+    if (!authorityCurrent())
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'Receiver execution authority changed before the work could start.',
+      );
+    if (
+      !sameAssociation ||
+      !isDeepStrictEqual(captured.binding, afterBinding)
+    )
+      throw unavailable();
+    if (
+      (captured.workingDirectory ?? '') === '' ||
+      (expect &&
+        (expect.admittedProject.slug !== captured.projectSlug ||
+          expect.admittedProject.workingDirectory !==
+            captured.workingDirectory))
+    )
+      // A recheck must answer for the SAME captured binding; re-resolving to
+      // a different workspace is a refusal, never a silent re-target.
+      throw unavailable();
+    return {
+      slug: captured.projectSlug,
+      workingDirectory: captured.workingDirectory!,
     };
   }
 }

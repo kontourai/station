@@ -73,6 +73,10 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import {
+  ReceiverExecutionRefusal,
+  type ReceiverExecutionAdmission,
+} from '../services/projects/project-contribution-service.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   delegatedTaskFollowUps,
@@ -127,6 +131,7 @@ async function readExecutionProject(
 
 interface StationHandshake {
   environmentId: string;
+  capabilities?: { portableExecutionOffers?: boolean };
 }
 
 interface SshEnvironmentView {
@@ -196,6 +201,19 @@ export interface DelegateTaskInput {
   clientOrigin?: ClientOrigin;
   /** Resolved alongside clientOrigin when an authenticated actor exists. */
   principal?: PrincipalRef;
+  /**
+   * #484 phase A: the receiver-owned admission for a `project-portable`
+   * workspace intent, composed ONLY by the receiving runtime after the
+   * request's credential was verified (it is unreachable from public JSON —
+   * the route schema strips it). Required on the RECEIVING Station whenever
+   * it executes a `project-portable` workspace locally; a forwarding sender
+   * never holds one. Its `recheck` is awaited before the session start and
+   * again before the turn dispatch, and is additionally threaded into the
+   * service internal options so the provider-effect path rechecks it
+   * adjacent to the actual adapter invocation — a withdrawn offer or lost
+   * binding refuses at the effect seam rather than at the door only.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
 }
 
 type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
@@ -1321,6 +1339,21 @@ async function pinSshDispatchWorkspace(
   executionTarget: ExecutionTarget,
 ): Promise<ExecutionTarget> {
   if (target.kind !== 'ssh') return executionTarget;
+  if (executionTarget.workspace?.kind === 'project-portable') {
+    // #484 phase A (bounded scope, not a transport claim): the portable
+    // intent is admitted ONLY by the receiving runtime's offer authority,
+    // and this slice composes that admission on the direct-peer path only —
+    // so the SSH forwarding path refuses outright instead of degrading to
+    // a verified-directory execution the operator never offered.
+    // Non-portable SSH delegation behavior is unchanged. A tunneled peer
+    // presenting its own authorization may be admitted by a later slice
+    // through the same receiver admission; this refusal is scope, not a
+    // claim about transport indistinguishability.
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_not_offered',
+      'Portable execution requires a direct peer connection; it cannot be forwarded over SSH.',
+    );
+  }
   if (!target.projectPath) {
     throw new Error(
       'The selected SSH environment has no verified workspace binding',
@@ -2820,6 +2853,13 @@ export async function continueDelegatedTask(
   input: ContinueDelegatedTaskInput,
   orchestrationService?: OrchestrationService,
 ): Promise<DelegatedTaskFollowUpHandle> {
+  // #484 phase A ledger gap (not a hole claim): follow-up turns on an
+  // already-started portable session do NOT recompose the receiver offer
+  // admission — `ContinueDelegatedTaskInput` carries no portable consent
+  // identity to re-verify, so there is nothing here to fail closed ON
+  // without breaking legacy continuations. Resume authorization across
+  // persist/recovery boundaries remains explicitly unwired: do not claim a
+  // pre-dispatch check authorizes a resumed provider effect.
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
@@ -3039,12 +3079,44 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
 ): Promise<DelegatedTaskHandle> {
   const readAuthority = readAuthorityForInput(input);
+  const portableIntent = input.target.workspace?.kind === 'project-portable';
   const selectedTarget = await resolveTarget({
     environmentId:
       input.target.environment.kind === 'saved'
         ? input.target.environment.id
         : undefined,
   });
+  // #484 phase A: a portable intent aimed at a PEER is gated on the peer's
+  // own advertised capability (its public handshake). An older receiver
+  // would refuse the unknown workspace variant at its schema anyway; the
+  // check turns that into a caller-local refusal with an actionable error
+  // instead of a wire round-trip. The handshake is a PUBLIC capability
+  // fact only — no credential is minted here, and the receiver re-verifies
+  // the CURRENT credential plus its operator offer when the forwarded
+  // intent arrives. The apiBase is pinned from this Station's saved peer
+  // credential (never a fresh unvalidated redirect target), and the
+  // responder must name the selected environment back.
+  if (portableIntent && selectedTarget.kind === 'peer') {
+    const handshake = await readJson<StationHandshake>(
+      `${selectedTarget.apiBase}/.well-known/station/v1`,
+      {
+        headers: selectedTarget.requestOptions?.headers ?? {},
+      },
+      'The selected Station could not be reached to confirm portable execution support',
+    );
+    if (handshake.environmentId !== selectedTarget.environmentId) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'The selected Station did not confirm portable execution support for this environment.',
+      );
+    }
+    if (handshake.capabilities?.portableExecutionOffers !== true) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'The selected Station does not support portable execution offers.',
+      );
+    }
+  }
   localServiceRequiredInHostedMode(
     selectedTarget,
     readAuthority,
@@ -3086,6 +3158,19 @@ export async function delegateTask(
       });
     }
     return handle;
+  }
+  // #484 phase A, receiver-local only: past this point THIS Station is the
+  // receiver (remote peer/ssh targets forwarded above), so the portable
+  // intent executes ONLY through the offer admission composed by the
+  // receiving runtime — it is never reachable from public JSON and can
+  // never exist on a forwarding sender. A receiver-local portable intent
+  // without one is refused; there is no slug/path fallback that could
+  // silently execute an unoffered project.
+  if (portableIntent && !input.receiverAdmission) {
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_not_offered',
+      'This Station does not currently offer execution for the requested Project resource.',
+    );
   }
   // archive#4543 LOW-2: a caller-supplied `sessionId` becomes this task's
   // `metadata.conversationId` below (via `conversationIdentity`) — reject a
@@ -3136,6 +3221,33 @@ export async function delegateTask(
         : undefined,
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
+    // #484 phase A: the portable intent resolves its workspace through the
+    // receiver-owned admission — the ADMITTED project, never a caller-named
+    // slug or path. Absent admission never reaches here (refused above).
+    // The resolver's exact requested ids must equal the admission's
+    // captured ids: a wrong portableProjectId/resourceId refuses rather
+    // than executing the admitted workspace under a different association.
+    ...(input.receiverAdmission
+      ? {
+          getPortableProject: async (
+            _access,
+            portableProjectId,
+            resourceId,
+          ) => {
+            const admitted = input.receiverAdmission!;
+            if (
+              portableProjectId !== admitted.portableProjectId ||
+              resourceId !== admitted.resourceId
+            ) {
+              throw new ReceiverExecutionRefusal(
+                'receiver_execution_not_offered',
+                'This Station does not currently offer execution for the requested Project resource.',
+              );
+            }
+            return admitted.admittedProject;
+          },
+        }
+      : {}),
   } satisfies Parameters<typeof resolveExecutionTarget>[1];
   const resolved = await resolveExecutionTarget(
     input.target,
@@ -3202,6 +3314,13 @@ export async function delegateTask(
     // and that escape-hatch fix together, migrating the foreground/continue
     // path in the same change that regressed this one. This create path is
     // now migrated to match it.
+    // #484 phase A: the offer/binding admission is rechecked immediately
+    // before the irreversible session start, after every preceding await —
+    // AND threaded into the service internal options, where the
+    // provider-effect path rechecks it again adjacent to the actual adapter
+    // invocation (a door check alone cannot cover what races the awaits
+    // inside the service).
+    await input.receiverAdmission?.recheck();
     const started = await orchestrationService.startSessionInternal(
       {
         type: 'start-session',
@@ -3252,6 +3371,15 @@ export async function delegateTask(
           environmentId: target.environmentId,
         },
         resourceAdmissionIntent: 'delegated_background',
+        // #484 phase A: the service rechecks this inside the start-effect
+        // path, adjacent to the adapter invocation.
+        ...(input.receiverAdmission
+          ? {
+              receiverExecutionAdmission: {
+                recheck: input.receiverAdmission.recheck,
+              },
+            }
+          : {}),
       },
     );
     if (started.status === 'indeterminate') {
@@ -3265,6 +3393,12 @@ export async function delegateTask(
       throw error;
     }
   }
+  // #484 phase A: recheck again at the turn boundary — this covers the
+  // resume path (existing session, no start) and everything that raced the
+  // start above — AND thread the admission into the service internal
+  // options so the turn-effect path rechecks it adjacent to the adapter
+  // sendTurn invocation. Refusal fails the turn BEFORE the provider effect.
+  await input.receiverAdmission?.recheck();
   await orchestrationService.dispatchWithReceipt(
     {
       type: 'sendTurn',
@@ -3286,6 +3420,13 @@ export async function delegateTask(
       input.clientOrigin,
       input.principal,
     ),
+    input.receiverAdmission
+      ? {
+          receiverExecutionAdmission: {
+            recheck: input.receiverAdmission.recheck,
+          },
+        }
+      : undefined,
   );
   delegatedTasks.add(1, {
     target: bindingTarget.kind,

@@ -2886,6 +2886,19 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // #484 phase A: one lazy receiver-side admission service over the SAME
+  // pinned stores the contribution projection mount composes below (both
+  // mount inside this function; the closure only runs at request time).
+  let receiverContributionService: ProjectContributionService | undefined;
+  const receiverContributionServiceFor = () =>
+    (receiverContributionService ??= new ProjectContributionService({
+      source: context.storageAdapter,
+      manifests: contributionResolution.manifests as ProjectManifestStore,
+      bindings: contributionResolution.bindings as ProjectBindingsStore,
+      resolver: contributionResolution.resolver as ProjectResourceResolver,
+      config: context.configLoader,
+    }));
+
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -2916,6 +2929,14 @@ export function configureRuntimeRoutes(
         delegateTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+        ),
+      // #484 phase A: the receiver's offer admission for the explicit
+      // portable-execution intent, over the SAME contribution stores the
+      // projection mount uses.
+      authorizeReceiverExecution: (input, authorityCurrent) =>
+        receiverContributionServiceFor().authorizeReceiverExecution(
+          input,
+          authorityCurrent,
         ),
       executeForegroundMessage: (input) =>
         executeExecutionTargetMessage(

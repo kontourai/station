@@ -63,6 +63,21 @@ export interface SessionCommandModule {
   ): Promise<SessionCommandOutcome>;
 }
 
+/**
+ * #484 phase A: the receiver-owned admission for one explicit
+ * portable-execution intent, honored INSIDE the provider-effect path: the
+ * service awaits `recheck` adjacent to the adapter start/sendTurn
+ * invocation, so a withdrawn offer or lost binding refuses instead of
+ * invoking an effect it no longer authorizes. Deliberately NOT a
+ * `ForegroundInvocationAdmission`: that contract is connection-agent
+ * specific (its start gate requires an agent-connection join), while this
+ * admission authorizes any resolved agent against the operator's current
+ * offer. Never accepted from public JSON.
+ */
+export interface ReceiverExecutionEffectAdmission {
+  recheck: () => Promise<void>;
+}
+
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
   /** Borrowed dispatch capability; provider completion cannot release its parent. */
@@ -71,6 +86,8 @@ export type SessionCommandInternalOptions = {
   roomExecutionBinding?: { projectId: string; taskId: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  /** Receiver-owned portable-execution recheck, run inside the effect path. */
+  receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;
   /** Server-minted correlation for an exact higher-level start claim. */
   commandId?: string;

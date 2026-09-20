@@ -78,6 +78,21 @@ export interface ExecutionTargetResolverDependencies {
     slug: string,
   ) => Promise<ResolvedProjectView | undefined>;
   /**
+   * #484 phase A: the receiver-side owner of the `project-portable` intent.
+   * Receives the portable Project id + resource id EXACTLY as the caller
+   * sent them and answers with the ADMITTED receiver-local project — the
+   * implementation (the contribution service's `authorizeReceiverExecution`)
+   * refuses unless the operator currently offers execution for exactly this
+   * pair and the resource is currently bound. Optional: a composition that
+   * does not wire it refuses the portable intent outright rather than
+   * falling back to a slug/path resolution.
+   */
+  getPortableProject?: (
+    access: EnvironmentAccess,
+    portableProjectId: string,
+    resourceId: string,
+  ) => Promise<(ResolvedProjectView & { slug: string }) | undefined>;
+  /**
    * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) —
    * the fallback a project that names no workspace mode of its own lands on,
    * ahead of `'shared'`.
@@ -286,6 +301,41 @@ async function resolveWorkspace(
         // expanded form, and the continuation guard compares the two as
         // strings. `verifiedProjectPath` stays outside it — remote path.
         cwd: access.verifiedProjectPath ?? resolve(expandTilde(cwd)),
+      },
+    };
+  }
+
+  if (workspace.kind === 'project-portable') {
+    // #484 phase A: the portable intent has NO caller-owned address — no
+    // slug, no cwd, no isolation override. The whole workspace resolves
+    // from the receiver-owned admission; a composition without one refuses
+    // instead of falling back.
+    if (!deps.getPortableProject) {
+      throw new Error(
+        'Portable execution is not admitted by this Station: no offer admission is wired.',
+      );
+    }
+    const project = await deps.getPortableProject(
+      access,
+      workspace.portableProjectId,
+      workspace.resourceId,
+    );
+    if (!project?.workingDirectory) {
+      throw new Error(
+        'The offered Project resource is unavailable for portable execution',
+      );
+    }
+    return {
+      workspace: {
+        kind: 'project',
+        projectSlug: project.slug,
+        cwd: resolve(expandTilde(project.workingDirectory)),
+        workspaceIsolation: {
+          mode: resolveWorkspaceIsolationMode(
+            project.defaultWorkspaceIsolation,
+            await deps.getStationDefaultWorkspaceIsolation?.(access),
+          ),
+        },
       },
     };
   }

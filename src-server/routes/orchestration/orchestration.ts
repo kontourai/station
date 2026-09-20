@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
+import { ReceiverExecutionRefusal } from '../../services/projects/project-contribution-service.js';
 import {
   parseStationAnswerNarrativePublishInput,
   parseStationAnswerNarrativeRemoveInput,
@@ -345,6 +347,14 @@ const workspaceTargetSchema = z.discriminatedUnion('kind', [
     kind: z.literal('directory'),
     cwd: z.string().min(1).max(4_096),
   }),
+  // #484 phase A: explicit portable execution intent — consent identity,
+  // not an address. A receiver from before this slice refuses the whole
+  // workspace object here (fail-closed), never a stripped-field fallback.
+  z.object({
+    kind: z.literal('project-portable'),
+    portableProjectId: z.string().min(1).max(512),
+    resourceId: z.string().min(1).max(512),
+  }),
 ]);
 
 const executionTargetSchema = z.object({
@@ -595,6 +605,11 @@ interface DelegateTaskRequest {
   userId: string;
   principal?: PrincipalRef;
   clientOrigin?: ClientOrigin;
+  /**
+   * #484 phase A: composed by the /delegations route for a
+   * `project-portable` workspace intent; never public JSON.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
 }
 
 interface ForegroundMessageRequest {
@@ -869,6 +884,16 @@ export function createOrchestrationRoutes(
       close(sessionId: string): Promise<void>;
     };
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
+    /**
+     * #484 phase A: admits (or refuses) the explicit portable-execution
+     * intent against this Station's operator offer, binding the CURRENT
+     * request credential via `authorityCurrent`. Composed by
+     * `runtime-routes.ts` over the contribution service.
+     */
+    authorizeReceiverExecution?: (
+      input: { portableProjectId: string; resourceId: string },
+      authorityCurrent: () => boolean,
+    ) => Promise<ReceiverExecutionAdmission>;
     executeForegroundMessage?: (
       input: ForegroundMessageRequest,
     ) => Promise<unknown>;
@@ -1670,8 +1695,28 @@ export function createOrchestrationRoutes(
     try {
       const body = getBody(c);
       const { principal, userId } = resolveActorPrincipal(deps, c);
+      // #484 phase A: the explicit portable-execution intent is admitted
+      // HERE — against the receiver's operator offer with the CURRENT
+      // request credential — and the admission (with its per-phase
+      // `recheck`) is threaded into the dispatch so the offer is rechecked
+      // at the session start and again at the turn boundary. The admission
+      // is server-composed only; it never appears in public JSON.
+      const receiverAdmission =
+        body.target.workspace?.kind === 'project-portable'
+          ? await (deps.authorizeReceiverExecution
+              ? deps.authorizeReceiverExecution(body.target.workspace, () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+                )
+              : Promise.reject(
+                  new ReceiverExecutionRefusal(
+                    'receiver_execution_not_offered',
+                    'This Station does not currently offer execution for the requested Project resource.',
+                  ),
+                ))
+          : undefined;
       const data = await deps.delegateTask({
         ...body,
+        receiverAdmission,
         target: normalizeExecutionTarget(body.target),
         userId,
         principal,
@@ -1679,6 +1724,8 @@ export function createOrchestrationRoutes(
       });
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof ReceiverExecutionRefusal)
+        return c.json({ success: false, error: error.message }, 403);
       return c.json(
         {
           success: false,
