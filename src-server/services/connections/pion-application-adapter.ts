@@ -118,7 +118,12 @@ export async function startPionApplicationAdapter(
       throw new Error('pion_temp_custody_invalid');
     }
   }
-  input.signal.throwIfAborted();
+  try {
+    input.signal.throwIfAborted();
+  } catch (error) {
+    await dependencies.removeTemp(directory);
+    throw error;
+  }
   const certificate = join(directory, 'certificate.pem');
   const key = join(directory, 'private-key.pem');
   try {
@@ -182,11 +187,11 @@ export async function startPionApplicationAdapter(
       ipc?.finish();
       if (input.profile === 'application' && stdout() !== '')
         throw new Error('pion_application_content_diagnostic_boundary');
-      if (failure) throw failure;
       owned.release();
       await dependencies.removeTemp(directory);
       if (existsSync(directory))
         throw new Error('pion_temp_cleanup_incomplete');
+      if (failure) throw failure;
     })());
   const fail = (error: Error) => {
     failure ??= error;
