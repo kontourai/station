@@ -927,7 +927,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           ...(await client.headers(session, {
             method: 'POST',
             url: origin + acceptPath,
-            body: JSON.stringify({ token: offer.token }),
           })),
           Authorization: `Bearer ${h.paired.credential}`,
         },
@@ -952,7 +951,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           ...(await client.headers(session, {
             method: 'POST',
             url: origin + PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
-            body: JSON.stringify(pairingBody),
           })),
           Authorization: `Bearer ${h.paired.credential}`,
         },

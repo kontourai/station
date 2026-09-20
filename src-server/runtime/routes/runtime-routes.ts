@@ -9,7 +9,10 @@ import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
-import type { DeploymentAuthenticationService } from '../../services/identity/deployment-authentication-service.js';
+import {
+  type DeploymentAuthenticationService,
+  deploymentAccountPrincipal,
+} from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import type {
@@ -86,11 +89,9 @@ function isAccountDeviceBinding(
 
 function principalForDeviceBinding(binding: DevicePrincipalBinding) {
   return isAccountDeviceBinding(binding)
-    ? deploymentHumanPrincipal(
-        'deployment',
-        createHash('sha256')
-          .update(JSON.stringify([binding.issuer, binding.subject]))
-          .digest('hex'),
+    ? deploymentAccountPrincipal(
+        binding.issuer,
+        binding.subject,
         binding.displayName,
       )
     : deploymentHumanPrincipal(

@@ -14,9 +14,10 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { calculateJwkThumbprint, importJWK, jwtVerify } from 'jose';
 import { z } from 'zod/v3';
 import { parseStrictBearer } from '../../security/runtime-request-security.js';
-import type {
-  DeploymentAuthenticationService,
-  ResolvedDeploymentAuthentication,
+import {
+  type DeploymentAuthenticationService,
+  deploymentAccountPrincipal,
+  type ResolvedDeploymentAuthentication,
 } from './deployment-authentication-service.js';
 
 const digest = (value: string) =>
@@ -506,13 +507,9 @@ export class ApplicationSessionService {
     const ingressBinding =
       binding && !('kind' in binding) ? binding : undefined;
     const bindingPrincipalId = accountBinding
-      ? humanPrincipal(
-          'deployment',
-          createHash('sha256')
-            .update(
-              JSON.stringify([accountBinding.issuer, accountBinding.subject]),
-            )
-            .digest('hex'),
+      ? deploymentAccountPrincipal(
+          accountBinding.issuer,
+          accountBinding.subject,
           accountBinding.displayName,
         ).id
       : ingressBinding
