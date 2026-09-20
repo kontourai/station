@@ -2,28 +2,17 @@
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { cleanup, render } from '@testing-library/react';
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  test,
-} from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { ProjectSidebarHeader } from '../components/project-sidebar/ProjectSidebarHeader';
 
-const css = [
-  '../index.css',
-  '../components/project-sidebar/ProjectSidebar.css',
-]
+const css = ['../index.css', '../components/project-sidebar/ProjectSidebar.css']
   .map((path) => resolveCssImports(resolve(import.meta.dirname, path)))
   .join('\n');
 
-// #2254: the iOS runtime smoke dropped its tap on "Close navigation" because
-// the button laid out at 24x24 (16px glyph + 4px padding), below the 44x44
-// minimum touch target. jsdom cannot compute layout, so this proves the real
-// rendered geometry and the center-point hit test in a browser page.
+// #2260: the failed iOS smoke exposed a 24x24 close control. This test
+// measures the rendered target and hit testing; native interaction has its
+// own packaged-simulator smoke.
 describe('mobile drawer close touch target', () => {
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
   beforeAll(async () => {
@@ -62,15 +51,24 @@ describe('mobile drawer close touch target', () => {
       expect(box!.width).toBeGreaterThanOrEqual(44);
       expect(box!.height).toBeGreaterThanOrEqual(44);
 
-      // A tap at the box center — what XCUITest delivers — must land on the
-      // button (or its glyph), not on a sibling under a too-small target.
+      // Check the control center and a point outside the viewport; a missing
+      // element must never be accepted as a hit.
       const hit = await page.evaluate(
-        ([cx, cy]) =>
-          document.elementFromPoint(cx, cy)?.closest('.sidebar__mobile-close') !==
-          null,
+        ([cx, cy]) => ({
+          center: Boolean(
+            document
+              .elementFromPoint(cx, cy)
+              ?.closest('.sidebar__mobile-close'),
+          ),
+          outside: Boolean(
+            document
+              .elementFromPoint(-1, -1)
+              ?.closest('.sidebar__mobile-close'),
+          ),
+        }),
         [box!.x + box!.width / 2, box!.y + box!.height / 2],
       );
-      expect(hit).toBe(true);
+      expect(hit).toEqual({ center: true, outside: false });
 
       // Only the hit target grew; the visible glyph stays 16px.
       const glyph = await close.locator('svg').boundingBox();
