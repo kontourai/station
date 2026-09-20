@@ -140,6 +140,18 @@ describe('production Pion application adapter ownership', () => {
     ).rejects.toThrow('stopped');
     expect(spawn).not.toHaveBeenCalled();
   });
+  test('abort before allocation never acquires custody', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('stopped'));
+    const createTemp = vi.fn();
+    await expect(
+      startPionApplicationAdapter(input({ signal: controller.signal }), {
+        ...base,
+        createTemp,
+      }),
+    ).rejects.toThrow('stopped');
+    expect(createTemp).not.toHaveBeenCalled();
+  });
   test('missing pipes and early exit converge on joined cleanup', async () => {
     for (const mode of ['pipes', 'exit'] as const) {
       const release = vi.fn();
@@ -203,5 +215,43 @@ describe('production Pion application adapter ownership', () => {
     const retainedAdapter = await startPionApplicationAdapter(input(), bad);
     await expect(retainedAdapter.close()).rejects.toThrow('unconfirmed');
     expect(release).toHaveBeenCalledOnce();
+  });
+  test('configured deadline owns shutdown and missing-directory verification retains registry authority', async () => {
+    let directory = '';
+    const release = vi.fn();
+    const dependencies = {
+      ...base,
+      createTemp: async (label: string) => {
+        directory = await createStationTempDir(label);
+        retained.add(directory);
+        return directory;
+      },
+      spawn: ((_c: string, _a: string[], options: any) => ({
+        proc: child(options.cwd),
+        release,
+      })) as typeof spawnOwnedChild,
+    };
+    const adapter = await startPionApplicationAdapter(
+      input({ maxLifetimeMs: 1_000 }),
+      dependencies,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1_050));
+    await expect(adapter.close()).rejects.toThrow(
+      'pion_application_lifetime_expired',
+    );
+    const retainedRelease = vi.fn();
+    const noRemove = {
+      ...dependencies,
+      removeTemp: async () => {},
+      spawn: ((_c: string, _a: string[], options: any) => ({
+        proc: child(options.cwd),
+        release: retainedRelease,
+      })) as typeof spawnOwnedChild,
+    };
+    const second = await startPionApplicationAdapter(input(), noRemove);
+    await expect(second.close()).rejects.toThrow(
+      'pion_temp_cleanup_incomplete',
+    );
+    expect(retainedRelease).not.toHaveBeenCalled();
   });
 });

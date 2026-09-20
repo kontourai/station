@@ -187,10 +187,10 @@ export async function startPionApplicationAdapter(
       ipc?.finish();
       if (input.profile === 'application' && stdout() !== '')
         throw new Error('pion_application_content_diagnostic_boundary');
-      owned.release();
       await dependencies.removeTemp(directory);
       if (existsSync(directory))
         throw new Error('pion_temp_cleanup_incomplete');
+      owned.release();
       if (failure) throw failure;
     })());
   const fail = (error: Error) => {
