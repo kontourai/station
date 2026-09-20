@@ -5,7 +5,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
-import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
+import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
@@ -19,6 +19,8 @@ import {
   AgentService,
   runtimeStationEngineExecution,
 } from '../../../services/agents/agent-service.js';
+import { deriveConnectionReadinessEvidence } from '../../../services/connections/connection-readiness-evidence.js';
+import type { StoredConnectionSmokeResult } from '../../../services/connections/connection-smoke-evidence-store.js';
 import {
   CATALOG_REFRESHING_REASON,
   createEnrichedAgentRoutes,
@@ -34,27 +36,6 @@ afterEach(() => {
     rmSync(home, { recursive: true, force: true });
   }
 });
-
-/**
- * A fully-typed affirmative evidence fixture — the exact shape
- * `deriveConnectionReadinessEvidence` emits for a connection with a live
- * catalog, including the canned summary that used to cross the
- * unavailable-reason seam.
- */
-function catalogReadyEvidence(
-  overrides: Partial<ConnectionReadinessEvidence> = {},
-): ConnectionReadinessEvidence {
-  return {
-    evidenceVersion: 1,
-    level: 'catalog-ready',
-    observedAt: new Date().toISOString(),
-    freshness: 'fresh',
-    summary: 'A live model or capability catalog is available.',
-    action: 'Run an explicit smoke to prove a complete chat turn.',
-    smoke: { status: 'not-tested', freshness: 'unknown', turnLimit: 1 },
-    ...overrides,
-  };
-}
 
 function setup(overrides: Record<string, unknown> = {}) {
   const metadata = [
@@ -97,6 +78,35 @@ function setup(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
   return { app: createEnrichedAgentRoutes(deps as any), deps };
+}
+
+/** An ACP agent connection with a live capability catalog. */
+function acpAgentConnection(
+  overrides: Partial<AgentConnectionView> = {},
+): AgentConnectionView {
+  return {
+    id: engineConnectionId('opencode'),
+    kind: 'agent',
+    type: 'acp',
+    name: 'OpenCode',
+    enabled: true,
+    capabilities: ['agent-runtime'],
+    config: { engineId: 'acp' },
+    status: 'ready',
+    prerequisites: [],
+    runtimeCatalog: {
+      source: 'live',
+      fetchedAt: '2026-09-20T11:00:00.000Z',
+      models: [],
+      builtInModels: [],
+    },
+    ...overrides,
+    setup: overrides.setup ?? {
+      state: 'ready',
+      detected: true,
+      configured: false,
+    },
+  };
 }
 
 describe('registry-backed enriched Agent routes', () => {
@@ -858,6 +868,251 @@ describe('registry-backed enriched Agent routes', () => {
     expect(codexAlias.enable).toBeUndefined();
   });
 
+  // The opencode-delegate-readiness live defect: an ACP connection whose
+  // initialize handshake had failed still reached `catalog-ready` evidence
+  // (its capability inventory freshness was live), so the catalog refused the
+  // bound Agent — and `station delegate` printed the evidence summary's
+  // POSITIVE sentence, "A live model or capability catalog is available.", as
+  // the rejection. The refusal must state the missing proof and carry the
+  // engine's actual observation plus the supported action.
+  test('refuses a proven-nothing engine with its actual observation, not the evidence summary', async () => {
+    const initializeFailure =
+      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.';
+    const { app } = setup({
+      loadAgent: vi.fn(async (slug: string) => {
+        if (slug === 'writer')
+          return {
+            name: 'Writer',
+            prompt: 'Write.',
+            execution: { agentConnectionId: engineConnectionId('opencode') },
+          };
+        throw new Error('registry defaults are not stored as authored Agents');
+      }),
+      getRuntimeConnections: vi.fn().mockResolvedValue([
+        {
+          id: 'opencode',
+          type: 'acp',
+          name: 'OpenCode',
+          status: 'degraded',
+          enabled: true,
+          engineId: 'opencode',
+          readinessReason: 'A live model or capability catalog is available.',
+          readinessLevel: 'catalog-ready',
+          stateReason: initializeFailure,
+        },
+      ]),
+    });
+
+    const body = await json(await app.request('/'));
+    const writer = body.data.find((agent: any) => agent.slug === 'writer');
+    expect(writer.available).toBe(false);
+    expect(writer.unavailableReason).toContain(
+      'has not yet proved it can complete a chat turn',
+    );
+    // The engine's ACTUAL observation travels in the refusal.
+    expect(writer.unavailableReason).toContain(initializeFailure);
+    // The supported first action for a command-backed ACP engine is the free
+    // handshake retry, not a billable smoke (which does not flip the gate).
+    expect(writer.unavailableReason).toContain(
+      'station acp connections reconnect opencode',
+    );
+    // The contradiction that shipped is gone.
+    expect(writer.unavailableReason).not.toContain(
+      'A live model or capability catalog is available',
+    );
+    expect(writer.unavailableFix).toEqual({
+      kind: 'connection-broken',
+      target: 'opencode',
+    });
+  });
+
+  test('a readiness summary that names a failure still travels verbatim', () => {
+    const refusal = externalEngineUnavailable(
+      'codex',
+      new Map([
+        [
+          'codex',
+          {
+            id: 'codex',
+            name: 'Codex',
+            type: 'codex',
+            enabled: true,
+            status: 'missing_prerequisites',
+            readinessReason: 'Codex CLI was not found on PATH.',
+            readinessLevel: 'discovered',
+          },
+        ],
+      ]) as never,
+    );
+    expect(refusal.reason).toBe('Codex CLI was not found on PATH.');
+  });
+
+  test('the projection carries the evidence level and the connection state reason separately', () => {
+    const summary = runtimeConnectionSummary({
+      id: 'opencode' as never,
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'degraded',
+      config: {
+        engineId: 'acp',
+        readinessReason:
+          'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+      },
+      readinessEvidence: {
+        level: 'catalog-ready',
+        summary: 'A live model or capability catalog is available.',
+      },
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.readinessLevel).toBe('catalog-ready');
+    expect(summary.readinessReason).toBe(
+      'A live model or capability catalog is available.',
+    );
+    expect(summary.stateReason).toBe(
+      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+    );
+  });
+
+  // The level alone cannot tell a failure summary from an observation
+  // summary: a fresh failed smoke keeps `catalog-ready` (capability freshness
+  // is live), so the refusal must carry the smoke's own reason, not the
+  // generic proof sentence. Runs the REAL evidence derivation.
+  test('a fresh failed smoke at catalog-ready keeps its failure summary verbatim', () => {
+    const connection = acpAgentConnection();
+    const smoke: StoredConnectionSmokeResult = {
+      evidenceVersion: 2,
+      connectionId: connection.id,
+      configurationFingerprint: 'a'.repeat(64),
+      status: 'failed',
+      testedAt: '2026-09-20T11:59:00.000Z',
+      freshUntil: '2026-09-21T11:59:00.000Z',
+      provider: 'opencode',
+      durationMs: 1200,
+      reasonCode: 'turn-failed',
+      reason: 'The engine exited before producing a turn.',
+      action: 'Check the engine logs, then smoke it again.',
+      turnLimit: 1,
+    };
+    const evidence = deriveConnectionReadinessEvidence(
+      connection,
+      smoke,
+      new Date('2026-09-20T12:00:00.000Z'),
+    );
+    expect(evidence.level).toBe('catalog-ready');
+    expect(evidence.summary).toBe('The engine exited before producing a turn.');
+    const summary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: evidence,
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.summaryNamesFailure).toBe(true);
+    const refusal = externalEngineUnavailable(
+      summary.id,
+      new Map([[summary.id, summary]]),
+    );
+    expect(refusal.reason).toBe('The engine exited before producing a turn.');
+    expect(refusal.fix).toEqual({
+      kind: 'connection-broken',
+      target: connection.id,
+    });
+  });
+
+  // Same class, check receipts: `unreachable` inside its grace window and
+  // `catalog-unavailable` both keep `prerequisite-ready`, and both summaries
+  // name a failure — they must not be replaced by the proof sentence.
+  test('unreachable and catalog-unavailable receipts keep their summaries verbatim', () => {
+    const connection = acpAgentConnection({
+      runtimeCatalog: { source: 'none', models: [], builtInModels: [] },
+    });
+    const unreachable = deriveConnectionReadinessEvidence(
+      connection,
+      null,
+      new Date('2026-09-20T12:00:00.000Z'),
+      {
+        status: 'unreachable',
+        checkedAt: '2026-09-20T11:59:00.000Z',
+        retrying: true,
+        reason: 'getaddrinfo EAI_AGAIN catalog.example.invalid',
+      },
+    );
+    expect(unreachable.level).toBe('prerequisite-ready');
+    const summary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: unreachable,
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.summaryNamesFailure).toBe(true);
+    const refusal = externalEngineUnavailable(
+      summary.id,
+      new Map([[summary.id, summary]]),
+    );
+    expect(refusal.reason).toBe(
+      'getaddrinfo EAI_AGAIN catalog.example.invalid',
+    );
+
+    const catalogMissing = deriveConnectionReadinessEvidence(
+      connection,
+      null,
+      new Date('2026-09-20T12:00:00.000Z'),
+      {
+        status: 'catalog-unavailable',
+        checkedAt: '2026-09-20T11:59:00.000Z',
+        reason: 'Model catalog request failed with HTTP 404.',
+        source: 'catalog-discovery',
+      },
+    );
+    expect(catalogMissing.level).toBe('prerequisite-ready');
+    const missingSummary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: catalogMissing,
+      parseEngineId: (value) => value as never,
+    });
+    const missingRefusal = externalEngineUnavailable(
+      missingSummary.id,
+      new Map([[missingSummary.id, missingSummary]]),
+    );
+    expect(missingRefusal.reason).toBe(
+      'Model catalog request failed with HTTP 404.',
+    );
+  });
+
+  // Baseline: the original defect shape — an ACP initialize timeout with a
+  // live catalog — must still refuse with the probe's actual observation and
+  // the reconnect action, never the positive summary.
+  test('an ACP initialize timeout still refuses with the probe observation', () => {
+    const probeFailure =
+      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.';
+    const connection = acpAgentConnection({
+      status: 'degraded',
+      config: { engineId: 'acp', readinessReason: probeFailure },
+    });
+    const evidence = deriveConnectionReadinessEvidence(
+      connection,
+      null,
+      new Date('2026-09-20T12:00:00.000Z'),
+    );
+    expect(evidence.level).toBe('catalog-ready');
+    const summary = runtimeConnectionSummary({
+      ...connection,
+      readinessEvidence: evidence,
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.summaryNamesFailure).toBe(false);
+    const refusal = externalEngineUnavailable(
+      summary.id,
+      new Map([[summary.id, summary]]),
+    );
+    expect(refusal.reason).toContain(
+      'has not yet proved it can complete a chat turn',
+    );
+    expect(refusal.reason).toContain(probeFailure);
+    expect(refusal.reason).toContain('station acp connections reconnect');
+    expect(refusal.reason).not.toContain(
+      'A live model or capability catalog is available',
+    );
+  });
+
   test('keeps a custom dependent visible and invalid after its engine default is deleted', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-agent-dependent-'));
     homes.push(home);
@@ -1022,190 +1277,6 @@ describe('registry-backed enriched Agent routes', () => {
     });
 
     expect(summary.provider).toBeUndefined();
-  });
-
-  /**
-   * The contradictory live state: an OpenCode connection whose readiness
-   * evidence is AFFIRMATIVE (`catalog-ready`, whose canned summary is "A live
-   * model or capability catalog is available.") while its `status` is not
-   * ready. `readinessReason` is consumed only as an unavailable reason, so the
-   * affirmative summary must not cross that seam — the observed bug was an
-   * unavailable delegation target whose `unavailableReason` asserted a live
-   * catalog was available.
-   */
-  test('an affirmative readiness-evidence summary never becomes an unavailable reason', () => {
-    const summary = runtimeConnectionSummary({
-      id: 'opencode' as never,
-      type: 'acp-runtime',
-      name: 'OpenCode',
-      enabled: true,
-      status: 'degraded',
-      config: {},
-      readinessEvidence: catalogReadyEvidence(),
-      parseEngineId: (value) => value as never,
-    });
-
-    expect(summary.readinessReason).toBeUndefined();
-    // The consumer falls through to the status-derived copy, which says what
-    // is true instead of asserting availability.
-    const { reason } = externalEngineUnavailable(
-      'opencode',
-      new Map([['opencode', summary]]),
-    );
-    expect(reason).toBe('OpenCode is only partly working.');
-  });
-
-  /**
-   * Positive control for the same seam: evidence that names a REAL gap or
-   * failure still reaches `readinessReason` — the fix may not mute genuine
-   * problem text.
-   */
-  test('gap and failure evidence summaries still flow through as unavailable reasons', () => {
-    const base = {
-      id: 'opencode' as never,
-      type: 'acp-runtime',
-      name: 'OpenCode',
-      enabled: true,
-      status: 'unprobed',
-      config: {},
-      parseEngineId: (value: unknown) => value as never,
-    };
-    const discovered = runtimeConnectionSummary({
-      ...base,
-      readinessEvidence: catalogReadyEvidence({
-        level: 'discovered',
-        summary:
-          'Station discovered this client, but has not proved chat readiness.',
-      }),
-    });
-    const smokeFailed = runtimeConnectionSummary({
-      ...base,
-      status: 'ready',
-      readinessEvidence: catalogReadyEvidence({
-        summary: 'The bounded chat smoke failed: empty response.',
-        smoke: {
-          status: 'failed',
-          freshness: 'fresh',
-          turnLimit: 1,
-          reasonCode: 'empty-response',
-        },
-      }),
-    });
-    const checkRefused = runtimeConnectionSummary({
-      ...base,
-      readinessEvidence: catalogReadyEvidence({
-        level: 'prerequisite-ready',
-        summary: 'The provider refused these settings.',
-        check: { status: 'failed' },
-      }),
-    });
-
-    expect(discovered.readinessReason).toBe(
-      'Station discovered this client, but has not proved chat readiness.',
-    );
-    expect(smokeFailed.readinessReason).toBe(
-      'The bounded chat smoke failed: empty response.',
-    );
-    expect(checkRefused.readinessReason).toBe(
-      'The provider refused these settings.',
-    );
-  });
-
-  test('a ready external connection with affirmative evidence stays honestly available', () => {
-    const summary = runtimeConnectionSummary({
-      id: 'opencode' as never,
-      type: 'acp',
-      name: 'OpenCode',
-      enabled: true,
-      status: 'ready',
-      config: { provider: 'opencode' },
-      readinessEvidence: catalogReadyEvidence(),
-      parseEngineId: (value) => value as never,
-    });
-
-    expect(summary.readinessReason).toBeUndefined();
-    expect(
-      isHonestlyAvailableConnectedAgent(
-        { execution: { agentConnectionId: 'opencode' } } as never,
-        new Map([['opencode', summary]]),
-      ),
-    ).toBe(true);
-  });
-
-  /**
-   * The delegate-facing projection end to end: `/api/agents` is what
-   * `discoverDelegationOptions` reads `agent.unavailableReason` from, so the
-   * contradictory connection must reach the ROUTE response as an unavailable
-   * Agent whose reason is the truthful status copy — never the affirmative
-   * catalog sentence. The ready control runs through the same route.
-   */
-  test('the agent catalog projects the contradictory connection as unavailable with a truthful reason', async () => {
-    const { app } = setup({
-      loadAgent: vi.fn(async (slug: string) => {
-        if (slug === 'writer')
-          return {
-            name: 'Writer',
-            prompt: 'Write.',
-            execution: { agentConnectionId: engineConnectionId('opencode') },
-          };
-        throw new Error('registry defaults are not stored as authored Agents');
-      }),
-      getRuntimeConnections: vi.fn().mockResolvedValue([
-        {
-          id: 'opencode',
-          type: 'opencode',
-          provider: 'opencode',
-          name: 'OpenCode',
-          status: 'degraded',
-          enabled: true,
-          engineId: engineId('opencode'),
-          readinessEvidence: catalogReadyEvidence(),
-        },
-      ]),
-    });
-
-    const body = await json(await app.request('/'));
-    const writer = body.data.find((agent: any) => agent.slug === 'writer');
-    expect(writer).toMatchObject({
-      available: false,
-      unavailableReason: 'OpenCode is only partly working.',
-    });
-    expect(writer.unavailableReason).not.toContain(
-      'A live model or capability catalog is available.',
-    );
-  });
-
-  test('the agent catalog keeps a ready external engine honestly available over affirmative evidence', async () => {
-    const { app } = setup({
-      loadAgent: vi.fn(async (slug: string) => {
-        if (slug === 'writer')
-          return {
-            name: 'Writer',
-            prompt: 'Write.',
-            execution: { agentConnectionId: engineConnectionId('opencode') },
-          };
-        throw new Error('registry defaults are not stored as authored Agents');
-      }),
-      getRuntimeConnections: vi.fn().mockResolvedValue([
-        {
-          id: 'opencode',
-          type: 'opencode',
-          provider: 'opencode',
-          name: 'OpenCode',
-          status: 'ready',
-          enabled: true,
-          engineId: engineId('opencode'),
-          readinessEvidence: catalogReadyEvidence(),
-        },
-      ]),
-    });
-
-    const body = await json(await app.request('/'));
-    const writer = body.data.find((agent: any) => agent.slug === 'writer');
-    // An honestly available external binding carries no unavailable row at
-    // all — the affirmative evidence must not resurrect one.
-    expect(writer?.available).not.toBe(false);
-    expect(writer?.unavailableReason).toBeUndefined();
   });
 });
 

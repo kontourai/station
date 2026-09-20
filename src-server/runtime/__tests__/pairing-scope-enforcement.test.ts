@@ -369,6 +369,16 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     }
   });
 
+  it('portable execution-root mutation requires operate scope on its actual route', async () => {
+    const { request } = createHarness();
+    const path = '/api/projects/example/identity/execution-root';
+    const readOnly = await request(path, 'PUT', READ_ONLY_CREDENTIAL);
+    expect(readOnly.status).toBe(403);
+    const standard = await request(path, 'PUT', STANDARD_CREDENTIAL);
+    expect(standard.status).not.toBe(401);
+    expect(standard.status).not.toBe(403);
+  });
+
   // archive#4075 stage 3 slice 2: dedicated, literal-path exercise of the
   // presence-roster endpoint — same posture as the SSH-sessions and board
   // tests above, proving the real production leaf (no `/probe` synthetic
