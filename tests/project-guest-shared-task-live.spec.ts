@@ -111,7 +111,10 @@ test.describe
           headers: operatorHeaders,
           body: JSON.stringify({ projectId, title }),
         });
-        expect(response.status).toBe(201);
+        expect(
+          response.status,
+          `Task creation failed: ${await response.text()}`,
+        ).toBe(201);
         return (await response.json()).data as {
           id: string;
           createdAt: string;
