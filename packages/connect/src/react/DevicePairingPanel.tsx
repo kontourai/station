@@ -1663,7 +1663,15 @@ export function HostDevicePairingPanel({
                 >
                   <button
                     type="button"
-                    style={primaryBtnStyle}
+                    style={{
+                      ...primaryBtnStyle,
+                      ...(request.accountCandidate !== undefined &&
+                      !accountBindingRequests.has(request.requestId) &&
+                      !personBindingRequests.has(request.requestId) &&
+                      !personalApprovalRequests.has(request.requestId)
+                        ? { opacity: 0.45, cursor: 'not-allowed' }
+                        : {}),
+                    }}
                     disabled={
                       requestActionIds.has(request.requestId) ||
                       (request.accountCandidate !== undefined &&
