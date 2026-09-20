@@ -953,7 +953,7 @@
 .file-mention-picker__option[aria-selected="true"],
 .file-mention-picker__option:hover,
 .file-mention-picker__option:focus-visible {
-  background: var(--surface-hover);
+  background: var(--bg-tertiary);
 }
 
 .file-mention-picker__status {

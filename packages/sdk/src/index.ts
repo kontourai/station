@@ -1065,6 +1065,11 @@ export {
   useAttentionQuery,
 } from './query-domains/attention.js';
 export {
+  fetchCodingFileMentionCandidates,
+  useCodingFileMentionCandidatesQuery,
+} from './query-domains/chatRuntimeCoding.js';
+export type { CodingFileMentionCandidates } from './query-domains/chatRuntimeCoding.js';
+export {
   useBoardQuery,
   useMoveBoardWidget,
   usePinBoardWidget,
