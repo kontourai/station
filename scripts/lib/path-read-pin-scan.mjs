@@ -655,9 +655,7 @@ function collectBindings(source) {
   const pattern =
     /(?:^|[;{}\n)])[ \t]*(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=\s*/g;
   let match;
-  while (true) {
-    match = pattern.exec(source);
-    if (match === null) break;
+  while ((match = pattern.exec(source))) {
     const name = match[1];
     if (bindings.has(name)) {
       bindings.set(name, { tokens: [], evaluated: true, result: UNRESOLVED });

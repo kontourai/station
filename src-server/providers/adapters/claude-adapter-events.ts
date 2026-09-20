@@ -1118,10 +1118,7 @@ export function settleUnresolvedClaudeToolCalls({
   // can elapse while the SDK still holds a queued `tool_result`, and the
   // replay guard used to drop it — leaving `unresolved` standing over a
   // result Station had actually received. See `settledToolCalls`.
-  if (record.settledToolCalls === undefined) {
-    record.settledToolCalls = new Map();
-  }
-  const settled = record.settledToolCalls;
+  const settled = (record.settledToolCalls ??= new Map());
   for (const [toolCallId, tracked] of entries) {
     settled.set(toolCallId, tracked);
     // station#1558 (fix round, H1): a call whose terminal was already
