@@ -1,5 +1,11 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -139,6 +145,40 @@ afterEach(async () => {
 });
 
 describe('project file transactions', () => {
+  test('manifest replacement compares semantic identity while publishing under the Project revision', async () => {
+    const home = tempHome();
+    const adapter = new FileStorageAdapter(home);
+    const manifest = {
+      schemaVersion: 1 as const,
+      id: 'prj_acme',
+      repos: [{ kind: 'local-only' as const, id: 'local:acme' }],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    await adapter.createProjectWithIdentity(project(), manifest);
+    const revision = adapter.projectRevision('acme');
+    const expectedWithDifferentPropertyOrder = {
+      updatedAt: manifest.updatedAt,
+      repos: manifest.repos,
+      id: manifest.id,
+      schemaVersion: manifest.schemaVersion,
+      createdAt: manifest.createdAt,
+    };
+    const next = {
+      ...manifest,
+      executionRoot: { repoId: 'local:acme', path: 'apps/web' },
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    };
+    await expect(
+      revision.replaceManifest?.(expectedWithDifferentPropertyOrder, next),
+    ).resolves.toBeUndefined();
+    expect(
+      JSON.parse(
+        readFileSync(join(home, 'projects', 'acme', 'manifest.json'), 'utf8'),
+      ),
+    ).toEqual(next);
+  });
+
   test('rejects stale updates and deletes without changing the newer Project', async () => {
     const home = tempHome();
     const adapter = new FileStorageAdapter(home);

@@ -705,6 +705,35 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     }
   });
 
+  test('portable execution-root mutation is bounded before its route reads an oversized body', async () => {
+    const { app, roomRuntime } = await setup('device');
+    searchCleanup.unshift(async () => {
+      await roomRuntime.close();
+    });
+    const cancel = vi.fn();
+    const oversized = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(256 * 1024));
+      },
+      cancel,
+    });
+    const response = await app.request(
+      '/api/projects/example/identity/execution-root',
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPERATOR_SECRET}`,
+        },
+        body: oversized,
+        duplex: 'half',
+      } as RequestInit,
+      REMOTE_TAILNET_ENV,
+    );
+    expect(response.status).toBe(413);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   test('explicit operator pairing binds two devices to one person through real HTTP authorization and refuses conflicting identity', async () => {
     const { app, store, roomRuntime, pairing } = await setup();
     const prepareSpy = vi.spyOn(AttachmentStagingService.prototype, 'prepare');
@@ -1179,6 +1208,28 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(JSON.stringify(sharedBody)).not.toMatch(
         /workingDirectory|private-provider-marker|private-model-marker/,
       );
+      const guestMutationPath = '/api/projects/example/identity/execution-root';
+      const guestMutation = await h.app.request(
+        origin + guestMutationPath,
+        {
+          method: 'PUT',
+          headers: {
+            ...(await boundClient.headers(boundSession, {
+              method: 'PUT',
+              url: origin + guestMutationPath,
+            })),
+            Authorization: `Bearer ${replacement.credential}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            expectedIdentity: {},
+            expectedLocalProjectId: h.sharedProject!.id,
+            executionRoot: null,
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(guestMutation.status).toBe(403);
       const privateProject = await projectRead('/api/projects/private-project');
       expect(privateProject.status).toBe(404);
       expect(JSON.stringify(await privateProject.json())).not.toContain(

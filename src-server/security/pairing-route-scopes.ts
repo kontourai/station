@@ -2457,6 +2457,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // the Project family's operate scope and grant no peer/member authority.
     { method: 'GET', path: '/api/projects/:slug/identity' },
     { method: 'POST', path: '/api/projects/:slug/identity/prepare' },
+    {
+      method: 'PUT',
+      path: '/api/projects/:slug/identity/execution-root',
+    },
     { method: 'POST', path: '/api/projects/attach' },
     // Reorders this Station's own project list and returns it. A mutation
     // within its family and no more sensitive than the rest of it: it reads
