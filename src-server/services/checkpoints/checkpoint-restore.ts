@@ -191,6 +191,8 @@ export class CheckpointRestoreService {
     const currentTree = await snapshotWorkingTree(preview.repoRoot);
     if (currentTree !== preview.currentTreeSha)
       throw new CheckpointRestoreError('workspace_changed');
+    if (input.isAuthorized?.() === false)
+      throw new CheckpointRestoreError('authorization_changed');
     const recoveryRef = `refs/station/restore-recovery/${input.previewId}`;
     await execGit(['update-ref', recoveryRef, currentTree], {
       cwd: preview.repoRoot,

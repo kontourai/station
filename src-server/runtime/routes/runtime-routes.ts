@@ -344,6 +344,7 @@ import { createSessionInventoryAppReadModule } from '../../services/orchestratio
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
@@ -2819,13 +2820,17 @@ export function configureRuntimeRoutes(
         ),
       previewThreadCheckpointRestore: (input) =>
         checkpointRestoreService.preview(input),
-      restoreThreadCheckpoint: (input) => {
+      restoreThreadCheckpoint: async (input) => {
         const workspace = checkpointRestoreService.workspaceForPreview(
           input.previewId,
           input.ownerKey,
         );
-        return context.orchestrationService.runWorkspaceRestore(workspace, () =>
-          checkpointRestoreService.restore(input),
+        const identity = await resolveWorkspaceIdentity(workspace);
+        if (identity.kind !== 'git')
+          throw new Error('workspace_checkpoint_unsupported');
+        return context.orchestrationService.runWorkspaceRestore(
+          identity.key,
+          () => checkpointRestoreService.restore(input),
         );
       },
       listCheckpointRestoreEvents: (threadId) =>

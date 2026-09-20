@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
@@ -328,6 +327,7 @@ import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
+import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
 type UsageTelemetryObserver = {
   trackSessionRecovery(
@@ -2908,23 +2908,19 @@ export class OrchestrationService {
       async () => {
         if (!this.options.eventStore)
           throw new Error('workspace_coordination_unavailable');
-        const sessionIds = this.options.eventStore
+        const possible = this.options.eventStore
           .readSessions()
-          .filter((session) => {
-            if (!session.cwd) return false;
-            try {
-              return (
-                execFileSync(
-                  'git',
-                  ['-C', session.cwd, 'rev-parse', '--show-toplevel'],
-                  { encoding: 'utf-8', windowsHide: true },
-                ).trim() === workspaceKey
-              );
-            } catch {
-              throw new Error('workspace_coordination_unavailable');
-            }
-          })
-          .map((session) => session.threadId);
+          .filter((session) =>
+            this.sessionExecutionCoordinator.hasActiveTurn(session.threadId),
+          );
+        const sessionIds: string[] = [];
+        for (const session of possible) {
+          if (!session.cwd)
+            throw new Error('workspace_coordination_unavailable');
+          const identity = await resolveWorkspaceIdentity(session.cwd);
+          if (identity.kind !== 'remote' && identity.key === workspaceKey)
+            sessionIds.push(session.threadId);
+        }
         if (
           sessionIds.some((threadId) =>
             this.sessionExecutionCoordinator.hasActiveTurn(threadId),
@@ -5310,18 +5306,15 @@ export class OrchestrationService {
                       )
                     : invoke();
                 },
-                (() => {
+                await (async () => {
                   const cwd =
                     this.sessionReadModel.get(turnInput.threadId)?.cwd ??
                     this.options.eventStore?.readSessionByThread(
                       turnInput.threadId,
                     )?.cwd;
                   if (!cwd) return undefined;
-                  return execFileSync(
-                    'git',
-                    ['-C', cwd, 'rev-parse', '--show-toplevel'],
-                    { encoding: 'utf-8', windowsHide: true },
-                  ).trim();
+                  const identity = await resolveWorkspaceIdentity(cwd);
+                  return identity.kind === 'remote' ? undefined : identity.key;
                 })(),
               );
             } catch (error) {

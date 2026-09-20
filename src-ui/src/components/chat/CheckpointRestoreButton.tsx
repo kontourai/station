@@ -4,7 +4,7 @@ import {
   previewCheckpointRestore,
 } from '@kontourai/station-sdk/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
@@ -26,14 +26,33 @@ export function CheckpointRestoreButton({
   const [preview, setPreview] = useState<CheckpointRestorePreview>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const generation = useRef(0);
+  const owner = `${sessionId}\0${turnId}\0${authority?.authorityKey ?? ''}`;
+  const ownerRef = useRef(owner);
+  if (ownerRef.current !== owner) {
+    ownerRef.current = owner;
+    generation.current += 1;
+  }
+  useEffect(
+    () => () => {
+      generation.current += 1;
+    },
+    [],
+  );
   const load = async () => {
     if (!authority || !authority.isCurrent()) return;
     setBusy(true);
     setError(undefined);
+    const operation = ++generation.current;
     try {
-      setPreview(
-        await previewCheckpointRestore(apiBase, sessionId, turnId, authority),
+      const result = await previewCheckpointRestore(
+        apiBase,
+        sessionId,
+        turnId,
+        authority,
       );
+      if (operation === generation.current && authority.isCurrent())
+        setPreview(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -84,9 +103,12 @@ export function CheckpointRestoreButton({
                     authority!,
                   )
                     .then(() => {
+                      if (!authority?.isCurrent()) return;
                       void queryClient.invalidateQueries({
-                        predicate: (query) =>
-                          query.queryKey.includes(preview.repoRoot),
+                        queryKey: ['git-status', preview.repoRoot],
+                      });
+                      void queryClient.invalidateQueries({
+                        queryKey: ['git-log', preview.repoRoot],
                       });
                       setPreview(undefined);
                       showToast('Workspace restored.');

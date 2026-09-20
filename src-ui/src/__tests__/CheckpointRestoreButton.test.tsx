@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
@@ -25,6 +27,17 @@ vi.mock('../contexts/ToastContext', () => ({
 
 import { CheckpointRestoreButton } from '../components/chat/CheckpointRestoreButton';
 
+function mount() {
+  const client = new QueryClient();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  render(
+    <QueryClientProvider client={client}>
+      <CheckpointRestoreButton sessionId="session-1" turnId="turn-1" />
+    </QueryClientProvider>,
+  );
+  return invalidate;
+}
+
 const result = {
   previewId: 'preview-1',
   threadId: 'session-1',
@@ -46,7 +59,7 @@ beforeEach(() => {
 });
 
 test('previews current workspace effects and cancellation performs no restore', async () => {
-  render(<CheckpointRestoreButton sessionId="session-1" turnId="turn-1" />);
+  mount();
   fireEvent.click(
     screen.getByRole('button', { name: 'Restore workspace to here…' }),
   );
@@ -62,7 +75,7 @@ test('previews current workspace effects and cancellation performs no restore', 
 
 test('confirms the exact preview and surfaces restore failures', async () => {
   confirm.mockRejectedValueOnce(new Error('workspace_changed'));
-  render(<CheckpointRestoreButton sessionId="session-1" turnId="turn-1" />);
+  mount();
   fireEvent.click(
     screen.getByRole('button', { name: 'Restore workspace to here…' }),
   );
@@ -80,4 +93,42 @@ test('confirms the exact preview and surfaces restore failures', async () => {
     result,
     expect.objectContaining({ authorityKey: 'authority-1' }),
   );
+});
+
+test('refreshes only captured workspace query families after confirmed success', async () => {
+  const invalidate = mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Restore workspace to here…' }),
+  );
+  await screen.findByRole('alertdialog');
+  fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: ['git-status', '/repo'],
+  });
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: ['git-log', '/repo'],
+  });
+});
+
+test('does not publish a late preview after the owning turn changes', async () => {
+  let finish!: (value: typeof result) => void;
+  preview.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <CheckpointRestoreButton sessionId="session-1" turnId="turn-1" />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Restore workspace to here…' }),
+  );
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <CheckpointRestoreButton sessionId="session-2" turnId="turn-2" />
+    </QueryClientProvider>,
+  );
+  finish(result);
+  await Promise.resolve();
+  expect(screen.queryByRole('alertdialog')).toBeNull();
 });
