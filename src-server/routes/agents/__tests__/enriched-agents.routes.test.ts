@@ -836,6 +836,112 @@ describe('registry-backed enriched Agent routes', () => {
     expect(codexAlias.enable).toBeUndefined();
   });
 
+  // The opencode-delegate-readiness live defect: an ACP connection whose
+  // initialize handshake had failed still reached `catalog-ready` evidence
+  // (its capability inventory freshness was live), so the catalog refused the
+  // bound Agent — and `station delegate` printed the evidence summary's
+  // POSITIVE sentence, "A live model or capability catalog is available.", as
+  // the rejection. The refusal must state the missing proof and carry the
+  // engine's actual observation plus the supported action.
+  test('refuses a proven-nothing engine with its actual observation, not the evidence summary', async () => {
+    const initializeFailure =
+      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.';
+    const { app } = setup({
+      loadAgent: vi.fn(async (slug: string) => {
+        if (slug === 'writer')
+          return {
+            name: 'Writer',
+            prompt: 'Write.',
+            execution: { agentConnectionId: engineConnectionId('opencode') },
+          };
+        throw new Error('registry defaults are not stored as authored Agents');
+      }),
+      getRuntimeConnections: vi.fn().mockResolvedValue([
+        {
+          id: 'opencode',
+          type: 'acp',
+          name: 'OpenCode',
+          status: 'degraded',
+          enabled: true,
+          engineId: 'opencode',
+          readinessReason: 'A live model or capability catalog is available.',
+          readinessLevel: 'catalog-ready',
+          stateReason: initializeFailure,
+        },
+      ]),
+    });
+
+    const body = await json(await app.request('/'));
+    const writer = body.data.find((agent: any) => agent.slug === 'writer');
+    expect(writer.available).toBe(false);
+    expect(writer.unavailableReason).toContain(
+      'has not yet proved it can complete a chat turn',
+    );
+    // The engine's ACTUAL observation travels in the refusal.
+    expect(writer.unavailableReason).toContain(initializeFailure);
+    // The supported first action for a command-backed ACP engine is the free
+    // handshake retry, not a billable smoke (which does not flip the gate).
+    expect(writer.unavailableReason).toContain(
+      'station acp connections reconnect opencode',
+    );
+    // The contradiction that shipped is gone.
+    expect(writer.unavailableReason).not.toContain(
+      'A live model or capability catalog is available',
+    );
+    expect(writer.unavailableFix).toEqual({
+      kind: 'connection-broken',
+      target: 'opencode',
+    });
+  });
+
+  test('a readiness summary that names a failure still travels verbatim', () => {
+    const refusal = externalEngineUnavailable(
+      'codex',
+      new Map([
+        [
+          'codex',
+          {
+            id: 'codex',
+            name: 'Codex',
+            type: 'codex',
+            enabled: true,
+            status: 'missing_prerequisites',
+            readinessReason: 'Codex CLI was not found on PATH.',
+            readinessLevel: 'discovered',
+          },
+        ],
+      ]) as never,
+    );
+    expect(refusal.reason).toBe('Codex CLI was not found on PATH.');
+  });
+
+  test('the projection carries the evidence level and the connection state reason separately', () => {
+    const summary = runtimeConnectionSummary({
+      id: 'opencode' as never,
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'degraded',
+      config: {
+        engineId: 'acp',
+        readinessReason:
+          'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+      },
+      readinessEvidence: {
+        level: 'catalog-ready',
+        summary: 'A live model or capability catalog is available.',
+      },
+      parseEngineId: (value) => value as never,
+    });
+    expect(summary.readinessLevel).toBe('catalog-ready');
+    expect(summary.readinessReason).toBe(
+      'A live model or capability catalog is available.',
+    );
+    expect(summary.stateReason).toBe(
+      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+    );
+  });
+
   test('keeps a custom dependent visible and invalid after its engine default is deleted', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-agent-dependent-'));
     homes.push(home);

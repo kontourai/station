@@ -14,6 +14,7 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
+import type { ConnectionEvidenceLevel } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { selectEngineAgentAdoption } from '../../domain/agent-registry.js';
 import type { AgentMetadata } from '../../services/agents/agent-service.js';
@@ -34,6 +35,19 @@ export interface RuntimeConnectionSummary {
   defaultModel?: string;
   engineId?: EngineId;
   readinessReason?: string;
+  /**
+   * The readiness evidence's level, projected alongside `readinessReason` so
+   * a consumer can tell a summary that names a failure (a refused check) from
+   * a proven-nothing level's summary of what HAS been observed.
+   */
+  readinessLevel?: ConnectionEvidenceLevel;
+  /**
+   * The connection's own observed-state reason (`config.readinessReason`):
+   * WHY the engine is not ready right now — an ACP probe's initialize
+   * failure, a runtime adapter's unmet readiness — as opposed to the evidence
+   * summary, which states the strongest proof the connection HAS earned.
+   */
+  stateReason?: string;
 }
 
 type UnavailableFix = NonNullable<EnrichedAgentProjection['unavailableFix']>;
@@ -56,7 +70,7 @@ export function runtimeConnectionSummary(connection: {
   enabled: boolean;
   status: string;
   config: Record<string, unknown>;
-  readinessEvidence?: { summary?: string };
+  readinessEvidence?: { summary?: string; level?: ConnectionEvidenceLevel };
   parseEngineId: (value: unknown) => EngineId | undefined;
 }): RuntimeConnectionSummary {
   return {
@@ -77,6 +91,12 @@ export function runtimeConnectionSummary(connection: {
       (typeof connection.config.readinessReason === 'string'
         ? connection.config.readinessReason
         : undefined),
+    readinessLevel: connection.readinessEvidence?.level,
+    stateReason:
+      typeof connection.config.readinessReason === 'string' &&
+      connection.config.readinessReason.trim()
+        ? connection.config.readinessReason
+        : undefined,
   };
 }
 
@@ -134,6 +154,44 @@ export function isHonestlyAvailableConnectedAgent(
 }
 
 /**
+ * A proven-nothing evidence level's summary states what HAS been observed (a
+ * live model catalog exists, required prerequisites are satisfied) — never
+ * what is missing. Quoted as an unavailability reason it read as a
+ * contradiction: a live Station refused every `station delegate` dispatch to
+ * opencode with "Error: A live model or capability catalog is available."
+ * because the ACP connection sat at `catalog-ready` evidence while its
+ * initialize handshake had never succeeded. These levels are exactly the two
+ * whose summary cannot name a failure.
+ */
+function isProvenNothingEvidenceLevel(
+  level: ConnectionEvidenceLevel | undefined,
+): boolean {
+  return level === 'catalog-ready' || level === 'prerequisite-ready';
+}
+
+/**
+ * The honest refusal for a connection whose evidence says nothing has been
+ * proven yet: name the missing proof, carry the engine's own observed-state
+ * reason (an ACP probe's actual initialize failure, say), and give the
+ * supported action. For a command-backed ACP engine the first action is the
+ * free handshake retry — `station acp connections reconnect <id>` — because
+ * its readiness gate is the probe's `available` observation, which a billable
+ * smoke does not flip. Every other engine keeps the generic proof action.
+ */
+function unprovenEngineRefusal(connection: RuntimeConnectionSummary): string {
+  const engine = connection.name?.trim() || 'This agent\u2019s engine';
+  const detail = connection.stateReason?.trim();
+  const observed = detail
+    ? `Last engine observation: ${detail}`
+    : 'No live engine observation is available.';
+  const action =
+    connection.type === 'acp'
+      ? `Retry the engine handshake with: station acp connections reconnect ${connection.id}.`
+      : 'Run the connection\u2019s explicit smoke, then retry.';
+  return `${engine} has not yet proved it can complete a chat turn. ${observed} ${action}`;
+}
+
+/**
  * Why this agent's engine cannot run it, in words a person can act on.
  *
  * archive#3742: every branch printed the connection ID — "Engine connection
@@ -165,7 +223,14 @@ export function externalEngineUnavailable(
   }
   if (connection.readinessReason) {
     return {
-      reason: connection.readinessReason,
+      // A proven-nothing evidence summary is not a refusal; refuse with the
+      // missing proof and the engine's actual observation instead. A summary
+      // that DOES name a failure (a refused check, a failed smoke) keeps
+      // travelling verbatim — that is the one case where the evidence
+      // summary is itself the reason the agent is unavailable.
+      reason: isProvenNothingEvidenceLevel(connection.readinessLevel)
+        ? unprovenEngineRefusal(connection)
+        : connection.readinessReason,
       fix: {
         kind:
           connection.status === 'missing_prerequisites'
