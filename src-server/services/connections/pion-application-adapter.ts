@@ -1,4 +1,11 @@
-import { existsSync, lstatSync, realpathSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type { ApplicationChannel } from '@kontourai/station-connect/application-channel';
@@ -279,6 +286,36 @@ export async function startPionApplicationAdapter(
             throw new Error('pion_version_invalid');
           return {
             answer: { type: 'answer' as const, sdp: answer.sdp },
+            provenance: {
+              pionWebrtc: version.pion,
+              goVersion: version.go,
+              executableSha256: createHash('sha256')
+                .update(readFileSync(resolvedExecutable))
+                .digest('hex'),
+            },
+            peer: {
+              close,
+              getSelectedCandidatePair() {
+                const value = readJsonFile<Record<string, unknown>>(
+                  join(directory, 'transport.json'),
+                  {},
+                  { maxBytes: 4096, label: 'Pion transport' },
+                );
+                return typeof value.local === 'string' &&
+                  typeof value.remote === 'string'
+                  ? {
+                      local: { type: value.local },
+                      remote: { type: value.remote },
+                    }
+                  : null;
+              },
+            },
+            diagnostics: () =>
+              readJsonFile(join(directory, 'state.json'), null, {
+                maxBytes: 4096,
+                label: 'Pion state',
+              }),
+            readMessages: () => [] as string[],
             close,
           };
         }

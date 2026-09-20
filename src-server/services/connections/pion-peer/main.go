@@ -116,6 +116,7 @@ func run(dir string) error {
 		if err := publish(dir, "state.json", map[string]any{"state": s.String()}); err != nil {
 			reportFailure(err)
 		}
+		if s == webrtc.PeerConnectionStateConnected { if pair,e:=pc.SCTP().Transport().ICETransport().GetSelectedCandidatePair(); e==nil && pair!=nil { _ = publish(dir,"transport.json",map[string]string{"local":pair.Local.Typ.String(),"remote":pair.Remote.Typ.String()}) } }
 	})
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		if cfg.Profile == "application" {

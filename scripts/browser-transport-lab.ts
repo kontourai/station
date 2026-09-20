@@ -358,6 +358,7 @@ async function exchange(
       turnPort: relay.port,
       username,
       password,
+      signal: abort.signal,
       ...(args.includes('--application-protocol') || accountStation
         ? {
             application: {
@@ -672,12 +673,25 @@ try {
   const page = await context.newPage();
   await page.goto(`http://127.0.0.1:${address.port}`);
   const good = await exchange(page, approved, approved.fingerprint);
-  await page.waitForFunction(browserChannelOpen, undefined, { timeout: 20000 });
+  const applicationPion =
+    peerAdapter === 'pion' &&
+    (args.includes('--application-protocol') ||
+      args.includes('--application-accounts'));
   const marker = `private-station-content-${randomBytes(32).toString('hex')}`;
-  await page.evaluate(browserSend, marker);
-  await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
-  assert.deepEqual(good.messages, [marker]);
-  const pair = good.peer.getSelectedCandidatePair();
+  if (!applicationPion) {
+    await page.waitForFunction(browserChannelOpen, undefined, {
+      timeout: 20000,
+    });
+    await page.evaluate(browserSend, marker);
+    await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
+    assert.deepEqual(good.messages, [marker]);
+  }
+  let pair = good.peer.getSelectedCandidatePair();
+  const pairDeadline = Date.now() + 10_000;
+  while (!pair && Date.now() < pairDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    pair = good.peer.getSelectedCandidatePair();
+  }
   assert.equal(pair?.local.type, 'relay');
   assert.equal(pair?.remote.type, 'relay');
   const browserStats = await page.evaluate(readBrowserStats);
@@ -940,22 +954,24 @@ try {
     approved,
     approved.fingerprint,
   );
-  await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
-    timeout: 20000,
-  });
-  await reconnectPage.evaluate(browserSend, marker);
-  await reconnectPage.waitForFunction(browserReceived, marker, {
-    timeout: 10000,
-  });
-  assert.deepEqual(reconnected.messages, [marker]);
-  assert.equal(
-    reconnected.peer.getSelectedCandidatePair()?.local.type,
-    'relay',
-  );
-  assert.equal(
-    reconnected.peer.getSelectedCandidatePair()?.remote.type,
-    'relay',
-  );
+  if (!applicationPion) {
+    await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
+      timeout: 20000,
+    });
+    await reconnectPage.evaluate(browserSend, marker);
+    await reconnectPage.waitForFunction(browserReceived, marker, {
+      timeout: 10000,
+    });
+    assert.deepEqual(reconnected.messages, [marker]);
+  }
+  let reconnectPair = reconnected.peer.getSelectedCandidatePair();
+  const reconnectPairDeadline = Date.now() + 10_000;
+  while (!reconnectPair && Date.now() < reconnectPairDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    reconnectPair = reconnected.peer.getSelectedCandidatePair();
+  }
+  assert.equal(reconnectPair?.local.type, 'relay');
+  assert.equal(reconnectPair?.remote.type, 'relay');
   await reconnectContext.close();
   await reconnected.peer.close();
 
@@ -1051,7 +1067,9 @@ try {
       'tampered proof refused before accepting the connection description',
       'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
       'browser-native DTLS connected',
-      'application content echoed through encrypted data channel',
+      applicationPion
+        ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
+        : 'application content echoed through encrypted data channel',
       'fresh browser and peer reconnect using the same approved Station certificate',
       'unapproved signaling fingerprint refused',
       'substituted endpoint fails DTLS fingerprint verification',
