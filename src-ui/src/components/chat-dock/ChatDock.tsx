@@ -505,6 +505,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const {
     data: orchestrationSessions = [],
     status: orchestrationSessionsStatus,
+    isError: orchestrationSessionsFailed,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
   // The inbox rows' hover cards resolve git facts against the row's local
@@ -527,6 +528,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus === 'pending' ||
     inventory.isPending ||
     !agentsLoaded;
+  const taskItemsFailed = orchestrationSessionsFailed || inventory.isError;
   const acknowledgeConversation = useAcknowledgeConversationMutation();
   const inventoryById = useMemo(
     () =>
@@ -2601,6 +2603,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               mode: taskSwitcherMode,
               tasks: taskItems,
               pending: taskItemsPending,
+              loadError: taskItemsFailed,
+              onRetryLoad: () => {
+                void refetchOrchestrationSessions();
+                void inventory.refetch();
+              },
               agents,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
@@ -2632,6 +2639,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   taskSwitcherMode === 'activity' ? 'Activity' : 'Switch task'
                 }
                 style={visualViewport.style}
+                onClose={() => setIsTaskSwitcherOpen(false)}
+                returnFocusTarget={
+                  taskSwitcherMode === 'activity'
+                    ? activityTriggerRef.current
+                    : taskSwitcherTriggerRef.current
+                }
               />
             }
           />

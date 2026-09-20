@@ -1,4 +1,5 @@
 import {
+  canSessionLifecycleStateResume,
   foldedSessionLifecycleState,
   isSessionLifecycleStateTerminal,
 } from '@kontourai/station-contracts/session-lifecycle';
@@ -40,28 +41,30 @@ export function DelegatedTaskCoordinator({
 }) {
   const task = tasks[0];
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const input = drafts[task.threadId] ?? '';
+  const taskKey = `${apiBase}\u0000${task.threadId}`;
+  const input = drafts[taskKey] ?? '';
 
   const sendTurn = useMutation({
-    mutationFn: (turn: { threadId: string; text: string }) =>
+    mutationFn: (turn: { apiBase: string; threadId: string; text: string }) =>
       sendOrchestrationTurn({
         threadId: turn.threadId,
         text: turn.text,
-        apiBase,
+        apiBase: turn.apiBase,
       }),
     onSuccess: (_result, turn) => {
       setDrafts((current) => {
-        if (current[turn.threadId] !== turn.text) return current;
+        const key = `${turn.apiBase}\u0000${turn.threadId}`;
+        if (current[key] !== turn.text) return current;
         const next = { ...current };
-        delete next[turn.threadId];
+        delete next[key];
         return next;
       });
       onTaskChanged();
     },
   });
   const stopTask = useMutation({
-    mutationFn: () =>
-      interruptOrchestrationTurn({ threadId: task.threadId, apiBase }),
+    mutationFn: (target: { apiBase: string; threadId: string }) =>
+      interruptOrchestrationTurn(target),
     onSuccess: onTaskChanged,
   });
 
@@ -77,6 +80,9 @@ export function DelegatedTaskCoordinator({
   const isStreaming = isStreamingSession(task);
   const isTerminal = isTerminalSession(task);
   const canResume = !isSessionLifecycleStateTerminal(
+    foldedSessionLifecycleState(task.lifecycleState),
+  );
+  const canResumeSameWork = canSessionLifecycleStateResume(
     foldedSessionLifecycleState(task.lifecycleState),
   );
   // archive#1781: `needsReview` is the raw fold, and since archive#1791 it
@@ -103,7 +109,7 @@ export function DelegatedTaskCoordinator({
   // exists to remove, and with the View task fallback suppressed too.
   const unanswerableNotice =
     needsReview && !isTerminal && isUnanswerable ? answerability.notice : null;
-  const liveReview = needsReview && !isTerminal && !isUnanswerable;
+  const liveReview = needsReview && canResumeSameWork && !isUnanswerable;
   const environment =
     task.delegation?.environmentName ??
     displayEnvironment(task.delegation?.environmentId);
@@ -187,7 +193,11 @@ export function DelegatedTaskCoordinator({
           onSubmit={(event) => {
             event.preventDefault();
             if (input.trim() && !sendTurn.isPending)
-              sendTurn.mutate({ threadId: task.threadId, text: input });
+              sendTurn.mutate({
+                apiBase,
+                threadId: task.threadId,
+                text: input,
+              });
           }}
         >
           <input
@@ -197,7 +207,7 @@ export function DelegatedTaskCoordinator({
             onChange={(event) =>
               setDrafts((current) => ({
                 ...current,
-                [task.threadId]: event.target.value,
+                [taskKey]: event.target.value,
               }))
             }
           />
@@ -221,7 +231,9 @@ export function DelegatedTaskCoordinator({
           <Button
             variant="danger-outline"
             disabled={stopTask.isPending}
-            onClick={() => stopTask.mutate()}
+            onClick={() =>
+              stopTask.mutate({ apiBase, threadId: task.threadId })
+            }
           >
             {stopTask.isPending ? 'Stopping…' : 'Stop active task'}
           </Button>

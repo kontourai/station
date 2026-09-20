@@ -34,6 +34,6 @@ describe('errorAgentDraft', () => {
     });
     expect(draft.length).toBeLessThan(13_000);
     expect(draft).toContain('3');
-    expect(draft).toContain('[CIRCULAR]');
+    expect(draft).toContain('[OMITTED: LIMIT]');
   });
 });

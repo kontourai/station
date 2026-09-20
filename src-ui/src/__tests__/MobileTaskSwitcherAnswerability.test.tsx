@@ -8,7 +8,7 @@
  * files over carried both. Same label, two answers, one of them a bare
  * adjective.
  */
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
@@ -66,6 +66,28 @@ describe('MobileTaskSwitcher answerability basis', () => {
   test('claims the settled empty state only after pending clears', () => {
     renderSheet([]);
     expect(screen.getByText('No chats yet.')).toBeTruthy();
+  });
+
+  test('a failed read offers retry instead of claiming the list is empty', () => {
+    const retry = vi.fn();
+    render(
+      <MobileTaskSwitcher
+        open
+        tasks={[]}
+        loadError
+        onRetryLoad={retry}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('No chats yet.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 
   test('renders the observation, not just the label', () => {

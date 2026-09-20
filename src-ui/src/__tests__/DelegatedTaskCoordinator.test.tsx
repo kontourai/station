@@ -199,14 +199,12 @@ describe('DelegatedTaskCoordinator answerability', () => {
    * `!isTerminal`. Drop `!isTerminal` from `liveReview` alone and every other
    * test in this file stays green.
    */
-  test('a terminal but ANSWERABLE task with an open review offers no live CTA', () => {
+  test('a resumable failed task keeps its answerable review instead of competing with the composer', () => {
     renderCard(task({ lifecycleState: 'failed', pendingReview: true }));
-    expect(screen.queryByRole('button', { name: 'Review request' })).toBeNull();
-    expect(
-      screen.queryByText('This worker is waiting for your response.'),
-    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Review request' })).toBeTruthy();
+    expect(screen.queryByLabelText('Direct worker follow-up')).toBeNull();
     expect(screen.queryByTestId('coordinator-answerability')).toBeNull();
-    expect(screen.getByRole('button', { name: 'View task' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'View task' })).toBeNull();
   });
 
   test('nor is a task with nothing awaiting a response', () => {

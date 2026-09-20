@@ -1,34 +1,39 @@
 import type { CSSProperties } from 'react';
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../ResponsiveDialogSurface';
 
 /** Immediate, accessible acknowledgement while a phone sheet chunk loads. */
 export function MobileSheetPending({
   label,
   style,
+  onClose,
+  returnFocusTarget,
 }: {
   label: string;
   style?: CSSProperties;
+  onClose: () => void;
+  returnFocusTarget?: HTMLElement | null;
 }) {
   return (
-    <div
-      className="mobile-task-switcher__overlay responsive-surface-overlay"
-      style={style}
+    <ResponsiveDialogSurface
+      layer="dialog"
+      onClose={onClose}
+      ariaLabel={label}
+      overlayStyle={style}
+      returnFocusTarget={returnFocusTarget}
+      initialFocusPolicy="panel"
     >
-      <section
-        className="mobile-task-switcher__panel responsive-surface-panel"
-        role="dialog"
-        aria-label={label}
-        aria-busy="true"
-      >
-        <header className="mobile-task-switcher__header">
-          <div>
-            <p>Loading</p>
-            <h2>{label}</h2>
-          </div>
-        </header>
-        <p role="status" className="mobile-task-switcher__list">
-          Loading {label.toLowerCase()}…
-        </p>
-      </section>
-    </div>
+      <ResponsiveDialogHeader
+        title={label}
+        subtitle="Loading"
+        closeLabel={`Close ${label.toLowerCase()}`}
+        onClose={onClose}
+      />
+      <p role="status" aria-busy="true">
+        Loading {label.toLowerCase()}…
+      </p>
+    </ResponsiveDialogSurface>
   );
 }

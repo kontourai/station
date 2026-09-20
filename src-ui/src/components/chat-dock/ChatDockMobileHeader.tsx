@@ -225,7 +225,13 @@ export function ChatDockMobileHeader({
       {isOverflowOpen && (
         <LazyBoundary
           load={loadChatDockMobileOverflowSheet}
-          pending={<MobileSheetPending label="Chat actions" />}
+          pending={
+            <MobileSheetPending
+              label="Chat actions"
+              onClose={() => setIsOverflowOpen(false)}
+              returnFocusTarget={chatActionsTriggerRef.current}
+            />
+          }
           componentProps={{
             overflow,
             projectScope,

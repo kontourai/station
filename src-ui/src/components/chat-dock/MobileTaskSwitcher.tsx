@@ -22,7 +22,7 @@ import {
 } from '../../views/home/work-item-open-policy';
 import { registerDialogHistory } from '../dialog-history';
 import { ResponsiveDialogCloseButton } from '../ResponsiveDialogSurface';
-import { Empty, SkeletonList } from '../state';
+import { Empty, ErrorState, SkeletonList } from '../state';
 import {
   InboxGroupList,
   type InboxGroupListProps,
@@ -79,6 +79,8 @@ export function MobileTaskSwitcher({
   now,
   agents,
   pending = false,
+  loadError = false,
+  onRetryLoad,
 }: {
   open: boolean;
   mode?: MobileTaskSwitcherMode;
@@ -126,6 +128,8 @@ export function MobileTaskSwitcher({
   agents?: InboxGroupListProps['agents'];
   /** True until every read contributing rows has settled. */
   pending?: boolean;
+  loadError?: boolean;
+  onRetryLoad?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const openMembership = useMemo(
@@ -304,7 +308,19 @@ export function MobileTaskSwitcher({
               {`Background tasks (${backgroundTaskCount ?? 0})`}
             </button>
           )}
-          {pending ? (
+          {loadError && visibleGroups.length === 0 ? (
+            <ErrorState
+              variant="compact"
+              title="Unable to load chats and tasks"
+              action={
+                onRetryLoad ? (
+                  <button type="button" onClick={onRetryLoad}>
+                    Retry
+                  </button>
+                ) : undefined
+              }
+            />
+          ) : pending ? (
             <div
               role="status"
               aria-busy="true"
@@ -320,6 +336,16 @@ export function MobileTaskSwitcher({
               }
             />
           ) : null}
+          {loadError && visibleGroups.length > 0 && (
+            <p role="status">
+              Some chats may be out of date.{' '}
+              {onRetryLoad && (
+                <button type="button" onClick={onRetryLoad}>
+                  Retry
+                </button>
+              )}
+            </p>
+          )}
           {/* kontourai/station#3312: rows/groups are the shared inbox
               anatomy (`ChatDockInboxRows.tsx`) — same richness as the
               desktop panel, with `--touch` chrome for ≥44px targets. */}

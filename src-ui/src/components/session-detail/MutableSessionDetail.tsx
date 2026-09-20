@@ -208,7 +208,7 @@ export function MutableSessionDetail({
           sendTurnError={sendTurn.error}
           respondError={respond.error}
           onDraftSendError={
-            sendTurn.error
+            sendTurn.error && !hideGenericCompose && !isStreaming
               ? () => {
                   const draft = errorAgentDraft({
                     attempted: 'Continue session',
