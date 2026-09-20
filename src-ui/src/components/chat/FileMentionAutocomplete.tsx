@@ -113,7 +113,7 @@ export function FileMentionAutocomplete({
         </div>
       ) : null}
       {!isLoading && !querySettling && !isError && suggestions.length === 0 ? (
-        <div className="file-mention-picker__status">No matching files</div>
+        <div className="file-mention-picker__status">Nothing found</div>
       ) : null}
       {!isLoading && !querySettling && !isError && data?.partial ? (
         <div className="file-mention-picker__status" role="status">

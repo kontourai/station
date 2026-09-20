@@ -51,7 +51,7 @@ import {
   sessionReferenceBlockReason,
 } from './composer-mentions';
 import './chat.css';
-import { SkeletonList } from '../state';
+import { SkeletonBlock, SkeletonList } from '../state';
 
 const SessionModelPicker = React.lazy(() =>
   import('../session/SessionModelPicker').then((module) => ({
@@ -526,7 +526,7 @@ export function ChatInputArea({
               </div>
             ) : (
               <React.Suspense
-                fallback={<div role="status">Loading models…</div>}
+                fallback={<SkeletonBlock label="Model options" />}
               >
                 <ModelCatalogUnavailableState stale={modelsStale} />
               </React.Suspense>
@@ -667,7 +667,7 @@ export function ChatInputArea({
         >
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense
-              fallback={<div role="status">Loading attachments…</div>}
+              fallback={<SkeletonBlock label="Attachment controls" />}
             >
               <ComposerAttachmentStrip
                 attachments={attachments}
@@ -1198,9 +1198,7 @@ export function ChatInputArea({
         {sessionReferencesOpen && (
           <React.Suspense
             fallback={
-              <div className="chat-input__attachment-error" role="status">
-                Loading conversation references…
-              </div>
+              <SkeletonBlock label="Conversation reference picker" />
             }
           >
             <SessionReferencePicker

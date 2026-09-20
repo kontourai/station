@@ -1,6 +1,7 @@
 import { fetchConversationInventory } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SkeletonList } from '../state';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -180,9 +181,7 @@ export function SessionReferencePicker({
         aria-label="Conversations"
       >
         {inventory.isFetching ? (
-          <div className="file-mention-picker__status" role="status">
-            Loading conversations…
-          </div>
+          <SkeletonList count={3} label="Conversation references" />
         ) : null}
         {!inventory.isFetching && inventory.data?.unavailable ? (
           <div className="file-mention-picker__status" role="alert">
