@@ -864,7 +864,8 @@ Fetches live ACP slash-command autocomplete options.
 ## Portable Project identity
 
 The React-free `@kontourai/station-sdk/project-identity` entry point exports
-`getProjectIdentity`, `prepareProjectIdentity`, and `attachProject`. Each takes
+`getProjectIdentity`, `prepareProjectIdentity`, `attachProject`, and
+`updateProjectExecutionRoot`. Each takes
 an explicit Station API base and `ClientRequestOptions`; pass the authenticated
 request scope and credential options for that particular Station. Identity reads
 use the Project family's read permission; preparation and attachment require its
@@ -926,6 +927,13 @@ server produces an error, never an ordinary local-creation fallback. The full
 portable target picker, shared-member authorization and cross-machine execution
 admission remain separate consumers of this identity API.
 
+`updateProjectExecutionRoot(apiBase, slug, input, options)` sets a declared
+resource and repo-relative directory, or clears the selection with `null`.
+`input.expectedIdentity` and `input.expectedLocalProjectId` must come from one
+current identity view; a concurrent Project or identity change returns a conflict. The mutation
+is idempotent and does not inspect, create, or bind a checkout. The selected
+directory is verified only when execution later resolves it on that Station.
+
 ## Project access administration and account entry
 
 For a verified virtual transport, `@kontourai/station-sdk/application-session`
@@ -972,10 +980,13 @@ Tasks an operator explicitly published for the caller's current Project scope.
 `readProjectSharedTaskHistory(...)` returns a closed projection of bounded human
 messages and attribution; structured tool events, attachment metadata and room
 write authority are excluded. Human messages and shared documents are returned
-verbatim and may themselves contain paths, secrets, or other private text.
-`readProjectSharedTaskDocument(...)` returns the current text snapshot. Each response is limited to one MiB and validated without extra
-fields. An incomplete history page reports `unavailable`; callers must not treat
-it as complete or infer private records from it.
+verbatim without redaction and may themselves contain paths, secrets, or other
+private text. `readProjectSharedTaskDocument(...)` returns the current text
+snapshot. Each response is limited to one MiB and validated without extra
+fields. The current server reports an incomplete history page as `unavailable`.
+Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
+unavailable and too-large results retain their named states. None is an empty
+complete history, and none permits inferring private records.
 
 These reads require the current account-bound Device, account session and active
 Project membership. Station rechecks the exact Project, publication and Task
