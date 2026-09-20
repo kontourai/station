@@ -1,3 +1,5 @@
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
@@ -2093,6 +2095,17 @@ for (const viewport of [
         path: testInfo.outputPath(screenshotName),
         contentType: 'image/png',
       });
+      const evidenceRoot = join(
+        process.cwd(),
+        '.kontourai',
+        'chat-563',
+        basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+      );
+      mkdirSync(evidenceRoot, { recursive: true });
+      copyFileSync(
+        testInfo.outputPath(screenshotName),
+        join(evidenceRoot, screenshotName),
+      );
     }
     const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
