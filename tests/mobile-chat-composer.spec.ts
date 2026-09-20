@@ -80,7 +80,7 @@ async function openComposer(
 
 test('ChatDock sends scoped file and conversation references while preserving the saved quote across reload', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
@@ -88,7 +88,6 @@ test('ChatDock sends scoped file and conversation references while preserving th
   const threadId = 'thread-reference-dispatch';
   const quote = {
     version: 1,
-    origin: 'http://localhost:3000',
     sessionId: 'source-session',
     turnId: 'source-turn',
     messageId: 'source-message',
@@ -97,11 +96,16 @@ test('ChatDock sends scoped file and conversation references while preserving th
   };
   await page.addInitScript(
     ({ id, savedQuote }) => {
+      if (localStorage.getItem('station:chat-drafts:v1')) return;
       localStorage.setItem(
         'station:chat-drafts:v1',
         JSON.stringify({
           sessions: {
-            [id]: { text: '', updatedAt: Date.now(), quotes: [savedQuote] },
+            [id]: {
+              text: '',
+              updatedAt: Date.now(),
+              quotes: [{ ...savedQuote, origin: window.location.origin }],
+            },
           },
           portable: [],
         }),
@@ -200,6 +204,10 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await expect(
     page.getByRole('region', { name: 'Quoted context' }),
   ).toContainText(quote.excerpt);
+  await page.screenshot({
+    path: testInfo.outputPath('conversation-reference-dispatch-390.png'),
+    fullPage: true,
+  });
   await page.getByRole('button', { name: 'Send' }).click();
   await expect.poll(() => dispatched).toBeTruthy();
   const input = String(dispatched?.input ?? '');
