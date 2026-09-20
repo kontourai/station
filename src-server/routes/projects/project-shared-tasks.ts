@@ -91,7 +91,8 @@ export function createProjectSharedTaskRoutes(deps: {
         ),
         async () => {
           try {
-            await authority.requireProjectRead(scope);
+            for (const summary of data)
+              await deps.service.revalidateSummary(summary, authority);
             return true;
           } catch {
             return false;
@@ -179,8 +180,21 @@ function humanHistory(value: any): ProjectSharedTaskHistory | undefined {
     return undefined;
   return {
     kind: 'available',
-    records: value.records.filter(
-      (record: any) => record?.body?.kind === 'human-message',
+    records: value.records.flatMap((record: any) =>
+      record?.body?.kind === 'human-message'
+        ? [
+            {
+              actor: { kind: record.actor.kind, label: record.actor.label },
+              sequence: record.sequence,
+              body: { kind: 'human-message' as const, text: record.body.text },
+              digests: {
+                proposal: record.digests.proposal,
+                checkpoint: record.digests.checkpoint,
+              },
+              integrity: 'L0' as const,
+            },
+          ]
+        : [],
     ),
     checkpoint: value.checkpoint,
     hasMore: value.hasMore,

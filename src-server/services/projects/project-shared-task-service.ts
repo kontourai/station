@@ -125,6 +125,21 @@ export class ProjectSharedTaskService {
       throw new ProjectSharedTaskRefusal('not-found');
     this.assertCurrent(current);
   }
+  async revalidateSummary(
+    summary: ProjectSharedTaskSummary,
+    authority: ProjectSharedTaskAuthority,
+  ) {
+    await authority.requireProjectRead(summary.project);
+    const current = this.deps.store.admission(summary.task.id);
+    if (
+      !current ||
+      current.shareId !== summary.shareId ||
+      !sameScope(current.scope, summary.project) ||
+      current.taskCreatedAt !== summary.task.createdAt
+    )
+      throw new ProjectSharedTaskRefusal('not-found');
+    this.assertCurrent(current);
+  }
   private admission(scope: ProjectMembershipScope, taskId: string) {
     const admission = this.deps.store.admission(taskId);
     if (!admission || !sameScope(admission.scope, scope))

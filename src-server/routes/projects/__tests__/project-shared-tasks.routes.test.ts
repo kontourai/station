@@ -32,6 +32,7 @@ function fixture() {
     unshare: vi.fn(async () => ({ unshared: true })),
     admitRead: vi.fn(async () => admission),
     revalidate: vi.fn(async () => {}),
+    revalidateSummary: vi.fn(async () => {}),
   };
   const room = {
     history: vi.fn(async () => ({
