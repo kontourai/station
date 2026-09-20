@@ -24,6 +24,7 @@ type config struct {
 	ApplicationChannelLabel                   string
 	Profile                                   string
 	ProtocolVersion                           string
+	LifetimeSeconds                           int
 }
 
 func publish(dir, name string, value any) error {
@@ -100,7 +101,7 @@ func run(dir string) error {
 	var applicationDone <-chan struct{}
 	switch cfg.Profile {
 	case "application":
-		if cfg.ProtocolVersion != "station.application-ipc/v1" || cfg.ApplicationChannelLabel == "" { return errors.New("invalid application profile") }
+		if cfg.ProtocolVersion != "station.application-ipc/v1" || cfg.ApplicationChannelLabel == "" || cfg.LifetimeSeconds < 1 || cfg.LifetimeSeconds > 86400 { return errors.New("invalid application profile") }
 		application = newApplicationBridge(reportFailure)
 		applicationDone = application.done
 		defer application.close()
@@ -176,7 +177,7 @@ func run(dir string) error {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(signals)
 	var lifetime <-chan time.Time
-	if cfg.Profile == "diagnosticEcho" { lifetime = time.After(90 * time.Second) }
+	if cfg.Profile == "diagnosticEcho" { lifetime = time.After(90 * time.Second) } else { lifetime = time.After(time.Duration(cfg.LifetimeSeconds)*time.Second) }
 	select {
 	case <-signals:
 		return nil

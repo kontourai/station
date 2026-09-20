@@ -27,6 +27,7 @@ export interface PionApplicationAdapterInput {
   turn: { url: string; username: string; password: string };
   accept(channel: ApplicationChannel): void;
   signal: AbortSignal;
+  maxLifetimeMs: number;
 }
 export function validatePionAdapterProfile(
   profile: PionAdapterProfile | undefined,
@@ -68,6 +69,12 @@ export async function startPionApplicationAdapter(
   input: PionApplicationAdapterInput,
 ) {
   validatePionAdapterProfile(input.profile, input.applicationChannelLabel);
+  if (
+    !Number.isSafeInteger(input.maxLifetimeMs) ||
+    input.maxLifetimeMs < 1_000 ||
+    input.maxLifetimeMs > 86_400_000
+  )
+    throw new Error('pion_lifetime_invalid');
   if (process.platform === 'win32')
     throw new Error('pion_private_pipe_custody_unavailable_on_windows');
   input.signal.throwIfAborted();
@@ -118,6 +125,7 @@ export async function startPionApplicationAdapter(
             ? PION_APPLICATION_IPC_VERSION
             : 'station.diagnostic-echo/v1',
         ApplicationChannelLabel: input.applicationChannelLabel ?? '',
+        LifetimeSeconds: Math.ceil(input.maxLifetimeMs / 1_000),
       }),
       { flag: 'wx', mode: 0o600 },
     );
@@ -138,9 +146,11 @@ export async function startPionApplicationAdapter(
   let shutdown: Promise<void> | undefined;
   let stdout = () => '';
   let aborted = () => {};
+  let lifetime: ReturnType<typeof setTimeout> | undefined;
   const close = () =>
     (shutdown ??= (async () => {
       input.signal.removeEventListener('abort', aborted);
+      clearTimeout(lifetime);
       ipc?.close();
       await terminateProcessTree(child, {
         graceMs: 2_000,
@@ -187,6 +197,11 @@ export async function startPionApplicationAdapter(
   }
   aborted = () => fail(new Error('pion_application_aborted'));
   input.signal.addEventListener('abort', aborted, { once: true });
+  lifetime = setTimeout(
+    () => fail(new Error('pion_application_lifetime_expired')),
+    input.maxLifetimeMs,
+  );
+  lifetime.unref();
   try {
     const deadline = Date.now() + 25_000;
     while (true) {

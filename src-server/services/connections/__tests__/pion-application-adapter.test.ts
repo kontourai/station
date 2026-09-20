@@ -34,6 +34,7 @@ describe('production Pion application adapter ownership', () => {
         },
         accept: () => {},
         signal: new AbortController().signal,
+        maxLifetimeMs: 30_000,
       }),
     ).rejects.toThrow('pion_executable_invalid');
     expect(await listStationTempEntries('pion-application')).toEqual(before);
