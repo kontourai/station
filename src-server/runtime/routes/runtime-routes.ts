@@ -1377,7 +1377,7 @@ export function configureRuntimeRoutes(
         path === '/' ||
         path.startsWith('/assets/') ||
         path === '/api/projects' ||
-        path.startsWith('/api/projects/') ||
+        /^\/api\/projects\/[^/]+$/.test(path) ||
         path === '/api/account-auth' ||
         path.startsWith('/api/account-auth/') ||
         path === PUBLIC_DEVICE_PAIRING_REQUEST_PATH ||
@@ -3243,8 +3243,10 @@ export function configureRuntimeRoutes(
   ) => {
     const authority = await authenticatedProjectMember(request);
     if (authority) {
-      await context.projectMembership!.requireProjectRead(slug, authority);
-      return true;
+      return await context.projectMembership!.requireProjectRead(
+        slug,
+        authority,
+      );
     }
     return false;
   };
@@ -3275,10 +3277,13 @@ export function configureRuntimeRoutes(
       if (restricted) {
         c.res = await guardProjectResponse(c.res, async () => {
           try {
-            return await requireAuthenticatedProjectRead(
-              c.req.raw,
-              c.req.param('slug'),
+            const authority = await authenticatedProjectMember(c.req.raw);
+            if (!authority) return false;
+            await context.projectMembership!.requireProjectScopeRead(
+              restricted,
+              authority,
             );
+            return true;
           } catch (error) {
             if (error instanceof ProjectMembershipRefusal) return false;
             throw error;
@@ -3376,15 +3381,37 @@ export function configureRuntimeRoutes(
         // verdict the host renders a placeholder from, and apply,
         // from-plugin and the layout list answer the same way.
         canSeePlugin: canSeePluginForRequest,
-        readableProjectScopes: async (c) => {
+        memberProjectAdmissions: async (c) => {
           roomRequestPrincipals.set(
             c.req.raw,
             resolveOrchestrationRequestPrincipal(c),
           );
           const authority = await authenticatedProjectMember(c.req.raw);
-          return authority
-            ? await context.projectMembership!.readableProjectScopes(authority)
-            : undefined;
+          if (!authority) return undefined;
+          return (
+            await context.projectMembership!.readableProjectAdmissions(
+              authority,
+            )
+          ).map(({ scope, member }) => ({
+            scope,
+            actions: member.actions.filter((action) => action === 'view'),
+          }));
+        },
+        memberProjectAdmission: async (c, slug) => {
+          const authority = await authenticatedProjectMember(c.req.raw);
+          if (!authority) return undefined;
+          const admission = (
+            await context.projectMembership!.readableProjectAdmissions(
+              authority,
+            )
+          ).find(({ scope }) => scope.localProjectSlug === slug);
+          if (!admission) return null;
+          return {
+            scope: admission.scope,
+            actions: admission.member.actions.filter(
+              (action) => action === 'view',
+            ),
+          };
         },
         projectCatalogueCurrent: async (c, admittedScopes) => {
           const authority = await authenticatedProjectMember(c.req.raw);

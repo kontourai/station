@@ -11,13 +11,19 @@
  */
 
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
-import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
+import {
+  type MemberProjectView,
+  type ProjectConfig,
+  type ProjectIconCandidate,
+  type ProjectMetadata,
+} from '@kontourai/station-contracts/project';
 import {
   isWellFormedProjectResolutionView,
   isWellFormedProjectResourceBindOutcome,
   type ProjectResolutionView,
   type ProjectResourceBindOutcome,
 } from '@kontourai/station-contracts/project-identity';
+import { PROJECT_MEMBER_ACTIONS } from '@kontourai/station-contracts/project-membership';
 import type {
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
@@ -75,13 +81,81 @@ export interface ProjectTerminalCloseResult {
   terminalId: string;
 }
 
+const MEMBER_PROJECT_VIEW_KEYS = new Set([
+  'version',
+  'kind',
+  'id',
+  'slug',
+  'name',
+  'icon',
+  'description',
+  'actions',
+]);
+
+export function isMemberProjectView(
+  value: unknown,
+): value is MemberProjectView {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const view = value as Record<string, unknown>;
+  return (
+    Object.keys(view).every((key) => MEMBER_PROJECT_VIEW_KEYS.has(key)) &&
+    view.version === 'station.member-project/v1' &&
+    view.kind === 'member-project' &&
+    typeof view.id === 'string' &&
+    typeof view.slug === 'string' &&
+    typeof view.name === 'string' &&
+    (view.icon === undefined || typeof view.icon === 'string') &&
+    (view.description === undefined || typeof view.description === 'string') &&
+    Array.isArray(view.actions) &&
+    view.actions.every(
+      (action) =>
+        typeof action === 'string' &&
+        (PROJECT_MEMBER_ACTIONS as readonly string[]).includes(action),
+    )
+  );
+}
+
+function parseProjectView<T extends ProjectMetadata | ProjectConfig>(
+  value: unknown,
+): T | MemberProjectView {
+  const memberShaped =
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    ('kind' in value || 'version' in value);
+  if (memberShaped) {
+    if (!isMemberProjectView(value))
+      throw new Error(
+        'This Station returned an unsupported member Project view.',
+      );
+    return value;
+  }
+  return value as T;
+}
+
 /** `GET /api/projects` — list projects. */
 export async function listProjects(
   apiBase: string,
   opts?: ClientRequestOptions,
-): Promise<any> {
+): Promise<ProjectMetadata[]> {
+  const projects = await listProjectViews(apiBase, opts);
+  const full: ProjectMetadata[] = [];
+  for (const project of projects) {
+    if (isMemberProjectView(project))
+      throw new Error('Full Project metadata is unavailable to this member.');
+    full.push(project);
+  }
+  return full;
+}
+
+export async function listProjectViews(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<Array<ProjectMetadata | MemberProjectView>> {
   const response = await getJson(`${apiBase}/api/projects`, opts);
-  return unwrapOrThrow(response);
+  const value = await unwrapOrThrow<unknown>(response);
+  if (!Array.isArray(value)) throw new Error('Invalid Project catalogue.');
+  return value.map((project) => parseProjectView<ProjectMetadata>(project));
 }
 
 /** `GET /api/projects/:slug` — get a project. */
@@ -89,12 +163,27 @@ export async function getProject(
   apiBase: string,
   slug: string,
   opts?: ClientRequestOptions,
-): Promise<any> {
+): Promise<ProjectConfig> {
+  const project = await getProjectView(apiBase, slug, opts);
+  if (isMemberProjectView(project))
+    throw new Error(
+      'Full Project configuration is unavailable to this member.',
+    );
+  return project;
+}
+
+export async function getProjectView(
+  apiBase: string,
+  slug: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectConfig | MemberProjectView> {
   const response = await getJson(
     `${apiBase}/api/projects/${encodeURIComponent(slug)}`,
     opts,
   );
-  return unwrapOrThrow(response);
+  return parseProjectView<ProjectConfig>(
+    await unwrapOrThrow<unknown>(response),
+  );
 }
 
 /** `GET /api/projects/icon-candidates` — bounded local artwork discovery. */

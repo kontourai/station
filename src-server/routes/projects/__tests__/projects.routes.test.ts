@@ -128,7 +128,11 @@ function createMockProjectService() {
   const projects = new Map<string, any>();
   return {
     listProjects: vi.fn(async () =>
-      [...projects.values()].map((p) => ({ slug: p.slug, name: p.name })),
+      [...projects.values()].map((p) => ({
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+      })),
     ),
     getProject: vi.fn(async (slug: string) => {
       const p = projects.get(slug);
@@ -289,12 +293,15 @@ describe('Project Routes', () => {
     const service = createMockProjectService();
     await service.createProject({ slug: 'shared', name: 'Shared' });
     await service.createProject({ slug: 'private', name: 'Private marker' });
-    const readableProjectScopes = vi.fn(async () => [
+    const memberProjectAdmissions = vi.fn(async () => [
       {
-        stationId: 'station',
-        localProjectId: 'shared-id',
-        portableProjectId: 'portable-shared',
-        localProjectSlug: 'shared',
+        scope: {
+          stationId: 'station',
+          localProjectId: 'id-1',
+          portableProjectId: 'portable-shared',
+          localProjectSlug: 'shared',
+        },
+        actions: ['view' as const],
       },
     ]);
     const app = createProjectRoutes(
@@ -302,7 +309,7 @@ describe('Project Routes', () => {
       createMockStorageAdapter(['shared', 'private']) as any,
       '/tmp',
       {
-        readableProjectScopes,
+        memberProjectAdmissions,
         projectCatalogueCurrent: async () => true,
       },
     );
@@ -313,9 +320,39 @@ describe('Project Routes', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(await json(response)).toEqual({
       success: true,
-      data: [{ slug: 'shared', name: 'Shared' }],
+      data: [
+        {
+          version: 'station.member-project/v1',
+          kind: 'member-project',
+          id: 'id-1',
+          slug: 'shared',
+          name: 'Shared',
+          actions: ['view'],
+        },
+      ],
     });
-    expect(readableProjectScopes).toHaveBeenCalledTimes(2);
+    expect(memberProjectAdmissions).toHaveBeenCalledTimes(2);
+  });
+
+  test('GET /:slug cannot fall back to full config when member admission changes after the read', async () => {
+    const service = createMockProjectService();
+    await service.createProject({
+      slug: 'shared',
+      name: 'Replacement',
+      workingDirectory: '/private/marker',
+      defaultProviderId: 'private-provider',
+    });
+    const app = createProjectRoutes(
+      service as any,
+      createMockStorageAdapter(['shared']) as any,
+      '/tmp',
+      { memberProjectAdmission: async () => null },
+    );
+
+    const response = await app.request('/shared');
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toMatch(/private|workingDirectory/);
   });
 
   const tempDirs: string[] = [];

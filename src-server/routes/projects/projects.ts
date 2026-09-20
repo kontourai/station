@@ -29,7 +29,10 @@ import {
   type ProjectConfig,
 } from '@kontourai/station-contracts/project';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
-import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
+import type {
+  ProjectMemberAction,
+  ProjectMembershipScope,
+} from '@kontourai/station-contracts/project-membership';
 import type { AgentOwnershipRef } from '@kontourai/station-contracts/project-reference-integrity';
 import {
   normalizeProjectAgentScope,
@@ -198,9 +201,21 @@ async function registerPluginNamespaces(
 
 interface ProjectRouteDeps {
   /** Restricts the Project catalogue for an authenticated shared member. */
-  readableProjectScopes?: (
+  memberProjectAdmissions?: (c: Context) => Promise<
+    | readonly {
+        scope: ProjectMembershipScope;
+        actions: readonly ProjectMemberAction[];
+      }[]
+    | undefined
+  >;
+  memberProjectAdmission?: (
     c: Context,
-  ) => Promise<readonly ProjectMembershipScope[] | undefined>;
+    slug: string,
+  ) => Promise<
+    | { scope: ProjectMembershipScope; actions: readonly ProjectMemberAction[] }
+    | null
+    | undefined
+  >;
   projectCatalogueCurrent?: (
     c: Context,
     admittedScopes: readonly ProjectMembershipScope[],
@@ -558,6 +573,25 @@ export function createProjectRoutes(
     };
   }
 
+  function memberProjectView(
+    project: Pick<
+      ProjectConfig,
+      'id' | 'slug' | 'name' | 'icon' | 'description'
+    >,
+    actions: readonly ProjectMemberAction[],
+  ) {
+    return {
+      version: 'station.member-project/v1' as const,
+      kind: 'member-project' as const,
+      id: project.id,
+      slug: project.slug,
+      name: project.name,
+      ...(project.icon ? { icon: project.icon } : {}),
+      ...(project.description ? { description: project.description } : {}),
+      actions: [...actions],
+    };
+  }
+
   /**
    * #2144 slice 2, decision 4: a project's `defaultWorkspaceIsolation` is a
    * Station setting a project overrides, so writing it requires the scope
@@ -617,38 +651,63 @@ export function createProjectRoutes(
   // List all projects
   app.get('/', async (c) => {
     try {
-      const readable = await deps.readableProjectScopes?.(c);
+      const admissions = await deps.memberProjectAdmissions?.(c);
+      const readable = admissions?.map(({ scope }) => scope);
       const allowed = readable
-        ? new Set(readable.map((scope) => scope.localProjectSlug))
+        ? new Set(
+            readable.map(
+              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
+            ),
+          )
         : undefined;
       const projects = await projectService.listProjects();
-      const currentScopes = allowed
-        ? ((await deps.readableProjectScopes?.(c)) ?? [])
+      const currentAdmissions = allowed
+        ? ((await deps.memberProjectAdmissions?.(c)) ?? [])
         : undefined;
+      const currentScopes = currentAdmissions?.map(({ scope }) => scope);
       const currentReadable = currentScopes
-        ? new Set(currentScopes.map((scope) => scope.localProjectSlug))
+        ? new Set(
+            currentScopes.map(
+              (scope) => `${scope.localProjectId}:${scope.localProjectSlug}`,
+            ),
+          )
         : undefined;
       if (allowed) c.header('Cache-Control', 'no-store');
       const response = c.json({
         success: true,
         data:
-          allowed && currentReadable
-            ? projects.filter(
-                (project) =>
-                  allowed.has(project.slug) &&
-                  currentReadable.has(project.slug),
-              )
+          allowed && currentReadable && currentAdmissions
+            ? projects
+                .filter(
+                  (project) =>
+                    allowed.has(`${project.id}:${project.slug}`) &&
+                    currentReadable.has(`${project.id}:${project.slug}`),
+                )
+                .map((project) => {
+                  const admission = currentAdmissions.find(
+                    ({ scope }) =>
+                      scope.localProjectId === project.id &&
+                      scope.localProjectSlug === project.slug,
+                  )!;
+                  return memberProjectView(project, admission.actions);
+                })
             : projects,
       });
       if (!allowed || !currentReadable || !readable || !currentScopes)
         return response;
-      const admitted = readable.filter((scope) =>
-        currentScopes.some(
-          (current) =>
-            current.localProjectId === scope.localProjectId &&
-            current.portableProjectId === scope.portableProjectId &&
-            current.localProjectSlug === scope.localProjectSlug,
-        ),
+      const admitted = readable.filter(
+        (scope) =>
+          projects.some(
+            (project) =>
+              project.id === scope.localProjectId &&
+              project.slug === scope.localProjectSlug,
+          ) &&
+          currentScopes.some(
+            (current) =>
+              current.localProjectId === scope.localProjectId &&
+              current.portableProjectId === scope.portableProjectId &&
+              current.localProjectSlug === scope.localProjectSlug,
+          ),
       );
       return await guardProjectResponse(response, async () =>
         deps.projectCatalogueCurrent
@@ -785,6 +844,17 @@ export function createProjectRoutes(
     try {
       const slug = param(c, 'slug');
       const project = await projectService.getProject(slug);
+      const memberAdmission = await deps.memberProjectAdmission?.(c, slug);
+      if (memberAdmission === null)
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      if (memberAdmission) {
+        if (memberAdmission.scope.localProjectId !== project.id)
+          return c.json({ success: false, error: 'Project not found' }, 404);
+        return c.json({
+          success: true,
+          data: memberProjectView(project, memberAdmission.actions),
+        });
+      }
       const knownAgents = await readKnownAgents();
       const diagnostics = knownAgents
         ? validateProjectAgentScope(project, {

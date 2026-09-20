@@ -414,6 +414,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const sharedProject = await membershipProjects?.createProject({
       name: 'Example shared Project',
       slug: 'example',
+      workingDirectory: roomHomeDir,
+      defaultProviderId: 'private-provider-marker',
+      defaultModel: 'private-model-marker',
     });
     const privateProject = await membershipProjects?.createProject({
       name: 'Private marker',
@@ -862,6 +865,15 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           operator,
         ),
       );
+      const operatorProject = await request(
+        '/api/projects/example',
+        undefined,
+        operator,
+      );
+      expect(operatorProject.status).toBe(200);
+      expect(JSON.stringify(await operatorProject.json())).toContain(
+        'private-provider-marker',
+      );
       const offer = await responseData<{ token: string }>(
         await request(
           '/api/projects/example/access/invitations',
@@ -988,21 +1000,41 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ).status,
       ).toBe(401);
       setClientCredentialResolver(() => ({
-        credential: h.paired.credential,
+        credential: replacement.credential,
         origin,
         onUnauthorized: onDeviceUnauthorized,
         onAccountUnauthorized,
       }));
+      const boundClient = new ApplicationSessionClient(
+        origin,
+        'environment-local',
+        origin,
+        {},
+        await createApplicationSessionKey(),
+      );
+      const boundSession = await boundClient.establish(user);
       const projectRead = async (path: string) =>
         await request(path, undefined, {
-          ...(await client.headers(session, {
+          ...(await boundClient.headers(boundSession, {
             method: 'GET',
             url: origin + path,
           })),
-          Authorization: `Bearer ${h.paired.credential}`,
+          Authorization: `Bearer ${replacement.credential}`,
         });
       const shared = await projectRead('/api/projects/example');
       expect(shared.status, await shared.clone().text()).toBe(200);
+      const sharedBody = await shared.json();
+      expect(sharedBody).toMatchObject({
+        data: {
+          version: 'station.member-project/v1',
+          kind: 'member-project',
+          slug: 'example',
+          actions: ['view'],
+        },
+      });
+      expect(JSON.stringify(sharedBody)).not.toMatch(
+        /workingDirectory|private-provider-marker|private-model-marker/,
+      );
       const privateProject = await projectRead('/api/projects/private-project');
       expect(privateProject.status).toBe(404);
       expect(JSON.stringify(await privateProject.json())).not.toContain(
@@ -1011,8 +1043,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       const catalogue = await projectRead('/api/projects');
       expect(catalogue.status, await catalogue.clone().text()).toBe(200);
       expect(await catalogue.json()).toMatchObject({
-        data: [{ slug: 'example' }],
+        data: [
+          {
+            version: 'station.member-project/v1',
+            kind: 'member-project',
+            slug: 'example',
+            actions: ['view'],
+          },
+        ],
       });
+      expect((await projectRead('/api/projects/example/layouts')).status).toBe(
+        403,
+      );
+      setClientCredentialResolver(() => ({
+        credential: h.paired.credential,
+        origin,
+        onUnauthorized: onDeviceUnauthorized,
+        onAccountUnauthorized,
+      }));
       const path = '/api/orchestration/attachment-staging/prepare';
       const proof = await client.headers(session, {
         method: 'POST',

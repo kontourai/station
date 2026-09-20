@@ -3,6 +3,7 @@ import type {
   ProjectInvitationPreview,
   ProjectMemberRole,
   ProjectMembershipScope,
+  ProjectMemberView,
 } from '@kontourai/station-contracts/project-membership';
 import {
   FileStorageConflictError,
@@ -81,14 +82,6 @@ export class ProjectMembershipService {
     );
   }
 
-  async readableProjectSlugs(
-    authority: ProjectMembershipAuthority,
-  ): Promise<readonly string[]> {
-    return (await this.readableProjectScopes(authority)).map(
-      (scope) => scope.localProjectSlug,
-    );
-  }
-
   async readableProjectScopes(
     authority: ProjectMembershipAuthority,
   ): Promise<readonly ProjectMembershipScope[]> {
@@ -129,13 +122,39 @@ export class ProjectMembershipService {
     );
   }
 
+  async readableProjectAdmissions(
+    authority: ProjectMembershipAuthority,
+  ): Promise<
+    readonly { scope: ProjectMembershipScope; member: ProjectMemberView }[]
+  > {
+    const scopes = await this.readableProjectScopes(authority);
+    const actor = await authority.current();
+    return scopes.map((scope) => ({
+      scope,
+      member: this.members.require(scope, actor.principal, 'view'),
+    }));
+  }
+
   async requireProjectRead(
     slug: string,
     authority: ProjectMembershipAuthority,
-  ): Promise<void> {
+  ): Promise<ProjectMembershipScope> {
     const actor = await authority.current();
     const scope = this.members.scopeForMember(slug, actor.principal, 'view');
-    await this.withProject(slug, scope, async () => {
+    await this.requireProjectScopeRead(scope, authority, actor.principal.id);
+    return scope;
+  }
+
+  async requireProjectScopeRead(
+    scope: ProjectMembershipScope,
+    authority: ProjectMembershipAuthority,
+    expectedPrincipalId?: string,
+  ): Promise<void> {
+    const actor = await authority.current();
+    if (expectedPrincipalId && actor.principal.id !== expectedPrincipalId)
+      throw new ProjectMembershipRefusal('forbidden');
+    this.members.require(scope, actor.principal, 'view');
+    await this.withProject(scope.localProjectSlug, scope, async () => {
       const current = await this.currentActor(authority, actor.principal.id);
       this.members.require(scope, current.principal, 'view');
     });

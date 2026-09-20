@@ -201,6 +201,9 @@ describe('Project membership through revision and administration routes', () => 
       slug: 'example',
     });
     expect(replacement.id).not.toBe(h.project.id);
+    await expect(
+      h.service.requireProjectScopeRead(view.scope, h.access),
+    ).rejects.toMatchObject({ code: 'conflict' });
     expect(
       await h.service.mayRegister({
         invitation: offered.token,
@@ -251,10 +254,14 @@ describe('Project membership through revision and administration routes', () => 
     h.setActor(invitee);
     await h.service.accept(offer.token, h.access);
 
-    expect(await h.service.readableProjectSlugs(h.access)).toEqual(['example']);
+    expect(
+      (await h.service.readableProjectScopes(h.access)).map(
+        (scope) => scope.localProjectSlug,
+      ),
+    ).toEqual(['example']);
     await expect(
       h.service.requireProjectRead('example', h.access),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual(view.scope);
     const privateRead = vi.spyOn(h.storage, 'projectRevision');
     await expect(
       h.service.requireProjectRead('private', h.access),
@@ -274,7 +281,7 @@ describe('Project membership through revision and administration routes', () => 
       h.access,
     );
     h.setActor(invitee);
-    expect(await h.service.readableProjectSlugs(h.access)).toEqual([]);
+    expect(await h.service.readableProjectScopes(h.access)).toEqual([]);
     await expect(
       h.service.requireProjectRead('example', h.access),
     ).rejects.toMatchObject({ code: 'forbidden' });

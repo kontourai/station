@@ -249,6 +249,13 @@ export class ProjectMembershipStore {
   }
 
   readableProjectScopes(actor: PrincipalRef): ProjectMembershipScope[] {
+    return this.readableProjectAdmissions(actor).map(({ scope }) => scope);
+  }
+
+  readableProjectAdmissions(actor: PrincipalRef): Array<{
+    scope: ProjectMembershipScope;
+    member: ProjectMemberView;
+  }> {
     if (!isPrincipalRef(actor)) throw new ProjectMembershipRefusal('forbidden');
     return this.db
       .prepare(
@@ -267,10 +274,13 @@ export class ProjectMembershipStore {
           this.actions(member.role).includes('view')
           ? [
               {
-                stationId: this.stationId,
-                localProjectId: row.local_id,
-                portableProjectId: row.portable_id,
-                localProjectSlug: row.local_slug,
+                scope: {
+                  stationId: this.stationId,
+                  localProjectId: row.local_id,
+                  portableProjectId: row.portable_id,
+                  localProjectSlug: row.local_slug,
+                },
+                member: { ...member, actions: this.actions(member.role) },
               },
             ]
           : [];
