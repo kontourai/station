@@ -37,6 +37,14 @@ inside DTLS in either case. The local TURN control connection itself is not
 TLS; qualification of production TURN/TLS and real network conditions remains
 separate. The profile never disables DTLS certificate verification.
 
+For application-protocol qualification, the controller passes newline-delimited
+fixture frames over dedicated inherited descriptors 3 and 4. Application content
+never uses stdout, stderr, or the bounded message-diagnostics file. The adapter
+admits at most 32 ordered reliable channels, limits each UTF-8 frame to 48 KiB,
+and closes a channel before its queued sends can exceed 96 KiB. Invalid framing,
+late packets, cancellation, process exit, and channel closure cannot recreate a
+retired channel.
+
 The peer publishes its actual linked Pion and Go versions. The controller binds
 the public report to the executable's SHA-256 and rejects a different Pion
 version or a replaced module. It records only closed fixture diagnostics and
