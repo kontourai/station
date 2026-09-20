@@ -14,6 +14,19 @@ import {
   validateBrokerScope,
 } from '../src-server/services/connections/self-hosted-broker-service.js';
 
+const closedFailure = (error: unknown) => {
+  const code =
+    error instanceof Error &&
+    error.message ===
+      'self_hosted_broker_private_custody_unavailable_on_windows'
+      ? error.message
+      : 'self_hosted_broker_refused';
+  process.stderr.write(`${JSON.stringify({ error: code })}\n`);
+  process.exitCode = 1;
+};
+process.once('uncaughtException', closedFailure);
+process.once('unhandledRejection', closedFailure);
+
 const mode = process.argv[2];
 assertSelfHostedBrokerPlatform();
 const configPath = process.argv[3];

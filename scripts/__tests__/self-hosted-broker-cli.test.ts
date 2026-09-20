@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import {
   existsSync,
@@ -231,6 +231,52 @@ describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
           },
         ),
       ).toThrow();
+      expect(existsSync(databasePath)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  test('malformed private credentials expose neither their canary nor database errors', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-broker-malformed-'));
+    try {
+      const databasePath = join(root, 'broker.sqlite');
+      const credentialsPath = join(root, 'credentials.json');
+      const configPath = join(root, 'config.json');
+      writeFileSync(credentialsPath, '{"canary":"BROKER_SECRET_CANARY', {
+        mode: 0o600,
+      });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          version: 'station-self-hosted-broker/v1',
+          databasePath,
+          credentialsPath,
+          port: 0,
+          provision: [
+            {
+              stationId: 'station-12345678',
+              enrollmentId: 'enroll-12345678',
+              routingGeneration: 1,
+              browserOrigin: 'http://localhost:4173',
+            },
+          ],
+        }),
+        { mode: 0o600 },
+      );
+      const result = spawnSync(
+        resolve('node_modules/.bin/tsx'),
+        ['scripts/self-hosted-broker.ts', 'init', configPath],
+        {
+          cwd: resolve(import.meta.dirname, '../..'),
+          windowsHide: true,
+          timeout: 10_000,
+          maxBuffer: 64 * 1024,
+          encoding: 'utf8',
+        },
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('self_hosted_broker_refused');
+      expect(result.stderr).not.toContain('BROKER_SECRET_CANARY');
       expect(existsSync(databasePath)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
