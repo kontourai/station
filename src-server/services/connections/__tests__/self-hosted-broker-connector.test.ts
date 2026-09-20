@@ -232,6 +232,28 @@ describe.runIf(process.platform !== 'win32')(
       await expect(pending).rejects.toThrow('caller stopped');
       await vi.waitFor(() => expect(cancelled).toHaveBeenCalled());
     });
+    test('the chunk-count ceiling cancels the response stream', async () => {
+      const cancelled = vi.fn();
+      const response = new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new Uint8Array([1]));
+          },
+          cancel: cancelled,
+        }),
+      );
+      const client = new SelfHostedBrokerClient(
+        'https://broker.example',
+        scope,
+        { id: 'credential-12345678', secret: 's'.repeat(43) },
+        async () => response,
+        () => 1_000,
+      );
+      await expect(
+        client.register(new AbortController().signal),
+      ).rejects.toThrow('broker_response_too_large');
+      await vi.waitFor(() => expect(cancelled).toHaveBeenCalled());
+    });
     test('disposes provisional answer resources when publication fails', async () => {
       const f = fixture();
       try {

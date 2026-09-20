@@ -40,6 +40,7 @@ async function readBounded(response: Response, signal: AbortSignal) {
   const bytes = new Uint8Array(MAX_RESPONSE_BYTES);
   let chunks = 0;
   let total = 0;
+  let complete = false;
   try {
     while (true) {
       signal.throwIfAborted();
@@ -59,7 +60,10 @@ async function readBounded(response: Response, signal: AbortSignal) {
           );
         },
       );
-      if (item.done) break;
+      if (item.done) {
+        complete = true;
+        break;
+      }
       if (++chunks > 1024) throw new Error('broker_response_too_large');
       total += item.value.byteLength;
       if (total > MAX_RESPONSE_BYTES)
@@ -67,8 +71,7 @@ async function readBounded(response: Response, signal: AbortSignal) {
       bytes.set(item.value, total - item.value.byteLength);
     }
   } finally {
-    if (signal.aborted || total > MAX_RESPONSE_BYTES)
-      void reader.cancel().catch(() => {});
+    if (!complete) void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
   signal.throwIfAborted();
