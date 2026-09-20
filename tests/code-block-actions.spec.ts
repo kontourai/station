@@ -90,7 +90,7 @@ for (const theme of ['light', 'dark']) {
       .last();
     await footer.click();
     expect(await page.evaluate(() => Reflect.get(window, 'copiedText'))).toBe(
-      Array.from({ length: 50 }, (_, i) => 'line ' + i + ' value = 42;').join(
+      Array.from({ length: 50 }, (_, i) => `line ${i} value = 42;`).join(
         '\n',
       ),
     );
