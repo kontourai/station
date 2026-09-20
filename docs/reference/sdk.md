@@ -531,11 +531,26 @@ Fetches achievement data.
 
 ### `useProjectsQuery(config?)`
 
-Fetches all projects.
+Fetches all projects. Hosts selecting among Station authorities should pass
+`{ requestScope, requireRequestScope: true }`. The scoped cache key includes
+the API base and authority key, and the HTTP reader refuses a response if that
+authority changes before the body is consumed. With `requireRequestScope`, a
+missing scope uses an isolated inert key and never exposes an older unscoped
+cache entry.
 
 ### `useProjectQuery(slug: string, config?)`
 
-Fetches a single project by slug.
+Fetches a single project by slug. It accepts the same scoped configuration as
+`useProjectsQuery`; the authority follows the slug in the key so existing
+`['projects', slug]` invalidation prefixes still reach every scoped detail.
+Unscoped callers retain the legacy key and ambient API-base behavior for
+compatibility. The first host migration covers the root Project catalogue and
+`ProjectsContext`; secondary direct hook callers remain a later migration.
+The current host scope represents Connect's authenticated connection authority
+generation (and a native binding when present). It does not independently name
+an account principal or tenant. A same-origin cookie-account change that leaves
+that connection generation unchanged is therefore outside this tranche; full
+account/principal cache lifetime composition remains required.
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
