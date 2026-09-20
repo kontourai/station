@@ -9,6 +9,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { Readable, Writable } from 'node:stream';
+import type { ApplicationChannel } from '@kontourai/station-connect/application-channel';
+import { applicationIpcPipes } from './application-ipc-pipes.js';
 import { localLabEnvironment } from './local-collaboration-process.mjs';
 import {
   captureOwnedProcessOutput,
@@ -34,6 +37,7 @@ export async function startPionFixture(input: {
   turnPort: number;
   username: string;
   password: string;
+  application?: { label: string; accept(channel: ApplicationChannel): void };
 }) {
   assert(
     existsSync(input.executable),
@@ -49,6 +53,9 @@ export async function startPionFixture(input: {
       URL: `turn:127.0.0.1:${input.turnPort}?transport=tcp`,
       Username: input.username,
       Password: input.password,
+      ...(input.application
+        ? { ApplicationChannelLabel: input.application.label }
+        : {}),
     }),
     { mode: 0o600, flag: 'wx' },
   );
@@ -60,14 +67,30 @@ export async function startPionFixture(input: {
     {
       cwd: input.directory,
       env: localLabEnvironment(),
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: input.application
+        ? ['ignore', 'pipe', 'pipe', 'pipe', 'pipe']
+        : ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     },
   );
   const capture = captureOwnedProcessOutput(execution, { maxBytes: 64 * 1024 });
+  let application: ReturnType<typeof applicationIpcPipes> | undefined;
+  if (input.application) {
+    const child = execution.child;
+    assert('stdio' in child);
+    assert(
+      child.stdio[3] instanceof Writable && child.stdio[4] instanceof Readable,
+    );
+    application = applicationIpcPipes(
+      child.stdio[3],
+      child.stdio[4],
+      input.application.accept,
+    );
+  }
   let closing: Promise<void> | undefined;
   const close = () =>
     (closing ??= (async () => {
+      application?.prepareClose();
       const result = await terminateSuiteExecution(execution, {
         waitForSuiteSettlement,
         terminationGraceMs: 2000,
@@ -75,7 +98,14 @@ export async function startPionFixture(input: {
       });
       assert(result.settled, 'Pion process tree did not settle');
       assert.deepEqual(result.errors, []);
+      application?.finish();
       const output = capture.finish();
+      if (input.application)
+        assert.equal(
+          output.stdout.text,
+          '',
+          'Pion application data must not enter diagnostic stdout',
+        );
       assert(
         !output.truncated && !output.invalidUtf8,
         'Pion process output contract failed',
