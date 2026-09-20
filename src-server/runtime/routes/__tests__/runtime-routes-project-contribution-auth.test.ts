@@ -21,18 +21,11 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
+import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  test,
-  vi,
-} from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
@@ -98,7 +91,11 @@ const REPO_REMOTE = 'https://git.example/acme/repo.git';
 function makeGitCheckout(directory: string) {
   mkdirSync(directory, { recursive: true });
   const git = (args: string[]) =>
-    execFileSync('git', args, { cwd: directory, stdio: 'ignore' });
+    execFileSync('git', args, {
+      cwd: directory,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
   git(['init', '-q']);
   git(['config', 'user.email', 'fixture@example.test']);
   git(['config', 'user.name', 'Fixture']);
@@ -108,32 +105,49 @@ function makeGitCheckout(directory: string) {
   git(['remote', 'add', 'origin', REPO_REMOTE]);
 }
 
+/**
+ * An explicitly OWNED temp root for this suite's Station home. `os.tmpdir()`
+ * is honored (portable), EXCEPT when the ambient TMPDIR nests inside the
+ * ambient shared Station root — the home-admission gate then refuses such a
+ * home BY DESIGN (a home the shared root contains is never admissible), so
+ * the owned temp is created as a SIBLING of the shared root instead. Either
+ * way the caller owns the directory and removes it.
+ */
+function ownedTempRoot(prefix: string): string {
+  const ambientRoot = resolveStationRoot();
+  const base = resolve(tmpdir());
+  const insideSharedRoot =
+    ambientRoot === base ||
+    base.startsWith(
+      ambientRoot.endsWith(sep) ? ambientRoot : ambientRoot + sep,
+    );
+  return mkdtempSync(
+    join(insideSharedRoot ? dirname(ambientRoot) : base, prefix),
+  );
+}
+
 describe('project contribution routes over the REAL auth path (execution offers review 5)', () => {
   const directories: string[] = [];
   const ambientHome = process.env.STATION_HOME;
   const ambientRoot = process.env.STATION_ROOT;
-  let isolatedHome = '';
-  // Composition constructs stores (knowledge index, orchestration) that
-  // resolve the runtime home from the environment; point them at an isolated
-  // temp home so they never touch the shared Station root.
-  beforeAll(() => {
-    // os.tmpdir() honors TMPDIR, which this repo's worktree harness points
-    // INSIDE the shared Station root — an inadmissible home. Use literal /tmp,
-    // and keep ROOT a SIBLING of HOME: the admission gate refuses a home that
-    // contains the root.
-    isolatedHome = mkdtempSync('/tmp/station-contribution-home-');
-    const isolatedRoot = mkdtempSync('/tmp/station-contribution-root-');
-    directories.push(isolatedRoot);
-    process.env.STATION_HOME = isolatedHome;
-    process.env.STATION_ROOT = isolatedRoot;
+  // Per-test lifecycle: every test owns ONE temp tree with `home/` and
+  // `root/` as SIBLINGS (the admission gate refuses a home that contains the
+  // root), the environment binds to it for exactly that test, and afterEach
+  // restores the ambient environment BEFORE removing the tree — nothing is
+  // shared across tests and nothing leaks.
+  beforeEach(() => {
+    const owned = ownedTempRoot('station-contribution-auth-');
+    directories.push(owned);
+    mkdirSync(join(owned, 'home'));
+    mkdirSync(join(owned, 'root'));
+    process.env.STATION_HOME = join(owned, 'home');
+    process.env.STATION_ROOT = join(owned, 'root');
   });
-  afterAll(() => {
+  afterEach(() => {
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
     if (ambientRoot === undefined) delete process.env.STATION_ROOT;
     else process.env.STATION_ROOT = ambientRoot;
-  });
-  afterEach(() => {
     vi.restoreAllMocks();
     for (const directory of directories.splice(0))
       rmSync(directory, { recursive: true, force: true });

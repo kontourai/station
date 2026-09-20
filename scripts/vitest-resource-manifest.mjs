@@ -329,6 +329,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `execFileSync` to prove the manifest derives real revision/branch values
   // — same shape as `content-integrity-gate.test.ts` below.
   'scripts/__tests__/desktop-build-manifest.test.ts',
+  // The execution-offers real-auth integration builds one throwaway git
+  // checkout per setup via bounded single-shot `git` children (init/config/
+  // commit/remote), the same shape as the desktop-build-manifest fixture.
+  'src-server/runtime/routes/__tests__/runtime-routes-project-contribution-auth.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.

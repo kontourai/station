@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
@@ -16,6 +17,7 @@ import {
   FileStorageNotFoundError,
 } from '../../domain/project-file-transactions.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { expandTilde } from '../../utils/paths.js';
 import type { ProjectBindingsStore } from './project-binding-store.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
 import type { ProjectResourceResolver } from './project-resource-resolver.js';
@@ -201,6 +203,29 @@ export class ProjectContributionService {
     } catch {
       return this.unavailable(base, requested.resourceId);
     }
+    // Capture WHAT the answer is about — the Project record (id, slug, and
+    // the compat workingDirectory the resolver resolves against) and the
+    // relevant manifest content (identity, slug, and the declared repos) —
+    // BEFORE the async read. A wall-clock `updatedAt` is a label, not a
+    // revision: a same-timestamp resource or checkout replacement must not
+    // let a captured resolution answer for a project that no longer is one.
+    const associationSnapshot = {
+      projectId: association.project.id,
+      projectSlug: association.project.slug,
+      // The stored `~/...` compat workingDirectory is EXPANDED at the read
+      // (station#3155) so identity comparison happens on absolute paths —
+      // `~/x` and its spelled-out form are the same checkout. Pure
+      // comparison; nothing here reads or writes the path.
+      projectWorkingDirectory:
+        association.project.workingDirectory === undefined
+          ? undefined
+          : resolve(expandTilde(association.project.workingDirectory)),
+      manifest: {
+        id: association.manifest.id,
+        slug: association.manifest.slug,
+        repos: association.manifest.repos,
+      },
+    };
     if (
       !association.manifest.repos.some(
         (resource) => resource.id === requested.resourceId,
@@ -225,10 +250,24 @@ export class ProjectContributionService {
     let sameAssociation = false;
     try {
       const currentAssociation = this.association(requested.portableProjectId);
+      // Same expand-at-the-read identity comparison as the snapshot above.
+      const currentWorkingDirectory =
+        currentAssociation.project.workingDirectory === undefined
+          ? undefined
+          : resolve(expandTilde(currentAssociation.project.workingDirectory));
       sameAssociation =
-        currentAssociation.project.id === association.project.id &&
-        currentAssociation.manifest.updatedAt ===
-          association.manifest.updatedAt;
+        currentAssociation.project.id === associationSnapshot.projectId &&
+        currentAssociation.project.slug === associationSnapshot.projectSlug &&
+        currentWorkingDirectory ===
+          associationSnapshot.projectWorkingDirectory &&
+        isDeepStrictEqual(
+          {
+            id: currentAssociation.manifest.id,
+            slug: currentAssociation.manifest.slug,
+            repos: currentAssociation.manifest.repos,
+          },
+          associationSnapshot.manifest,
+        );
     } catch {}
     const afterBinding = this.deps.bindings.findBinding(
       requested.portableProjectId,

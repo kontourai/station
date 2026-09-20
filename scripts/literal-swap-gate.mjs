@@ -55,7 +55,9 @@ function literalsOf(line) {
   const re =
     /'([^'\\\n]*(?:\\.[^'\\\n]*)*)'|"([^"\\\n]*(?:\\.[^"\\\n]*)*)"|`([^`\\]*(?:\\.[^`\\]*)*)`/g;
   let m;
-  while ((m = re.exec(line)) !== null) {
+  while (true) {
+    m = re.exec(line);
+    if (m === null) break;
     const value = m[1] ?? m[2] ?? m[3];
     if (value && value.length >= 2) out.push(value);
   }

@@ -1068,7 +1068,6 @@ export class AttentionProjectionService {
     if (this.gateReviewCache && this.gateReviewCache.expiresAt > now) {
       return this.gateReviewCache.aggregate;
     }
-    // biome-ignore lint/style/noNonNullAssertion: guarded by the caller.
     const aggregate = await this.listGateReviews!();
     this.gateReviewCache = {
       aggregate,

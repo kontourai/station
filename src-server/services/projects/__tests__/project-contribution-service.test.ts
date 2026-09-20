@@ -1,4 +1,7 @@
-import { contributionFreshness } from '@kontourai/station-contracts/contribution';
+import {
+  contributionFreshness,
+  isWellFormedContributionProjection,
+} from '@kontourai/station-contracts/contribution';
 import { describe, expect, test, vi } from 'vitest';
 import { ProjectContributionService } from '../project-contribution-service.js';
 
@@ -48,13 +51,14 @@ function fixture(
         },
       }
     : {};
-  const project = {
+  let project: any = {
     id: 'local-id',
     slug: 'local',
     name: 'Local',
     createdAt: '',
     updatedAt: '',
-    hasWorkingDirectory: false,
+    workingDirectory: '/fixture/checkout',
+    hasWorkingDirectory: true,
     layoutCount: 0,
     hasKnowledge: false,
   };
@@ -129,8 +133,21 @@ function fixture(
     setBinding: (next: any) => {
       binding = next;
     },
+    setProject: (next: any) => {
+      project = next;
+    },
     resolveResolution: () => resolveResolution?.(undefined),
   };
+}
+
+/** Every returned outcome must be the contract shape — never an invented one. */
+async function expectWellFormed(run: () => Promise<any>) {
+  const projection = await run();
+  expect(
+    isWellFormedContributionProjection(projection),
+    JSON.stringify(projection),
+  ).toBe(true);
+  return projection;
 }
 
 const QUERY = {
@@ -148,7 +165,9 @@ const OFFER = {
 describe('ProjectContributionService', () => {
   test('a binding without an offer remains disabled and discloses no path', async () => {
     const { service } = fixture({ bound: true, verifiedAt: 1000 });
-    const projection = await service.query(QUERY, () => true);
+    const projection = await expectWellFormed(() =>
+      service.query(QUERY, () => true),
+    );
     expect(projection.participation).toBe('disabled');
     expect(projection.execution).toEqual([]);
     expect(JSON.stringify(projection)).not.toContain('/private');
@@ -161,7 +180,9 @@ describe('ProjectContributionService', () => {
       bound: true,
       verifiedAt,
     });
-    const projection = await service.query(QUERY, () => true);
+    const projection = await expectWellFormed(() =>
+      service.query(QUERY, () => true),
+    );
     expect(projection).toMatchObject({
       participation: 'contributing',
       sourceObservedAt: '2026-09-20T11:00:00.000Z',
@@ -178,9 +199,24 @@ describe('ProjectContributionService', () => {
 
   test('compat resolution never fabricates a binding observation', async () => {
     const { service } = fixture({ offered: true, bound: true });
-    expect(await service.query(QUERY, () => true)).toMatchObject({
-      sourceObservedAt: null,
-      execution: [{ verifiedAt: null }],
+    await expectWellFormed(() => service.query(QUERY, () => true)).then(
+      (projection) =>
+        expect(projection).toMatchObject({
+          sourceObservedAt: null,
+          execution: [{ verifiedAt: null }],
+        }),
+    );
+  });
+
+  test('an offered-but-empty scope reports nothing-contributed as the contract shape', async () => {
+    const f = fixture({ offered: true });
+    f.getConfig().contribution['project:prj_shared'] = { enabled: true };
+    const projection = await expectWellFormed(() =>
+      f.service.query(QUERY, () => true),
+    );
+    expect(projection).toMatchObject({
+      participation: 'nothing-contributed',
+      execution: [],
     });
   });
 
@@ -310,6 +346,66 @@ describe('ProjectContributionService', () => {
     );
   });
 
+  test('a resource replaced WITHOUT a timestamp change is not answered from the captured resolution', async () => {
+    const verifiedAt = Date.parse('2026-09-20T11:00:00.000Z');
+    let handle: ReturnType<typeof fixture> | undefined;
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt,
+      duringResolve: () => {
+        // Same manifest id, slug, AND updatedAt — only the repo content
+        // changed (the offered repo was replaced by another remote). A
+        // timestamp comparison would call this "the same project".
+        handle!.setManifest({
+          ...manifest,
+          repos: [
+            {
+              kind: 'git' as const,
+              id: 'git.example/acme/replaced',
+              canonicalRemote: 'git.example/acme/replaced',
+            },
+          ],
+        });
+      },
+    });
+    handle = f;
+    const pending = expectWellFormed(() => f.service.query(QUERY, () => true));
+    handle.resolveResolution();
+    await expect(pending).resolves.toMatchObject({
+      participation: 'contributed-unavailable',
+      sourceObservedAt: null,
+      execution: [{ bound: false, verifiedAt: null }],
+    });
+  });
+
+  test('a workingDirectory replacement WITHOUT a timestamp change is not answered from the captured resolution', async () => {
+    const verifiedAt = Date.parse('2026-09-20T11:00:00.000Z');
+    let handle: ReturnType<typeof fixture> | undefined;
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt,
+      duringResolve: () => {
+        // The compat workingDirectory — what the resolver resolves against —
+        // changed while every visible timestamp stayed put.
+        handle!.setProject({
+          id: 'local-id',
+          slug: 'local',
+          workingDirectory: '/fixture/other-checkout',
+        });
+      },
+    });
+    handle = f;
+    const pending = expectWellFormed(() => f.service.query(QUERY, () => true));
+    handle.resolveResolution();
+    await expect(pending).resolves.toMatchObject({
+      participation: 'contributed-unavailable',
+      sourceObservedAt: null,
+      execution: [{ bound: false, verifiedAt: null }],
+    });
+  });
+
   test('an offer withdrawn while resolution is pending never returns the old bound status', async () => {
     const { service, resolveResolution, getConfig } = fixture({
       offered: true,
@@ -320,7 +416,7 @@ describe('ProjectContributionService', () => {
         delete getConfig().contribution['project:prj_shared'];
       },
     });
-    const pending = service.query(QUERY, () => true);
+    const pending = expectWellFormed(() => service.query(QUERY, () => true));
     resolveResolution();
     await expect(pending).resolves.toMatchObject({
       participation: 'contributed-unavailable',
@@ -345,7 +441,7 @@ describe('ProjectContributionService', () => {
         });
       },
     });
-    const pending = service.query(QUERY, () => true);
+    const pending = expectWellFormed(() => service.query(QUERY, () => true));
     resolveResolution();
     await expect(pending).resolves.toMatchObject({
       participation: 'contributed-unavailable',
