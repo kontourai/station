@@ -30,8 +30,11 @@ import App from './App';
 import './components/editor-controls.css';
 import './index.css';
 import './tailwind.css';
-import { QueryCache, QueryClient } from '@tanstack/react-query';
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { LocalUiSessionGate } from './components/LocalUiSessionGate';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
@@ -39,6 +42,7 @@ import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { AuthorityQueryProvider } from './contexts/AuthorityQueryContext';
 import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
@@ -56,11 +60,6 @@ import {
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
-import { resolveLocalUiSession } from './lib/local-ui-bootstrap';
-import {
-  applyPersistedQueryGcTimeDefaults,
-  buildPersistOptions,
-} from './lib/queryPersistence';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -124,8 +123,6 @@ const localUiApiBase =
   import.meta.env.VITE_API_BASE ||
   window.location.origin;
 
-const isNativeShell =
-  Object.getOwnPropertyDescriptor(window, '__TAURI_INTERNALS__') !== undefined;
 // A development harness may use `?locale=en-XA` to exercise expansion. The
 // resolver rejects that URL in production, and LocaleProvider independently
 // keeps its dynamically imported catalog behind its own DEV boundary.
@@ -160,7 +157,13 @@ function PlatformSessionGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-const queryClient = new QueryClient({
+// #481 client authority — the NONPERSISTED bootstrap client. It carries
+// exactly one query family: the credential-bound authority observation
+// (`AuthorityQueryProvider` below). Protected data lives one layer down, in
+// a per-verified-authority client with its own namespaced persister, so the
+// observation that decides the namespace can never itself be served from a
+// stale persisted snapshot of another authority's cache.
+const bootstrapQueryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
       if (import.meta.env.DEV)
@@ -194,34 +197,12 @@ window.addEventListener('hashchange', () => {
 // needed here. Host detection and the macOS overlay-title-bar tagging now live
 // in PlatformBootstrap, the single native-adapter resolution path.
 
-// archive#1223 (offline): floor gcTime for the whitelisted, persisted
-// query keys so they survive well past this client's ordinary 10-minute
-// default — otherwise they can be garbage-collected from the live cache
-// (and silently drop out of the persisted snapshot) long before the 24h
-// persister maxAge below would ever expire them. Must run before anything
-// renders/mounts a query for one of these keys. See queryPersistence.ts.
-applyPersistedQueryGcTimeDefaults(queryClient);
-
-// The whitelisted-query persist options (persister, maxAge, buster,
-// dehydrate rules) — fed to <PersistQueryClientProvider> below, which both
-// persists the cache to IndexedDB AND gates queries from fetching while an
-// async restore is in flight (see queryPersistence.ts's doc comment for why
-// that gating matters — a bare persistQueryClient call doesn't do it).
-const queryPersistOptions = buildPersistOptions();
-
-if (!isSharedAnswerPath && !isAccountPath && !isNativeShell) {
-  void import('../../packages/sdk/src/boot')
-    .then(async ({ fetchAndSeedBootPayload }) => {
-      // This joins LocalUiSessionGate's page-memoized resolution, including a
-      // launcher-token exchange. Never seed protected boot data before that
-      // resolution has earned an authenticated browser session.
-      const resolution = await resolveLocalUiSession(localUiApiBase);
-      if (resolution.kind === 'authenticated') {
-        await fetchAndSeedBootPayload(queryClient);
-      }
-    })
-    .catch(() => {});
-}
+// archive#1223 gcTime flooring and the whitelisted-query persist options now
+// live per-authority inside <AuthorityQueryProvider> (each verified client
+// applies `applyPersistedQueryGcTimeDefaults` at creation and persists
+// under its own namespaced key). The boot-payload seed moved there too, so
+// it seeds the verified authority's client only while its captured scope is
+// still current — see that provider's `_getApiBase` audit.
 
 // Boot-time device-settings fast path: apply theme and accent color
 // synchronously, before the first React render, so neither one flashes to
@@ -273,77 +254,66 @@ function renderApp(): void {
           <ClientOriginProfileBridge />
           <ApiBaseProvider>
             <PlatformSessionGate>
-              <PersistQueryClientProvider
-                client={queryClient}
-                persistOptions={queryPersistOptions}
-                onError={() => {
-                  // Degrade gracefully: IndexedDB can be unavailable (Safari private
-                  // mode) or throw; the provider's internal restore already discards
-                  // the persisted cache in that case (see persistQueryClientRestore's
-                  // catch), so this is disclosure only — the app continues without a
-                  // persisted cache rather than crashing or hanging first paint.
-                  if (import.meta.env.DEV) {
-                    console.warn(
-                      '[queryPersistence] restore failed; continuing without a persisted cache',
-                    );
-                  }
-                }}
-              >
-                <SyntaxHighlighterProvider>
-                  <AuthProvider>
-                    <NavigationProvider>
-                      <ToastProvider>
-                        <PermissionManager>
-                          <KeyboardShortcutsProvider>
-                            <ConversationsProvider>
-                              <ActiveChatsProvider>
-                                <VoiceProviderContext>
-                                  <MessageContextContext>
-                                    <AnalyticsProvider>
-                                      <PreviewProvider>
-                                        <LocaleProvider
-                                          developmentLocale={developmentLocale}
-                                        >
-                                          <RegionModelProvider>
-                                            <App />
-                                          </RegionModelProvider>
-                                          <NotificationContainer />
-                                        </LocaleProvider>
-                                      </PreviewProvider>
-                                    </AnalyticsProvider>
-                                  </MessageContextContext>
-                                </VoiceProviderContext>
-                              </ActiveChatsProvider>
-                            </ConversationsProvider>
-                          </KeyboardShortcutsProvider>
-                        </PermissionManager>
-                        <DeferredCapabilityBoundary
-                          id="connection-recovery"
-                          load={loadOnboardingGate}
-                          copy={{
-                            // The title renders as the banner's badge, which
-                            // is uppercased and sits beside two-word badges —
-                            // a sentence here reads as shouting. The full
-                            // statement is the message below.
-                            failureTitle: 'Recovery unavailable',
-                            failure:
-                              'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
-                          }}
-                        />
-                        <DeferredCapabilityBoundary
-                          id="extension-registry"
-                          load={loadPluginRegistryBootstrap}
-                          copy={{
-                            failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
-                            failure:
-                              'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
-                          }}
-                        />
-                      </ToastProvider>
-                    </NavigationProvider>
-                  </AuthProvider>
-                </SyntaxHighlighterProvider>
-              </PersistQueryClientProvider>
+              <QueryClientProvider client={bootstrapQueryClient}>
+                <AuthorityQueryProvider localUiApiBase={localUiApiBase}>
+                  <SyntaxHighlighterProvider>
+                    <AuthProvider>
+                      <NavigationProvider>
+                        <ToastProvider>
+                          <PermissionManager>
+                            <KeyboardShortcutsProvider>
+                              <ConversationsProvider>
+                                <ActiveChatsProvider>
+                                  <VoiceProviderContext>
+                                    <MessageContextContext>
+                                      <AnalyticsProvider>
+                                        <PreviewProvider>
+                                          <LocaleProvider
+                                            developmentLocale={
+                                              developmentLocale
+                                            }
+                                          >
+                                            <RegionModelProvider>
+                                              <App />
+                                            </RegionModelProvider>
+                                            <NotificationContainer />
+                                          </LocaleProvider>
+                                        </PreviewProvider>
+                                      </AnalyticsProvider>
+                                    </MessageContextContext>
+                                  </VoiceProviderContext>
+                                </ActiveChatsProvider>
+                              </ConversationsProvider>
+                            </KeyboardShortcutsProvider>
+                          </PermissionManager>
+                          <DeferredCapabilityBoundary
+                            id="connection-recovery"
+                            load={loadOnboardingGate}
+                            copy={{
+                              // The title renders as the banner's badge, which
+                              // is uppercased and sits beside two-word badges —
+                              // a sentence here reads as shouting. The full
+                              // statement is the message below.
+                              failureTitle: 'Recovery unavailable',
+                              failure:
+                                'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
+                            }}
+                          />
+                          <DeferredCapabilityBoundary
+                            id="extension-registry"
+                            load={loadPluginRegistryBootstrap}
+                            copy={{
+                              failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
+                              failure:
+                                'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
+                            }}
+                          />
+                        </ToastProvider>
+                      </NavigationProvider>
+                    </AuthProvider>
+                  </SyntaxHighlighterProvider>
+                </AuthorityQueryProvider>
+              </QueryClientProvider>
             </PlatformSessionGate>
           </ApiBaseProvider>
         </PlatformBootstrap>
