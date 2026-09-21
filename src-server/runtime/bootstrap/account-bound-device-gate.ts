@@ -94,6 +94,57 @@ export interface AccountBoundDeviceGateDeps {
  */
 const gatePrincipalForDeviceBinding = principalForDeviceBinding;
 
+/**
+ * #488 guest administration through the account-bound allowlist.
+ *
+ * An account-bound admin CANNOT reach Project administration without this:
+ * the pairing-scope table already grants `GET /api/projects/:slug/access`
+ * at `orchestration:read` and the four mutation leaves at
+ * `orchestration:operate`, and the membership service already predicates on
+ * the `admin` role — but this gate denied every nested path and every
+ * Project non-GET before either was consulted. The allowlist, the pairing
+ * scopes, and the membership predicates compose: all three must admit.
+ *
+ * Exactly five leaves, method-pinned:
+ * - `GET /api/projects/:slug/access` (HEAD alongside, as elsewhere);
+ * - `POST .../access/invitations`, `POST .../access/invitations/:id/revoke`,
+ *   `POST .../access/members`, `POST .../access/transfer`.
+ *
+ * Deliberately NOT opened: `POST .../access/enable` (first-sharing
+ * bootstrap stays operator-only via `authority.operator()`), every other
+ * private/nested/terminal/inference/Task-execution/admin path, and every
+ * non-POST verb on the four mutation leaves.
+ *
+ * The guest device grant for this surface is exactly
+ * `orchestration:read orchestration:operate`, operator-approved through the
+ * existing `POST /api/pairing/devices/:deviceId/scope` rescope — WITHOUT
+ * `terminal:operate` and WITHOUT `access:manage`. Never the `standard`
+ * preset: that preset carries a terminal a guest manager must not hold.
+ */
+function isAccountBoundGuestAdminLeaf(path: string, method: string): boolean {
+  if (
+    (method === 'GET' || method === 'HEAD') &&
+    /^\/api\/projects\/[^/]+\/access$/.test(path)
+  )
+    return true;
+  return isAccountBoundGuestAdminWrite(path, method);
+}
+
+function isAccountBoundGuestAdminWrite(
+  path: string,
+  method: string,
+): boolean {
+  if (method !== 'POST') return false;
+  return (
+    /^\/api\/projects\/[^/]+\/access\/invitations$/.test(path) ||
+    /^\/api\/projects\/[^/]+\/access\/invitations\/[^/]+\/revoke$/.test(
+      path,
+    ) ||
+    /^\/api\/projects\/[^/]+\/access\/members$/.test(path) ||
+    /^\/api\/projects\/[^/]+\/access\/transfer$/.test(path)
+  );
+}
+
 export function installAccountBoundDeviceGate(
   app: {
     use(
@@ -160,10 +211,12 @@ export function installAccountBoundDeviceGate(
     }
     if (accountBinding) {
       const path = c.req.path;
+      const method = c.req.method;
       if (
         (path === '/api/projects' || path.startsWith('/api/projects/')) &&
-        c.req.method !== 'GET' &&
-        c.req.method !== 'HEAD'
+        method !== 'GET' &&
+        method !== 'HEAD' &&
+        !isAccountBoundGuestAdminWrite(path, method)
       ) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
@@ -178,6 +231,7 @@ export function installAccountBoundDeviceGate(
         /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document))?$/.test(
           path,
         ) ||
+        isAccountBoundGuestAdminLeaf(path, method) ||
         path === '/api/account-auth' ||
         path.startsWith('/api/account-auth/') ||
         // #481 groundwork: the credential-bound authority observation is an
