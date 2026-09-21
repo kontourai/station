@@ -388,7 +388,7 @@ function providerQuotaLines(reason: DelegatedTaskReason): string[] {
   const lines: string[] = [];
   if (
     typeof reason.quotaWindow === 'string' &&
-    /^[0-9]{1,3} hours?$/.test(reason.quotaWindow)
+    /^[1-9][0-9]{0,2} hours?$/.test(reason.quotaWindow)
   ) {
     lines.push(`Provider limit window: ${reason.quotaWindow}`);
   }

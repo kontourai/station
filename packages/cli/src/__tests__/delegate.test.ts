@@ -222,7 +222,9 @@ describe('station delegate over HTTP', () => {
                   ? 'queued'
                   : body.prompt === 'trigger quota-limited task'
                     ? 'failed'
-                    : 'running',
+                    : body.prompt === 'trigger zero-window quota task'
+                      ? 'failed'
+                      : 'running',
           environment,
           target,
           ...(selectedModel ? { model: selectedModel } : {}),
@@ -276,6 +278,17 @@ describe('station delegate over HTTP', () => {
                   detail:
                     'The provider plan quota was exhausted (5 hour window). The provider reported the limit resets at 2026-09-21 18:55:29 (provider-reported time, no timezone given) — wait for the reset or check the provider plan, then continue explicitly. Station did not retry, switch models or providers, or spend on a fallback.',
                   quotaWindow: '5 hour',
+                  resetReported: '2026-09-21 18:55:29',
+                },
+              }
+            : {}),
+          // #2265 bounds: a zero window is not a limit window — the
+          // renderer prints no window line for it, even when served.
+          ...(body.prompt === 'trigger zero-window quota task'
+            ? {
+                reason: {
+                  code: 'provider-plan-quota-exhausted',
+                  quotaWindow: '0 hour',
                   resetReported: '2026-09-21 18:55:29',
                 },
               }
@@ -973,6 +986,41 @@ describe('station delegate over HTTP', () => {
       quotaWindow: '5 hour',
       resetReported: '2026-09-21 18:55:29',
     });
+  });
+
+  /**
+   * #2265 bounds: a served zero window renders no window line — it is not
+   * a limit window anyone reported. The reset line still renders.
+   */
+  test('status omits the window line for a zero quota window (#2265)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger zero-window quota task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+
+    expect(printed).toContain('Task task:1: failed');
+    expect(printed).not.toContain('Provider limit window:');
+    expect(printed).toContain(
+      'Provider-reported reset: 2026-09-21 18:55:29 (no timezone given; wait before continuing)',
+    );
+    consoleLog.mockClear();
   });
 
   test('rejects the retired direct connection selector before any request', async () => {

@@ -18,10 +18,11 @@
  *
  * - Classify ONLY a tightly validated full-message form on a whitelisted
  *   protocol wrapper. The wrapper is the SDK's JSON-RPC error envelope —
- *   an object with a numeric `code` and a string `message` (verified in
- *   `@agentclientprotocol/sdk`'s `jsonrpc.js`: response errors reject as
- *   `new RequestError(code, message, data)`). Transport failures (no numeric
- *   code), arbitrary output, logs, and prompts never classify.
+ *   an object with a finite numeric `code` and a string `message`
+ *   (verified in `@agentclientprotocol/sdk`'s `jsonrpc.js`: response
+ *   errors reject as `new RequestError(code, message, data)`). Transport
+ *   failures (no numeric code), non-finite codes, arbitrary output, logs,
+ *   and prompts never classify.
  * - The message must match the anchored quota form END TO END. A loose
  *   substring hit — the quota sentence embedded in a longer log, URL,
  *   header, body, or attacker-suffixed text — stays generic.
@@ -82,13 +83,40 @@ export interface ProviderQuotaFacts {
 const QUOTA_MESSAGE_PATTERN =
   /^(?:[A-Za-z][A-Za-z0-9 _./-]{0,31}: )?Usage limit reached for ([0-9]{1,3}) (hour|hours)\. Your limit will reset at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/;
 
-const QUOTA_WINDOW_PATTERN = /^[0-9]{1,3} hours?$/;
+const QUOTA_WINDOW_PATTERN = /^([0-9]{1,3}) (hours?)$/;
 
 const QUOTA_RESET_PATTERN =
   /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/;
 
 function inRange(value: number, min: number, max: number): boolean {
   return Number.isInteger(value) && value >= min && value <= max;
+}
+
+/**
+ * A quota window is a positive whole-hour count plus its unit. Zero (or an
+ * all-zero spelling like `00 hour`) is not a limit window anyone reported —
+ * it stays generic rather than projecting a bounded fact from it.
+ */
+function validQuotaWindow(text: string): boolean {
+  const match = QUOTA_WINDOW_PATTERN.exec(text);
+  if (!match) return false;
+  return inRange(Number(match[1]), 1, 999);
+}
+
+function daysInMonth(year: number, month: number): number {
+  switch (month) {
+    case 2: {
+      const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      return leap ? 29 : 28;
+    }
+    case 4:
+    case 6:
+    case 9:
+    case 11:
+      return 30;
+    default:
+      return 31;
+  }
 }
 
 function validCivilTimestamp(
@@ -99,13 +127,18 @@ function validCivilTimestamp(
   minute: string,
   second: string,
 ): boolean {
+  // Display-only calendar plausibility (no timezone, no epoch, no
+  // countdown): the day must exist in the stated month — February 31 and
+  // February 29 on a non-leap year stay generic.
+  const yearNumber = Number(year);
+  const monthNumber = Number(month);
   return (
-    inRange(Number(month), 1, 12) &&
-    inRange(Number(day), 1, 31) &&
+    inRange(yearNumber, 1970, 2100) &&
+    inRange(monthNumber, 1, 12) &&
+    inRange(Number(day), 1, daysInMonth(yearNumber, monthNumber)) &&
     inRange(Number(hour), 0, 23) &&
     inRange(Number(minute), 0, 59) &&
-    inRange(Number(second), 0, 59) &&
-    inRange(Number(year), 1970, 2100)
+    inRange(Number(second), 0, 59)
   );
 }
 
@@ -137,8 +170,13 @@ export function classifyProviderQuotaFailure(
   const record = error as Record<string, unknown>;
   // Whitelisted protocol wrapper: the SDK's JSON-RPC error envelope. A
   // transport breakdown ('ACP connection closed') carries no numeric code
-  // and can never classify, no matter what its text says.
-  if (typeof record.code !== 'number' || typeof record.message !== 'string') {
+  // and can never classify, no matter what its text says — and a
+  // non-finite code (NaN/Infinity) is not a protocol code either.
+  if (
+    typeof record.code !== 'number' ||
+    !Number.isFinite(record.code) ||
+    typeof record.message !== 'string'
+  ) {
     return undefined;
   }
   const match = QUOTA_MESSAGE_PATTERN.exec(record.message);
@@ -147,7 +185,7 @@ export function classifyProviderQuotaFailure(
     match;
   if (
     !validCivilTimestamp(year, month, day, hour, minute, second) ||
-    !QUOTA_WINDOW_PATTERN.test(`${windowSize} ${windowUnit}`)
+    !validQuotaWindow(`${windowSize} ${windowUnit}`)
   ) {
     return undefined;
   }
@@ -174,7 +212,7 @@ export function providerQuotaFactsFromDetails(
   const { quotaWindow, resetReported } = record;
   if (
     typeof quotaWindow !== 'string' ||
-    !QUOTA_WINDOW_PATTERN.test(quotaWindow) ||
+    !validQuotaWindow(quotaWindow) ||
     typeof resetReported !== 'string' ||
     !QUOTA_RESET_PATTERN.test(resetReported)
   ) {

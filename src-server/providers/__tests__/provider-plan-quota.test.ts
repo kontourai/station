@@ -132,6 +132,76 @@ describe('provider-plan-quota classifier (#2265)', () => {
     ).toBeUndefined();
   });
 
+  test('a zero quota window is not a limit window: stays generic', () => {
+    for (const window of ['0 hour', '00 hour', '000 hours']) {
+      expect(
+        classifyProviderQuotaFailure(
+          requestError(
+            `quota: Usage limit reached for ${window}. Your limit will reset at 2026-09-21 18:55:29`,
+          ),
+        ),
+      ).toBeUndefined();
+      expect(
+        providerQuotaFactsFromDetails({
+          quotaWindow: window,
+          resetReported: '2026-09-21 18:55:29',
+        }),
+      ).toBeUndefined();
+    }
+    // A positive window still classifies on both paths.
+    expect(
+      classifyProviderQuotaFailure(
+        requestError(
+          'quota: Usage limit reached for 1 hour. Your limit will reset at 2026-09-21 18:55:29',
+        ),
+      ),
+    ).toEqual({
+      quotaWindow: '1 hour',
+      resetReported: '2026-09-21 18:55:29',
+    });
+  });
+
+  test('impossible civil dates stay generic; a real leap day classifies', () => {
+    for (const reset of [
+      '2026-02-31 18:55:29',
+      '2026-02-29 18:55:29',
+      '2026-04-31 18:55:29',
+      '2026-09-31 18:55:29',
+    ]) {
+      expect(
+        classifyProviderQuotaFailure(
+          requestError(
+            `quota: Usage limit reached for 5 hour. Your limit will reset at ${reset}`,
+          ),
+        ),
+      ).toBeUndefined();
+      expect(
+        providerQuotaFactsFromDetails({
+          quotaWindow: '5 hour',
+          resetReported: reset,
+        }),
+      ).toBeUndefined();
+    }
+    // 2024 is a leap year: February 29 exists there. Display only — the
+    // fact is still repeated verbatim with no timezone, never computed on.
+    expect(
+      classifyProviderQuotaFailure(
+        requestError(
+          'quota: Usage limit reached for 5 hour. Your limit will reset at 2024-02-29 18:55:29',
+        ),
+      ),
+    ).toEqual({
+      quotaWindow: '5 hour',
+      resetReported: '2024-02-29 18:55:29',
+    });
+  });
+
+  test('a non-finite protocol code is not a protocol error: stays generic', () => {
+    for (const code of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(classifyProviderQuotaFailure(requestError(OBSERVED_SHAPE, code))).toBeUndefined();
+    }
+  });
+
   test('an unrelated engine failure stays generic', () => {
     expect(
       classifyProviderQuotaFailure(requestError('Internal error')),
