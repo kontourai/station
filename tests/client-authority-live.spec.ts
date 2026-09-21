@@ -47,11 +47,15 @@ import {
  *      the browser back to the same home's data.
  *   4. Two real Stations with colliding Project slugs but distinct names.
  *      The CANONICAL intended journey is asserted without compensation:
- *      Add → the manager STAYS OPEN with the row's Request access control →
- *      Back returns to the row list. On the current build the manager
- *      unmounts right after Add (the known-changing-connection regression);
- *      that is retained as a real red, and the journey is only run to
- *      completion after the root-supplied source fix.
+ *      Add carries straight into the request-access panel for the new host
+ *      in the SAME open dialog (handleAdd: setRequestAccessTarget +
+ *      panel='request-access', pinned by connect-modal.spec.ts Add →
+ *      heading Request Access + Back) → the request is issued directly →
+ *      the real cross-origin refusal is diagnosed → Back returns to the row
+ *      list. An earlier revision of this oracle wrongly expected the row's
+ *      `Request access to Bravo home` button immediately after Add; the
+ *      retained error-context proved the dialog open on the Request Access
+ *      panel, so the oracle now asserts that real stage.
  *
  * Diagnostic separation in (4): the browser-initiated CROSS-ORIGIN pairing
  * refusal (HTTP 403 `origin_forbidden` from
@@ -124,6 +128,51 @@ function activationBoundaryIndex(
 }
 
 /**
+ * Await the reduction's OWN precondition in the recorded samples. The
+ * sampler runs on a 100ms cadence while the gates above read live DOM, so
+ * a synchronous reduction can run on pre-flip samples even after the live
+ * surface has settled (observed: live chip read Default while every
+ * recorded post-click sample still named the old home; and a first
+ * boundary sample arriving before the new home's rows rendered, leaving
+ * the window with no positive). Polling the pure sync reduction on the
+ * same 30s budget as the chip gates — not a widening — removes the
+ * tick-phase race while keeping first-boundary window semantics: the
+ * returned window still starts at the first recorded boundary sample, and
+ * any leak inside it still fails at the caller's expect. Vacuous states
+ * (no boundary / no positives) are retried, never passed; anything still
+ * unproven at the budget throws instead of passing.
+ */
+async function awaitProvenActivationWindow(
+  samples: ConnectionSample[],
+  boundaryOf: (sample: ConnectionSample) => boolean,
+  activeProjectSeen: (sample: ConnectionSample) => boolean,
+  wrongName: string,
+  afterTime: number,
+  what: string,
+): Promise<ReturnType<typeof reduceActivationWindow>> {
+  const started = Date.now();
+  let lastError: unknown = null;
+  while (Date.now() - started <= 30_000) {
+    try {
+      return reduceActivationWindow(
+        samples,
+        boundaryOf,
+        activeProjectSeen,
+        wrongName,
+        afterTime,
+      );
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  throw new Error(
+    `the recorder never proved the activation window (${what}) within 30s — the window is not proven (no vacuous pass)`,
+    { cause: lastError },
+  );
+}
+
+/**
  * Wrong-home reduction over the ACTIVATION window. Refuses to pass
  * vacuously: the boundary must exist, the window must contain positive
  * observations of the newly active home's Project, and any sample in the
@@ -161,6 +210,20 @@ const stations: Record<'alpha' | 'bravo', LiveStation | null> = {
 };
 /** Browser contexts kept open across serial tests (cookies + IndexedDB). */
 const openContexts: BrowserContext[] = [];
+/**
+ * Suite-level failure latch: set by afterEach on any test red and by
+ * beforeAll on a startup red. afterAll preserves diagnostic homes from this
+ * latch — never from the afterAll hook's own testInfo, which is not bound to
+ * any single test's outcome.
+ */
+let suiteFailed = false;
+/**
+ * Test 4's own Page, registered when the page is created so an afterEach
+ * failure capture is provably associated with the tested Page/context (the
+ * runner's generic test-failed-N.png files cover every still-open page and
+ * cannot be attributed to one context).
+ */
+let continuityPage: Page | null = null;
 
 /**
  * Inherited environment for the launched Station processes: user/session
@@ -194,27 +257,33 @@ test.describe
     test.setTimeout(300_000);
 
     async function closeStations(keepHomes: boolean) {
-      const errors: unknown[] = [];
+      // Two phases: stop EVERY owned Station first, then decide removal.
+      // A home is removed only when its own Station stopped cleanly AND the
+      // suite passed; a failed stop retains ownership (stations[key] stays
+      // set for a retry) and its home is never removed.
+      const stopFailures: Array<{ key: 'alpha' | 'bravo'; error: unknown }> =
+        [];
       for (const key of ['alpha', 'bravo'] as const) {
         const live = stations[key];
         if (!live) continue;
         try {
           await stopStation(live);
         } catch (error) {
-          errors.push(error);
+          stopFailures.push({ key, error });
+          continue;
         }
         stations[key] = null;
-        if (!keepHomes && !errors.length) {
+        if (!keepHomes) {
           rmSync(stationRootForLiveHome(live.home), {
             recursive: true,
             force: true,
           });
         }
       }
-      if (errors.length > 0)
+      if (stopFailures.length > 0)
         throw new Error(
-          'Failed to stop isolated client-authority Stations; diagnostic homes preserved',
-          { cause: errors },
+          `Failed to stop isolated client-authority Stations (${stopFailures.map((failure) => failure.key).join(', ')}); diagnostic homes preserved`,
+          { cause: stopFailures.map((failure) => failure.error) },
         );
     }
 
@@ -250,8 +319,37 @@ test.describe
           },
         });
       } catch (error) {
-        await closeStations(false).catch(() => {});
+        suiteFailed = true;
+        try {
+          await closeStations(true);
+        } catch (cleanupError) {
+          // Keep the initial startup failure AND the cleanup diagnostics:
+          // neither is swallowed.
+          throw new Error(
+            'Live Station startup failed; teardown also failed (diagnostic homes preserved)',
+            { cause: { startup: error, teardown: cleanupError } },
+          );
+        }
         throw error;
+      }
+    });
+
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
+    test.afterEach(async ({}, testInfo) => {
+      if (testInfo.status !== testInfo.expectedStatus) {
+        suiteFailed = true;
+        // Evidence bound to test 4's OWN Page/context — the runner's
+        // generic test-failed-N.png files cover every still-open page.
+        if (continuityPage && !continuityPage.isClosed()) {
+          await continuityPage
+            .screenshot({
+              path: testInfo.outputPath(
+                'client-authority-test4-own-page-failed.png',
+              ),
+              fullPage: true,
+            })
+            .catch(() => {});
+        }
       }
     });
 
@@ -261,7 +359,9 @@ test.describe
       for (const context of openContexts.splice(0)) {
         await context.close().catch(() => {});
       }
-      await closeStations(testInfo.status === testInfo.expectedStatus);
+      // Suite outcome comes from the failure latch, never from this hook's
+      // own testInfo: a red anywhere preserves failed diagnostic homes.
+      await closeStations(suiteFailed);
     });
 
     const operatorHeadersFor = (live: LiveStation) => ({
@@ -694,6 +794,9 @@ test.describe
       // Node-side buffer survives every navigation and reload below.
       const samples = await installSampleRecorder(context);
       const page = await context.newPage();
+      // Register this test's OWN page so a failure capture is provably
+      // bound to the tested Page/context.
+      continuityPage = page;
       await pairBrowser(page, {
         root: process.cwd(),
         instance: alpha.instance,
@@ -717,25 +820,30 @@ test.describe
         .fill(`http://127.0.0.1:${bravo.serverPort}`);
       await dialog.getByRole('button', { name: 'Add', exact: true }).click();
 
-      // CANONICAL CONTINUITY (no compensation, no alternative states): the
-      // manager must stay open on the row list and offer the row's own
-      // Request access control. On the current build the whole children
-      // subtree (including this modal flow) unmounts right after Add —
-      // the known changing-connection regression — and this assertion
-      // retains that red. Do not reopen; the journey resumes only after
-      // the root-supplied source fix.
+      // CANONICAL POST-ADD STAGE (no compensation, no alternative states):
+      // Add carries straight into the request-access panel for the new host
+      // in the SAME open dialog (handleAdd: setRequestAccessTarget +
+      // panel='request-access'; connect-modal.spec.ts pins Add → heading
+      // Request Access + Back). Assert the heading, the Bravo target, and
+      // both controls, then proceed directly with the request — no
+      // reopening, no caught assertion.
       await expect(
-        dialog.getByRole('button', { name: 'Request access to Bravo home' }),
-        'the connections manager must stay open with the row Request access control after Add',
+        dialog.getByRole('heading', { name: 'Request Access', exact: true }),
+        'Add must carry straight into the request-access panel in the same dialog',
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        dialog.getByText('Bravo home'),
+        'the request-access panel must name the just-added Bravo home',
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        dialog.getByRole('button', { name: 'Request access', exact: true }),
+        'the request-access panel must offer its Request access control',
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        dialog.getByRole('button', { name: 'Back', exact: true }),
+        'the request-access panel must offer Back',
       ).toBeVisible({ timeout: 30_000 });
       await dialog
-        .getByRole('button', { name: 'Request access to Bravo home' })
-        .click();
-      // The request-access journey confirms with its own dialog (device
-      // name prefilled from the browser), and Back must return to the row
-      // list — the continuity the hosted regression named.
-      await page
-        .getByRole('dialog')
         .getByRole('button', { name: 'Request access', exact: true })
         .click();
 
@@ -802,13 +910,15 @@ test.describe
       // Wrong-home reduction over the ACTIVATION window only: samples are
       // retained in Node across the whole journey; the window starts at the
       // first post-click sample naming bravo, so alpha's own pre-switch
-      // rows can never be false positives.
-      const bravoWindow = reduceActivationWindow(
+      // rows can never be false positives. The window is awaited proven in
+      // the recorded samples (not just live DOM) before the leak assertion.
+      const bravoWindow = await awaitProvenActivationWindow(
         samples,
         (sample) => sample.chip.includes('Bravo home'),
         (sample) => sample.bravoProject,
         'Alpha home authority collision',
         switchClickTime,
+        'bravo activation after Select',
       );
       expect(
         bravoWindow.leaks,
@@ -837,12 +947,20 @@ test.describe
       const narrowReloadTime = Date.now();
       await page.reload();
       await expectProjectRowVisible(page, PROJECT_NAME_B);
-      const narrowWindow = reduceActivationWindow(
+      // Positive activation gate BEFORE the reduction: the boundary signal
+      // is the chip naming bravo, and the reduction refuses vacuous windows
+      // — so the signal itself must be awaited first. This mirrors the
+      // Select sequence above (row → chip → reduction); without it the
+      // synchronous reduction can run on pre-flip samples while the chip is
+      // still settling, even though the reloaded state is correct.
+      await pollChipLabel(page, 'contains', 'Bravo home');
+      const narrowWindow = await awaitProvenActivationWindow(
         samples,
         (sample) => sample.chip.includes('Bravo home'),
         (sample) => sample.bravoProject,
         'Alpha home authority collision',
         narrowReloadTime,
+        'bravo activation after narrow reload',
       );
       expect(
         narrowWindow.leaks,
@@ -871,13 +989,14 @@ test.describe
         'alpha must become the active authority after switching back',
       ).toBeVisible({ timeout: 45_000 });
       await pollChipLabel(page, 'notContains', 'Bravo home');
-      const alphaWindow = reduceActivationWindow(
+      const alphaWindow = await awaitProvenActivationWindow(
         samples,
         (sample) =>
           sample.chip.length > 0 && !sample.chip.includes('Bravo home'),
         (sample) => sample.alphaProject,
         'Bravo home authority collision',
         switchBackTime,
+        'alpha activation after switching back',
       );
       expect(
         alphaWindow.leaks,
