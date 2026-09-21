@@ -86,6 +86,31 @@ test('narrowing to read-only applies exactly the read-only tokens, with the scop
   );
 });
 
+test('an intervening scope refresh cannot replace the editor’s captured compare-and-swap value', () => {
+  const onApply = vi.fn();
+  const openedScope =
+    'orchestration:read orchestration:operate terminal:operate';
+  const props = {
+    deviceName: 'Browser',
+    busy: false,
+    accountBound: true,
+    onApply,
+    onCancel: vi.fn(),
+  };
+  const { rerender } = render(
+    <DeviceScopeEditor {...props} currentScope={openedScope} />,
+  );
+  fireEvent.click(
+    screen.getByRole('radio', { name: /Collaborator management/ }),
+  );
+  rerender(<DeviceScopeEditor {...props} currentScope="orchestration:read" />);
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate'],
+    openedScope,
+  );
+});
+
 test('a MIXED inference scope survives an unrelated edit (review MEDIUM)', () => {
   // `orchestration:read inference:invoke` is a scope the server accepts.
   // Modelling inference as a base rung made this initialise as Read-only and

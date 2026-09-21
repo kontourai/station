@@ -231,6 +231,7 @@ export function DeviceScopeEditor({
   onApply: (scope: PairingScope[], expectedScope: string) => void;
   onCancel: () => void;
 }) {
+  const [openedScope] = useState(currentScope);
   const [choice, setChoice] = useState<ScopeBaseChoice | null>(() =>
     accountBound && isExactDelegationScope(currentScope)
       ? COLLABORATOR_MANAGEMENT_CHOICE
@@ -372,7 +373,7 @@ export function DeviceScopeEditor({
           // the control for "no access at all", and it is right there.
           disabled={busy || scopeChoiceTokens(choice, elevated).length === 0}
           onClick={() =>
-            onApply(scopeChoiceTokens(choice, elevated), currentScope)
+            onApply(scopeChoiceTokens(choice, elevated), openedScope)
           }
           className="station-connect-btn station-connect-btn--inline"
         >
