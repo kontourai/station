@@ -958,6 +958,21 @@ export interface StationCapabilityFlags {
    * before the wire with an actionable error.
    */
   portableExecutionOffers?: boolean;
+  /**
+   * #485 receiver request-claim slice: this build understands the opt-in
+   * `attemptId` field on `POST /api/orchestration/delegations` — a receiver
+   * that advertises this flag durably claims an accepted portable create
+   * request under `(verified delegation device, attemptId)` before any
+   * execution preparation, refuses a redelivered request whose validated
+   * intent digest differs, and answers an authorized exact-attempt lookup
+   * (`GET /api/orchestration/delegations/attempts/:attemptId`) with a
+   * bounded closed projection. A caller MUST gate sending `attemptId` on
+   * this flag: an older receiver's schema strips-and-refuses nothing — the
+   * unknown field is silently dropped, and the sender would believe a claim
+   * exists when none does. Like every capability flag, a STATIC protocol
+   * fact about this build, never a statement that any claim is held.
+   */
+  delegationAttemptClaims?: boolean;
 }
 
 export interface PublicStationHandshake {
