@@ -62,7 +62,7 @@ export type DelegateWaitOutcome =
   | 'interrupted';
 
 /** Documented `delegate wait` exit codes (delegate-scoped, like AC9's). */
-export const WAIT_EXIT_CODES: Record<DelegateWaitOutcome, number> = {
+const WAIT_EXIT_CODES: Record<DelegateWaitOutcome, number> = {
   completed: 0,
   'observation-lost': 2,
   failed: 3,
