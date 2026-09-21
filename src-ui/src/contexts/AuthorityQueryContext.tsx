@@ -49,6 +49,18 @@
  *    (never the observation bootstrap client), so first-pairing repair
  *    stays usable with nothing persisted and nothing restored.
  *
+ * COMPOSITION BOUNDARY (hosted connect-modal regression): this provider
+ * replaces its ENTIRE protected subtree on activation transitions
+ * (skeleton while pending, fresh keyed client per namespace), so
+ * device-local connection selection/pairing/recovery UI must NOT live
+ * inside it — an open access-request flow would unmount mid-transition.
+ * That shell (`OnboardingGate`) mounts ABOVE this provider in
+ * `RecoveryQueryBoundary` (stable nonpersisted client, switch-scoped cache
+ * drop; archive#1290 switch invalidation stays here with the client it
+ * targets), and only protected data lifetimes are replaceable here. Toast
+ * and navigation state are likewise stable above; nothing below may assume
+ * a provider remount clears them.
+ *
  * `_getApiBase` AUDIT (the seam a per-context client alone does not close):
  * legacy SDK query-domain fetchers resolve the module-global origin AT
  * FETCH TIME (`await _getApiBase()` inside the queryFn). A delayed legacy
@@ -97,6 +109,7 @@ import type { AuthorityObservation } from '@kontourai/station-contracts/authorit
 import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import {
   type ApiRequestScope,
+  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   StationRequestAuthorityError,
 } from '@kontourai/station-sdk/client';
 import {
@@ -110,6 +123,10 @@ import {
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { SkeletonBlock } from '../components/state';
+import {
+  useConnectionSwitchScope,
+  useInvalidateCachesOnConnectionSwitch,
+} from '../hooks/useInvalidateCachesOnConnectionSwitch';
 import {
   authorityPersistenceKey,
   buildAuthorityNamespace,
@@ -134,15 +151,29 @@ export type FetchAuthorityObservation = (
   request: AuthorityObservationRequest,
 ) => Promise<AuthorityObservation>;
 
-const defaultFetchAuthorityObservation: FetchAuthorityObservation = ({
-  apiBase,
-  requestScope,
-  signal,
-}) =>
-  getAuthorityObservation(apiBase, {
-    ...(requestScope ? { requestScope } : {}),
-    signal,
-  });
+/**
+ * Production observation read with an explicit bounded deadline alongside
+ * the caller signal. React Query always supplies a signal, and the SDK
+ * resolves "caller owns cancellation" to NO deadline in that case — a
+ * black-holed read would hang the recovery shell (and its repair surfaces)
+ * forever. The deadline reuses the existing client request policy
+ * (`DEFAULT_CLIENT_REQUEST_TIMEOUT_MS`); it composes with the caller
+ * signal through the SDK's existing options (`AbortSignal.any`), so a
+ * switch/replacement still cancels first and the global SDK timeout
+ * behavior is unchanged. A timeout is observation loss: the failure branch
+ * below quarantines on a fresh ephemeral client and restores nothing —
+ * never permission to revive a shelf.
+ */
+function defaultFetchAuthorityObservation(
+  timeoutMs: number,
+): FetchAuthorityObservation {
+  return ({ apiBase, requestScope, signal }) =>
+    getAuthorityObservation(apiBase, {
+      ...(requestScope ? { requestScope } : {}),
+      signal,
+      timeoutMs,
+    });
+}
 
 /** A 401 from the observation read: the credential is not authorized. */
 function isUnauthorizedObservationFailure(error: unknown): boolean {
@@ -189,10 +220,11 @@ function retireAuthorityClient(queryClient: QueryClient): void {
 
 export function AuthorityQueryProvider({
   children,
-  fetchObservation = defaultFetchAuthorityObservation,
+  fetchObservation,
   storage,
   localUiApiBase,
   persistThrottleTimeMs,
+  observationTimeoutMs = DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
 }: {
   children: ReactNode;
   fetchObservation?: FetchAuthorityObservation;
@@ -202,7 +234,16 @@ export function AuthorityQueryProvider({
   localUiApiBase: string;
   /** Persister coalescing window; production default (1000ms) when omitted. */
   persistThrottleTimeMs?: number;
+  /**
+   * Bounded deadline for the production authority observation read.
+   * Production default is the existing client request policy; tests inject
+   * a short deadline to prove a black-holed read fails bounded onto the
+   * repair path instead of hanging.
+   */
+  observationTimeoutMs?: number;
 }): ReactNode {
+  const readObservation =
+    fetchObservation ?? defaultFetchAuthorityObservation(observationTimeoutMs);
   const { apiBase, activeConnection, credentialAuthorityGeneration } =
     useConnections();
   const requestScope = useHostRequestAuthorityScope();
@@ -244,7 +285,7 @@ export function AuthorityQueryProvider({
     queryKey: observationKey ?? ['authority-observation', 'disabled'],
     queryFn: async ({ signal }: { signal: AbortSignal }) => {
       if (!boundScope) throw new StationRequestAuthorityError();
-      const observation = await fetchObservation({
+      const observation = await readObservation({
         apiBase: boundApiBase,
         requestScope: {
           apiBase: boundScope.apiBase,
@@ -435,7 +476,10 @@ export function AuthorityQueryProvider({
       <AuthorityPersistenceContext.Provider
         value={{ status: 'unavailable', namespace: null, observation: null }}
       >
-        <EphemeralTree key={ephemeralKey}>{children}</EphemeralTree>
+        <EphemeralTree key={ephemeralKey}>
+          <AuthoritySwitchInvalidator />
+          {children}
+        </EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -457,6 +501,7 @@ export function AuthorityQueryProvider({
           client={active.queryClient}
           persistOptions={persistOptions}
         >
+          <AuthoritySwitchInvalidator />
           {children}
         </PersistQueryClientProvider>
       </AuthorityPersistenceContext.Provider>
@@ -479,7 +524,10 @@ export function AuthorityQueryProvider({
           observation: null,
         }}
       >
-        <EphemeralTree key={ephemeralKey}>{children}</EphemeralTree>
+        <EphemeralTree key={ephemeralKey}>
+          <AuthoritySwitchInvalidator />
+          {children}
+        </EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -493,6 +541,31 @@ export function AuthorityQueryProvider({
       <SkeletonBlock label="Verifying Station authority" />
     </AuthorityPersistenceContext.Provider>
   );
+}
+
+/**
+ * archive#1290 switch invalidation, kept with the client it targets. The
+ * recovery/pairing shell (`OnboardingGate`) now mounts ABOVE this provider
+ * inside its own stable `RecoveryQueryBoundary`, so it can no longer host
+ * this hook: `useQueryClient` there resolves the recovery client, and
+ * invalidating that cache would leave the protected one serving the
+ * previous server. Rendered in every branch that owns a query client
+ * (verified persisted, both ephemeral fallbacks) — exactly the branches the
+ * gate previously reached through the mounted children. Never in the
+ * pending branch: there is no client to invalidate while unverified (the
+ * retired client was cancelled on the way out, the next one is fresh on
+ * the way in), and mounting one there would invalidate the observation
+ * bootstrap client instead.
+ */
+function AuthoritySwitchInvalidator(): ReactNode {
+  const { apiBase, hasActiveConnection, connectionScope } =
+    useConnectionSwitchScope();
+  useInvalidateCachesOnConnectionSwitch(
+    apiBase,
+    hasActiveConnection,
+    connectionScope,
+  );
+  return null;
 }
 
 /**

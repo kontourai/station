@@ -571,6 +571,40 @@ describe('resolveProjectResource — bindings (§3.6)', () => {
     expectWellFormed(result);
   });
 
+  test('an explicitly-requested resource binds receiver-locally with no compat workingDirectory', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-ppi-nocompat-checkout-');
+    // Deliberately NO workingDirectory: the project binds this resource
+    // receiver-locally through its binding row, not through a default
+    // checkout. A portable attachment naming the exact resource id must
+    // still resolve to the checked binding path.
+    await saveProject(harness.adapter, { slug: 'acme' });
+    const record = writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/kontourai/station', 'primary')],
+    });
+    await harness.bindings.upsertProjectBinding({
+      projectId: record.id,
+      resourceId: 'github.com/kontourai/station',
+      kind: 'git-checkout',
+      path: checkout,
+      remotes: ['git@github.com:kontourai/station.git'],
+      verifiedAt: Date.now(),
+      state: 'bound',
+    });
+
+    const result = await makeResolver(
+      harness,
+      remoteReader(['git@github.com:kontourai/station.git']),
+    ).resolveProjectResource('acme', 'github.com/kontourai/station');
+    expect(result).toEqual({
+      state: 'bound',
+      resourceId: 'github.com/kontourai/station',
+      path: checkout,
+    });
+    expectWellFormed(result);
+  });
+
   test('a binding whose path is deleted reports missing and NEVER silently re-binds to workingDirectory', async () => {
     const harness = createHome();
     const checkout = tempDir('station-ppi-checkout-');

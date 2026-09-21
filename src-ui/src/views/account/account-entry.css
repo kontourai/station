@@ -14,8 +14,15 @@
   border-radius: 12px;
   background: var(--bg-secondary);
 }
+/* Joined shared-Project state (project detail plus People and access)
+   needs desktop room the compact sign-in form does not: widen the card
+   only there. Narrow viewports are unaffected (min with 100%), and the
+   sign-in / invitation / recovery flows keep the compact card. */
+.account-entry__card--wide {
+  width: min(100%, 56rem);
+}
 .account-entry form,
-.account-entry label {
+.account-entry label:not(.cb) {
   display: grid;
   gap: 0.5rem;
 }
@@ -23,7 +30,10 @@
   gap: 1rem;
   margin-block: 1.5rem;
 }
-.account-entry input {
+/* The shared Checkbox owns its own internals: the visually hidden input
+   must stay 1px, and its label stays inline-flex, even inside account
+   forms. Without the guards the rules below restyle both. */
+.account-entry input:not(.cb__input) {
   width: 100%;
   min-height: 44px;
   padding: 0.65rem 0.75rem;
@@ -166,4 +176,91 @@
 .account-entry__guest-access + .button,
 .account-entry__device-onboarding + .button {
   margin-block-start: 1rem;
+}
+.account-entry__access-admin,
+.account-entry__access-view-only {
+  display: grid;
+  gap: 1rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--border-primary);
+}
+.account-entry__access-admin > *,
+.account-entry__access-view-only > * {
+  margin-block: 0;
+}
+.account-entry__access-admin h4,
+.account-entry__access-view-only h4 {
+  margin-block: 0 0.35rem;
+}
+.account-entry__capability {
+  overflow-wrap: anywhere;
+}
+.account-entry__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.account-entry .page-section {
+  display: grid;
+  gap: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+.account-entry .page-section__title {
+  margin-block: 0 0.35rem;
+  font-size: 1rem;
+}
+.account-entry .page-section__description {
+  margin-block: 0;
+}
+.account-entry .project-access__members,
+.account-entry .project-access__invite {
+  display: grid;
+  gap: 1rem;
+}
+.account-entry .project-access__member {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-block: 0.75rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+.account-entry .project-access__member p {
+  margin: 0.35rem 0;
+}
+.account-entry .project-access__actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.account-entry .project-access__invite label:not(.cb),
+.account-entry .project-access__actions label:not(.cb) {
+  display: grid;
+  gap: 0.35rem;
+}
+.account-entry .project-access__invite input:not([type="checkbox"]),
+.account-entry .project-access__invite select,
+.account-entry .project-access__actions select {
+  min-height: 44px;
+  max-width: 100%;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+}
+.account-entry .project-access__read-only {
+  padding: 0.75rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+.account-entry .project-access__invite h3,
+.account-entry .page-section h3 {
+  margin-block: 0;
 }

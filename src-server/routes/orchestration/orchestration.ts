@@ -99,6 +99,11 @@ import {
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
+import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
+import {
+  RECEIVER_EXECUTION_REFUSAL_COPY,
+  ReceiverExecutionRefusal,
+} from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
 import {
@@ -362,6 +367,14 @@ const workspaceTargetSchema = z.discriminatedUnion('kind', [
     kind: z.literal('directory'),
     cwd: z.string().min(1).max(4_096),
   }),
+  // #484 phase A: explicit portable execution intent — consent identity,
+  // not an address. A receiver from before this slice refuses the whole
+  // workspace object here (fail-closed), never a stripped-field fallback.
+  z.object({
+    kind: z.literal('project-portable'),
+    portableProjectId: z.string().min(1).max(512),
+    resourceId: z.string().min(1).max(512),
+  }),
 ]);
 
 const executionTargetSchema = z.object({
@@ -612,6 +625,26 @@ interface DelegateTaskRequest {
   userId: string;
   principal?: PrincipalRef;
   clientOrigin?: ClientOrigin;
+  /**
+   * #484 controller/receiver split: for a `project-portable` workspace
+   * intent, the route composes this server-only mint callable (bound to the
+   * current request credential) instead of an admission — the admission is
+   * minted inside `delegateTask` ONLY when this Station is the actual local
+   * executor, so a controlling sender never needs a local offer. Never
+   * public JSON (a function cannot cross it; the route schema strips it).
+   */
+  authorizeReceiverExecution?: (workspace: {
+    portableProjectId: string;
+    resourceId: string;
+  }) => Promise<ReceiverExecutionAdmission>;
+  /**
+   * #484 no-onward-hop: the server-resolved paired-device kind for the
+   * inbound credential, composed from the verified device record — never
+   * body, userId, or metadata. Present only for portable intents.
+   */
+  inboundDeviceKind?: 'device' | 'delegation';
+  /** Server-bound sender authority, checked again before forwarding. */
+  isRequestAuthorityCurrent?: () => boolean;
 }
 
 interface ForegroundMessageRequest {
@@ -886,6 +919,25 @@ export function createOrchestrationRoutes(
       close(sessionId: string): Promise<void>;
     };
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
+    /**
+     * #484 phase A: admits (or refuses) the explicit portable-execution
+     * intent against this Station's operator offer, binding the CURRENT
+     * request credential via `authorityCurrent`. Composed by
+     * `runtime-routes.ts` over the contribution service.
+     */
+    authorizeReceiverExecution?: (
+      input: { portableProjectId: string; resourceId: string },
+      authorityCurrent: () => boolean,
+    ) => Promise<ReceiverExecutionAdmission>;
+    /**
+     * #484 no-onward-hop: resolves the inbound credential's server-owned
+     * paired-device kind (`device` vs `delegation`) from the verified
+     * device record. Wired once at `runtime-routes.ts`; absent in tests
+     * that never simulate an enrolled peer (treated as non-peer).
+     */
+    resolveInboundDeviceKind?: (
+      c: PrincipalResolutionContext,
+    ) => 'device' | 'delegation' | undefined;
     executeForegroundMessage?: (
       input: ForegroundMessageRequest,
     ) => Promise<unknown>;
@@ -1705,15 +1757,52 @@ export function createOrchestrationRoutes(
     try {
       const body = getBody(c);
       const { principal, userId } = resolveActorPrincipal(deps, c);
+      const clientOrigin = resolveClientOriginForRequest(c.req.raw);
+      // #484 controller/receiver split: this route NEVER mints the
+      // receiver admission itself — minting here, before `delegateTask`
+      // resolves/forwards the environment, forced every controlling
+      // sender to hold a local offer for a saved receiver's intent. The
+      // admission is minted inside `delegateTask` ONLY when this Station
+      // is the actual local executor. Capture the trusted mint factory
+      // (bound to the CURRENT request credential) and the verified caller
+      // facts BEFORE any await; the factory is server-only (a function
+      // cannot cross public JSON) and is never invoked on a forwarding
+      // sender. No environment is resolved here, so nothing races the
+      // single resolution inside `delegateTask`.
+      const authorizeReceiverExecution = deps.authorizeReceiverExecution
+        ? (workspace: { portableProjectId: string; resourceId: string }) =>
+            deps.authorizeReceiverExecution!(
+              workspace,
+              () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+            )
+        : undefined;
+      const portableIntent = body.target.workspace?.kind === 'project-portable';
       const data = await deps.delegateTask({
         ...body,
         target: normalizeExecutionTarget(body.target),
         userId,
         principal,
-        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        clientOrigin,
+        ...(portableIntent
+          ? {
+              authorizeReceiverExecution,
+              inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+              isRequestAuthorityCurrent: () =>
+                deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+            }
+          : {}),
       });
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof ReceiverExecutionRefusal)
+        return c.json(
+          {
+            success: false,
+            error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+            code: error.code,
+          },
+          403,
+        );
       return c.json(
         {
           success: false,
@@ -1856,6 +1945,17 @@ export function createOrchestrationRoutes(
         });
         return c.json({ success: true, data });
       } catch (error) {
+        // #484 phase A: a portable continuation refused for lack of a
+        // current offer admission is a 403, like the create-path refusal.
+        if (error instanceof ReceiverExecutionRefusal)
+          return c.json(
+            {
+              success: false,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+              code: error.code,
+            },
+            403,
+          );
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
     },
@@ -1882,6 +1982,16 @@ export function createOrchestrationRoutes(
         });
         return c.json({ success: true, data });
       } catch (error) {
+        // #484 phase A: same 403 mapping as the create and continue paths.
+        if (error instanceof ReceiverExecutionRefusal)
+          return c.json(
+            {
+              success: false,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+              code: error.code,
+            },
+            403,
+          );
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
     },

@@ -554,6 +554,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/portable-receiver-live-proof.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Orchestration / Portable Projects',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#484/#106: the portable-execution journey is proven over TWO actual independent Station server processes booted from this checkout — a controller and a receiver, each in its own isolated home/root on non-default ports with sanitized child environments. The receiver pairs with the controller through the real offer/request/operator-approval/exchange HTTP ceremony (kind `delegation`), the credential is saved through the controller's real outbound peer-credential API, the receiver's operator offer is configured through the real `PUT /api/project-contributions/offer`, and the delegation is dispatched through the controller's real `POST /api/orchestration/delegations` with workspace kind `project-portable`. The join under proof is portable identity — both checkouts declare the same LOCAL fake git remote (no network), the receiver uses a different slug, a different local path, and a nested execution root, so same-slug or default-cwd coincidence cannot satisfy it. The model behind the turn is muse's own key-less echo provider (`STATION_E2E_MUSE_PROVIDER=echo`, CLI-spawned `--temp-home` containment), and because echo output cannot prove the OS working directory, the provider output (`echo:` + token), the DECLARED receipt (`resolution.environmentId` + resolved workspace cwd), and an ACTUAL read-only launch observation (a PATH shim records every muse spawn's cwd and then execs the real binary) are asserted separately. Negative controls refuse on the wire with the exact expected messages (undeclared resource, unknown portable id, same-slug-different-identity offer refusal, saved-environment handshake mismatch, withdrawn offer, revoked peer credential) and each refusal is proven effect-free by muse-launch absence and receiver usage-counter absence, not by status-code shape alone. Unsupported-peer (pre-#484 receiver) is deliberately NOT VERIFIED: it needs a genuinely older receiver build. Operator credentials are read only from each fixture home, never the operator's real home.",
+    exceptions: [],
+  },
+  {
     path: 'tests/agents-copy-existing.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -1570,6 +1580,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, immutable account-bound Device approval, restricted Project/shared Task reads, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-guest-admin-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Project guest administration acceptance',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real isolated Station and synthetic one-host operator/guest browsers prove the invited-admin People and access journey: admin inspection, manual single-use invitation creation and cancellation, read-only Device explanation after an operator rescope, read+operate restore, and honest self-demotion. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
     exceptions: [],
   },
   {

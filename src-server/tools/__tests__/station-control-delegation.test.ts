@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
@@ -2595,6 +2596,69 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
+  test('a marked portable task refuses continuation without a fresh offer admission', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const base = localDelegatedTaskService('completed');
+    // The persisted session binding carries the server-minted portable
+    // consent marker (stamped at dispatch, re-stamped after the
+    // reserved-key strip) — a follow-up without a freshly re-admitted
+    // offer must refuse BEFORE any provider effect, not silently bypass
+    // the explicit portable mode's contract across the persist boundary.
+    const markedDetail = {
+      session: {
+        threadId: 'task-alpha',
+        lifecycleState: 'completed',
+        eventCount: 2,
+        delegation: {
+          taskId: 'task-alpha',
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+            userId: 'shared-user',
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+            },
+          },
+        },
+      ],
+    };
+    const service = {
+      ...base,
+      readSession: vi.fn(async () => markedDetail),
+      readCurrentConversationSession: vi.fn(async () => markedDetail),
+    };
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'One more thing',
+          readAuthority: authority,
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+  });
+
   test('defers model-option capability to the current continuation resolver, not the predecessor provider (station#3414)', async () => {
     installCurrentStationFetch();
     const authority = hostedAuthority('alpha');
@@ -3307,5 +3371,163 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
       hostedAuthority('bravo'),
     );
     expect(readSessionEventPage).not.toHaveBeenCalled();
+  });
+
+  describe('#484 peer-hop portable refusal translation', () => {
+    const PORTABLE_WORKSPACE = {
+      kind: 'project-portable' as const,
+      portableProjectId: 'prj_portable-proof',
+      resourceId: 'git-fixture.example.test/portable-proof/repo',
+    };
+
+    function portableInput() {
+      return {
+        prompt: 'Portable dispatch',
+        target: { ...savedTarget(), workspace: PORTABLE_WORKSPACE },
+        isRequestAuthorityCurrent: () => true,
+      };
+    }
+
+    function installPortablePeerFetch(peerPost: () => Response) {
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`) {
+          return json({ environmentId: 'environment-current' });
+        }
+        if (url === `${CURRENT_API}/api/environments/ssh`) {
+          return json({ success: true, data: [] });
+        }
+        if (
+          url ===
+          `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+        ) {
+          return json({
+            success: true,
+            data: {
+              environmentId: 'environment-remote',
+              apiBase: REMOTE_API,
+              scope: 'orchestration:read orchestration:operate',
+              credential: 'peer-secret',
+              label: 'Station B',
+            },
+          });
+        }
+        if (url === `${REMOTE_API}/.well-known/station/v1`) {
+          return json({
+            environmentId: 'environment-remote',
+            capabilities: { portableExecutionOffers: true },
+          });
+        }
+        if (url === `${REMOTE_API}/api/orchestration/delegations`) {
+          return peerPost();
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+    }
+
+    test('keeps a receiver 403 portable refusal as that code/403 at the controller', async () => {
+      installPortablePeerFetch(() =>
+        json(
+          {
+            success: false,
+            error:
+              'This Station does not currently offer execution for the requested Project resource.',
+            code: 'receiver_execution_not_offered',
+          },
+          403,
+        ),
+      );
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const error = await delegateTask(portableInput()).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(Error);
+      expect((error as { name?: string }).name).toBe(
+        'ReceiverExecutionRefusal',
+      );
+      expect((error as { code?: string }).code).toBe(
+        'receiver_execution_not_offered',
+      );
+      expect((error as Error).message).toBe(
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+    });
+
+    test('maps a peer 401 to the actionable authority-changed refusal without relaying peer text', async () => {
+      installPortablePeerFetch(() =>
+        json({ error: { code: 'authentication_required' } }, 401),
+      );
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const error = await delegateTask(portableInput()).catch(
+        (caught: unknown) => caught,
+      );
+      expect((error as { name?: string }).name).toBe(
+        'ReceiverExecutionRefusal',
+      );
+      expect((error as { code?: string }).code).toBe(
+        'receiver_execution_authority_changed',
+      );
+      expect((error as Error).message).toBe(
+        'Portable execution authority changed before forwarding.',
+      );
+    });
+
+    test.each(['insufficient_scope', { code: 'insufficient_scope' }])(
+      'maps a peer insufficient_scope 403 (%j) to the authority-changed refusal',
+      async (errorBody) => {
+        installPortablePeerFetch(() => json({ error: errorBody }, 403));
+        const { delegateTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await delegateTask(portableInput()).catch(
+          (caught: unknown) => caught,
+        );
+        expect((error as { name?: string }).name).toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBe(
+          'receiver_execution_authority_changed',
+        );
+      },
+    );
+
+    test.each(['constructor', 'toString', '__proto__'])(
+      'rejects inherited property %s as an unknown refusal code',
+      async (code) => {
+        installPortablePeerFetch(() =>
+          json({ code, error: 'private peer diagnostic' }, 403),
+        );
+        const { delegateTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await delegateTask(portableInput()).catch(
+          (caught: unknown) => caught,
+        );
+        expect(error).toBeInstanceOf(Error);
+        expect((error as { name?: string }).name).not.toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBeUndefined();
+        expect((error as Error).message).toBe(
+          'The selected Station could not start the delegated task',
+        );
+      },
+    );
+
+    test('does NOT launder an unknown peer 500 into an authorization refusal', async () => {
+      installPortablePeerFetch(() =>
+        json({ success: false, error: 'database on fire' }, 500),
+      );
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const error = await delegateTask(portableInput()).catch(
+        (caught: unknown) => caught,
+      );
+      expect((error as { name?: string }).name).not.toBe(
+        'ReceiverExecutionRefusal',
+      );
+      expect((error as Error).message).toBe(
+        'The selected Station could not start the delegated task',
+      );
+    });
   });
 });

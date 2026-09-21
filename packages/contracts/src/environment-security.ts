@@ -943,6 +943,21 @@ export interface StationCapabilityFlags {
    * discover the capability. Neither half can be reverted alone.
    */
   devicePairingApproval?: boolean;
+  /**
+   * #484 phase A: this build understands the `project-portable` execution
+   * workspace intent on `POST /api/orchestration/delegations` — the receiver
+   * will admit such work ONLY through its operator's execution offer
+   * (`AppConfig.contribution`) plus a currently-bound resource, and will
+   * refuse the intent outright rather than fall back to a local slug/path.
+   * A STATIC protocol fact about this build's admission surface, never a
+   * statement that anything is currently offered: what is offered is
+   * readable only after authentication, from the contribution projection.
+   * A caller MUST gate sending the `project-portable` workspace variant on
+   * this flag; an older receiver strips-and-executes nothing — its schema
+   * refuses the unknown union member — but the flag lets the caller refuse
+   * before the wire with an actionable error.
+   */
+  portableExecutionOffers?: boolean;
 }
 
 export interface PublicStationHandshake {

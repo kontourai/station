@@ -22,6 +22,15 @@ const scopeSchema = z
   })
   .strict();
 const roleSchema = z.enum(['viewer', 'contributor', 'admin']);
+/**
+ * Caller-captured mutation intent: the principal id the page was rendered
+ * for. The service compares it against freshly authenticated authority
+ * before committing; a client claim grants nothing. Optional so existing
+ * operator callers keep working unchanged.
+ */
+const intentSchema = z
+  .object({ expectedActor: z.string().min(1).max(2048).optional() })
+  .strict();
 const logger = createLogger({ name: 'project-membership-routes' });
 class ProjectAccessBodyTooLarge extends Error {}
 
@@ -199,10 +208,22 @@ export function createProjectMembershipRoutes(
             expiresAt: z.string().datetime(),
           })
           .strict()
+          .merge(intentSchema)
           .parse(await membershipBody(c));
         const scope = structuredClone(scoped(c, body.scope));
         const actor = await access.current();
-        const data = await owner.invite(scope, body, access);
+        const data = await owner.invite(
+          scope,
+          {
+            email: body.email,
+            role: body.role,
+            expiresAt: body.expiresAt,
+          },
+          access,
+          {
+            expectedActorId: body.expectedActor,
+          },
+        );
         return { ...data, guard: managementRelease(scope, actor.principal.id) };
       },
       (data) => data.guard,
@@ -215,6 +236,7 @@ export function createProjectMembershipRoutes(
         const body = z
           .object({ scope: scopeSchema })
           .strict()
+          .merge(intentSchema)
           .parse(await membershipBody(c));
         const scope = structuredClone(scoped(c, body.scope));
         const actor = await access.current();
@@ -222,6 +244,7 @@ export function createProjectMembershipRoutes(
           scope,
           c.req.param('invitationId'),
           access,
+          { expectedActorId: body.expectedActor },
         );
         return {
           ...data,
@@ -244,6 +267,7 @@ export function createProjectMembershipRoutes(
             status: z.enum(['active', 'revoked']),
           })
           .strict()
+          .merge(intentSchema)
           .parse(await membershipBody(c));
         const scope = structuredClone(scoped(c, body.scope));
         const actor = await access.current();
@@ -253,6 +277,7 @@ export function createProjectMembershipRoutes(
           body.revision,
           { role: body.role, status: body.status },
           access,
+          { expectedActorId: body.expectedActor },
         );
         return {
           ...data,
@@ -272,6 +297,7 @@ export function createProjectMembershipRoutes(
             recipientId: z.string().min(1).max(2048),
           })
           .strict()
+          .merge(intentSchema)
           .parse(await membershipBody(c));
         const scope = structuredClone(scoped(c, body.scope));
         const actor = await access.current();
@@ -279,6 +305,7 @@ export function createProjectMembershipRoutes(
           scope,
           body.recipientId,
           access,
+          { expectedActorId: body.expectedActor },
         );
         return {
           ...data,

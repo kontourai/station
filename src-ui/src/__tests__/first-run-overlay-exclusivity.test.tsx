@@ -137,6 +137,15 @@ vi.mock('../contexts/ConfigContext', () => ({
     isSaving: false,
   }),
 }));
+// The gate reads config through the identity-scoped recovery hook (never
+// the shared bare-key query under the stable boundary). Substitute at that
+// seam with the same `configValue` this file already drives firstRun from;
+// scoping itself is covered against the real boundary in
+// authorityRecoveryComposition.
+vi.mock('../hooks/useRecoveryConfig', () => ({
+  useRecoveryConfig: () => ({ data: configValue }),
+  recoveryConfigKey: (...parts: unknown[]) => parts,
+}));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
   useAgentsLoaded: () => true,

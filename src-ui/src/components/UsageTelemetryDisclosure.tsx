@@ -1,8 +1,14 @@
 import {
   authenticatedFetch,
+  getJson,
+  mutateJson,
   useConfigQuery,
   useUpdateConfigMutation,
 } from '@kontourai/station-sdk';
+import {
+  type ApiRequestScope,
+  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+} from '@kontourai/station-sdk/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ReactNode,
@@ -12,6 +18,11 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { useOptionalRecoveryScope } from '../contexts/RecoveryQueryBoundary';
+import {
+  recoveryConfigKey,
+  useRecoveryConfig,
+} from '../hooks/useRecoveryConfig';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
@@ -202,11 +213,14 @@ async function responseData(response: Response): Promise<Disclosure> {
 }
 
 /**
- * The one read of the inventory, shared by every surface that shows it.
+ * The one read of the inventory, shared by every surface in the SAME tree.
  *
- * React Query dedupes on the key, so the first-run chapter asking whether
- * there is anything to disclose and the standalone modal deciding whether to
- * render are the SAME request — not two, and never two different answers.
+ * React Query dedupes on the key, so surfaces asking together get the SAME
+ * request — not two, and never two different answers. The recovery shell
+ * and the protected tree deliberately do NOT share: the recovery read is
+ * identity-scoped (a same-origin rotation must commit pending, never the
+ * previous authority's inventory), while the protected read rides its own
+ * per-authority client.
  */
 export interface UsageTelemetryDisclosureState {
   data: Disclosure | undefined;
@@ -217,18 +231,47 @@ export interface UsageTelemetryDisclosureState {
   outstanding: boolean;
 }
 
+/**
+ * The recovery-scoped disclosure key, exported so recovery writers update
+ * exactly what the recovery shell reads. The protected tree keeps the
+ * bare `['usage-telemetry-disclosure', apiBase]` key below: the two
+ * trees own different clients, so sharing one entry would let a
+ * same-origin rotation serve the previous authority's inventory to the
+ * recovery decision.
+ */
+export function recoveryDisclosureKey(apiBase: string, identityKey: string) {
+  return ['usage-telemetry-disclosure', 'recovery', apiBase, identityKey] as const;
+}
+
 export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureState {
   const { apiBase } = useApiBase();
+  // Dual owner: the recovery gate's first-run modal renders inside
+  // `RecoveryQueryBoundary` (scoped read, below); the Settings section
+  // and the first-run chapter render in the protected tree (bare key on
+  // their own per-authority client, exactly as before). No throwing
+  // scope read here — this hook must mount in both trees.
+  const scope = useOptionalRecoveryScope();
+  const scoped = scope !== null;
   const pageDismissed = useSyncExternalStore(
     subscribeToDismissal,
     readDismissal,
   );
   const query = useQuery({
-    queryKey: ['usage-telemetry-disclosure', apiBase],
-    queryFn: () =>
-      authenticatedFetch(`${apiBase}/api/usage-telemetry/disclosure`).then(
-        responseData,
-      ),
+    queryKey: scoped
+      ? recoveryDisclosureKey(scope.apiBase, scope.identityKey)
+      : ['usage-telemetry-disclosure', apiBase],
+    queryFn: ({ signal }) =>
+      scoped
+        ? getJson(`${scope.apiBase}/api/usage-telemetry/disclosure`, {
+            signal,
+            timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+            ...(scope.requestScope
+              ? { requestScope: scope.requestScope }
+              : {}),
+          }).then(responseData)
+        : authenticatedFetch(`${apiBase}/api/usage-telemetry/disclosure`, {
+            signal,
+          }).then(responseData),
     retry: (failureCount, error) =>
       error instanceof UsageTelemetryNotReadyError
         ? failureCount < NOT_READY_RETRY_LIMIT
@@ -491,11 +534,45 @@ interface UsageTelemetryDecision {
  * `data` is optional so this can be called before the inventory has settled,
  * where the hook rules require it; the actions no-op until it has.
  */
+/**
+ * The authority target a recovery decision is captured against. Built at
+ * intent time — the click handler's own render, which is the latest
+ * committed scope — and threaded through every guarded request that
+ * decision makes, so a choice initiated for A can never update or
+ * acknowledge B after an await: `useUpdateConfigMutation`'s global API
+ * getter is NOT used here. The SDK verifies this capture against the
+ * live credential-resolver settlement before dispatch AND around the
+ * body decode; a rotation in between fails the write instead of
+ * redirecting it at the new authority.
+ */
+interface RecoveryDecisionTarget {
+  apiBase: string;
+  identityKey: string;
+  requestScope: ApiRequestScope | null;
+}
+
+interface RecoveryConfigWriteResult {
+  data: unknown;
+  ignoredKeys?: { key: string; reason: string }[];
+}
+
 function useUsageTelemetryDecision(
   data: Disclosure | undefined,
   onDecided?: () => void,
 ): UsageTelemetryDecision {
-  const acknowledge = useAcknowledgeDisclosure(onDecided);
+  // Dual owner (see the state hook above): a recovery scope means the
+  // recovery shell — identity-scoped reads and guarded writes; null means
+  // the protected tree — the existing shared-query contract, unchanged.
+  // Every hook below runs unconditionally in both trees; only the ACTIVE
+  // mode's results and mutators are used. The idle mode never fetches
+  // (disabled queries, uninvoked mutations), so no bare `['config']`
+  // entry is ever created on the stable recovery client and no scoped
+  // entry on a protected client — and crucially nothing here throws for
+  // rendering in either tree.
+  const scope = useOptionalRecoveryScope();
+  const scoped = scope !== null;
+
+  const acknowledgeProtected = useAcknowledgeDisclosure(onDecided);
   // The SAME `['config']` query the Settings row reads and this write
   // invalidates. The disclosure query is NOT invalidated by a config write and
   // carries a five-minute `staleTime`, so reading the setting from it alone
@@ -503,17 +580,71 @@ function useUsageTelemetryDecision(
   // run, change the toggle in Settings, come back, and the choice offered to
   // "keep" a state that had already moved. The disclosure stays the fallback
   // because it is the only thing that can see the environment.
-  const { data: config } = useConfigQuery();
-  const updateConfig = useUpdateConfigMutation();
+  const protectedConfig = useConfigQuery({ enabled: !scoped });
+  const updateProtected = useUpdateConfigMutation();
+
+  // Identity-scoped recovery read (not the shared bare-key
+  // `useConfigQuery`): under the stable boundary a bare entry would survive
+  // its connection — including a same-origin credential rotation.
+  const recoveryConfig = useRecoveryConfig();
+  const queryClient = useQueryClient();
+  const recoveryConfigWrite = useMutation({
+    mutationFn: async (target: RecoveryDecisionTarget & { next: boolean }) => {
+      const response = await mutateJson(
+        `${target.apiBase}/config/app`,
+        'PUT',
+        {
+          timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+          ...(target.requestScope
+            ? { requestScope: target.requestScope }
+            : {}),
+        },
+        { telemetryEnabled: target.next },
+      );
+      // Guarded when the target carries a scope: the decode re-asserts
+      // the intent-time capture is still current after the bytes arrive.
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return result as RecoveryConfigWriteResult;
+    },
+  });
+  const acknowledgeRecovery = useMutation({
+    mutationFn: async (target: RecoveryDecisionTarget) => {
+      const response = await mutateJson(
+        `${target.apiBase}/api/usage-telemetry/disclosure/acknowledgements`,
+        'POST',
+        {
+          timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+          ...(target.requestScope
+            ? { requestScope: target.requestScope }
+            : {}),
+        },
+      );
+      return responseData(response);
+    },
+    onSuccess: (ackData, target) => {
+      queryClient.setQueryData(
+        recoveryDisclosureKey(target.apiBase, target.identityKey),
+        ackData,
+      );
+      onDecided?.();
+    },
+  });
   const [settingError, setSettingError] = useState(false);
 
   // The server's own precedence (`config ?? STATION_TELEMETRY_ENABLED ??
   // true`), rebuilt over the FRESHER read of its first link. The `?? true` is
   // the same last link of that chain, for a peer too old to report the field.
-  const configEnabled = (config as { telemetryEnabled?: boolean } | undefined)
-    ?.telemetryEnabled;
+  const config = (
+    scoped ? recoveryConfig.data : protectedConfig.data
+  ) as { telemetryEnabled?: boolean } | undefined;
+  const configEnabled = config?.telemetryEnabled;
   const enabled = configEnabled ?? data?.telemetryEnabled ?? true;
-  const busy = updateConfig.isPending || acknowledge.isPending;
+  const busy = scoped
+    ? recoveryConfigWrite.isPending || acknowledgeRecovery.isPending
+    : updateProtected.isPending || acknowledgeProtected.isPending;
   // Keeping a state usually writes nothing — it is already the case. The
   // exception is a state the ENVIRONMENT is holding with nothing durable
   // behind it: "Keep usage telemetry off" on a host whose only reason for
@@ -527,13 +658,56 @@ function useUsageTelemetryDecision(
   const decide = (next: boolean) => {
     if (busy || !data) return;
     setSettingError(false);
+    if (scoped) {
+      // The target is captured from this render — the latest committed
+      // scope at intent time — and the guarded requests below verify it
+      // at dispatch and decode. A rotation after the click fails the
+      // write; it never retargets it.
+      if (!scope) return;
+      const target: RecoveryDecisionTarget = {
+        apiBase: scope.apiBase,
+        identityKey: scope.identityKey,
+        requestScope: scope.requestScope,
+      };
+      if (next === enabled && !keepMustRecord) {
+        // Nothing to write: the choice is the state the host is already
+        // in, and something durable already says so.
+        acknowledgeRecovery.mutate(target);
+        return;
+      }
+      recoveryConfigWrite.mutate(
+        { ...target, next },
+        {
+          onSuccess: (result) => {
+            // A key the server declines comes back in `ignoredKeys` on a
+            // 2xx, so a silent no-op would otherwise be acknowledged as a
+            // saved choice — the setting still on, the receipt written,
+            // and the reader told it was turned off.
+            if (
+              result.ignoredKeys?.some(
+                (ignored) => ignored.key === 'telemetryEnabled',
+              )
+            ) {
+              setSettingError(true);
+              return;
+            }
+            queryClient.invalidateQueries({
+              queryKey: recoveryConfigKey(target.apiBase, target.identityKey),
+            });
+            acknowledgeRecovery.mutate(target);
+          },
+          onError: () => setSettingError(true),
+        },
+      );
+      return;
+    }
     if (next === enabled && !keepMustRecord) {
       // Nothing to write: the choice is the state the host is already in, and
       // something durable already says so.
-      acknowledge.mutate();
+      acknowledgeProtected.mutate();
       return;
     }
-    updateConfig.mutate(
+    updateProtected.mutate(
       { telemetryEnabled: next },
       {
         onSuccess: (result) => {
@@ -549,13 +723,16 @@ function useUsageTelemetryDecision(
             setSettingError(true);
             return;
           }
-          acknowledge.mutate();
+          acknowledgeProtected.mutate();
         },
         onError: () => setSettingError(true),
       },
     );
   };
 
+  const acknowledgeError = scoped
+    ? acknowledgeRecovery.isError
+    : acknowledgeProtected.isError;
   return {
     labels: usageTelemetryDecisionLabels(enabled),
     busy,
@@ -566,9 +743,9 @@ function useUsageTelemetryDecision(
         The usage telemetry setting could not be saved.
       </p>
     ) : (
-      acknowledgeErrorNotice(acknowledge.isError)
+      acknowledgeErrorNotice(acknowledgeError)
     ),
-    retry: acknowledge.isError,
+    retry: acknowledgeError,
   };
 }
 

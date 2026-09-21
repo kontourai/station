@@ -70,8 +70,45 @@
  *     is lost: `isRestoring` is a dependency, so the effect re-evaluates the
  *     moment it flips back to false, against whatever changed meanwhile.
  */
+import { useConnections } from '@kontourai/station-connect';
 import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+
+/**
+ * The connection-switch identity this hook invalidates on, read from the
+ * same `useConnections` snapshot the authority tree already derives its
+ * observation key from. Factored out so the invalidation can live with the
+ * client it targets: it MUST run under the authority tree's query client
+ * (persisted per-namespace, or the fresh ephemeral fallback), never under
+ * the stable recovery boundary above it — invalidating from there would
+ * mark the wrong cache stale while the protected one kept serving the
+ * previous server. See `AuthoritySwitchInvalidator`.
+ */
+export function useConnectionSwitchScope(): {
+  apiBase: string;
+  hasActiveConnection: boolean;
+  connectionScope: string | null;
+} {
+  const { apiBase, activeConnection } = useConnections();
+  // archive#1290: the one place mounted at the app root that observes every
+  // apiBase change regardless of connection status. `activeConnection !=
+  // null` tells initial establishment (boot) apart from a real switch.
+  const connectionScope = activeConnection
+    ? [
+        activeConnection.id,
+        activeConnection.credentialRef?.kind ?? '',
+        activeConnection.credentialRef?.id ?? '',
+        activeConnection.environmentId ?? '',
+        activeConnection.credentialState,
+        activeConnection.lastError?.reason ?? '',
+      ].join(':')
+    : null;
+  return {
+    apiBase,
+    hasActiveConnection: activeConnection != null,
+    connectionScope,
+  };
+}
 
 export function useInvalidateCachesOnConnectionSwitch(
   apiBase: string,
