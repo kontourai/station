@@ -1030,9 +1030,7 @@ async function runDelegateWait(
     );
   } else {
     console.log(formatWaitOutcomeLine(result));
-    // The final human rendering reuses `status`'s safe projection (the same
-    // secret-minimized summary, budget/reason lines included) — never raw
-    // provider logs.
+    // Reuse the status summary, including the engine budget and reason.
     if (result.lastSnapshot) {
       console.log(formatStatusSummary(result.lastSnapshot));
     }
