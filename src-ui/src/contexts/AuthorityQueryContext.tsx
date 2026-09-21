@@ -49,6 +49,18 @@
  *    (never the observation bootstrap client), so first-pairing repair
  *    stays usable with nothing persisted and nothing restored.
  *
+ * COMPOSITION BOUNDARY (hosted connect-modal regression): this provider
+ * replaces its ENTIRE protected subtree on activation transitions
+ * (skeleton while pending, fresh keyed client per namespace), so
+ * device-local connection selection/pairing/recovery UI must NOT live
+ * inside it — an open access-request flow would unmount mid-transition.
+ * That shell (`OnboardingGate`) mounts ABOVE this provider in
+ * `RecoveryQueryBoundary` (stable nonpersisted client, switch-scoped cache
+ * drop; archive#1290 switch invalidation stays here with the client it
+ * targets), and only protected data lifetimes are replaceable here. Toast
+ * and navigation state are likewise stable above; nothing below may assume
+ * a provider remount clears them.
+ *
  * `_getApiBase` AUDIT (the seam a per-context client alone does not close):
  * legacy SDK query-domain fetchers resolve the module-global origin AT
  * FETCH TIME (`await _getApiBase()` inside the queryFn). A delayed legacy
@@ -110,6 +122,10 @@ import {
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { SkeletonBlock } from '../components/state';
+import {
+  useConnectionSwitchScope,
+  useInvalidateCachesOnConnectionSwitch,
+} from '../hooks/useInvalidateCachesOnConnectionSwitch';
 import {
   authorityPersistenceKey,
   buildAuthorityNamespace,
@@ -435,7 +451,10 @@ export function AuthorityQueryProvider({
       <AuthorityPersistenceContext.Provider
         value={{ status: 'unavailable', namespace: null, observation: null }}
       >
-        <EphemeralTree key={ephemeralKey}>{children}</EphemeralTree>
+        <EphemeralTree key={ephemeralKey}>
+          <AuthoritySwitchInvalidator />
+          {children}
+        </EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -457,6 +476,7 @@ export function AuthorityQueryProvider({
           client={active.queryClient}
           persistOptions={persistOptions}
         >
+          <AuthoritySwitchInvalidator />
           {children}
         </PersistQueryClientProvider>
       </AuthorityPersistenceContext.Provider>
@@ -479,7 +499,10 @@ export function AuthorityQueryProvider({
           observation: null,
         }}
       >
-        <EphemeralTree key={ephemeralKey}>{children}</EphemeralTree>
+        <EphemeralTree key={ephemeralKey}>
+          <AuthoritySwitchInvalidator />
+          {children}
+        </EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -493,6 +516,31 @@ export function AuthorityQueryProvider({
       <SkeletonBlock label="Verifying Station authority" />
     </AuthorityPersistenceContext.Provider>
   );
+}
+
+/**
+ * archive#1290 switch invalidation, kept with the client it targets. The
+ * recovery/pairing shell (`OnboardingGate`) now mounts ABOVE this provider
+ * inside its own stable `RecoveryQueryBoundary`, so it can no longer host
+ * this hook: `useQueryClient` there resolves the recovery client, and
+ * invalidating that cache would leave the protected one serving the
+ * previous server. Rendered in every branch that owns a query client
+ * (verified persisted, both ephemeral fallbacks) — exactly the branches the
+ * gate previously reached through the mounted children. Never in the
+ * pending branch: there is no client to invalidate while unverified (the
+ * retired client was cancelled on the way out, the next one is fresh on
+ * the way in), and mounting one there would invalidate the observation
+ * bootstrap client instead.
+ */
+function AuthoritySwitchInvalidator(): ReactNode {
+  const { apiBase, hasActiveConnection, connectionScope } =
+    useConnectionSwitchScope();
+  useInvalidateCachesOnConnectionSwitch(
+    apiBase,
+    hasActiveConnection,
+    connectionScope,
+  );
+  return null;
 }
 
 /**

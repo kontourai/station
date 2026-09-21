@@ -48,6 +48,7 @@ import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
 import { NavigationProvider } from './contexts/NavigationContext';
 import { PreviewProvider } from './contexts/PreviewContext';
+import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
 import { RegionModelProvider } from './contexts/RegionModelContext';
 import { SyntaxHighlighterProvider } from './contexts/SyntaxHighlighterContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -255,11 +256,39 @@ function renderApp(): void {
           <ApiBaseProvider>
             <PlatformSessionGate>
               <QueryClientProvider client={bootstrapQueryClient}>
-                <AuthorityQueryProvider localUiApiBase={localUiApiBase}>
-                  <SyntaxHighlighterProvider>
-                    <AuthProvider>
-                      <NavigationProvider>
-                        <ToastProvider>
+                {/* COMPOSITION BOUNDARY (hosted connect-modal regression):
+                  navigation, toasts, and the connection recovery shell are
+                  STABLE across authority activation transitions.
+                  `AuthorityQueryProvider` below replaces its entire
+                  protected subtree (skeleton while pending, fresh keyed
+                  client per verified namespace), which used to unmount an
+                  open access-request flow mid-transition. The recovery
+                  shell keeps component/flow state in `RecoveryQueryBoundary`
+                  (own nonpersisted client, switch-scoped cache drop) while
+                  protected data stays fully quarantined per authority.
+                  Toasts now survive a connection switch instead of being
+                  cleared by the provider remount; nothing below may rely
+                  on that reset. */}
+                <NavigationProvider>
+                  <ToastProvider>
+                    <RecoveryQueryBoundary>
+                      <DeferredCapabilityBoundary
+                        id="connection-recovery"
+                        load={loadOnboardingGate}
+                        copy={{
+                          // The title renders as the banner's badge, which
+                          // is uppercased and sits beside two-word badges —
+                          // a sentence here reads as shouting. The full
+                          // statement is the message below.
+                          failureTitle: 'Recovery unavailable',
+                          failure:
+                            'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
+                        }}
+                      />
+                    </RecoveryQueryBoundary>
+                    <AuthorityQueryProvider localUiApiBase={localUiApiBase}>
+                      <SyntaxHighlighterProvider>
+                        <AuthProvider>
                           <PermissionManager>
                             <KeyboardShortcutsProvider>
                               <ConversationsProvider>
@@ -286,33 +315,20 @@ function renderApp(): void {
                               </ConversationsProvider>
                             </KeyboardShortcutsProvider>
                           </PermissionManager>
-                          <DeferredCapabilityBoundary
-                            id="connection-recovery"
-                            load={loadOnboardingGate}
-                            copy={{
-                              // The title renders as the banner's badge, which
-                              // is uppercased and sits beside two-word badges —
-                              // a sentence here reads as shouting. The full
-                              // statement is the message below.
-                              failureTitle: 'Recovery unavailable',
-                              failure:
-                                'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
-                            }}
-                          />
-                          <DeferredCapabilityBoundary
-                            id="extension-registry"
-                            load={loadPluginRegistryBootstrap}
-                            copy={{
-                              failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
-                              failure:
-                                'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
-                            }}
-                          />
-                        </ToastProvider>
-                      </NavigationProvider>
-                    </AuthProvider>
-                  </SyntaxHighlighterProvider>
-                </AuthorityQueryProvider>
+                        </AuthProvider>
+                      </SyntaxHighlighterProvider>
+                    </AuthorityQueryProvider>
+                    <DeferredCapabilityBoundary
+                      id="extension-registry"
+                      load={loadPluginRegistryBootstrap}
+                      copy={{
+                        failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
+                        failure:
+                          'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
+                      }}
+                    />
+                  </ToastProvider>
+                </NavigationProvider>
               </QueryClientProvider>
             </PlatformSessionGate>
           </ApiBaseProvider>
