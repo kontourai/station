@@ -201,6 +201,62 @@ function createIdbQueryStorage(): AsyncStorage<string> {
   };
 }
 
+/**
+ * Restore-side enforcement of this slice's no-mutation-hydration rule.
+ *
+ * `shouldDehydrateMutation: () => false` (below) only filters the SAVE path:
+ * `persistQueryClientRestore` hands the stored `clientState` straight to
+ * `hydrate`, which revives any `mutations` array a blob happens to carry
+ * (e.g. written by an older client or a foreign shelf). Wrapping the read
+ * side here — inside `buildPersistOptions`, so the provider, the imperative
+ * helper, and the unverified-restore path all share it — keeps a queued
+ * mutation from ever becoming executable state again after a reload, no
+ * matter which shelf it was read from. Malformed or foreign-shaped payloads
+ * pass through untouched and fail (or succeed) exactly as before.
+ */
+function withNoMutationHydration(
+  storage: AsyncStorage<string>,
+): AsyncStorage<string> {
+  return {
+    getItem: async (key) => {
+      const raw = await storage.getItem(key);
+      if (raw == null) return raw;
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          'clientState' in parsed &&
+          typeof (parsed as { clientState?: unknown }).clientState ===
+            'object' &&
+          (parsed as { clientState?: unknown }).clientState !== null &&
+          Array.isArray(
+            (parsed as { clientState: { mutations?: unknown } }).clientState
+              .mutations,
+          ) &&
+          (
+            (parsed as { clientState: { mutations: unknown[] } }).clientState
+              .mutations as unknown[]
+          ).length > 0
+        ) {
+          const scrubbed = parsed as {
+            clientState: Record<string, unknown>;
+          };
+          return JSON.stringify({
+            ...scrubbed,
+            clientState: { ...scrubbed.clientState, mutations: [] },
+          });
+        }
+      } catch {
+        return raw;
+      }
+      return raw;
+    },
+    setItem: (key, value) => storage.setItem(key, value),
+    removeItem: (key) => storage.removeItem(key),
+  };
+}
+
 type QueryPersistOptions = Omit<PersistQueryClientOptions, 'queryClient'>;
 
 /**
@@ -226,10 +282,21 @@ type QueryPersistOptions = Omit<PersistQueryClientOptions, 'queryClient'>;
 export function buildPersistOptions(options?: {
   storage?: AsyncStorage<string>;
   throttleTime?: number;
+  /**
+   * #481 authority partition — the IndexedDB storage key this client's
+   * snapshot is saved under. Defaults to the legacy singleton
+   * (`QUERY_PERSISTENCE_STORAGE_KEY`); authority-bound trees pass
+   * `authorityPersistenceKey(namespace)` so each observed authority owns a
+   * disjoint shelf. The default is unchanged, so every existing caller keeps
+   * byte-for-byte behavior.
+   */
+  key?: string;
 }): QueryPersistOptions {
   const persister = createAsyncStoragePersister({
-    storage: options?.storage ?? createIdbQueryStorage(),
-    key: QUERY_PERSISTENCE_STORAGE_KEY,
+    storage: withNoMutationHydration(
+      options?.storage ?? createIdbQueryStorage(),
+    ),
+    key: options?.key ?? QUERY_PERSISTENCE_STORAGE_KEY,
     // Coalesces bursts of cache writes into at most one disk write per
     // second in production. Tests inject a near-zero value so simulated
     // save/restore round trips don't have to wait on real wall-clock time.
@@ -278,7 +345,11 @@ interface QueryPersistenceHandle {
  */
 export function setupQueryPersistence(
   queryClient: QueryClient,
-  options?: { storage?: AsyncStorage<string>; throttleTime?: number },
+  options?: {
+    storage?: AsyncStorage<string>;
+    throttleTime?: number;
+    key?: string;
+  },
 ): QueryPersistenceHandle {
   const persistOptions = buildPersistOptions(options);
   const [unsubscribe, restored] = persistQueryClient({

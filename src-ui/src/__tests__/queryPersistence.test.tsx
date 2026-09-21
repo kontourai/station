@@ -201,6 +201,16 @@ describe('setupQueryPersistence — save/restore round trip (simulated reload)',
 
     expect(clientB.getQueryData(['agents'])).toEqual([{ slug: 'writer' }]);
     expect(clientB.getMutationCache().getAll()).toHaveLength(0);
+    // Save-side proof (not just restore-side): the STORED blob itself must
+    // carry no mutations. Restore now also scrubs foreign blobs
+    // (`withNoMutationHydration`), so asserting only the restored cache
+    // could no longer distinguish "never saved" from "saved but scrubbed".
+    const storedRaw = data.get(QUERY_PERSISTENCE_STORAGE_KEY);
+    expect(storedRaw).toBeDefined();
+    const stored = JSON.parse(storedRaw as string) as {
+      clientState: { mutations: unknown[] };
+    };
+    expect(stored.clientState.mutations).toEqual([]);
   });
 
   it('discards the persisted cache when the buster does not match the running build', async () => {
