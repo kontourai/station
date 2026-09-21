@@ -772,4 +772,81 @@ describe('the model a turn launches with', () => {
 
     expect(resolved.modelId).toBeUndefined();
   });
+
+  // #484 receiver placement: the portable intent resolves its workspace from
+  // the receiver-owned admission — the admitted policy, never a caller guess.
+  const portableTarget = {
+    environment: { kind: 'current' as const },
+    agent: agentId('station'),
+    workspace: {
+      kind: 'project-portable' as const,
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    },
+  };
+
+  test('a portable intent honors the admitted project workspace-isolation policy', async () => {
+    const resolved = await resolveExecutionTarget(
+      portableTarget,
+      dependencies({
+        getPortableProject: async () => ({
+          slug: 'local',
+          workingDirectory: '/fixture/checkout',
+          resourcePath: '/fixture/bound-repo',
+          defaultWorkspaceIsolation: 'worktree',
+        }),
+      }),
+    );
+
+    // The admitted resource path (not the compat default) is the execution
+    // directory, under the receiver operator's worktree policy — never
+    // silently downgraded to the shared checkout.
+    expect(resolved.workspace).toMatchObject({
+      kind: 'project',
+      projectSlug: 'local',
+      cwd: '/fixture/bound-repo',
+      workspaceIsolation: { mode: 'worktree' },
+    });
+  });
+
+  test('a portable intent without an admitted policy lands on the shared checkout', async () => {
+    const resolved = await resolveExecutionTarget(
+      portableTarget,
+      dependencies({
+        getPortableProject: async () => ({
+          slug: 'local',
+          workingDirectory: '/fixture/checkout',
+          resourcePath: '/fixture/bound-repo',
+        }),
+        getStationDefaultWorkspaceIsolation: async () => undefined,
+      }),
+    );
+
+    expect(resolved.workspace).toMatchObject({
+      kind: 'project',
+      projectSlug: 'local',
+      cwd: '/fixture/bound-repo',
+      workspaceIsolation: { mode: 'shared' },
+    });
+  });
+
+  test('a portable intent without compat workingDirectory resolves from the admitted resource path', async () => {
+    const resolved = await resolveExecutionTarget(
+      portableTarget,
+      dependencies({
+        getPortableProject: async () => ({
+          slug: 'local',
+          resourcePath: '/bindings/repo-checkout',
+        }),
+        getStationDefaultWorkspaceIsolation: async () => undefined,
+      }),
+    );
+
+    expect(resolved.workspace).toMatchObject({
+      kind: 'project',
+      projectSlug: 'local',
+      cwd: '/bindings/repo-checkout',
+      workspaceIsolation: { mode: 'shared' },
+    });
+  });
 });

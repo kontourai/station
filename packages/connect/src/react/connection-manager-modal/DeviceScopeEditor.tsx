@@ -65,6 +65,27 @@ const BASE_PRESETS: ReadonlyArray<{
 ];
 
 /**
+ * #488 invited-admin slice: the base choice an operator approves for a
+ * collaborator's account-bound browser. It grants exactly the delegation
+ * token set (`orchestration:read` + `orchestration:operate`) — the device
+ * half of invited-admin management — and deliberately nothing else: no
+ * terminal, no device management, never the standard personal preset. The
+ * grant alone confers no Project membership; the person must separately be
+ * a Project admin, and joining a Project never escalates this grant.
+ */
+export const COLLABORATOR_MANAGEMENT_CHOICE =
+  'collaborator-management' as const;
+export type ScopeBaseChoice =
+  | PairingScopePreset
+  | typeof COLLABORATOR_MANAGEMENT_CHOICE;
+const COLLABORATOR_MANAGEMENT_OPTION = {
+  choice: COLLABORATOR_MANAGEMENT_CHOICE,
+  label: 'Collaborator management',
+  detail:
+    'Exactly read and operate for an account-bound collaborator’s browser. Selecting this clears any capabilities ticked below — they take no effect with this choice. To combine read and operate with a capability, choose Delegation instead. Project people and invitation management become available only on Projects shared with that person as an admin. No terminal, no device management.',
+} as const;
+
+/**
  * The base ladder covers ORCHESTRATION access only, and `none` is a real
  * rung: a fleet-inference node holds no orchestration tokens at all.
  * Modelling inference as a base rung instead (the first attempt) made valid
@@ -149,8 +170,37 @@ export function scopeSelectionTokens(
   preset: PairingScopePreset | null,
   capabilities: ReadonlySet<PairingScope>,
 ): PairingScope[] {
+  return scopeChoiceTokens(preset, capabilities);
+}
+
+/** True when the scope holds exactly the delegation token set, no more. */
+function isExactDelegationScope(scope: string): boolean {
+  const tokens = parsePairingScope(scope) ?? [];
+  return (
+    tokens.length === PAIRING_SCOPE_PRESETS.delegation.length &&
+    PAIRING_SCOPE_PRESETS.delegation.every((token) => tokens.includes(token))
+  );
+}
+
+/**
+ * The tokens the editor's current selection resolves to, including the
+ * collaborator-management choice: exactly the delegation token set, full
+ * stop — ticked capabilities take no effect with this choice (the UI
+ * clears and disables them while it is selected, so this ignore is
+ * unreachable from the form and exists only as enforcement). Every other
+ * choice keeps the ordinary behavior: base plus explicitly ticked
+ * capabilities. Never terminal, never device management, never the
+ * standard preset's extras.
+ */
+export function scopeChoiceTokens(
+  choice: ScopeBaseChoice | null,
+  capabilities: ReadonlySet<PairingScope>,
+): PairingScope[] {
+  if (choice === COLLABORATOR_MANAGEMENT_CHOICE)
+    return [...PAIRING_SCOPE_PRESETS.delegation];
+  const base = choice ? PAIRING_SCOPE_PRESETS[choice] : [];
   return [
-    ...(preset ? PAIRING_SCOPE_PRESETS[preset] : []),
+    ...base,
     ...ELEVATED_GRANTS.map(({ token }) => token).filter((token) =>
       capabilities.has(token),
     ),
@@ -161,18 +211,31 @@ export function DeviceScopeEditor({
   deviceName,
   currentScope,
   busy,
+  accountBound = false,
   onApply,
   onCancel,
 }: {
   deviceName: string;
   currentScope: string;
   busy: boolean;
+  /**
+   * Whether the device carries an account binding (an account-bound
+   * collaborator browser rather than a personal or peer device). Only with
+   * a binding does an exact read+operate grant reopen as the
+   * collaborator-management choice it was approved under — without one the
+   * same tokens stay Delegation, so the two choices never read as
+   * duplicates. This names the device's stored binding, never membership.
+   */
+  accountBound?: boolean;
   /** `expectedScope` is what this editor was opened against (station#3816). */
   onApply: (scope: PairingScope[], expectedScope: string) => void;
   onCancel: () => void;
 }) {
-  const [preset, setPreset] = useState<PairingScopePreset | null>(() =>
-    closestBasePreset(currentScope),
+  const [openedScope] = useState(currentScope);
+  const [choice, setChoice] = useState<ScopeBaseChoice | null>(() =>
+    accountBound && isExactDelegationScope(currentScope)
+      ? COLLABORATOR_MANAGEMENT_CHOICE
+      : closestBasePreset(currentScope),
   );
   const [elevated, setElevated] = useState<ReadonlySet<PairingScope>>(() => {
     const tokens = new Set(parsePairingScope(currentScope) ?? []);
@@ -198,41 +261,70 @@ export function DeviceScopeEditor({
         role="radiogroup"
         aria-label={`Access level for ${deviceName}`}
       >
-        {[...BASE_PRESETS, NO_BASE_OPTION].map(
-          ({ preset: option, label, detail }) => (
-            <label
-              className="station-connect-scope-editor__option"
-              key={option ?? 'none'}
-            >
-              <input
-                type="radio"
-                name={`scope-${deviceName}`}
-                checked={preset === option}
-                disabled={busy}
-                onChange={() => setPreset(option)}
-              />
-              <span>
-                <strong>{label}</strong>
-                <span className="station-connect-scope-editor__detail">
-                  {detail}
-                </span>
+        {[
+          ...BASE_PRESETS.map(({ preset: option, label, detail }) => ({
+            option: option as ScopeBaseChoice | null,
+            label,
+            detail,
+          })),
+          {
+            option:
+              COLLABORATOR_MANAGEMENT_OPTION.choice as ScopeBaseChoice | null,
+            label: COLLABORATOR_MANAGEMENT_OPTION.label,
+            detail: COLLABORATOR_MANAGEMENT_OPTION.detail,
+          },
+          {
+            option: NO_BASE_OPTION.preset as ScopeBaseChoice | null,
+            label: NO_BASE_OPTION.label,
+            detail: NO_BASE_OPTION.detail,
+          },
+        ].map(({ option, label, detail }) => (
+          <label
+            className="station-connect-scope-editor__option"
+            key={option ?? 'none'}
+          >
+            <input
+              type="radio"
+              name={`scope-${deviceName}`}
+              checked={choice === option}
+              disabled={busy}
+              onChange={() => {
+                setChoice(option);
+                // The collaborator choice grants exactly read+operate, so
+                // previously ticked capabilities must go visibly — leaving
+                // them checked while claiming a narrow grant would lie.
+                if (option === COLLABORATOR_MANAGEMENT_CHOICE)
+                  setElevated(new Set());
+              }}
+            />
+            <span>
+              <strong>{label}</strong>
+              <span className="station-connect-scope-editor__detail">
+                {detail}
               </span>
-            </label>
-          ),
-        )}
+            </span>
+          </label>
+        ))}
       </div>
 
       <div className="station-connect-scope-editor__group">
         <div className="station-connect-scope-editor__elevated-header">
           Also allowed
         </div>
+        {choice === COLLABORATOR_MANAGEMENT_CHOICE && (
+          <p className="station-connect-scope-editor__notice">
+            Collaborator management grants exactly read and operate —
+            capabilities take no effect with this choice. Choose Delegation to
+            combine read and operate with a capability below.
+          </p>
+        )}
         {ELEVATED_GRANTS.map(
           ({ token, label, detail, elevated: isElevated }) => (
             <label className="station-connect-scope-editor__option" key={token}>
               <input
                 type="checkbox"
                 checked={elevated.has(token)}
-                disabled={busy}
+                disabled={busy || choice === COLLABORATOR_MANAGEMENT_CHOICE}
                 onChange={(event) => {
                   setElevated((current) => {
                     const next = new Set(current);
@@ -279,9 +371,9 @@ export function DeviceScopeEditor({
           // Saying so by disabling the control is better than letting
           // someone submit a change that cannot mean anything; revoking is
           // the control for "no access at all", and it is right there.
-          disabled={busy || scopeSelectionTokens(preset, elevated).length === 0}
+          disabled={busy || scopeChoiceTokens(choice, elevated).length === 0}
           onClick={() =>
-            onApply(scopeSelectionTokens(preset, elevated), currentScope)
+            onApply(scopeChoiceTokens(choice, elevated), openedScope)
           }
           className="station-connect-btn station-connect-btn--inline"
         >

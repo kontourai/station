@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEVICE_ACTIVE_WINDOW_MS,
   describeDelegationStanding,
+  describeDeviceAccountBinding,
   describeDeviceActivity,
   describeDeviceKind,
   describeDeviceProvenance,
@@ -402,5 +403,44 @@ describe('describeDelegationStanding (station#3845)', () => {
     expect(
       describeDelegationStanding(device('delegation', 'legacy-unparseable')),
     ).toMatchObject({ label: 'Paired for delegation' });
+  });
+});
+
+describe('describeDeviceAccountBinding (#488 invited-admin slice)', () => {
+  it('names the bound account for an account-bound device', () => {
+    expect(
+      describeDeviceAccountBinding(
+        device({
+          principalBinding: {
+            kind: 'account',
+            issuer: 'urn:station:test',
+            subject: 'guest-person',
+            displayName: 'Guest Person',
+            approvedAt: NOW,
+            approvalId: 'approval-1',
+            approvedBy: 'operator',
+          },
+        }),
+      ),
+    ).toBe('Account: Guest Person');
+  });
+
+  it('renders nothing for a non-account person binding or an unbound device', () => {
+    expect(
+      describeDeviceAccountBinding(
+        device({
+          principalBinding: {
+            provider: 'tailscale-serve',
+            subject: 'someone',
+            approvedAt: NOW,
+            approvalId: 'approval-1',
+            approvedBy: 'operator',
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      describeDeviceAccountBinding(device({ principalBinding: undefined })),
+    ).toBeNull();
   });
 });

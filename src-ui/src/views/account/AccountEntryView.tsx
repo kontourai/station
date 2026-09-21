@@ -289,9 +289,20 @@ export function AccountEntryView({
         ))
       : undefined;
 
+  // The joined shared-Project home (project detail plus People and
+  // access) renders inside this same card: give it desktop width while the
+  // sign-in, invitation-accept, and recovery flows keep the compact form.
+  const guestHome =
+    !!session.data && (joined || (mode !== 'reset' && !invitation));
   return (
     <main className="account-entry">
-      <div className="account-entry__card">
+      <div
+        className={
+          guestHome
+            ? 'account-entry__card account-entry__card--wide'
+            : 'account-entry__card'
+        }
+      >
         <PageFrame
           routeIdentity="account-entry"
           spec={{

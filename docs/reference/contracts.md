@@ -31,6 +31,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned Station/enrollment/routing-generation/Origin scope and offer metadata; routing authority is separate from signing trust, account identity and Project permission |
+| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
@@ -122,6 +123,15 @@ The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 no progress was *observed* — quiet providers (notably long Muse tool calls,
 which emit no `tool.started`) may be working quietly, and the marker must
 never be rendered as proof of a stall.
+
+An interrupted adapter event consumer is also observation loss, not a turn
+terminal. The shared consumer publishes `runtime.warning` with code
+`adapter-event-stream-interrupted` and resumes consumption without changing
+the affected turns' lifecycle or dispatching replacements. Only subsequent
+engine evidence establishes completion or failure. This applies across engines.
+Muse tool results use the shared bounded output projection before persistence;
+an `outputReceipt` records truncation and whether full output is available.
+EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.
 
 Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
 `snapshotFor` → `DelegatedTaskSnapshot`
@@ -234,4 +244,3 @@ operator-configured browser identity choices, their declared POST begin-login
 paths and availability. These are presentation/capability facts, not identity
 claims, Device grants or Project membership. Secret references and provider
 configuration remain private to Station's operator composition.
-

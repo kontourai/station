@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -14,6 +16,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
@@ -2085,6 +2088,49 @@ describe('MuseAdapter tool events', () => {
     // A distinct itemId keeps the tool row from merging into the assistant
     // text item, whose id is minted per turn.
     expect(tool.itemId).not.toBe(events[2]?.itemId);
+  });
+
+  test('oversized escaped Muse tool output persists with a receipt and preserves completion', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'bounded-tool',
+    });
+    await harness.adapter.sendTurn({ threadId: 'bounded-tool', input: 'go' });
+    const record = JSON.parse(MUSE_TOOL_RESULT);
+    record.payload.text = `${'\u0000😀'.repeat(30000)}END-OF-RESULT`;
+    await writeLines(
+      harness.processes[0],
+      JSON.stringify(record),
+      MUSE_ECHO_RUN_TERMINAL,
+    );
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(
+      harness.iterator,
+      5,
+      'bounded output and terminal',
+    );
+    const tool = events.find((event) => event.method === 'tool.completed');
+    expect(tool.output).toContain('END-OF-RESULT');
+    expect(tool.outputReceipt).toMatchObject({
+      truncated: true,
+      fullOutput: 'unavailable',
+    });
+    expect(events.at(-1)?.method).toBe('turn.completed');
+    const dir = mkdtempSync(join(tmpdir(), 'muse-tool-ingress-'));
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    try {
+      for (const event of events)
+        expect(() => store.appendEvent(event)).not.toThrow();
+      expect(store.listEvents('bounded-tool').at(-1)?.payload.method).toBe(
+        'turn.completed',
+      );
+    } finally {
+      store.close();
+      rmSync(dir, { recursive: true, force: true });
+      await harness.adapter.stopAll();
+    }
   });
 
   test('does not publish tool.started — the live stream has no id to open one with', async () => {

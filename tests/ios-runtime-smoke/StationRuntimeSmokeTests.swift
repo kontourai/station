@@ -74,10 +74,9 @@ final class StationRuntimeSmokeTests: XCTestCase {
             closeNav.waitForExistence(timeout: 5),
             "Drawer close control missing. Accessibility hierarchy:\n\(app.debugDescription)"
         )
-        closeNav.tap()
         XCTAssertTrue(
-            settings.waitForNonExistence(timeout: 5),
-            "Drawer did not close after proving the Settings route."
+            dismissDrawer(closeNav, untilGone: settings),
+            "Drawer did not close after proving the Settings route. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
 
@@ -145,9 +144,27 @@ final class StationRuntimeSmokeTests: XCTestCase {
         )
     }
 
-    /// A tap on a WKWebView control can be delivered and dropped. XCUITest
-    /// reports the button hittable as soon as it is laid out, which is before
-    /// the WebView has attached its handler; the tap then lands on nothing.
+    // UIKit gesture acknowledgement does not prove a WKWebView DOM click.
+    // Match the existing bounded opening-action recovery: at most two taps,
+    // only while the close control is hittable, with the same real outcome.
+    // Attempt activities remain in xcresult; a recovery is not first-tap proof.
+    private func dismissDrawer(
+        _ close: XCUIElement,
+        untilGone target: XCUIElement
+    ) -> Bool {
+        for attempt in 1...2 {
+            if !target.exists { return true }
+            guard close.exists && close.isHittable else { return !target.exists }
+            XCTContext.runActivity(named: "Drawer close attempt \(attempt)") { _ in
+                close.tap()
+            }
+            if target.waitForNonExistence(timeout: 5) { return true }
+        }
+        return !target.exists
+    }
+
+    /// A native tap can be acknowledged without the intended WebView transition.
+    /// Accessibility hittability is not a receipt that a DOM handler committed.
     /// A single `waitForExistence` afterwards can only observe the absence —
     /// it cannot separate "the handler was not ready" from "this surface never
     /// opens", and both read as a failing assertion. #1174 recorded that twice
