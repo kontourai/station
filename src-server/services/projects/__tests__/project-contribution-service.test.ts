@@ -12,7 +12,6 @@ import { ProjectBindingsStore } from '../project-binding-store.js';
 import {
   ProjectContributionService,
   portableConsentOfStartedMetadata,
-  portableIncarnationOfStartedMetadata,
   receiverAdmittedCwd,
   requirePortableIncarnationMatch,
 } from '../project-contribution-service.js';
@@ -1180,19 +1179,17 @@ describe('portable consent incarnation readers (#484 continuation)', () => {
     },
   };
 
-  test('the lenient reader keeps two-field markers visible; the strict reader requires the incarnation', () => {
+  test('the reader retains old markers for explicit refusal and current markers for admission', () => {
     expect(portableConsentOfStartedMetadata(twoField)).toEqual({
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
     });
-    expect(portableIncarnationOfStartedMetadata(twoField)).toBeUndefined();
-    expect(portableIncarnationOfStartedMetadata(threeField)).toEqual({
+    expect(portableConsentOfStartedMetadata(threeField)).toEqual({
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
       localProjectId: 'local-id',
     });
     expect(portableConsentOfStartedMetadata(undefined)).toBeUndefined();
-    expect(portableIncarnationOfStartedMetadata(undefined)).toBeUndefined();
   });
 
   test('the incarnation match proves the exact association or fails closed', () => {

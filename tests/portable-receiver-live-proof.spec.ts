@@ -701,7 +701,7 @@ async function buildFixture(): Promise<ProofFixture> {
         throw new Error(`malformed muse launch record: ${line.slice(0, 200)}`);
       }
       const record = entry as { cwd: string; argv: string[] };
-      if (record.argv.includes('exec')) launches.push(record);
+      if (record.argv[0] === 'exec') launches.push(record);
     }
     return launches;
   };

@@ -3137,6 +3137,13 @@ describe('OrchestrationService', () => {
         idempotencyKey: 'portable-handoff-a',
         messageDigest: 'message-a',
       };
+      await expect(
+        service.prepareConversationHandoff(
+          'portable-handoff-src',
+          personalReadAuthority('other-user'),
+          request,
+        ),
+      ).rejects.toThrow('not found');
       let refusal: unknown;
       try {
         await service.prepareConversationHandoff(
@@ -4262,6 +4269,62 @@ describe('OrchestrationService', () => {
           receiverExecutionAdmission: admittedFor('portable-mid-prep', tmp),
         },
       );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a refusal-shaped adapter error after invocation retains uncertainty and blocks redispatch', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const threadId = 'portable-post-invocation';
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(threadId, tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      let effects = 0;
+      claude.sendTurn.mockImplementationOnce(async () => {
+        effects += 1;
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_not_offered',
+          'refusal after invocation',
+        );
+      });
+      const send = (clientTurnId: string) =>
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: 'perform the action',
+              clientTurnId,
+            },
+          },
+          undefined,
+          { receiverExecutionAdmission: admittedFor(threadId, tmp) },
+        );
+      await expect(send('original-portable-action')).rejects.toMatchObject({
+        code: 'foreground_message_indeterminate',
+      });
+      expect(effects).toBe(1);
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: true });
+      await expect(send('new-portable-action')).rejects.toBeDefined();
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
     });
 

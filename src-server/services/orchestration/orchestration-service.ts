@@ -3697,11 +3697,17 @@ export class OrchestrationService {
     // any marker — the original history and marker stay intact, and the
     // refusal carries the same closed portable code as every other
     // unadmitted effect. Unmarked legacy conversations pass through.
-    const sourceConsent =
-      this.persistedPortableConsentOfThread(conversationId) ??
-      this.persistedPortableConsentOfThread(
-        this.currentConversationSessionId(conversationId),
+    const readableSource =
+      await this.conversationLineage.readCurrentConversationSession(
+        conversationId,
+        authority,
       );
+    // Leave unauthorized/missing sources to the lineage owner's ordinary
+    // refusal; do not disclose their portable mode through a special code.
+    const sourceConsent = readableSource
+      ? (this.persistedPortableConsentOfThread(conversationId) ??
+        this.persistedPortableConsentOfThread(readableSource.session.threadId))
+      : undefined;
     if (sourceConsent) throw portableRefusalForUnadmittedThread(sourceConsent);
     return this.conversationLineage.prepareConversationHandoff(
       conversationId,
@@ -5442,6 +5448,7 @@ export class OrchestrationService {
                       throw new SessionTurnStartIndeterminateError();
                     }
                     let providerAccepted = false;
+                    let providerInvoked = false;
                     let turnCorrelation:
                       | ReturnType<typeof createAuthorizedTurnCorrelation>
                       | undefined;
@@ -5592,6 +5599,7 @@ export class OrchestrationService {
                         throw new ForegroundInvocationUnavailableError();
                       const sendAdapter = () => {
                         assertInputRequestCurrent();
+                        providerInvoked = true;
                         return nativeForeground
                           ? runWithNativeForegroundRelay(nativeForeground, () =>
                               adapter.sendTurn(turnInput),
@@ -5705,9 +5713,12 @@ export class OrchestrationService {
                       if (error instanceof SessionTurnStartIndeterminateError) {
                         throw error;
                       }
-                      if (error instanceof ReceiverExecutionRefusal) {
+                      if (
+                        !providerInvoked &&
+                        error instanceof ReceiverExecutionRefusal
+                      ) {
                         // The post-preparation offer/binding recheck refused
-                        // BEFORE the provider effect ran (`providerAccepted`
+                        // BEFORE the provider effect ran (`providerInvoked`
                         // is still false — this fires before `sendAdapter`,
                         // so no engine start is claimed and the dispatch
                         // receipt stays `rejected` with the closed code).

@@ -11,7 +11,10 @@ import {
   isContributionEnabled,
   resolveScopedContribution,
 } from '@kontourai/station-contracts/contribution';
-import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  type PortableExecutionConsentMarker,
+} from '@kontourai/station-contracts/provider';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import {
@@ -94,10 +97,9 @@ export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
  * absence of the whole marker is ordinary, absence of the incarnation
  * inside a marker is stale.
  */
-export interface PortableExecutionConsentIdentity {
-  portableProjectId: string;
-  resourceId: string;
-  localProjectId?: string;
+export interface PortableExecutionConsentIdentity
+  extends Omit<PortableExecutionConsentMarker, 'localProjectId'> {
+  localProjectId?: PortableExecutionConsentMarker['localProjectId'];
 }
 
 /**
@@ -173,28 +175,6 @@ export function requirePortableIncarnationMatch(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
     );
-}
-
-/**
- * #484 continuation: the strict incarnation reader. Returns the full
- * three-field consent only when the marker proves the ORIGINAL local
- * Project incarnation; a pre-incarnation (two-field) marker returns
- * undefined so effect guards fail closed with the named stale outcome
- * instead of silently upgrading its authority. An unmarked session is
- * not stale — it is ordinary — so callers must check the lenient reader
- * first and only consult this one for marked threads.
- */
-export function portableIncarnationOfStartedMetadata(
-  metadata: Record<string, unknown> | undefined,
-): Required<PortableExecutionConsentIdentity> | undefined {
-  const consent = portableConsentOfStartedMetadata(metadata);
-  if (
-    !consent ||
-    typeof consent.localProjectId !== 'string' ||
-    consent.localProjectId.length === 0
-  )
-    return undefined;
-  return consent as Required<PortableExecutionConsentIdentity>;
 }
 
 /**

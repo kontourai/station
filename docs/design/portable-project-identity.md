@@ -1386,7 +1386,10 @@ credentials.
 
 Named 403 outcomes are `receiver_execution_not_offered`,
 `receiver_execution_unavailable`, `receiver_execution_forwarding_refused`, and
-`receiver_execution_authority_changed`. The sender rechecks its own request
+`receiver_execution_authority_changed`. A persisted marker without its original
+receiver-local Project identity returns `receiver_execution_consent_stale`;
+history remains readable, but a new explicit execution is required.
+The sender rechecks its own request
 authority after peer discovery and immediately before forwarding.
 An older receiver without the capability and direct SSH portable dispatch are
 refused; neither substitutes a directory or local execution. Ordinary existing
@@ -1395,10 +1398,16 @@ non-portable requests retain their current behavior.
 This mode narrows execution by explicit consent within existing personal-peer
 authority. It does not make a broad peer credential suitable for an invited
 collaborator, grant Project membership, or complete restricted shared-person
-execution. Portable sessions persist their server-issued association; currently
-continuation and recovery without a fresh admission are refused before provider
-effects. Fresh continuation admission, durable attempts, cancellation and
-reconnect reconciliation remain separate work. A resource binding can supply
+execution. Portable sessions persist their server-issued association, including
+the original receiver-local Project identity. Continue and request-response
+routes obtain fresh admission from that marker and check it at provider effects;
+a same-path replacement Project cannot inherit the old conversation's consent.
+Continuation-created sessions preserve the marker, and cold restoration requires
+fresh admission. Answering a dormant engine request does not spawn an engine.
+Portable Agent/engine handoff remains unsupported and refuses before creating
+its successor; ordinary unmarked handoffs retain their existing behavior.
+Durable attempts, cancellation and reconnect reconciliation remain separate
+work. A resource binding can supply
 its checked directory without a legacy Project working directory. The receiver
 retains its Project and Station workspace-isolation policy: portable worktree
 execution currently refuses before provisioning or provider effects instead of
