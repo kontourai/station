@@ -1,8 +1,10 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import {
   type ProjectReadQueryConfig,
+  useProjectIdentityQuery,
   useProjectQuery,
   useProjectsQuery,
 } from '@kontourai/station-sdk';
@@ -49,6 +51,26 @@ export function useScopedProjectQuery(
 ) {
   const requestScope = useHostRequestAuthorityScope();
   return useProjectQuery(slug, {
+    ...config,
+    requestScope,
+    requireRequestScope: true,
+  });
+}
+
+/**
+ * Canonical app-owner portable-identity read (#480/#1964 placement). Same
+ * scope contract as {@link useScopedProjectQuery}: the request scope is
+ * captured from the host authority and partitions the cache, so a late
+ * identity response for a previous Home/authority can never satisfy the
+ * current Project. Consumes the project-identity SDK subpath — the browser
+ * never touches a stored peer secret to read it.
+ */
+export function useScopedProjectIdentityQuery(
+  slug: string,
+  config?: AppProjectReadConfig<ProjectIdentityView>,
+) {
+  const requestScope = useHostRequestAuthorityScope();
+  return useProjectIdentityQuery(slug, {
     ...config,
     requestScope,
     requireRequestScope: true,

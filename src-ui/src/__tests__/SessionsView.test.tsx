@@ -150,6 +150,16 @@ vi.mock('@kontourai/station-sdk', () => ({
     isError: false,
     refetch: vi.fn(),
   }),
+  // #480/#1964 placement: the delegation launcher reads the portable
+  // identity through the scoped wrapper; this suite never places on a peer,
+  // so the read stays unavailable and placement stays legacy.
+  useProjectIdentityQuery: () => ({
+    data: undefined,
+    isSuccess: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   // The open-chats refactor (archive#2683) renders shared membership metadata.
   useAgentsQuery: () => ({ data: [], isLoading: false }),
   useOrchestrationSessionsQuery: (config?: unknown) => {

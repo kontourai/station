@@ -917,6 +917,7 @@ export {
   useProbeSshEnvironmentMutation,
   useProjectConversationsQuery,
   useProjectIconCandidatesQuery,
+  useProjectIdentityQuery,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
   useProjectQuery,

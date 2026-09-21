@@ -1,6 +1,7 @@
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
 import type {
+  ProjectIdentityView,
   ProjectResolutionView,
   ProjectResourceBindOutcome,
 } from '@kontourai/station-contracts/project-identity';
@@ -22,6 +23,7 @@ import {
   StationHttpError,
   StationRequestAuthorityError,
 } from '../client/http';
+import { getProjectIdentity } from '../client/project-identity';
 import {
   applyProjectLayout,
   bindProjectResource,
@@ -187,6 +189,54 @@ export function useProjectQuery(
         });
       const apiBase = await _getApiBase();
       return getProject(apiBase, slug, { signal });
+    },
+    {
+      ...config,
+      enabled: !unavailable && !!slug && (config?.enabled ?? true),
+    },
+  );
+}
+
+/**
+ * Portable identity of one Project on the captured Home/authority
+ * (#480/#1964 placement). Same scope contract as {@link useProjectQuery}:
+ * the key carries Home, authority and Project, so a late identity response
+ * for a previous scope can never satisfy a new one. Consumes the
+ * project-identity SDK subpath through the caller's captured requestScope —
+ * never a global-origin read.
+ */
+export function useProjectIdentityQuery(
+  slug: string,
+  config?: ProjectReadQueryConfig<ProjectIdentityView>,
+) {
+  const candidate = config?.requestScope;
+  const requestScope = isApiRequestScope(candidate)
+    ? { apiBase: candidate.apiBase, authorityKey: candidate.authorityKey }
+    : undefined;
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? ['projects', slug, 'identity', 'unavailable']
+    : scoped
+      ? [
+          'projects',
+          slug,
+          'identity',
+          requestScope.apiBase,
+          requestScope.authorityKey,
+        ]
+      : ['projects', slug, 'identity'];
+  return useApiQuery<ProjectIdentityView>(
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return getProjectIdentity(requestScope.apiBase, slug, {
+          requestScope,
+          signal,
+        });
+      const apiBase = await _getApiBase();
+      return getProjectIdentity(apiBase, slug, { signal });
     },
     {
       ...config,

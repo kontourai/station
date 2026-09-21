@@ -8,6 +8,7 @@ const mutateAsync = vi.fn();
 const reset = vi.fn();
 const retryDiscovery = vi.fn();
 let discoveryFailure: Error | null = null;
+let mutationError: Error | null = null;
 let projectDefaultEnvironment: { kind: 'saved'; id: string } | undefined;
 let environmentsFailure = false;
 let environmentsLoading = false;
@@ -15,7 +16,56 @@ let projectLoading = false;
 let projectFailure = false;
 let staleDiscoveryEnvironment: string | undefined;
 const retryProject = vi.fn();
+const retryIdentity = vi.fn();
 const discoveryInputs = vi.fn();
+interface MockIdentityRepo {
+  kind: 'git';
+  id: string;
+  canonicalRemote: string;
+  label?: string;
+}
+let projectIdentity:
+  | {
+      identity: {
+        id: string;
+        repos: MockIdentityRepo[];
+        executionRoot?: { repoId: string; path: string };
+      };
+      association: {
+        portableProjectId: string;
+        localProjectId: string;
+        localProjectSlug: string;
+      };
+    }
+  | undefined;
+let identityLoading = false;
+let identityFailure = false;
+let scopeStale = false;
+
+function singleRepoIdentity() {
+  return {
+    identity: {
+      id: 'portable:station',
+      repos: [
+        {
+          kind: 'git' as const,
+          id: 'https://git.example.test/station.git',
+          canonicalRemote: 'https://git.example.test/station.git',
+          label: 'station',
+        },
+      ],
+      executionRoot: {
+        repoId: 'https://git.example.test/station.git',
+        path: '.',
+      },
+    },
+    association: {
+      portableProjectId: 'portable:station',
+      localProjectId: 'project:station',
+      localProjectSlug: 'station',
+    },
+  };
+}
 let peerCredentials:
   | Array<{
       environmentId: string;
@@ -32,7 +82,7 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station.test',
     authorityKey: 'ui-scope-test-authority',
-    isCurrent: () => true,
+    isCurrent: () => !scopeStale,
   }),
 }));
 
@@ -46,6 +96,18 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess: !projectLoading && !projectFailure,
     isError: projectFailure,
     refetch: retryProject,
+  }),
+  useProjectIdentityQuery: () => ({
+    data: identityLoading ? undefined : projectIdentity,
+    isSuccess:
+      !identityLoading && !identityFailure && projectIdentity !== undefined,
+    isError: identityFailure,
+    error: identityFailure
+      ? new Error(
+          'Project identity was not found. An existing Project may need explicit identity preparation.',
+        )
+      : null,
+    refetch: retryIdentity,
   }),
   useDelegationOptionsQuery: (
     input: { environmentId?: string },
@@ -161,7 +223,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     mutateAsync,
     reset,
     isPending: false,
-    error: null,
+    error: mutationError,
   }),
 }));
 
@@ -171,14 +233,20 @@ describe('DelegationLauncher', () => {
     reset.mockReset();
     retryDiscovery.mockReset();
     discoveryFailure = null;
+    mutationError = null;
     environmentsFailure = false;
     environmentsLoading = false;
     projectLoading = false;
     projectFailure = false;
     staleDiscoveryEnvironment = undefined;
     retryProject.mockReset();
+    retryIdentity.mockReset();
     discoveryInputs.mockReset();
     projectDefaultEnvironment = undefined;
+    projectIdentity = singleRepoIdentity();
+    identityLoading = false;
+    identityFailure = false;
+    scopeStale = false;
     peerCredentials = undefined;
     mutateAsync.mockResolvedValue({
       taskId: 'task:1',
@@ -650,14 +718,26 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
 
     await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          target: expect.objectContaining({
-            environment: { kind: 'saved', id: 'env-peer-b' },
-          }),
-        }),
-      ),
+      expect(mutateAsync).toHaveBeenCalledWith({
+        prompt: 'Run on the peer',
+        target: {
+          environment: { kind: 'saved', id: 'env-peer-b' },
+          agent: 'codex',
+          workspace: {
+            kind: 'project-portable',
+            portableProjectId: 'portable:station',
+            resourceId: 'https://git.example.test/station.git',
+          },
+        },
+      }),
     );
+    // Same local/remote slug mismatch still sends the portable id/resource —
+    // never a receiver-local slug.
+    const sent = mutateAsync.mock.calls[0][0] as {
+      target: { workspace: Record<string, unknown> };
+    };
+    expect(sent.target.workspace).not.toHaveProperty('projectSlug');
+    expect(screen.getByText(/Offer not verified from here/)).toBeTruthy();
   });
 
   test('an unlabeled peer falls back to its endpoint for a name', () => {
@@ -736,5 +816,387 @@ describe('DelegationLauncher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
     expect(screen.queryByRole('option', { name: /Paired Station/ })).toBeNull();
     expect(screen.getByRole('option', { name: 'This Station' })).toBeTruthy();
+  });
+
+  test('an SSH target keeps its explicit same-slug workspace and names portable as unsupported', async () => {
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Run over SSH"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-media' },
+    });
+    // Named state, not a silent relabel: portable is not forwarded over SSH.
+    expect(screen.getByText(/not forwarded over SSH/)).toBeTruthy();
+    await waitFor(() =>
+      expect((screen.getByLabelText('Worker') as HTMLSelectElement).value).toBe(
+        'agent:codex',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            environment: { kind: 'saved', id: 'env-media' },
+            workspace: { kind: 'project', projectSlug: 'station' },
+          }),
+        }),
+      ),
+    );
+    const sent = mutateAsync.mock.calls[0][0] as {
+      target: { workspace: Record<string, unknown> };
+    };
+    expect(sent.target.workspace.kind).toBe('project');
+  });
+
+  test('multiple resources require an explicit choice and never guess', async () => {
+    projectIdentity = {
+      identity: {
+        id: 'portable:station',
+        repos: [
+          {
+            kind: 'git',
+            id: 'https://git.example.test/station.git',
+            canonicalRemote: 'https://git.example.test/station.git',
+            label: 'station',
+          },
+          {
+            kind: 'git',
+            id: 'https://git.example.test/docs.git',
+            canonicalRemote: 'https://git.example.test/docs.git',
+            label: 'docs',
+          },
+        ],
+      },
+      association: {
+        portableProjectId: 'portable:station',
+        localProjectId: 'project:station',
+        localProjectSlug: 'station',
+      },
+    };
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Place on the peer"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByLabelText('Project resource')).toBeTruthy();
+    expect(screen.getByText(/Choose which Project resource/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: 'https://git.example.test/docs.git' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            workspace: {
+              kind: 'project-portable',
+              portableProjectId: 'portable:station',
+              resourceId: 'https://git.example.test/docs.git',
+            },
+          }),
+        }),
+      ),
+    );
+  });
+
+  test('a declared execution-root resource is preselected for a peer', async () => {
+    projectIdentity = {
+      ...singleRepoIdentity(),
+      identity: {
+        ...singleRepoIdentity().identity,
+        repos: [
+          ...singleRepoIdentity().identity.repos,
+          {
+            kind: 'git',
+            id: 'https://git.example.test/docs.git',
+            canonicalRemote: 'https://git.example.test/docs.git',
+            label: 'docs',
+          },
+        ],
+      },
+    };
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Place the default resource"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    // Declared default wins: no explicit choice required.
+    expect(
+      (screen.getByLabelText('Project resource') as HTMLSelectElement).value,
+    ).toBe('https://git.example.test/station.git');
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            workspace: {
+              kind: 'project-portable',
+              portableProjectId: 'portable:station',
+              resourceId: 'https://git.example.test/station.git',
+            },
+          }),
+        }),
+      ),
+    );
+  });
+
+  test('a missing identity blocks peer placement without a slug or local fallback', () => {
+    identityFailure = true;
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Keep this peer draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(
+      screen.getByText(/may need explicit identity preparation/),
+    ).toBeTruthy();
+    expect(screen.getByText(/prepare-identity/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    // Selection and draft survive the refusal.
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-peer-b',
+    );
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep this peer draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('a loading identity blocks peer dispatch until it resolves', () => {
+    identityLoading = true;
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Wait for identity"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/portable identity before placing/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test('a stale Home/authority before dispatch refuses without dispatching', () => {
+    scopeStale = true;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Do not send stale"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByText(/Station access changed/)).toBeTruthy();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Do not send stale',
+    );
+  });
+
+  test('authority going stale across the await keeps the draft and skips the result', async () => {
+    const onDelegated = vi.fn();
+    mutateAsync.mockImplementation(async () => {
+      scopeStale = true;
+      return {
+        taskId: 'task:1',
+        sessionId: 'task:1',
+        status: 'dispatched',
+        environment: { id: 'env-media', name: 'Brian Media', kind: 'ssh' },
+        target: { kind: 'agent', id: 'codex' },
+        resumable: true,
+      };
+    });
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        initialPrompt="Keep the late result out"
+        onClose={vi.fn()}
+        onDelegated={onDelegated}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.getByText(/Station access changed/)).toBeTruthy(),
+    );
+    expect(onDelegated).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep the late result out',
+    );
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-peer-b',
+    );
+  });
+
+  test('a receiver refusal keeps the draft and machine choice with no redispatch', async () => {
+    const props = {
+      isOpen: true,
+      apiBase: 'http://station.test',
+      projectSlug: 'station',
+      projectName: 'Station',
+      initialPrompt: 'Keep this refused draft',
+      onClose: vi.fn(),
+      onDelegated: vi.fn(),
+    };
+    const { rerender } = render(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    mutationError = new Error(
+      'This Station does not currently offer execution for the requested Project resource.',
+    );
+    rerender(<DelegationLauncher {...props} />);
+    expect(screen.getByRole('alert').textContent).toContain(
+      'does not currently offer execution',
+    );
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Keep this refused draft',
+    );
+    // Explicit retry dispatches exactly once more — never automatically.
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2));
   });
 });

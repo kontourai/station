@@ -794,6 +794,7 @@ export {
   useModelConnectionsQuery,
   useModelPickerCatalogQuery,
   useProjectIconCandidatesQuery,
+  useProjectIdentityQuery,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
   useProjectQuery,
