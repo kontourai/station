@@ -13,6 +13,7 @@ import {
  */
 
 const TARGET = {
+  apiBase: 'http://current.invalid',
   environmentId: 'environment-current',
   environmentName: 'Current environment',
   kind: 'current' as const,
