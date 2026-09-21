@@ -13,7 +13,7 @@ export const MISSING_ENVIRONMENT_NOTICE =
   "This project's saved environment is not available in the current list. Its selection is preserved; choose another environment or repair the connection.";
 export const ENVIRONMENTS_UNAVAILABLE_NOTICE =
   'Saved environments are unavailable right now. The configured environment is preserved until the inventory can be loaded.';
-export const PEER_ENVIRONMENTS_UNAVAILABLE_NOTICE =
+const PEER_ENVIRONMENTS_UNAVAILABLE_NOTICE =
   'Paired Stations are unavailable right now. A saved paired default is preserved until the inventory can be loaded.';
 /**
  * #480 final scope correction: the FOREGROUND thread-execution path has no
@@ -24,7 +24,7 @@ export const PEER_ENVIRONMENTS_UNAVAILABLE_NOTICE =
  * never silently substituted with the current Station. The portable
  * DELEGATION launcher keeps its own authorized peer options.
  */
-export const PEER_DEFAULT_UNSUPPORTED_NOTICE =
+const PEER_DEFAULT_UNSUPPORTED_NOTICE =
   'This project\u2019s saved default is a paired Station. The selection is preserved, but starting new threads on paired Stations isn\u2019t supported here yet.';
 
 export function EnvironmentPicker({
