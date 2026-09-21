@@ -1868,6 +1868,10 @@ export function createOrchestrationRoutes(
         });
         return c.json({ success: true, data });
       } catch (error) {
+        // #484 phase A: a portable continuation refused for lack of a
+        // current offer admission is a 403, like the create-path refusal.
+        if (error instanceof ReceiverExecutionRefusal)
+          return c.json({ success: false, error: error.message }, 403);
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
     },
@@ -1894,6 +1898,9 @@ export function createOrchestrationRoutes(
         });
         return c.json({ success: true, data });
       } catch (error) {
+        // #484 phase A: same 403 mapping as the create and continue paths.
+        if (error instanceof ReceiverExecutionRefusal)
+          return c.json({ success: false, error: error.message }, 403);
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
     },

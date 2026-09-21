@@ -55,6 +55,7 @@ import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -189,6 +190,7 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
+import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
@@ -892,6 +894,37 @@ function stripReservedCapabilityMetadata<
     return input;
   }
   return { ...input, metadata, modelOptions } as T;
+}
+
+/**
+ * #484 phase A: verify the ACTUAL prepared provider input against the
+ * server-minted admitted coordinate adjacent to the adapter invocation. A
+ * re-derived cwd (e.g. `resolveStartSessionCwd` falling back to the compat
+ * project default), a re-targeted thread, or a project-slug mismatch
+ * refuses BEFORE the effect instead of executing a workspace the admission
+ * never named. Paths compare normalized (`~/x` and its spelled-out form
+ * are the same checkout); an absent cwd or project can never satisfy a
+ * present admission. No-op when the caller carries no admitted coordinate.
+ */
+function verifyReceiverStartEffect(
+  admission: ReceiverExecutionEffectAdmission | undefined,
+  actual: { threadId: string; cwd?: string; projectSlug?: unknown },
+): void {
+  const admitted = admission?.admitted;
+  if (!admitted) return;
+  const actualCwd =
+    actual.cwd === undefined
+      ? undefined
+      : resolve(expandTilde(actual.cwd));
+  if (
+    actual.threadId !== admitted.threadId ||
+    actualCwd !== admitted.cwd ||
+    actual.projectSlug !== admitted.projectSlug
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
 }
 
 /** True when `candidate` is `root` itself or a directory inside it. */
@@ -4264,8 +4297,16 @@ export class OrchestrationService {
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
+            // #484 phase A: the receiver admission's server-minted admitted
+            // coordinate binds the portable start the same way a
+            // provisioned worktree binds a foreground one — so a non-default
+            // bound resource path (outside the compat project default) is
+            // admitted rather than re-derived, and never forged: the
+            // coordinate arrives only via internal options, and the effect
+            // closure below verifies the prepared input against it.
             internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace),
+              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+              internal?.receiverExecutionAdmission?.admitted,
             this.options.resolveProjectSessionDirectory,
           );
           if (internal?.reviewIsolation) {
@@ -4297,6 +4338,21 @@ export class OrchestrationService {
                 ...startInput.metadata,
                 conversationId: internal.conversationIdentity.conversationId,
                 environmentId: internal.conversationIdentity.environmentId,
+              },
+            };
+          }
+          // #484 phase A: re-stamp the server-minted portable consent
+          // marker after the reserved-key strip (which removed any
+          // caller-forged value) so the persisted session binding carries
+          // the exact consent identity continuation paths enforce.
+          if (internal?.portableExecutionConsent) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                  ...internal.portableExecutionConsent,
+                },
               },
             };
           }
@@ -4364,12 +4420,26 @@ export class OrchestrationService {
             // INSIDE the provider-effect path — after every preceding await
             // and adjacent to the adapter invocation — so a withdrawn offer
             // or lost binding refuses instead of starting a session it no
-            // longer authorizes. Carried as the effect closure passed into
-            // the foreground admission when both are present, so neither
-            // guard is bypassed.
+            // longer authorizes. The ACTUAL prepared input is then verified
+            // against the admitted coordinate (a re-derived cwd or
+            // re-targeted thread refuses BEFORE the adapter runs).
+            // Carried as the effect closure passed into the foreground
+            // admission when both are present, so neither guard is bypassed.
             const invokeWithReceiverAdmission = () =>
               internal?.receiverExecutionAdmission
-                ? internal.receiverExecutionAdmission.recheck().then(invoke)
+                ? internal.receiverExecutionAdmission
+                    .recheck()
+                    .then(() =>
+                      verifyReceiverStartEffect(
+                        internal.receiverExecutionAdmission,
+                        {
+                          threadId: input.threadId,
+                          cwd: input.cwd,
+                          projectSlug: input.metadata?.projectSlug,
+                        },
+                      ),
+                    )
+                    .then(invoke)
                 : invoke();
             session = await (internal?.foregroundInvocationAdmission
               ? internal.foregroundInvocationAdmission.invoke(
@@ -5257,12 +5327,24 @@ export class OrchestrationService {
                   // INSIDE the turn-effect path, adjacent to the adapter
                   // sendTurn invocation — a revocation that lands after the
                   // session start still refuses before the provider effect.
-                  const invokeWithReceiverAdmission = () =>
-                    internal?.receiverExecutionAdmission
+                  // The turn carries no cwd/project of its own (a turn
+                  // cannot re-target the workspace — the guarded start
+                  // bound this exact thread), so the thread identity is
+                  // verified here alongside the full recheck.
+                  const invokeWithReceiverAdmission = () => {
+                    const admitted =
+                      internal?.receiverExecutionAdmission?.admitted;
+                    if (admitted && turnInput.threadId !== admitted.threadId)
+                      throw new ReceiverExecutionRefusal(
+                        'receiver_execution_unavailable',
+                        'The offered Project resource is unavailable.',
+                      );
+                    return internal?.receiverExecutionAdmission
                       ? internal.receiverExecutionAdmission
                           .recheck()
                           .then(invoke)
                       : invoke();
+                  };
                   return internal?.foregroundInvocationAdmission
                     ? internal.foregroundInvocationAdmission.invoke(
                         adapter.provider === 'station-agent'

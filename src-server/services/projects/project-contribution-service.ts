@@ -74,15 +74,41 @@ export interface ReceiverExecutionAdmission {
   readonly admittedProject: {
     readonly slug: string;
     readonly workingDirectory: string;
+    /**
+     * The canonical path the resolver owner checked for the EXACT requested
+     * resource (`resolution.path`) — NOT the compat `workingDirectory`,
+     * which names only the project's default checkout. A non-default bound
+     * repo (or a repository-relative execution root) resolves elsewhere;
+     * executing the default there would run the wrong checkout.
+     */
+    readonly resourcePath: string;
+    /**
+     * The canonical manifest execution root when it selects the requested
+     * resource; absent when the manifest declares none (or selects another
+     * resource). The provider must start in `executionRoot ?? resourcePath`.
+     */
+    readonly executionRoot?: string;
   };
   readonly recheck: () => Promise<void>;
+}
+
+/**
+ * The exact directory one admitted portable intent must execute in: the
+ * manifest execution root when it selects the admitted resource, else the
+ * admitted resource's own bound path. Never the compat workingDirectory.
+ */
+export function receiverAdmittedCwd(admitted: ReceiverExecutionAdmission['admittedProject']): string {
+  return admitted.executionRoot ?? admitted.resourcePath;
 }
 
 interface Deps {
   source: Pick<IStorageAdapter, 'listProjects' | 'projectRevision'>;
   manifests: Pick<ProjectManifestStore, 'readProjectManifest'>;
   bindings: Pick<ProjectBindingsStore, 'findBinding'>;
-  resolver: Pick<ProjectResourceResolver, 'resolveProjectResource'>;
+  resolver: Pick<
+    ProjectResourceResolver,
+    'resolveProjectResource' | 'resolveProjectExecutionRoot'
+  >;
   config: Pick<ConfigLoader, 'loadAppConfig' | 'mutateAppConfig'>;
   now?: () => Date;
 }
@@ -390,7 +416,11 @@ export class ProjectContributionService {
    * The returned admission carries the receiver-local Project binding; its
    * `workingDirectory` is stored tilde-literal in the project record and is
    * returned here EXPANDED (station#3155) so consumers compare or execute
-   * only against the absolute path.
+   * only against the absolute path. It ALSO carries the resolver owner's
+   * checked canonical path for the exact requested resource
+   * (`resourcePath`) plus the manifest execution root when it selects that
+   * resource (`executionRoot`): the provider must start in
+   * `executionRoot ?? resourcePath`, never in the compat default.
    */
   async authorizeReceiverExecution(
     input: ProjectContributionQuery,
@@ -406,9 +436,7 @@ export class ProjectContributionService {
       resourceId: requested.resourceId,
       admittedProject: admitted,
       recheck: async () => {
-        await this.captureReceiverAdmission(requested, authorityCurrent, {
-          admittedProject: admitted,
-        });
+        await this.captureReceiverAdmission(requested, authorityCurrent, admitted);
       },
     };
   }
@@ -416,7 +444,7 @@ export class ProjectContributionService {
   private async captureReceiverAdmission(
     input: ProjectContributionQuery,
     authorityCurrent: () => boolean,
-    expect?: { admittedProject: ReceiverExecutionAdmission['admittedProject'] },
+    expect?: ReceiverExecutionAdmission['admittedProject'],
   ): Promise<ReceiverExecutionAdmission['admittedProject']> {
     const unavailable = () =>
       new ReceiverExecutionRefusal(
@@ -470,12 +498,48 @@ export class ProjectContributionService {
           requested.resourceId,
         ),
       ),
+      executionSelection: structuredClone(
+        association.manifest.executionRoot,
+      ),
     };
     const resolution = await this.deps.resolver.resolveProjectResource(
       association.project.slug,
       requested.resourceId,
     );
     if (resolution.state !== 'bound') throw unavailable();
+    // The SAME checked canonical path the resolver owner just verified for
+    // the EXACT requested resource — never the compat workingDirectory,
+    // which names only the project's default checkout.
+    const resourcePath = resolution.path;
+    // The manifest execution root refines the start directory only when it
+    // selects THIS resource (or names no repo, i.e. project-wide). A root
+    // declared for another resource, or no declared root at all, leaves the
+    // resource's own bound path. Resolved through the same resolver owner
+    // so the admitted root is the checked canonical directory.
+    let executionRoot: string | undefined;
+    {
+      const selection = captured.executionSelection as
+        | { repoId?: string }
+        | undefined;
+      // Only a DECLARED root refines the start directory — and only when
+      // it selects this resource (or names no repo). With no declared
+      // root the resource's own bound path stands: resolving the root
+      // unconditionally would answer a DIFFERENT (primary) resource's
+      // path for a non-primary request.
+      const selectsThisResource =
+        selection !== undefined &&
+        (selection.repoId === undefined ||
+          selection.repoId === requested.resourceId);
+      if (selectsThisResource) {
+        try {
+          executionRoot = await this.deps.resolver.resolveProjectExecutionRoot(
+            association.project.slug,
+          );
+        } catch {
+          throw unavailable();
+        }
+      }
+    }
     const currentConfig = await this.deps.config.loadAppConfig();
     const currentSelected = resolveScopedContribution(currentConfig, scope);
     const stillOffered =
@@ -524,19 +588,24 @@ export class ProjectContributionService {
       !isDeepStrictEqual(captured.binding, afterBinding)
     )
       throw unavailable();
+    if ((captured.workingDirectory ?? '') === '') throw unavailable();
     if (
-      (captured.workingDirectory ?? '') === '' ||
-      (expect &&
-        (expect.admittedProject.slug !== captured.projectSlug ||
-          expect.admittedProject.workingDirectory !==
-            captured.workingDirectory))
+      expect &&
+      (expect.slug !== captured.projectSlug ||
+        expect.workingDirectory !== captured.workingDirectory ||
+        expect.resourcePath !== resourcePath ||
+        (expect.executionRoot ?? undefined) !== (executionRoot ?? undefined))
     )
-      // A recheck must answer for the SAME captured binding; re-resolving to
-      // a different workspace is a refusal, never a silent re-target.
+      // A recheck must answer for the SAME captured association, manifest,
+      // binding, resource path, and execution root; a rebind that re-points
+      // the resource elsewhere (or a root that moved) is a refusal, never a
+      // silent re-target onto the new directory.
       throw unavailable();
     return {
       slug: captured.projectSlug,
       workingDirectory: captured.workingDirectory!,
+      resourcePath,
+      ...(executionRoot === undefined ? {} : { executionRoot }),
     };
   }
 }

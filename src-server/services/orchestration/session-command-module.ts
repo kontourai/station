@@ -76,6 +76,23 @@ export interface SessionCommandModule {
  */
 export interface ReceiverExecutionEffectAdmission {
   recheck: () => Promise<void>;
+  /**
+   * #484 phase A: the server-minted admitted coordinate — the exact
+   * thread, project, cwd, and portable consent identity the provider
+   * effect must run as. The service verifies the ACTUAL prepared start
+   * input (and the turn's thread) against it adjacent to the adapter
+   * invocation, so a re-derived or re-targeted input refuses BEFORE the
+   * effect instead of executing a workspace the admission never named.
+   * Absent only for callers that predate the binding (defense in depth:
+   * the recheck still runs); the portable dispatch always sets it.
+   */
+  admitted?: {
+    readonly threadId: string;
+    readonly projectSlug: string;
+    readonly cwd: string;
+    readonly portableProjectId: string;
+    readonly resourceId: string;
+  };
 }
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
@@ -108,6 +125,16 @@ export type SessionCommandInternalOptions = {
   conversationIdentity?: {
     conversationId: string;
     environmentId: string;
+  };
+  /**
+   * #484 phase A: server-minted portable-execution consent identity,
+   * re-stamped into start metadata AFTER the reserved-key strip (mirroring
+   * `conversationIdentity`) so the persisted session binding carries the
+   * marker continuation paths enforce. Never accepted from public JSON.
+   */
+  portableExecutionConsent?: {
+    portableProjectId: string;
+    resourceId: string;
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;

@@ -91,7 +91,21 @@ export interface ExecutionTargetResolverDependencies {
     access: EnvironmentAccess,
     portableProjectId: string,
     resourceId: string,
-  ) => Promise<(ResolvedProjectView & { slug: string }) | undefined>;
+  ) => Promise<
+    | (ResolvedProjectView & {
+        slug: string;
+        /**
+         * #484 phase A: the admission's checked canonical path for the
+         * EXACT requested resource, and the manifest execution root when
+         * it selects that resource. The workspace resolves from
+         * `executionRoot ?? resourcePath ?? workingDirectory` — never
+         * from the compat default alone.
+         */
+        resourcePath?: string;
+        executionRoot?: string;
+      })
+    | undefined
+  >;
   /**
    * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) —
    * the fallback a project that names no workspace mode of its own lands on,
@@ -320,7 +334,14 @@ async function resolveWorkspace(
       workspace.portableProjectId,
       workspace.resourceId,
     );
-    if (!project?.workingDirectory) {
+    // #484 phase A: the admitted EXACT path wins over the compat default —
+    // a non-default bound repo (or a repository-relative execution root)
+    // resolves elsewhere, and starting the default checkout would execute
+    // the wrong repository. `workingDirectory` remains the last-resort
+    // fallback only for admissions minted before the exact path existed.
+    const exactCwd =
+      project?.executionRoot ?? project?.resourcePath ?? project?.workingDirectory;
+    if (!project || !exactCwd) {
       throw new Error(
         'The offered Project resource is unavailable for portable execution',
       );
@@ -329,7 +350,7 @@ async function resolveWorkspace(
       workspace: {
         kind: 'project',
         projectSlug: project.slug,
-        cwd: resolve(expandTilde(project.workingDirectory)),
+        cwd: resolve(expandTilde(exactCwd)),
         workspaceIsolation: {
           mode: resolveWorkspaceIsolationMode(
             project.defaultWorkspaceIsolation,

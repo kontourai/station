@@ -22,6 +22,7 @@
  * `portable-receiver-two-runtimes.e2e.test.ts`.
  */
 import { afterEach, beforeAll, afterAll, describe, expect, test, vi } from 'vitest';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import {
@@ -63,6 +64,7 @@ function admissionStub(
     admittedProject: {
       slug: 'local',
       workingDirectory: '/fixture/checkout',
+      resourcePath: '/fixture/checkout',
     },
     recheck,
   };
@@ -356,6 +358,15 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     expect(startInput.input.cwd).toBe('/fixture/checkout');
     const startMetadata = startInput.input.metadata as Record<string, unknown>;
     expect(startMetadata.projectSlug).toBe('local');
+    // #484: the server-minted portable consent marker rides the start
+    // metadata (no caller can forge it — it is a reserved key), and the
+    // same identity is threaded through internal options so the service
+    // re-stamps it after the reserved-key strip for the persisted
+    // session binding that continuation paths enforce.
+    expect(startMetadata[PORTABLE_EXECUTION_CONSENT_METADATA_KEY]).toEqual({
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    });
     // The admission is ALSO threaded into the service internal options, so
     // the provider-effect path rechecks it adjacent to the actual adapter
     // invocation (a door check alone cannot cover what races the awaits
@@ -366,6 +377,16 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       >
     )[0]![2];
     expect(startInternal?.receiverExecutionAdmission?.recheck).toBe(rechecks);
+    expect(startInternal?.receiverExecutionAdmission?.admitted).toMatchObject({
+      projectSlug: 'local',
+      cwd: '/fixture/checkout',
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    });
+    expect(startInternal?.portableExecutionConsent).toEqual({
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    });
     const turnInternal = (
       dispatchWithReceipt.mock.calls as unknown as Array<
         [unknown, unknown, Record<string, any> | undefined]
@@ -404,6 +425,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             admittedProject: {
               slug: 'local',
               workingDirectory: '/fixture/checkout',
+              resourcePath: '/fixture/checkout',
             },
             recheck: async () => {
               if (!alive)

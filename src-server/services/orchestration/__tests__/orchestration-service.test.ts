@@ -97,6 +97,7 @@ import {
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { ProjectBindingsStore } from '../../projects/project-binding-store.js';
+import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
@@ -2592,6 +2593,156 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessionByThread('forged-ephemeral')).not.toEqual(
       expect.objectContaining({ ephemeral: true }),
     );
+  });
+
+  // #484 phase A: the receiver effect admission is honored INSIDE the
+  // provider-effect path of the REAL service — between prepareStart's
+  // awaits and the adapter invocation. The adapter spy is the oracle, not
+  // the recheck mock: a withdrawn offer (or a workspace that is not the
+  // admitted one) must refuse BEFORE adapter.startSession/sendTurn runs.
+  // A passing recheck proves nothing; the spy staying silent does.
+  describe('portable receiver effect admission', () => {
+    const admittedFor = (threadId: string, cwd: string) => ({
+      recheck: async () => {},
+      admitted: {
+        threadId,
+        projectSlug: 'local',
+        cwd,
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      },
+    });
+
+    test('positive control: the adapter starts in the exact admitted cwd', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const outcome = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-positive',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-positive', tmp) },
+      );
+      if (outcome.status !== 'accepted') throw new Error(outcome.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      expect(claude.startSession.mock.calls[0]![0]).toMatchObject({
+        threadId: 'portable-positive',
+        cwd: tmp,
+      });
+    });
+
+    test('an offer withdrawn while the start is queued refuses before the adapter runs', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      let entered = false;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let alive = true;
+      const pending = service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-withdrawn',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: {
+            recheck: async () => {
+              entered = true;
+              await gate;
+              if (!alive)
+                throw new ReceiverExecutionRefusal(
+                  'receiver_execution_not_offered',
+                  'This Station does not currently offer execution for the requested Project resource.',
+                );
+            },
+            admitted: {
+              threadId: 'portable-withdrawn',
+              projectSlug: 'local',
+              cwd: tmp,
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+            },
+          },
+        },
+      );
+      for (let i = 0; i < 200 && !entered; i++)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(entered).toBe(true);
+      // The start has passed every prepareStart await and is queued at the
+      // adapter boundary; the offer dies NOW.
+      alive = false;
+      release();
+      const outcome = await pending;
+      expect(outcome.status).toBe('failed');
+      expect(claude.startSession).not.toHaveBeenCalled();
+    });
+
+    test('a workspace that is not the admitted one refuses before the adapter runs', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const outcome = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-retargeted',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-retargeted',
+            join(tmp, 'not-the-admitted-checkout'),
+          ),
+        },
+      );
+      expect(outcome.status).toBe('failed');
+      expect(claude.startSession).not.toHaveBeenCalled();
+    });
+
+    test('a turn on a thread the admission never named refuses before sendTurn runs', async () => {
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-turn',
+            provider: 'bedrock',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-turn', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor(
+              'some-other-thread',
+              tmp,
+            ),
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    });
   });
 
   test('public start metadata cannot author conversation or Environment ownership', async () => {

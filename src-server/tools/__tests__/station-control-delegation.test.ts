@@ -17,6 +17,7 @@ import type {
 import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 
@@ -2593,6 +2594,69 @@ describe('Station Control canonical Environment + Agent execution', () => {
       expect.anything(),
       expect.objectContaining({ nativeMemoryReadAuthority: authority }),
     );
+  });
+
+  test('a marked portable task refuses continuation without a fresh offer admission', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const base = localDelegatedTaskService('completed');
+    // The persisted session binding carries the server-minted portable
+    // consent marker (stamped at dispatch, re-stamped after the
+    // reserved-key strip) — a follow-up without a freshly re-admitted
+    // offer must refuse BEFORE any provider effect, not silently bypass
+    // the explicit portable mode's contract across the persist boundary.
+    const markedDetail = {
+      session: {
+        threadId: 'task-alpha',
+        lifecycleState: 'completed',
+        eventCount: 2,
+        delegation: {
+          taskId: 'task-alpha',
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            taskId: 'task-alpha',
+            environmentId: 'environment-current',
+            environmentName: 'Current environment',
+            targetKind: 'agent',
+            targetId: 'reviewer',
+            userId: 'shared-user',
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+            },
+          },
+        },
+      ],
+    };
+    const service = {
+      ...base,
+      readSession: vi.fn(async () => markedDetail),
+      readCurrentConversationSession: vi.fn(async () => markedDetail),
+    };
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'One more thing',
+          readAuthority: authority,
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
   });
 
   test('defers model-option capability to the current continuation resolver, not the predecessor provider (station#3414)', async () => {

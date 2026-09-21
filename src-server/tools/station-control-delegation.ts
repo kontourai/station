@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolve as resolveFilesystemPath } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
   type AgentId,
@@ -25,6 +26,7 @@ import {
   type CapabilityUndeliveredReason,
   type EngineId,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
@@ -383,12 +385,23 @@ export interface ContinueDelegatedTaskInput
   model?: string;
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
+  /**
+   * #484 phase A: a freshly re-admitted offer for continuing a portable
+   * task. Server-composed only (the continue route does not mint one
+   * yet — see `requirePortableContinuationAdmission`); never public JSON.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
 }
 
 export interface RespondToDelegatedTaskRequestInput
   extends DelegatedTaskReferenceInput {
   requestId: string;
   decision: ApprovalDecision;
+  /**
+   * #484 phase A: same re-admission slot as the continue path; pending
+   * route wiring, a marked portable session refuses. Never public JSON.
+   */
+  receiverAdmission?: ReceiverExecutionAdmission;
 }
 
 export interface DelegatedTaskEvent {
@@ -1871,6 +1884,53 @@ function sessionBinding(detail: {
   return record(bindingEvent).metadata as Record<string, unknown> | undefined;
 }
 
+/**
+ * #484 phase A: read the server-minted portable consent marker off a
+ * persisted session binding (`PORTABLE_EXECUTION_CONSENT_METADATA_KEY`,
+ * stamped at dispatch and re-stamped after the reserved-key strip, so no
+ * public caller can forge it — and omitting it cannot claim consent).
+ * Returns the admitted consent identity, or undefined for a session that
+ * never executed a portable intent (legacy and ordinary tasks).
+ */
+function portableConsentOfBinding(
+  metadata: Record<string, unknown> | undefined,
+): { portableProjectId: string; resourceId: string } | undefined {
+  const marker = metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
+  if (!marker || typeof marker !== 'object') return undefined;
+  const { portableProjectId, resourceId } = marker as Record<string, unknown>;
+  if (typeof portableProjectId !== 'string' || typeof resourceId !== 'string')
+    return undefined;
+  return { portableProjectId, resourceId };
+}
+
+/**
+ * #484 phase A: a follow-up effect on a marked portable session (continue,
+ * respond) runs ONLY with a freshly re-admitted offer naming the SAME
+ * consent identity — otherwise it refuses outright rather than silently
+ * bypassing the explicit portable mode's contract across a
+ * persist/recovery boundary. This preserves the mode's contract, not a
+ * global confinement: unmarked sessions are unaffected, and the refusal
+ * names the missing offer rather than the workspace. Route-level
+ * re-admission (composing `authorizeReceiverExecution` on the continue /
+ * respond routes and passing it through) is the pending capability that
+ * turns this refusal back into a continuation.
+ */
+function requirePortableContinuationAdmission(
+  marker: { portableProjectId: string; resourceId: string } | undefined,
+  admission: ReceiverExecutionAdmission | undefined,
+): void {
+  if (!marker) return;
+  if (
+    !admission ||
+    admission.portableProjectId !== marker.portableProjectId ||
+    admission.resourceId !== marker.resourceId
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_not_offered',
+      'This portable task cannot continue without a current execution offer for its Project resource.',
+    );
+}
+
 function taskStatus(
   session: Record<string, unknown>,
 ): DelegatedTaskSnapshot['status'] {
@@ -2853,13 +2913,12 @@ export async function continueDelegatedTask(
   input: ContinueDelegatedTaskInput,
   orchestrationService?: OrchestrationService,
 ): Promise<DelegatedTaskFollowUpHandle> {
-  // #484 phase A ledger gap (not a hole claim): follow-up turns on an
-  // already-started portable session do NOT recompose the receiver offer
-  // admission — `ContinueDelegatedTaskInput` carries no portable consent
-  // identity to re-verify, so there is nothing here to fail closed ON
-  // without breaking legacy continuations. Resume authorization across
-  // persist/recovery boundaries remains explicitly unwired: do not claim a
-  // pre-dispatch check authorizes a resumed provider effect.
+  // #484 phase A: follow-up turns on an already-started portable session
+  // do NOT inherit the create-time admission — the persisted session
+  // binding's server-minted portable consent marker must be matched by a
+  // freshly re-admitted offer, else the continuation refuses outright
+  // rather than silently bypassing consent across the persist boundary.
+  // Unmarked (legacy/ordinary) sessions are unaffected.
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
@@ -2887,6 +2946,10 @@ export async function continueDelegatedTask(
     );
   }
   const loaded = await loadDelegatedTask(input, orchestrationService);
+  requirePortableContinuationAdmission(
+    portableConsentOfBinding(sessionBinding(loaded.detail)),
+    input.receiverAdmission,
+  );
   const snapshot = snapshotFor(loaded);
   // The shared execution-target resolver owns model-option capability checks.
   // A completed predecessor may be replaced by a child with another provider,
@@ -2956,6 +3019,11 @@ export async function respondToDelegatedTaskRequest(
     );
   }
   const loaded = await loadDelegatedTask(input, orchestrationService);
+  // #484 phase A: same portable-consent enforcement as the continue path.
+  requirePortableContinuationAdmission(
+    portableConsentOfBinding(sessionBinding(loaded.detail)),
+    input.receiverAdmission,
+  );
   const events = loaded.detail.events ?? [];
   const requestIsOpen = events.some(
     (event) =>
@@ -3283,6 +3351,42 @@ export async function delegateTask(
     : undefined;
   const sessionId = input.sessionId || `task:${randomUUID()}`;
   const resolvedCwd = resolved.workspace?.cwd;
+  // #484 phase A: the server-minted admitted coordinate for the provider
+  // effect path — the EXACT admitted cwd (execution root when it selects
+  // the resource, else the resource's bound path), normalized exactly as
+  // the resolver normalized it. Composition integrity: the resolved
+  // workspace MUST be that directory; anything else refuses here, before
+  // any session exists, rather than executing a re-targeted workspace.
+  // A foreign-shaped admission without an exact path (only reachable from
+  // hand-made server-internal stubs — the route composer always mints the
+  // exact path) cannot name a workspace and refuses below, never executes.
+  const admittedExactRaw =
+    input.receiverAdmission?.admittedProject.executionRoot ??
+    input.receiverAdmission?.admittedProject.resourcePath;
+  const portableAdmittedCwd =
+    input.receiverAdmission && admittedExactRaw !== undefined
+      ? resolveFilesystemPath(admittedExactRaw)
+      : undefined;
+  if (portableIntent && input.receiverAdmission) {
+    if (portableAdmittedCwd === undefined || resolvedCwd !== portableAdmittedCwd)
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_unavailable',
+        'The offered Project resource is unavailable.',
+      );
+  }
+  const receiverEffectAdmission =
+    input.receiverAdmission && portableAdmittedCwd !== undefined
+      ? {
+          recheck: input.receiverAdmission.recheck,
+          admitted: {
+            threadId: sessionId,
+            projectSlug: input.receiverAdmission.admittedProject.slug,
+            cwd: portableAdmittedCwd,
+            portableProjectId: input.receiverAdmission.portableProjectId,
+            resourceId: input.receiverAdmission.resourceId,
+          },
+        }
+      : undefined;
   const bindingTarget = {
     kind: 'agent' as const,
     id: resolved.agentId,
@@ -3357,6 +3461,19 @@ export async function delegateTask(
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
             ...(input.delegation ? { delegation: input.delegation } : {}),
             ...(readAuthority.userId ? { userId: readAuthority.userId } : {}),
+            // #484 phase A: server-minted portable consent marker. The
+            // service re-stamps this same identity after the reserved-key
+            // strip, so the persisted session binding carries the exact
+            // consent continuation paths enforce. Never caller-supplied.
+            ...(input.receiverAdmission
+              ? {
+                  [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                    portableProjectId:
+                      input.receiverAdmission.portableProjectId,
+                    resourceId: input.receiverAdmission.resourceId,
+                  },
+                }
+              : {}),
           },
         },
       },
@@ -3372,11 +3489,15 @@ export async function delegateTask(
         },
         resourceAdmissionIntent: 'delegated_background',
         // #484 phase A: the service rechecks this inside the start-effect
-        // path, adjacent to the adapter invocation.
-        ...(input.receiverAdmission
+        // path, adjacent to the adapter invocation, AND verifies the
+        // prepared input against the admitted coordinate.
+        ...(receiverEffectAdmission
           ? {
-              receiverExecutionAdmission: {
-                recheck: input.receiverAdmission.recheck,
+              receiverExecutionAdmission: receiverEffectAdmission,
+              portableExecutionConsent: {
+                portableProjectId:
+                  receiverEffectAdmission.admitted.portableProjectId,
+                resourceId: receiverEffectAdmission.admitted.resourceId,
               },
             }
           : {}),
@@ -3420,12 +3541,8 @@ export async function delegateTask(
       input.clientOrigin,
       input.principal,
     ),
-    input.receiverAdmission
-      ? {
-          receiverExecutionAdmission: {
-            recheck: input.receiverAdmission.recheck,
-          },
-        }
+    receiverEffectAdmission
+      ? { receiverExecutionAdmission: receiverEffectAdmission }
       : undefined,
   );
   delegatedTasks.add(1, {

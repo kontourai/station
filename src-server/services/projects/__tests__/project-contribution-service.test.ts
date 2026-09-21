@@ -3,7 +3,10 @@ import {
   isWellFormedContributionProjection,
 } from '@kontourai/station-contracts/contribution';
 import { describe, expect, test, vi } from 'vitest';
-import { ProjectContributionService } from '../project-contribution-service.js';
+import {
+  ProjectContributionService,
+  receiverAdmittedCwd,
+} from '../project-contribution-service.js';
 
 const manifest = {
   schemaVersion: 1 as const,
@@ -79,6 +82,11 @@ function fixture(
         resolveResolution = resolve as (value: unknown) => void;
       })
     : undefined;
+  // #484 phase A: the resolver owner's checked canonical path, mutable
+  // per-test so a rebind (same binding row, different directory) can be
+  // staged between capture and recheck.
+  let resolutionPath = '/private/not-projected';
+  let executionRootValue: string | undefined;
   const service = new ProjectContributionService({
     source: {
       listProjects: () => [project],
@@ -93,6 +101,7 @@ function fixture(
     manifests: { readProjectManifest: () => manifestNow },
     bindings: { findBinding: () => binding },
     resolver: {
+      resolveProjectExecutionRoot: vi.fn(async () => executionRootValue),
       resolveProjectResource: vi.fn(async () => {
         if (resolutionGate) {
           options.duringResolve?.();
@@ -102,7 +111,7 @@ function fixture(
           ? {
               state: 'bound' as const,
               resourceId: manifest.repos[0].id,
-              path: '/private/not-projected',
+              path: resolutionPath,
             }
           : {
               state: 'missing' as const,
@@ -139,6 +148,12 @@ function fixture(
     getBinding: () => binding,
     setProject: (next: any) => {
       project = next;
+    },
+    setResolutionPath: (next: string) => {
+      resolutionPath = next;
+    },
+    setExecutionRootValue: (next: string | undefined) => {
+      executionRootValue = next;
     },
     resolveResolution: () => resolveResolution?.(undefined),
   };
@@ -630,5 +645,135 @@ describe('ProjectContributionService', () => {
     await expect(
       g.service.authorizeReceiverExecution(QUERY, () => true),
     ).rejects.toMatchObject({ code: 'receiver_execution_unavailable' });
+  });
+
+  test('the admission captures the exact bound resource path, not the compat default', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    // The fixture project default ('/fixture/checkout') and the resolver
+    // owner's checked path for the requested resource differ: the
+    // admission must name the checked path — executing the default would
+    // run the wrong checkout for a non-default bound repo.
+    expect(admission.admittedProject.workingDirectory).toBe(
+      '/fixture/checkout',
+    );
+    expect(admission.admittedProject.resourcePath).toBe(
+      '/private/not-projected',
+    );
+    expect(admission.admittedProject.executionRoot).toBeUndefined();
+    expect(receiverAdmittedCwd(admission.admittedProject)).toBe(
+      '/private/not-projected',
+    );
+  });
+
+  test('admission recheck refuses when the resource is rebound to a different path', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    // Same slug, same workingDirectory, same manifest, same binding row —
+    // only the resolver owner's checked directory moved. The pre-fix
+    // recheck compared slug+workingDirectory only and would PASS here,
+    // silently re-targeting the new directory.
+    f.setResolutionPath('/private/rebound-elsewhere');
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
+  test('a repository-relative execution root selecting the resource is admitted and rechecked', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    f.setManifest({
+      ...f.getManifest(),
+      executionRoot: {
+        repoId: 'git.example/acme/repo',
+        path: 'sub/dir',
+      },
+    } as never);
+    f.setExecutionRootValue('/private/not-projected/sub/dir');
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.resourcePath).toBe(
+      '/private/not-projected',
+    );
+    expect(admission.admittedProject.executionRoot).toBe(
+      '/private/not-projected/sub/dir',
+    );
+    expect(receiverAdmittedCwd(admission.admittedProject)).toBe(
+      '/private/not-projected/sub/dir',
+    );
+    // The root moves (but stays inside the same checkout): the recheck
+    // must refuse rather than start in the moved directory.
+    f.setExecutionRootValue('/private/not-projected/sub/moved');
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
+  test('an execution root declared for another resource does not move this admission', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    f.setManifest({
+      ...f.getManifest(),
+      executionRoot: {
+        repoId: 'git.example/acme/other',
+        path: 'sub/dir',
+      },
+    } as never);
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.executionRoot).toBeUndefined();
+    expect(receiverAdmittedCwd(admission.admittedProject)).toBe(
+      '/private/not-projected',
+    );
+  });
+
+  test('admission refuses a wrong portable id and a same-slug association change', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    // No offer exists for the wrong portable id at all: the offer check
+    // runs before association, so this refuses not-offered — still a
+    // refusal before any effect, never a re-target.
+    await expect(
+      f.service.authorizeReceiverExecution(
+        { portableProjectId: 'prj_other', resourceId: QUERY.resourceId },
+        () => true,
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+    // Same slug, but the requested resource was never offered execution:
+    // refusal (not-offered) rather than executing the admitted workspace
+    // under a different resource association.
+    await expect(
+      f.service.authorizeReceiverExecution(
+        { portableProjectId: QUERY.portableProjectId, resourceId: 'git.example/acme/other' },
+        () => true,
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
   });
 });
