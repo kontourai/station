@@ -12,6 +12,7 @@ import {
   resolveScopedContribution,
 } from '@kontourai/station-contracts/contribution';
 import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import {
   FileStorageConflictError,
@@ -126,7 +127,13 @@ export interface ReceiverExecutionAdmission {
   readonly resourceId: string;
   readonly admittedProject: {
     readonly slug: string;
-    readonly workingDirectory: string;
+    /**
+     * The compat default checkout, EXPANDED — absent when the Project binds
+     * the requested resource receiver-locally with no compat
+     * `workingDirectory` at all. Never the execution directory: the
+     * provider must start in `executionRoot ?? resourcePath`.
+     */
+    readonly workingDirectory?: string;
     /**
      * The canonical path the resolver owner checked for the EXACT requested
      * resource (`resolution.path`) — NOT the compat `workingDirectory`,
@@ -141,6 +148,13 @@ export interface ReceiverExecutionAdmission {
      * resource). The provider must start in `executionRoot ?? resourcePath`.
      */
     readonly executionRoot?: string;
+    /**
+     * #484 receiver placement: the receiver Project's own workspace
+     * policy, captured at admission. The portable resolver derives the
+     * execution mode from this (then the Station default) — without it a
+     * worktree-configured receiver would silently resolve shared.
+     */
+    readonly defaultWorkspaceIsolation?: WorkspaceIsolationMode;
   };
   readonly recheck: () => Promise<void>;
 }
@@ -178,6 +192,15 @@ interface CapturedReceiverIdentity {
   };
   readonly binding: unknown;
   readonly executionSelection: unknown;
+  /**
+   * #484 receiver placement: the workspace policy the admission was
+   * captured under — the Project record's own mode plus the Station
+   * default that feeds the same resolution. Both are rechecked after
+   * every await and against the original baseline, so an operator policy
+   * change mid-flight refuses instead of executing under a stale mode.
+   */
+  readonly projectIsolation: WorkspaceIsolationMode | undefined;
+  readonly stationDefaultIsolation: WorkspaceIsolationMode | undefined;
 }
 
 interface Deps {
@@ -576,6 +599,19 @@ export class ProjectContributionService {
       )
     )
       throw unavailable();
+    // #484 receiver placement: the Project record's own workspace policy
+    // lives on the full Project record (`listProjects` projects a metadata
+    // view without it), read here — before any await — from the same
+    // project owner, plus the Station default from the config just loaded.
+    // Both join the freshness baseline below.
+    let projectIsolation: WorkspaceIsolationMode | undefined;
+    try {
+      projectIsolation = this.deps.source.projectRevision(
+        association.project.slug,
+      ).value?.defaultWorkspaceIsolation;
+    } catch {
+      throw unavailable();
+    }
     const captured = {
       projectId: association.project.id,
       projectSlug: association.project.slug,
@@ -595,6 +631,8 @@ export class ProjectContributionService {
         ),
       ),
       executionSelection: structuredClone(association.manifest.executionRoot),
+      projectIsolation,
+      stationDefaultIsolation: config.defaultWorkspaceIsolation,
     };
     const resolution = await this.deps.resolver.resolveProjectResource(
       association.project.slug,
@@ -676,6 +714,19 @@ export class ProjectContributionService {
         requested.resourceId,
       ),
     );
+    // #484 receiver placement: re-read the workspace policy after the
+    // awaits — an operator policy change mid-flight refuses rather than
+    // executing under the stale mode. A record that can no longer be read
+    // fails closed the same way.
+    let currentProjectIsolation: WorkspaceIsolationMode | undefined;
+    let policyReadable = true;
+    try {
+      currentProjectIsolation = this.deps.source.projectRevision(
+        association.project.slug,
+      ).value?.defaultWorkspaceIsolation;
+    } catch {
+      policyReadable = false;
+    }
     if (!stillOffered)
       throw new ReceiverExecutionRefusal(
         'receiver_execution_not_offered',
@@ -686,12 +737,23 @@ export class ProjectContributionService {
         'receiver_execution_not_offered',
         'Receiver execution authority changed before the work could start.',
       );
-    if (!sameAssociation || !isDeepStrictEqual(captured.binding, afterBinding))
+    if (
+      !sameAssociation ||
+      !isDeepStrictEqual(captured.binding, afterBinding) ||
+      !policyReadable ||
+      currentProjectIsolation !== captured.projectIsolation ||
+      currentConfig.defaultWorkspaceIsolation !==
+        captured.stationDefaultIsolation
+    )
       throw unavailable();
-    if ((captured.absoluteProjectRoot ?? '') === '') throw unavailable();
-    const expectedProjectRoot = expect
-      ? resolve(expandTilde(expect.admitted.workingDirectory))
-      : undefined;
+    // No compat workingDirectory is NOT a refusal: a project that binds
+    // the exact requested resource receiver-locally (its binding row)
+    // executes from that resource's checked path — no default checkout is
+    // invented. `workingDirectory` stays absent from the admission then.
+    const expectedProjectRoot =
+      expect?.admitted.workingDirectory === undefined
+        ? undefined
+        : resolve(expandTilde(expect.admitted.workingDirectory));
     if (
       expect &&
       (expect.admitted.slug !== captured.projectSlug ||
@@ -699,6 +761,8 @@ export class ProjectContributionService {
         expect.admitted.resourcePath !== resourcePath ||
         (expect.admitted.executionRoot ?? undefined) !==
           (executionRoot ?? undefined) ||
+        (expect.admitted.defaultWorkspaceIsolation ?? undefined) !==
+          (captured.projectIsolation ?? undefined) ||
         // Full original-identity continuity: a replaced Project record, a
         // replaced manifest (different id, even with identical repos), or
         // a replaced binding row hiding under the same slug/cwd/path is a
@@ -711,7 +775,10 @@ export class ProjectContributionService {
         !isDeepStrictEqual(
           expect.identity.executionSelection,
           captured.executionSelection,
-        ))
+        ) ||
+        expect.identity.projectIsolation !== captured.projectIsolation ||
+        expect.identity.stationDefaultIsolation !==
+          captured.stationDefaultIsolation)
     )
       // A recheck must answer for the SAME captured association, manifest,
       // binding, resource path, and execution root; a rebind that re-points
@@ -721,9 +788,14 @@ export class ProjectContributionService {
     return {
       admitted: {
         slug: captured.projectSlug,
-        workingDirectory: captured.absoluteProjectRoot!,
+        ...(captured.absoluteProjectRoot === undefined
+          ? {}
+          : { workingDirectory: captured.absoluteProjectRoot }),
         resourcePath,
         ...(executionRoot === undefined ? {} : { executionRoot }),
+        ...(captured.projectIsolation === undefined
+          ? {}
+          : { defaultWorkspaceIsolation: captured.projectIsolation }),
       },
       // Owned baseline for the NEXT recheck: these are this capture's own
       // clones (never a live store row, never handed out), so a later
@@ -733,6 +805,8 @@ export class ProjectContributionService {
         manifest: captured.manifest,
         binding: captured.binding,
         executionSelection: captured.executionSelection,
+        projectIsolation: captured.projectIsolation,
+        stationDefaultIsolation: captured.stationDefaultIsolation,
       },
     };
   }

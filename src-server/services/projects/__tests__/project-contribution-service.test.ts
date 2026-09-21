@@ -1,12 +1,23 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   contributionFreshness,
   isWellFormedContributionProjection,
 } from '@kontourai/station-contracts/contribution';
 import { describe, expect, test, vi } from 'vitest';
+import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { ProjectBindingsStore } from '../project-binding-store.js';
 import {
   ProjectContributionService,
   receiverAdmittedCwd,
 } from '../project-contribution-service.js';
+import {
+  ProjectManifestStore,
+  projectManifestPath,
+} from '../project-manifest-store.js';
+import { ProjectResourceResolver } from '../project-resource-resolver.js';
 
 const manifest = {
   schemaVersion: 1 as const,
@@ -614,12 +625,9 @@ describe('ProjectContributionService', () => {
       QUERY,
       () => true,
     );
-    expect(admission.admittedProject.workingDirectory).not.toMatch(/^~/);
-    expect(
-      admission.admittedProject.workingDirectory.endsWith(
-        'fixture/tilde-checkout',
-      ),
-    ).toBe(true);
+    const compatRoot = admission.admittedProject.workingDirectory;
+    expect(compatRoot).not.toMatch(/^~/);
+    expect(compatRoot?.endsWith('fixture/tilde-checkout')).toBe(true);
   });
 
   test('the admission captures the exact consent identity it was admitted for', async () => {
@@ -863,6 +871,206 @@ describe('ProjectContributionService', () => {
     await expect(admission.recheck()).rejects.toMatchObject({
       code: 'receiver_execution_unavailable',
     });
+  });
+
+  test('the admission carries the receiver Project workspace-isolation policy', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    f.setProject({
+      id: 'local-id',
+      slug: 'local',
+      workingDirectory: '/fixture/checkout',
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    // A receiver Project configured for worktree isolation must stay a
+    // worktree through the portable path: dropping the policy here lets
+    // the resolver fall through to the Station default (or shared) and
+    // silently run the offered resource in the shared checkout.
+    expect(admission.admittedProject.defaultWorkspaceIsolation).toBe(
+      'worktree',
+    );
+    await expect(admission.recheck()).resolves.toBeUndefined();
+  });
+
+  test('admission recheck refuses when the Project isolation policy changed under the same slug and cwd', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.defaultWorkspaceIsolation).toBeUndefined();
+    // Same slug, same checkout, same manifest, same binding — only the
+    // operator's isolation policy flipped. Executing under the captured
+    // (shared) mode would silently ignore the new worktree policy.
+    f.setProject({
+      id: 'local-id',
+      slug: 'local',
+      workingDirectory: '/fixture/checkout',
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
+  test('admission recheck refuses when the Station default isolation changed during the capture awaits', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    await expect(admission.recheck()).resolves.toBeUndefined();
+    // The Station default feeds the same resolution the admission was
+    // captured for: a flip here must refuse rather than run under a mode
+    // the operator just changed.
+    f.getConfig().defaultWorkspaceIsolation = 'worktree';
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
+  test('a bound resource with no compat workingDirectory is admitted from its checked path', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    // No compat workingDirectory at all — the project binds this resource
+    // receiver-locally (its binding row), not through the default checkout.
+    f.setProject({ id: 'local-id', slug: 'local' });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.workingDirectory).toBeUndefined();
+    expect(admission.admittedProject.resourcePath).toBe(
+      '/private/not-projected',
+    );
+    expect(receiverAdmittedCwd(admission.admittedProject)).toBe(
+      '/private/not-projected',
+    );
+    await expect(admission.recheck()).resolves.toBeUndefined();
+  });
+
+  test('a REAL store admission binds a receiver-local resource with no compat workingDirectory', async () => {
+    // The full owning stack — real project store, manifest sidecar,
+    // binding row, and resolver (only the git remote read is stubbed, the
+    // same seam the resolver suite stubs): the project has NO compat
+    // workingDirectory, yet the exact requested resource is bound
+    // receiver-locally and must admit from its checked path.
+    const home = mkdtempSync(join(tmpdir(), 'station-receiver-real-home-'));
+    const checkout = mkdtempSync(
+      join(tmpdir(), 'station-receiver-real-checkout-'),
+    );
+    try {
+      const adapter = new FileStorageAdapter(home);
+      const bindings = new ProjectBindingsStore(home);
+      const remoteUrl = 'git@github.com:acme/station.git';
+      const readRemotes = async () => ({
+        ok: true as const,
+        remotes: [{ name: 'origin', url: remoteUrl }],
+      });
+      const manifests = new ProjectManifestStore(home, adapter, {
+        bindings,
+        readRemotes,
+      });
+      const resolver = new ProjectResourceResolver({
+        homeDir: home,
+        source: adapter,
+        bindings,
+        manifests,
+        readRemotes,
+      });
+      const now = new Date().toISOString();
+      await putProject(adapter, {
+        id: 'real-id',
+        slug: 'real',
+        name: 'Real',
+        createdAt: now,
+        updatedAt: now,
+        defaultWorkspaceIsolation: 'shared',
+      });
+      mkdirSync(join(home, 'projects', 'real'), { recursive: true });
+      writeFileSync(
+        projectManifestPath(home, 'real'),
+        JSON.stringify({
+          schemaVersion: 1,
+          id: 'prj_real',
+          repos: [
+            {
+              kind: 'git',
+              id: 'github.com/acme/station',
+              canonicalRemote: 'github.com/acme/station',
+            },
+          ],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+      await bindings.upsertProjectBinding({
+        projectId: 'prj_real',
+        resourceId: 'github.com/acme/station',
+        kind: 'git-checkout',
+        path: checkout,
+        remotes: [remoteUrl],
+        verifiedAt: Date.now(),
+        state: 'bound',
+      });
+      const config: any = {
+        contribution: {
+          'project:prj_real': {
+            enabled: true,
+            execution: { repoIds: ['github.com/acme/station'] },
+          },
+        },
+      };
+      const service = new ProjectContributionService({
+        source: adapter,
+        manifests,
+        bindings,
+        resolver,
+        config: {
+          loadAppConfig: async () => config,
+          mutateAppConfig: async () => config,
+        },
+      });
+      const admission = await service.authorizeReceiverExecution(
+        {
+          portableProjectId: 'prj_real',
+          resourceId: 'github.com/acme/station',
+        },
+        () => true,
+      );
+      // The real Project incarnation flows through untouched: same slug,
+      // the checked binding path (not an invented checkout), and the
+      // Project's own policy carried for the resolver.
+      expect(admission.admittedProject.slug).toBe('real');
+      expect(admission.admittedProject.workingDirectory).toBeUndefined();
+      expect(admission.admittedProject.resourcePath).toBe(checkout);
+      expect(admission.admittedProject.defaultWorkspaceIsolation).toBe(
+        'shared',
+      );
+      expect(receiverAdmittedCwd(admission.admittedProject)).toBe(checkout);
+      await expect(admission.recheck()).resolves.toBeUndefined();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(checkout, { recursive: true, force: true });
+    }
   });
 
   test('admission refuses a wrong portable id and a same-slug association change', async () => {

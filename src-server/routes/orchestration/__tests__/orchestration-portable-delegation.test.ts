@@ -450,6 +450,186 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     );
   });
 
+  test('default-policy control: a shared receiver admission starts in the exact resource path with shared isolation', async () => {
+    primePeerHttp();
+    const startSessionInternal = vi.fn(async () => ({
+      status: 'accepted' as const,
+    }));
+    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
+    await delegateTask(
+      {
+        prompt: 'Ship it',
+        target: PORTABLE_TARGET,
+        userId: 'u',
+        readAuthority: { userId: 'u', mode: 'local' },
+        // The admitted resource path differs from the compat default: the
+        // provider must start in the checked resource path, never the
+        // default checkout, under the receiver operator's shared policy.
+        receiverAdmission: {
+          ...admissionStub(async () => {}),
+          admittedProject: {
+            slug: 'local',
+            workingDirectory: '/fixture/checkout',
+            resourcePath: '/fixture/bound-repo',
+          },
+        },
+      } as never,
+      orchestrationStub({ startSessionInternal, dispatchWithReceipt }),
+    );
+    const startInput = (
+      startSessionInternal.mock.calls as unknown as Array<[Record<string, any>]>
+    )[0]![0];
+    expect(startInput.input.cwd).toBe('/fixture/bound-repo');
+    expect(startInput.input.workspaceIsolation).toEqual({ mode: 'shared' });
+  });
+
+  test('a worktree-configured receiver Project refuses before any session or provider effect', async () => {
+    primePeerHttp();
+    const { ProjectContributionService } = await import(
+      '../../../services/projects/project-contribution-service.js'
+    );
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
+    // The REAL admission owner over stub stores: the receiver Project names
+    // worktree isolation, so the admitted policy is worktree. The portable
+    // delegation path has no worktree provisioning owner, so it must refuse
+    // here — silently starting the shared checkout would ignore the
+    // receiver operator's policy.
+    const project = {
+      id: 'local-id',
+      slug: 'local',
+      workingDirectory: '/fixture/checkout',
+      defaultWorkspaceIsolation: 'worktree',
+    };
+    const serviceManifest = {
+      schemaVersion: 1 as const,
+      id: 'prj_shared',
+      slug: 'local',
+      name: 'Local',
+      repos: [
+        {
+          kind: 'git' as const,
+          id: 'git.example/acme/repo',
+          canonicalRemote: 'git.example/acme/repo',
+        },
+      ],
+      knowledge: [],
+      agents: [],
+      integrations: [],
+      layouts: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const binding: unknown = {
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+      projectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    };
+    const config = {
+      contribution: {
+        'project:prj_shared': {
+          enabled: true,
+          execution: { repoIds: ['git.example/acme/repo'] },
+        },
+      },
+    };
+    const service = new ProjectContributionService({
+      source: {
+        listProjects: () => [project],
+        projectRevision: () => ({
+          value: project,
+          replace: vi.fn(),
+          remove: vi.fn(),
+          createLayout: vi.fn(),
+          withCurrentRead: async (op: any) => op(project),
+        }),
+      },
+      manifests: { readProjectManifest: () => serviceManifest },
+      bindings: { findBinding: () => binding },
+      resolver: {
+        resolveProjectExecutionRoot: vi.fn(async () => undefined),
+        resolveProjectResource: vi.fn(async () => ({
+          state: 'bound' as const,
+          resourceId: 'git.example/acme/repo',
+          path: '/fixture/checkout',
+        })),
+      },
+      config: {
+        loadAppConfig: async () => config,
+        mutateAppConfig: async () => config,
+      },
+    } as never);
+    const admission = await service.authorizeReceiverExecution(
+      {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      },
+      () => true,
+    );
+    expect(admission.admittedProject.defaultWorkspaceIsolation).toBe(
+      'worktree',
+    );
+    const startSessionInternal = vi.fn(async () => ({
+      status: 'accepted' as const,
+    }));
+    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    await expect(
+      delegateTask(
+        {
+          prompt: 'Ship it',
+          target: PORTABLE_TARGET,
+          userId: 'u',
+          readAuthority: { userId: 'u', mode: 'local' },
+          receiverAdmission: admission,
+        } as never,
+        orchestrationStub({ startSessionInternal, dispatchWithReceipt }),
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_unavailable' });
+    expect(startSessionInternal).not.toHaveBeenCalled();
+    expect(dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test('a portable attachment without compat workingDirectory starts in the checked resource path', async () => {
+    primePeerHttp();
+    const startSessionInternal = vi.fn(async () => ({
+      status: 'accepted' as const,
+    }));
+    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
+    const stubbed = admissionStub();
+    const { workingDirectory: _compatDefault, ...admittedWithoutCompat } =
+      stubbed.admittedProject;
+    await delegateTask(
+      {
+        prompt: 'Ship it',
+        target: PORTABLE_TARGET,
+        userId: 'u',
+        readAuthority: { userId: 'u', mode: 'local' },
+        receiverAdmission: {
+          ...stubbed,
+          admittedProject: {
+            ...admittedWithoutCompat,
+            resourcePath: '/bindings/repo-checkout',
+          },
+        },
+      } as never,
+      orchestrationStub({ startSessionInternal, dispatchWithReceipt }),
+    );
+    // No invented default checkout: the provider starts in the resource's
+    // checked path with the original slug identity intact.
+    const startInput = (
+      startSessionInternal.mock.calls as unknown as Array<[Record<string, any>]>
+    )[0]![0];
+    expect(startInput.input.cwd).toBe('/bindings/repo-checkout');
+    expect(startInput.input.metadata.projectSlug).toBe('local');
+  });
+
   test('an offer that dies between capture and the start boundary refuses the session and never dispatches', async () => {
     primePeerHttp();
     const startSessionInternal = vi.fn(async () => ({

@@ -3897,6 +3897,31 @@ export async function delegateTask(
     input.target,
     resolverDependencies,
   );
+  // #484 receiver placement: a portable intent that resolves to worktree
+  // isolation refuses HERE — before any session exists, before any
+  // filesystem provisioning, and before any provider effect. This
+  // delegation path has no worktree provisioning owner (only the
+  // foreground execution path provisions, via `provisionProjectWorktree`),
+  // and the admitted coordinate names the shared repo path, so starting
+  // there would silently ignore the receiver operator's worktree policy
+  // while provisioning elsewhere would re-target the admission-bound
+  // checkout the effect guards verify. Full portable worktree support
+  // needs a later slice that provisions through the admission owners;
+  // until then the unsupported mode refuses with the existing typed
+  // `receiver_execution_unavailable` (same 403 + peer-hop mapping, no new
+  // code), never falls back to shared. `resolveTarget` above performed
+  // only handshake/agent reads — no effect to undo.
+  if (
+    portableIntent &&
+    receiverAdmission &&
+    resolved.workspace?.kind === 'project' &&
+    resolved.workspace.workspaceIsolation.mode === 'worktree'
+  ) {
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  }
   const target: DelegationTarget = {
     apiBase: resolved.access.apiBase,
     environmentId: resolved.access.environmentId,
