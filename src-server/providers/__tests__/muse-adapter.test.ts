@@ -2460,9 +2460,7 @@ describe('Muse turn supervision (#2269)', () => {
       // t=60min: the rescheduled idle window elapsed — one idle terminal.
       await vi.advanceTimersByTimeAsync(2 * minute);
       const events = await drain(harness.iterator, 506, 'replay capacity');
-      const errors = events.filter(
-        (event) => event.method === 'runtime.error',
-      );
+      const errors = events.filter((event) => event.method === 'runtime.error');
       expect(errors).toHaveLength(1);
       expect(errors[0]).toMatchObject({
         code: MUSE_TURN_IDLE_TIMEOUT_CODE,

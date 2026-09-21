@@ -9,13 +9,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { spawnOwnedChild } from '../../services/infra/process-utils.js';
 import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
   MuseAdapter,
 } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
-import { spawnOwnedChild } from '../../services/infra/process-utils.js';
 
 const { mockProviderOpsAdd, mockTurnDurationRecord, mockSessionStartRecord } =
   vi.hoisted(() => ({
@@ -69,18 +69,25 @@ setTimeout(() => process.exit(0), 200);\n`;
 
 const TREE_FIXTURE = `import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });
 writeFileSync(process.argv[2], String(grandchild.pid ?? -1));
 setInterval(() => {}, 1000);\n`;
 
-const TERMINAL_METHODS = new Set(['runtime.error', 'turn.completed', 'turn.aborted']);
+const TERMINAL_METHODS = new Set([
+  'runtime.error',
+  'turn.completed',
+  'turn.aborted',
+]);
 
 function isDead(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 0)
+    throw new Error('Invalid owned child PID');
   try {
     process.kill(pid, 0);
     return false;
-  } catch {
-    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true;
+    throw error;
   }
 }
 
@@ -110,12 +117,27 @@ interface OwnedRealChild {
 }
 
 const tempRoots: string[] = [];
+const ownedHarnesses = new Set<OwnedRealChild>();
 
-afterEach(() => {
-  for (const root of tempRoots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  const roots = tempRoots.splice(0);
+  const owned = [...ownedHarnesses];
+  ownedHarnesses.clear();
+  const failures: unknown[] = [];
+  for (const child of owned) {
+    try {
+      await stopHarness(child);
+    } catch (error) {
+      failures.push(error);
+    }
   }
-});
+  if (failures.length > 0)
+    throw new AggregateError(
+      failures,
+      `Owned child cleanup failed; diagnostics preserved at ${roots.join(', ')}`,
+    );
+  for (const root of roots) rmSync(root, { recursive: true, force: true });
+}, 60_000);
 
 async function startOwnedTurn(options: {
   threadId: string;
@@ -151,6 +173,7 @@ async function startOwnedTurn(options: {
       const { proc, release } = spawnOwnedChild(process.execPath, argv, {
         stdio: ['ignore', 'pipe', 'pipe'],
         registryDir,
+        windowsHide: true,
       });
       if (typeof proc.pid === 'number') childPids.push(proc.pid);
       const wrappedRelease = () => {
@@ -164,6 +187,7 @@ async function startOwnedTurn(options: {
     },
   });
   harness.adapter = adapter;
+  ownedHarnesses.add(harness);
   await adapter.startSession({ provider: 'muse', threadId: options.threadId });
   harness.collector = (async () => {
     for await (const event of adapter.streamEvents()) {
@@ -178,11 +202,35 @@ async function startOwnedTurn(options: {
 }
 
 async function stopHarness(harness: OwnedRealChild): Promise<void> {
-  await harness.adapter.stopAll().catch(() => {});
-  await harness.collector;
+  const failures: unknown[] = [];
+  try {
+    await harness.adapter.stopAll();
+  } catch (error) {
+    failures.push(error);
+  }
+  let collectorSettled = false;
+  void harness.collector.then(
+    () => {
+      collectorSettled = true;
+    },
+    (error) => {
+      failures.push(error);
+      collectorSettled = true;
+    },
+  );
+  await waitFor(
+    'owned event collector to settle',
+    () => collectorSettled,
+    15_000,
+  );
   for (const pid of harness.childPids) {
     await waitFor(`child ${pid} to exit`, () => isDead(pid), 15_000);
   }
+  if (failures.length > 0)
+    throw new AggregateError(
+      failures,
+      'Owned child cleanup did not complete cleanly',
+    );
 }
 
 function terminalsFor(
@@ -190,8 +238,7 @@ function terminalsFor(
   turnId: string,
 ): CanonicalRuntimeEvent[] {
   return seen.filter(
-    (event) =>
-      event.turnId === turnId && TERMINAL_METHODS.has(event.method),
+    (event) => event.turnId === turnId && TERMINAL_METHODS.has(event.method),
   );
 }
 
@@ -202,8 +249,16 @@ describe('muse adapter real owned-child supervision (#2269)', () => {
     harness = undefined;
   });
 
-  afterEach(async () => {
-    if (harness) await stopHarness(harness);
+  test('does not treat a denied process probe as proof of exit', () => {
+    const failure = Object.assign(new Error('probe denied'), { code: 'EPERM' });
+    const probe = vi.spyOn(process, 'kill').mockImplementationOnce(() => {
+      throw failure;
+    });
+    try {
+      expect(() => isDead(process.pid)).toThrow(failure);
+    } finally {
+      probe.mockRestore();
+    }
   });
 
   test('a silent real child is idle-killed, reaped, and released exactly once', async () => {
@@ -367,7 +422,7 @@ describe('muse adapter real owned-child supervision (#2269)', () => {
         const { proc, release } = spawnOwnedChild(
           process.execPath,
           [script, pidFile],
-          { stdio: ['ignore', 'pipe', 'pipe'], registryDir },
+          { stdio: ['ignore', 'pipe', 'pipe'], registryDir, windowsHide: true },
         );
         if (typeof proc.pid === 'number') childPids.push(proc.pid);
         return {
@@ -392,7 +447,11 @@ describe('muse adapter real owned-child supervision (#2269)', () => {
         return path;
       },
     };
-    await adapter.startSession({ provider: 'muse', threadId: 'real-idle-tree' });
+    ownedHarnesses.add(harness);
+    await adapter.startSession({
+      provider: 'muse',
+      threadId: 'real-idle-tree',
+    });
     harness.collector = (async () => {
       for await (const event of adapter.streamEvents()) {
         seen.push(event);
@@ -414,6 +473,8 @@ describe('muse adapter real owned-child supervision (#2269)', () => {
     });
     const grandchildPid = Number(readFileSync(pidFile, 'utf8').trim());
     expect(Number.isSafeInteger(grandchildPid)).toBe(true);
+    expect(grandchildPid).toBeGreaterThan(0);
+    harness.childPids.push(grandchildPid);
     expect(isDead(grandchildPid)).toBe(false);
 
     await waitFor('idle terminal for the tree child', () =>

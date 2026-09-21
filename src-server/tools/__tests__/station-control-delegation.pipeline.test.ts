@@ -1,10 +1,10 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -55,8 +55,7 @@ function hostedAuthority(tenant: 'alpha') {
   return sessionReadAuthorityFromRequest(
     'shared-user',
     {
-      tenantId: hostedRegistry.tenants.find((entry) => entry.id === tenant)!
-        .id,
+      tenantId: hostedRegistry.tenants.find((entry) => entry.id === tenant)!.id,
     },
     hostedRegistry,
   );
@@ -252,8 +251,15 @@ async function driveTurn(options: {
     | undefined;
   await waitForTurnTerminal(seen, turnId);
   const sessions = await adapter.listSessions();
-  const seed = { ...(sessions.find((s) => s.threadId === options.threadId) as unknown as Record<string, unknown>) };
-  const fold = projectSessionLifecycle({ session: seed as never, events: seen });
+  const seed = {
+    ...(sessions.find(
+      (s) => s.threadId === options.threadId,
+    ) as unknown as Record<string, unknown>),
+  };
+  const fold = projectSessionLifecycle({
+    session: seed as never,
+    events: seen,
+  });
   const driven: DrivenTurn = {
     adapter,
     tracker,
@@ -291,7 +297,9 @@ function sessionFromPipeline(
   };
 }
 
-function eventsFromPipeline(driven: DrivenTurn): Array<Record<string, unknown>> {
+function eventsFromPipeline(
+  driven: DrivenTurn,
+): Array<Record<string, unknown>> {
   return driven.seen as unknown as Array<Record<string, unknown>>;
 }
 
@@ -318,8 +326,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
     });
     try {
       const terminal = driven.seen.find(
-        (event) =>
-          event.turnId === turnId && event.method === 'runtime.error',
+        (event) => event.turnId === turnId && event.method === 'runtime.error',
       );
       expect(terminal).toMatchObject({ code: MUSE_TURN_IDLE_TIMEOUT_CODE });
       // The real fold classifies message-first: a budget kill reads as
@@ -378,8 +385,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
     });
     try {
       const terminal = driven.seen.find(
-        (event) =>
-          event.turnId === turnId && event.method === 'runtime.error',
+        (event) => event.turnId === turnId && event.method === 'runtime.error',
       );
       expect(terminal).toMatchObject({ code: MUSE_TURN_TOTAL_TIMEOUT_CODE });
       // Same typed attribution as idle (the fold collapses both by
@@ -463,9 +469,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
       script: async (proc) => {
         proc.stdout.write(`${deltaLine('done')}\n`);
         await flushIo();
-        proc.stdout.write(
-          `${terminalLine('completed', null, 'done')}\n`,
-        );
+        proc.stdout.write(`${terminalLine('completed', null, 'done')}\n`);
         await flushIo();
         proc.exit(0);
         await flushIo();
@@ -473,12 +477,10 @@ describe('delegation supervision producer pipeline (#2269)', () => {
     });
     try {
       const started = driven.seen.find(
-        (event) =>
-          event.method === 'turn.started' && event.turnId === turnId,
+        (event) => event.method === 'turn.started' && event.turnId === turnId,
       ) as unknown as Record<string, unknown>;
-      const declaration = (
-        started.metadata as Record<string, unknown>
-      ).supervision as Record<string, unknown>;
+      const declaration = (started.metadata as Record<string, unknown>)
+        .supervision as Record<string, unknown>;
       // Host-authored only: the real turn id, the server budgets, and no
       // caller-shaped keys leaking onto the declaration.
       expect(declaration.turnId).toBe(turnId);
@@ -539,9 +541,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
       await flushIo();
       const staleProgress = tracker.read('pipe-turns');
       expect(staleProgress?.turnId).toBe(first.turnId);
-      processes[0].stdout.write(
-        `${terminalLine('completed', null, 'one')}\n`,
-      );
+      processes[0].stdout.write(`${terminalLine('completed', null, 'one')}\n`);
       await flushIo();
       processes[0].exit(0);
       await waitForTurnTerminal(seen, first.turnId);
@@ -558,7 +558,10 @@ describe('delegation supervision producer pipeline (#2269)', () => {
       const seed = (await adapter.listSessions()).find(
         (s) => s.threadId === 'pipe-turns',
       ) as unknown as Record<string, unknown>;
-      const fold = projectSessionLifecycle({ session: seed as never, events: seen });
+      const fold = projectSessionLifecycle({
+        session: seed as never,
+        events: seen,
+      });
       expect(live?.turnId).toBe(second.turnId);
       const snapshot = snapshotFor({
         target: TARGET,
@@ -755,10 +758,7 @@ describe('delegation supervision producer pipeline (#2269)', () => {
           targetId: 'reviewer',
         },
       };
-      const events = [
-        bindingConfiguredEvent(),
-        ...eventsFromPipeline(driven),
-      ];
+      const events = [bindingConfiguredEvent(), ...eventsFromPipeline(driven)];
       const detail = { session, events };
       const canRead = (authority: {
         tenantExecutionContext?: { tenantId: string };

@@ -677,8 +677,9 @@ export function delegatedTurnSupervision(
   // Newest-first scan for the declaration that names the observed turn. The
   // status event window is bounded, so a very long turn's start event can
   // age out — that reads as honest unknown, never as a repaired policy.
-  const supervision = [...events].reverse().reduce(
-    (found: Record<string, unknown> | undefined, event) => {
+  const supervision = [...events]
+    .reverse()
+    .reduce((found: Record<string, unknown> | undefined, event) => {
       if (found || event.method !== 'turn.started') return found;
       const candidate =
         event.metadata && typeof event.metadata === 'object'
@@ -691,9 +692,7 @@ export function delegatedTurnSupervision(
         candidate.turnId === observedTurnId
         ? candidate
         : found;
-    },
-    undefined,
-  );
+    }, undefined);
   if (!supervision) return undefined;
   const idleLimitMs = optionalPositiveBoundedMs(supervision.idleLimitMs);
   const totalLimitMs = optionalPositiveBoundedMs(supervision.totalLimitMs);

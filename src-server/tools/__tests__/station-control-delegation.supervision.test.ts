@@ -107,7 +107,9 @@ describe('delegation supervision projection (#2269)', () => {
       detail:
         'The turn ended after a full window with no verified protocol activity.',
     });
-    expect(JSON.stringify(snapshot)).not.toContain('1800000ms with no verified');
+    expect(JSON.stringify(snapshot)).not.toContain(
+      '1800000ms with no verified',
+    );
     expect(snapshot.transitionReason).toBe('runtime_error');
   });
 
