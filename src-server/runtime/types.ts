@@ -171,6 +171,8 @@ export interface ToolCallContext {
   toolCallId: string;
   toolArgs: any;
   toolDescription?: string;
+  /** Untrusted model-stated intent; display-only, never approval evidence. */
+  purpose?: string;
   /** Server-only loader authority; never inferred from a model-visible name. */
   mcp?: Readonly<{
     provenance: MCPToolLoaderProvenance;

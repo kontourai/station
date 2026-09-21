@@ -257,6 +257,34 @@ describe('createStrandsFunctionTools', () => {
 
     expect(execute).toHaveBeenCalledWith({}, toolContext);
   });
+
+  test('exposes purpose only in an owned schema and strips it before execution', async () => {
+    const execute = vi.fn().mockResolvedValue('ok');
+    const [tool] = createStrandsFunctionTools(
+      [
+        {
+          name: 'read_file',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string' } },
+          },
+          execute,
+        },
+      ] as any,
+      new Map(),
+    ) as any[];
+    expect(
+      tool.config.inputSchema.properties.__station_tool_purpose,
+    ).toBeTruthy();
+    await tool.callback(
+      { path: 'README.md', __station_tool_purpose: 'inspect docs' },
+      { toolUse: { toolUseId: 'purpose-1' } },
+    );
+    expect(execute).toHaveBeenCalledWith(
+      { path: 'README.md' },
+      { toolUse: { toolUseId: 'purpose-1' } },
+    );
+  });
 });
 
 describe('destroyStrandsAgentTools', () => {

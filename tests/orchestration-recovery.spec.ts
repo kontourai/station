@@ -81,7 +81,7 @@ test.describe('Orchestration Recovery', () => {
       ],
     });
 
-    await page.getByPlaceholder('Type a message...').fill('Resume work');
+    await page.getByPlaceholder(/^Type a message/).fill('Resume work');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     await expect.poll(() => executionRequests.length).toBe(1);
@@ -171,7 +171,7 @@ test.describe('Orchestration Recovery', () => {
       sessions: [],
     });
 
-    await page.getByPlaceholder('Type a message...').fill('Restart session');
+    await page.getByPlaceholder(/^Type a message/).fill('Restart session');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     await expect.poll(() => executionRequests.length).toBe(1);

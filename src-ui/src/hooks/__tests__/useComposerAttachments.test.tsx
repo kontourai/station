@@ -441,6 +441,72 @@ describe('useComposerAttachments', () => {
     expect(reconcileAttachmentStages).toHaveBeenCalledTimes(1);
   });
 
+  test('keeps retained file bytes and asks for retry after a remounted complete stage reconciles pending', async () => {
+    const file = attachment('retained-photo');
+    const completeStage: ComposerAttachmentStageSnapshot = {
+      clientAttachmentId: file.id,
+      name: file.name,
+      mimeType: 'text/plain',
+      size: file.size,
+      state: 'complete',
+      progress: 1,
+      stageId: 'stage-retained-photo',
+      delivery: 'staged',
+      reference: {
+        stageId: 'stage-retained-photo',
+        clientAttachmentId: file.id,
+        source: 'current-composer',
+        kind: 'file',
+        name: file.name,
+        mimeType: 'text/plain',
+        size: file.size,
+        digest: `sha256-${'a'.repeat(64)}`,
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      },
+    };
+    reconcileAttachmentStages.mockResolvedValueOnce([
+      {
+        stageId: 'stage-retained-photo',
+        state: 'pending',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      },
+    ]);
+    let stages = [completeStage];
+    const onStagesChange = vi.fn((next: ComposerAttachmentStageSnapshot[]) => {
+      stages = next;
+    });
+    const { result, rerender } = renderHook(
+      ({ hookStages }) =>
+        useComposerAttachments({
+          apiBase: 'http://station.test',
+          ownerKey: 'reopened-chat',
+          attachments: [file],
+          stages: hookStages,
+          capabilities: { images: true, files: true },
+          onAddAttachments: vi.fn(),
+          onStagesChange,
+        }),
+      { initialProps: { hookStages: stages } },
+    );
+
+    await waitFor(() =>
+      expect(onStagesChange).toHaveBeenCalledWith([
+        expect.objectContaining({
+          clientAttachmentId: file.id,
+          state: 'retryable',
+          needsFile: false,
+        }),
+      ]),
+    );
+    rerender({ hookStages: stages });
+
+    expect(result.current.sendBlockedReason).toBe(
+      'Retry or remove every attachment marked for retry before sending.',
+    );
+    expect(stageComposerAttachments).not.toHaveBeenCalled();
+    expect(file.data).toBe('data:text/plain;base64,aGVsbG8=');
+  });
+
   test('does not reconcile an uploading stage before its supervised transfer settles', async () => {
     const stage: ComposerAttachmentStageSnapshot = {
       clientAttachmentId: 'active-upload',

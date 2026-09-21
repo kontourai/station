@@ -188,7 +188,7 @@ test.describe('Multi-turn context retention', () => {
     await page.goto(new URL(`/agents/${agentSlug}`, baseURL).href);
     await openChatWithAgent(page, agentName);
 
-    const composer = page.getByPlaceholder('Type a message...');
+    const composer = page.getByPlaceholder(/^Type a message/);
     const transcript = page.getByRole('log', {
       name: 'Conversation transcript',
     });

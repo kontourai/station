@@ -298,6 +298,44 @@ test('two consecutive tool calls collapse to the batch summary, not two rows', a
   expect(screen.queryByText('Read source-0.ts')).toBeNull();
 });
 
+test('a UI milestone remains the same mounted node while an adjacent batch toggles', async () => {
+  render(
+    <MessageContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'a',
+          toolName: 'Read',
+          state: 'result',
+        },
+        {
+          type: 'tool-invocation',
+          toolCallId: 'b',
+          toolName: 'Read',
+          state: 'result',
+        },
+        {
+          type: 'ui-block',
+          uiBlock: { type: 'card', body: 'Milestone reached', fields: [] },
+        },
+      ]}
+      textContent=""
+      chatFontSize={14}
+      showReasoning={false}
+      showToolDetails={false}
+      isStreamingMessage={false}
+    />,
+  );
+  const milestone = screen.getByText('Milestone reached');
+  const toggle = await screen.findByRole('button', {
+    name: /Used 2 tools|Read 2/,
+  });
+  fireEvent.click(toggle);
+  expect(screen.getByText('Milestone reached')).toBe(milestone);
+  fireEvent.click(toggle);
+  expect(screen.getByText('Milestone reached')).toBe(milestone);
+});
+
 test('a collapsed run still surfaces Allow Once under the summary', async () => {
   const onToolApproval = vi.fn();
   render(

@@ -79,6 +79,16 @@ export function ChatDockMobileOverflowSheet({
         >
           Chats
         </button>
+        {overflow.onOpenConversationHistory && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(overflow.onOpenConversationHistory!)}
+          >
+            Conversation history
+          </button>
+        )}
         {overflow.onOpenProject && (
           <button
             type="button"
@@ -105,6 +115,11 @@ export function ChatDockMobileOverflowSheet({
               </span>
             )}
           </button>
+        )}
+        {overflow.inputOriginLabel && (
+          <div className="composer-actions-menu__item" role="note">
+            {overflow.inputOriginLabel}
+          </div>
         )}
         {/* One named entry point per snap state the drag gesture can reach
             (collapsed / half / full), so the pointer gesture is never the only

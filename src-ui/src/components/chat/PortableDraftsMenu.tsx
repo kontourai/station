@@ -9,6 +9,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { composerDisplayValue } from './composer-mentions';
 
 interface PortableDraftsMenuProps {
   quotes?: readonly SavedAnswerQuote[];
@@ -109,7 +110,7 @@ export function PortableDraftsMenu({
                 >
                   <strong>{draft.name}</strong>
                   <span>
-                    {draft.text ||
+                    {composerDisplayValue(draft.text) ||
                       (draft.quotes?.length
                         ? 'Quoted context'
                         : 'Image-only prompt')}

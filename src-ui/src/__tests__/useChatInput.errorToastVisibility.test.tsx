@@ -108,6 +108,10 @@ vi.mock('../hooks/useActiveChatSessions', async () => {
   };
 });
 
+import {
+  mentionToken,
+  sessionReferenceToken,
+} from '../components/chat/composer-mentions';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { useChatInput } from '../hooks/useChatInput';
@@ -249,6 +253,140 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     expect(activeChatsStore.getSnapshot()[SESSION_ID]?.input).toBe(
       'survive switching',
     );
+  });
+
+  test('expands a durable compact file mention at the actual send boundary', async () => {
+    const hook = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+          workingDirectory: '/repo/station',
+          mentionRequestScope: {
+            apiBase: 'http://station.test',
+            authorityKey: 'owner',
+            isCurrent: () => true,
+          },
+          mentionAuthority: 'station-stable',
+        }),
+      { wrapper },
+    );
+    const mention = mentionToken({
+      label: 'ChatInputArea.tsx',
+      path: 'src-ui/src/components/chat/ChatInputArea.tsx',
+      workspace: '/repo/station',
+      authority: 'station-stable',
+      type: 'file',
+    });
+
+    await act(() => hook.result.current.handleSend(`Review ${mention}`));
+
+    expect(sendMessageMock).toHaveBeenCalledWith(
+      SESSION_ID,
+      'dev-agent',
+      undefined,
+      'Review @"/repo/station/src-ui/src/components/chat/ChatInputArea.tsx"',
+      [],
+      undefined,
+      undefined,
+      undefined,
+    );
+  });
+
+  test('expands a reference-only draft at the actual send boundary', async () => {
+    const hook = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+          mentionRequestScope: {
+            apiBase: 'http://station.test',
+            authorityKey: 'owner',
+            isCurrent: () => true,
+          },
+          mentionAuthority: 'station-stable',
+        }),
+      { wrapper },
+    );
+    const reference = sessionReferenceToken({
+      label: 'Earlier work',
+      conversationId: 'conversation-a',
+      authority: 'station-stable',
+    });
+    await act(() => hook.result.current.handleSend(reference));
+    expect(sendMessageMock.mock.calls[0]?.[3]).toBe(
+      '[Earlier work](/activity?session=conversation-a)',
+    );
+  });
+
+  test('refuses a persisted mention after its workspace authority changes', async () => {
+    const hook = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+          workingDirectory: '/repo/two',
+          mentionRequestScope: {
+            apiBase: 'http://station.test',
+            authorityKey: 'owner',
+            isCurrent: () => true,
+          },
+          mentionAuthority: 'station-stable',
+        }),
+      { wrapper },
+    );
+    const mention = mentionToken({
+      label: 'README.md',
+      path: 'README.md',
+      workspace: '/repo/one',
+      authority: 'station-stable',
+      type: 'file',
+    });
+
+    await act(() => hook.result.current.handleSend(`Read ${mention}`));
+
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(showToastMock).toHaveBeenCalledWith(
+      'A file mention belongs to a different Station or workspace. Remove it or return to that scope before sending.',
+      'error',
+    );
+  });
+
+  test('does not dispatch a mention draft after its captured authority is revoked', async () => {
+    const hook = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+          workingDirectory: '/repo',
+          mentionRequestScope: {
+            apiBase: 'http://station.test',
+            authorityKey: 'owner',
+            isCurrent: () => false,
+          },
+          mentionAuthority: 'station-stable',
+        }),
+      { wrapper },
+    );
+    const mention = mentionToken({
+      label: 'README.md',
+      path: 'README.md',
+      workspace: '/repo',
+      authority: 'station-stable',
+      type: 'file',
+    });
+
+    await act(() => hook.result.current.handleSend(`Read ${mention}`));
+
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
   test('sends the saved quote with existing text and keeps it after refusal', async () => {

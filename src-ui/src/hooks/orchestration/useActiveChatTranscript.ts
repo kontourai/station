@@ -312,9 +312,6 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         sourceEventId: message.metadata?.sourceEventId,
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
-        changedFiles: message.metadata?.turnId
-          ? changedFilesByTurn.get(message.metadata.turnId)
-          : undefined,
       }));
     const active =
       session.orchestrationTurnOpen ||
@@ -483,7 +480,11 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       })),
       supplementalMessages,
       retainedLiveAnswer ? [retainedLiveAnswer] : [],
-    );
+    ).map((message) => {
+      if (message.changedFiles || !message.turnId) return message;
+      const changedFiles = changedFilesByTurn.get(message.turnId);
+      return changedFiles ? { ...message, changedFiles } : message;
+    });
   }, [
     enabled,
     session.messages,

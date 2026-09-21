@@ -27,7 +27,10 @@ import {
   useAgents,
   useAgentsLoaded,
 } from '../../contexts/AgentsContext';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
 import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
@@ -83,6 +86,7 @@ import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
 } from '../agent-selection-policy';
+import { durableMentionAuthority } from '../chat/composer-mentions';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
@@ -122,6 +126,7 @@ import {
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
+import { MobileSheetPending } from './MobileSheetPending';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
 import { NewChatUnavailableError } from './newChatErrors';
 import {
@@ -390,6 +395,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
+  const requestAuthority = useHostRequestAuthorityScope();
+  const { captureCredentialEvidence } = useConnections();
+  const mentionCredentialEvidence = captureCredentialEvidence();
+  const mentionAuthority = mentionCredentialEvidence
+    ? durableMentionAuthority({
+        apiBase: mentionCredentialEvidence.origin,
+        connectionId: mentionCredentialEvidence.connectionId,
+        authorityGeneration: mentionCredentialEvidence.authorityGeneration,
+        credentialState: mentionCredentialEvidence.credentialState,
+      })
+    : null;
+  const timelineSourceRef = useRef<string | null>(null);
   const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
     // Legacy placement preference remains exposed to the Chat settings
@@ -420,7 +437,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
   const { projects } = useProjects();
-  const { showToast } = useToast();
+  const { showToast, dismissToast } = useToast();
   // station#3687 seams 3/5: an inbox click that opened nothing says so.
   const showInboxOpenFailure = useCallback(
     (message: string) => void showToast(message),
@@ -500,6 +517,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const {
     data: orchestrationSessions = [],
     status: orchestrationSessionsStatus,
+    isError: orchestrationSessionsFailed,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
   // The inbox rows' hover cards resolve git facts against the row's local
@@ -518,6 +536,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const openChatItems = useOpenChats(agents, orchestrationSessions);
   const inventory = useConversationInventoryQuery();
+  const taskItemsPending =
+    orchestrationSessionsStatus === 'pending' ||
+    inventory.isPending ||
+    !agentsLoaded;
+  const taskItemsFailed = orchestrationSessionsFailed || inventory.isError;
   const acknowledgeConversation = useAcknowledgeConversationMutation();
   const inventoryById = useMemo(
     () =>
@@ -898,6 +921,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     runtimeConnection: chatEngineConnection,
     agentDefaultModel: agentDefaultModelId,
     attachmentCapabilities,
+    workingDirectory: sessionDisplayCwd,
+    mentionRequestScope: requestAuthority,
+    mentionAuthority,
     defaultModelSource: activeSessionForHook?.defaultModelSource,
     onSessionMigrate: (newSessionId) => {
       setActiveSessionId(newSessionId);
@@ -926,6 +952,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const activeChatAgent = activeSession
     ? agents.find((agent) => agent.slug === activeSession.agentSlug)
     : undefined;
+  timelineSourceRef.current = activeSession?.id ?? null;
 
   // station#3309: the model the dock header names — the same answer the
   // composer's model pill gives, arrived at the same way. `effectiveChatModelId`
@@ -1023,6 +1050,23 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: activeSession?.currentSessionId,
     workingDirectory: sessionDisplayCwd,
   });
+  const openConversationHistory = () => {
+    if (!activeSession) return;
+    void import('./timelineOpen').then((module) =>
+      module.openTimeline(
+        apiBase,
+        activeSession,
+        requestAuthority,
+        showToast,
+        dismissToast,
+        (id) => timelineSourceRef.current === id,
+        (storeId, routeId) => {
+          setActiveSessionId(storeId);
+          setActiveChat(routeId);
+        },
+      ),
+    );
+  };
   /**
    * #1536 F: rows whose subject is the active CONVERSATION rather than the
    * dock's chrome, so the header takes them as data instead of deriving them.
@@ -1044,6 +1088,25 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    */
   const dockMoreActions: DockMoreAction[] = [
     ...copyActions,
+    ...(activeSession?.conversationId && !activeSession.replay
+      ? [
+          {
+            key: 'conversation-history',
+            label: 'Conversation history',
+            onSelect: openConversationHistory,
+          },
+        ]
+      : []),
+    ...(activeOrchestrationSession?.inputOrigin
+      ? [
+          {
+            key: 'input-origin',
+            label: `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`,
+            disabled: true,
+            onSelect: () => {},
+          },
+        ]
+      : []),
     ...(!scopedProjectSlug && sessionCodingLayout && activeSession?.projectSlug
       ? [
           {
@@ -2072,12 +2135,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
                 onOpenChatSettings: openChatSettings,
+                onOpenConversationHistory:
+                  activeSession?.conversationId && !activeSession.replay
+                    ? openConversationHistory
+                    : undefined,
                 onOpenProject: activeSession?.projectSlug
                   ? () => setProject(activeSession.projectSlug!)
                   : null,
                 openProjectName: activeSession?.projectSlug
                   ? (sessionProjectName ?? activeSession.projectSlug)
                   : null,
+                inputOriginLabel: activeOrchestrationSession?.inputOrigin
+                  ? `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`
+                  : undefined,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
                 sessionInventory:
@@ -2131,6 +2201,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     session={activeSession}
                     agent={activeChatAgent}
                     modelLabel={activeChatModelLabel}
+                    inputOrigin={activeOrchestrationSession?.inputOrigin}
                     onClose={removeSession}
                   />
                 ) : null
@@ -2410,6 +2481,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onNewChat={handleStartNewChatWithMessage}
                       onRetryConversationOpen={retryActiveConversationOpen}
                       activeSession={activeSession}
+                      workingDirectory={sessionDisplayCwd}
                       activeOrchestrationSession={activeOrchestrationSession}
                       activeOrchestrationSessionRead={
                         activeOrchestrationSessionRead
@@ -2468,19 +2540,27 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         openUserSelectedConversationInScopedPane
                       }
                       onForkFromTurn={(source) => {
-                        if (!activeSession?.conversationId) return;
-                        const conversationId = activeSession.conversationId;
                         const generation = ++forkGenerationRef.current;
                         void Promise.all([
                           import('./forkAttemptKey'),
                           import('./forkSourceExecution'),
+                          import('../../hooks/orchestration/replay/controller'),
                         ]).then(
                           ([
                             { getOrCreateForkAttemptKey },
                             { resolveHistoricalForkExecution },
+                            {
+                              getConversationTimelineContext,
+                              returnToLatestConversation,
+                            },
                           ]) => {
                             if (generation !== forkGenerationRef.current)
                               return;
+                            const timeline = getConversationTimelineContext();
+                            const conversationId =
+                              activeSession?.conversationId ??
+                              timeline?.sourceConversationId;
+                            if (!conversationId) return;
                             const sourceExecution =
                               resolveHistoricalForkExecution(
                                 source.sessionId,
@@ -2490,8 +2570,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               id: conversationId,
                               agentSlug: source.agentSlug,
                               turnId: source.turnId,
-                              projectSlug: activeSession.projectSlug,
-                              projectName: activeSession.projectName,
+                              projectSlug:
+                                activeSession?.projectSlug ??
+                                timeline?.sourceProjectSlug,
+                              projectName:
+                                activeSession?.projectName ??
+                                timeline?.sourceProjectName,
                               model: source.model,
                               modelSource: source.model ? 'runtime' : undefined,
                               defaultModel: source.model,
@@ -2509,6 +2593,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               ),
                             });
                             setForkOperation({ pending: false, error: null });
+                            if (timeline) returnToLatestConversation();
                             setShowNewChatModal(true);
                           },
                         );
@@ -2559,6 +2644,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               open: isMobile && isTaskSwitcherOpen,
               mode: taskSwitcherMode,
               tasks: taskItems,
+              pending: taskItemsPending,
+              loadError: taskItemsFailed,
+              onRetryLoad: () => {
+                void refetchOrchestrationSessions();
+                void inventory.refetch();
+              },
               agents,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
@@ -2584,7 +2675,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 openImportedSessionInPane(threadId);
               },
             }}
-            pending={null}
+            pending={
+              <MobileSheetPending
+                label={
+                  taskSwitcherMode === 'activity' ? 'Activity' : 'Switch task'
+                }
+                style={visualViewport.style}
+                onClose={() => setIsTaskSwitcherOpen(false)}
+                returnFocusTarget={
+                  taskSwitcherMode === 'activity'
+                    ? activityTriggerRef.current
+                    : taskSwitcherTriggerRef.current
+                }
+              />
+            }
           />
         )}
       </ChatPaneFileDropBoundary>
@@ -3006,3 +3110,5 @@ export function ChatDock({
     />
   );
 }
+
+import { useConnections } from '@kontourai/station-connect';

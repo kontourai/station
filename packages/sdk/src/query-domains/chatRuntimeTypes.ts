@@ -61,6 +61,8 @@ export interface ConversationMessagePart {
   server?: string;
   toolName?: string;
   originalName?: string;
+  purpose?: string;
+  toolPurpose?: string;
   toolCallId?: string;
   uiBlock?: UIBlock;
 }

@@ -15,12 +15,16 @@
 import { notifyCredentialChanged } from '@kontourai/station-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { handleOrchestrationEvent } = vi.hoisted(() => ({
-  handleOrchestrationEvent: vi.fn(),
-}));
+const { handleOrchestrationEvent, settleSemanticDeliveryBuffer } = vi.hoisted(
+  () => ({
+    handleOrchestrationEvent: vi.fn(),
+    settleSemanticDeliveryBuffer: vi.fn(),
+  }),
+);
 
 vi.mock('../hooks/orchestration/eventHandlers', () => ({
   handleOrchestrationEvent,
+  settleSemanticDeliveryBuffer,
 }));
 
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
@@ -60,6 +64,7 @@ function openSseResponseWithOneFrame(frame: string): Response {
 describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regression', () => {
   beforeEach(() => {
     handleOrchestrationEvent.mockReset();
+    settleSemanticDeliveryBuffer.mockReset();
   });
 
   afterEach(() => {
@@ -88,6 +93,8 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
     // before "remounting" — mirrors a real unmount/remount tick.
     await Promise.resolve();
     await Promise.resolve();
+    expect(settleSemanticDeliveryBuffer).toHaveBeenCalledWith(APP_ORIGIN, true);
+    expect(settleSemanticDeliveryBuffer).not.toHaveBeenCalledWith(APP_ORIGIN);
 
     ensureOrchestrationEventStream(APP_ORIGIN);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));

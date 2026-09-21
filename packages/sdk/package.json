@@ -15,6 +15,7 @@
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
+    "./coding-file-mentions-query": "./src/query-domains/chatRuntimeCoding.ts",
     "./workspace-pane": "./src/workspace-pane.ts",
     "./task-outputs": "./src/task-outputs.ts",
     "./session-outputs": "./src/session-outputs.ts",
@@ -30,6 +31,7 @@
     "./task-tool-results": "./src/task-tool-results.ts",
     "./flow-gate-evaluations": "./src/flow-gate-evaluations.ts",
     "./client/flow-gate-evaluations": "./src/client/flow-gate-evaluations.ts",
+    "./client/checkpoint-restore": "./src/client/checkpoint-restore.ts",
     "./client": "./src/client/index.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
@@ -57,6 +59,7 @@
     "./conversation-pull-request-links": "./src/client/conversation-pull-request-links.ts",
     "./input-reply": "./src/client/input-reply.ts",
     "./local-accounts": "./src/client/local-accounts.ts",
+    "./authority-observation": "./src/client/authority-observation.ts",
     "./application-session": "./src/client/application-session.ts"
   },
   "scripts": {

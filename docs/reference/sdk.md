@@ -44,6 +44,61 @@ and default-Agent migration remain separately tracked by #1372.
 
 All hooks must be called inside a component tree wrapped by `SDKProvider`.
 
+### Scoped coding file mention queries
+
+`@kontourai/station-sdk/coding-file-mentions-query` exports
+`useCodingFileMentionCandidatesQuery`, `fetchCodingFileMentionCandidates`,
+`CodingFileEntry`, and `CodingFileMentionCandidates`. This opt-in subpath is the
+public metadata lookup used by Station's chat composer; it does not read file
+contents.
+
+The hook accepts a workspace path, a search string, and an `ApiRequestScope`
+extended with `isCurrent()`. Its cache identity includes the exact API origin
+and opaque authority key. The request is cancelled or its result withheld when
+that captured authority is no longer current, so a reconnect cannot rebind an
+old result to a new account. Results are bounded to 200 entries. `partial: true`
+means the server stopped at its scan/result budget and the caller should ask the
+user to refine the path.
+
+```tsx
+import { useCodingFileMentionCandidatesQuery } from
+  '@kontourai/station-sdk/coding-file-mentions-query';
+
+const candidates = useCodingFileMentionCandidatesQuery(
+  '/workspace/project',
+  'src/chat',
+  requestScope,
+);
+```
+
+The returned `CodingFileEntry` contains `name`, project-relative `path`, and
+`type: 'file' | 'directory'`, with optional size, modification time, and bounded
+children. A selected path is still subject to the server's workspace
+containment and authorization checks; query metadata does not grant file
+access.
+
+### Conversation input-origin support
+
+`OrchestrationSessionSummary.inputOrigin` is a closed, optional server-issued
+union. The current supported arm is `delegation`. The orchestration read model
+derives it from the same persisted `session.started` / `session.configured`
+metadata that produces `OrchestrationSessionSummary.delegation` in
+`src-server/services/orchestration/orchestration-session-state.ts`. Missing or
+unrecognized origin evidence leaves the member absent; clients must not infer
+it from a local tab's source label or a reported device surface.
+
+Schedule and voice attribution are not currently projected onto conversation
+summaries. Scheduled occurrences are projected as independent run IDs by
+`src-server/services/orchestration/run-projection.ts` and read through
+`run-service.ts`; that projection carries no durable conversation identity.
+Voice effects are retained in `voice_turn_runs` by
+`src-server/services/orchestration/event-store.ts`; `voice-session.ts` records
+the provider session/prompt/turn tuple and uses the Agent slug as `sourceId`,
+not a Station conversation ID. Until those ledgers publish an authorized,
+durable conversation join, their `inputOrigin` remains absent. Browser
+microphone dictation follows the ordinary foreground-message path and does not
+prove a voice-session origin.
+
 ### Agent Hooks
 
 #### `useAgents(): AgentSummary[]`
@@ -1080,6 +1135,17 @@ one-time recovery link. Capture the selected Station request scope, require
 explicit confirmation and keep recovery links out of persisted caches. External
 providers return a guidance projection instead of local account controls.
 
+`@kontourai/station-sdk/authority-observation` exports
+`getAuthorityObservation(apiBase, options)` for the closed, credential-bound
+answer to "what authority is this request acting as": the current public home
+identity, the server-resolved effective principal (kind+id only, no contacts),
+and the verified grant tier (operator, or paired Device with its public Device
+id and granted scopes). The read is authorization-neutral — it describes
+authority and grants nothing — and fails closed on absent, conflicting, or
+revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions`
+(request scope, credential, headers) as the caller's other protected requests;
+validate the closed shape before caching or comparing the public identity tuple.
+
 ## Plugin Query Hooks
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.
@@ -2005,6 +2071,42 @@ Live delivery remains owned by the orchestration SSE stream.
 
 The session-scoped `fetchOrchestrationSessionEventWindow` accepts the same
 option for conversations without a multi-session lineage.
+
+## Workspace checkpoint restore
+
+`previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
+short-lived, owner-bound preview for the turn's settle checkpoint. It includes
+the preview id, repository root, target and currently observed tree hashes,
+bounded changed paths, and expiry. `confirmCheckpointRestore` submits that
+exact preview with `confirmed: true` and the captured current-tree hash.
+
+```ts
+import {
+  confirmCheckpointRestore,
+  previewCheckpointRestore,
+} from '@kontourai/station-sdk/client/checkpoint-restore';
+
+const preview = await previewCheckpointRestore(
+  requestScope.apiBase,
+  sessionId,
+  turnId,
+  requestScope,
+);
+await confirmCheckpointRestore(
+  requestScope.apiBase,
+  sessionId,
+  turnId,
+  preview,
+  requestScope,
+);
+```
+
+The server consumes a preview once and refuses stale authority, expiry,
+session/turn mismatch, workspace changes after preview, or a workspace with an
+active or starting local turn. Restore changes repository files only; it does
+not rewind conversation history or external tool effects. Treat an
+indeterminate response as possible effect and inspect the workspace before
+retrying.
 
 ## Feedback analysis
 

@@ -283,6 +283,17 @@ export interface OrchestrationDelegationContext {
 }
 
 /**
+ * Server-issued provenance for the input that created or currently drives a
+ * conversation. Absent means Station cannot prove a supported origin.
+ * Client UI source hints and reported device surfaces never populate this.
+ */
+export type OrchestrationInputOrigin = {
+  kind: 'delegation';
+  taskId: string;
+  title?: string;
+};
+
+/**
  * WHICH arm decided a session's open requests cannot be answered here, kept
  * so a misfiring one is distinguishable ever after: `past_resume` (the
  * session's own folded state says the work cannot pick up again) vs
@@ -519,6 +530,35 @@ export interface TurnProgressObservation {
 }
 
 /**
+ * #2269: the finite per-TURN supervision an adapter declared for one turn
+ * (never an aggregate budget across later continuations or new turns).
+ *
+ * Distinct windows: `totalLimitMs` is an absolute wall-clock ceiling from
+ * `startedAt` that no activity or approval can move; `idleLimitMs` fires
+ * after a full window with no verified protocol activity measured from the
+ * last verified activity (turn start initially), NOT from `startedAt`.
+ * Both fields are required on a declaration; a provider that declares no
+ * hard budget publishes no declaration at all (honest unknown, never a
+ * deadline derived from RPC/discovery timeouts or request metadata).
+ *
+ * Producer rule: only the adapter that owns the child process may publish
+ * these facts (on its own `turn.started` metadata), and only the delegation
+ * projection may forward them. Request/child/user metadata is never a
+ * source — it is untrusted input, not a budget override.
+ */
+export interface TurnSupervisionFacts {
+  provider: ProviderSession['provider'];
+  turnId: string;
+  startedAt: string;
+  /** Absolute wall-clock deadline for the turn (ISO timestamp). */
+  deadlineAt: string;
+  /** Idle window: full silence of verified protocol activity this long ends the turn. */
+  idleLimitMs: number;
+  /** Absolute turn budget in milliseconds; never rescheduled by activity. */
+  totalLimitMs: number;
+}
+
+/**
  * A compact, server-derived explanation for a session's CURRENT non-clean
  * ending. It is intentionally not a transcript excerpt: `detail`, when
  * present, is already one bounded, human-shaped line suitable for an inbox.
@@ -628,6 +668,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    */
   displayTitle?: string;
   delegation?: OrchestrationDelegationContext;
+  /** Closed, server-derived input provenance; unknown origins stay absent. */
+  inputOrigin?: OrchestrationInputOrigin;
   /**
    * Latest model Station itself requested/configured, from
    * session.configured/turn.started metadata. archive#1182: despite the
@@ -987,6 +1029,14 @@ export interface ConversationListItem {
     forkedFrom?: ConversationForkProvenance;
     forkedTo: ConversationForkProvenance[];
   };
+  /**
+   * Server-derived admission for exposing this row's metadata in another
+   * conversation. Hosted/shared deployments remain refused until their
+   * destination visibility contract can prove the exposure is permitted.
+   */
+  referenceEligibility?:
+    | { eligible: true; visibility: 'personal-private' }
+    | { eligible: false; reason: 'destination-visibility-unavailable' };
 }
 
 /**

@@ -446,7 +446,7 @@ test.describe
         picker.locator('.new-chat-modal__context-button'),
       ).toContainText(projectSlug);
       await picker.getByRole('button', { name: new RegExp(agentName) }).click();
-      const composer = page.getByPlaceholder('Type a message...');
+      const composer = page.getByPlaceholder(/^Type a message/);
       await expect(composer).toBeVisible({ timeout: 20_000 });
       await composer.fill('Give me the public answer.');
       await composer.press('Enter');

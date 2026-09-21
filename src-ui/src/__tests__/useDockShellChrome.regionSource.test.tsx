@@ -60,6 +60,13 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
     setDeviceSetting: harness.setDeviceSetting,
   }),
 }));
+// `useDockShellChrome` reads the canonical Project list for Chat's stale
+// project-binding cleanup. This region-model suite does not exercise request
+// authority, so supply the same empty host scope the app shell owns before a
+// connection is selected.
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
 
 const { RegionModelProvider, useRegionModel } = await import(
   '../contexts/RegionModelContext'

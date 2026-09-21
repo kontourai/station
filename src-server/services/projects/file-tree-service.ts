@@ -11,6 +11,12 @@ import {
   writeFileSync,
 } from 'node:fs';
 import {
+  lstat as lstatAsync,
+  readdir as readdirAsync,
+  realpath as realpathAsync,
+  stat as statAsync,
+} from 'node:fs/promises';
+import {
   basename,
   dirname,
   isAbsolute,
@@ -136,16 +142,69 @@ export class FileTreeService {
     }
   }
 
-  searchFiles(dirPath: string, query: string, maxResults = 50): FileEntry[] {
+  async searchFiles(
+    dirPath: string,
+    query: string,
+    maxResults = 50,
+    maxScanned = 5_000,
+  ): Promise<{ entries: FileEntry[]; scanTruncated: boolean }> {
     fileTreeOps.add(1, { operation: 'searchFiles' });
-    const lower = query.toLowerCase();
-    const all = this.listDirectory(dirPath, {
-      depth: 10,
-      maxEntries: MAX_ENTRIES,
-    });
-    return all
-      .filter((e) => e.name.toLowerCase().includes(lower))
-      .slice(0, maxResults);
+    const lower = query.replaceAll('\\', '/').toLowerCase();
+    const base = this._realWorkspaceRoot(dirPath);
+    const entries: FileEntry[] = [];
+    let scanned = 0;
+    let scanTruncated = false;
+    const walk = async (current: string, depth: number): Promise<void> => {
+      if (depth < 0 || entries.length >= maxResults || scanTruncated) return;
+      let names: string[];
+      try {
+        names = await readdirAsync(current);
+      } catch {
+        scanTruncated = true;
+        return;
+      }
+      for (const name of names) {
+        if (entries.length >= maxResults) {
+          scanTruncated = true;
+          return;
+        }
+        scanned += 1;
+        if (scanned > maxScanned) {
+          scanTruncated = true;
+          return;
+        }
+        const fullPath = join(current, name);
+        let resolvedPath: string;
+        let stat: Awaited<ReturnType<typeof statAsync>>;
+        try {
+          if ((await lstatAsync(fullPath)).isSymbolicLink()) continue;
+          resolvedPath = await realpathAsync(fullPath);
+          this._assertWithin(base, resolvedPath, name);
+          stat = await statAsync(resolvedPath);
+        } catch {
+          continue;
+        }
+        const isDir = stat.isDirectory();
+        if (isDir && SKIP_DIRS.has(name)) continue;
+        const path = relative(base, resolvedPath);
+        if (
+          !lower ||
+          path.replaceAll('\\', '/').toLowerCase().includes(lower)
+        ) {
+          entries.push({
+            name,
+            path,
+            type: isDir ? 'directory' : 'file',
+            size: isDir ? undefined : stat.size,
+            modified: stat.mtime.toISOString(),
+          });
+        }
+        if (isDir && depth > 0) await walk(resolvedPath, depth - 1);
+        else if (isDir) scanTruncated = true;
+      }
+    };
+    await walk(base, 10);
+    return { entries, scanTruncated };
   }
 
   readFile(filePath: string): string {

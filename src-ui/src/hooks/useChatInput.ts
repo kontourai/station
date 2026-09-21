@@ -150,6 +150,14 @@ interface UseChatInputOptions {
     files: boolean;
     imageRefusal?: string;
   };
+  /** Exact workspace authority used to resolve persisted file mentions. */
+  workingDirectory?: string | null;
+  mentionRequestScope?: {
+    apiBase: string;
+    authorityKey: string;
+    isCurrent: () => boolean;
+  };
+  mentionAuthority?: string | null;
 }
 
 export function useChatInput({
@@ -168,6 +176,9 @@ export function useChatInput({
   onOpenNewChat,
   isChatVisible = true,
   attachmentCapabilities = { images: false, files: false },
+  workingDirectory,
+  mentionRequestScope,
+  mentionAuthority,
 }: UseChatInputOptions) {
   const { showToast } = useToast();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -458,11 +469,36 @@ export function useChatInput({
         );
         return;
       }
+      const canonicalDraft = sanitizeChatInput(
+        overrideText !== undefined ? overrideText : input,
+      );
+      let expanded = { text: canonicalDraft } as {
+        text?: string;
+        error?: string;
+      };
+      if (canonicalDraft.includes('@[m:') || canonicalDraft.includes('@[r:')) {
+        const { expandComposerMentions } = await import(
+          '../components/chat/composer-mention-wire'
+        );
+        if (
+          !mentionRequestScope?.isCurrent() ||
+          !activeChatsStore.getSnapshot()[sessionId] ||
+          (overrideText === undefined &&
+            activeChatsStore.getSnapshot()[sessionId]?.input !== input)
+        )
+          return;
+        expanded = expandComposerMentions(
+          canonicalDraft,
+          workingDirectory,
+          mentionAuthority,
+        );
+      }
+      if (expanded.error) {
+        showToast(expanded.error, 'error');
+        return;
+      }
       const text = sanitizeChatInput(
-        composeQuotedReply(
-          overrideText !== undefined ? overrideText : input,
-          submittedQuotes,
-        ),
+        composeQuotedReply(expanded.text ?? canonicalDraft, submittedQuotes),
       );
       if (text.length > CHAT_INPUT_MAX_CHARS) {
         showToast(
@@ -539,6 +575,9 @@ export function useChatInput({
       addToInputHistory,
       clearDraft,
       showToast,
+      workingDirectory,
+      mentionRequestScope,
+      mentionAuthority,
     ],
   );
 
