@@ -72,8 +72,8 @@ import { nodeApplicationChannel } from './lib/node-application-channel.js';
 import { startSelfHostedBrokerLab } from './lib/self-hosted-broker-lab.js';
 
 // Isolated transport evaluation; the opt-in account mode uses a real Station.
-const TURN_IMAGE =
-  'coturn/coturn@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3';
+import { createTurnFixture, TURN_FIXTURE_IMAGE } from './lib/turn-fixture.js';
+
 const args = process.argv.slice(2);
 if (
   args.some(
@@ -133,23 +133,15 @@ const interrupt = () =>
 process.once('SIGINT', interrupt);
 process.once('SIGTERM', interrupt);
 let report: Record<string, unknown> | undefined;
-const dockerHost =
-  process.platform === 'win32'
-    ? 'npipe:////./pipe/docker_engine'
-    : 'unix:///var/run/docker.sock';
-const docker = async (args: string[]) => {
-  const result = await runLabCommand(
-    'docker',
-    ['--host', dockerHost, '--config', join(root, 'docker-config'), ...args],
-    root,
-  );
-  return args[0] === 'logs' ? result.stdout + result.stderr : result.stdout;
-};
 const username = 'station-fixture';
 const password = randomBytes(24).toString('hex');
-const containerOwner = randomBytes(16).toString('hex');
-const containerName = `station-turn-${containerOwner}`;
-let containerId: string | undefined;
+const turnFixture = createTurnFixture({
+  directory: root,
+  username,
+  password,
+  signal: abort.signal,
+  failAfterCreate: args.includes('--fail-after-create'),
+});
 let turnUdpPort: number | undefined;
 let turnTcpPort: number | undefined;
 let relay: Awaited<ReturnType<typeof startLabRelay>> | undefined;
@@ -181,45 +173,6 @@ const server = createServer((request, response) => {
     '<!doctype html><title>Station browser transport fixture</title><script src="/connection-proof.js"></script>',
   );
 });
-
-async function cleanupContainer() {
-  // Generation identity is durable before allocation: even a lost create
-  // response cannot strand an unstarted container or justify generic cleanup.
-  const ids = (
-    await docker([
-      'ps',
-      '-a',
-      '--no-trunc',
-      '--filter',
-      `label=station.fixture.owner=${containerOwner}`,
-      '--format',
-      '{{.ID}}',
-    ])
-  )
-    .trim()
-    .split('\n')
-    .filter(Boolean);
-  if (!ids.length) return;
-  assert.equal(ids.length, 1, 'Ambiguous container ownership');
-  const id = ids[0];
-  assert.match(id, /^[a-f0-9]{64}$/);
-  if (containerId) assert.equal(id, containerId);
-  const fact = JSON.parse(
-    await docker(['inspect', '--format', '{{json .}}', id]),
-  );
-  assert.equal(fact.Config.Image, TURN_IMAGE);
-  assert.equal(fact.Name, `/${containerName}`);
-  assert.equal(fact.Config.Labels['station.fixture.owner'], containerOwner);
-  try {
-    writeFileSync(join(root, 'turn.log'), await docker(['logs', id]), {
-      mode: 0o600,
-    });
-  } catch (error) {
-    errors.push(error);
-  }
-  if (fact.State.Running) await docker(['stop', '--time', '3', id]);
-  await docker(['rm', id]);
-}
 
 async function offer(page: Page, port: number) {
   const transport = browserTransport;
@@ -595,79 +548,9 @@ try {
   assert.equal(bundled.outputFiles.length, 1);
   clientProofScript = bundled.outputFiles[0].text;
   stopBundler();
-  writeFileSync(
-    join(root, 'container-owner.json'),
-    JSON.stringify({
-      owner: containerOwner,
-      name: containerName,
-      image: TURN_IMAGE,
-    }),
-    { mode: 0o600, flag: 'wx' },
-  );
-  const created = await docker([
-    'create',
-    '--label',
-    'station.fixture=browser-transport',
-    '--label',
-    `station.fixture.owner=${containerOwner}`,
-    '--name',
-    containerName,
-    '--init',
-    '--read-only',
-    '--tmpfs',
-    '/tmp:rw,noexec,nosuid,size=16m',
-    '--cap-drop',
-    'ALL',
-    '--cap-add',
-    'NET_BIND_SERVICE',
-    '--security-opt',
-    'no-new-privileges',
-    '--pids-limit',
-    '64',
-    '--memory',
-    '128m',
-    '--cpus',
-    '1',
-    '--publish',
-    '127.0.0.1::3478/tcp',
-    '--publish',
-    '127.0.0.1::3478/udp',
-    '--entrypoint',
-    '/bin/sh',
-    TURN_IMAGE,
-    '-c',
-    'exec timeout -s TERM -k 5 120 turnserver "$@"',
-    '--',
-    '-n',
-    '-v',
-    '--log-file=stdout',
-    '--simple-log',
-    '--no-tls',
-    '--relay-threads=1',
-    '--listening-port=3478',
-    '--lt-cred-mech',
-    '--realm=station-fixture.invalid',
-    `--user=${username}:${password}`,
-    '--no-multicast-peers',
-    '--min-port=50000',
-    '--max-port=50031',
-    '--pidfile=/tmp/turn.pid',
-  ]);
-  containerId = created.trim();
-  assert.match(containerId, /^[a-f0-9]{64}$/);
-  if (args.includes('--fail-after-create')) {
-    containerId = undefined;
-    throw new Error('Injected failure after owned container allocation');
-  }
-  abort.signal.throwIfAborted();
-  await docker(['start', containerId]);
-  const published = (await docker(['port', containerId, '3478/tcp'])).trim();
-  assert.match(published, /^127\.0\.0\.1:\d+$/);
-  const turnPort = Number(published.split(':').at(-1));
-  turnTcpPort = turnPort;
-  const publishedUdp = (await docker(['port', containerId, '3478/udp'])).trim();
-  assert.match(publishedUdp, /^127\.0\.0\.1:\d+$/);
-  turnUdpPort = Number(publishedUdp.split(':').at(-1));
+  const turnPorts = await turnFixture.start();
+  turnTcpPort = turnPorts.tcp;
+  turnUdpPort = turnPorts.udp;
   const relayRoot = join(root, 'relay');
   mkdirSync(relayRoot, { mode: 0o700 });
   relay = await startLabRelay(
@@ -1344,7 +1227,7 @@ try {
     browserTurnTransport: browserTransport,
     stationTurnTransport: peerAdapter === 'pion' ? 'tcp' : 'udp',
     captureBytes: captured.length,
-    turnImage: TURN_IMAGE,
+    turnImage: TURN_FIXTURE_IMAGE,
     checks: selfHostedBroker
       ? [
           'separate broker CLI process serves metadata and signaling',
@@ -1402,7 +1285,7 @@ try {
     () => brokerLab?.stop(),
     () => accountStation?.stop(),
     () => relay?.close(),
-    cleanupContainer,
+    () => turnFixture.stop(),
   ]) {
     try {
       await cleanup();

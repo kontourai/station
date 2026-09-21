@@ -40,60 +40,29 @@ async function close(server: Server) {
       server.close((error) => (error ? reject(error) : resolve())),
     );
 }
-/** Real account/Project setup in an isolated source Station, with an approved Device. */
-export async function startRelayAccountStation(
-  directory: string,
-  browserOrigin: string,
-  signal: AbortSignal,
-) {
-  const release = await acquireAccountLabPorts();
-  const nonce = randomBytes(32).toString('hex');
-  let allowedHits = 0;
-  let blockedHits = 0;
-  const allowed = createServer((_request, response) => {
-    allowedHits++;
-    response.end(nonce);
-  });
-  const blocked = createServer((_request, response) => {
-    blockedHits++;
-    response.end('unowned');
-  });
-  let station: Awaited<ReturnType<typeof startAccountLabStation>> | undefined;
-  let stopped: Promise<void> | undefined;
-  const stop = () =>
-    (stopped ??= (async () => {
-      const results = await Promise.allSettled([
-        station?.stop(),
-        close(allowed),
-        close(blocked),
-      ]);
-      await release();
-      for (const result of results)
-        if (result.status === 'rejected') throw result.reason;
-    })());
+/** Controller needed by the shared account provisioner (never assumes openApplicationChannel). */
+type RelayAccountStationController = {
+  base: string;
+  stationId: string;
+  operator: { credential: string };
+};
+
+type RelayAccountProvisionInput<S extends RelayAccountStationController> = {
+  station: S;
+  browserOrigin: string;
+  signal: AbortSignal;
+  /** Explicitly supplied application Fetch transport (local IPC or browser encrypted channel). */
+  transport: typeof fetch;
+  /** Owner that stops everything provisioned alongside the station. Returned as-is. */
+  stop: () => Promise<void>;
+};
+
+/** Shared account/Project/Device provisioning against an already-running Station. */
+export async function provisionRelayAccountStation<
+  S extends RelayAccountStationController,
+>(input: RelayAccountProvisionInput<S>) {
+  const { station: current, browserOrigin, signal, transport, stop } = input;
   try {
-    station = await startAccountLabStation(
-      {
-        directory: join(directory, 'application-station'),
-        name: 'relay-account-lab',
-        hostname: '127.0.0.1',
-        allowedProbePort: await listen(allowed),
-        blockedProbePort: await listen(blocked),
-        probeNonce: nonce,
-        virtualApplicationOrigin: browserOrigin,
-      },
-      signal,
-    );
-    assert.equal(allowedHits, 1);
-    assert.equal(blockedHits, 0);
-    const current = station;
-    assert(current.openApplicationChannel);
-    const transport = createApplicationChannelFetch({
-      origin: current.base,
-      signal,
-      open: async () => current.openApplicationChannel!(),
-      assertCurrent: () => signal.throwIfAborted(),
-    });
     const http = async <T = Record<string, unknown>>(
       path: string,
       body?: unknown,
@@ -433,6 +402,73 @@ export async function startRelayAccountStation(
         await response.arrayBuffer();
       },
     };
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+}
+
+/** Real account/Project setup in an isolated source Station, with an approved Device. */
+export async function startRelayAccountStation(
+  directory: string,
+  browserOrigin: string,
+  signal: AbortSignal,
+) {
+  const release = await acquireAccountLabPorts();
+  const nonce = randomBytes(32).toString('hex');
+  let allowedHits = 0;
+  let blockedHits = 0;
+  const allowed = createServer((_request, response) => {
+    allowedHits++;
+    response.end(nonce);
+  });
+  const blocked = createServer((_request, response) => {
+    blockedHits++;
+    response.end('unowned');
+  });
+  let station: Awaited<ReturnType<typeof startAccountLabStation>> | undefined;
+  let stopped: Promise<void> | undefined;
+  const stop = () =>
+    (stopped ??= (async () => {
+      const results = await Promise.allSettled([
+        station?.stop(),
+        close(allowed),
+        close(blocked),
+      ]);
+      await release();
+      for (const result of results)
+        if (result.status === 'rejected') throw result.reason;
+    })());
+  try {
+    station = await startAccountLabStation(
+      {
+        directory: join(directory, 'application-station'),
+        name: 'relay-account-lab',
+        hostname: '127.0.0.1',
+        allowedProbePort: await listen(allowed),
+        blockedProbePort: await listen(blocked),
+        probeNonce: nonce,
+        virtualApplicationOrigin: browserOrigin,
+      },
+      signal,
+    );
+    assert.equal(allowedHits, 1);
+    assert.equal(blockedHits, 0);
+    const current = station;
+    assert(current.openApplicationChannel);
+    const transport = createApplicationChannelFetch({
+      origin: current.base,
+      signal,
+      open: async () => current.openApplicationChannel!(),
+      assertCurrent: () => signal.throwIfAborted(),
+    });
+    return await provisionRelayAccountStation({
+      station: current,
+      browserOrigin,
+      signal,
+      transport,
+      stop,
+    });
   } catch (error) {
     await stop();
     throw error;
