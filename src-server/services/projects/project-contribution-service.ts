@@ -46,7 +46,8 @@ export class ReceiverExecutionRefusal extends Error {
   constructor(
     readonly code:
       | 'receiver_execution_not_offered'
-      | 'receiver_execution_unavailable',
+      | 'receiver_execution_unavailable'
+      | 'receiver_execution_forwarding_refused',
     message: string,
   ) {
     super(message);
@@ -126,7 +127,9 @@ export interface ReceiverExecutionAdmission {
  * manifest execution root when it selects the admitted resource, else the
  * admitted resource's own bound path. Never the compat workingDirectory.
  */
-export function receiverAdmittedCwd(admitted: ReceiverExecutionAdmission['admittedProject']): string {
+export function receiverAdmittedCwd(
+  admitted: ReceiverExecutionAdmission['admittedProject'],
+): string {
   return admitted.executionRoot ?? admitted.resourcePath;
 }
 
@@ -465,7 +468,11 @@ export class ProjectContributionService {
       resourceId: requested.resourceId,
       admittedProject: admitted,
       recheck: async () => {
-        await this.captureReceiverAdmission(requested, authorityCurrent, admitted);
+        await this.captureReceiverAdmission(
+          requested,
+          authorityCurrent,
+          admitted,
+        );
       },
     };
   }
@@ -527,9 +534,7 @@ export class ProjectContributionService {
           requested.resourceId,
         ),
       ),
-      executionSelection: structuredClone(
-        association.manifest.executionRoot,
-      ),
+      executionSelection: structuredClone(association.manifest.executionRoot),
     };
     const resolution = await this.deps.resolver.resolveProjectResource(
       association.project.slug,
@@ -612,10 +617,7 @@ export class ProjectContributionService {
         'receiver_execution_not_offered',
         'Receiver execution authority changed before the work could start.',
       );
-    if (
-      !sameAssociation ||
-      !isDeepStrictEqual(captured.binding, afterBinding)
-    )
+    if (!sameAssociation || !isDeepStrictEqual(captured.binding, afterBinding))
       throw unavailable();
     if ((captured.workingDirectory ?? '') === '') throw unavailable();
     if (

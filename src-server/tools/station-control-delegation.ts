@@ -22,6 +22,10 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
+  LOCAL_OPERATOR_PROVIDER,
+  LOCAL_OPERATOR_SUBJECT,
+} from '@kontourai/station-contracts/principal';
+import {
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
   type EngineId,
@@ -75,11 +79,11 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
-import {
-  ReceiverExecutionRefusal,
-  type ReceiverExecutionAdmission,
-} from '../services/projects/project-contribution-service.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
+import {
+  type ReceiverExecutionAdmission,
+  ReceiverExecutionRefusal,
+} from '../services/projects/project-contribution-service.js';
 import {
   delegatedTaskFollowUps,
   delegatedTaskInterrupts,
@@ -216,6 +220,27 @@ export interface DelegateTaskInput {
    * binding refuses at the effect seam rather than at the door only.
    */
   receiverAdmission?: ReceiverExecutionAdmission;
+  /**
+   * #484 controller/receiver split: server-only callable that mints the
+   * receiver admission above, bound by the HTTP route to the CURRENT
+   * request's credential BEFORE any await (never public JSON — a function
+   * cannot cross it). Invoked ONLY when THIS Station is the actual local
+   * executor (the single `resolveTarget` below resolved `current`); a
+   * forwarding controller never invokes it, so a controller needs no local
+   * offer or association for a saved receiver's intent.
+   */
+  authorizeReceiverExecution?: (workspace: {
+    portableProjectId: string;
+    resourceId: string;
+  }) => Promise<ReceiverExecutionAdmission>;
+  /**
+   * #484 no-onward-hop: the server-resolved paired-device kind for the
+   * inbound credential (`device` vs `delegation`), composed by the runtime
+   * from the verified credential's device record — never body, userId, or
+   * metadata. `delegation` marks an enrolled peer host; absent on every
+   * non-device caller (operator, internal) and on ordinary devices.
+   */
+  inboundDeviceKind?: 'device' | 'delegation';
 }
 
 type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
@@ -3142,18 +3167,83 @@ export async function interruptDelegatedTask(
   return { ...snapshot, interruptRequested: true };
 }
 
+/**
+ * #484 no-onward-hop: true only for an INBOUND enrolled peer host bearing
+ * an explicit portable intent. The positive signal is the server-resolved
+ * paired-device kind `delegation` (an enrolled peer's credential, read off
+ * the verified credential's device record by runtime composition — never
+ * body, userId, or metadata). `principal`/`clientOrigin` are the verified
+ * caller facts the verdict is bound to: an operator or internal caller is
+ * never a peer even against a corrupt record (fail toward the operator,
+ * never toward peerage), and an ordinary personal device (`device`, or no
+ * device at all) may still select a saved peer as its controller. Exported
+ * for unit coverage of the derivation without a runtime.
+ */
+export function isInboundDelegationPeer(
+  principal: PrincipalRef | undefined,
+  clientOrigin: ClientOrigin | undefined,
+  inboundDeviceKind: 'device' | 'delegation' | undefined,
+): boolean {
+  if (
+    clientOrigin?.actor.kind === 'operator' ||
+    clientOrigin?.actor.kind === 'internal'
+  )
+    return false;
+  if (
+    principal?.id ===
+    `human:${LOCAL_OPERATOR_PROVIDER}:${LOCAL_OPERATOR_SUBJECT}`
+  )
+    return false;
+  return inboundDeviceKind === 'delegation';
+}
+
 export async function delegateTask(
   input: DelegateTaskInput,
   orchestrationService?: OrchestrationService,
 ): Promise<DelegatedTaskHandle> {
   const readAuthority = readAuthorityForInput(input);
   const portableIntent = input.target.workspace?.kind === 'project-portable';
+  // #484 no-onward-hop, derived BEFORE any effect from the verified caller
+  // facts only (never body/userId/metadata) — see isInboundDelegationPeer.
+  const inboundPeer =
+    portableIntent === true &&
+    isInboundDelegationPeer(
+      input.principal,
+      input.clientOrigin,
+      input.inboundDeviceKind,
+    );
+  // The ONE environment resolution for this dispatch: the route never
+  // resolves, so there is no second resolution to race these endpoints.
   const selectedTarget = await resolveTarget({
     environmentId:
       input.target.environment.kind === 'saved'
         ? input.target.environment.id
         : undefined,
   });
+  if (portableIntent && selectedTarget.kind !== 'current') {
+    // #484 no-onward-hop: an explicit portable arrival FROM an enrolled
+    // peer must execute on THIS verified receiver or refuse — a caller
+    // body naming a saved third peer can never make this Station forward
+    // on the stored outbound credential. Refused here, before the peer
+    // capability read below and before any forward/post: NO outbound
+    // fetch and NO provider effect. An operator (or ordinary personal
+    // device) controller falls through to the forward below.
+    if (inboundPeer) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_forwarding_refused',
+        'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
+      );
+    }
+    // A forwarding sender never holds the receiver-owned admission: it is
+    // minted only by the executing receiver below. Holding one here is a
+    // composition violation, refused rather than silently dropped.
+    if (input.receiverAdmission) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+    }
+  }
   // #484 phase A: a portable intent aimed at a PEER is gated on the peer's
   // own advertised capability (its public handshake). An older receiver
   // would refuse the unknown workspace variant at its schema anyway; the
@@ -3229,16 +3319,33 @@ export async function delegateTask(
   }
   // #484 phase A, receiver-local only: past this point THIS Station is the
   // receiver (remote peer/ssh targets forwarded above), so the portable
-  // intent executes ONLY through the offer admission composed by the
+  // intent executes ONLY through the offer admission minted by the
   // receiving runtime — it is never reachable from public JSON and can
   // never exist on a forwarding sender. A receiver-local portable intent
   // without one is refused; there is no slug/path fallback that could
   // silently execute an unoffered project.
-  if (portableIntent && !input.receiverAdmission) {
-    throw new ReceiverExecutionRefusal(
-      'receiver_execution_not_offered',
-      'This Station does not currently offer execution for the requested Project resource.',
-    );
+  //
+  // #484 controller/receiver split: the admission is minted HERE, on the
+  // actual local executor, through the server-only factory the HTTP route
+  // bound to the current request credential before any await. A
+  // controlling sender that forwarded here never invoked it, so it needs
+  // no local offer or association of its own.
+  let receiverAdmission = input.receiverAdmission;
+  if (portableIntent && !receiverAdmission) {
+    const workspace = input.target.workspace;
+    if (
+      !input.authorizeReceiverExecution ||
+      workspace?.kind !== 'project-portable'
+    ) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+    }
+    receiverAdmission = await input.authorizeReceiverExecution({
+      portableProjectId: workspace.portableProjectId,
+      resourceId: workspace.resourceId,
+    });
   }
   // archive#4543 LOW-2: a caller-supplied `sessionId` becomes this task's
   // `metadata.conversationId` below (via `conversationIdentity`) — reject a
@@ -3291,18 +3398,19 @@ export async function delegateTask(
       orchestrationService.getProviderAdapter(provider),
     // #484 phase A: the portable intent resolves its workspace through the
     // receiver-owned admission — the ADMITTED project, never a caller-named
-    // slug or path. Absent admission never reaches here (refused above).
-    // The resolver's exact requested ids must equal the admission's
-    // captured ids: a wrong portableProjectId/resourceId refuses rather
-    // than executing the admitted workspace under a different association.
-    ...(input.receiverAdmission
+    // slug or path. Absent admission never reaches here (refused or minted
+    // above). The resolver's exact requested ids must equal the
+    // admission's captured ids: a wrong portableProjectId/resourceId
+    // refuses rather than executing the admitted workspace under a
+    // different association.
+    ...(receiverAdmission
       ? {
           getPortableProject: async (
             _access,
             portableProjectId,
             resourceId,
           ) => {
-            const admitted = input.receiverAdmission!;
+            const admitted = receiverAdmission!;
             if (
               portableProjectId !== admitted.portableProjectId ||
               resourceId !== admitted.resourceId
@@ -3358,32 +3466,35 @@ export async function delegateTask(
   // workspace MUST be that directory; anything else refuses here, before
   // any session exists, rather than executing a re-targeted workspace.
   // A foreign-shaped admission without an exact path (only reachable from
-  // hand-made server-internal stubs — the route composer always mints the
-  // exact path) cannot name a workspace and refuses below, never executes.
+  // hand-made server-internal stubs — the factory always mints the exact
+  // path) cannot name a workspace and refuses below, never executes.
   const admittedExactRaw =
-    input.receiverAdmission?.admittedProject.executionRoot ??
-    input.receiverAdmission?.admittedProject.resourcePath;
+    receiverAdmission?.admittedProject.executionRoot ??
+    receiverAdmission?.admittedProject.resourcePath;
   const portableAdmittedCwd =
-    input.receiverAdmission && admittedExactRaw !== undefined
+    receiverAdmission && admittedExactRaw !== undefined
       ? resolveFilesystemPath(admittedExactRaw)
       : undefined;
-  if (portableIntent && input.receiverAdmission) {
-    if (portableAdmittedCwd === undefined || resolvedCwd !== portableAdmittedCwd)
+  if (portableIntent && receiverAdmission) {
+    if (
+      portableAdmittedCwd === undefined ||
+      resolvedCwd !== portableAdmittedCwd
+    )
       throw new ReceiverExecutionRefusal(
         'receiver_execution_unavailable',
         'The offered Project resource is unavailable.',
       );
   }
   const receiverEffectAdmission =
-    input.receiverAdmission && portableAdmittedCwd !== undefined
+    receiverAdmission && portableAdmittedCwd !== undefined
       ? {
-          recheck: input.receiverAdmission.recheck,
+          recheck: receiverAdmission.recheck,
           admitted: {
             threadId: sessionId,
-            projectSlug: input.receiverAdmission.admittedProject.slug,
+            projectSlug: receiverAdmission.admittedProject.slug,
             cwd: portableAdmittedCwd,
-            portableProjectId: input.receiverAdmission.portableProjectId,
-            resourceId: input.receiverAdmission.resourceId,
+            portableProjectId: receiverAdmission.portableProjectId,
+            resourceId: receiverAdmission.resourceId,
           },
         }
       : undefined;
@@ -3424,7 +3535,7 @@ export async function delegateTask(
     // provider-effect path rechecks it again adjacent to the actual adapter
     // invocation (a door check alone cannot cover what races the awaits
     // inside the service).
-    await input.receiverAdmission?.recheck();
+    await receiverAdmission?.recheck();
     const started = await orchestrationService.startSessionInternal(
       {
         type: 'start-session',
@@ -3465,12 +3576,11 @@ export async function delegateTask(
             // service re-stamps this same identity after the reserved-key
             // strip, so the persisted session binding carries the exact
             // consent continuation paths enforce. Never caller-supplied.
-            ...(input.receiverAdmission
+            ...(receiverAdmission
               ? {
                   [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
-                    portableProjectId:
-                      input.receiverAdmission.portableProjectId,
-                    resourceId: input.receiverAdmission.resourceId,
+                    portableProjectId: receiverAdmission.portableProjectId,
+                    resourceId: receiverAdmission.resourceId,
                   },
                 }
               : {}),
@@ -3519,7 +3629,7 @@ export async function delegateTask(
   // start above — AND thread the admission into the service internal
   // options so the turn-effect path rechecks it adjacent to the adapter
   // sendTurn invocation. Refusal fails the turn BEFORE the provider effect.
-  await input.receiverAdmission?.recheck();
+  await receiverAdmission?.recheck();
   await orchestrationService.dispatchWithReceipt(
     {
       type: 'sendTurn',
