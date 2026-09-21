@@ -623,40 +623,54 @@ async function buildFixture(): Promise<ProofFixture> {
   expect(savedPeer.status, JSON.stringify(savedPeer.payload)).toBe(201);
 
   // --- Receiver: materialize the muse engine's agent (canonical path).
-  // The materialize route answers 200/201 once the agent row is live, or
-  // 202 while runtime activation is still pending reconciliation. Delegating
-  // on a 202 races activation: the receiver cannot yet resolve the agent
-  // and the first delegate fails with a generic 400 (observed twice on
-  // cold boots, then passing identically once reconciled). Await the
-  // applied status through the route's own idempotent find-or-create
-  // contract — a bounded prerequisite gate, not a dispatch retry.
-  let materialized = await api(
+  // The materialize route answers 200/201 once applied, or 202 while
+  // runtime activation is still pending reconciliation ("the durable write
+  // has landed and the runtime has NOT caught up yet"). Delegating on a
+  // 202 races activation: the first delegate failed with a generic 400
+  // twice on cold boots, then passed identically once reconciled — the
+  // harness had awaited the materialize RESPONSE, not the activation. So
+  // a 202 here gates on the served catalog instead: GET /api/agents/:slug
+  // names `catalogState: 'reconciling'` mid-refresh, and its absence with
+  // a 200 means the runtime has caught up with the durable write. A READ
+  // gate only — re-POSTing is not a probe (every POST re-marks the
+  // mutation pending and answers 202 again). Bounded; a timeout fails
+  // loudly as a missing prerequisite, never a silent pass.
+  const materialized = await api(
     receiver.api,
     'POST',
     '/agents/materialize-engine',
     { body: { engineId: 'muse' }, headers: operatorHeaders(receiverOperator) },
   );
-  if (materialized.status === 202) {
-    await poll('the muse agent activation', 60_000, async () => {
-      materialized = await api(
-        receiver.api,
-        'POST',
-        '/agents/materialize-engine',
-        {
-          body: { engineId: 'muse' },
-          headers: operatorHeaders(receiverOperator),
-        },
-      );
-      return materialized.status !== 202;
-    });
-  }
-  expect([200, 201], JSON.stringify(materialized.payload)).toContain(
+  expect([200, 201, 202], JSON.stringify(materialized.payload)).toContain(
     materialized.status,
   );
   const museAgentSlug = (
     (materialized.payload as JsonRecord).data as JsonRecord
   ).slug as string;
   expect(museAgentSlug).toBeTruthy();
+  if (materialized.status === 202) {
+    await poll(
+      'the materialized muse agent to serve stably',
+      60_000,
+      async () => {
+        const served = await api(
+          receiver.api,
+          'GET',
+          `/api/agents/${encodeURIComponent(museAgentSlug)}`,
+          { headers: operatorHeaders(receiverOperator) },
+        );
+        if (served.status !== 200) return false;
+        const body = served.payload as JsonRecord;
+        if (body?.success !== true) return false;
+        if ((body as JsonRecord).catalogState === 'reconciling') return false;
+        return (
+          ((body.data as JsonRecord | undefined)?.slug as
+            | string
+            | undefined) === museAgentSlug
+        );
+      },
+    );
+  }
 
   const museExecLaunches = async () => {
     if (!existsSync(museLaunchLog)) return [];
@@ -673,9 +687,7 @@ async function buildFixture(): Promise<ProofFixture> {
       try {
         entry = JSON.parse(line);
       } catch {
-        throw new Error(
-          `malformed muse launch record: ${line.slice(0, 200)}`,
-        );
+        throw new Error(`malformed muse launch record: ${line.slice(0, 200)}`);
       }
       if (
         typeof entry !== 'object' ||
@@ -686,9 +698,7 @@ async function buildFixture(): Promise<ProofFixture> {
           (arg) => typeof arg === 'string',
         )
       ) {
-        throw new Error(
-          `malformed muse launch record: ${line.slice(0, 200)}`,
-        );
+        throw new Error(`malformed muse launch record: ${line.slice(0, 200)}`);
       }
       const record = entry as { cwd: string; argv: string[] };
       if (record.argv.includes('exec')) launches.push(record);
@@ -1001,9 +1011,9 @@ test.describe
       expect(turnLaunches[0]!.cwd).toBe(current.receiverExecutionRoot);
       expect(turnLaunches[0]!.argv).toContain('--provider');
       expect(turnLaunches[0]!.argv).toContain('echo');
-      expect(
-        turnLaunches[0]!.argv.some((arg) => arg.includes(turnToken)),
-      ).toBe(true);
+      expect(turnLaunches[0]!.argv.some((arg) => arg.includes(turnToken))).toBe(
+        true,
+      );
 
       // PROVIDER output, read from the authoritative receiver conversation.
       const readReceiverSnapshot = async () => {
@@ -1192,9 +1202,9 @@ test.describe
         'no launch record names the follow-up token in the receiver execution root',
       ).toBeTruthy();
       expect(observed!.cwd).toBe(current.receiverExecutionRoot);
-      expect(
-        observed!.argv.some((arg) => arg.includes(followToken)),
-      ).toBe(true);
+      expect(observed!.argv.some((arg) => arg.includes(followToken))).toBe(
+        true,
+      );
 
       // PROVIDER output for the follow-up, from the receiver conversation.
       await poll(
