@@ -474,3 +474,42 @@ delivery or the [real two-human journey](https://github.com/kontourai/station/is
 Two security homes in one process and relays running as the same OS user do not
 prove tenant or hostile-code isolation. Those remain separate acceptance under
 [#487](https://github.com/kontourai/station/issues/487).
+
+### Separate self-hosted broker and production browser consumer
+
+Run the integrated signaling path with the full account diagnostic:
+
+```sh
+npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --keep
+npm run lab:browser-transport -- --peer=pion --browser-turn=udp --application-accounts --self-hosted-broker --keep
+```
+
+Build the pinned Pion executable as described above first. This mode starts the
+actual broker CLI in a separate owned process with private SQLite state and
+separate routing/connector credentials. The Station-side factory uses the real
+Pion adapter; the browser uses the production self-hosted transport entry point.
+The full protected Station remains behind private process IPC, with direct browser
+HTTP application requests blocked and counted. No account or Device authority is
+injected into production authentication.
+
+The checks cover account login and continuation, explicit account-bound Device
+approval, permitted/private Project reads, independent revocations, lease renewal,
+fresh-peer reconnect, wrong routing credentials, actual browser CORS, proof tamper
+refusal before remote-description acceptance, and trust retirement. A separate
+HTTP preflight control checks the broker's exact response. Withdrawal can hide its
+401 behind browser CORS; an independent HTTP control must still observe that exact
+refusal, so an unrelated network failure cannot pass the test.
+
+The broker receives signaling only. The separate TURN recording relay observes
+nonempty encrypted traffic, checked alongside actual DTLS and application delivery;
+absence of a plaintext marker alone is not encryption evidence. Cleanup joins the
+broker process, Pion peers, full Station, browser, recording relay and owned Coturn
+container, and reports failures instead of claiming unconfirmed cleanup.
+
+`selfHostedBroker.status: "passed"` means this local composition passed. It is not
+fresh guest onboarding: the account fixture begins with an approved test Device,
+then exercises the account-bound grant. It does not prove installed native clients,
+real humans, remote-host deployment, compute/plugin isolation, or a production
+rollout. Those remain separate acceptance requirements. The original direct
+transport profiles retain their certificate-substitution controls; this broker
+mode reports only the controls it actually executes.

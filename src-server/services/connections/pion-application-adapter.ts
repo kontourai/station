@@ -220,6 +220,7 @@ export async function startPionApplicationAdapter(
   let shutdown: Promise<void> | undefined;
   let stdout = () => '';
   let aborted = () => {};
+  let abortFailure: Error | undefined;
   let lifetime: ReturnType<typeof setTimeout> | undefined;
   // Adapter-owned cleanup receipt: resolves once resource cleanup
   // (process termination, temp custody, handle release) is confirmed and
@@ -243,8 +244,8 @@ export async function startPionApplicationAdapter(
     (shutdown ??= (async () => {
       input.signal.removeEventListener('abort', aborted);
       clearTimeout(lifetime);
-      ipc?.close();
       try {
+        ipc?.close();
         await dependencies.terminate(child, {
           graceMs: 2_000,
           killConfirmMs: 3_000,
@@ -299,7 +300,12 @@ export async function startPionApplicationAdapter(
     await close().catch(() => {});
     throw error;
   }
-  aborted = () => fail(new Error('pion_application_aborted'));
+  aborted = () => {
+    abortFailure = new Error('pion_application_aborted', {
+      cause: input.signal.reason,
+    });
+    fail(abortFailure);
+  };
   input.signal.addEventListener('abort', aborted, { once: true });
   lifetime = setTimeout(
     () => fail(new Error('pion_application_lifetime_expired')),
@@ -385,11 +391,27 @@ export async function startPionApplicationAdapter(
   } catch (error) {
     try {
       await close();
-    } catch (cleanup) {
-      throw new AggregateError(
-        [error, cleanup],
-        'pion_adapter_startup_cleanup_failed',
-      );
+    } catch (closeFailure) {
+      try {
+        await cleanupComplete;
+      } catch (cleanup) {
+        throw new AggregateError(
+          [error, cleanup],
+          'pion_adapter_startup_cleanup_failed',
+        );
+      }
+      // Resource cleanup succeeded. Only our own abort notification may be
+      // collapsed into the caller's exact cancellation reason; an unrelated
+      // operational error must remain visible.
+      if (
+        closeFailure !== error &&
+        !(closeFailure === abortFailure && error === input.signal.reason)
+      ) {
+        throw new AggregateError(
+          [error, closeFailure],
+          'pion_adapter_startup_failed',
+        );
+      }
     }
     throw error;
   }
