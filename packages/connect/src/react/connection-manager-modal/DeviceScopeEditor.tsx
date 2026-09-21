@@ -82,7 +82,7 @@ const COLLABORATOR_MANAGEMENT_OPTION = {
   choice: COLLABORATOR_MANAGEMENT_CHOICE,
   label: 'Collaborator management',
   detail:
-    'Read and operate access for a collaborator’s browser. Project people and invitation management become available only on Projects shared with that person as an admin. No terminal, no device management.',
+    'Exactly read and operate for an account-bound collaborator’s browser. Selecting this clears any capabilities ticked below — they take no effect with this choice. To combine read and operate with a capability, choose Delegation instead. Project people and invitation management become available only on Projects shared with that person as an admin. No terminal, no device management.',
 } as const;
 
 /**
@@ -173,22 +173,32 @@ export function scopeSelectionTokens(
   return scopeChoiceTokens(preset, capabilities);
 }
 
+/** True when the scope holds exactly the delegation token set, no more. */
+function isExactDelegationScope(scope: string): boolean {
+  const tokens = parsePairingScope(scope) ?? [];
+  return (
+    tokens.length === PAIRING_SCOPE_PRESETS.delegation.length &&
+    PAIRING_SCOPE_PRESETS.delegation.every((token) => tokens.includes(token))
+  );
+}
+
 /**
  * The tokens the editor's current selection resolves to, including the
- * collaborator-management choice: exactly the delegation token set plus
- * explicitly ticked capabilities — never terminal, never device
- * management, never the standard preset's extras.
+ * collaborator-management choice: exactly the delegation token set, full
+ * stop — ticked capabilities take no effect with this choice (the UI
+ * clears and disables them while it is selected, so this ignore is
+ * unreachable from the form and exists only as enforcement). Every other
+ * choice keeps the ordinary behavior: base plus explicitly ticked
+ * capabilities. Never terminal, never device management, never the
+ * standard preset's extras.
  */
 export function scopeChoiceTokens(
   choice: ScopeBaseChoice | null,
   capabilities: ReadonlySet<PairingScope>,
 ): PairingScope[] {
-  const base =
-    choice === COLLABORATOR_MANAGEMENT_CHOICE
-      ? PAIRING_SCOPE_PRESETS.delegation
-      : choice
-        ? PAIRING_SCOPE_PRESETS[choice]
-        : [];
+  if (choice === COLLABORATOR_MANAGEMENT_CHOICE)
+    return [...PAIRING_SCOPE_PRESETS.delegation];
+  const base = choice ? PAIRING_SCOPE_PRESETS[choice] : [];
   return [
     ...base,
     ...ELEVATED_GRANTS.map(({ token }) => token).filter((token) =>
@@ -201,23 +211,30 @@ export function DeviceScopeEditor({
   deviceName,
   currentScope,
   busy,
+  accountBound = false,
   onApply,
   onCancel,
 }: {
   deviceName: string;
   currentScope: string;
   busy: boolean;
+  /**
+   * Whether the device carries an account binding (an account-bound
+   * collaborator browser rather than a personal or peer device). Only with
+   * a binding does an exact read+operate grant reopen as the
+   * collaborator-management choice it was approved under — without one the
+   * same tokens stay Delegation, so the two choices never read as
+   * duplicates. This names the device's stored binding, never membership.
+   */
+  accountBound?: boolean;
   /** `expectedScope` is what this editor was opened against (station#3816). */
   onApply: (scope: PairingScope[], expectedScope: string) => void;
   onCancel: () => void;
 }) {
-  // The collaborator choice resolves to the same tokens as the delegation
-  // preset, so a stored read+operate scope still initialises as Delegation:
-  // the editor cannot know which intent minted those tokens, and
-  // initialising generously (or distinctly) would make the first Apply
-  // re-label — or silently keep — a grant the operator never chose here.
   const [choice, setChoice] = useState<ScopeBaseChoice | null>(() =>
-    closestBasePreset(currentScope),
+    accountBound && isExactDelegationScope(currentScope)
+      ? COLLABORATOR_MANAGEMENT_CHOICE
+      : closestBasePreset(currentScope),
   );
   const [elevated, setElevated] = useState<ReadonlySet<PairingScope>>(() => {
     const tokens = new Set(parsePairingScope(currentScope) ?? []);
@@ -270,7 +287,14 @@ export function DeviceScopeEditor({
               name={`scope-${deviceName}`}
               checked={choice === option}
               disabled={busy}
-              onChange={() => setChoice(option)}
+              onChange={() => {
+                setChoice(option);
+                // The collaborator choice grants exactly read+operate, so
+                // previously ticked capabilities must go visibly — leaving
+                // them checked while claiming a narrow grant would lie.
+                if (option === COLLABORATOR_MANAGEMENT_CHOICE)
+                  setElevated(new Set());
+              }}
             />
             <span>
               <strong>{label}</strong>
@@ -286,13 +310,20 @@ export function DeviceScopeEditor({
         <div className="station-connect-scope-editor__elevated-header">
           Also allowed
         </div>
+        {choice === COLLABORATOR_MANAGEMENT_CHOICE && (
+          <p className="station-connect-scope-editor__notice">
+            Collaborator management grants exactly read and operate —
+            capabilities take no effect with this choice. Choose Delegation to
+            combine read and operate with a capability below.
+          </p>
+        )}
         {ELEVATED_GRANTS.map(
           ({ token, label, detail, elevated: isElevated }) => (
             <label className="station-connect-scope-editor__option" key={token}>
               <input
                 type="checkbox"
                 checked={elevated.has(token)}
-                disabled={busy}
+                disabled={busy || choice === COLLABORATOR_MANAGEMENT_CHOICE}
                 onChange={(event) => {
                   setElevated((current) => {
                     const next = new Set(current);

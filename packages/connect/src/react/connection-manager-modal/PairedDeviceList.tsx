@@ -169,6 +169,7 @@ function DeviceRow({
           deviceName={device.name}
           currentScope={device.scope}
           busy={busy}
+          accountBound={describeDeviceAccountBinding(device) !== null}
           onApply={(scope, expectedScope) => {
             setEditingScope(false);
             onChangeScope(device, scope, expectedScope);

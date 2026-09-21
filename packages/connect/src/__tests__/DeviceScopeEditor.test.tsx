@@ -1,8 +1,10 @@
 /** @vitest-environment jsdom */
 
 import {
+  PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_GRANT_PATHS,
   PAIRING_SCOPES,
+  type PairingScope,
 } from '@kontourai/station-contracts/environment-security';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
@@ -27,12 +29,17 @@ import {
  * scopes unrepresentable and silently dropped tokens on Apply.
  */
 
-function openEditor(currentScope: string, onApply = vi.fn()) {
+function openEditor(
+  currentScope: string,
+  onApply = vi.fn(),
+  accountBound = false,
+) {
   render(
     <DeviceScopeEditor
       deviceName="Phone"
       currentScope={currentScope}
       busy={false}
+      accountBound={accountBound}
       onApply={onApply}
       onCancel={vi.fn()}
     />,
@@ -92,7 +99,7 @@ test('a MIXED inference scope survives an unrelated edit (review MEDIUM)', () =>
       }) as HTMLInputElement
     ).checked,
   ).toBe(true);
-  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
   apply();
   expect(onApply).toHaveBeenCalledWith(
     ['orchestration:read', 'orchestration:operate', 'inference:invoke'],
@@ -110,7 +117,7 @@ test('a home-transfer scope survives an unrelated orchestration edit', () => {
     ).checked,
   ).toBe(true);
 
-  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
   apply();
   expect(onApply).toHaveBeenCalledWith(
     ['orchestration:read', 'orchestration:operate', 'home:transfer'],
@@ -127,7 +134,7 @@ test('an operator-promoted home-control scope survives an unrelated edit', () =>
       }) as HTMLInputElement
     ).checked,
   ).toBe(true);
-  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
   apply();
   expect(onApply).toHaveBeenCalledWith(
     ['orchestration:read', 'orchestration:operate', 'home:control'],
@@ -271,6 +278,93 @@ test('the collaborator choice resolves to exactly the delegation tokens', () => 
   expect(
     scopeChoiceTokens(COLLABORATOR_MANAGEMENT_CHOICE, new Set()).length,
   ).toBe(2);
+  // Even previously ticked capabilities take no effect: the choice claims
+  // exactly read+operate, so the derivation enforces it rather than
+  // silently retaining extra privileges.
+  expect(
+    scopeChoiceTokens(
+      COLLABORATOR_MANAGEMENT_CHOICE,
+      new Set<PairingScope>([
+        PAIRING_SCOPE_ENGINE_LOGIN,
+        'inference:invoke' as PairingScope,
+      ]),
+    ),
+  ).toEqual(['orchestration:read', 'orchestration:operate']);
+});
+
+test('selecting collaborator management from a broader grant narrows visibly, with CAS', () => {
+  const standard =
+    'orchestration:read orchestration:operate terminal:operate engine:login';
+  const onApply = openEditor(standard);
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: /Start engine sign-in/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+
+  fireEvent.click(
+    screen.getByRole('radio', { name: /Collaborator management/ }),
+  );
+
+  // The previously ticked capability is cleared, not silently kept, and
+  // the group disables while the narrow choice is selected.
+  const toggle = screen.getByRole('checkbox', {
+    name: /Start engine sign-in/,
+  }) as HTMLInputElement;
+  expect(toggle.checked).toBe(false);
+  expect(toggle.disabled).toBe(true);
+  expect(
+    screen.getByText(/capabilities take no effect with this choice/),
+  ).toBeTruthy();
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate'],
+    standard,
+  );
+});
+
+test('an account-bound exact read+operate grant reopens as the collaborator choice', () => {
+  openEditor('orchestration:read orchestration:operate', vi.fn(), true);
+  expect(
+    (
+      screen.getByRole('radio', {
+        name: /Collaborator management/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  expect(
+    (screen.getByRole('radio', { name: /^Delegation/ }) as HTMLInputElement)
+      .checked,
+  ).toBe(false);
+});
+
+test('an account-bound grant with extras still opens as Delegation, extras intact', () => {
+  // The collaborator choice means exactly read+operate; a bound device
+  // carrying more must not reopen as that choice, or Apply would silently
+  // narrow it. Delegation keeps the capabilities ticked instead.
+  const onApply = openEditor(
+    'orchestration:read orchestration:operate inference:invoke',
+    vi.fn(),
+    true,
+  );
+  expect(
+    (screen.getByRole('radio', { name: /^Delegation/ }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: /Fleet inference/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate', 'inference:invoke'],
+    'orchestration:read orchestration:operate inference:invoke',
+  );
 });
 
 test('an engine sign-in grant survives an unrelated base edit', () => {
@@ -285,7 +379,7 @@ test('an engine sign-in grant survives an unrelated base edit', () => {
     ).checked,
   ).toBe(true);
 
-  fireEvent.click(screen.getByRole('radio', { name: /Delegation/ }));
+  fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
   apply();
 
   expect(onApply.mock.calls[0][0]).toEqual([
