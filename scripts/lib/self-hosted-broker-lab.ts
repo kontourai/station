@@ -234,13 +234,8 @@ export async function startSelfHostedBrokerLab(
       },
       {
         signal: input.signal,
-        fetch: (request) =>
-          channelFetch(request.url, {
-            method: request.method,
-            headers: request.headers,
-            body: request.body,
-            signal: request.signal,
-          }),
+        // Keep the Request's stream, abort signal and explicit headers intact.
+        fetch: (request) => channelFetch(request),
       },
       { startAdapter: observingStart },
     );
