@@ -11,6 +11,7 @@ import {
   isContributionEnabled,
   resolveScopedContribution,
 } from '@kontourai/station-contracts/contribution';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import {
   FileStorageConflictError,
@@ -51,6 +52,34 @@ export class ReceiverExecutionRefusal extends Error {
     super(message);
     this.name = 'ReceiverExecutionRefusal';
   }
+}
+
+/** The server-minted portable consent identity stamped on a session binding. */
+export interface PortableExecutionConsentIdentity {
+  portableProjectId: string;
+  resourceId: string;
+}
+
+/**
+ * #484 phase A follow-up: read the server-minted portable consent marker off
+ * persisted session binding metadata (`session.started` / `session.configured`).
+ * Returns the consent identity for a thread that started as an explicit
+ * portable execution, or undefined for ordinary and legacy sessions. Public
+ * callers can neither forge this (the reserved-key strip removes it from
+ * every start input; only the internal-only consent re-stamp writes it) nor
+ * clear it by omission (reads are off persisted events, never the request).
+ * Shared by the orchestration service and the session command module so the
+ * association proof never drifts between the two effect seams.
+ */
+export function portableConsentOfStartedMetadata(
+  metadata: Record<string, unknown> | undefined,
+): PortableExecutionConsentIdentity | undefined {
+  const marker = metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
+  if (!marker || typeof marker !== 'object') return undefined;
+  const { portableProjectId, resourceId } = marker as Record<string, unknown>;
+  if (typeof portableProjectId !== 'string' || typeof resourceId !== 'string')
+    return undefined;
+  return { portableProjectId, resourceId };
 }
 
 /**

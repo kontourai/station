@@ -190,7 +190,11 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
-import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
+import {
+  portableConsentOfStartedMetadata,
+  type PortableExecutionConsentIdentity,
+  ReceiverExecutionRefusal,
+} from '../projects/project-contribution-service.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
@@ -908,7 +912,12 @@ function stripReservedCapabilityMetadata<
  */
 function verifyReceiverStartEffect(
   admission: ReceiverExecutionEffectAdmission | undefined,
-  actual: { threadId: string; cwd?: string; projectSlug?: unknown },
+  actual: {
+    threadId: string;
+    cwd?: string;
+    projectSlug?: unknown;
+    consent?: PortableExecutionConsentIdentity | undefined;
+  },
 ): void {
   const admitted = admission?.admitted;
   if (!admitted) return;
@@ -925,6 +934,18 @@ function verifyReceiverStartEffect(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
     );
+  // A directory is NOT a project identity: when the prepared input states a
+  // portable consent identity it must be the admitted one — a different
+  // stated association is never silently mapped onto the admitted checkout.
+  if (
+    actual.consent &&
+    (actual.consent.portableProjectId !== admitted.portableProjectId ||
+      actual.consent.resourceId !== admitted.resourceId)
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
 }
 
 /**
@@ -936,22 +957,42 @@ function verifyReceiverStartEffect(
  * row is still the wrong engine). The live read-model session wins; the
  * durable `provider_session_state` row is the boot-recovery fallback. A
  * session that cannot name its directory cannot prove it is the admitted
- * checkout, so a missing cwd refuses. `startedMeta` is the latest
- * `session.configured`/`session.started` metadata when the caller has it:
- * an EXPLICIT project or consent-identity mismatch there refuses, but its
- * absence does not (the cwd is the binding proof; adapters that drop
- * metadata must not brick an otherwise exactly-bound turn).
+ * checkout, so a missing cwd refuses.
+ *
+ * A directory is NOT a project identity: two projects can legitimately
+ * share a path. So the admitted portable association must ALSO be proven
+ * against the thread's OWN server-owned persisted consent
+ * (`persistedConsent`, any-marker-wins over the binding history — the read
+ * a metadata-dropping adapter cannot erase): absent or different
+ * portableProjectId/resourceId refuses, even when the cwd matches. An
+ * unmarked legacy session is never implicitly promoted into a portable
+ * project. `startedMeta` is the latest `session.configured`/
+ * `session.started` metadata when the caller has it: a STATED project or
+ * consent identity there must agree too (a different stated association is
+ * never silently mapped), but the authoritative proof is the persisted
+ * history, not the latest event alone — adapters publish `session.configured`
+ * with reconstructed metadata that can omit the marker.
  */
 function verifyReceiverTurnEffect(
   admitted: NonNullable<ReceiverExecutionEffectAdmission['admitted']>,
   actualSession: { threadId?: string; cwd?: string } | undefined,
   startedMeta: Record<string, unknown> | undefined,
+  persistedConsent: PortableExecutionConsentIdentity | undefined,
 ): void {
   const actualCwd =
     actualSession?.cwd === undefined
       ? undefined
       : resolve(expandTilde(actualSession.cwd));
   if (actualSession?.threadId !== admitted.threadId || actualCwd !== admitted.cwd)
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  if (
+    !persistedConsent ||
+    persistedConsent.portableProjectId !== admitted.portableProjectId ||
+    persistedConsent.resourceId !== admitted.resourceId
+  )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
@@ -965,43 +1006,24 @@ function verifyReceiverTurnEffect(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
     );
-  const marker = startedMeta?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
-  if (marker !== undefined) {
-    const consent =
-      marker && typeof marker === 'object'
-        ? (marker as Record<string, unknown>)
-        : undefined;
-    if (
-      consent?.portableProjectId !== admitted.portableProjectId ||
-      consent?.resourceId !== admitted.resourceId
-    )
-      throw new ReceiverExecutionRefusal(
-        'receiver_execution_unavailable',
-        'The offered Project resource is unavailable.',
-      );
-  }
+  const statedConsent = portableConsentOfStartedMetadata(startedMeta);
+  if (
+    statedConsent &&
+    (statedConsent.portableProjectId !== admitted.portableProjectId ||
+      statedConsent.resourceId !== admitted.resourceId)
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
 }
 
 /**
- * #484 phase A follow-up: read the server-minted portable consent marker off
- * the persisted session binding events (`session.started` /
- * `session.configured` metadata). Returns the consent identity for a thread
- * that started as an explicit portable execution, or undefined for ordinary
- * and legacy sessions. Public callers can neither forge this (the
- * reserved-key strip removes it from every start input; only the
- * internal-only consent re-stamp writes it) nor clear it by omission (the
- * read is off the persisted event, not the request).
+ * #484 phase A follow-up: the consent-marker reader lives in
+ * `project-contribution-service.ts` (shared with the session command
+ * module); the history scan below is the service's event-store application
+ * of it.
  */
-function portableConsentOfStartedMetadata(
-  metadata: Record<string, unknown> | undefined,
-): { portableProjectId: string; resourceId: string } | undefined {
-  const marker = metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
-  if (!marker || typeof marker !== 'object') return undefined;
-  const { portableProjectId, resourceId } = marker as Record<string, unknown>;
-  if (typeof portableProjectId !== 'string' || typeof resourceId !== 'string')
-    return undefined;
-  return { portableProjectId, resourceId };
-}
 
 /** True when `candidate` is `root` itself or a directory inside it. */
 function isWithinDirectory(root: string, candidate: string): boolean {
@@ -3415,16 +3437,20 @@ export class OrchestrationService {
    */
   persistedPortableConsentOfThread(
     threadId: string,
-  ): { portableProjectId: string; resourceId: string } | undefined {
+  ): PortableExecutionConsentIdentity | undefined {
     const cached = this.portableConsentByThread.get(threadId);
     if (cached !== undefined) return cached ?? undefined;
     // Any-marker-wins across the whole binding history: consent is stamped
-    // once at start and can never be cleared by a later metadata rewrite
+    // at portable start and can never be cleared by a later metadata rewrite
     // or by omitting the marker — mirroring the reserved-key strip that
-    // keeps it off every public request. Read once per thread lifetime
-    // (history is final before the first turn); the map above is only a
-    // lookup shortcut, the store stays the authority.
-    let consent: { portableProjectId: string; resourceId: string } | undefined;
+    // keeps it off every public request. The map above is ONLY a lookup
+    // shortcut for this history scan: it never skips the admission recheck
+    // or any role/offer check, and its lifecycle is owned, not final —
+    // `forgetThreadState` (every deletion/quarantine/replacement path)
+    // retires the entry, and a fresh non-portable `recordStarted`
+    // supersedes a stale verdict, so a recreated thread id can never
+    // inherit a dead session's positive. The store stays the authority.
+    let consent: PortableExecutionConsentIdentity | undefined;
     for (const event of this.options.eventStore?.listEvents(threadId) ?? []) {
       const method = (event.payload as { method?: unknown })?.method;
       if (method !== 'session.started' && method !== 'session.configured')
@@ -4431,8 +4457,22 @@ export class OrchestrationService {
             );
         },
         requireAdapter: (provider) => this.requireAdapter(provider),
-        materializeRestoredSession: (threadId, admission) =>
-          this.materializeRecoveredSession(threadId, admission),
+        materializeRestoredSession: (threadId, admission, receiverAdmission) =>
+          this.materializeRecoveredSession(
+            threadId,
+            admission,
+            receiverAdmission,
+          ),
+        // #484 phase A follow-up: the reattach effect's persisted
+        // portable-binding read — the service's own event-store authority
+        // (consent history + latest binding metadata), never a parallel
+        // registry and never the request.
+        persistedPortableBinding: {
+          consentOfThread: (threadId) =>
+            this.persistedPortableConsentOfThread(threadId),
+          latestStartedMetadata: (threadId) =>
+            this.latestStartedMetadataOfThread(threadId),
+        },
         prepareStart: async (input, context, internal, adapter) => {
           if (!internal?.skipModelOptionSupportCheck) {
             const unsupported = unsupportedModelOptionKeys(
@@ -4610,6 +4650,12 @@ export class OrchestrationService {
                           threadId: input.threadId,
                           cwd: input.cwd,
                           projectSlug: input.metadata?.projectSlug,
+                          consent: portableConsentOfStartedMetadata(
+                            input.metadata &&
+                              typeof input.metadata === 'object'
+                              ? (input.metadata as Record<string, unknown>)
+                              : undefined,
+                          ),
                         },
                       ),
                     )
@@ -4667,6 +4713,13 @@ export class OrchestrationService {
               ...(input.cwd ? { cwd: input.cwd } : {}),
               metadata: { ...input.metadata },
             });
+          } else {
+            // A fresh non-portable start supersedes any cached verdict for
+            // this thread id: the prepared metadata just survived the
+            // reserved-key strip with no consent re-stamp, so no portable
+            // execution begins here, and a recreated id must not inherit a
+            // dead session's positive.
+            this.portableConsentByThread.delete(input.threadId);
           }
         },
         ensureStartedSessionCurrent: async (adapter, session, signal) => {
@@ -5020,8 +5073,16 @@ export class OrchestrationService {
             // webhooks, Discord, delegated-task dispatch and continue, and
             // the recovery coordinator's own replay — because every one of
             // them ends at `dispatch({ type: 'sendTurn' })`.
+            // #484 phase A follow-up: a turn carrying a fresh portable
+            // admission authorizes the spawn it may need (the service
+            // rechecks and verifies at the spawn effect); without one a
+            // marked thread refuses before spawning.
             materializeSession: (threadId) =>
-              this.materializeRecoveredSession(threadId),
+              this.materializeRecoveredSession(
+                threadId,
+                undefined,
+                internal?.receiverExecutionAdmission,
+              ),
           });
           const {
             reviewIsolation: _untrustedReviewIsolation,
@@ -5585,6 +5646,9 @@ export class OrchestrationService {
                               }
                             : undefined,
                           this.latestStartedMetadataOfThread(
+                            turnInput.threadId,
+                          ),
+                          this.persistedPortableConsentOfThread(
                             turnInput.threadId,
                           ),
                         );
@@ -6785,6 +6849,12 @@ export class OrchestrationService {
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
     this.sessionConnectionIds.delete(threadId);
+    // #484 phase A follow-up: the portable-consent verdict is per-incarnation,
+    // not per-id — every deletion/quarantine/replacement path converges here,
+    // so the cache retires here unconditionally. A recreated thread id
+    // re-derives from the store (or records a fresh verdict at start) and can
+    // never inherit a dead session's positive.
+    this.portableConsentByThread.delete(threadId);
     this.sessionAuthz.forgetTenantContext(threadId);
     if (divergent.policyThreads) this.flowPolicy.forgetPolicyBinding(threadId);
     if (divergent.flowBoundThreads) this.flowPolicy.forgetFlowBinding(threadId);
@@ -7496,12 +7566,14 @@ export class OrchestrationService {
   private materializeRecoveredSession(
     threadId: string,
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+    receiverAdmission?: ReceiverExecutionEffectAdmission,
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
     const started = this.materializeRecoveredSessionOnce(
       threadId,
       admission,
+      receiverAdmission,
     ).finally(() => {
       this.materializingSessions.delete(threadId);
     });
@@ -7512,6 +7584,7 @@ export class OrchestrationService {
   private async materializeRecoveredSessionOnce(
     threadId: string,
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+    receiverAdmission?: ReceiverExecutionEffectAdmission,
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
@@ -7525,6 +7598,37 @@ export class OrchestrationService {
     }
     const adapter = this.options.adapterRegistry.get(session.provider);
     if (!adapter) return undefined;
+    // #484 phase A follow-up: ENGINE START is itself a provider effect for
+    // ACP/Codex/plugin engines, not harmless runtime allocation — spawning
+    // one for a portable session no current offer authorizes is the exact
+    // wrong-resource execution the effect guards exist to prevent. A thread
+    // whose persisted binding carries portable consent materializes ONLY
+    // under a fully validated fresh admission: the admitted coordinate is
+    // OWNED before the recheck await, the recheck runs adjacent to the
+    // spawn, and the dormant row answers for the admitted association
+    // (thread + exact cwd + required consent identity + stated project).
+    // Without admission the spawn refuses BEFORE any adapter start/adopt/
+    // process spawn. The refusal retains the persisted record and
+    // resumeCursor untouched — the session stays dormant and re-routable,
+    // never quarantined or closed. Legacy/unmarked recovery is
+    // byte-identical.
+    const recoveredAdmitted = receiverAdmission?.admitted
+      ? { ...receiverAdmission.admitted }
+      : undefined;
+    if (recoveredAdmitted && receiverAdmission) {
+      await receiverAdmission.recheck();
+      verifyReceiverTurnEffect(
+        recoveredAdmitted,
+        { threadId: session.threadId, cwd: session.cwd },
+        this.latestStartedMetadataOfThread(threadId),
+        this.persistedPortableConsentOfThread(threadId),
+      );
+    } else if (this.persistedPortableConsentOfThread(threadId)) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This portable task cannot continue without a current execution offer for its Project resource.',
+      );
+    }
     const tenantExecutionContext =
       this.sessionAuthz.tenantContextFor(threadId) ??
       session.tenantExecutionContext;
