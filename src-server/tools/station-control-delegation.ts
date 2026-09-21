@@ -56,6 +56,12 @@ import {
   listOrchestrationSessions,
   respondToRequest,
 } from '@kontourai/station-sdk/client';
+import {
+  formatProviderQuotaEventText,
+  formatProviderQuotaReasonDetail,
+  PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  providerQuotaFactsFromDetails,
+} from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import {
   createConversationHandoffIntent,
@@ -486,6 +492,15 @@ export interface DelegatedTaskEvent {
   turnId?: string;
   text?: string;
   truncated?: true;
+  /**
+   * #2265: bounded provider-plan quota facts, present only on a classified
+   * `provider-plan-quota-exhausted` runtime event whose details re-validate.
+   * `resetReported` is provider-reported civil text with no timezone —
+   * display only, never a countdown source.
+   */
+  quotaWindow?: string;
+  resetReported?: string;
+  retryAfterMs?: number;
   toolName?: string;
   status?: string;
   requestId?: string;
@@ -710,14 +725,24 @@ export interface DelegatedTurnSupervision {
 
 /**
  * #2269: a typed, safe reason for a delegated task's current outcome. The
- * `code` is an allowlisted value (a known per-turn budget code or a
- * `TerminalAttribution` kind); `detail`, when present, is host-synthesized
- * fixed text — never a forwarded attribution detail, event message, or
- * provider log. Unknown errors carry a bare generic code with no detail.
+ * `code` is an allowlisted value (a known per-turn budget code, the #2265
+ * provider-plan quota code, or a `TerminalAttribution` kind); `detail`,
+ * when present, is host-synthesized fixed text — never a forwarded
+ * attribution detail, event message, or provider log. Unknown errors carry
+ * a bare generic code with no detail.
+ *
+ * #2265: a quota reason additionally carries the bounded validated facts
+ * re-derived from the terminal event's details — the plan window, the
+ * provider-reported (timezone-less) reset text, and a qualified
+ * retry-after only when one was genuinely supplied. All three are optional
+ * validated scalars; forged or malformed values are dropped, never relayed.
  */
 export interface DelegatedTaskReason {
   code: string;
   detail?: string;
+  quotaWindow?: string;
+  resetReported?: string;
+  retryAfterMs?: number;
 }
 
 /** Upper bound accepted for forwarded supervision limits (24 h; mirrors the muse adapter cap). */
@@ -928,24 +953,44 @@ export function delegatedTaskReason(
     terminal.code
       ? (terminal.code as string)
       : undefined;
+  // Scope a terminal code to the latest turn: an error from a superseded
+  // turn (older than the newest turn.started, different turn id) is
+  // history, not the current outcome. When the start event aged out of the
+  // window there is nothing to scope against, so the newest terminal stands
+  // on its own (honest bounded behavior, documented on
+  // `delegatedTurnSupervision`). A successful continuation or a newer
+  // failure therefore never revives a previous turn's reason.
+  const newestStartTurnId = reversed.find(
+    (event) => event.method === 'turn.started',
+  )?.turnId;
+  const terminalScopedToLatestTurn =
+    typeof newestStartTurnId !== 'string' ||
+    typeof terminal.turnId !== 'string' ||
+    newestStartTurnId === terminal.turnId;
   if (terminalCode && DELEGATED_BUDGET_REASONS[terminalCode]) {
-    // Scope the budget code to the latest turn: a budget error from a
-    // superseded turn (older than the newest turn.started, different turn
-    // id) is history, not the current outcome. When the start event aged
-    // out of the window there is nothing to scope against, so the newest
-    // terminal stands on its own (honest bounded behavior, documented on
-    // `delegatedTurnSupervision`).
-    const newestStartTurnId = reversed.find(
-      (event) => event.method === 'turn.started',
-    )?.turnId;
-    if (
-      typeof newestStartTurnId === 'string' &&
-      typeof terminal.turnId === 'string' &&
-      newestStartTurnId !== terminal.turnId
-    ) {
-      return undefined;
-    }
+    if (!terminalScopedToLatestTurn) return undefined;
     return { ...DELEGATED_BUDGET_REASONS[terminalCode] };
+  }
+  // #2265: a classified provider-plan quota exhaustion keeps its own
+  // allowlisted code — distinct from Station's per-turn idle/total
+  // supervision budgets above and from generic transport errors below.
+  // The detail is host-synthesized fixed guidance (wait/check, then
+  // continue explicitly — never an automatic retry, model/provider switch,
+  // or paid fallback); the bounded facts are re-validated off the
+  // terminal event's details, never forwarded as-is.
+  if (terminalCode === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE) {
+    if (!terminalScopedToLatestTurn) return undefined;
+    const facts = providerQuotaFactsFromDetails(terminal.details);
+    if (!facts) return { code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE };
+    return {
+      code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+      detail: formatProviderQuotaReasonDetail(facts),
+      quotaWindow: facts.quotaWindow,
+      resetReported: facts.resetReported,
+      ...(facts.retryAfterMs !== undefined
+        ? { retryAfterMs: facts.retryAfterMs }
+        : {}),
+    };
   }
   const attribution =
     session.terminalAttribution &&
@@ -3042,7 +3087,33 @@ export function projectDelegatedTaskEvent(
           ? { requestId: optionalString(event.requestId) }
           : {}),
       };
-    case 'runtime.error':
+    case 'runtime.error': {
+      // #2265: a classified provider-plan quota exhaustion projects fixed
+      // actionable copy plus re-validated bounded facts instead of the
+      // generic line. Anything else — unknown codes, forged details, raw
+      // text — stays the redacted generic.
+      if (
+        typeof event.code === 'string' &&
+        event.code === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE
+      ) {
+        const facts = providerQuotaFactsFromDetails(event.details);
+        if (facts) {
+          return {
+            ...common,
+            kind: 'runtime',
+            severity: 'error',
+            text: formatProviderQuotaEventText(facts),
+            quotaWindow: facts.quotaWindow,
+            resetReported: facts.resetReported,
+            ...(facts.retryAfterMs !== undefined
+              ? { retryAfterMs: facts.retryAfterMs }
+              : {}),
+            ...(typeof event.retriable === 'boolean'
+              ? { retriable: event.retriable }
+              : {}),
+          };
+        }
+      }
       return {
         ...common,
         kind: 'runtime',
@@ -3052,6 +3123,7 @@ export function projectDelegatedTaskEvent(
           ? { retriable: event.retriable }
           : {}),
       };
+    }
     case 'runtime.warning':
       return {
         ...common,

@@ -51,7 +51,13 @@ interface DelegatedTaskRecord {
     totalLimitMs: number;
     lastProgressEventAt?: string;
   };
-  reason?: { code: string; detail?: string };
+  reason?: {
+    code: string;
+    detail?: string;
+    quotaWindow?: string;
+    resetReported?: string;
+    retryAfterMs?: number;
+  };
   transitionReason?: string;
 }
 
@@ -214,7 +220,9 @@ describe('station delegate over HTTP', () => {
                 ? 'review_pending'
                 : body.prompt === 'trigger queued task'
                   ? 'queued'
-                  : 'running',
+                  : body.prompt === 'trigger quota-limited task'
+                    ? 'failed'
+                    : 'running',
           environment,
           target,
           ...(selectedModel ? { model: selectedModel } : {}),
@@ -256,6 +264,20 @@ describe('station delegate over HTTP', () => {
                     'The turn ended after a full window with no verified protocol activity.',
                 },
                 transitionReason: 'runtime_error',
+              }
+            : {}),
+          // #2265: a failed task whose serving Station classified a
+          // provider-plan quota exhaustion, with the bounded facts the
+          // status renderer prints beneath the reason line.
+          ...(body.prompt === 'trigger quota-limited task'
+            ? {
+                reason: {
+                  code: 'provider-plan-quota-exhausted',
+                  detail:
+                    'The provider plan quota was exhausted (5 hour window). The provider reported the limit resets at 2026-09-21 18:55:29 (provider-reported time, no timezone given) — wait for the reset or check the provider plan, then continue explicitly. Station did not retry, switch models or providers, or spend on a fallback.',
+                  quotaWindow: '5 hour',
+                  resetReported: '2026-09-21 18:55:29',
+                },
               }
             : {}),
         };
@@ -888,6 +910,68 @@ describe('station delegate over HTTP', () => {
       code: 'muse-turn-idle-timeout',
       detail:
         'The turn ended after a full window with no verified protocol activity.',
+    });
+  });
+
+  /**
+   * #2265: `delegate status` renders a classified provider-plan quota
+   * reason with its bounded facts — window, provider-reported reset
+   * labelled timezone-less, and fixed wait/check guidance. The reset is
+   * repeated verbatim, never a countdown; raw provider text never prints.
+   */
+  test('status renders a provider-plan quota reason with bounded facts (#2265)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger quota-limited task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+
+    expect(printed).toContain('Task task:1: failed');
+    expect(printed).toContain(
+      'Reason: provider-plan-quota-exhausted — The provider plan quota was exhausted (5 hour window).',
+    );
+    expect(printed).toContain('Provider limit window: 5 hour');
+    expect(printed).toContain(
+      'Provider-reported reset: 2026-09-21 18:55:29 (no timezone given; wait before continuing)',
+    );
+    expect(printed).toContain(
+      `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
+    );
+    expect(printed).not.toContain('Usage limit');
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    const jsonOutput = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    expect(jsonOutput.data.reason).toEqual({
+      code: 'provider-plan-quota-exhausted',
+      detail:
+        'The provider plan quota was exhausted (5 hour window). The provider reported the limit resets at 2026-09-21 18:55:29 (provider-reported time, no timezone given) — wait for the reset or check the provider plan, then continue explicitly. Station did not retry, switch models or providers, or spend on a fallback.',
+      quotaWindow: '5 hour',
+      resetReported: '2026-09-21 18:55:29',
     });
   });
 
