@@ -53,7 +53,8 @@ export class ReceiverExecutionRefusal extends Error {
       | 'receiver_execution_unavailable'
       | 'receiver_execution_forwarding_refused'
       | 'receiver_execution_authority_changed'
-      | 'receiver_execution_consent_stale',
+      | 'receiver_execution_consent_stale'
+      | 'delegation_attempt_unsupported',
     message: string,
   ) {
     super(message);
@@ -83,6 +84,8 @@ export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
     'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
   receiver_execution_consent_stale:
     'The original Project identity of this portable task cannot be verified. Start a new portable execution.',
+  delegation_attempt_unsupported:
+    'Delegation attempt claims are not supported for this request: the receiving Station must advertise the capability and the caller must be a verified delegation peer with the orchestration operate scope.',
 };
 
 /**

@@ -2350,6 +2350,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/delegations' },
     { method: 'POST', path: '/api/orchestration/delegations' },
     { method: 'GET', path: '/api/orchestration/delegations/:taskId' },
+    // #485 receiver request-claim slice: the exact-attempt lookup is
+    // strictly LESS disclosing than `delegations/:taskId` directly above
+    // at the same family read tier — it returns only a bounded closed
+    // claim state (no prompts/paths/digests/transcripts) and only to the
+    // verified delegation grant the claim is keyed by, which the route
+    // itself enforces before any read.
+    {
+      method: 'GET',
+      path: '/api/orchestration/delegations/attempts/:attemptId',
+    },
     { method: 'POST', path: '/api/orchestration/delegations/:taskId/continue' },
     { method: 'GET', path: '/api/orchestration/delegations/:taskId/events' },
     {
