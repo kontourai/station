@@ -173,7 +173,6 @@ async function startOwnedTurn(options: {
       const { proc, release } = spawnOwnedChild(process.execPath, argv, {
         stdio: ['ignore', 'pipe', 'pipe'],
         registryDir,
-        windowsHide: true,
       });
       if (typeof proc.pid === 'number') childPids.push(proc.pid);
       const wrappedRelease = () => {
@@ -422,7 +421,7 @@ describe('muse adapter real owned-child supervision (#2269)', () => {
         const { proc, release } = spawnOwnedChild(
           process.execPath,
           [script, pidFile],
-          { stdio: ['ignore', 'pipe', 'pipe'], registryDir, windowsHide: true },
+          { stdio: ['ignore', 'pipe', 'pipe'], registryDir },
         );
         if (typeof proc.pid === 'number') childPids.push(proc.pid);
         return {
