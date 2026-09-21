@@ -251,10 +251,11 @@ describe('station delegate over HTTP', () => {
                   lastProgressEventAt: '2026-09-20T22:10:00.000Z',
                 },
                 reason: {
-                  code: 'timeout',
-                  detail: 'Muse turn was idle for 1800000ms.',
+                  code: 'muse-turn-idle-timeout',
+                  detail:
+                    'The turn ended after a full window with no verified protocol activity.',
                 },
-                transitionReason: 'adapter-turn-timeout',
+                transitionReason: 'runtime_error',
               }
             : {}),
         };
@@ -854,14 +855,18 @@ describe('station delegate over HTTP', () => {
     ]);
     const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
 
-    expect(printed).toContain('Turn budget: 2h total (1h 50m remaining');
+    expect(printed).toContain(
+      'Turn budget (this turn only, not the whole task): 2h total (1h 50m remaining',
+    );
     expect(printed).toContain('deadline 2026-09-21T00:00:00.000Z');
-    expect(printed).toContain('Idle limit: 30m since last verified activity');
+    expect(printed).toContain(
+      'Idle limit: 30m with no verified protocol activity',
+    );
     expect(printed).toContain('may be working quietly');
     expect(printed).toContain(
-      'Reason: timeout — Muse turn was idle for 1800000ms.',
+      'Reason: muse-turn-idle-timeout — The turn ended after a full window with no verified protocol activity.',
     );
-    expect(printed).toContain('Transition: adapter-turn-timeout');
+    expect(printed).toContain('Transition: runtime_error');
     consoleLog.mockClear();
 
     await runCli([
@@ -880,8 +885,9 @@ describe('station delegate over HTTP', () => {
       idleLimitMs: 30 * 60_000,
     });
     expect(jsonOutput.data.reason).toEqual({
-      code: 'timeout',
-      detail: 'Muse turn was idle for 1800000ms.',
+      code: 'muse-turn-idle-timeout',
+      detail:
+        'The turn ended after a full window with no verified protocol activity.',
     });
   });
 

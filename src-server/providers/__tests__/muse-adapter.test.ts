@@ -2335,4 +2335,143 @@ describe('Muse turn supervision (#2269)', () => {
       vi.useRealTimers();
     }
   });
+
+  test('an unconfirmed deadline kill holds the slot until the late exit', async () => {
+    // `terminateProcessTree` can fail to confirm exit after SIGKILL. The
+    // deadline path must then behave like `interruptTurn`'s
+    // `termination-unconfirmed`: settle exactly once, keep the single slot
+    // closed so no overlapping `muse exec` runs against the same
+    // `--session-id`, and let the late `exit` release and free exactly once.
+    const harness = createHarness({
+      turnTimeoutMs: 10,
+      terminateProcess: async () => {
+        throw new Error('kill ESRCH: termination unconfirmed');
+      },
+    });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-unconfirmed',
+    });
+    const turn = await harness.adapter.sendTurn({
+      threadId: 'thread-unconfirmed',
+      input: 'hi',
+    });
+    const events = await drain(harness.iterator, 4, 'unconfirmed deadline');
+    expect(events.map((event) => event.method)).toEqual([
+      'session.started',
+      'session.configured',
+      'turn.started',
+      'runtime.error',
+    ]);
+    expect(events[3]).toMatchObject({
+      method: 'runtime.error',
+      code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
+      turnId: turn.turnId,
+    });
+    await flushIo();
+
+    // The slot is still held: a replacement turn must not start while the
+    // old child may still be alive.
+    await expect(
+      harness.adapter.sendTurn({
+        threadId: 'thread-unconfirmed',
+        input: 'intruder',
+      }),
+    ).rejects.toThrow('active turn');
+    expect(harness.processes).toHaveLength(1);
+    expect(harness.released).toBe(0);
+
+    // The late exit frees the slot exactly once and publishes no second
+    // terminal for the old turn; the session recovers with the next turn
+    // (which carries the same short budget, so its own terminal closes the
+    // sequence and bounds the assertion below).
+    harness.processes[0].exit(1);
+    await flushIo();
+    expect(harness.released).toBe(1);
+    const retry = await harness.adapter.sendTurn({
+      threadId: 'thread-unconfirmed',
+      input: 'again',
+    });
+    expect(harness.processes).toHaveLength(2);
+    const rest = await drain(harness.iterator, 2, 'unconfirmed recovery');
+    expect(rest.map((event) => event.method)).toEqual([
+      'turn.started',
+      'runtime.error',
+    ]);
+    expect(rest[0]).toMatchObject({
+      method: 'turn.started',
+      turnId: retry.turnId,
+    });
+    // Ceiling over the whole test: exactly two terminals — one per turn,
+    // no duplicate for the unconfirmed kill or the late exit.
+    const terminals = [...events, ...rest].filter(
+      (event) => event.method === 'runtime.error',
+    );
+    expect(terminals.map((event) => [event.turnId, event.code])).toEqual([
+      [turn.turnId, MUSE_TURN_TOTAL_TIMEOUT_CODE],
+      [retry.turnId, MUSE_TURN_TOTAL_TIMEOUT_CODE],
+    ]);
+  });
+
+  test('tool-receipt replay past the bounded retention reads as new — and still never moves total', async () => {
+    // The per-turn replay dedup is bounded (oldest-first past the cap): an
+    // evicted id replaying reads as new idle activity, because it is still
+    // a protocol frame the child actually emitted. This pins that honest
+    // bound rather than claiming every duplicate never reschedules. The
+    // fixed total is unaffected regardless.
+    vi.useFakeTimers();
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-replay-cap',
+      });
+      await harness.adapter.sendTurn({
+        threadId: 'thread-replay-cap',
+        input: 'hi',
+      });
+      const minute = 60_000;
+      const variant = (index: number): string =>
+        MUSE_TOOL_RESULT.replace(
+          'call_019feab717fd75639b5a008d7b2c3e09',
+          `call_capacity_${index}`,
+        );
+      const emitLine = async (line: string) => {
+        harness.processes[0].stdout.write(`${line}\n`);
+        await vi.advanceTimersByTimeAsync(0);
+      };
+      // 501 distinct receipts at t≈0: the ring holds 500, so the first id
+      // is evicted and its replay below reads as new verified activity.
+      for (let index = 0; index < 501; index += 1) {
+        await emitLine(variant(index));
+      }
+      // t=29min: replay the EVICTED first receipt. It reschedules idle to
+      // t=59min (a retained duplicate would not — see the sibling test).
+      await vi.advanceTimersByTimeAsync(29 * minute);
+      await emitLine(variant(0));
+      // t=58min: still inside the rescheduled idle window — the slot holds.
+      await vi.advanceTimersByTimeAsync(29 * minute);
+      await expect(
+        harness.adapter.sendTurn({
+          threadId: 'thread-replay-cap',
+          input: 'intruder',
+        }),
+      ).rejects.toThrow('active turn');
+      // t=60min: the rescheduled idle window elapsed — one idle terminal.
+      await vi.advanceTimersByTimeAsync(2 * minute);
+      const events = await drain(harness.iterator, 506, 'replay capacity');
+      const errors = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({
+        code: MUSE_TURN_IDLE_TIMEOUT_CODE,
+      });
+      expect(
+        events.filter((event) => event.method === 'tool.completed'),
+      ).toHaveLength(502);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

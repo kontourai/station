@@ -69,13 +69,25 @@ describe('delegation supervision projection (#2269)', () => {
       detail: {
         session: {
           ...observingSession('turn-1'),
+          provider: 'muse',
           terminalAttribution: {
             kind: 'timeout',
-            detail: 'Muse turn was idle for 1800000ms.',
+            detail: 'Station ended the session after it timed out.',
           },
-          transitionReason: 'adapter-turn-timeout',
+          transitionReason: 'runtime_error',
         },
-        events: [turnStartedEvent('turn-1', museDeclaration('turn-1'))],
+        events: [
+          turnStartedEvent('turn-1', museDeclaration('turn-1')),
+          {
+            method: 'runtime.error',
+            turnId: 'turn-1',
+            createdAt: '2026-09-20T22:30:01.000Z',
+            code: 'muse-turn-idle-timeout',
+            message:
+              'Muse turn was idle for 1800000ms with no verified protocol activity (last activity at 2026-09-20T22:00:00.000Z; no progress observed — the turn may have been working quietly) and was terminated.',
+            retriable: false,
+          },
+        ],
       },
       metadata: METADATA,
     });
@@ -87,11 +99,46 @@ describe('delegation supervision projection (#2269)', () => {
       totalLimitMs: 2 * 60 * 60_000,
       lastProgressEventAt: '2026-09-20T22:10:00.000Z',
     });
+    // Idle vs absolute stays distinct even though the lifecycle fold
+    // classifies both as `timeout`: the terminal event code names the
+    // budget, and the detail is host-synthesized — never the raw message.
     expect(snapshot.reason).toEqual({
-      code: 'timeout',
-      detail: 'Muse turn was idle for 1800000ms.',
+      code: 'muse-turn-idle-timeout',
+      detail:
+        'The turn ended after a full window with no verified protocol activity.',
     });
-    expect(snapshot.transitionReason).toBe('adapter-turn-timeout');
+    expect(JSON.stringify(snapshot)).not.toContain('1800000ms with no verified');
+    expect(snapshot.transitionReason).toBe('runtime_error');
+  });
+
+  test('an absolute-budget expiry maps to the distinct total reason', () => {
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: {
+          ...observingSession('turn-1'),
+          provider: 'muse',
+          terminalAttribution: { kind: 'timeout' },
+        },
+        events: [
+          turnStartedEvent('turn-1', museDeclaration('turn-1')),
+          {
+            method: 'runtime.error',
+            turnId: 'turn-1',
+            createdAt: '2026-09-21T00:00:01.000Z',
+            code: 'muse-turn-timeout',
+            message:
+              'Muse did not finish the turn within 7200000ms (absolute turn budget) and was terminated.',
+            retriable: false,
+          },
+        ],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.reason).toEqual({
+      code: 'muse-turn-timeout',
+      detail: 'The turn ended at its absolute turn budget.',
+    });
   });
 
   test('time-expiry clamps remaining to zero instead of going negative', () => {
@@ -231,5 +278,85 @@ describe('delegation supervision projection (#2269)', () => {
     });
     expect(snapshot.reason).toBeUndefined();
     expect(snapshot.supervision).toBeUndefined();
+  });
+
+  test('a sentinel secret and private path in the raw error stay out of the snapshot', () => {
+    const sentinelSecret = 'sk-sentinel-secret-9f8e7d6c5b4a';
+    const privatePath = '/private/var/user-notes/hunter2-plan.md';
+    const session = {
+      ...observingSession('turn-1'),
+      terminalAttribution: {
+        kind: 'runtime_error',
+        detail: `engine blew up on ${privatePath} with key ${sentinelSecret}`,
+      },
+    };
+    const events = [
+      turnStartedEvent('turn-1', museDeclaration('turn-1')),
+      {
+        method: 'runtime.error',
+        turnId: 'turn-1',
+        createdAt: '2026-09-20T22:11:00.000Z',
+        code: 'muse-exit-without-terminal',
+        message: `Muse exited before reporting a terminal result (key ${sentinelSecret} at ${privatePath}).`,
+        retriable: false,
+      },
+    ];
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: { session, events },
+      metadata: METADATA,
+    });
+    // Bare generic code — neither the attribution detail nor the event
+    // message is forwarded, so neither the secret nor the path crosses.
+    expect(snapshot.reason).toEqual({ code: 'runtime_error' });
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain(sentinelSecret);
+    expect(serialized).not.toContain(privatePath);
+  });
+
+  test('a forged transition reason outside the vocabulary is dropped', () => {
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: {
+          ...observingSession('turn-1'),
+          transitionReason: 'adapter-turn-timeout',
+        },
+        events: [turnStartedEvent('turn-1', museDeclaration('turn-1'))],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.transitionReason).toBeUndefined();
+    expect(JSON.stringify(snapshot)).not.toContain('adapter-turn-timeout');
+  });
+
+  test('a declaration whose provider disagrees with the session is dropped', () => {
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: {
+          ...observingSession('turn-1'),
+          provider: 'codex',
+        },
+        events: [turnStartedEvent('turn-1', museDeclaration('turn-1'))],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.supervision).toBeUndefined();
+  });
+
+  test('the declaration is matched by observed turn id, not by latest start', () => {
+    // A newer turn.started without a declaration must not shadow the
+    // observed turn's own declaration: the match is by turnId identity.
+    const supervision = delegatedTurnSupervision(observingSession('turn-1'), [
+      turnStartedEvent('turn-1', museDeclaration('turn-1')),
+      {
+        method: 'turn.started',
+        turnId: 'turn-2',
+        createdAt: '2026-09-20T23:00:00.000Z',
+      },
+    ]);
+    expect(supervision?.turnId).toBe('turn-1');
+    expect(supervision?.provider).toBe('muse');
   });
 });

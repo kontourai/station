@@ -1432,14 +1432,7 @@ export class MuseAdapter implements ProviderAdapterShape {
    * per-turn deadlines, and frees the session's single turn slot.
    */
   private finishTurn(record: MuseSessionRecord, turn: MuseActiveTurn): void {
-    if (turn.totalTimeoutHandle) {
-      clearTimeout(turn.totalTimeoutHandle);
-      turn.totalTimeoutHandle = undefined;
-    }
-    if (turn.idleTimeoutHandle) {
-      clearTimeout(turn.idleTimeoutHandle);
-      turn.idleTimeoutHandle = undefined;
-    }
+    this.clearTurnTimers(turn);
     // Deliberately does NOT release the owned-process record. Freeing the turn
     // slot is a usability act (the session must not stay blocked by a wedged
     // child); un-registering the child is a safety act, and is only correct
@@ -1476,21 +1469,57 @@ export class MuseAdapter implements ProviderAdapterShape {
    * result" — and the child is then terminated and the slot freed, in the
    * same settle→terminate→finish order as before.
    */
+  /**
+   * Settles a deadline-killed turn, then terminates the child and frees the
+   * slot ONLY once termination is confirmed — the same semantics as
+   * `interruptTurn`'s `termination-unconfirmed` path. The original code
+   * freed the slot in `.finally`, so an unconfirmed kill let a replacement
+   * `muse exec` start against the same `--session-id` while the old child
+   * could still be alive. On the unconfirmed path only the timers are
+   * cleared; the slot stays held until the late `exit` handler releases and
+   * frees it exactly once. The `activeTurn` guard keeps a late callback for
+   * a superseded turn from touching its replacement's timers or slot.
+   */
+  private settleTimeoutTurn(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    outcome: MuseTurnSettleOutcome,
+  ): void {
+    this.settleTurn(record, turn, outcome);
+    void this.terminateTurn(turn).then((confirmed) => {
+      if (record.activeTurn !== turn) return;
+      if (confirmed) {
+        this.finishTurn(record, turn);
+      } else {
+        this.clearTurnTimers(turn);
+      }
+    });
+  }
+
+  /** Clears both per-turn deadlines without freeing the slot. Idempotent. */
+  private clearTurnTimers(turn: MuseActiveTurn): void {
+    if (turn.totalTimeoutHandle) {
+      clearTimeout(turn.totalTimeoutHandle);
+      turn.totalTimeoutHandle = undefined;
+    }
+    if (turn.idleTimeoutHandle) {
+      clearTimeout(turn.idleTimeoutHandle);
+      turn.idleTimeoutHandle = undefined;
+    }
+  }
+
   private armTurnDeadlines(
     record: MuseSessionRecord,
     turn: MuseActiveTurn,
   ): void {
     const totalHandle = setTimeout(() => {
-      this.settleTurn(record, turn, {
+      this.settleTimeoutTurn(record, turn, {
         kind: 'error',
         outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
         error: {
           message: `Muse did not finish the turn within ${turn.totalLimitMs}ms (absolute turn budget) and was terminated.`,
           code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
         },
-      });
-      void this.terminateTurn(turn).finally(() => {
-        this.finishTurn(record, turn);
       });
     }, turn.totalLimitMs);
     // A pending backstop must never be the reason the process stays alive.
@@ -1517,16 +1546,13 @@ export class MuseAdapter implements ProviderAdapterShape {
     const idleLimitMs = turn.idleLimitMs;
     const handle = setTimeout(() => {
       const lastActivityIso = new Date(turn.lastProgressAt).toISOString();
-      this.settleTurn(record, turn, {
+      this.settleTimeoutTurn(record, turn, {
         kind: 'error',
         outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
         error: {
           message: `Muse turn was idle for ${idleLimitMs}ms with no verified protocol activity (last activity at ${lastActivityIso}; no progress observed — the turn may have been working quietly) and was terminated.`,
           code: MUSE_TURN_IDLE_TIMEOUT_CODE,
         },
-      });
-      void this.terminateTurn(turn).finally(() => {
-        this.finishTurn(record, turn);
       });
     }, idleLimitMs);
     handle.unref?.();

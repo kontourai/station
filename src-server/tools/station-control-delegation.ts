@@ -32,6 +32,7 @@ import {
 import {
   isSessionLifecycleState,
   isSessionLifecycleStateStopped,
+  isSessionTransitionReason,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type SessionReadAuthority,
@@ -614,9 +615,11 @@ export interface DelegatedTurnSupervision {
 }
 
 /**
- * #2269: a typed, safe reason for a delegated task's current outcome. Only
- * the serving Station's own attribution vocabulary (`terminalAttribution`)
- * is forwarded; anything else stays a redacted generic.
+ * #2269: a typed, safe reason for a delegated task's current outcome. The
+ * `code` is an allowlisted value (a known per-turn budget code or a
+ * `TerminalAttribution` kind); `detail`, when present, is host-synthesized
+ * fixed text — never a forwarded attribution detail, event message, or
+ * provider log. Unknown errors carry a bare generic code with no detail.
  */
 export interface DelegatedTaskReason {
   code: string;
@@ -643,11 +646,16 @@ function optionalIsoTimestamp(value: unknown): string | undefined {
 
 /**
  * #2269: derive the current turn's supervision from canonical facts only.
- * The adapter's `turn.started` declaration counts only when it names the
- * turn the watchdog is still observing (`turnProgress.turnId`) — a stale
- * prior turn's declaration is dropped, and a malformed declaration is
- * dropped rather than repaired. Returns `undefined` for "no declared
- * budget" (honest unknown).
+ * The `turn.started` declaration counts only when its own `turnId` names
+ * the turn the watchdog is still observing (`turnProgress.turnId`) — the
+ * match is by that identity, not by "the latest start event", so a stale
+ * prior turn's declaration and a malformed declaration are both dropped
+ * rather than repaired. A declaration whose provider disagrees with the
+ * session's own projected provider is dropped too: the session projection
+ * is Station-authored while event metadata from a non-owning adapter may
+ * repeat caller input. Returns `undefined` for "no declared budget"
+ * (honest unknown) — including when the status event window no longer
+ * contains the turn's start event after a long history.
  */
 export function delegatedTurnSupervision(
   session: Record<string, unknown>,
@@ -665,19 +673,27 @@ export function delegatedTurnSupervision(
     typeof progress?.lastProgressEventAt === 'string'
       ? progress.lastProgressEventAt
       : undefined;
-  const declared = [...events]
-    .reverse()
-    .find((event) => event.method === 'turn.started');
-  const supervision =
-    declared?.metadata && typeof declared.metadata === 'object'
-      ? ((declared.metadata as Record<string, unknown>).supervision as
-          | Record<string, unknown>
-          | undefined)
-      : undefined;
-  if (!supervision || typeof supervision !== 'object') return undefined;
-  // The declaration must name the turn still under observation — otherwise
-  // it is a stale prior turn's fact, not the current turn's policy.
-  if (supervision.turnId !== observedTurnId) return undefined;
+  // Newest-first scan for the declaration that names the observed turn. The
+  // status event window is bounded, so a very long turn's start event can
+  // age out — that reads as honest unknown, never as a repaired policy.
+  const supervision = [...events].reverse().reduce(
+    (found: Record<string, unknown> | undefined, event) => {
+      if (found || event.method !== 'turn.started') return found;
+      const candidate =
+        event.metadata && typeof event.metadata === 'object'
+          ? ((event.metadata as Record<string, unknown>).supervision as
+              | Record<string, unknown>
+              | undefined)
+          : undefined;
+      return candidate &&
+        typeof candidate === 'object' &&
+        candidate.turnId === observedTurnId
+        ? candidate
+        : found;
+    },
+    undefined,
+  );
+  if (!supervision) return undefined;
   const idleLimitMs = optionalPositiveBoundedMs(supervision.idleLimitMs);
   const totalLimitMs = optionalPositiveBoundedMs(supervision.totalLimitMs);
   const startedAt = optionalIsoTimestamp(supervision.startedAt);
@@ -689,6 +705,17 @@ export function delegatedTurnSupervision(
     deadlineAt === undefined ||
     typeof supervision.provider !== 'string' ||
     !supervision.provider
+  ) {
+    return undefined;
+  }
+  // The declaration must agree with the session's own projected provider.
+  // A mismatch means the start event is not the owning adapter's fact (a
+  // non-owning adapter may forward caller-influenced metadata), so the
+  // policy is dropped rather than attributed to the wrong engine.
+  if (
+    typeof session.provider === 'string' &&
+    session.provider &&
+    session.provider !== supervision.provider
   ) {
     return undefined;
   }
@@ -708,31 +735,101 @@ export function delegatedTurnSupervision(
 }
 
 /**
- * #2269: forward the serving Station's typed terminal attribution only.
- * Raw event messages and provider logs are never a source here, so unknown
- * provider errors stay a redacted generic kind.
+ * Known per-turn budget codes the serving Station's adapters settle with,
+ * mapped to the delegation reason and its HOST-SYNTHESIZED detail. The
+ * detail is fixed text per code — never the terminal event's message, which
+ * can carry child output, paths, or provider errors. Only codes in this
+ * table keep a detail; everything else is a bare code or nothing.
+ */
+const DELEGATED_BUDGET_REASONS: Record<string, DelegatedTaskReason> = {
+  'muse-turn-idle-timeout': {
+    code: 'muse-turn-idle-timeout',
+    detail:
+      'The turn ended after a full window with no verified protocol activity.',
+  },
+  'muse-turn-timeout': {
+    code: 'muse-turn-timeout',
+    detail: 'The turn ended at its absolute turn budget.',
+  },
+  'turn-timeout': {
+    code: 'turn-timeout',
+    detail: 'The turn ended at its absolute turn budget.',
+  },
+};
+
+/** Attribution kinds whose detail is always a service-fixed string, safe to synthesize. */
+const DELEGATED_FIXED_DETAILS: Record<string, string> = {
+  requested_stop: 'Stopped by request.',
+  stall_stop: 'Station stopped it after no progress was detected.',
+  timeout: 'Station ended the session after it timed out.',
+  no_output: 'The engine ended without output.',
+};
+
+/**
+ * #2269: derive the delegation reason from canonical facts only, with no
+ * raw detail anywhere in the output.
+ *
+ * The lifecycle fold deliberately classifies a budget-killed turn as
+ * `runtime_error` first (its message is always non-empty), so the
+ * attribution alone cannot distinguish an idle expiry from an absolute one
+ * — the terminal `runtime.error` event's code is read for that, newest
+ * first, and only an allowlisted budget code maps to a reason WITH detail
+ * (host-synthesized fixed text, never the event message). Otherwise the
+ * attribution kind maps to a bare code plus a synthesized fixed detail for
+ * the service-fixed kinds; `runtime_error` and unrecognized kinds carry no
+ * detail at all, so unknown provider errors stay a redacted generic and a
+ * sentinel secret or private path in the raw message can never cross the
+ * delegation seam.
  */
 export function delegatedTaskReason(
   session: Record<string, unknown>,
+  events: Array<Record<string, unknown>> = [],
 ): DelegatedTaskReason | undefined {
+  const terminalCode = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        (event.method === 'runtime.error' ||
+          event.method === 'runtime_error') &&
+        typeof event.code === 'string' &&
+        event.code,
+    )?.code as string | undefined;
+  if (terminalCode && DELEGATED_BUDGET_REASONS[terminalCode]) {
+    return { ...DELEGATED_BUDGET_REASONS[terminalCode] };
+  }
   const attribution =
     session.terminalAttribution &&
     typeof session.terminalAttribution === 'object'
       ? (session.terminalAttribution as Record<string, unknown>)
       : undefined;
-  if (
-    !attribution ||
-    typeof attribution.kind !== 'string' ||
-    !attribution.kind
-  ) {
-    return undefined;
+  const kind =
+    typeof attribution?.kind === 'string' && attribution.kind
+      ? attribution.kind
+      : undefined;
+  if (!kind) return undefined;
+  if (kind === 'runtime_error') return { code: 'runtime_error' };
+  if (kind === 'exit') {
+    const exitCode = [...events]
+      .reverse()
+      .find(
+        (event) =>
+          event.method === 'session.exited' &&
+          typeof event.exitCode === 'number' &&
+          Number.isSafeInteger(event.exitCode) &&
+          event.exitCode !== 0,
+      )?.exitCode as number | undefined;
+    return {
+      code: 'exit',
+      detail:
+        exitCode === undefined
+          ? 'The engine exited without completing.'
+          : `The engine exited with code ${exitCode}.`,
+    };
   }
-  return {
-    code: attribution.kind,
-    ...(typeof attribution.detail === 'string' && attribution.detail
-      ? { detail: attribution.detail }
-      : {}),
-  };
+  const fixed = DELEGATED_FIXED_DETAILS[kind];
+  // Unrecognized kinds read as no reason rather than a guessed one: a new
+  // attribution kind must be allowlisted here before it crosses the seam.
+  return fixed ? { code: kind, detail: fixed } : undefined;
 }
 
 export interface DelegatedTaskSnapshot {
@@ -776,12 +873,18 @@ export interface DelegatedTaskSnapshot {
   supervision?: DelegatedTurnSupervision;
   /**
    * #2269 (covers the necessary part of #2265): the serving Station's typed
-   * terminal attribution for the current non-clean outcome, forwarded as-is.
-   * Unknown provider errors stay a redacted generic kind — raw event
-   * messages and provider logs are never forwarded here.
+   * terminal attribution for the current non-clean outcome, allowlisted and
+   * re-synthesized — never forwarded as-is. Only known budget codes keep a
+   * (host-authored, fixed-text) detail; unknown provider errors stay a
+   * redacted generic code with no detail. Raw event messages, attribution
+   * details, and provider logs are never forwarded here.
    */
   reason?: DelegatedTaskReason;
-  /** #2269: lifecycle transition reason the serving Station folded, if any. */
+  /**
+   * #2269: lifecycle transition reason the serving Station folded, if it is
+   * a value the `SessionTransitionReason` vocabulary recognizes. Anything
+   * else is dropped, never relayed.
+   */
   transitionReason?: string;
   pendingRequest?: {
     id: string;
@@ -2250,10 +2353,13 @@ export function snapshotFor(options: {
       return supervision ? { supervision } : {};
     })(),
     ...(() => {
-      const reason = delegatedTaskReason(session);
+      const reason = delegatedTaskReason(session, events);
       return reason ? { reason } : {};
     })(),
-    ...(typeof session.transitionReason === 'string' && session.transitionReason
+    // #2269: only a vocabulary value the contract recognizes crosses the
+    // seam — a forged or misspelled transition reason is dropped, never
+    // relayed as fact.
+    ...(isSessionTransitionReason(session.transitionReason)
       ? { transitionReason: session.transitionReason }
       : {}),
     ...(pendingRequest

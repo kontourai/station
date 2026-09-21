@@ -334,13 +334,13 @@ function supervisionLines(
 ): string[] {
   if (!supervision) return [];
   const lines = [
-    `Turn budget: ${formatDurationMs(supervision.totalLimitMs)} total ` +
+    `Turn budget (this turn only, not the whole task): ${formatDurationMs(supervision.totalLimitMs)} total ` +
       `(${formatDurationMs(supervision.remainingMs)} remaining, ` +
       `deadline ${supervision.deadlineAt})`,
     `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} ` +
-      `since last verified activity${
+      `with no verified protocol activity${
         supervision.lastProgressEventAt
-          ? ` (last activity at ${supervision.lastProgressEventAt}; ` +
+          ? ` (watchdog last observed activity at ${supervision.lastProgressEventAt}; ` +
             `no progress observed since — the turn may be working quietly)`
           : ''
       }`,
