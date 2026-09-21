@@ -34,7 +34,6 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
-import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   shouldRenderSetupLauncher,
@@ -44,6 +43,7 @@ import {
 } from '../contexts/onboarding-setup-store';
 import { useToast } from '../contexts/ToastContext';
 import { usePairingDeepLink } from '../hooks/usePairingDeepLink';
+import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { useSystemStatus } from '../hooks/useSystemStatus';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import {
