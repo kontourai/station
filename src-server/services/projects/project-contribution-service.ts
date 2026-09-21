@@ -495,7 +495,7 @@ export class ProjectContributionService {
     // owns the object; it is never handed out, so no caller alias can
     // mutate the baseline out from under the next recheck.
     const originalIdentity = first.identity;
-    const admittedProject = first.admitted;
+    const admittedProject = Object.freeze({ ...first.admitted });
     return {
       portableProjectId: requested.portableProjectId,
       resourceId: requested.resourceId,
@@ -557,7 +557,7 @@ export class ProjectContributionService {
     const captured = {
       projectId: association.project.id,
       projectSlug: association.project.slug,
-      workingDirectory:
+      absoluteProjectRoot:
         association.project.workingDirectory === undefined
           ? undefined
           : resolve(expandTilde(association.project.workingDirectory)),
@@ -629,7 +629,7 @@ export class ProjectContributionService {
       sameAssociation =
         currentAssociation.project.id === captured.projectId &&
         currentAssociation.project.slug === captured.projectSlug &&
-        currentWorkingDirectory === captured.workingDirectory &&
+        currentWorkingDirectory === captured.absoluteProjectRoot &&
         isDeepStrictEqual(
           {
             id: currentAssociation.manifest.id,
@@ -666,11 +666,14 @@ export class ProjectContributionService {
       );
     if (!sameAssociation || !isDeepStrictEqual(captured.binding, afterBinding))
       throw unavailable();
-    if ((captured.workingDirectory ?? '') === '') throw unavailable();
+    if ((captured.absoluteProjectRoot ?? '') === '') throw unavailable();
+    const expectedProjectRoot = expect
+      ? resolve(expandTilde(expect.admitted.workingDirectory))
+      : undefined;
     if (
       expect &&
       (expect.admitted.slug !== captured.projectSlug ||
-        expect.admitted.workingDirectory !== captured.workingDirectory ||
+        expectedProjectRoot !== captured.absoluteProjectRoot ||
         expect.admitted.resourcePath !== resourcePath ||
         (expect.admitted.executionRoot ?? undefined) !==
           (executionRoot ?? undefined) ||
@@ -696,7 +699,7 @@ export class ProjectContributionService {
     return {
       admitted: {
         slug: captured.projectSlug,
-        workingDirectory: captured.workingDirectory!,
+        workingDirectory: captured.absoluteProjectRoot!,
         resourcePath,
         ...(executionRoot === undefined ? {} : { executionRoot }),
       },
