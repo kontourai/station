@@ -691,6 +691,15 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
 
+    // Establish the persistence prerequisite before leaving A. Verification
+    // renders before the async persister writes; switching immediately can
+    // legitimately retire A before any shelf was created.
+    await waitFor(() =>
+      expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
+        true,
+      ),
+    );
+
     await switchTo(idB);
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_B),
