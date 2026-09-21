@@ -85,6 +85,12 @@ import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
+import {
+  classifyProviderQuotaFailure,
+  PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  PROVIDER_PLAN_QUOTA_MESSAGE,
+  providerQuotaEventDetails,
+} from '../provider-plan-quota.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
   decodeChatAttachments,
@@ -2335,20 +2341,41 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.quarantinedTurnIds?.delete(turnId);
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
-        const baseMessage = errorMessage(error);
+        // #2265: a classified provider-plan quota exhaustion publishes
+        // fixed safe copy plus bounded facts — never the engine's raw
+        // message, and never the co-reported notification text (which is
+        // correlation, not a proven cause, and stays out of this terminal).
+        const quota = classifyProviderQuotaFailure(error);
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId,
-          createdAt: new Date().toISOString(),
-          method: 'runtime.error',
-          severity: 'error',
-          message: coReportedCause
-            ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
-            : baseMessage,
-        });
+        if (quota) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            method: 'runtime.error',
+            severity: 'error',
+            code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+            message: PROVIDER_PLAN_QUOTA_MESSAGE,
+            details: providerQuotaEventDetails(quota),
+          });
+        } else {
+          const baseMessage = errorMessage(error);
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            method: 'runtime.error',
+            severity: 'error',
+            message: coReportedCause
+              ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
+              : baseMessage,
+          });
+        }
         record.session.status = 'error';
         record.session.updatedAt = new Date().toISOString();
         record.activeTurnId = undefined;
