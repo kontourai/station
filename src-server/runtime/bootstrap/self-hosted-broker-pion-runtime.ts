@@ -13,8 +13,15 @@ import type { VirtualApplication } from '../../services/connections/virtual-appl
 import { SelfHostedBrokerRuntime } from './self-hosted-broker-runtime.js';
 
 function fingerprint(sdp: string) {
-  const value = sdp.match(/^a=fingerprint:sha-256 (.+)$/m)?.[1]?.trim();
-  if (!value) throw new Error('broker_runtime_fingerprint_missing');
+  const values = [...sdp.matchAll(/^a=fingerprint:sha-256 (.+)$/gm)].map(
+    (match) => match[1]!.trim(),
+  );
+  if (
+    values.length !== 1 ||
+    !/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(values[0]!)
+  )
+    throw new Error('broker_runtime_fingerprint_invalid');
+  const value = values[0]!;
   return value;
 }
 export interface SelfHostedBrokerPionRuntimeInput {
@@ -35,29 +42,50 @@ export interface SelfHostedBrokerPionRuntimeInput {
   renewMs: number;
   pollMs: number;
   maxPeerLifetimeMs: number;
+  maxPeers: number;
+}
+export interface SelfHostedBrokerPionRuntimeDependencies {
+  startAdapter: typeof startPionApplicationAdapter;
 }
 export function createSelfHostedBrokerPionRuntime(
   input: SelfHostedBrokerPionRuntimeInput,
   application: VirtualApplication,
+  dependencies: SelfHostedBrokerPionRuntimeDependencies = {
+    startAdapter: startPionApplicationAdapter,
+  },
 ) {
+  if (
+    !Number.isSafeInteger(input.maxPeers) ||
+    input.maxPeers < 1 ||
+    input.maxPeers > 32
+  )
+    throw new Error('broker_runtime_peer_limit_invalid');
+  const scope = Object.freeze(structuredClone(input.scope));
+  const credential = Object.freeze(structuredClone(input.connectorCredential));
+  const turn = Object.freeze(structuredClone(input.turn));
+  const peers = new Set<
+    Awaited<ReturnType<typeof startPionApplicationAdapter>>
+  >();
   const client = new SelfHostedBrokerClient(
     input.brokerOrigin,
-    input.scope,
-    input.connectorCredential,
+    scope,
+    credential,
   );
   const connector = new SelfHostedBrokerConnector(
-    input.scope,
+    scope,
     client,
     input.trust,
     async (offer, trust, signal) => {
-      const adapter = await startPionApplicationAdapter({
+      if (peers.size >= input.maxPeers)
+        throw new Error('broker_runtime_peer_capacity');
+      const adapter = await dependencies.startAdapter({
         executable: input.executable,
         profile: 'application',
         applicationChannelLabel: 'station-application-v1',
         offer: { type: 'offer', sdp: offer.offerSdp },
         certificatePem: input.certificatePem,
         privateKeyPem: input.privateKeyPem,
-        turn: input.turn,
+        turn,
         accept: (channel) =>
           serveApplicationChannel(
             channel,
@@ -79,10 +107,15 @@ export function createSelfHostedBrokerPionRuntime(
           offerSha256: await connectionDescriptionDigest(offer.offerSdp),
           answerSha256: await connectionDescriptionDigest(adapter.answer.sdp),
         };
+        peers.add(adapter);
+        const dispose = async () => {
+          peers.delete(adapter);
+          await adapter.close();
+        };
         return {
           answerSdp: adapter.answer.sdp,
           stationProof: await input.issuer.issue(binding),
-          dispose: adapter.close,
+          dispose,
         };
       } catch (error) {
         await adapter.close();
@@ -90,11 +123,29 @@ export function createSelfHostedBrokerPionRuntime(
       }
     },
   );
+  const lifecycle = {
+    register: (signal: AbortSignal) => connector.register(signal),
+    renew: (signal: AbortSignal) => connector.renew(signal),
+    poll: (signal: AbortSignal) => connector.poll(signal),
+    withdraw: async (signal: AbortSignal) => {
+      await connector.withdraw(signal);
+      const results = await Promise.allSettled(
+        [...peers].map((peer) => peer.close()),
+      );
+      peers.clear();
+      const failed = results.filter((result) => result.status === 'rejected');
+      if (failed.length)
+        throw new AggregateError(
+          failed.map((result) => (result as PromiseRejectedResult).reason),
+          'broker_runtime_peer_cleanup_failed',
+        );
+    },
+  };
   return new SelfHostedBrokerRuntime({
     origin: input.applicationOrigin,
     configuredOrigin: input.scope.browserOrigin,
     application,
-    connector,
+    connector: lifecycle,
     heartbeatMs: input.heartbeatMs,
     renewMs: input.renewMs,
     pollMs: input.pollMs,
