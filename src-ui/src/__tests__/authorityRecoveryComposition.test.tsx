@@ -21,11 +21,13 @@
  * transition), not the modal's internals — the hosted browser suites prove
  * the real modal. `ProtectedProbe` stands in for the protected workspace
  * (colliding `['projects']` key, home-tagged rows). `RecoveryConfigObserver`
- * drives the REAL `useRecoveryConfig` (explicit origin, identity-scoped key)
- * against a URL-prefix wire double for `authenticatedFetch`, recording every
- * committed render AND layout effect — the transition tests prove no stale
- * entry reaches either, including same-origin credential rotation through
- * the real `setCredential` API.
+ * drives the REAL `useRecoveryConfig` (explicit origin, identity-scoped key,
+ * render-captured request scope via `getJson`) against a URL-prefix wire
+ * double that records every dispatch's scope, recording every committed
+ * render AND layout effect — the transition tests prove no stale entry
+ * reaches either, including same-origin credential rotation through the
+ * real `setCredential` API, and that each identity dispatches under its
+ * own captured authority.
  *
  * Each test states its own baseline through the public connections API on
  * unique origins and removes its rows afterwards. The boot-payload seed is
@@ -80,7 +82,12 @@ vi.mock('../platform/useBundledServerStatus', () => ({
  */
 interface SdkWire {
   configFetchPlan: Map<string, () => Promise<unknown>>;
-  configFetchLog: { url: string; activeId: string | undefined }[];
+  configFetchLog: {
+    url: string;
+    activeId: string | undefined;
+    /** The render-captured request authority the dispatch carried, if any. */
+    requestScope: { apiBase: string; authorityKey: string } | null;
+  }[];
 }
 const sdkWire: SdkWire = {
   configFetchPlan: new Map(),
@@ -89,28 +96,40 @@ const sdkWire: SdkWire = {
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@kontourai/station-sdk')>();
+  // The production recovery read dispatches through `getJson` with the
+  // render-captured `requestScope` (plus finite timeout and AbortSignal).
+  // This double answers the same envelope shape AND records the scope
+  // each dispatch carried, so the transition tests prove the authority
+  // capture is threaded per identity — not merely that keys partition.
+  // (It does not reimplement the SDK's dispatch/body guard; the real
+  // guard is proven with the real `getJson` in authorityRecoveryScope.)
+  const answerConfig = async (url: string, opts?: unknown) => {
+    const activeId = connections?.activeConnection?.id;
+    const requestScope =
+      (opts as { requestScope?: { apiBase: string; authorityKey: string } })
+        ?.requestScope ?? null;
+    sdkWire.configFetchLog.push({ url, activeId, requestScope });
+    // Longest-prefix match: the '' fallback must never shadow a
+    // per-origin plan registered after it.
+    const plans = [...sdkWire.configFetchPlan.entries()].sort(
+      ([a], [b]) => b.length - a.length,
+    );
+    for (const [prefix, behavior] of plans) {
+      if (url.startsWith(prefix)) {
+        const data = await behavior();
+        return {
+          ok: true,
+          json: async () => ({ success: true, data }),
+        };
+      }
+    }
+    throw new Error(`no config wire plan for ${url}`);
+  };
   return {
     ...actual,
-    authenticatedFetch: async (input: unknown) => {
-      const url = String(input);
-      const activeId = connections?.activeConnection?.id;
-      sdkWire.configFetchLog.push({ url, activeId });
-      // Longest-prefix match: the '' fallback must never shadow a
-      // per-origin plan registered after it.
-      const plans = [...sdkWire.configFetchPlan.entries()].sort(
-        ([a], [b]) => b.length - a.length,
-      );
-      for (const [prefix, behavior] of plans) {
-        if (url.startsWith(prefix)) {
-          const data = await behavior();
-          return {
-            ok: true,
-            json: async () => ({ success: true, data }),
-          };
-        }
-      }
-      throw new Error(`no config wire plan for ${url}`);
-    },
+    authenticatedFetch: async (input: unknown) => answerConfig(String(input)),
+    getJson: async (url: string, opts?: unknown) =>
+      answerConfig(url, opts),
   };
 });
 
@@ -534,6 +553,21 @@ describe('authority recovery composition (real provider tree, mocked wire)', () 
       expect(
         screen.getByTestId('recovery-config').getAttribute('data-config'),
       ).toContain(idB),
+    );
+    // The dispatches carried their own render-captured authority — not a
+    // shared global: A's dispatch names A's origin+key, B's names B's, and
+    // the keys differ. A rotation that reused one capture for both would
+    // fail this, not just the key-partition assertions above.
+    const dispatchA = sdkWire.configFetchLog.find((entry) =>
+      entry.url.startsWith(urlA),
+    );
+    const dispatchB = sdkWire.configFetchLog.find((entry) =>
+      entry.url.startsWith(urlB),
+    );
+    expect(dispatchA?.requestScope?.apiBase).toBe(urlA);
+    expect(dispatchB?.requestScope?.apiBase).toBe(urlB);
+    expect(dispatchA?.requestScope?.authorityKey).not.toBe(
+      dispatchB?.requestScope?.authorityKey,
     );
     unmount();
   });

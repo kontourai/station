@@ -15,10 +15,21 @@
  * This hook keys by explicit origin AND live activation identity
  * (`RecoveryScopeContext`: apiBase + the request scope's activation key,
  * which advances on every activation and on same-origin credential
- * changes), and dispatches against the explicit origin — never a global
- * getter — with the caller's AbortSignal threaded, so rotation aborts
- * in-flight old-credential reads. A switch or rotation therefore NEVER
- * matches a previous entry: the render commits pending, never stale.
+ * changes), and dispatches through `getJson` with the render-captured
+ * `ClientRequestOptions['requestScope']` plus an explicit finite
+ * `timeoutMs` alongside the caller's AbortSignal. The SDK compares the
+ * capture against the live credential-resolver settlement before dispatch
+ * AND around the body read: a rotation between render and dispatch fails
+ * the dispatch, and a deferred old body fails the decode, both with
+ * `StationRequestAuthorityError` — neither a wrong-credential dispatch
+ * nor an old body can populate the current recovery view. A switch or
+ * rotation therefore NEVER matches a previous entry: the render commits
+ * pending, never stale.
+ *
+ * Outside the recovery boundary the hook is inert (disabled, no fetch):
+ * shared components owned by both trees call it unconditionally and read
+ * the protected `useConfigQuery` path instead, so no caller throws for
+ * rendering in the tree that owns most of its surfaces.
  *
  * Protected-tree consumers keep `useConfigQuery` (bare key, correctly
  * namespaced by their per-authority client). The write side
@@ -26,9 +37,13 @@
  * writers invalidate the scoped key explicitly at their own call site.
  */
 
-import { authenticatedFetch } from '@kontourai/station-sdk';
+import { getJson } from '@kontourai/station-sdk';
+import {
+  type ApiRequestScope,
+  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+} from '@kontourai/station-sdk/client';
 import { useQuery } from '@tanstack/react-query';
-import { useRecoveryScope } from '../contexts/RecoveryQueryBoundary';
+import { useOptionalRecoveryScope } from '../contexts/RecoveryQueryBoundary';
 
 /** The cache key, exported so writers invalidate exactly what this reads. */
 export function recoveryConfigKey(apiBase: string, identityKey: string) {
@@ -37,11 +52,16 @@ export function recoveryConfigKey(apiBase: string, identityKey: string) {
 
 async function fetchRecoveryConfig(
   apiBase: string,
+  requestScope: ApiRequestScope | null,
   signal: AbortSignal | undefined,
 ) {
-  const response = await authenticatedFetch(`${apiBase}/config/app`, {
+  const response = await getJson(`${apiBase}/config/app`, {
     signal,
+    timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+    ...(requestScope ? { requestScope } : {}),
   });
+  // Guarded when scoped: `getJson` wraps the body readers, so the decode
+  // below re-asserts the capture is still current after the bytes arrive.
   const result = await response.json();
   if (!result.success) {
     throw new Error(result.error);
@@ -50,10 +70,18 @@ async function fetchRecoveryConfig(
 }
 
 export function useRecoveryConfig() {
-  const { apiBase, identityKey } = useRecoveryScope();
+  const scope = useOptionalRecoveryScope();
   return useQuery({
-    queryKey: recoveryConfigKey(apiBase, identityKey),
-    queryFn: ({ signal }) => fetchRecoveryConfig(apiBase, signal),
+    queryKey: scope
+      ? recoveryConfigKey(scope.apiBase, scope.identityKey)
+      : (['config', 'recovery', 'absent'] as const),
+    queryFn: ({ signal }) =>
+      fetchRecoveryConfig(
+        scope?.apiBase ?? '',
+        scope?.requestScope ?? null,
+        signal,
+      ),
+    enabled: scope !== null,
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,

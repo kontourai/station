@@ -43,21 +43,25 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 
-// The disclosure reads config through the identity-scoped recovery hook
-// (never the shared bare-key query under the stable boundary). Mock at this
-// seam with the same mutable `appConfig` the SDK mock above serves, so this
-// suite keeps testing consent behavior, not scoping; scoping is covered
-// against the real boundary in authorityRecoveryComposition. The scope
-// context is satisfied through the same hook (no separate provider mock).
+// This suite pins consent behavior through the PROTECTED contract (the
+// shared bare-key config query + `useUpdateConfigMutation`, the same write
+// path the Settings row uses): the optional recovery scope resolves null,
+// so the decision never touches the recovery mutations. The recovery
+// decision path (identity-scoped reads, guarded writes) is covered
+// against the real boundary in authorityRecoveryComposition and
+// authorityRecoveryScope; the protected-tree owners without any boundary
+// are covered in UsageTelemetryDisclosureOwners.
 vi.mock('../../hooks/useRecoveryConfig', () => ({
   useRecoveryConfig: () => ({ data: appConfig.current }),
   recoveryConfigKey: (...parts: unknown[]) => parts,
 }));
 vi.mock('../../contexts/RecoveryQueryBoundary', () => ({
-  useRecoveryScope: () => ({
-    apiBase: 'http://station.test',
-    identityKey: 'test-identity',
-  }),
+  useRecoveryScope: () => {
+    throw new Error(
+      'useRecoveryScope must be used within RecoveryQueryBoundary',
+    );
+  },
+  useOptionalRecoveryScope: () => null,
 }));
 
 import {

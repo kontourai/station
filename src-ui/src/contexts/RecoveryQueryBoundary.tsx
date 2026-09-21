@@ -28,7 +28,14 @@
  *    rotation NEVER matches a previous entry, so the render commits
  *    pending (never stale) regardless of reset timing or child
  *    layout-effect ordering, and dispatch uses the explicit origin, never
- *    a global getter. Second, the switch guard below: on
+ *    a global getter; the scope ALSO carries the captured SDK request
+ *    authority (`RecoveryScope.requestScope`), which leaf reads pass as
+ *    `ClientRequestOptions['requestScope']`: the SDK then verifies the
+ *    render's capture against the live credential-resolver settlement
+ *    before dispatch AND around every owned body read, so a rotation
+ *    between render and dispatch (or during a deferred body) fails
+ *    closed instead of dispatching under the new credential or decoding
+ *    the old body as current. Second, the switch guard below: on
  *    every live-connection tuple change, in-flight reads are cancelled
  *    FIRST (every recovery query threads its AbortSignal) and then every
  *    entry is RESET to its initial state BEFORE PAINT (`useLayoutEffect`),
@@ -82,6 +89,20 @@ export interface RecoveryScope {
    * unchanged.
    */
   identityKey: string;
+  /**
+   * The captured SDK request authority for dispatch-time and body-decode
+   * guards (`ClientRequestOptions['requestScope']`): the origin AND the
+   * live activation key the render committed under. Leaf reads pass this
+   * to `getJson`/`mutateJson`, which compare it against the credential
+   * resolver's live settlement before dispatch AND around every owned
+   * body read — a same-origin rotation between render and dispatch, or
+   * during a deferred body, fails with `StationRequestAuthorityError`
+   * instead of sending A'S credential to B or decoding A's body as B's.
+   * Plain data (no `isCurrent` closure): the SDK re-checks liveness
+   * itself. `null` when there is no live evidence (no active
+   * connection): reads continue unscoped, exactly as before.
+   */
+  requestScope: { apiBase: string; authorityKey: string } | null;
 }
 
 const RecoveryScopeContext = createContext<RecoveryScope | null>(null);
@@ -99,6 +120,20 @@ export function useRecoveryScope(): RecoveryScope {
     );
   }
   return scope;
+}
+
+/**
+ * The recovery scope when the caller renders inside the stable recovery
+ * shell, `null` in the protected tree. Shared components owned by BOTH
+ * trees (`UsageTelemetryDisclosure`: the recovery gate's first-run modal
+ * AND the protected Settings section / first-run chapter) must use this:
+ * the recovery shell reads its captured scope while protected consumers
+ * retain the protected client/context path. Throwing here would make the
+ * shared component unmountable in the tree that owns most of its
+ * surfaces.
+ */
+export function useOptionalRecoveryScope(): RecoveryScope | null {
+  return useContext(RecoveryScopeContext);
 }
 
 function createRecoveryClient(): QueryClient {
@@ -145,9 +180,23 @@ export function RecoveryQueryBoundary({
     requestScope?.authorityKey ?? null,
     connectionId ? credentialAuthorityGeneration(connectionId) : 0,
   ]);
+  // Plain-data snapshot of the captured request authority for the
+  // dispatch/body guards (see `RecoveryScope.requestScope`). Derived
+  // inside the same memo so subscribers re-render only when the facts
+  // change; the SDK's live `isCurrent` is consulted per request, never
+  // captured here.
+  const requestScopeApiBase = requestScope?.apiBase ?? null;
+  const requestScopeAuthorityKey = requestScope?.authorityKey ?? null;
   const scopeValue = useMemo(
-    () => ({ apiBase, identityKey }),
-    [apiBase, identityKey],
+    () => ({
+      apiBase,
+      identityKey,
+      requestScope:
+        requestScopeApiBase && requestScopeAuthorityKey
+          ? { apiBase: requestScopeApiBase, authorityKey: requestScopeAuthorityKey }
+          : null,
+    }),
+    [apiBase, identityKey, requestScopeApiBase, requestScopeAuthorityKey],
   );
 
   const previousTupleRef = useRef(switchTuple);
