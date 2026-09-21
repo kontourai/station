@@ -19,13 +19,43 @@ let projectsQueryState: {
   isError: boolean;
   isPlaceholderData?: boolean;
 };
+let capturedProjectsConfig: unknown;
+let requestScope:
+  | { apiBase: string; authorityKey: string; isCurrent: () => boolean }
+  | undefined;
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useProjectsQuery: () => projectsQueryState,
+  useProjectsQuery: (config: unknown) => {
+    capturedProjectsConfig = config;
+    return projectsQueryState;
+  },
   useProjectQuery: () => ({ data: undefined, isLoading: false }),
+}));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => requestScope,
 }));
 
 describe('useProjects().isConfirmedLoaded (station#4525 review HIGH-1)', () => {
+  test('captures the current host authority for the canonical Project list', async () => {
+    requestScope = {
+      apiBase: 'https://station.test',
+      authorityKey: 'connection-a:generation-1',
+      isCurrent: () => true,
+    };
+    projectsQueryState = {
+      data: [],
+      isLoading: false,
+      isSuccess: true,
+      isError: false,
+    };
+    const { useProjects } = await import('../contexts/ProjectsContext');
+    renderHook(() => useProjects());
+    expect(capturedProjectsConfig).toEqual({
+      requestScope,
+      requireRequestScope: true,
+    });
+  });
+
   test('the pending shape (query not yet settled) is never confirmed loaded', async () => {
     projectsQueryState = {
       data: undefined,

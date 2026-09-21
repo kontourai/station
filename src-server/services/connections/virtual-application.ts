@@ -105,7 +105,19 @@ export class VirtualApplicationIngress {
       (url.pathname === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
         url.pathname.startsWith(`${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/`)) &&
       url.pathname !== APPLICATION_SESSION_BASE_PATH &&
-      !url.pathname.startsWith(`${APPLICATION_SESSION_BASE_PATH}/`)
+      !url.pathname.startsWith(`${APPLICATION_SESSION_BASE_PATH}/`) &&
+      !(
+        input.method === 'GET' &&
+        [
+          DEPLOYMENT_AUTHENTICATION_BASE_PATH,
+          `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/session`,
+        ].includes(url.pathname)
+      ) &&
+      !(
+        input.method === 'POST' &&
+        url.pathname ===
+          `${DEPLOYMENT_AUTHENTICATION_BASE_PATH}/accept-invitation`
+      )
     )
       return refusal(400, 'virtual_cookie_operation_unsupported');
     for (const [name] of input.headers)

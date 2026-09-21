@@ -1,6 +1,7 @@
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import {
   PROJECT_SHARED_TASK_VERSION,
+  type ProjectSharedTaskPublicationExpectation,
   type ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
@@ -29,11 +30,19 @@ export class ProjectSharedTaskService {
     scope: ProjectMembershipScope,
     taskId: string,
     authority: ProjectSharedTaskAuthority,
+    expected?: ProjectSharedTaskPublicationExpectation,
   ) {
+    if (
+      expected &&
+      (!sameScope(expected.project, scope) || expected.task.id !== taskId)
+    )
+      throw new ProjectSharedTaskRefusal('conflict');
     const initial = await authority.current();
     await authority.operator();
     await authority.requireProjectRead(scope);
     const task = this.task(scope, taskId);
+    if (expected && expected.task.createdAt !== task.createdAt)
+      throw new ProjectSharedTaskRefusal('conflict');
     await authority.operator();
     const current = await authority.current();
     if (current.principalId !== initial.principalId)
@@ -54,12 +63,21 @@ export class ProjectSharedTaskService {
     taskId: string,
     shareId: string,
     authority: ProjectSharedTaskAuthority,
+    expected?: ProjectSharedTaskPublicationExpectation,
   ) {
+    if (
+      expected &&
+      (!sameScope(expected.project, scope) || expected.task.id !== taskId)
+    )
+      throw new ProjectSharedTaskRefusal('conflict');
     const initial = await authority.current();
     await authority.operator();
     await authority.requireProjectRead(scope);
     const admission = this.admission(scope, taskId);
-    if (admission.shareId !== shareId)
+    if (
+      admission.shareId !== shareId ||
+      (expected && admission.taskCreatedAt !== expected.task.createdAt)
+    )
       throw new ProjectSharedTaskRefusal('conflict');
     await authority.operator();
     const current = await authority.current();
@@ -98,6 +116,42 @@ export class ProjectSharedTaskService {
     return visible
       .filter(({ admission }) => this.current(admission))
       .map(({ summary }) => summary);
+  }
+  async publication(
+    scope: ProjectMembershipScope,
+    taskId: string,
+    authority: ProjectSharedTaskAuthority,
+  ) {
+    const initial = await authority.current();
+    await authority.operator();
+    await authority.requireProjectRead(scope);
+    const task = this.task(scope, taskId);
+    const admission = this.deps.store.admission(taskId);
+    if (admission && !sameScope(admission.scope, scope))
+      throw new ProjectSharedTaskRefusal('not-found');
+    await authority.operator();
+    const current = await authority.current();
+    if (current.principalId !== initial.principalId)
+      throw new ProjectSharedTaskRefusal('conflict');
+    await authority.requireProjectRead(scope);
+    const final = this.task(scope, taskId);
+    if (final.createdAt !== task.createdAt)
+      throw new ProjectSharedTaskRefusal('conflict');
+    if (!admission)
+      return {
+        kind: 'unshared' as const,
+        project: structuredClone(scope),
+        task: { id: task.id, createdAt: task.createdAt },
+      };
+    const stored = this.deps.store.admission(taskId);
+    if (
+      !stored ||
+      stored.shareId !== admission.shareId ||
+      stored.taskCreatedAt !== task.createdAt ||
+      !sameScope(stored.scope, scope)
+    )
+      throw new ProjectSharedTaskRefusal('conflict');
+    return { kind: 'shared' as const, publication: this.summary(stored) };
   }
   async admitRead(
     scope: ProjectMembershipScope,

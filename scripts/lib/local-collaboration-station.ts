@@ -18,6 +18,7 @@ import {
   allocateFreePortBlock,
   reserveContiguousBlock,
 } from '../../src-server/runtime/bootstrap/allocate-port-block.js';
+import { ApplicationIpc } from './application-ipc.js';
 import { restrictAccountLabTcp } from './local-collaboration-network.mjs';
 import {
   localLabEnvironment,
@@ -59,9 +60,10 @@ interface StationInput {
   blockedProbePort: number;
   probeNonce: string;
   port?: number;
+  virtualApplicationOrigin?: string;
 }
 
-/** Boots the real entrypoint; no replacement routes, users, grants or providers. */
+/** Boots the real entrypoint or full-runtime virtual fixture; no replacement auth routes or providers. */
 export async function startAccountLabStation(
   input: StationInput,
   signal: AbortSignal,
@@ -112,6 +114,7 @@ export async function startAccountLabStation(
         allowedProbePort: input.allowedProbePort,
         blockedProbePort: input.blockedProbePort,
         probeNonce: input.probeNonce,
+        virtualApplication: input.virtualApplicationOrigin !== undefined,
       }),
       { mode: 0o600, flag: 'wx' },
     );
@@ -129,7 +132,9 @@ export async function startAccountLabStation(
       {
         cwd: resolve(import.meta.dirname, '../..'),
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: input.virtualApplicationOrigin
+          ? ['ignore', 'pipe', 'pipe', 'ipc']
+          : ['ignore', 'pipe', 'pipe'],
         env: {
           ...localLabEnvironment(),
           DOTENV_CONFIG_PATH: dotenv,
@@ -159,13 +164,34 @@ export async function startAccountLabStation(
           STATION_LOCAL_ACCOUNTS: '1',
           STATION_PROJECT_SHARING: '1',
           STATION_AUTHENTICATION_ORIGIN: base,
-          ALLOWED_ORIGINS: base,
+          ALLOWED_ORIGINS: input.virtualApplicationOrigin
+            ? `${base},${input.virtualApplicationOrigin}`
+            : base,
+          ...(input.virtualApplicationOrigin
+            ? {
+                STATION_AUTHENTICATION_BROWSER_ORIGINS:
+                  input.virtualApplicationOrigin,
+              }
+            : {}),
           STATION_LOG_LEVEL: 'error',
           OTEL_SDK_DISABLED: 'true',
           AWS_EC2_METADATA_DISABLED: 'true',
         },
       },
     );
+    const child = execution.child;
+    const applicationIpc =
+      input.virtualApplicationOrigin && 'send' in child
+        ? new ApplicationIpc({
+            send: (packet, done) => child.send(packet, done),
+            subscribe(listener) {
+              child.on('message', listener);
+              return () => {
+                child.off('message', listener);
+              };
+            },
+          })
+        : undefined;
     const stdout =
       'stdout' in execution.child ? execution.child.stdout : undefined;
     const capture = captureOwnedProcessOutput(execution, {
@@ -175,6 +201,7 @@ export async function startAccountLabStation(
     const stop = async () => {
       if (stopped) return;
       stopped = true;
+      applicationIpc?.close();
       const result = await terminateSuiteExecution(execution, {
         waitForSuiteSettlement,
         terminationGraceMs: 5000,
@@ -296,6 +323,9 @@ export async function startAccountLabStation(
       port,
       bootId,
       pid: execution.child.pid,
+      openApplicationChannel: applicationIpc
+        ? () => applicationIpc.open()
+        : undefined,
       stationId: security.environmentId,
       operator: {
         credential: security.credential,
@@ -330,6 +360,7 @@ if (process.argv[2] === '--account-station-child') {
     allowedProbePort: number;
     blockedProbePort: number;
     probeNonce: string;
+    virtualApplication?: boolean;
   };
   for (const port of [
     input.port,
@@ -366,5 +397,10 @@ if (process.argv[2] === '--account-station-child') {
     300000,
   );
   lifetime.unref();
-  await import('../../src-server/index.js');
+  if (input.virtualApplication === true) {
+    const { runVirtualLabStation } = await import(
+      './local-collaboration-virtual-station.js'
+    );
+    await runVirtualLabStation(input.port);
+  } else await import('../../src-server/index.js');
 }

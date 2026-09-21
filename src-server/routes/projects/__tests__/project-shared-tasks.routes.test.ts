@@ -33,6 +33,11 @@ function fixture() {
   };
   const service = {
     list: vi.fn(async () => []),
+    publication: vi.fn(async () => ({
+      kind: 'unshared',
+      project: scope,
+      task: { id: admission.taskId, createdAt: admission.taskCreatedAt },
+    })),
     share: vi.fn(async () => admission),
     unshare: vi.fn(async () => ({ unshared: true })),
     admitRead: vi.fn(async () => admission),
@@ -193,13 +198,31 @@ describe('project shared Task routes', () => {
   test('operator share and exact unshare reach owning service callbacks', async () => {
     const h = fixture();
     expect(
-      (
+      await (
         await h.app.request('/api/projects/example/shared-work/task-1', {
           method: 'PUT',
         })
-      ).status,
-    ).toBe(201);
-    expect(h.service.share).toHaveBeenCalledOnce();
+      ).json(),
+    ).toMatchObject({
+      data: { shareId: admission.shareId, taskId: admission.taskId },
+    });
+    const reviewed = await h.app.request(
+      '/api/projects/example/shared-work/task-1',
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: scope,
+          task: {
+            id: admission.taskId,
+            createdAt: admission.taskCreatedAt,
+          },
+        }),
+      },
+    );
+    expect(reviewed.status).toBe(201);
+    expect(await reviewed.json()).toMatchObject({ data: { kind: 'unshared' } });
+    expect(h.service.share).toHaveBeenCalledTimes(2);
     expect(
       (
         await h.app.request('/api/projects/example/shared-work/task-1', {
@@ -210,6 +233,36 @@ describe('project shared Task routes', () => {
       ).status,
     ).toBe(200);
     expect(h.service.unshare).toHaveBeenCalledOnce();
+  });
+  test('operator-only publication status returns exact Project and Task identity', async () => {
+    const h = fixture();
+    const response = await h.app.request(
+      '/api/projects/example/shared-work/task-1/publication',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        kind: 'unshared',
+        project: scope,
+        task: { id: admission.taskId, createdAt: admission.taskCreatedAt },
+      },
+    });
+    expect(h.service.publication).toHaveBeenCalledTimes(3);
+  });
+  test('publication authority ending before response release hides management state', async () => {
+    const h = fixture();
+    h.service.publication
+      .mockResolvedValueOnce({
+        kind: 'unshared',
+        project: scope,
+        task: { id: admission.taskId, createdAt: admission.taskCreatedAt },
+      })
+      .mockRejectedValueOnce(new ProjectMembershipRefusal('forbidden'));
+    const response = await h.app.request(
+      '/api/projects/example/shared-work/task-1/publication',
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain(admission.taskId);
   });
   test('actual API/store defaults private, shares one Task and revokes it', async () => {
     const db = new DatabaseSync(':memory:');

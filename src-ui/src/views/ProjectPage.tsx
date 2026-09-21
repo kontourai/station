@@ -416,6 +416,7 @@ export function ProjectPage({ slug }: { slug: string }) {
 
         <ProjectTasksSection
           slug={slug}
+          projectId={project.id}
           projectWorkingDirectory={project.workingDirectory}
           gitStatus={gitStatus}
           agents={project.agents}

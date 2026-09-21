@@ -81,3 +81,30 @@ export class TailscaleServeIdentitySource implements IdentitySource {
 // (see `runtime-routes.ts`); no change to the pairing/authz layer is required,
 // because that layer consumes the provider-agnostic `VerifiedIdentity`. This
 // waits on the external Kontour token contract — do not implement it here.
+
+/**
+ * The ordered ingress identity sources (`runtime-routes.ts` historically
+ * owned this list; moved here so the canonical principal owner can live
+ * outside the routes module — the owning seam for "which verified identity
+ * does this request carry"). The local-mode-invariant regression guard
+ * asserts against this REAL list: a request carrying no ingress-identity
+ * credential must yield no identity, so the presence of this list never
+ * makes identity mandatory. See `docs/design/identity.md`.
+ */
+export const INGRESS_IDENTITY_SOURCES: readonly IdentitySource[] = [
+  new TailscaleServeIdentitySource(),
+];
+
+export function identifyIngress(c: {
+  env: unknown;
+  req: { header: (name: string) => string | undefined };
+}): VerifiedIdentity | null {
+  for (const source of INGRESS_IDENTITY_SOURCES) {
+    const identity = source.identify({
+      environment: c.env,
+      header: (name) => c.req.header(name),
+    });
+    if (identity) return identity;
+  }
+  return null;
+}
