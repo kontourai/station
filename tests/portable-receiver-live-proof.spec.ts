@@ -69,6 +69,16 @@ import {
  * Unsupported-peer (old receiver without `portableExecutionOffers`) is
  * deliberately NOT VERIFIED here: it needs a genuinely older receiver build,
  * and fabricating one would weaken the check, not prove it.
+ *
+ * #485 opt-in attempt claims ride the same harness: `attemptId` creates go
+ * through the controller's real peer forward, concurrent/redelivered same-key
+ * requests join instead of executing again, mismatched intent conflicts, and
+ * the authorized exact-attempt lookup (SAME receiver peer credential, never
+ * an operator credential) resolves the lost ACK to the actual task AND the
+ * real initial turn — with wrong-grant, operator, and revoked-grant lookups
+ * disclosing nothing. There is no controller-side lookup in this slice, so
+ * the lookup assertions address the receiver directly; frontend/controller
+ * tracking of the projection remains next-slice work.
  */
 
 const execFileAsync = promisify(execFile);
@@ -106,6 +116,13 @@ let fixture: ProofFixture | undefined;
 // The completed portable task id from the continuation test, reused by
 // the post-withdrawal continuation refusal below (serial suite order).
 let continuedTaskId: string | undefined;
+// The opt-in attempt claim proven by the attempt tests below (serial suite
+// order): the exact attempt id, prompt, receiver task, and initial turn,
+// reused by the redelivery and mismatch tests.
+let claimedAttemptId: string | undefined;
+let claimedPrompt: string | undefined;
+let claimedTaskId: string | undefined;
+let claimedTurnId: string | undefined;
 let evidenceDestination: string | undefined;
 /** Incremental, non-secret run metadata — written even on partial setup. */
 const runInfo: Record<string, unknown> = {};
@@ -898,6 +915,85 @@ function expectPortableRefusal(
   expect((refused.payload as JsonRecord).error).toBe(message);
 }
 
+function attemptIdFor(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function delegateAttemptFromController(
+  fixture: ProofFixture,
+  target: JsonRecord,
+  attemptId: string,
+  prompt: string,
+): Promise<ApiResult> {
+  // Same bounded pre-effect retry as delegateFromController: only the exact
+  // catalog-refresh refusal (HTTP 400, no handle, nothing dispatched) is
+  // retried. A 409 duplicate outcome is never retried — the receiver has
+  // already joined or refused the key.
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    const delegated = await api(
+      fixture.controller.api,
+      'POST',
+      '/api/orchestration/delegations',
+      {
+        body: { prompt, target, attemptId },
+        headers: operatorHeaders(fixture.controllerOperator),
+      },
+    );
+    if (
+      delegated.status === 400 &&
+      String((delegated.payload as JsonRecord)?.error ?? '').includes(
+        'Agent catalog is refreshing',
+      ) &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      continue;
+    }
+    return delegated;
+  }
+}
+
+/**
+ * Authorized exact-attempt lookup against the ACTUAL executing receiver.
+ * There is no controller-side lookup in this slice: the controller serves
+ * only its own local claim store, so the lookup goes to the receiver over
+ * the SAME delegation peer credential the claim is keyed by (never an
+ * operator or browser credential). Frontend/controller tracking of the
+ * projection remains next-slice work.
+ */
+async function lookupAttemptOnReceiver(
+  fixture: ProofFixture,
+  attemptId: string,
+  credential: string,
+): Promise<ApiResult> {
+  return api(
+    fixture.receiver.api,
+    'GET',
+    `/api/orchestration/delegations/attempts/${encodeURIComponent(attemptId)}`,
+    { headers: operatorHeaders(credential) },
+  );
+}
+
+/** Collect turnIds from durable turn.started evidence inside an events payload. */
+function collectTurnStartedIds(payload: unknown): string[] {
+  const ids: string[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const row = value as Record<string, unknown>;
+      if (row.method === 'turn.started' && typeof row.turnId === 'string')
+        ids.push(row.turnId);
+      for (const entry of Object.values(row)) visit(entry);
+    }
+  };
+  visit(payload);
+  return ids;
+}
+
 /** Captured per-request no-effect oracle: launch delta + usage delta. */
 interface EffectBaseline {
   launches: number;
@@ -1233,6 +1329,417 @@ test.describe
       expect(JSON.stringify(events.payload)).toMatch(
         new RegExp(`echo:[\\s\\S]*${followToken}`),
       );
+    });
+
+    test('claims an opt-in attempt through the controller peer forward and resolves the lost ACK to the exact task and turn', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      const attemptId = attemptIdFor('claim-proof');
+      const turnToken = `claim-proof-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      const prompt = `Return this token unchanged: ${turnToken}`;
+
+      const delegated = await delegateAttemptFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+        attemptId,
+        prompt,
+      );
+      expect(delegated.status, JSON.stringify(delegated.payload)).toBe(200);
+      const handle = (delegated.payload as JsonRecord).data as JsonRecord;
+      const taskId = handle.taskId as string;
+      expect(taskId).toBeTruthy();
+
+      // ACTUAL launch observation: exactly ONE new muse exec, spawned INSIDE
+      // the receiver's nested execution root, carrying THIS turn's unique
+      // token — the opt-in create reached the actual receiver over the real
+      // peer forward and executed there.
+      await poll(
+        'the claimed muse exec launch observation',
+        120_000,
+        async () => {
+          const launches = await current.museExecLaunches();
+          return launches.some(
+            (entry) =>
+              entry.cwd === current.receiverExecutionRoot &&
+              entry.argv.some((arg) => arg.includes(turnToken)),
+          );
+        },
+      );
+      const launchesAfterCreate = await current.museExecLaunches();
+      expect(launchesAfterCreate.length - baseline.launches).toBe(1);
+
+      // The turn completes on the receiver (echo provider output proves the
+      // provider executed; the launch observation above proves where).
+      await poll(
+        'the claimed turn to complete on the receiver',
+        240_000,
+        async () => {
+          const observed = await api(
+            current.receiver.api,
+            'GET',
+            `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
+            { headers: operatorHeaders(current.delegationCredential) },
+          );
+          const data = (observed.payload as JsonRecord)?.data as
+            | JsonRecord
+            | undefined;
+          return (
+            observed.status === 200 &&
+            (data?.status === 'completed' || data?.status === 'failed')
+          );
+        },
+      );
+
+      // Authorized exact-attempt lookup: accepted with the ACTUAL task AND
+      // the real initial turn — this is the projection a lost acknowledgement
+      // resolves to, without re-POSTing.
+      const lookedUp = await lookupAttemptOnReceiver(
+        current,
+        attemptId,
+        current.delegationCredential,
+      );
+      expect(lookedUp.status, JSON.stringify(lookedUp.payload)).toBe(200);
+      const view = (lookedUp.payload as JsonRecord).data as JsonRecord;
+      expect(view.attemptId).toBe(attemptId);
+      expect(view.state).toBe('accepted');
+      expect(view.taskId).toBe(taskId);
+      const turnId = view.turnId as string;
+      expect(typeof turnId).toBe('string');
+      expect(turnId.length).toBeGreaterThan(0);
+      // Session creation is not turn acceptance: the accepted turn id is the
+      // real provider turn, not the task/session handle.
+      expect(turnId).not.toBe(taskId);
+
+      // ...and it names a turn the receiver durably evidenced: the lookup's
+      // turnId must appear in the conversation's turn.started evidence.
+      const events = await api(
+        current.receiver.api,
+        'GET',
+        `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
+        { headers: operatorHeaders(current.delegationCredential) },
+      );
+      expect(events.status, JSON.stringify(events.payload)).toBe(200);
+      const evidencedTurns = collectTurnStartedIds(events.payload);
+      expect(
+        evidencedTurns,
+        'the accepted turn id is not in the receiver turn evidence',
+      ).toContain(turnId);
+
+      // A second lookup (read-only, no re-POST, no provider invocation)
+      // resolves identically, with no new launch.
+      const relookedUp = await lookupAttemptOnReceiver(
+        current,
+        attemptId,
+        current.delegationCredential,
+      );
+      expect(relookedUp.status).toBe(200);
+      expect((relookedUp.payload as JsonRecord).data).toEqual(view);
+      const launchesAfterLookup = await current.museExecLaunches();
+      expect(launchesAfterLookup.length).toBe(launchesAfterCreate.length);
+
+      claimedAttemptId = attemptId;
+      claimedPrompt = prompt;
+      claimedTaskId = taskId;
+      claimedTurnId = turnId;
+    });
+
+    test('redelivered identical attempt joins instead of executing again', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      expect(
+        claimedAttemptId,
+        'the claim test must prove a claim first',
+      ).toBeTruthy();
+      const baseline = await captureEffectBaseline(current);
+      const redelivered = await delegateAttemptFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+        claimedAttemptId!,
+        claimedPrompt!,
+      );
+      // Already accepted: the receiver names the one real task AND its real
+      // initial turn — a lost ACK resolves here, never a second effect.
+      expect(redelivered.status, JSON.stringify(redelivered.payload)).toBe(409);
+      expect((redelivered.payload as JsonRecord).code).toBe(
+        'delegation_attempt_exists',
+      );
+      expect((redelivered.payload as JsonRecord).attemptId).toBe(
+        claimedAttemptId,
+      );
+      expect((redelivered.payload as JsonRecord).taskId).toBe(claimedTaskId);
+      expect((redelivered.payload as JsonRecord).turnId).toBe(claimedTurnId);
+      await assertNoProviderEffect(current, baseline);
+    });
+
+    test('concurrent identical attempts start exactly one session and one initial turn', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      const attemptId = attemptIdFor('claim-race');
+      const prompt = `Return this token unchanged: claim-race-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      const target = delegationTarget(current) as unknown as JsonRecord;
+
+      const outcomes = await Promise.all([
+        delegateAttemptFromController(current, target, attemptId, prompt),
+        delegateAttemptFromController(current, target, attemptId, prompt),
+        delegateAttemptFromController(current, target, attemptId, prompt),
+      ]);
+      const winners = outcomes.filter((outcome) => outcome.status === 200);
+      const joiners = outcomes.filter((outcome) => outcome.status === 409);
+      // Exactly one create wins; every other identical request joins the
+      // claim (pending while the winner runs, exists once it accepted).
+      expect(winners.length).toBe(1);
+      expect(joiners.length).toBe(outcomes.length - 1);
+      for (const joiner of joiners) {
+        expect((joiner.payload as JsonRecord).attemptId).toBe(attemptId);
+        expect([
+          'delegation_attempt_pending',
+          'delegation_attempt_exists',
+        ]).toContain((joiner.payload as JsonRecord).code);
+      }
+      const winnerTaskId = (
+        (winners[0]!.payload as JsonRecord).data as JsonRecord
+      ).taskId as string;
+      for (const joiner of joiners) {
+        if (
+          (joiner.payload as JsonRecord).code === 'delegation_attempt_exists'
+        ) {
+          expect((joiner.payload as JsonRecord).taskId).toBe(winnerTaskId);
+        }
+      }
+
+      // Exactly ONE session and ONE initial turn for the whole race.
+      await poll('the single raced launch observation', 120_000, async () => {
+        const launches = await current.museExecLaunches();
+        return launches.length - baseline.launches >= 1;
+      });
+      // Let stragglers land, then assert no second effect ever started.
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+      const launchesAfter = await current.museExecLaunches();
+      expect(launchesAfter.length - baseline.launches).toBe(1);
+
+      // The winner completes; the lookup names exactly its task.
+      await poll(
+        'the raced turn to complete on the receiver',
+        240_000,
+        async () => {
+          const observed = await api(
+            current.receiver.api,
+            'GET',
+            `/api/orchestration/delegations/${encodeURIComponent(winnerTaskId)}`,
+            { headers: operatorHeaders(current.delegationCredential) },
+          );
+          const data = (observed.payload as JsonRecord)?.data as
+            | JsonRecord
+            | undefined;
+          return (
+            observed.status === 200 &&
+            (data?.status === 'completed' || data?.status === 'failed')
+          );
+        },
+      );
+      const lookedUp = await lookupAttemptOnReceiver(
+        current,
+        attemptId,
+        current.delegationCredential,
+      );
+      expect(lookedUp.status).toBe(200);
+      expect((lookedUp.payload as JsonRecord).data).toMatchObject({
+        attemptId,
+        state: 'accepted',
+        taskId: winnerTaskId,
+      });
+    });
+
+    test('mismatched intent under the same attempt key conflicts without effect', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      expect(
+        claimedAttemptId,
+        'the claim test must prove a claim first',
+      ).toBeTruthy();
+      const baseline = await captureEffectBaseline(current);
+      const conflicted = await delegateAttemptFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+        claimedAttemptId!,
+        `A DIFFERENT validated request under the same key: ${Date.now()}`,
+      );
+      expect(conflicted.status, JSON.stringify(conflicted.payload)).toBe(409);
+      expect((conflicted.payload as JsonRecord).code).toBe(
+        'delegation_attempt_conflict',
+      );
+      expect((conflicted.payload as JsonRecord).attemptId).toBe(
+        claimedAttemptId,
+      );
+      // The conflict names no handle: the original claim stands undisclosed.
+      expect((conflicted.payload as JsonRecord).taskId).toBeUndefined();
+      expect((conflicted.payload as JsonRecord).turnId).toBeUndefined();
+      await assertNoProviderEffect(current, baseline);
+      // The original accepted claim is untouched by the mismatch.
+      const lookedUp = await lookupAttemptOnReceiver(
+        current,
+        claimedAttemptId!,
+        current.delegationCredential,
+      );
+      expect(lookedUp.status).toBe(200);
+      expect((lookedUp.payload as JsonRecord).data).toEqual({
+        attemptId: claimedAttemptId,
+        state: 'accepted',
+        taskId: claimedTaskId,
+        turnId: claimedTurnId,
+      });
+    });
+
+    test('wrong-grant and operator lookups disclose nothing', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      expect(
+        claimedAttemptId,
+        'the claim test must prove a claim first',
+      ).toBeTruthy();
+      // An operator credential is not a delegation peer grant: refused with
+      // the typed caller code and no claim data.
+      const operatorLookup = await lookupAttemptOnReceiver(
+        current,
+        claimedAttemptId!,
+        current.receiverOperator,
+      );
+      expect(
+        operatorLookup.status,
+        JSON.stringify(operatorLookup.payload),
+      ).toBe(403);
+      expect((operatorLookup.payload as JsonRecord).code).toBe(
+        'delegation_attempt_caller_unsupported',
+      );
+      expect((operatorLookup.payload as JsonRecord).taskId).toBeUndefined();
+      expect((operatorLookup.payload as JsonRecord).turnId).toBeUndefined();
+
+      // A DIFFERENT live delegation grant sees `none` under the same attempt
+      // id — the tuple key never discloses another grant's task or turn.
+      const offer = await api(
+        current.receiver.api,
+        'POST',
+        '/api/pairing/offers',
+        {
+          body: {
+            endpoint: current.receiver.api,
+            scope: current.delegationScope,
+            kind: 'delegation',
+          },
+          headers: operatorHeaders(current.receiverOperator),
+        },
+      );
+      expect(offer.status, JSON.stringify(offer.payload)).toBe(201);
+      const offerData = offer.payload as JsonRecord;
+      const pairingRequest = await api(
+        current.receiver.api,
+        'POST',
+        '/.well-known/station/v1/pairing/request',
+        {
+          body: {
+            deviceName: 'Claim-proof second grant',
+            offerId: offerData.offerId,
+            proof: offerData.challenge,
+          },
+          headers: { Origin: current.receiver.ui },
+        },
+      );
+      expect(
+        pairingRequest.status,
+        JSON.stringify(pairingRequest.payload),
+      ).toBe(202);
+      const requestData = pairingRequest.payload as JsonRecord;
+      const confirmed = await api(
+        current.receiver.api,
+        'POST',
+        `/api/pairing/requests/${encodeURIComponent(requestData.requestId as string)}/confirm`,
+        { headers: operatorHeaders(current.receiverOperator) },
+      );
+      expect(confirmed.status, JSON.stringify(confirmed.payload)).toBe(200);
+      const exchanged = await api(
+        current.receiver.api,
+        'POST',
+        '/.well-known/station/v1/pairing/exchange',
+        {
+          body: {
+            offerId: offerData.offerId,
+            proof: offerData.challenge,
+            requestId: requestData.requestId,
+          },
+          headers: { Origin: current.receiver.ui },
+        },
+      );
+      expect(exchanged.status, JSON.stringify(exchanged.payload)).toBe(200);
+      const exchangeData = exchanged.payload as JsonRecord;
+      const secondCredential = exchangeData.credential as string;
+      const secondDeviceId = (exchangeData.device as JsonRecord | undefined)
+        ?.id as string;
+      expect(secondCredential).toBeTruthy();
+      expect(secondDeviceId).toBeTruthy();
+      expect(secondDeviceId).not.toBe(current.peerDeviceId);
+
+      const crossGrant = await lookupAttemptOnReceiver(
+        current,
+        claimedAttemptId!,
+        secondCredential,
+      );
+      expect(crossGrant.status, JSON.stringify(crossGrant.payload)).toBe(200);
+      expect((crossGrant.payload as JsonRecord).data).toEqual({
+        attemptId: claimedAttemptId,
+        state: 'none',
+      });
+
+      // And once that grant is revoked, its lookup is refused outright —
+      // again with no claim data.
+      const revoked = await api(
+        current.receiver.api,
+        'DELETE',
+        `/api/pairing/devices/${encodeURIComponent(secondDeviceId)}`,
+        { headers: operatorHeaders(current.receiverOperator) },
+      );
+      expect(revoked.status, JSON.stringify(revoked.payload)).toBe(200);
+      const revokedLookup = await lookupAttemptOnReceiver(
+        current,
+        claimedAttemptId!,
+        secondCredential,
+      );
+      expect(revokedLookup.status, JSON.stringify(revokedLookup.payload)).toBe(
+        401,
+      );
+      expect((revokedLookup.payload as JsonRecord).taskId).toBeUndefined();
+      expect((revokedLookup.payload as JsonRecord).turnId).toBeUndefined();
+
+      // A duplicate create over the revoked grant never reaches a claim: it
+      // is refused at authority, with no provider effect.
+      const baseline = await captureEffectBaseline(current);
+      const revokedCreate = await api(
+        current.receiver.api,
+        'POST',
+        '/api/orchestration/delegations',
+        {
+          body: {
+            prompt: claimedPrompt,
+            target: delegationTarget(current) as unknown as JsonRecord,
+            attemptId: claimedAttemptId,
+          },
+          headers: operatorHeaders(secondCredential),
+        },
+      );
+      expect(revokedCreate.status, JSON.stringify(revokedCreate.payload)).toBe(
+        401,
+      );
+      await assertNoProviderEffect(current, baseline);
     });
 
     test('refuses an undeclared resource at the receiver, over the real peer hop', async () => {
