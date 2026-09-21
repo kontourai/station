@@ -468,6 +468,13 @@ export interface StationRuntimeOptions {
     origin: string;
     ready: (application: VirtualApplication) => void;
   };
+  /** Explicit self-hosted routing composition; requires virtualApplication. */
+  selfHostedBrokerConnector?: {
+    create(application: VirtualApplication): {
+      start(): Promise<void>;
+      shutdown(): Promise<void>;
+    };
+  };
 
   projectSharing?: boolean;
   authentication?: DeploymentAuthenticationConfiguration;
@@ -493,6 +500,12 @@ export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
   private virtualApplication?: VirtualApplicationIngress;
+  private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
+  private selfHostedBroker?: {
+    start(): Promise<void>;
+    shutdown(): Promise<void>;
+  };
+  private selfHostedBrokerShutdown?: Promise<void>;
 
   private readonly projectSharingEnabled: boolean;
   private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
@@ -1026,6 +1039,14 @@ export class StationRuntime {
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
+    this.selfHostedBrokerConfiguration = options.selfHostedBrokerConnector;
+    if (
+      this.selfHostedBrokerConfiguration &&
+      !this.virtualApplicationConfiguration
+    )
+      throw new Error(
+        'Self-hosted broker requires virtual application ingress',
+      );
 
     const configuredSharing = process.env.STATION_PROJECT_SHARING;
     if (
@@ -3194,12 +3215,24 @@ export class StationRuntime {
       await inFlight;
       if (virtualApplication) {
         this.virtualApplicationLifetime.signal.throwIfAborted();
-        this.virtualApplicationConfiguration!.ready(
-          virtualApplication.activate(),
-        );
+        const application = virtualApplication.activate();
+        this.virtualApplicationConfiguration!.ready(application);
+        if (this.selfHostedBrokerConfiguration) {
+          const broker = this.selfHostedBrokerConfiguration.create(application);
+          this.selfHostedBroker = broker;
+          await broker.start();
+        }
       }
     } catch (error) {
       virtualApplication?.stop();
+      try {
+        await this.retireSelfHostedBroker();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'Runtime startup cleanup was incomplete.',
+        );
+      }
       throw error;
     } finally {
       if (this.initializeInFlight === inFlight) {
@@ -4335,6 +4368,9 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    // Begin broker retirement without delaying ordinary teardown on its I/O.
+    // The aggregate cleanup joins it before this home can be released.
+    void this.retireSelfHostedBroker();
     this.virtualApplicationLifetime?.abort();
     this.virtualApplication?.stop();
 
@@ -4369,6 +4405,23 @@ export class StationRuntime {
       },
     );
     return this.shutdownPromise;
+  }
+
+  private retireSelfHostedBroker(): Promise<void> {
+    if (this.selfHostedBrokerShutdown) return this.selfHostedBrokerShutdown;
+    const broker = this.selfHostedBroker;
+    if (!broker) return Promise.resolve();
+    try {
+      this.selfHostedBrokerShutdown = broker.shutdown().then(() => {
+        if (this.selfHostedBroker === broker) this.selfHostedBroker = undefined;
+      });
+    } catch (error) {
+      this.selfHostedBrokerShutdown = Promise.reject(error);
+    }
+    // Keep failures observable at the aggregate join, never unhandled between
+    // starting retirement and finishing the other runtime cleanup.
+    void this.selfHostedBrokerShutdown.catch(() => {});
+    return this.selfHostedBrokerShutdown;
   }
 
   private async shutdownAfterConfigurationDrain(): Promise<void> {
@@ -4523,6 +4576,11 @@ export class StationRuntime {
       // shutdown indefinitely. POSIX tolerates deleting a directory with an
       // open file inside it, which hid this; Windows does not.
       this.orchestrationEventStore.close();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.selfHostedBrokerShutdown;
     } catch (error) {
       failures.push(error);
     }

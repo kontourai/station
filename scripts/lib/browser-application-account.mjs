@@ -1,57 +1,68 @@
 // Owned Chromium profile: real provider, SDK signing and scoped Device credential.
 export async function browserStartApplicationAccount(input) {
   const api = window.stationApplicationChannel;
-  const peer = window.stationTransportLab.peer;
+  const peer = window.stationTransportLab?.peer;
   const trustStore = window.stationConnectionTrustStore;
   const trust = window.stationConnectionTrustRecord;
-  if (
-    !window.stationTransportLab.proofConsumed ||
-    peer.connectionState !== 'connected'
-  )
-    throw new Error('Account transport requires an admitted encrypted peer');
+  if (!window.stationBrokerLabTransport) {
+    if (
+      !window.stationTransportLab?.proofConsumed ||
+      peer?.connectionState !== 'connected'
+    )
+      throw new Error('Account transport requires an admitted encrypted peer');
+  }
   const lifetime = new AbortController();
   const current = () =>
-    !lifetime.signal.aborted && peer.connectionState === 'connected';
-  const transport = api.createApplicationChannelFetch({
-    origin: input.apiBase,
-    signal: lifetime.signal,
-    assertCurrent: async () => {
-      if (!current() || !(await trustStore.isCurrent(trust)))
-        throw new Error('Endpoint trust retired');
-    },
-    open: (signal) =>
-      new Promise((resolve, reject) => {
-        const channel = peer.createDataChannel(
-          'station-application-account-fixture',
-          { ordered: true },
-        );
-        const cleanup = () => {
-          signal.removeEventListener('abort', fail);
-          channel.removeEventListener('open', ready);
-          channel.removeEventListener('close', fail);
-          channel.removeEventListener('error', fail);
-        };
-        const fail = () => {
-          cleanup();
-          channel.close();
-          reject(new Error('Application channel opening failed'));
-        };
-        const ready = () => {
-          cleanup();
-          resolve(api.browserApplicationChannel(channel));
-        };
-        signal.addEventListener('abort', fail, { once: true });
-        channel.addEventListener('open', ready, { once: true });
-        channel.addEventListener('close', fail, { once: true });
-        channel.addEventListener('error', fail, { once: true });
-        if (signal.aborted) fail();
-      }),
-  });
+    !lifetime.signal.aborted && peer?.connectionState === 'connected';
+  // Fixture-only broker override: the self-hosted broker journey admits its
+  // transport through the production browser Pion connection instead of the
+  // legacy ad-hoc RTCPeer path below. Unset in every existing mode, which
+  // keeps the legacy path byte-for-byte unchanged.
+  const brokerOverride = window.stationBrokerLabTransport;
+  const transport =
+    brokerOverride?.transport ??
+    api.createApplicationChannelFetch({
+      origin: input.apiBase,
+      signal: lifetime.signal,
+      assertCurrent: async () => {
+        if (!current() || !(await trustStore.isCurrent(trust)))
+          throw new Error('Endpoint trust retired');
+      },
+      open: (signal) =>
+        new Promise((resolve, reject) => {
+          const channel = peer.createDataChannel(
+            'station-application-account-fixture',
+            { ordered: true },
+          );
+          const cleanup = () => {
+            signal.removeEventListener('abort', fail);
+            channel.removeEventListener('open', ready);
+            channel.removeEventListener('close', fail);
+            channel.removeEventListener('error', fail);
+          };
+          const fail = () => {
+            cleanup();
+            channel.close();
+            reject(new Error('Application channel opening failed'));
+          };
+          const ready = () => {
+            cleanup();
+            resolve(api.browserApplicationChannel(channel));
+          };
+          signal.addEventListener('abort', fail, { once: true });
+          channel.addEventListener('open', ready, { once: true });
+          channel.addEventListener('close', fail, { once: true });
+          channel.addEventListener('error', fail, { once: true });
+          if (signal.aborted) fail();
+        }),
+    });
+  const transportBindingIsCurrent =
+    brokerOverride?.transportBindingIsCurrent ?? current;
   api.setClientCredentialResolver(() => ({
     origin: input.apiBase,
     credential: input.credential,
     transport,
-    transportBindingIsCurrent: current,
+    transportBindingIsCurrent,
   }));
   const key = await api.createApplicationSessionKey();
   if (key.privateKey.extractable)
