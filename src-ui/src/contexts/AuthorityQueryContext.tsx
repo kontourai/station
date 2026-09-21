@@ -16,15 +16,26 @@
  *    remainder. A delayed A response can therefore never activate on B —
  *    the namespace commits only from the CURRENT key's data.
  *  - Re-observation is keyed on the live credential facts (`apiBase`,
- *    connection id, credential authority generation, credential state) AND
- *    refetched on every activation mount (`staleTime: 0`,
- *    `refetchOnMount: 'always'`): a cached observation never counts as
- *    current verification, so A->B->A with a changed A principal re-reads
- *    instead of reviving the old shelf. The principal itself is always
- *    closed server fact, never cookie contents, endpoint text, or a profile
- *    label. (Reconnect without a switch keeps the namespace; the reconnect
- *    invalidation re-reads DATA under it, and any 401 there drives a
- *    credential transition, which re-observes.)
+ *    connection id, credential authority generation, credential state) PLUS
+ *    the live request scope's `authorityKey` (connection id, activation
+ *    epoch, authority generation, credential state) AND refetched on every
+ *    activation mount (`staleTime: 0`, `refetchOnMount: 'always'`). The
+ *    activation segment is what closes the A->B->A hole: returning to A
+ *    advances the activation epoch even when every row fact is unchanged,
+ *    so the return trip is a new key with no cached success to revive.
+ *    The principal itself is always closed server fact, never cookie
+ *    contents, endpoint text, or a profile label. (Reconnect without a
+ *    switch keeps key and namespace; the reconnect invalidation re-reads
+ *    DATA under it, and any 401 there drives a credential transition,
+ *    which re-observes.)
+ *  - Verification additionally requires the CURRENT key's success to be
+ *    settled with no fetch in flight (`fetchStatus === 'idle'`):
+ *    `refetchOnMount: 'always'`/`staleTime: 0` deliberately keep cached
+ *    success data during a background re-read, and `status === 'success'`
+ *    stays true through it — accepting that would expose the previous
+ *    activation's subtree while the new identity is still pending. The
+ *    durable namespace itself stays observation-facts-only (stable across
+ *    activations); only the observation KEY carries liveness.
  *  - Each verified namespace gets a FRESH `QueryClient` under its own
  *    `PersistQueryClientProvider` with a disjoint IndexedDB key, so two
  *    homes sharing project ids (or one endpoint serving two principals)
@@ -59,22 +70,26 @@
  *      that threads `requestScope`) additionally throw
  *      `StationRequestAuthorityError` at dispatch AND at body-read time when
  *      their captured scope no longer matches the live authority.
- *   4. The boot-payload seed below — the one remaining client `_getApiBase`
- *      consumer — re-checks scope currency AND live-client identity after
- *      every await before any write, runs only when the verified scope is
- *      the page's own origin, and can only ever write into the client
- *      object it verified (a post-switch seed resolves the new origin and
- *      lands in a retired, persister-unsubscribed cache — a wasted fetch,
- *      never cross-authority poisoning).
- * Residual: an unscoped fetcher that ignores its AbortSignal could still
- * dispatch one request under the new origin with the live credential. That
- * request authenticates (it carries current authority) but its result lands
- * in a retired, observerless, persister-unsubscribed cache and is
- * discarded — it cannot reach the new authority's cache, which lives in a
- * different client. All `useApiQuery` reads thread their signal by
- * construction. Cache clears do not cancel dispatched mutations, and root
- * contexts/drafts/queued turns/deep links remain independent later exits —
- * this slice claims query partition only, never full #481.
+ *   4. The boot-payload seed below resolves NO module-global: it fetches at
+ *      the captured origin string and `seedBootPayloadGuarded` evaluates
+ *      the captured scope's currency AND the destination client's liveness
+ *      immediately before EACH cache write, so a same-origin rotation
+ *      resolving mid-fetch drops every write. Runs only when the verified
+ *      scope is the page's own origin.
+ * Residual (stated, not covered): real SDK callers `useUserLookup` and
+ * `useServerFetch` (packages/sdk/src/hooks/operations.ts) resolve the
+ * global origin at fetch time and thread NO AbortSignal, so retirement
+ * `cancelQueries` cannot abort them. Their boundary is different, not
+ * absent: both hold results in effect-local `useState` (never in any query
+ * cache), and the provider remount on namespace change unmounts them, so a
+ * late result is discarded by the effect's cancelled flag and can never be
+ * persisted to any shelf. That is unmount-discard, not cancellation — a
+ * same-tick dispatch under a replaced origin remains possible, and no
+ * claim is made here for query domains outside `useApiQuery` (which
+ * threads its signal by construction) plus the two named above. Cache
+ * clears do not cancel dispatched mutations, and root contexts/drafts/
+ * queued turns/deep links remain independent later exits — this slice
+ * claims query partition only, never full #481.
  */
 
 import { useConnections } from '@kontourai/station-connect';
@@ -227,6 +242,12 @@ export function AuthorityQueryProvider({
 
   const observationEnabled =
     activeConnection !== null && requestScope !== undefined;
+  // The scope this key's fetch is bound to, snapshotted from the render that
+  // owns the key. A switch replaces BOTH together, so a queryFn closure can
+  // never pair a new scope with an old key or vice versa.
+  const boundScope = observationEnabled ? requestScope : undefined;
+  const boundApiBase = apiBase;
+
   const observationKey = observationEnabled
     ? [
         'authority-observation',
@@ -234,14 +255,16 @@ export function AuthorityQueryProvider({
         connectionId,
         authorityGeneration,
         credentialState,
+        // Live activation scope. `authorityKey` is a plain string over
+        // (connection id, activation epoch, authority generation,
+        // credential state), so it is key-stable across renders yet changes
+        // on every switch and every credential transition — including a
+        // return to a row whose saved facts never changed. Durable identity
+        // stays out of the key (see `buildAuthorityNamespace`); this segment
+        // is liveness only.
+        boundScope?.authorityKey ?? null,
       ]
     : null;
-
-  // The scope this key's fetch is bound to, snapshotted from the render that
-  // owns the key. A switch replaces BOTH together, so a queryFn closure can
-  // never pair a new scope with an old key or vice versa.
-  const boundScope = observationEnabled ? requestScope : undefined;
-  const boundApiBase = apiBase;
 
   const observationQuery = useQuery({
     queryKey: observationKey ?? ['authority-observation', 'disabled'],
@@ -274,14 +297,19 @@ export function AuthorityQueryProvider({
     refetchOnWindowFocus: false,
   });
 
+  // A cached success from a previous activation must never verify the
+  // current one: while the current key's fetch is in flight React Query
+  // keeps `status === 'success'` with the OLD data, so verification
+  // additionally requires a settled fetch. Either condition alone is
+  // insufficient — the key without the gate revives cache during
+  // background re-reads, and the gate without the key would still accept
+  // a settled stale key.
   const liveObservation =
-    observationKey !== null && observationQuery.status === 'success'
+    observationKey !== null &&
+    observationQuery.status === 'success' &&
+    observationQuery.fetchStatus === 'idle'
       ? (observationQuery.data as AuthorityObservation)
       : null;
-  // Belt-and-braces: only a settled success for the CURRENT key commits.
-  // While a switch's observation is in flight, `liveObservation` is null —
-  // the old client is already retired below, so the tree shows the
-  // switching state rather than the previous authority's data.
   const verifiedNamespace = liveObservation
     ? buildAuthorityNamespace(liveObservation)
     : null;
@@ -322,16 +350,18 @@ export function AuthorityQueryProvider({
     if (previous) retireAuthorityClient(previous.queryClient);
   }, [verifiedNamespace]);
 
-  // Boot-payload seed (moved from `main.tsx`): the payload is fetched
-  // against the live global origin, so it seeds ONLY while the scope that
-  // verified this namespace is still current AND still owns the live
-  // client — every await is followed by a re-check before any cache write,
-  // so a slow seed resolving after a switch is dropped, never written into
-  // the new authority's cache. Additionally the seed runs only when the
-  // verified scope IS the page's own origin: the local-UI session proof is
-  // meaningless for a remote home, which fetches on demand instead.
-  // Seeding is tracked per live client, never in a set that could survive
-  // client replacement and skip a new client's seed.
+  // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the
+  // EXACT captured origin — never a module-global resolved after a switch —
+  // and the captured scope (currency) plus the destination client (liveness)
+  // are retained through fetch AND body decode, then checked immediately
+  // before EACH cache write by `seedBootPayloadGuarded`. An origin
+  // comparison alone cannot cover same-origin identity changes, so a slow
+  // seed resolving after a switch or a same-origin rotation is dropped,
+  // never written into another identity's shelf. Additionally the seed runs
+  // only when the verified scope IS the page's own origin: the local-UI
+  // session proof is meaningless for a remote home, which fetches on demand
+  // instead. Seeding is tracked per live client, never in a set that could
+  // survive client replacement and skip a new client's seed.
   const seededRef = useRef<{
     namespace: string;
     client: QueryClient;
@@ -353,23 +383,34 @@ export function AuthorityQueryProvider({
     }
     if (!sameOrigin) return;
     const scopeAtSeed = boundScope;
+    const apiBaseAtSeed = boundScope.apiBase;
+    const startedAtSeed = Date.now();
     const clientAtSeed = active.queryClient;
     const namespaceAtSeed = verifiedNamespace;
     let cancelled = false;
+    // The exact captured authority, evaluated after every await and before
+    // every write: scope currency AND destination-client liveness.
+    const stillCurrent = () =>
+      !cancelled &&
+      scopeAtSeed.isCurrent() &&
+      activeRef.current?.queryClient === clientAtSeed;
     void (async () => {
       try {
         // Same lazy seam as `main.tsx`'s boot fast path: the SDK boot
         // bundle stays out of the entry chunk; no public SDK barrel change.
-        const { fetchAndSeedBootPayload } = await import(
+        const { fetchBootPayloadAt, seedBootPayloadGuarded } = await import(
           '../../../packages/sdk/src/boot'
         );
         const resolution = await resolveLocalUiSession(localUiApiBase);
-        if (cancelled || resolution.kind !== 'authenticated') return;
-        // Post-await re-checks BEFORE any write: the scope must still be
-        // current and this client must still be the live one.
-        if (!scopeAtSeed.isCurrent()) return;
-        if (activeRef.current?.queryClient !== clientAtSeed) return;
-        await fetchAndSeedBootPayload(clientAtSeed);
+        if (!stillCurrent() || resolution.kind !== 'authenticated') return;
+        const payload = await fetchBootPayloadAt(apiBaseAtSeed);
+        await seedBootPayloadGuarded(
+          clientAtSeed,
+          payload,
+          startedAtSeed,
+          stillCurrent,
+        );
+        if (!stillCurrent()) return;
         seededRef.current = {
           namespace: namespaceAtSeed,
           client: clientAtSeed,
@@ -398,6 +439,19 @@ export function AuthorityQueryProvider({
     [activeNamespace, storage, persistThrottleTimeMs],
   );
 
+  // Every unverified fallback — no-evidence, old-server, offline, 401 —
+  // is keyed on the CURRENT live context tuple, so rendering the same
+  // branch for a different home/authority remounts a FRESH ephemeral client
+  // instead of reusing the previous fallback's cache (colliding private
+  // keys such as `['projects']` must never survive the context change).
+  const ephemeralKey = JSON.stringify([
+    apiBase,
+    connectionId,
+    authorityGeneration,
+    credentialState,
+    requestScope?.authorityKey ?? null,
+  ]);
+
   // No active connection, or native binding unavailable: nothing to verify
   // against. Children run on their OWN fresh ephemeral client — never the
   // shared observation bootstrap client, whose cache is observation-only —
@@ -407,7 +461,7 @@ export function AuthorityQueryProvider({
       <AuthorityPersistenceContext.Provider
         value={{ status: 'unavailable', namespace: null, observation: null }}
       >
-        <EphemeralTree>{children}</EphemeralTree>
+        <EphemeralTree key={ephemeralKey}>{children}</EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -451,7 +505,7 @@ export function AuthorityQueryProvider({
           observation: null,
         }}
       >
-        <EphemeralTree>{children}</EphemeralTree>
+        <EphemeralTree key={ephemeralKey}>{children}</EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -472,6 +526,9 @@ export function AuthorityQueryProvider({
  * subscription (nothing is saved under an unverified identity) and no
  * restore (no remembered shelf is ever hydrated without a live
  * observation). Reads fetch live or fail honestly; repair surfaces work.
+ * Callers MUST pass `key` bound to the current live context tuple: without
+ * it, consecutive fallbacks for different homes would share one client and
+ * colliding private keys would leak across the context change.
  */
 function EphemeralTree({ children }: { children: ReactNode }): ReactNode {
   const [client] = useState(() => createAuthorityClient());
