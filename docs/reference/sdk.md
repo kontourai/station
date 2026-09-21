@@ -531,11 +531,26 @@ Fetches achievement data.
 
 ### `useProjectsQuery(config?)`
 
-Fetches all projects.
+Fetches all projects. Hosts selecting among Station authorities should pass
+`{ requestScope, requireRequestScope: true }`. The scoped cache key includes
+the API base and authority key, and the HTTP reader refuses a response if that
+authority changes before the body is consumed. With `requireRequestScope`, a
+missing scope uses an isolated inert key and never exposes an older unscoped
+cache entry.
 
 ### `useProjectQuery(slug: string, config?)`
 
-Fetches a single project by slug.
+Fetches a single project by slug. It accepts the same scoped configuration as
+`useProjectsQuery`; the authority follows the slug in the key so existing
+`['projects', slug]` invalidation prefixes still reach every scoped detail.
+Unscoped callers retain the legacy key and ambient API-base behavior for
+compatibility. The first host migration covers the root Project catalogue and
+`ProjectsContext`; secondary direct hook callers remain a later migration.
+The current host scope represents Connect's authenticated connection authority
+generation (and a native binding when present). It does not independently name
+an account principal or tenant. A same-origin cookie-account change that leaves
+that connection generation unchanged is therefore outside this tranche; full
+account/principal cache lifetime composition remains required.
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
@@ -979,8 +994,10 @@ Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
 Tasks an operator explicitly published for the caller's current Project scope.
 `readProjectSharedTaskHistory(...)` returns a closed projection of bounded human
 messages and attribution; structured tool events, attachment metadata and room
-write authority are excluded. Shared text is verbatim and is not redacted. `readProjectSharedTaskDocument(...)` returns the current
-text snapshot. Each response is limited to one MiB and validated without extra
+write authority are excluded. Human messages and shared documents are returned
+verbatim without redaction and may themselves contain paths, secrets, or other
+private text. `readProjectSharedTaskDocument(...)` returns the current text
+snapshot. Each response is limited to one MiB and validated without extra
 fields. The current server reports an incomplete history page as `unavailable`.
 Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
 unavailable and too-large results retain their named states. None is an empty
@@ -990,9 +1007,19 @@ These reads require the current account-bound Device, account session and active
 Project membership. Station rechecks the exact Project, publication and Task
 incarnation during admission and before response delivery, so membership,
 Device or publication revocation closes an in-flight read. A Project membership
-does not publish every Task. This slice provides no shared Task write API;
-publication administration remains an operator-only server route while Project
-owner/admin controls are still pending.
+does not publish every Task. Project owner/admin publication remains pending;
+the initial management surface requires current Station operator authority.
+
+Operators can use `getProjectSharedTaskPublication`, `shareProjectTask`, and
+`unshareProjectTask` from the same SDK subpath. Capture one `ApiRequestScope`
+before review and pass it to the read and mutation. The review returns the full
+Station/local/portable Project scope plus the exact Task id and creation time.
+Send that identity back unchanged when publishing or revoking; revocation also
+requires the current `shareId`. A same-slug Project replacement, replaced Task,
+rotated share, or changed request authority refuses the command. Refresh after
+any refusal instead of retrying stale review data. Older operator integrations
+may still issue the original bodyless PUT; UI management uses the review-bound
+form.
 
 `@kontourai/station-sdk/project-access-client` exports `getProjectAccess` and
 `changeProjectAccess`. Both take the selected Station API base, local Project
@@ -1052,6 +1079,17 @@ Station operators. Actions disable/enable sign-in, revoke sessions or create a
 one-time recovery link. Capture the selected Station request scope, require
 explicit confirmation and keep recovery links out of persisted caches. External
 providers return a guidance projection instead of local account controls.
+
+`@kontourai/station-sdk/authority-observation` exports
+`getAuthorityObservation(apiBase, options)` for the closed, credential-bound
+answer to "what authority is this request acting as": the current public home
+identity, the server-resolved effective principal (kind+id only, no contacts),
+and the verified grant tier (operator, or paired Device with its public Device
+id and granted scopes). The read is authorization-neutral — it describes
+authority and grants nothing — and fails closed on absent, conflicting, or
+revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions`
+(request scope, credential, headers) as the caller's other protected requests;
+validate the closed shape before caching or comparing the public identity tuple.
 
 ## Plugin Query Hooks
 

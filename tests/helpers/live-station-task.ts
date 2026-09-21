@@ -108,11 +108,7 @@ export async function startStation(
     runtimeFramework?: 'voltagent' | 'strands';
     deterministicReadiness?: boolean;
     logFile?: string;
-    /**
-     * Explicit inherited environment; fixtures that must not leak the
-     * operator's live STATION_* / credential environment pass a sanitized
-     * set (see scripts/lib/local-collaboration-process.mjs).
-     */
+    /** Explicit inherited environment; live security fixtures pass a sanitized set. */
     environment?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<string> {

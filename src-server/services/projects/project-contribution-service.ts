@@ -11,6 +11,7 @@ import {
   isContributionEnabled,
   resolveScopedContribution,
 } from '@kontourai/station-contracts/contribution';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import {
   FileStorageConflictError,
@@ -45,12 +46,42 @@ export class ReceiverExecutionRefusal extends Error {
   constructor(
     readonly code:
       | 'receiver_execution_not_offered'
-      | 'receiver_execution_unavailable',
+      | 'receiver_execution_unavailable'
+      | 'receiver_execution_forwarding_refused'
+      | 'receiver_execution_authority_changed',
     message: string,
   ) {
     super(message);
     this.name = 'ReceiverExecutionRefusal';
   }
+}
+
+/** The server-minted portable consent identity stamped on a session binding. */
+export interface PortableExecutionConsentIdentity {
+  portableProjectId: string;
+  resourceId: string;
+}
+
+/**
+ * #484 phase A follow-up: read the server-minted portable consent marker off
+ * persisted session binding metadata (`session.started` / `session.configured`).
+ * Returns the consent identity for a thread that started as an explicit
+ * portable execution, or undefined for ordinary and legacy sessions. Public
+ * callers can neither forge this (the reserved-key strip removes it from
+ * every start input; only the internal-only consent re-stamp writes it) nor
+ * clear it by omission (reads are off persisted events, never the request).
+ * Shared by the orchestration service and the session command module so the
+ * association proof never drifts between the two effect seams.
+ */
+export function portableConsentOfStartedMetadata(
+  metadata: Record<string, unknown> | undefined,
+): PortableExecutionConsentIdentity | undefined {
+  const marker = metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
+  if (!marker || typeof marker !== 'object') return undefined;
+  const { portableProjectId, resourceId } = marker as Record<string, unknown>;
+  if (typeof portableProjectId !== 'string' || typeof resourceId !== 'string')
+    return undefined;
+  return { portableProjectId, resourceId };
 }
 
 /**
@@ -97,8 +128,34 @@ export interface ReceiverExecutionAdmission {
  * manifest execution root when it selects the admitted resource, else the
  * admitted resource's own bound path. Never the compat workingDirectory.
  */
-export function receiverAdmittedCwd(admitted: ReceiverExecutionAdmission['admittedProject']): string {
+export function receiverAdmittedCwd(
+  admitted: ReceiverExecutionAdmission['admittedProject'],
+): string {
   return admitted.executionRoot ?? admitted.resourcePath;
+}
+
+/**
+ * The owned pre-await identity baseline for ONE portable admission capture:
+ * the exact Project record, manifest content (including the execution-root
+ * selection), and binding row the admission was captured against. Every
+ * field is a `structuredClone` owned by the capture — never a live store
+ * row — so an in-place withdraw+rebind during an await cannot mutate the
+ * baseline. Compared both within a capture (before vs after its own
+ * awaits) and across invocations (fresh capture vs the ORIGINAL admission's
+ * baseline), so replacing the Project, manifest, or binding with a
+ * different identity under the same cwd refuses instead of executing.
+ * Module-private: the public admission carries only the admitted
+ * coordinates, never this baseline.
+ */
+interface CapturedReceiverIdentity {
+  readonly projectId: string;
+  readonly manifest: {
+    readonly id: string;
+    readonly slug: string;
+    readonly repos: unknown;
+  };
+  readonly binding: unknown;
+  readonly executionSelection: unknown;
 }
 
 interface Deps {
@@ -427,16 +484,27 @@ export class ProjectContributionService {
     authorityCurrent: () => boolean,
   ): Promise<ReceiverExecutionAdmission> {
     const requested = structuredClone(input);
-    const admitted = await this.captureReceiverAdmission(
+    const first = await this.captureReceiverAdmission(
       requested,
       authorityCurrent,
     );
+    // OWN the original identity continuity: the recheck below compares
+    // freshly-read state against THESE captured scalars — never against a
+    // re-resolved association that could have drifted onto a different
+    // Project, manifest, or binding hiding under the same cwd. The closure
+    // owns the object; it is never handed out, so no caller alias can
+    // mutate the baseline out from under the next recheck.
+    const originalIdentity = first.identity;
+    const admittedProject = Object.freeze({ ...first.admitted });
     return {
       portableProjectId: requested.portableProjectId,
       resourceId: requested.resourceId,
-      admittedProject: admitted,
+      admittedProject,
       recheck: async () => {
-        await this.captureReceiverAdmission(requested, authorityCurrent, admitted);
+        await this.captureReceiverAdmission(requested, authorityCurrent, {
+          admitted: admittedProject,
+          identity: originalIdentity,
+        });
       },
     };
   }
@@ -444,8 +512,14 @@ export class ProjectContributionService {
   private async captureReceiverAdmission(
     input: ProjectContributionQuery,
     authorityCurrent: () => boolean,
-    expect?: ReceiverExecutionAdmission['admittedProject'],
-  ): Promise<ReceiverExecutionAdmission['admittedProject']> {
+    expect?: {
+      admitted: ReceiverExecutionAdmission['admittedProject'];
+      identity: CapturedReceiverIdentity;
+    },
+  ): Promise<{
+    admitted: ReceiverExecutionAdmission['admittedProject'];
+    identity: CapturedReceiverIdentity;
+  }> {
     const unavailable = () =>
       new ReceiverExecutionRefusal(
         'receiver_execution_unavailable',
@@ -483,7 +557,7 @@ export class ProjectContributionService {
     const captured = {
       projectId: association.project.id,
       projectSlug: association.project.slug,
-      workingDirectory:
+      absoluteProjectRoot:
         association.project.workingDirectory === undefined
           ? undefined
           : resolve(expandTilde(association.project.workingDirectory)),
@@ -498,9 +572,7 @@ export class ProjectContributionService {
           requested.resourceId,
         ),
       ),
-      executionSelection: structuredClone(
-        association.manifest.executionRoot,
-      ),
+      executionSelection: structuredClone(association.manifest.executionRoot),
     };
     const resolution = await this.deps.resolver.resolveProjectResource(
       association.project.slug,
@@ -557,7 +629,7 @@ export class ProjectContributionService {
       sameAssociation =
         currentAssociation.project.id === captured.projectId &&
         currentAssociation.project.slug === captured.projectSlug &&
-        currentWorkingDirectory === captured.workingDirectory &&
+        currentWorkingDirectory === captured.absoluteProjectRoot &&
         isDeepStrictEqual(
           {
             id: currentAssociation.manifest.id,
@@ -565,6 +637,15 @@ export class ProjectContributionService {
             repos: currentAssociation.manifest.repos,
           },
           captured.manifest,
+        ) &&
+        // The manifest execution-root SELECTION is part of freshness: a
+        // root that moved (or appeared/vanished) while the final config
+        // read awaited must refuse the OLD admitted root, never start in
+        // it. Compared as the declared selection (not the resolved
+        // directory) so a same-directory rewording still counts as moved.
+        isDeepStrictEqual(
+          structuredClone(currentAssociation.manifest.executionRoot),
+          captured.executionSelection,
         );
     } catch {}
     const afterBinding = structuredClone(
@@ -583,18 +664,32 @@ export class ProjectContributionService {
         'receiver_execution_not_offered',
         'Receiver execution authority changed before the work could start.',
       );
-    if (
-      !sameAssociation ||
-      !isDeepStrictEqual(captured.binding, afterBinding)
-    )
+    if (!sameAssociation || !isDeepStrictEqual(captured.binding, afterBinding))
       throw unavailable();
-    if ((captured.workingDirectory ?? '') === '') throw unavailable();
+    if ((captured.absoluteProjectRoot ?? '') === '') throw unavailable();
+    const expectedProjectRoot = expect
+      ? resolve(expandTilde(expect.admitted.workingDirectory))
+      : undefined;
     if (
       expect &&
-      (expect.slug !== captured.projectSlug ||
-        expect.workingDirectory !== captured.workingDirectory ||
-        expect.resourcePath !== resourcePath ||
-        (expect.executionRoot ?? undefined) !== (executionRoot ?? undefined))
+      (expect.admitted.slug !== captured.projectSlug ||
+        expectedProjectRoot !== captured.absoluteProjectRoot ||
+        expect.admitted.resourcePath !== resourcePath ||
+        (expect.admitted.executionRoot ?? undefined) !==
+          (executionRoot ?? undefined) ||
+        // Full original-identity continuity: a replaced Project record, a
+        // replaced manifest (different id, even with identical repos), or
+        // a replaced binding row hiding under the same slug/cwd/path is a
+        // DIFFERENT association and refuses — the within-invocation checks
+        // above only prove the fresh capture is self-consistent, never
+        // that it is the SAME association this admission was minted for.
+        expect.identity.projectId !== captured.projectId ||
+        !isDeepStrictEqual(expect.identity.manifest, captured.manifest) ||
+        !isDeepStrictEqual(expect.identity.binding, captured.binding) ||
+        !isDeepStrictEqual(
+          expect.identity.executionSelection,
+          captured.executionSelection,
+        ))
     )
       // A recheck must answer for the SAME captured association, manifest,
       // binding, resource path, and execution root; a rebind that re-points
@@ -602,10 +697,21 @@ export class ProjectContributionService {
       // silent re-target onto the new directory.
       throw unavailable();
     return {
-      slug: captured.projectSlug,
-      workingDirectory: captured.workingDirectory!,
-      resourcePath,
-      ...(executionRoot === undefined ? {} : { executionRoot }),
+      admitted: {
+        slug: captured.projectSlug,
+        workingDirectory: captured.absoluteProjectRoot!,
+        resourcePath,
+        ...(executionRoot === undefined ? {} : { executionRoot }),
+      },
+      // Owned baseline for the NEXT recheck: these are this capture's own
+      // clones (never a live store row, never handed out), so a later
+      // in-place replacement cannot mutate them.
+      identity: {
+        projectId: captured.projectId,
+        manifest: captured.manifest,
+        binding: captured.binding,
+        executionSelection: captured.executionSelection,
+      },
     };
   }
 }

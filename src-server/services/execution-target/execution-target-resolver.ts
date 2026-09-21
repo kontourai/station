@@ -339,8 +339,11 @@ async function resolveWorkspace(
     // resolves elsewhere, and starting the default checkout would execute
     // the wrong repository. `workingDirectory` remains the last-resort
     // fallback only for admissions minted before the exact path existed.
-    const exactCwd =
-      project?.executionRoot ?? project?.resourcePath ?? project?.workingDirectory;
+    const rawCwd =
+      project?.executionRoot ??
+      project?.resourcePath ??
+      project?.workingDirectory;
+    const exactCwd = rawCwd ? resolve(expandTilde(rawCwd)) : undefined;
     if (!project || !exactCwd) {
       throw new Error(
         'The offered Project resource is unavailable for portable execution',
@@ -350,7 +353,7 @@ async function resolveWorkspace(
       workspace: {
         kind: 'project',
         projectSlug: project.slug,
-        cwd: resolve(expandTilde(exactCwd)),
+        cwd: exactCwd,
         workspaceIsolation: {
           mode: resolveWorkspaceIsolationMode(
             project.defaultWorkspaceIsolation,

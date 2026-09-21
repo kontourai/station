@@ -1,28 +1,41 @@
 /**
- * #484 phase A — the receiver-side portable-execution slice, unit-bounded:
+ * #484 phase A — the receiver-side portable-execution slice, unit-bounded,
+ * plus the controller/receiver split (root review of d097bccf8):
  *
- * 1. The ORCHESTRATION ROUTE composes the offer admission for a
- *    `project-portable` workspace intent, refuses 403 with the contribution
- *    diagnostic vocabulary when the offer is absent/withdrawn, threads the
- *    admission into `delegateTask`, and leaves non-portable delegations
- *    byte-unchanged.
- * 2. The TOOL rechecks the admission immediately before the irreversible
- *    session start and again before the turn dispatch, AND threads the
- *    admission into the service internal options so the provider-effect
- *    path rechecks it adjacent to the actual adapter invocation — an offer
- *    that dies between the two refuses the turn BEFORE any provider
- *    effect — and the admitted receiver-local workingDirectory (the
- *    execution root) is what the session is started in, never a
- *    caller-named slug/path. A forwarding sender never holds the
- *    receiver-owned admission: the sender-side guard lives ONLY on the
- *    receiver-local path, after the remote-forwarding branch.
+ * 1. The ORCHESTRATION ROUTE never mints the offer admission itself (that
+ *    forced every controlling sender to hold a local offer for a saved
+ *    receiver's intent). It captures the server-only mint factory bound to
+ *    the current request credential before any await, threads the factory
+ *    plus the verified inbound device kind into `delegateTask`, maps every
+ *    `ReceiverExecutionRefusal` to an exact 403 WITH its distinct code,
+ *    and leaves non-portable delegations byte-unchanged.
+ * 2. The TOOL mints the admission through that factory ONLY when this
+ *    Station is the actual local executor (its single `resolveTarget`
+ *    resolved `current`) — a forwarding controller never mints, so it
+ *    needs no local offer — rechecks it immediately before the
+ *    irreversible session start and again before the turn dispatch, AND
+ *    threads it into the service internal options so the provider-effect
+ *    path rechecks it adjacent to the actual adapter invocation. An
+ *    explicit portable arrival FROM an enrolled peer (`delegation` device
+ *    kind, derived from verified principal + device kind, never body) is
+ *    refused forwarding to a third host before any outbound fetch or
+ *    provider effect.
  *
  * The route diagnostic stubs the peer HTTP surface (handshake / agent /
  * project) with `fetch`; the actual two-runtime proof lives in
  * `portable-receiver-two-runtimes.e2e.test.ts`.
  */
-import { afterEach, beforeAll, afterAll, describe, expect, test, vi } from 'vitest';
+
 import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import {
@@ -71,7 +84,7 @@ function admissionStub(
 }
 
 describe('POST /delegations — portable execution admission (#484 phase A)', () => {
-  test('a portable intent is admitted and the admission reaches delegateTask', async () => {
+  test('a portable intent composes the mint factory (never a minted admission) into delegateTask', async () => {
     const delegateTask = vi.fn().mockResolvedValue({
       taskId: 'task:1',
       sessionId: 'task:1',
@@ -82,39 +95,66 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
       .fn()
       .mockResolvedValue(admissionStub());
     const isRequestPrincipalCurrent = vi.fn(() => true);
-    const app = createOrchestrationRoutes({} as never, baseDeps({
-      delegateTask,
-      authorizeReceiverExecution,
-      isRequestPrincipalCurrent,
-    }));
+    const app = createOrchestrationRoutes(
+      {} as never,
+      baseDeps({
+        delegateTask,
+        authorizeReceiverExecution,
+        isRequestPrincipalCurrent,
+      }),
+    );
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ prompt: 'Ship it', target: PORTABLE_TARGET }),
     });
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(authorizeReceiverExecution).toHaveBeenCalledWith(
-      PORTABLE_TARGET.workspace,
-      expect.any(Function),
-    );
+    // The route mints NOTHING eagerly: the admission owner is untouched
+    // until the actual executor invokes the factory.
+    expect(authorizeReceiverExecution).not.toHaveBeenCalled();
     const input = delegateTask.mock.calls[0]![0] as Record<string, unknown>;
-    expect(input.receiverAdmission).toMatchObject({
-      admittedProject: { slug: 'local' },
-    });
+    expect(input.receiverAdmission).toBeUndefined();
+    expect(typeof input.authorizeReceiverExecution).toBe('function');
+    // The factory mints through the owner with the request-bound currency
+    // probe when the executor invokes it.
+    const minted = await (
+      input.authorizeReceiverExecution as (workspace: {
+        portableProjectId: string;
+        resourceId: string;
+      }) => Promise<unknown>
+    )(PORTABLE_TARGET.workspace);
+    expect(authorizeReceiverExecution).toHaveBeenCalledTimes(1);
+    expect(authorizeReceiverExecution.mock.calls[0]![0]).toEqual(
+      PORTABLE_TARGET.workspace,
+    );
+    expect(typeof authorizeReceiverExecution.mock.calls[0]![1]).toBe(
+      'function',
+    );
+    expect(minted).toMatchObject({ admittedProject: { slug: 'local' } });
+    // The captured currency probe is live-bound to the request: invoking
+    // it reaches the request-principal check.
+    const probe = authorizeReceiverExecution.mock.calls[0]![1] as () => boolean;
+    expect(probe()).toBe(true);
+    expect(isRequestPrincipalCurrent).toHaveBeenCalled();
   });
 
-  test('an unoffered portable intent refuses 403 before delegateTask', async () => {
-    const delegateTask = vi.fn();
-    const app = createOrchestrationRoutes({} as never, baseDeps({
-      delegateTask,
-      authorizeReceiverExecution: vi.fn().mockRejectedValue(
+  test('a refusal maps to an exact safe code without serializing internal diagnostics', async () => {
+    const delegateTask = vi
+      .fn()
+      .mockRejectedValue(
         new ReceiverExecutionRefusal(
           'receiver_execution_not_offered',
-          'This Station does not currently offer execution for the requested Project resource.',
+          'Internal diagnostic containing /private/customer/checkout and a secret placeholder',
         ),
-      ),
-      isRequestPrincipalCurrent: () => true,
-    }));
+      );
+    const app = createOrchestrationRoutes(
+      {} as never,
+      baseDeps({
+        delegateTask,
+        authorizeReceiverExecution: vi.fn(),
+        isRequestPrincipalCurrent: () => true,
+      }),
+    );
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -123,34 +163,24 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({
       success: false,
-      error: /does not currently offer execution/,
+      error:
+        'This Station does not currently offer execution for the requested Project resource.',
+      code: 'receiver_execution_not_offered',
     });
-    expect(delegateTask).not.toHaveBeenCalled();
-  });
-
-  test('a portable intent without a wired admission owner refuses 403 (no composition hole)', async () => {
-    const delegateTask = vi.fn();
-    const app = createOrchestrationRoutes({} as never, baseDeps({
-      delegateTask,
-      isRequestPrincipalCurrent: () => true,
-    }));
-    const res = await app.request('/delegations', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'Ship it', target: PORTABLE_TARGET }),
-    });
-    expect(res.status).toBe(403);
-    expect(delegateTask).not.toHaveBeenCalled();
+    expect(delegateTask).toHaveBeenCalledTimes(1);
   });
 
   test('a non-portable delegation is byte-unchanged (no admission composed)', async () => {
     const delegateTask = vi.fn().mockResolvedValue({ taskId: 'task:2' });
     const authorizeReceiverExecution = vi.fn();
-    const app = createOrchestrationRoutes({} as never, baseDeps({
-      delegateTask,
-      authorizeReceiverExecution,
-      isRequestPrincipalCurrent: () => true,
-    }));
+    const app = createOrchestrationRoutes(
+      {} as never,
+      baseDeps({
+        delegateTask,
+        authorizeReceiverExecution,
+        isRequestPrincipalCurrent: () => true,
+      }),
+    );
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -174,7 +204,10 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
 
 describe('delegateTask receiver-local portable path (#484 phase A)', () => {
   const fetchCalls: string[] = [];
-  const routes: Array<{ match: (url: string) => boolean; reply: () => unknown }> = [];
+  const routes: Array<{
+    match: (url: string) => boolean;
+    reply: () => unknown;
+  }> = [];
   beforeAll(() => {
     vi.stubGlobal(
       'fetch',
@@ -182,14 +215,18 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         const url = String(input);
         for (const route of routes) {
           if (route.match(url)) {
-            fetchCalls.push(`${init && (init as any).method ? (init as any).method : 'GET'} ${url}`);
+            fetchCalls.push(
+              `${init && (init as any).method ? (init as any).method : 'GET'} ${url}`,
+            );
             return new Response(JSON.stringify(route.reply()), {
               status: 200,
               headers: { 'content-type': 'application/json' },
             });
           }
         }
-        return new Response(JSON.stringify({ success: false }), { status: 404 });
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
       }) as never,
     );
   });
@@ -264,7 +301,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
 
   test('a forwarding sender never needs the receiver admission: the portable intent forwards to the receiver', async () => {
     primePeerHttp();
-    const { delegateTask } = await import('../../../tools/station-control-delegation.js');
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
     // No orchestrationService: this Station is NOT the receiver, so the
     // receiver-owned admission cannot exist here — and must not be
     // required. The intent (with its exact portable ids) forwards to the
@@ -275,6 +314,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         target: PORTABLE_TARGET,
         userId: 'u',
         readAuthority: { userId: 'u', mode: 'local' },
+        isRequestAuthorityCurrent: () => true,
       } as never,
       undefined,
     );
@@ -292,7 +332,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       status: 'accepted' as const,
     }));
     const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
-    const { delegateTask } = await import('../../../tools/station-control-delegation.js');
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
     await expect(
       delegateTask(
         {
@@ -314,7 +356,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       status: 'accepted' as const,
     }));
     const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
-    const { delegateTask } = await import('../../../tools/station-control-delegation.js');
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
     await expect(
       delegateTask(
         {
@@ -341,7 +385,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     }));
     const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
     const rechecks = vi.fn(async () => {});
-    const { delegateTask } = await import('../../../tools/station-control-delegation.js');
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
     await delegateTask(
       {
         prompt: 'Ship it',
@@ -410,7 +456,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       status: 'accepted' as const,
     }));
     const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
-    const { delegateTask } = await import('../../../tools/station-control-delegation.js');
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
     let alive = true;
     await expect(
       delegateTask(
@@ -444,5 +492,636 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
     expect(startSessionInternal).toHaveBeenCalledTimes(1);
     expect(dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test('a REAL service admission carried to the effect boundary refuses after the binding is replaced', async () => {
+    primePeerHttp();
+    const { ProjectContributionService } = await import(
+      '../../../services/projects/project-contribution-service.js'
+    );
+    const { delegateTask } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
+    // The real receiver admission owner over stub stores (same contract
+    // shape as the service suite's fixture): no admission stub stands in.
+    const project = {
+      id: 'local-id',
+      slug: 'local',
+      workingDirectory: '/fixture/checkout',
+    };
+    const serviceManifest = {
+      schemaVersion: 1 as const,
+      id: 'prj_shared',
+      slug: 'local',
+      name: 'Local',
+      repos: [
+        {
+          kind: 'git' as const,
+          id: 'git.example/acme/repo',
+          canonicalRemote: 'git.example/acme/repo',
+        },
+      ],
+      knowledge: [],
+      agents: [],
+      integrations: [],
+      layouts: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    let binding: unknown = {
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+      projectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    };
+    const config = {
+      contribution: {
+        'project:prj_shared': {
+          enabled: true,
+          execution: { repoIds: ['git.example/acme/repo'] },
+        },
+      },
+    };
+    const service = new ProjectContributionService({
+      source: {
+        listProjects: () => [project],
+        projectRevision: () => ({
+          value: project,
+          replace: vi.fn(),
+          remove: vi.fn(),
+          createLayout: vi.fn(),
+          withCurrentRead: async (op: any) => op(project),
+        }),
+      },
+      manifests: { readProjectManifest: () => serviceManifest },
+      bindings: { findBinding: () => binding },
+      resolver: {
+        resolveProjectExecutionRoot: vi.fn(async () => undefined),
+        resolveProjectResource: vi.fn(async () => ({
+          state: 'bound' as const,
+          resourceId: 'git.example/acme/repo',
+          path: '/fixture/checkout',
+        })),
+      },
+      config: {
+        loadAppConfig: async () => config,
+        mutateAppConfig: async () => config,
+      },
+    } as never);
+    const admission = await service.authorizeReceiverExecution(
+      {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      },
+      () => true,
+    );
+    // The binding row is replaced under the same cwd AFTER the mint: the
+    // turn-effect boundary recheck must refuse before the provider effect.
+    // (The stub orchestration service below performs no start-adjacent
+    // recheck of its own, so the refusal lands at the turn boundary after
+    // the session start — exactly like the stub-recheck test above — while
+    // the dispatch itself never runs.)
+    binding = {
+      verifiedAt: Date.parse('2026-09-20T11:30:00.000Z'),
+      projectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    };
+    const startSessionInternal = vi.fn(async () => ({
+      status: 'accepted' as const,
+    }));
+    const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+    await expect(
+      delegateTask(
+        {
+          prompt: 'Ship it',
+          target: PORTABLE_TARGET,
+          userId: 'u',
+          readAuthority: { userId: 'u', mode: 'local' },
+          receiverAdmission: admission,
+        } as never,
+        orchestrationStub({ startSessionInternal, dispatchWithReceipt }),
+      ),
+    ).rejects.toMatchObject({ code: 'receiver_execution_unavailable' });
+    expect(dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  describe('controller/receiver split — REAL route → delegateTask composition', () => {
+    const PEER_API = 'https://peer.example';
+    const PEER_ENV = 'env-peer';
+    const PEER_PORTABLE_TARGET = {
+      environment: { kind: 'saved' as const, id: PEER_ENV },
+      agent: 'planner',
+      workspace: {
+        kind: 'project-portable' as const,
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      },
+    };
+    let peerHandshake: () => unknown = () => ({
+      environmentId: PEER_ENV,
+      capabilities: { portableExecutionOffers: true },
+    });
+
+    // One setup per test: the outer afterEach clears the shared route
+    // table, so routes are re-pushed here; the shared fetch stub records
+    // only method+url, so peer POST bodies are captured by wrapping fetch.
+    const peerPosts: Array<{ url: string; body: unknown }> = [];
+    let unwrapFetch: (() => void) | undefined;
+    beforeEach(() => {
+      peerPosts.length = 0;
+      peerHandshake = () => ({
+        environmentId: PEER_ENV,
+        capabilities: { portableExecutionOffers: true },
+      });
+      const inner = globalThis.fetch;
+      const wrapped: typeof fetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (
+          url.startsWith(PEER_API) &&
+          url.includes('/api/orchestration/delegations') &&
+          init?.method === 'POST'
+        ) {
+          try {
+            peerPosts.push({
+              url,
+              body: JSON.parse(String(init?.body ?? '{}')),
+            });
+          } catch {
+            peerPosts.push({ url, body: undefined });
+          }
+        }
+        return inner(input, init);
+      };
+      vi.stubGlobal('fetch', wrapped);
+      unwrapFetch = () => {
+        vi.stubGlobal('fetch', inner as never);
+      };
+      routes.push(
+        {
+          match: (url) =>
+            !url.startsWith(PEER_API) &&
+            url.endsWith('/.well-known/station/v1'),
+          reply: () => ({ environmentId: 'env-self', capabilities: {} }),
+        },
+        {
+          match: (url) => url.includes('/api/environments/ssh'),
+          reply: () => ({ success: true, data: [] }),
+        },
+        {
+          match: (url) =>
+            url.includes(`/api/environments/peers/${PEER_ENV}/credential`),
+          reply: () => ({
+            success: true,
+            data: {
+              environmentId: PEER_ENV,
+              apiBase: PEER_API,
+              scope: 'peer',
+              credential: 'peer-cred-1',
+              label: 'peer',
+            },
+          }),
+        },
+        {
+          match: (url) =>
+            url.startsWith(PEER_API) && url.endsWith('/.well-known/station/v1'),
+          reply: () => peerHandshake(),
+        },
+        {
+          match: (url) =>
+            url.startsWith(PEER_API) &&
+            url.includes('/api/orchestration/delegations'),
+          reply: () => ({
+            success: true,
+            data: {
+              taskId: 'task:remote',
+              sessionId: 'task:remote',
+              status: 'dispatched',
+              resumable: true,
+            },
+          }),
+        },
+        {
+          match: (url) => url.includes('/api/agents/'),
+          reply: () => ({
+            success: true,
+            data: {
+              id: 'planner',
+              slug: 'planner',
+              available: true,
+              execution: { agentConnectionId: null, modelId: null },
+            },
+          }),
+        },
+      );
+    });
+    afterEach(() => {
+      unwrapFetch?.();
+      unwrapFetch = undefined;
+    });
+
+    function compositionApp(options: {
+      service?: OrchestrationService;
+      senderOffer?: ReturnType<typeof vi.fn>;
+      inboundDeviceKind?: 'device' | 'delegation';
+      resolvePrincipal?: (c: any) => { id: string };
+      authorityCurrent?: () => boolean;
+    }) {
+      return createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          delegateTask: (input: any) =>
+            realDelegateTask(input, options.service),
+          ...(options.senderOffer
+            ? { authorizeReceiverExecution: options.senderOffer }
+            : {}),
+          isRequestPrincipalCurrent: options.authorityCurrent ?? (() => true),
+          ...(options.inboundDeviceKind
+            ? { resolveInboundDeviceKind: () => options.inboundDeviceKind }
+            : {}),
+          ...(options.resolvePrincipal
+            ? { resolvePrincipal: options.resolvePrincipal }
+            : {}),
+        }),
+      );
+    }
+
+    async function realDelegateTask(
+      input: any,
+      service: OrchestrationService | undefined,
+    ): Promise<unknown> {
+      const { delegateTask } = await import(
+        '../../../tools/station-control-delegation.js'
+      );
+      return delegateTask(input, service);
+    }
+
+    function postDelegations(app: any, target: unknown) {
+      return app.request('/delegations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Ship it', target }),
+      }) as Promise<Response>;
+    }
+
+    test('a controller credential revoked during the peer handshake cannot dispatch work', async () => {
+      let current = true;
+      const senderOffer = vi.fn(async () => admissionStub());
+      peerHandshake = () => {
+        current = false;
+        return {
+          environmentId: PEER_ENV,
+          capabilities: { portableExecutionOffers: true },
+        };
+      };
+      const app = compositionApp({
+        service: undefined,
+        senderOffer,
+        authorityCurrent: () => current,
+      });
+      const response = await postDelegations(app, PEER_PORTABLE_TARGET);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        code: 'receiver_execution_authority_changed',
+      });
+      expect(peerPosts).toHaveLength(0);
+      expect(senderOffer).not.toHaveBeenCalled();
+    });
+
+    test('a controller with NO local offer forwards the exact portable intent; the sender admission is never minted', async () => {
+      const senderOffer = vi.fn(async () => admissionStub());
+      const app = compositionApp({ service: undefined, senderOffer });
+      const res = await postDelegations(app as never, PEER_PORTABLE_TARGET);
+      expect(res.status, await res.clone().text()).toBe(200);
+      // The sender minted NOTHING locally — no offer or association was
+      // needed on the controller.
+      expect(senderOffer).not.toHaveBeenCalled();
+      // The exact intent (portable ids intact) forwarded as a current-host
+      // request to the configured peer.
+      expect(peerPosts).toHaveLength(1);
+      expect(peerPosts[0]!.body).toMatchObject({
+        prompt: 'Ship it',
+        target: {
+          environment: { kind: 'current' },
+          workspace: {
+            kind: 'project-portable',
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      });
+      expect(await res.json()).toMatchObject({
+        success: true,
+        data: { taskId: 'task:remote' },
+      });
+    });
+
+    test('an enrolled peer inbound naming a third host refuses 403 with NO outbound peer effect', async () => {
+      const senderOffer = vi.fn(async () => admissionStub());
+      const startSessionInternal = vi.fn(async () => ({
+        status: 'accepted' as const,
+      }));
+      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const app = compositionApp({
+        service: orchestrationStub({
+          startSessionInternal,
+          dispatchWithReceipt,
+        }),
+        senderOffer,
+        inboundDeviceKind: 'delegation',
+      });
+      const res = await postDelegations(app as never, PEER_PORTABLE_TARGET);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'receiver_execution_forwarding_refused',
+      });
+      // NO onward hop: nothing posted to the third host, no local mint,
+      // no session or turn effect.
+      expect(peerPosts).toHaveLength(0);
+      expect(fetchCalls.some((call) => call.includes(PEER_API))).toBe(false);
+      expect(senderOffer).not.toHaveBeenCalled();
+      expect(startSessionInternal).not.toHaveBeenCalled();
+      expect(dispatchWithReceipt).not.toHaveBeenCalled();
+    });
+
+    test('a delegation-kind peer naming the local operator is still refused (display identity never overrides)', async () => {
+      const senderOffer = vi.fn(async () => admissionStub());
+      const startSessionInternal = vi.fn(async () => ({
+        status: 'accepted' as const,
+      }));
+      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const app = compositionApp({
+        service: orchestrationStub({
+          startSessionInternal,
+          dispatchWithReceipt,
+        }),
+        senderOffer,
+        inboundDeviceKind: 'delegation',
+        // The enrolled peer's credential can carry a human person binding
+        // (or ingress identity) that resolves to the local operator — the
+        // actual runtime composition for a paired personal device. The
+        // verified device kind must still win: refuse, no onward hop.
+        resolvePrincipal: () => ({ id: 'human:local:operator' }),
+      });
+      const res = await postDelegations(app as never, PEER_PORTABLE_TARGET);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'receiver_execution_forwarding_refused',
+      });
+      expect(peerPosts).toHaveLength(0);
+      expect(fetchCalls.some((call) => call.includes(PEER_API))).toBe(false);
+      expect(senderOffer).not.toHaveBeenCalled();
+      expect(startSessionInternal).not.toHaveBeenCalled();
+      expect(dispatchWithReceipt).not.toHaveBeenCalled();
+    });
+
+    test('an ordinary operator/device controller MAY still select the saved peer (forward allowed)', async () => {
+      for (const inboundDeviceKind of [undefined, 'device' as const]) {
+        peerPosts.length = 0;
+        const senderOffer = vi.fn(async () => admissionStub());
+        const app = compositionApp({
+          service: undefined,
+          senderOffer,
+          ...(inboundDeviceKind ? { inboundDeviceKind } : {}),
+        });
+        const res = await postDelegations(app as never, PEER_PORTABLE_TARGET);
+        expect(res.status, await res.clone().text()).toBe(200);
+        expect(senderOffer).not.toHaveBeenCalled();
+        expect(peerPosts).toHaveLength(1);
+      }
+    });
+
+    test('a wrong expected environment refuses 403 before any dispatch post', async () => {
+      peerHandshake = () => ({
+        environmentId: 'env-other',
+        capabilities: { portableExecutionOffers: true },
+      });
+      const senderOffer = vi.fn(async () => admissionStub());
+      const app = compositionApp({ service: undefined, senderOffer });
+      const res = await postDelegations(app as never, PEER_PORTABLE_TARGET);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'receiver_execution_not_offered',
+      });
+      expect(senderOffer).not.toHaveBeenCalled();
+      expect(peerPosts).toHaveLength(0);
+    });
+
+    test('a missing portable capability flag refuses 403 before any dispatch post', async () => {
+      peerHandshake = () => ({
+        environmentId: PEER_ENV,
+        capabilities: {},
+      });
+      const senderOffer = vi.fn(async () => admissionStub());
+      const app = compositionApp({ service: undefined, senderOffer });
+      const res = await postDelegations(app as never, PEER_PORTABLE_TARGET);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'receiver_execution_not_offered',
+      });
+      expect(senderOffer).not.toHaveBeenCalled();
+      expect(peerPosts).toHaveLength(0);
+    });
+
+    test('receiver-local execution mints through the factory and binds the admitted offer', async () => {
+      const receiverOffer = vi.fn(
+        async (
+          _workspace: Pick<
+            ReceiverExecutionAdmission,
+            'portableProjectId' | 'resourceId'
+          >,
+        ) => admissionStub(),
+      );
+      const startSessionInternal = vi.fn(async () => ({
+        status: 'accepted' as const,
+      }));
+      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const app = compositionApp({
+        service: orchestrationStub({
+          startSessionInternal,
+          dispatchWithReceipt,
+        }),
+        senderOffer: receiverOffer,
+      });
+      const res = await postDelegations(app as never, PORTABLE_TARGET);
+      expect(res.status, await res.clone().text()).toBe(200);
+      expect(receiverOffer).toHaveBeenCalledTimes(1);
+      expect(receiverOffer.mock.calls[0]![0]).toEqual({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      });
+      const startInput = (
+        startSessionInternal.mock.calls as unknown as Array<
+          [Record<string, any>]
+        >
+      )[0]![0];
+      expect(startInput.input.cwd).toBe('/fixture/checkout');
+      expect(dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    test('receiver-local execution without a wired factory refuses 403 with its code and no effect', async () => {
+      const startSessionInternal = vi.fn(async () => ({
+        status: 'accepted' as const,
+      }));
+      const dispatchWithReceipt = vi.fn(async () => ({ events: [] }));
+      const app = compositionApp({
+        service: orchestrationStub({
+          startSessionInternal,
+          dispatchWithReceipt,
+        }),
+      });
+      const res = await postDelegations(app as never, PORTABLE_TARGET);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        code: 'receiver_execution_not_offered',
+      });
+      expect(startSessionInternal).not.toHaveBeenCalled();
+      expect(dispatchWithReceipt).not.toHaveBeenCalled();
+    });
+
+    test('legacy non-portable peer forwarding is unchanged through the same composition', async () => {
+      const senderOffer = vi.fn(async () => admissionStub());
+      const app = compositionApp({ service: undefined, senderOffer });
+      const res = await postDelegations(app as never, {
+        environment: { kind: 'saved' as const, id: PEER_ENV },
+        agent: 'planner',
+        workspace: { kind: 'project' as const, projectSlug: 'local' },
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+      expect(senderOffer).not.toHaveBeenCalled();
+      expect(peerPosts).toHaveLength(1);
+      expect(peerPosts[0]!.body).toMatchObject({
+        target: { workspace: { kind: 'project', projectSlug: 'local' } },
+      });
+    });
+  });
+
+  describe('isInboundDelegationPeer derivation (verified device kind is decisive)', () => {
+    test('a delegation device kind is a peer even when display identity names the operator', async () => {
+      const { isInboundDelegationPeer } = await import(
+        '../../../tools/station-control-delegation.js'
+      );
+      const operator = {
+        version: 1,
+        actor: { kind: 'operator' },
+        reported: { version: 1, surface: 'web', build: null },
+      };
+      const internal = {
+        version: 1,
+        actor: { kind: 'internal' },
+        reported: { version: 1, surface: 'mobile', build: null },
+      };
+      const device = {
+        version: 1,
+        actor: { kind: 'device', deviceId: 'd1' },
+        reported: { version: 1, surface: 'mobile', build: null },
+      };
+      // A delegation-kind device credential can carry a human person
+      // binding (or ingress identity) naming the local operator: the
+      // verified kind still wins — otherwise the peer escapes no-onward-hop
+      // by wearing the operator's display name.
+      expect(
+        isInboundDelegationPeer(undefined, operator as never, 'delegation'),
+      ).toBe(true);
+      expect(
+        isInboundDelegationPeer(undefined, internal as never, 'delegation'),
+      ).toBe(true);
+      expect(
+        isInboundDelegationPeer(
+          { id: 'human:local:operator', kind: 'human', display: 'op' },
+          undefined,
+          'delegation',
+        ),
+      ).toBe(true);
+      expect(
+        isInboundDelegationPeer(undefined, device as never, 'delegation'),
+      ).toBe(true);
+      // Ordinary personal devices, operator callers with no device
+      // credential, and callers with no kind at all are never peers.
+      expect(
+        isInboundDelegationPeer(undefined, device as never, 'device'),
+      ).toBe(false);
+      expect(
+        isInboundDelegationPeer(undefined, device as never, undefined),
+      ).toBe(false);
+      expect(
+        isInboundDelegationPeer(undefined, operator as never, undefined),
+      ).toBe(false);
+      expect(isInboundDelegationPeer(undefined, undefined, 'delegation')).toBe(
+        true,
+      );
+    });
+
+    test('the wired kind resolver reports the verified device record (actual middleware composition)', async () => {
+      const {
+        resolveInboundDeviceKindForRequest,
+        setRuntimeAuthenticatedRequestPrincipal,
+      } = await import('../../../security/runtime-request-security.js');
+      const delegationRequest = new Request(
+        'https://station.local/api/orchestration/delegations',
+        { method: 'POST' },
+      );
+      setRuntimeAuthenticatedRequestPrincipal(delegationRequest, {
+        credential: 'cred-delegation-1',
+        authority: 'device-credential',
+        deviceId: 'peer-1',
+        source: 'bearer',
+      });
+      const identifyDevice = (credential: string) =>
+        credential === 'cred-delegation-1'
+          ? { kind: 'delegation' as const }
+          : null;
+      // The real composition — verified credential + device-record lookup,
+      // never body/userId/metadata — reports the delegation kind even
+      // though nothing here names the operator.
+      expect(
+        resolveInboundDeviceKindForRequest(delegationRequest, identifyDevice),
+      ).toBe('delegation');
+      // An operator credential is never a peer, even against a device
+      // record that claims delegation: authority gates the lookup.
+      const operatorRequest = new Request(
+        'https://station.local/api/orchestration/delegations',
+        { method: 'POST' },
+      );
+      setRuntimeAuthenticatedRequestPrincipal(operatorRequest, {
+        credential: 'op-cred',
+        authority: 'operator-credential',
+        source: 'bearer',
+      });
+      expect(
+        resolveInboundDeviceKindForRequest(operatorRequest, () => ({
+          kind: 'delegation' as const,
+        })),
+      ).toBeUndefined();
+      // An ordinary personal device resolves its own kind (may forward);
+      // an unknown record resolves undefined (never a peer).
+      const deviceRequest = new Request(
+        'https://station.local/api/orchestration/delegations',
+        { method: 'POST' },
+      );
+      setRuntimeAuthenticatedRequestPrincipal(deviceRequest, {
+        credential: 'cred-device-1',
+        authority: 'device-credential',
+        deviceId: 'phone-1',
+        source: 'bearer',
+      });
+      expect(
+        resolveInboundDeviceKindForRequest(deviceRequest, () => ({
+          kind: 'device' as const,
+        })),
+      ).toBe('device');
+      expect(
+        resolveInboundDeviceKindForRequest(deviceRequest, () => null),
+      ).toBeUndefined();
+      expect(
+        resolveInboundDeviceKindForRequest(
+          new Request('https://station.local/api/orchestration/delegations'),
+          identifyDevice,
+        ),
+      ).toBeUndefined();
+    });
   });
 });

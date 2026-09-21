@@ -14,6 +14,11 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
+import type {
+  ConnectionCheckEvidence,
+  ConnectionEvidenceLevel,
+  ConnectionSmokeEvidence,
+} from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { selectEngineAgentAdoption } from '../../domain/agent-registry.js';
 import type { AgentMetadata } from '../../services/agents/agent-service.js';
@@ -34,6 +39,22 @@ export interface RuntimeConnectionSummary {
   defaultModel?: string;
   engineId?: EngineId;
   readinessReason?: string;
+  /** The readiness evidence's level; the failure distinction is `summaryNamesFailure`. */
+  readinessLevel?: ConnectionEvidenceLevel;
+  /**
+   * The connection's own observed-state reason (`config.readinessReason`):
+   * WHY the engine is not ready right now — an ACP probe's initialize
+   * failure, a runtime adapter's unmet readiness — as opposed to the evidence
+   * summary, which states the strongest proof the connection HAS earned.
+   */
+  stateReason?: string;
+  /**
+   * True when the evidence summary reports a failed smoke or check, rather
+   * than the level's own observation sentence. Derived from the typed
+   * evidence, since a level alone cannot tell the two apart. Producers that
+   * do not project it get the level-only refusal decision.
+   */
+  summaryNamesFailure?: boolean;
 }
 
 type UnavailableFix = NonNullable<EnrichedAgentProjection['unavailableFix']>;
@@ -49,6 +70,34 @@ type UnavailableFix = NonNullable<EnrichedAgentProjection['unavailableFix']>;
  * readiness derivation that change existed to enable, while every test that
  * supplied `provider` by hand stayed green. One function, both call sites.
  */
+/**
+ * True when the evidence's summary reports a failure — a fresh failed smoke,
+ * or a check receipt the level lets speak (refused, unreachable, no usable
+ * catalog) — rather than the level's own observation sentence. The level
+ * alone cannot tell these apart (a fresh failed smoke keeps `catalog-ready`;
+ * a grace-window `unreachable` keeps `prerequisite-ready`), so consumers that
+ * quote the summary as a refusal need this distinction. Mirrors the copy
+ * selection in `deriveConnectionReadinessEvidence`; keep the two in step.
+ */
+function evidenceSummaryNamesFailure(evidence: {
+  level?: ConnectionEvidenceLevel;
+  smoke?: Pick<ConnectionSmokeEvidence, 'status' | 'freshness'>;
+  check?: Pick<ConnectionCheckEvidence, 'status'> | null;
+}): boolean {
+  if (
+    evidence.smoke?.status === 'failed' &&
+    evidence.smoke.freshness === 'fresh'
+  ) {
+    return true;
+  }
+  const spoken = evidence.level === 'smoke-passed' ? null : evidence.check;
+  return (
+    spoken?.status === 'failed' ||
+    spoken?.status === 'unreachable' ||
+    spoken?.status === 'catalog-unavailable'
+  );
+}
+
 export function runtimeConnectionSummary(connection: {
   id: EngineConnectionId;
   type?: string;
@@ -56,7 +105,12 @@ export function runtimeConnectionSummary(connection: {
   enabled: boolean;
   status: string;
   config: Record<string, unknown>;
-  readinessEvidence?: { summary?: string };
+  readinessEvidence?: {
+    summary?: string;
+    level?: ConnectionEvidenceLevel;
+    smoke?: Pick<ConnectionSmokeEvidence, 'status' | 'freshness'>;
+    check?: Pick<ConnectionCheckEvidence, 'status'> | null;
+  };
   parseEngineId: (value: unknown) => EngineId | undefined;
 }): RuntimeConnectionSummary {
   return {
@@ -77,6 +131,15 @@ export function runtimeConnectionSummary(connection: {
       (typeof connection.config.readinessReason === 'string'
         ? connection.config.readinessReason
         : undefined),
+    readinessLevel: connection.readinessEvidence?.level,
+    summaryNamesFailure: evidenceSummaryNamesFailure(
+      connection.readinessEvidence ?? {},
+    ),
+    stateReason:
+      typeof connection.config.readinessReason === 'string' &&
+      connection.config.readinessReason.trim()
+        ? connection.config.readinessReason
+        : undefined,
   };
 }
 
@@ -134,6 +197,54 @@ export function isHonestlyAvailableConnectedAgent(
 }
 
 /**
+ * The evidence levels whose default summary states what has been observed —
+ * quoting it as an unavailability reason reads as a contradiction
+ * ("Error: A live model or capability catalog is available.").
+ */
+function isObservationOnlyEvidenceLevel(
+  level: ConnectionEvidenceLevel | undefined,
+): boolean {
+  return (
+    level === 'catalog-ready' ||
+    level === 'prerequisite-ready' ||
+    level === 'smoke-passed'
+  );
+}
+
+/**
+ * Does a fresh passed smoke stand behind this summary? `smoke-passed` is the
+ * one observation-only level whose observation is REAL proof of a chat turn,
+ * so the unproven proof sentence would be false for it — the current status
+ * speaks instead.
+ */
+function isProvenChatEvidence(connection: RuntimeConnectionSummary): boolean {
+  return (
+    connection.readinessLevel === 'smoke-passed' &&
+    !connection.summaryNamesFailure
+  );
+}
+
+/**
+ * The refusal for a connection whose evidence has not proven a chat turn:
+ * name the missing proof, the engine's own observation, and the supported
+ * action — for an ACP engine the free handshake retry (`station acp
+ * connections reconnect <id>`), since a billable smoke does not flip its
+ * probe gate.
+ */
+function unprovenEngineRefusal(connection: RuntimeConnectionSummary): string {
+  const engine = connection.name?.trim() || 'This agent\u2019s engine';
+  const detail = connection.stateReason?.trim();
+  const observed = detail
+    ? `Last engine observation: ${detail}`
+    : 'No live engine observation is available.';
+  const action =
+    connection.type === 'acp'
+      ? `Retry the engine handshake with: station acp connections reconnect ${connection.id}.`
+      : 'Run the connection\u2019s explicit smoke, then retry.';
+  return `${engine} has not yet proved it can complete a chat turn. ${observed} ${action}`;
+}
+
+/**
  * Why this agent's engine cannot run it, in words a person can act on.
  *
  * archive#3742: every branch printed the connection ID — "Engine connection
@@ -163,9 +274,21 @@ export function externalEngineUnavailable(
       fix: { kind: 'engine-disabled', target: id },
     };
   }
-  if (connection.readinessReason) {
+  // A fresh passed smoke is real proof: neither its passing summary nor the
+  // unproven sentence is truthful for a connection that is CURRENTLY
+  // unavailable. Its current status is what is true now — the switch below
+  // says it, without discarding the proof.
+  if (connection.readinessReason && !isProvenChatEvidence(connection)) {
     return {
-      reason: connection.readinessReason,
+      // Replace only a summary that states what the level has observed. A
+      // summary naming a failed smoke or check IS the reason; it travels
+      // verbatim, decided by typed evidence — a level alone cannot tell the
+      // two apart (a fresh failed smoke keeps catalog-ready).
+      reason:
+        isObservationOnlyEvidenceLevel(connection.readinessLevel) &&
+        !connection.summaryNamesFailure
+          ? unprovenEngineRefusal(connection)
+          : connection.readinessReason,
       fix: {
         kind:
           connection.status === 'missing_prerequisites'

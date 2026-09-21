@@ -12,9 +12,13 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
-import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
+import {
+  type PortableExecutionConsentIdentity,
+  portableConsentOfStartedMetadata,
+  ReceiverExecutionRefusal,
+} from '../projects/project-contribution-service.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
 import {
@@ -153,17 +157,26 @@ type ExistingSession = {
  * #484 phase A follow-up: a portable start that reattaches to an ALREADY
  * RUNNING thread (a caller-supplied task id colliding with another live
  * session, same owner or not) SKIPS `adapter.startSession` entirely — so the
- * start-effect admission never runs. The reattach must still prove the
- * EXISTING runtime session IS the admitted workspace: its actual `cwd`
- * (the runtime fact, not the new input's coordinate) must equal the
- * server-minted admitted directory, and its thread must be the admitted
- * one. A session that cannot name its directory cannot prove it is the
- * admitted checkout, so a missing cwd refuses too. Legacy reattaches
+ * start-effect admission never runs, and `recordStarted` never stamps a new
+ * marker. The reattach must still prove the EXISTING runtime session IS the
+ * admitted portable execution: its actual `cwd` (the runtime fact, not the
+ * new input's coordinate) must equal the server-minted admitted directory,
+ * its thread must be the admitted one, AND the thread's OWN server-owned
+ * persisted consent (`persistedConsent`, any-marker-wins over the binding
+ * history) must carry the EXACT admitted portableProjectId/resourceId. A
+ * directory is not a project identity — two projects can legitimately share
+ * a path — so an unmarked legacy session is never implicitly promoted into
+ * a portable project by cwd alone: absent or different consent refuses, and
+ * when the association cannot be proven at all it fails closed.
+ * `startedMeta` (latest binding metadata, when the caller has it) must agree
+ * too when it states a project or consent identity. Legacy reattaches
  * (no admitted coordinate) are unaffected.
  */
 function verifyReceiverReattachEffect(
   admitted: NonNullable<ReceiverExecutionEffectAdmission['admitted']>,
   existingSession: ProviderSession | undefined,
+  startedMeta: Record<string, unknown> | undefined,
+  persistedConsent: PortableExecutionConsentIdentity | undefined,
 ): void {
   const actualCwd =
     existingSession?.cwd === undefined
@@ -172,6 +185,31 @@ function verifyReceiverReattachEffect(
   if (
     existingSession?.threadId !== admitted.threadId ||
     actualCwd !== admitted.cwd
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  if (
+    !persistedConsent ||
+    persistedConsent.portableProjectId !== admitted.portableProjectId ||
+    persistedConsent.resourceId !== admitted.resourceId
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  const metaProject = startedMeta?.projectSlug;
+  if (metaProject !== undefined && metaProject !== admitted.projectSlug)
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  const statedConsent = portableConsentOfStartedMetadata(startedMeta);
+  if (
+    statedConsent &&
+    (statedConsent.portableProjectId !== admitted.portableProjectId ||
+      statedConsent.resourceId !== admitted.resourceId)
   )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_unavailable',
@@ -244,6 +282,21 @@ interface SessionCommandDependencies {
       input: OrchestrationStartSessionInput,
       session: ProviderSession,
     ): void;
+    /**
+     * #484 phase A follow-up: the service-owned persisted portable-binding
+     * read (event-store authority, never a parallel registry, never the
+     * request). The reattach effect proves the EXISTING session's portable
+     * association through it: without this dep the association cannot be
+     * proven and an admitted reattach fails closed.
+     */
+    persistedPortableBinding?: {
+      consentOfThread(
+        threadId: string,
+      ): PortableExecutionConsentIdentity | undefined;
+      latestStartedMetadata(
+        threadId: string,
+      ): Record<string, unknown> | undefined;
+    };
     requireAdapter(
       provider: OrchestrationStartSessionInput['provider'],
     ): ProviderAdapterShape;
@@ -257,6 +310,7 @@ interface SessionCommandDependencies {
     materializeRestoredSession?(
       threadId: string,
       admission?: SessionStartBoundaryClaim,
+      receiverAdmission?: ReceiverExecutionEffectAdmission,
     ): Promise<ProviderAdapterShape | undefined>;
     prepareStart(
       input: OrchestrationStartSessionInput,
@@ -499,6 +553,28 @@ export function createSessionCommandModule(
           // one — the start would run with the OWNER's cwd, credential
           // profile and tenant context, and a failed start durably writes a
           // `runtime.error` into the owner's thread.
+          // #484 phase A follow-up: snapshot the admitted coordinate BEFORE
+          // any await, and fail a marked portable thread closed BEFORE the
+          // engine spawn when there is no fresh admission to validate it
+          // (recovered/auto-dispatched reattach without a current offer).
+          // The refusal retains the persisted record and resumeCursor — the
+          // session stays dormant, never quarantined or closed. With a fresh
+          // admission the spawn itself is gated at the effect inside
+          // `materializeRestoredSession` (recheck adjacent to the spawn);
+          // the post-spawn verify below then answers for the live session.
+          const reattachAdmission = internal?.receiverExecutionAdmission;
+          const reattachAdmitted = reattachAdmission?.admitted
+            ? { ...reattachAdmission.admitted }
+            : undefined;
+          const portableBinding = deps.launchPolicy.persistedPortableBinding;
+          if (
+            !reattachAdmitted &&
+            portableBinding?.consentOfThread(input.threadId)
+          )
+            throw new ReceiverExecutionRefusal(
+              'receiver_execution_not_offered',
+              'This portable task cannot continue without a current execution offer for its Project resource.',
+            );
           if (
             existing.session &&
             !existing.adapter &&
@@ -517,6 +593,7 @@ export function createSessionCommandModule(
             await deps.launchPolicy.materializeRestoredSession(
               input.threadId,
               internal?.sessionStartAdmission,
+              reattachAdmission,
             );
             existing = deps.sessionState.existing(input.threadId);
           }
@@ -537,18 +614,21 @@ export function createSessionCommandModule(
           // admission the fresh-start effect runs — a withdrawn offer or
           // lost binding that lands while this command was queued refuses
           // here instead of attaching to a session it no longer
-          // authorizes. The admitted coordinate is snapshotted BEFORE the
-          // recheck await; the EXISTING runtime session (not the new
-          // input) is then verified against that snapshot, so a
-          // colliding task id can never silently inherit another
-          // checkout's engine.
-          const reattachAdmission = internal?.receiverExecutionAdmission;
-          const reattachAdmitted = reattachAdmission?.admitted
-            ? { ...reattachAdmission.admitted }
-            : undefined;
+          // authorizes. The recheck runs AFTER the materialize await above,
+          // adjacent to the attach; the EXISTING runtime session (not the
+          // new input) is then verified against the pre-await snapshot
+          // (thread + exact cwd + REQUIRED persisted portable association
+          // + stated project), so a colliding task id can never silently
+          // inherit another checkout's engine — or be implicitly promoted
+          // into a portable project it never started as.
           await reattachAdmission?.recheck();
           if (reattachAdmitted)
-            verifyReceiverReattachEffect(reattachAdmitted, existing.session);
+            verifyReceiverReattachEffect(
+              reattachAdmitted,
+              existing.session,
+              portableBinding?.latestStartedMetadata(input.threadId),
+              portableBinding?.consentOfThread(input.threadId),
+            );
           await deps.bindings.bind(input, internal);
           const persisted = persist(receipt, 'persist-accepted');
           const publicSession = deps.publicSession(existing.session);
