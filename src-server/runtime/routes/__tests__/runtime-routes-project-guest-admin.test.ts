@@ -150,6 +150,42 @@ export async function createStationAuthenticationProvider(host) {
   return modulePath;
 }
 
+/**
+ * Read a guarded body to completion WITHOUT treating a read failure as
+ * success: the caller must assert the returned error IS the canonical
+ * delivery denial AND that zero bytes arrived. A revocation landing after
+ * the 200 Response was returned cannot change its status, so the stream
+ * error is the expected denial signal — never a 500, never a swallowed
+ * failure.
+ */
+async function drainGuardedBody(response: Response) {
+  const reader = response.body!.getReader();
+  const chunks: Uint8Array[] = [];
+  let error: unknown = null;
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      if (next.value) chunks.push(next.value);
+    }
+  } catch (caught) {
+    error = caught;
+  } finally {
+    reader.releaseLock();
+  }
+  return {
+    bytes: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))),
+    error,
+  };
+}
+
+function expectDeliveryDenied(drained: { bytes: Buffer; error: unknown }) {
+  expect(String(drained.error)).toContain(
+    'Project authorization ended before response delivery.',
+  );
+  expect(drained.bytes.length).toBe(0);
+}
+
 describe('project guest administration over the production composition', () => {
   const directories: string[] = [];
   const ambientHome = process.env.STATION_HOME;
@@ -600,11 +636,16 @@ describe('project guest administration over the production composition', () => {
     // `terminal:operate` is not in the guest grant: the pairing-scope
     // middleware refuses before any handler runs.
     expect(terminal.status).toBe(403);
+    expect(await terminal.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
 
-    // Pairing management answers at the handler's operator check (401)
-    // rather than the scope middleware (403): either layer is a denial,
-    // and the exact scope-middleware 403 is already pinned by the
-    // terminal probe above and the read-only probe below.
+    // Pairing/device management stays operator-only at the FIRST boundary
+    // (archive#1887): `authorizeCredential` admits no device credential to
+    // `/api/pairing*` outside the approval leaves, so runtime-http answers
+    // 401 `authentication_required` before the pairing-scope middleware
+    // (which would 403 on the missing `access:manage`) or the handler's
+    // operator check is reached.
     const pairingAdmin = await h.request(
       '/api/pairing/offers',
       guest({
@@ -613,7 +654,10 @@ describe('project guest administration over the production composition', () => {
         body: JSON.stringify({ endpoint: ORIGIN }),
       }),
     );
-    expect([401, 403]).toContain(pairingAdmin.status);
+    expect(pairingAdmin.status, await pairingAdmin.clone().text()).toBe(401);
+    expect(await pairingAdmin.json()).toEqual({
+      error: { code: 'authentication_required' },
+    });
 
     // The guest cannot escalate its own grant through the operator
     // rescope endpoint either.
@@ -625,10 +669,22 @@ describe('project guest administration over the production composition', () => {
         body: JSON.stringify({ scope: ['orchestration:read'] }),
       }),
     );
-    expect([401, 403]).toContain(selfEscalation.status);
+    expect(selfEscalation.status, await selfEscalation.clone().text()).toBe(
+      401,
+    );
+    expect(await selfEscalation.json()).toEqual({
+      error: { code: 'authentication_required' },
+    });
 
+    // Operator accounts require `access:manage`: the pairing-scope
+    // middleware refuses with 403 before the handler is reached.
     const operatorAccounts = await h.request('/api/operator/accounts', guest());
-    expect([401, 403]).toContain(operatorAccounts.status);
+    expect(operatorAccounts.status, await operatorAccounts.clone().text()).toBe(
+      403,
+    );
+    expect(await operatorAccounts.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
 
     const privateRead = await h.request('/api/projects/other', guest());
     expect(privateRead.status).toBe(404);
@@ -845,5 +901,190 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(accept.status).toBe(409);
+  });
+
+  test('delayed delivery across device rescope: read body still delivers, operate body denied', async () => {
+    const h = await setup();
+    const { scope, credential, guest } = await h.shareWithGuestAdmin(
+      'rescope-delay',
+      'Rescope Delay',
+    );
+    const deviceId = h.security.devicePairing.identifyDevice(credential)?.id;
+    expect(deviceId).toBeTruthy();
+    const inviteBody = JSON.stringify({
+      scope,
+      email: null,
+      role: 'viewer',
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    // Both responses are admitted while the explicit read+operate grant
+    // holds; neither body is consumed or cloned yet (cloning would pull).
+    const access = await h.request(
+      '/api/projects/rescope-delay/access',
+      guest(),
+    );
+    expect(access.status).toBe(200);
+    const invited = await h.request(
+      '/api/projects/rescope-delay/access/invitations',
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: inviteBody,
+      }),
+    );
+    expect(invited.status).toBe(200);
+
+    // Operator narrows the SAME device to read-only via the existing
+    // endpoint; the guest principal and account session are untouched.
+    const narrowed = await h.request(
+      `/api/pairing/devices/${deviceId}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: ['orchestration:read'] }),
+      }),
+    );
+    expect(narrowed.status).toBe(200);
+
+    // Fresh credential comparison after the final await: same device, same
+    // principal, now read-only.
+    expect(h.security.devicePairing.identifyDevice(credential)?.scope).toBe(
+      'orchestration:read',
+    );
+
+    // Positive control, same person: the read-capability admin view still
+    // delivers its member bytes — nothing about this principal changed.
+    const view = (await access.json()) as {
+      success: boolean;
+      data: { members: unknown[] };
+    };
+    expect(view.success).toBe(true);
+    expect(view.data.members.length).toBeGreaterThanOrEqual(2);
+
+    // The operate-capability token body is denied: production `current()`
+    // re-resolves `isRuntimeRequestPrincipalCurrent` per check, and the
+    // read-only grant no longer includes the POST invitations scope.
+    expectDeliveryDenied(await drainGuardedBody(invited));
+
+    // Fresh requests agree: GET still 200, POST now middleware-403.
+    expect(
+      (await h.request('/api/projects/rescope-delay/access', guest())).status,
+    ).toBe(200);
+    expect(
+      (
+        await h.request(
+          '/api/projects/rescope-delay/access/invitations',
+          guest({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: inviteBody,
+          }),
+        )
+      ).status,
+    ).toBe(403);
+  });
+
+  test('delayed delivery across device revocation: admin-view and token bodies denied with zero bytes', async () => {
+    const h = await setup();
+    const { scope, credential, guest } = await h.shareWithGuestAdmin(
+      'revoke-delay',
+      'Revoke Delay',
+    );
+    const deviceId = h.security.devicePairing.identifyDevice(credential)?.id;
+    expect(deviceId).toBeTruthy();
+
+    const access = await h.request('/api/projects/revoke-delay/access', guest());
+    expect(access.status).toBe(200);
+    const invited = await h.request(
+      '/api/projects/revoke-delay/access/invitations',
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+      }),
+    );
+    expect(invited.status).toBe(200);
+
+    // Independent device revocation lands before either body is read; the
+    // membership record and the account session are untouched.
+    h.security.devicePairing.revokeDevice(deviceId!, 'operator-credential');
+
+    // Fresh credential comparison: the credential no longer identifies an
+    // active device.
+    expect(h.security.devicePairing.identifyDevice(credential)).toBeNull();
+
+    // Both queued bodies deny with zero bytes — never a 500, never member
+    // or token content.
+    const deniedAccess = await drainGuardedBody(access);
+    expectDeliveryDenied(deniedAccess);
+    expect(deniedAccess.bytes.toString('utf8')).not.toContain('members');
+    const deniedInvite = await drainGuardedBody(invited);
+    expectDeliveryDenied(deniedInvite);
+    expect(deniedInvite.bytes.toString('utf8')).not.toContain('token');
+
+    // Fresh requests agree: the dead credential fails closed at 401.
+    expect(
+      (await h.request('/api/projects/revoke-delay/access', guest())).status,
+    ).toBe(401);
+  });
+
+  test('delayed delivery across account logout: admin-view and token bodies denied with zero bytes', async () => {
+    const h = await setup();
+    const { scope, credential, guest } = await h.shareWithGuestAdmin(
+      'logout-delay',
+      'Logout Delay',
+    );
+
+    const access = await h.request('/api/projects/logout-delay/access', guest());
+    expect(access.status).toBe(200);
+    const invited = await h.request(
+      '/api/projects/logout-delay/access/invitations',
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+      }),
+    );
+    expect(invited.status).toBe(200);
+
+    // Independent account revocation (logout) lands before either body is
+    // read; the device credential and the membership record are untouched.
+    const logout = await h.request(
+      '/api/account-auth/logout',
+      guest({ method: 'POST', headers: { Origin: ORIGIN } }),
+    );
+    expect(logout.status).toBe(200);
+
+    // Fresh credential comparison: the device still identifies (revocation
+    // was account-level, not device-level) with its grant intact.
+    expect(h.security.devicePairing.identifyDevice(credential)?.scope).toBe(
+      GUEST_GRANT,
+    );
+
+    // Both queued bodies deny with zero bytes: production `current()`
+    // re-authenticates per check and the logged-out account is invalid.
+    const deniedAccess = await drainGuardedBody(access);
+    expectDeliveryDenied(deniedAccess);
+    expect(deniedAccess.bytes.toString('utf8')).not.toContain('members');
+    const deniedInvite = await drainGuardedBody(invited);
+    expectDeliveryDenied(deniedInvite);
+    expect(deniedInvite.bytes.toString('utf8')).not.toContain('token');
+
+    // Fresh requests agree: the revoked account fails closed at 401 even
+    // for an otherwise valid device credential.
+    expect(
+      (await h.request('/api/projects/logout-delay/access', guest())).status,
+    ).toBe(401);
   });
 });

@@ -9,18 +9,28 @@
  * seam, flipped mid-flight to simulate a revocation landing between the
  * service check and release):
  *
- * - an invite token created before its inviter's revocation is never
- *   released afterwards, the committed invitation is neither retried nor
- *   rolled back, and the refusal leaks no token bytes;
+ * - an invite token whose inviter loses `manage-members` before the first
+ *   byte is withheld as causeless 404 (before-first-byte guard), while the
+ *   committed invitation is neither retried nor rolled back and the refusal
+ *   leaks no token bytes;
  * - an authorized self-demotion still delivers its contentless
  *   `{ changed: true }` acknowledgement (the old `manage-members`
  *   permission must not be re-required after the effect);
- * - a queued-release revocation of the `GET .../access` admin view
- *   answers causeless 404 without member bytes;
+ * - a release-identity swap before the first byte refuses the `GET
+ *   .../access` admin view as causeless 404 without member bytes;
+ * - a SAME-principal demotion landing after a 200 Response is returned but
+ *   before its body is read denies the queued chunks: the transport status
+ *   is already fixed at 200, so the denial surfaces as the canonical
+ *   stream error with zero member/token bytes (both the admin view and the
+ *   invite-token response);
  * - the transport-internal delivery descriptor never ships in API payloads;
  * - owner-only transfer, owner immutability, stale revisions, wrong
  *   scopes, and same-slug replacements keep their existing verdicts
  *   through the guarded routes.
+ *
+ * No `current()` call-count oracle anywhere below: every delayed-consumption
+ * revocation goes through the authoritative membership service as a
+ * same-principal demotion, with the credential/authority seam untouched.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -129,6 +139,41 @@ const invitation = () => ({
   role: 'viewer' as const,
   expiresAt: new Date(Date.now() + 3600_000).toISOString(),
 });
+
+/**
+ * Read a guarded body to completion WITHOUT treating a read failure as
+ * success: the caller must assert the returned error IS the canonical
+ * delivery denial AND that zero bytes arrived. A delayed revocation cannot
+ * change the already-returned 200 status, so the stream error is the
+ * expected denial signal — never a 500, never a swallowed failure.
+ */
+async function drainGuardedBody(response: Response) {
+  const reader = response.body!.getReader();
+  const chunks: Uint8Array[] = [];
+  let error: unknown = null;
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      if (next.value) chunks.push(next.value);
+    }
+  } catch (caught) {
+    error = caught;
+  } finally {
+    reader.releaseLock();
+  }
+  return {
+    bytes: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))),
+    error,
+  };
+}
+
+function expectDeliveryDenied(drained: { bytes: Buffer; error: unknown }) {
+  expect(String(drained.error)).toContain(
+    'Project authorization ended before response delivery.',
+  );
+  expect(drained.bytes.length).toBe(0);
+}
 const post = (app: Hono, path: string, body: unknown) =>
   app.request(`/api/projects/example/access${path}`, {
     method: 'POST',
@@ -137,7 +182,7 @@ const post = (app: Hono, path: string, body: unknown) =>
   });
 
 describe('guest-administration delivery guards', () => {
-  test('an invite token created before revocation is never released, and the effect is committed exactly once', async () => {
+  test('before-first-byte guard withholds an invite token when the release identity differs, and the effect is committed exactly once', async () => {
     const h = await harness();
     const view = await h.service.enable('example', h.project.id, h.access);
     // Promote a second admin who will invite, then lose manage-members
@@ -207,18 +252,106 @@ describe('guest-administration delivery guards', () => {
     );
   });
 
-  test('a queued-release revocation refuses the admin view without member bytes', async () => {
+  test('before-first-byte guard refuses the admin view when the release identity differs', async () => {
     const h = await harness();
     await h.service.enable('example', h.project.id, h.access);
-    // Service read (calls 1-2) passes as owner; the release recheck
-    // (calls 3+) runs as a stranger: same causeless 404 the transport
-    // answers when membership ends before delivery.
+    // BEFORE-first-byte only: the service read (calls 1-2) passes as
+    // owner, then the guard's first recheck (calls 3+) runs as a stranger
+    // and the transport answers causeless 404. This proves the first-byte
+    // check, NOT queued-chunk denial — the delayed-consumption tests below
+    // prove the queued path with a real same-principal demotion.
     h.flipping.armFlip(3, stranger);
     const response = await h.app.request('/api/projects/example/access');
     expect(response.status).toBe(404);
     const text = await response.text();
     expect(text).not.toContain(owner.id);
     expect(text).not.toContain('members');
+  });
+
+  test('delayed consumption: same-principal demotion after Response 200 denies the admin-view body with zero bytes', async () => {
+    const h = await harness();
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const adminOffer = await h.service.invite(
+      view.scope,
+      { ...invitation(), role: 'admin' },
+      h.access,
+    );
+    h.setActor(admin);
+    await h.service.accept(adminOffer.token, h.access);
+    // Admitted while the admin holds manage-members; the 200 status is
+    // fixed at handler return. The body is NOT consumed yet.
+    const response = await h.app.request('/api/projects/example/access');
+    expect(response.status).toBe(200);
+    // The SAME principal is demoted through the authoritative service —
+    // credential and authority seam untouched, no identity flip, no
+    // call-count oracle.
+    const member = h.store.require(view.scope, admin, 'manage-members');
+    h.setActor(owner, true);
+    await h.service.changeMember(
+      view.scope,
+      admin.id,
+      member.revision,
+      { role: 'viewer', status: 'active' },
+      h.access,
+    );
+    h.setActor(admin);
+    const drained = await drainGuardedBody(response);
+    expectDeliveryDenied(drained);
+    expect(drained.bytes.toString('utf8')).not.toContain('members');
+    // Independently: the demoted principal is refused fresh, while the
+    // Project itself still reads (viewer retains `view`).
+    const fresh = await h.app.request('/api/projects/example/access');
+    expect(fresh.status).toBe(403);
+    expect(
+      (await fresh.json()) as unknown,
+    ).toEqual({ error: { code: 'project_access_forbidden' } });
+  });
+
+  test('delayed consumption: invitation created while valid releases no token bytes after same-principal demotion', async () => {
+    const h = await harness();
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const adminOffer = await h.service.invite(
+      view.scope,
+      { ...invitation(), role: 'admin' },
+      h.access,
+    );
+    h.setActor(admin);
+    await h.service.accept(adminOffer.token, h.access);
+    // Created while the admin holds manage-members; 200 fixed, body held.
+    const response = await post(h.app, '/invitations', {
+      scope: view.scope,
+      ...invitation(),
+    });
+    expect(response.status).toBe(200);
+    // The effect committed exactly once before delivery was decided.
+    const pendingBefore = h.store
+      .administration(view.scope, owner)
+      .invitations.filter((entry) => entry.status === 'pending');
+    expect(pendingBefore).toHaveLength(1);
+    // Same-principal demotion lands before the first body read.
+    const member = h.store.require(view.scope, admin, 'manage-members');
+    h.setActor(owner, true);
+    await h.service.changeMember(
+      view.scope,
+      admin.id,
+      member.revision,
+      { role: 'viewer', status: 'active' },
+      h.access,
+    );
+    h.setActor(admin);
+    const drained = await drainGuardedBody(response);
+    expectDeliveryDenied(drained);
+    expect(drained.bytes.toString('utf8')).not.toContain('token');
+    // Neither retried nor rolled back: still exactly one pending invite,
+    // and the demoted inviter is refused fresh.
+    const pendingAfter = h.store
+      .administration(view.scope, owner)
+      .invitations.filter((entry) => entry.status === 'pending');
+    expect(pendingAfter).toHaveLength(1);
+    expect(pendingAfter[0].id).toBe(pendingBefore[0].id);
+    expect((await h.app.request('/api/projects/example/access')).status).toBe(
+      403,
+    );
   });
 
   test('management delivery requires the exact scope: wrong project and replacement refuse', async () => {
