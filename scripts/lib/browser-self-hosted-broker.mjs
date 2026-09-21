@@ -132,11 +132,6 @@ export function browserBrokerAdoptApplicationTransport() {
   };
 }
 
-export function browserBrokerForgetApplicationTransport() {
-  window.stationBrokerLabTransport?.close();
-  window.stationBrokerLabTransport = undefined;
-}
-
 // Real CORS + credential checks from the admitted page origin. The browser
 // emits Origin; nothing here sets a forbidden Origin header and no explicit
 // OPTIONS preflight is issued here: the non-simple POST below triggers the
