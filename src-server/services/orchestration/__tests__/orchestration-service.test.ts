@@ -16633,6 +16633,95 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessions()).toEqual([]);
   });
 
+  test('oversized provider output cannot fail another active turn and later terminals still settle', async () => {
+    const events = new AsyncEventQueue<CanonicalRuntimeEvent>(16);
+    (claude as any).events = events;
+    const isolated = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    isolated.initialize();
+    try {
+      for (const threadId of ['oversized-owner', 'unrelated-owner']) {
+        await isolated.dispatch({
+          type: 'startSession',
+          input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
+        });
+        events.push({
+          eventId: `start-${threadId}`,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.started',
+          turnId: `turn-${threadId}`,
+        });
+        await vi.waitFor(async () =>
+          expect(await isolated.readSession(threadId)).toMatchObject({
+            session: { lifecycleState: 'running' },
+          }),
+        );
+      }
+      events.push({
+        eventId: 'oversized-result',
+        provider: 'claude',
+        threadId: 'oversized-owner',
+        createdAt: new Date().toISOString(),
+        method: 'tool.completed',
+        turnId: 'turn-oversized-owner',
+        toolCallId: 'huge-tool',
+        itemId: 'huge-tool',
+        toolName: 'read_file',
+        status: 'success',
+        output: 'x'.repeat(100000),
+      });
+      await vi.waitFor(() =>
+        expect(
+          eventStore
+            .listEvents('unrelated-owner')
+            .some(
+              (entry) =>
+                entry.payload.method === 'runtime.warning' &&
+                entry.payload.code === 'adapter-event-stream-interrupted',
+            ),
+        ).toBe(true),
+      );
+      const unrelatedWarning = eventStore
+        .listEvents('unrelated-owner')
+        .find((entry) => entry.payload.method === 'runtime.warning');
+      expect(JSON.stringify(unrelatedWarning?.payload)).not.toContain(
+        'oversized-owner',
+      );
+      for (const threadId of ['oversized-owner', 'unrelated-owner']) {
+        expect(await isolated.readSession(threadId)).toMatchObject({
+          session: { lifecycleState: 'running' },
+        });
+        expect(
+          eventStore
+            .listEvents(threadId)
+            .some((entry) => entry.payload.method === 'runtime.error'),
+        ).toBe(false);
+        events.push({
+          eventId: `complete-${threadId}`,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.completed',
+          turnId: `turn-${threadId}`,
+        });
+        await vi.waitFor(async () =>
+          expect(await isolated.readSession(threadId)).toMatchObject({
+            session: { lifecycleState: 'completed' },
+          }),
+        );
+      }
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      await isolated.shutdown();
+    }
+  });
+
   test('restarts adapter event consumption after a bounded queue overflow', async () => {
     const events = new AsyncEventQueue<CanonicalRuntimeEvent>(1);
     (claude as any).events = events;
@@ -16676,8 +16765,8 @@ describe('OrchestrationService', () => {
       eventStore
         .listEvents('overflow-thread')
         .map((event) => event.payload)
-        .find((event) => event.method === 'runtime.error'),
-    ).toMatchObject({ retriable: true });
+        .find((event) => event.method === 'runtime.warning'),
+    ).toMatchObject({ code: 'adapter-event-stream-interrupted' });
 
     expect(events.push(runtimeEvent('after-overflow'))).toBe(true);
     await vi.waitFor(() =>
@@ -16756,8 +16845,10 @@ describe('OrchestrationService', () => {
     const contentionError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .find((event) => event.method === 'runtime.error');
-    expect(contentionError).toMatchObject({ retriable: true });
+      .find((event) => event.method === 'runtime.warning');
+    expect(contentionError).toMatchObject({
+      code: 'adapter-event-stream-interrupted',
+    });
     expect((contentionError as { message?: string })?.message).toContain(
       'Orchestration event store is locked (orchestration.sqlite)',
     );
@@ -16787,19 +16878,19 @@ describe('OrchestrationService', () => {
         eventStore
           .listEvents('store-busy-thread')
           .map((event) => event.payload)
-          .filter((event) => event.method === 'runtime.error'),
+          .filter((event) => event.method === 'runtime.warning'),
       ).toHaveLength(2),
     );
     const errcodeOnlyError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .filter((event) => event.method === 'runtime.error')
+      .filter((event) => event.method === 'runtime.warning')
       .at(-1);
     expect((errcodeOnlyError as { message?: string })?.message).toContain(
       'Orchestration event store is locked (orchestration.sqlite)',
     );
 
-    // Control: a non-BUSY stream failure keeps the agent-connection wording.
+    // Raw stream errors stay in operator logs, not every affected transcript.
     vi.spyOn(eventStore, 'listSessionProjectionEvents').mockImplementationOnce(
       () => {
         throw new Error('adapter stream exploded');
@@ -16811,16 +16902,19 @@ describe('OrchestrationService', () => {
         eventStore
           .listEvents('store-busy-thread')
           .map((event) => event.payload)
-          .filter((event) => event.method === 'runtime.error'),
+          .filter((event) => event.method === 'runtime.warning'),
       ).toHaveLength(3),
     );
     const genericError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .filter((event) => event.method === 'runtime.error')
+      .filter((event) => event.method === 'runtime.warning')
       .at(-1);
-    expect((genericError as { message?: string })?.message).toBe(
-      'Agent connection error: adapter stream exploded',
+    expect((genericError as { message?: string })?.message).toContain(
+      'Agent event observation was interrupted.',
+    );
+    expect(JSON.stringify(genericError)).not.toContain(
+      'adapter stream exploded',
     );
     await isolated.shutdown();
   });
@@ -16871,7 +16965,7 @@ describe('OrchestrationService', () => {
         .spyOn(eventStore, 'appendEvent')
         .mockImplementation((event) => {
           if (
-            event.method === 'runtime.error' &&
+            event.method === 'runtime.warning' &&
             event.threadId === 'surfacing-blocked-thread'
           ) {
             throw Object.assign(new Error('database is locked'), {
@@ -16906,13 +17000,13 @@ describe('OrchestrationService', () => {
           eventStore
             .listEvents('surfacing-healthy-thread')
             .map((event) => event.payload)
-            .filter((event) => event.method === 'runtime.error'),
+            .filter((event) => event.method === 'runtime.warning'),
         ).toHaveLength(1),
       );
       const healthyError = eventStore
         .listEvents('surfacing-healthy-thread')
         .map((event) => event.payload)
-        .find((event) => event.method === 'runtime.error');
+        .find((event) => event.method === 'runtime.warning');
       expect((healthyError as { message?: string })?.message).toContain(
         'Orchestration event store is locked (orchestration.sqlite)',
       );
