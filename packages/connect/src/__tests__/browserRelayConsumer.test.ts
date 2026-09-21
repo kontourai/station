@@ -9,7 +9,6 @@ import {
   connectionDescriptionDigest,
   signStationConnectionProof,
 } from '@kontourai/station-shared/connection-proof';
-import { exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
 import { createBrowserPionConnection } from '../core/browserPionConnection.js';
 import { createSelfHostedApplicationTransport } from '../core/selfHostedApplicationTransport.js';
@@ -93,10 +92,18 @@ function fakePeer(offerSdp: string, channels: unknown[]) {
 }
 
 async function trustFixture() {
-  const keys = await generateKeyPair('ES256', { extractable: true });
-  const signingKey = (await exportJWK(
-    keys.publicKey,
-  )) as StationConnectionSigningKey;
+  const keys = await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify'],
+  );
+  const publicKey = await crypto.subtle.exportKey('jwk', keys.publicKey);
+  const signingKey: StationConnectionSigningKey = {
+    kty: 'EC',
+    crv: 'P-256',
+    x: publicKey.x!,
+    y: publicKey.y!,
+  };
   const trust: ApprovedStationConnectionTrust = {
     stationId: randomUUID(),
     enrollmentId: randomUUID(),
@@ -113,7 +120,7 @@ async function trustFixture() {
 }
 
 async function signBinding(
-  keys: Awaited<ReturnType<typeof generateKeyPair>>,
+  keys: CryptoKeyPair,
   trust: ApprovedStationConnectionTrust,
   binding: StationConnectionProofBinding,
 ) {
@@ -127,7 +134,7 @@ async function signBinding(
 
 function brokerStub(
   trust: ApprovedStationConnectionTrust,
-  keys: Awaited<ReturnType<typeof generateKeyPair>>,
+  keys: CryptoKeyPair,
   answerSdp: string,
   opts?: { expiresAt?: number; delayMs?: number },
 ) {

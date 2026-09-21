@@ -20,6 +20,7 @@ vi.mock('@kontourai/station-connect/application-channel', () => {
       subscribe(a: (v: unknown) => void, b: () => void): () => void;
     };
     inbound: Array<(v: unknown) => void>;
+    closeCalls: number;
   }> = [];
   return {
     serveApplicationChannel: (channel: {
@@ -27,7 +28,11 @@ vi.mock('@kontourai/station-connect/application-channel', () => {
       close(): void;
       subscribe(a: (v: unknown) => void, b: () => void): () => void;
     }) => {
-      const entry = { channel, inbound: [] as Array<(v: unknown) => void> };
+      const entry = {
+        channel,
+        inbound: [] as Array<(v: unknown) => void>,
+        closeCalls: 0,
+      };
       captured.push(entry);
       const delivered: unknown[] = [];
       const unsub = channel.subscribe(
@@ -38,7 +43,17 @@ vi.mock('@kontourai/station-connect/application-channel', () => {
       );
       (entry as unknown as Record<string, unknown>).delivered = delivered;
       (entry as unknown as Record<string, unknown>).unsub = unsub;
-      return () => undefined;
+      let done = false;
+      return () => {
+        if (done) return;
+        done = true;
+        entry.closeCalls += 1;
+        try {
+          channel.close();
+        } catch {
+          // Best-effort in fake.
+        }
+      };
     },
     __captured: captured,
   };
@@ -404,6 +419,206 @@ describe('self-hosted broker pion factory', () => {
       await waitFor(() => h.capturedProof !== undefined);
       await expect(runtime.shutdown()).rejects.toThrow(
         'pion_temp_cleanup_incomplete',
+      );
+      expect(h.closeCalls).toBe(1);
+    } finally {
+      h.live = false;
+      await runtime.shutdown().catch(() => undefined);
+    }
+  });
+
+  test('closed channels retire handlers: no re-close, bounded simultaneous handlers', async () => {
+    const { h, runtime } = await harness();
+    await runtime.start();
+    try {
+      await waitFor(() => h.acceptCallback !== undefined);
+      await waitFor(() => h.capturedProof !== undefined);
+      const mod = (await import(
+        '@kontourai/station-connect/application-channel'
+      )) as unknown as {
+        __captured: Array<{
+          channel: { send(m: string): void };
+          closeCalls: number;
+        }>;
+      };
+      const base = mod.__captured.length;
+      const raws: Array<{ close: ReturnType<typeof vi.fn> }> = [];
+      const closedCbs: Array<() => void> = [];
+      const openRaw = (syncClose = false) => {
+        const raw = {
+          send: vi.fn(),
+          close: vi.fn(),
+          subscribe: (
+            _message: (value: unknown) => void,
+            closed: () => void,
+          ) => {
+            closedCbs.push(closed);
+            if (syncClose) closed();
+            return () => undefined;
+          },
+        };
+        raws.push(raw);
+        h.acceptCallback!(raw as never);
+        return raw;
+      };
+      // Synchronous close during subscription must be safe, never retained.
+      openRaw(true);
+      expect(raws[0]!.close).toHaveBeenCalledTimes(1);
+      // Many sequential closed channels: each fires its real closed event.
+      for (let i = 0; i < 70; i += 1) {
+        const raw = openRaw();
+        expect(raw.close).not.toHaveBeenCalled();
+        closedCbs.at(-1)!();
+      }
+      // Duplicate closed events must not double-close.
+      for (const cb of closedCbs.slice(1)) cb();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const fresh = mod.__captured.slice(base);
+      // 1 sync-closed + 70 closed: none retained, so retirement closes none.
+      const before = fresh.map((e) => e.closeCalls);
+      h.live = false;
+      await runtime.shutdown();
+      await waitFor(() => h.closeCalls >= 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const after = mod.__captured.slice(base).map((e) => e.closeCalls);
+      for (let i = 0; i < 71; i += 1) {
+        expect(after[i]).toBe(before[i]);
+      }
+      expect(h.closeCalls).toBe(1);
+    } finally {
+      h.live = false;
+      h.current = null;
+      await runtime.shutdown().catch(() => undefined);
+    }
+  });
+
+  test('simultaneous handlers capped at 32: retirement closes at most 32', async () => {
+    const { h, runtime } = await harness();
+    await runtime.start();
+    try {
+      await waitFor(() => h.acceptCallback !== undefined);
+      await waitFor(() => h.capturedProof !== undefined);
+      const mod = (await import(
+        '@kontourai/station-connect/application-channel'
+      )) as unknown as {
+        __captured: Array<{ closeCalls: number }>;
+      };
+      const base = mod.__captured.length;
+      const raws: Array<{ close: ReturnType<typeof vi.fn> }> = [];
+      for (let i = 0; i < 40; i += 1) {
+        const raw = {
+          send: vi.fn(),
+          close: vi.fn(),
+          subscribe: () => () => undefined,
+        };
+        raws.push(raw);
+        h.acceptCallback!(raw as never);
+      }
+      await waitFor(() => mod.__captured.length >= base + 40);
+      expect(
+        raws.slice(0, 32).every((raw) => raw.close.mock.calls.length === 0),
+      ).toBe(true);
+      expect(
+        raws.slice(32).every((raw) => raw.close.mock.calls.length === 1),
+      ).toBe(true);
+      h.live = false;
+      await runtime.shutdown();
+      await waitFor(() => h.closeCalls >= 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const retired = mod.__captured.slice(base, base + 40);
+      const totalCloses = retired.reduce((n, e) => n + e.closeCalls, 0);
+      expect(totalCloses).toBe(40);
+      expect(h.closeCalls).toBe(1);
+    } finally {
+      h.live = false;
+      h.current = null;
+      await runtime.shutdown().catch(() => undefined);
+    }
+  });
+
+  test('duplicate trust retirement runs one adapter close', async () => {
+    const { h, runtime } = await harness();
+    await runtime.start();
+    try {
+      await waitFor(() => h.acceptCallback !== undefined);
+      await waitFor(() => h.capturedProof !== undefined);
+      const raw = {
+        send: vi.fn(),
+        close: vi.fn(),
+        subscribe: () => () => undefined,
+      };
+      h.acceptCallback!(raw as never);
+      const mod = (await import(
+        '@kontourai/station-connect/application-channel'
+      )) as unknown as { __captured: Array<unknown> };
+      await waitFor(() => mod.__captured.length >= 1);
+      h.current = null;
+      const gated = mod.__captured[mod.__captured.length - 1] as {
+        channel: { send(m: string): void };
+      };
+      // Two duplicate retirement triggers through the same trust gate.
+      expect(() => gated.channel.send('one')).toThrow(
+        'broker_runtime_trust_retired',
+      );
+      expect(() => gated.channel.send('two')).toThrow(
+        'broker_runtime_trust_retired',
+      );
+      await waitFor(() => h.closeCalls >= 1);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(h.closeCalls).toBe(1);
+    } finally {
+      h.live = false;
+      await runtime.shutdown().catch(() => undefined);
+    }
+  });
+
+  test('failed admission with failed cleanup retains evidence, surfaces cleanup receipt', async () => {
+    const { h, runtime, startAdapter } = await harness({
+      maxPeers: 1,
+      wrongIssuer: true,
+    });
+    startAdapter.mockImplementationOnce(
+      async (input: Record<string, unknown>) => {
+        const cleanupComplete = Promise.reject(
+          new Error('pion_temp_cleanup_incomplete'),
+        );
+        cleanupComplete.then(undefined, () => {});
+        const adapter = {
+          answer: { type: 'answer' as const, sdp: ANSWER_SDP },
+          close: vi.fn(async () => {
+            h.closeCalls += 1;
+          }),
+          cleanupComplete,
+        };
+        h.acceptCallback = input.accept as Harness['acceptCallback'];
+        return adapter as never;
+      },
+    );
+    await runtime.start();
+    try {
+      await waitFor(() => startAdapter.mock.calls.length >= 1);
+      await waitFor(() => h.closeCalls >= 1);
+      // Admission failed (wrong issuer) and cleanup failed: no proof, the
+      // adapter-owned receipt stays authoritative, and the retained entry
+      // surfaces its cleanup failure on shutdown instead of vanishing.
+      expect(h.capturedProof).toBeUndefined();
+      h.live = false;
+      let failure: unknown;
+      try {
+        await runtime.shutdown();
+      } catch (error) {
+        failure = error;
+      }
+      const messages = (error: unknown): string[] =>
+        error instanceof AggregateError
+          ? [error.message, ...error.errors.flatMap(messages)]
+          : error instanceof Error
+            ? [error.message]
+            : [];
+      expect(messages(failure)).toContain('Station connection proof refused');
+      expect(messages(failure)).toContain('pion_temp_cleanup_incomplete');
+      expect(messages(failure)).toContain(
+        'broker_runtime_admission_cleanup_failed',
       );
       expect(h.closeCalls).toBe(1);
     } finally {
