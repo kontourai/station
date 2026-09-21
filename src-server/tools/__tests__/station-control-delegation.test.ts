@@ -4069,7 +4069,7 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
         );
       });
 
-      test('leaves a peer 401 on a forwarded continue as a plain error, never a portable refusal', async () => {
+      test('leaves a peer 401 on a forwarded continue as the generic sentinel, never a portable refusal', async () => {
         installFollowUpPeerFetch(() =>
           json({ success: false, error: 'peer credential rejected' }, 401),
         );
@@ -4080,10 +4080,16 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
           ...followUpInput(),
           message: 'One more thing',
         }).catch((caught: unknown) => caught);
+        expect((error as { name?: string }).name).toBe(
+          'PeerPortableFollowUpError',
+        );
         expect((error as { name?: string }).name).not.toBe(
           'ReceiverExecutionRefusal',
         );
-        expect((error as Error).message).toBe('peer credential rejected');
+        // Caller-safe generic: the peer's text never crosses the seam.
+        expect((error as Error).message).toBe(
+          'The selected Station could not continue the delegated task',
+        );
       });
 
       test.each(['constructor', '__proto__'])(
@@ -4099,10 +4105,52 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
             ...followUpInput(),
             message: 'One more thing',
           }).catch((caught: unknown) => caught);
+          expect((error as { name?: string }).name).toBe(
+            'PeerPortableFollowUpError',
+          );
           expect((error as { name?: string }).name).not.toBe(
             'ReceiverExecutionRefusal',
           );
-          expect((error as Error).message).toBe('private peer diagnostic');
+          expect((error as Error).message).toBe(
+            'The selected Station could not continue the delegated task',
+          );
+        },
+      );
+
+      test.each([
+        [
+          'malformed JSON body',
+          () => new Response('not json', { status: 200 }),
+        ],
+        [
+          'peer 500 disclosing paths',
+          () =>
+            json(
+              {
+                success: false,
+                error: 'ENOENT /peer/home/secret.ts in prompt "hello"',
+              },
+              500,
+            ),
+        ],
+        ['ok response without a handle', () => json({ success: true }, 200)],
+      ])(
+        'maps %s to the generic sentinel without leaking peer text',
+        async (_label, peerPost) => {
+          installFollowUpPeerFetch(peerPost as () => Response);
+          const { continueDelegatedTask } = await import(
+            '../station-control-delegation.js'
+          );
+          const error = await continueDelegatedTask({
+            ...followUpInput(),
+            message: 'One more thing',
+          }).catch((caught: unknown) => caught);
+          expect((error as { name?: string }).name).toBe(
+            'PeerPortableFollowUpError',
+          );
+          expect((error as Error).message).toBe(
+            'The selected Station could not continue the delegated task',
+          );
         },
       );
     });

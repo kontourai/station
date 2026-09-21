@@ -4090,6 +4090,21 @@ describe('OrchestrationService', () => {
       });
       expect(refused.outcome).toBeUndefined();
       expect(claude.sendTurn).not.toHaveBeenCalled();
+      // The refusal retires only its own dispatch row: a subsequent
+      // EXPLICIT continuation with a fresh admission dispatches and turns
+      // normally — the thread is not bricked and no engine start was ever
+      // claimed for the refused work.
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-mid-prep', input: 'hello again' },
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor('portable-mid-prep', tmp),
+        },
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
     });
 
     test('a portable request answer runs only under a fresh admission', async () => {

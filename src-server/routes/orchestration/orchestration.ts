@@ -998,7 +998,7 @@ export function createOrchestrationRoutes(
     ) => Promise<unknown>;
     respondToDelegatedTaskRequest?: (
       input: RespondToDelegatedTaskRequest & {
-        /** #484 continuation: same trusted mint factory as continue. */
+        /** Same trusted mint factory as continue. */
         authorizeReceiverExecution?: (workspace: {
           portableProjectId: string;
           resourceId: string;
@@ -1997,14 +1997,20 @@ export function createOrchestrationRoutes(
           principal,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
           ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
+          // No-onward-hop + sender authority, from the verified
+          // credential — never body/userId. The follow-up body carries
+          // no portable signal, so both ride every follow-up: the tool
+          // enforces the hop guard and the post-resolution currency
+          // probe before any outbound forward.
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          isRequestAuthorityCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
         return c.json({ success: true, data });
       } catch (error) {
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.
-        // #484 continuation: same wrapped-code mapping as the create
-        // path — an effect-path refusal arrives wrapped with its closed
-        // code, and keeps its exact 403.
+        // Same wrapped-code mapping as the create path.
         const portableRefusal =
           error instanceof ReceiverExecutionRefusal
             ? error.code
@@ -2041,10 +2047,7 @@ export function createOrchestrationRoutes(
       }
       try {
         const { principal, userId } = resolveActorPrincipal(deps, c);
-        // #484 continuation: same trusted route-bound mint factory as the
-        // continue path — minted on the actual executing receiver only,
-        // from the thread's own persisted marker. See the continue route
-        // for why no new public intent was needed.
+        // Same trusted mint factory as the continue route.
         const authorizeReceiverExecution = deps.authorizeReceiverExecution
           ? (workspace: { portableProjectId: string; resourceId: string }) =>
               deps.authorizeReceiverExecution!(
@@ -2059,12 +2062,15 @@ export function createOrchestrationRoutes(
           principal,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
           ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
+          // Same verified-caller composition as the continue route.
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          isRequestAuthorityCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
         return c.json({ success: true, data });
       } catch (error) {
         // #484 phase A: same 403 mapping as the create and continue paths.
-        // #484 continuation: same wrapped-code mapping — an effect-path
-        // refusal arrives wrapped with its closed code.
+        // Same wrapped-code mapping as the create path.
         const portableRefusal =
           error instanceof ReceiverExecutionRefusal
             ? error.code

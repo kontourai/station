@@ -1399,6 +1399,241 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       expect(continueDelegatedTask).toHaveBeenCalledTimes(1);
     });
 
+    describe('follow-up forwarding guards — REAL route → tool composition', () => {
+      const PEER_API = 'https://peer.example';
+      const PEER_ENV = 'env-peer';
+      const peerPosts: Array<{ url: string; body: unknown }> = [];
+      const fetchCalls: string[] = [];
+      let unwrapFetch: (() => void) | undefined;
+      let revokeOnCredentialRead = false;
+      let current = true;
+
+      const ok = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      beforeEach(() => {
+        peerPosts.length = 0;
+        fetchCalls.length = 0;
+        revokeOnCredentialRead = false;
+        current = true;
+        const inner = globalThis.fetch;
+        const wrapped: typeof fetch = (async (
+          input: Parameters<typeof fetch>[0],
+          init?: Parameters<typeof fetch>[1],
+        ) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const method =
+            init && typeof init === 'object' && 'method' in init
+              ? String((init as { method?: unknown }).method ?? 'GET')
+              : 'GET';
+          fetchCalls.push(`${method} ${url}`);
+          if (
+            !url.startsWith(PEER_API) &&
+            url.endsWith('/.well-known/station/v1')
+          ) {
+            return ok({ environmentId: 'env-self', capabilities: {} });
+          }
+          if (
+            !url.startsWith(PEER_API) &&
+            url.includes('/api/environments/ssh')
+          ) {
+            return ok({ success: true, data: [] });
+          }
+          if (url.includes(`/api/environments/peers/${PEER_ENV}/credential`)) {
+            if (revokeOnCredentialRead) current = false;
+            return ok({
+              success: true,
+              data: {
+                environmentId: PEER_ENV,
+                apiBase: PEER_API,
+                scope: 'peer',
+                credential: 'peer-cred-1',
+                label: 'peer',
+              },
+            });
+          }
+          if (url.startsWith(PEER_API)) {
+            try {
+              peerPosts.push({
+                url,
+                body: JSON.parse(
+                  String((init as { body?: unknown })?.body ?? '{}'),
+                ),
+              });
+            } catch {
+              peerPosts.push({ url, body: undefined });
+            }
+            return ok({
+              success: true,
+              data: { taskId: 'task:remote', status: 'dispatched' },
+            });
+          }
+          throw new Error(`Unexpected request: ${url}`);
+        }) as never;
+        vi.stubGlobal('fetch', wrapped);
+        unwrapFetch = () => {
+          vi.stubGlobal('fetch', inner as never);
+        };
+      });
+
+      afterEach(() => {
+        unwrapFetch?.();
+        unwrapFetch = undefined;
+      });
+
+      async function realContinue(input: any): Promise<unknown> {
+        const { continueDelegatedTask } = await import(
+          '../../../tools/station-control-delegation.js'
+        );
+        return continueDelegatedTask(input, undefined);
+      }
+
+      async function realRespond(input: any): Promise<unknown> {
+        const { respondToDelegatedTaskRequest } = await import(
+          '../../../tools/station-control-delegation.js'
+        );
+        return respondToDelegatedTaskRequest(input, undefined);
+      }
+
+      function followUpApp(options: {
+        continueDelegatedTask?: (input: any) => Promise<unknown>;
+        respondToDelegatedTaskRequest?: (input: any) => Promise<unknown>;
+        inboundDeviceKind?: 'device' | 'delegation';
+        resolvePrincipal?: (c: any) => { id: string };
+      }) {
+        return createOrchestrationRoutes(
+          {} as never,
+          baseDeps({
+            continueDelegatedTask:
+              options.continueDelegatedTask ?? realContinue,
+            respondToDelegatedTaskRequest:
+              options.respondToDelegatedTaskRequest ?? realRespond,
+            isRequestPrincipalCurrent: () => current,
+            ...(options.inboundDeviceKind
+              ? { resolveInboundDeviceKind: () => options.inboundDeviceKind }
+              : {}),
+            ...(options.resolvePrincipal
+              ? { resolvePrincipal: options.resolvePrincipal }
+              : {}),
+          }),
+        );
+      }
+
+      test.each(['continue', 'respond'] as const)(
+        'a delegation peer with local-operator person binding cannot third-hop a %s: 403, no outbound POST',
+        async (kind) => {
+          const app = followUpApp({
+            inboundDeviceKind: 'delegation',
+            // The enrolled peer's credential carries a person binding naming
+            // the local operator — display identity must never override the
+            // verified device kind into a forward.
+            resolvePrincipal: () => ({ id: 'human:local:operator' }),
+          });
+          const path =
+            kind === 'continue'
+              ? '/delegations/task:1/continue'
+              : '/delegations/task:1/respond';
+          const body =
+            kind === 'continue'
+              ? {
+                  message: 'One more thing',
+                  environmentId: PEER_ENV,
+                }
+              : {
+                  requestId: 'request-1',
+                  decision: 'accept',
+                  environmentId: PEER_ENV,
+                };
+          const res = await app.request(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          expect(res.status).toBe(403);
+          expect(await res.json()).toMatchObject({
+            success: false,
+            code: 'receiver_execution_forwarding_refused',
+          });
+          // No outbound POST: the third host was never touched.
+          expect(peerPosts).toHaveLength(0);
+          expect(fetchCalls.some((call) => call.includes(PEER_API))).toBe(
+            false,
+          );
+        },
+      );
+
+      test.each(['continue', 'respond'] as const)(
+        'a sender revocation during resolution refuses a %s before any outbound POST',
+        async (kind) => {
+          // Revocation lands while the target resolves (the credential read
+          // flips it): the post-resolution currency probe refuses.
+          revokeOnCredentialRead = true;
+          const app = followUpApp({});
+          const path =
+            kind === 'continue'
+              ? '/delegations/task:1/continue'
+              : '/delegations/task:1/respond';
+          const body =
+            kind === 'continue'
+              ? {
+                  message: 'One more thing',
+                  environmentId: PEER_ENV,
+                }
+              : {
+                  requestId: 'request-1',
+                  decision: 'accept',
+                  environmentId: PEER_ENV,
+                };
+          const res = await app.request(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          expect(res.status).toBe(403);
+          expect(await res.json()).toMatchObject({
+            success: false,
+            code: 'receiver_execution_authority_changed',
+          });
+          expect(peerPosts).toHaveLength(0);
+          expect(fetchCalls.some((call) => call.includes(PEER_API))).toBe(
+            false,
+          );
+        },
+      );
+
+      test.each(['continue', 'respond'] as const)(
+        'an ordinary operator %s still forwards to the saved peer (legacy flow preserved)',
+        async (kind) => {
+          const app = followUpApp({});
+          const path =
+            kind === 'continue'
+              ? '/delegations/task:1/continue'
+              : '/delegations/task:1/respond';
+          const body =
+            kind === 'continue'
+              ? {
+                  message: 'One more thing',
+                  environmentId: PEER_ENV,
+                }
+              : {
+                  requestId: 'request-1',
+                  decision: 'accept',
+                  environmentId: PEER_ENV,
+                };
+          const res = await app.request(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          expect(res.status, await res.clone().text()).toBe(200);
+          expect(peerPosts).toHaveLength(1);
+        },
+      );
+    });
+
     test('respond composes the mint factory and maps a wrapped refusal code to 403', async () => {
       const respondToDelegatedTaskRequest = vi.fn().mockResolvedValue({
         taskId: 'task:1',

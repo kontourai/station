@@ -250,13 +250,9 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /**
-   * #484 continuation: the freshly minted portable admission for a
-   * follow-up turn on a marked portable conversation. Server-composed
-   * only (threaded by `continueDelegatedTask` after minting on the
-   * executing receiver); never public JSON. Scoped to the actual
-   * executing thread inside the sendTurn/startSession closures below —
-   * the thread id is coordinated through the trusted continuation
-   * owner, never a caller body.
+   * Fresh portable admission for a follow-up turn, threaded by
+   * `continueDelegatedTask` after minting on the executing receiver.
+   * Server-only; scoped to the executing thread in the closures below.
    */
   receiverAdmission?: ReceiverExecutionAdmission;
 };
@@ -424,9 +420,9 @@ export interface ContinueDelegatedTaskInput
   /** archive#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
   /**
-   * #484 phase A: a freshly re-admitted offer for continuing a portable
-   * task. Server-composed only (the continue route does not mint one
-   * yet — see `requirePortableContinuationAdmission`); never public JSON.
+   * A freshly minted offer admission for continuing a portable task,
+   * threaded by `continueDelegatedTask` after minting on the executing
+   * receiver (or injected by tests). Server-only; never public JSON.
    */
   receiverAdmission?: ReceiverExecutionAdmission;
   /**
@@ -441,6 +437,12 @@ export interface ContinueDelegatedTaskInput
     portableProjectId: string;
     resourceId: string;
   }) => Promise<ReceiverExecutionAdmission>;
+  // Verified-caller composition (same shape as the create input, composed
+  // by the HTTP routes from the verified credential — never public JSON):
+  // the no-onward-hop verdict and the post-resolution sender-currency
+  // probe on the forwarding branch read them here.
+  inboundDeviceKind?: 'device' | 'delegation';
+  isRequestAuthorityCurrent?: () => boolean;
 }
 
 export interface RespondToDelegatedTaskRequestInput
@@ -448,18 +450,21 @@ export interface RespondToDelegatedTaskRequestInput
   requestId: string;
   decision: ApprovalDecision;
   /**
-   * #484 phase A: same re-admission slot as the continue path; pending
-   * route wiring, a marked portable session refuses. Never public JSON.
+   * Same re-admission slot as the continue path; a marked portable
+   * session without one refuses. Server-only; never public JSON.
    */
   receiverAdmission?: ReceiverExecutionAdmission;
   /**
-   * #484 continuation: same trusted route-bound mint factory as the
-   * continue path; minted on the actual executing receiver only.
+   * Same trusted mint factory as the continue path; minted on the
+   * actual executing receiver only.
    */
   authorizeReceiverExecution?: (workspace: {
     portableProjectId: string;
     resourceId: string;
   }) => Promise<ReceiverExecutionAdmission>;
+  // Same verified-caller composition as the continue input.
+  inboundDeviceKind?: 'device' | 'delegation';
+  isRequestAuthorityCurrent?: () => boolean;
 }
 
 export interface DelegatedTaskEvent {
@@ -1270,16 +1275,12 @@ function peerPortableRefusalFor(
     );
   }
   if (status !== 403) return undefined;
-  const code = payload?.code;
-  if (
-    typeof code === 'string' &&
-    Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, code)
-  ) {
-    return new ReceiverExecutionRefusal(
-      code as ReceiverExecutionRefusal['code'],
-      RECEIVER_EXECUTION_REFUSAL_COPY[code as ReceiverExecutionRefusal['code']],
-    );
-  }
+  // Top-level known codes share the closed projection (nested known codes
+  // stay untranslated here, preserving the reviewed create contract; the
+  // follow-up translator accepts both positions, and both stay inside the
+  // closed map either way).
+  const refusal = closedPortableRefusalFromCode(payload?.code);
+  if (refusal) return refusal;
   const nested =
     typeof payload?.error === 'object' && payload.error !== null
       ? payload.error.code
@@ -1311,14 +1312,7 @@ async function postPeerPortableDelegation<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${target.apiBase}${path}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(target.requestOptions?.headers ?? {}),
-      },
-      body: JSON.stringify(body),
-    });
+    response = await postDelegationJson(target, path, body);
   } catch {
     throw new Error(unavailableMessage);
   }
@@ -1341,17 +1335,38 @@ async function postPeerPortableDelegation<T>(
 }
 
 /**
- * #484 continuation: the follow-up peer poster's refusal translation.
- * Deliberately NARROWER than the create-path translator: a follow-up body
- * carries no portable ids, so a forwarding sender cannot know whether the
- * task it forwards is portable or legacy. Only a 403 naming a KNOWN
- * portable refusal code is translated — a non-portable receiver never
- * emits those codes, so the translation cannot mislabel a legacy failure
- * (and a forged code outside the closed map is ignored, never laundered
- * into an authorization outcome). Every other failure — 401, 5xx,
- * malformed bodies — keeps the plain `readJson` path byte-for-byte,
- * including the receiver's error text: a peer-credential failure stays a
- * transport/auth error, never a portable refusal.
+ * The shared closed-code projection: a KNOWN portable refusal code (top
+ * level or nested error object) becomes the fixed-copy refusal; anything
+ * else — unknown codes, inherited map keys (`__proto__`/`constructor`
+ * can never match through `Object.hasOwn`), malformed payloads — is not
+ * a refusal. Both peer translators use it, so a forged code is never
+ * laundered into an authorization outcome on any path.
+ */
+function closedPortableRefusalFromCode(
+  code: unknown,
+): ReceiverExecutionRefusal | undefined {
+  if (
+    typeof code === 'string' &&
+    Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, code)
+  ) {
+    const known = code as ReceiverExecutionRefusal['code'];
+    return new ReceiverExecutionRefusal(
+      known,
+      RECEIVER_EXECUTION_REFUSAL_COPY[known],
+    );
+  }
+  return undefined;
+}
+
+/**
+ * The follow-up peer poster's refusal translation. Deliberately NARROWER
+ * than the create-path translator: a follow-up body carries no portable
+ * ids, so a forwarding sender cannot know whether the task it forwards
+ * is portable or legacy. Only a 403 naming a KNOWN portable refusal code
+ * is translated — a non-portable receiver never emits those codes, so
+ * the translation cannot mislabel a legacy failure. Every other failure
+ * becomes the generic caller-safe error below: peer paths, prompts, and
+ * credentials never cross this seam.
  */
 function peerPortableFollowUpRefusalFor(
   status: number,
@@ -1364,23 +1379,45 @@ function peerPortableFollowUpRefusalFor(
       : typeof payload?.error === 'object' && payload.error !== null
         ? payload.error.code
         : undefined;
-  if (
-    typeof code === 'string' &&
-    Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, code)
-  ) {
-    return new ReceiverExecutionRefusal(
-      code as ReceiverExecutionRefusal['code'],
-      RECEIVER_EXECUTION_REFUSAL_COPY[code as ReceiverExecutionRefusal['code']],
-    );
+  return closedPortableRefusalFromCode(code);
+}
+
+/**
+ * The sentinel for every NON-refusal follow-up poster failure: transport
+ * errors, non-403 statuses, unknown codes, malformed bodies. Its message
+ * is ALWAYS the caller-safe generic — peer paths, prompts, credentials,
+ * and diagnostics never cross this seam (a deliberate break from
+ * `readJson`'s text-preserving path: raw peer disclosure is not
+ * preserved). The closed status distinction is refusal (typed,
+ * fixed-copy, 403 at the route) versus this sentinel (generic, 400).
+ */
+export class PeerPortableFollowUpError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PeerPortableFollowUpError';
   }
-  return undefined;
+}
+
+async function postDelegationJson(
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  return fetch(`${target.apiBase}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(target.requestOptions?.headers ?? {}),
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 /**
  * The portable follow-up's own peer poster: identical wire behavior to
- * `postCanonical` for success and for every non-portable failure, but a
- * receiver's closed portable refusal (403 + known code) keeps its code
- * and 403 at this Station instead of degrading into a plain Error/400.
+ * `postCanonical` for success, but a receiver's closed portable refusal
+ * (403 + known code) keeps its code and 403 at this Station, and every
+ * other failure becomes the generic sentinel — never peer text.
  */
 async function postPeerPortableFollowUp<T>(
   target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
@@ -1390,16 +1427,9 @@ async function postPeerPortableFollowUp<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${target.apiBase}${path}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(target.requestOptions?.headers ?? {}),
-      },
-      body: JSON.stringify(body),
-    });
+    response = await postDelegationJson(target, path, body);
   } catch {
-    throw new Error(unavailableMessage);
+    throw new PeerPortableFollowUpError(unavailableMessage);
   }
   let payload: (ApiEnvelope<T> & PeerPortableErrorEnvelope) | null;
   try {
@@ -1411,18 +1441,10 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
-    // Plain-path parity with readJson: the receiver's error text is
-    // preserved verbatim (a non-portable failure keeps its shape).
-    throw new Error(
-      ((payload as { error?: unknown } | null)?.error ||
-        unavailableMessage) as string,
-    );
+    throw new PeerPortableFollowUpError(unavailableMessage);
   }
   if (!payload?.success || payload.data === undefined) {
-    throw new Error(
-      ((payload as { error?: unknown } | null)?.error ||
-        unavailableMessage) as string,
-    );
+    throw new PeerPortableFollowUpError(unavailableMessage);
   }
   return payload.data;
 }
@@ -3599,13 +3621,9 @@ export async function continueDelegatedTask(
   input: ContinueDelegatedTaskInput,
   orchestrationService?: OrchestrationService,
 ): Promise<DelegatedTaskFollowUpHandle> {
-  // #484 continuation: follow-up turns on an already-started portable
-  // session do NOT inherit the create-time admission — the persisted
-  // session binding's server-minted portable consent marker is matched by
-  // a freshly minted offer admission (on this executing receiver, from
-  // the marker's own identity), else the continuation refuses outright
-  // rather than silently bypassing consent across the persist boundary.
-  // Unmarked (legacy/ordinary) sessions are unaffected.
+  // Follow-up turns never inherit the create-time admission — a marked
+  // portable session continues only under a freshly minted admission for
+  // its own persisted marker (see `mintPortableFollowUpAdmission`).
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
@@ -3619,12 +3637,40 @@ export async function continueDelegatedTask(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
-    // #484 continuation: a forwarded follow-up goes through the portable
-    // follow-up poster — a receiver's closed portable refusal keeps its
-    // code/403 at this Station, while every non-portable failure keeps
-    // the plain path byte-for-byte (the narrow translator cannot
-    // mislabel a legacy failure, since the body carries no portable
-    // signal either way).
+    // No-onward-hop + current sender authority, BEFORE any outbound
+    // fetch — mirroring the create path. A delegation peer (an enrolled
+    // peer host driving this Station's API, even one whose person
+    // binding names the local operator) can never make this Station
+    // forward a follow-up on its stored outbound credential to a third
+    // station: the guard is portable-agnostic on purpose, since the body
+    // carries no portable signal and reading the marker would itself
+    // need an outbound round-trip. Operator/device callers fall through
+    // to the forward below. Then the sender-currency probe: a revocation
+    // that landed during target resolution refuses before the POST.
+    if (
+      isInboundDelegationPeer(
+        input.principal,
+        input.clientOrigin,
+        input.inboundDeviceKind,
+      )
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_forwarding_refused',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
+      );
+    if (
+      input.isRequestAuthorityCurrent &&
+      input.isRequestAuthorityCurrent() !== true
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_authority_changed',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+      );
+    // A forwarded follow-up goes through the portable follow-up poster —
+    // a receiver's closed portable refusal keeps its code/403 at this
+    // Station, while every non-portable failure keeps the plain path
+    // byte-for-byte (the narrow translator cannot mislabel a legacy
+    // failure, since the body carries no portable signal either way).
     return normalizeDelegatedIdentity(
       await postPeerPortableFollowUp<DelegatedTaskFollowUpHandle>(
         selectedTarget,
@@ -3639,11 +3685,9 @@ export async function continueDelegatedTask(
     );
   }
   const loaded = await loadDelegatedTask(input, orchestrationService);
-  // #484 continuation: a marked portable session continues ONLY under a
-  // freshly minted admission for its OWN persisted consent identity —
-  // minted here, on the actual executing receiver (this branch runs only
-  // for `current` targets; peer targets forwarded above), never from
-  // public JSON. Unmarked sessions pass through with no new authority.
+  // Minted here, on the actual executing receiver (`current` targets
+  // only; peer targets forwarded above), from the thread's own
+  // persisted marker — never public JSON.
   const followUpAdmission = await mintPortableFollowUpAdmission(
     portableConsentOfBinding(sessionBinding(loaded.detail)),
     input,
@@ -3658,10 +3702,8 @@ export async function continueDelegatedTask(
       conversationId: snapshot.conversationId,
       message: input.message,
       userId: readAuthority.userId,
-      // #484 continuation: the fresh admission rides the trusted
-      // continuation path to the ACTUAL adapter start/sendTurn effects
-      // (scoped to the lineage-resolved thread there); ordinary
-      // follow-ups carry none and are byte-identical.
+      // The fresh admission rides to the adapter start/sendTurn
+      // effects; ordinary follow-ups carry none.
       ...(followUpAdmission ? { receiverAdmission: followUpAdmission } : {}),
       environment:
         input.environmentId === undefined
@@ -3712,8 +3754,28 @@ export async function respondToDelegatedTaskRequest(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
-    // #484 continuation: same follow-up poster as the continue path — a
-    // receiver's closed portable refusal keeps its code/403 here too.
+    // Same no-onward-hop + sender-currency guards as the continue path.
+    if (
+      isInboundDelegationPeer(
+        input.principal,
+        input.clientOrigin,
+        input.inboundDeviceKind,
+      )
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_forwarding_refused',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_forwarding_refused,
+      );
+    if (
+      input.isRequestAuthorityCurrent &&
+      input.isRequestAuthorityCurrent() !== true
+    )
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_authority_changed',
+        RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+      );
+    // Same follow-up poster as the continue path — a receiver's closed
+    // portable refusal keeps its code/403 here too.
     return normalizeDelegatedIdentity(
       await postPeerPortableFollowUp<DelegatedTaskRequestResponseHandle>(
         selectedTarget,
@@ -3724,10 +3786,7 @@ export async function respondToDelegatedTaskRequest(
     );
   }
   const loaded = await loadDelegatedTask(input, orchestrationService);
-  // #484 continuation: same fresh-admission enforcement as the continue
-  // path — minted on this executing receiver from the thread's own
-  // persisted marker. A marked session without a current offer refuses
-  // before any provider effect.
+  // Same fresh-admission enforcement as the continue path.
   const followUpAdmission = await mintPortableFollowUpAdmission(
     portableConsentOfBinding(sessionBinding(loaded.detail)),
     input,
@@ -3759,12 +3818,8 @@ export async function respondToDelegatedTaskRequest(
         input.clientOrigin,
         input.principal,
       ),
-      // #484 continuation: the fresh admission reaches the ACTUAL
-      // provider-request response effect — the service rechecks it after
-      // the request-verification awaits and verifies it against the
-      // persisted session adjacent to the adapter call. The thread id is
-      // the lineage-resolved current session (trusted owner), never a
-      // body id. Ordinary responses carry no internal options.
+      // The fresh admission reaches the provider-request response
+      // effect (thread id from the trusted lineage owner).
       followUpAdmission
         ? {
             receiverExecutionAdmission: receiverEffectAdmissionFor(
@@ -4917,13 +4972,9 @@ export async function executeExecutionTargetMessage(
         context?.clientOrigin,
         context?.principal,
       );
-      // #484 continuation: a portable follow-up turn carries the fresh
-      // admission into the service turn-effect path — scoped to the
-      // adapter turn input's own thread id (the lineage-resolved
-      // executing thread) — where it is rechecked after the preparation
-      // awaits and verified against the persisted session adjacent to
-      // `adapter.sendTurn`, including cold materialisation. Ordinary
-      // turns are byte-identical.
+      // A portable follow-up turn carries the fresh admission into
+      // the service turn-effect path (scoped to the turn input's own
+      // thread id). Ordinary turns are byte-identical.
       const dispatched = admission
         ? await orchestrationService.dispatchWithReceipt(
             command,

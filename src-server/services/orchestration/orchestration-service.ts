@@ -5674,20 +5674,42 @@ export class OrchestrationService {
                         throw error;
                       }
                       if (error instanceof ReceiverExecutionRefusal) {
-                        // #484 continuation: the post-preparation
-                        // offer/binding recheck refused BEFORE the provider
-                        // effect ran (`providerAccepted` is still false —
-                        // this fires before `sendAdapter`). This is a clean
-                        // refusal, not an ambiguous accepted effect, so it
-                        // must NOT convert to indeterminate below (which
-                        // would claim the provider may have started and
-                        // retain the client-turn claim against retry).
-                        // Settle the boundary claim so the thread is not
-                        // bricked, release the client-turn claim exactly
-                        // like the pre-effect refusal (which never claims
-                        // it), and rethrow with the closed refusal code.
+                        // The post-preparation offer/binding recheck refused
+                        // BEFORE the provider effect ran (`providerAccepted`
+                        // is still false — this fires before `sendAdapter`,
+                        // so no engine start is claimed and the dispatch
+                        // receipt stays `rejected` with the closed code).
+                        // This is a clean refusal, not an ambiguous accepted
+                        // effect, so it must NOT convert below: that would
+                        // retain the client-turn claim AND leave an
+                        // `indeterminate` boundary row behind — and BOTH
+                        // coordinators treat a lingering indeterminate row
+                        // as an in-flight turn, bricking the thread for
+                        // every subsequent explicit continuation.
+                        // `terminalObserved` retires THIS dispatch's own
+                        // boundary-claim row (per-dispatch rows;
+                        // `notInvoked()` is stale once `beginInvocation`
+                        // ran). The id names the refused dispatch's turn
+                        // for intent-idempotence only — no provider turn
+                        // exists to name, so it carries the authorized
+                        // correlation id, else the caller's client turn id,
+                        // else the thread; the row is removed either way
+                        // and nothing about the provider is claimed. The
+                        // client-turn claim is released exactly like the
+                        // pre-effect refusal. If the retirement itself
+                        // fails the coordinator is genuinely troubled, and
+                        // only then do we fall back to indeterminate.
                         claimOutcome = 'release';
-                        boundary.indeterminate(new Date().toISOString());
+                        const retired = boundary.terminalObserved(
+                          turnCorrelation?.turnId ??
+                            turnInput.clientTurnId ??
+                            turnInput.threadId,
+                        );
+                        if (retired.kind !== 'applied') {
+                          claimOutcome = 'retain';
+                          boundary.indeterminate(new Date().toISOString());
+                          throw new SessionTurnStartIndeterminateError();
+                        }
                         throw error;
                       }
                       claimOutcome = 'retain';
