@@ -33,6 +33,7 @@ async function restore(
   });
 }
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
@@ -238,6 +239,51 @@ describe('CheckpointRestoreService', () => {
         confirmed: true,
       }),
     ).rejects.toMatchObject({ reason: 'workspace_changed' });
+    await expect(
+      service.restore({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        previewId: preview.previewId,
+        expectedCurrentTreeSha: preview.currentTreeSha,
+        ownerKey: 'owner-1',
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ reason: 'preview_invalid' });
+  });
+
+  test('refuses a preview presented by a different owner', async () => {
+    const { home, refs, index } = await fixture();
+    const service = new CheckpointRestoreService(index, refs, home);
+    const preview = await service.preview({
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      phase: 'settle',
+      ownerKey: 'owner-1',
+    });
+
+    await expect(
+      service.restore({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        previewId: preview.previewId,
+        expectedCurrentTreeSha: preview.currentTreeSha,
+        ownerKey: 'owner-2',
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ reason: 'preview_invalid' });
+  });
+
+  test('refuses a preview after its advertised expiry', async () => {
+    const { home, refs, index } = await fixture();
+    const service = new CheckpointRestoreService(index, refs, home);
+    const preview = await service.preview({
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      phase: 'settle',
+      ownerKey: 'owner-1',
+    });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse(preview.expiresAt));
+
     await expect(
       service.restore({
         threadId: 'thread-1',
