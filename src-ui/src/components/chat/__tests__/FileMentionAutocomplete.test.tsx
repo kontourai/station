@@ -49,7 +49,9 @@ describe('FileMentionAutocomplete', () => {
           isCurrent: () => true,
         }}
         query="chatinput"
+        listboxId="mention-files"
         keyboardController={keyboardController}
+        onActiveDescendantChange={vi.fn()}
         onSelect={onSelect}
       />,
     );
@@ -75,7 +77,9 @@ describe('FileMentionAutocomplete', () => {
           isCurrent: () => true,
         }}
         query="src"
+        listboxId="mention-files"
         keyboardController={keyboardController}
+        onActiveDescendantChange={vi.fn()}
         onSelect={onSelect}
       />,
     );
@@ -105,7 +109,9 @@ describe('FileMentionAutocomplete', () => {
           isCurrent: () => true,
         }}
         query="src"
+        listboxId="mention-files"
         keyboardController={keyboardController}
+        onActiveDescendantChange={vi.fn()}
         onSelect={vi.fn()}
       />,
     );
@@ -119,6 +125,7 @@ describe('FileMentionAutocomplete', () => {
 
   test('retains keyboard navigation while matching suggestions are loading', () => {
     const onSelect = vi.fn();
+    const onActiveDescendantChange = vi.fn();
     const keyboardController = createRef<
       ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
     >();
@@ -137,10 +144,13 @@ describe('FileMentionAutocomplete', () => {
           isCurrent: () => true,
         }}
         query="src"
+        listboxId="mention-files"
         keyboardController={keyboardController}
+        onActiveDescendantChange={onActiveDescendantChange}
         onSelect={onSelect}
       />,
     );
+    expect(onActiveDescendantChange).toHaveBeenLastCalledWith(undefined);
     keyboardController.current?.('ArrowDown');
     mentionQuery.result = ready;
     view.rerender(
@@ -152,12 +162,17 @@ describe('FileMentionAutocomplete', () => {
           isCurrent: () => true,
         }}
         query="src"
+        listboxId="mention-files"
         keyboardController={keyboardController}
+        onActiveDescendantChange={onActiveDescendantChange}
         onSelect={onSelect}
       />,
     );
     expect(screen.getAllByRole('option')[1].getAttribute('aria-selected')).toBe(
       'true',
+    );
+    expect(onActiveDescendantChange).toHaveBeenLastCalledWith(
+      'mention-files-option-1',
     );
     keyboardController.current?.('Enter');
     expect(onSelect).toHaveBeenCalledWith(

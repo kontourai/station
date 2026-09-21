@@ -12,7 +12,9 @@ export function FileMentionAutocomplete({
   workingDirectory,
   requestScope,
   query,
+  listboxId,
   keyboardController,
+  onActiveDescendantChange,
   onSelect,
 }: {
   workingDirectory: string;
@@ -22,9 +24,11 @@ export function FileMentionAutocomplete({
     isCurrent: () => boolean;
   };
   query: string;
+  listboxId: string;
   keyboardController: React.MutableRefObject<
     ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
   >;
+  onActiveDescendantChange: (id: string | undefined) => void;
   onSelect: (entry: CodingFileEntry) => void;
 }) {
   const [selected, setSelected] = useState(0);
@@ -72,6 +76,12 @@ export function FileMentionAutocomplete({
     setSelected(selectedRef.current);
   }, [suggestions]);
   const active = Math.min(selected, Math.max(0, suggestions.length - 1));
+  const activeOptionId = suggestions.length
+    ? `${listboxId}-option-${active}`
+    : undefined;
+  useEffect(() => {
+    onActiveDescendantChange(activeOptionId);
+  }, [activeOptionId, onActiveDescendantChange]);
   keyboardController.current = (key) => {
     if (key === 'Enter') {
       if (suggestions[selectedRef.current]) {
@@ -98,11 +108,13 @@ export function FileMentionAutocomplete({
   useEffect(() => {
     return () => {
       keyboardController.current = null;
+      onActiveDescendantChange(undefined);
     };
-  }, [keyboardController]);
+  }, [keyboardController, onActiveDescendantChange]);
 
   return (
     <div
+      id={listboxId}
       className="file-mention-picker"
       role="listbox"
       aria-label="Files and folders"
@@ -126,6 +138,7 @@ export function FileMentionAutocomplete({
       {suggestions.map((entry, index) => (
         <button
           key={`${entry.type}:${entry.path}`}
+          id={`${listboxId}-option-${index}`}
           data-mention-key={`${entry.type}:${entry.path}`}
           type="button"
           role="option"

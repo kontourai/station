@@ -321,10 +321,30 @@ describe('ChatInputArea', () => {
     expect(
       await screen.findByRole('listbox', { name: 'Files and folders' }),
     ).toBeTruthy();
+    const editor = screen.getByRole('textbox');
+    const listbox = screen.getByRole('listbox', {
+      name: 'Files and folders',
+    });
+    await waitFor(() =>
+      expect(editor.getAttribute('aria-activedescendant')).toBe(
+        screen.getAllByRole('option')[0].id,
+      ),
+    );
+    expect(editor.getAttribute('aria-autocomplete')).toBe('list');
+    expect(editor.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(editor.getAttribute('aria-controls')).toBe(listbox.id);
     fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    await waitFor(() =>
+      expect(editor.getAttribute('aria-activedescendant')).toBe(
+        screen.getAllByRole('option')[1].id,
+      ),
+    );
     fireEvent.keyDown(textarea, { key: 'Enter' });
     await waitFor(() => expect(textarea.value).toBe('Review @folder (odd) '));
     expect(document.activeElement).toBe(textarea);
+    expect(textarea.getAttribute('aria-controls')).toBeNull();
+    expect(textarea.getAttribute('aria-activedescendant')).toBeNull();
+    expect(textarea.getAttribute('aria-autocomplete')).toBe('list');
   });
 
   test('leaves active mention navigation and Enter to the IME until composition ends', async () => {

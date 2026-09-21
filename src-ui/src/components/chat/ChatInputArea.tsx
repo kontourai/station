@@ -369,6 +369,10 @@ export function ChatInputArea({
     end: number;
     query: string;
   } | null>(null);
+  const mentionListboxId = React.useId();
+  const [mentionActiveDescendant, setMentionActiveDescendant] = useState<
+    string | undefined
+  >();
   const mentionKeyboardController = useRef<
     ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
   >(null);
@@ -477,6 +481,12 @@ export function ChatInputArea({
       ? composerMentionWireLength(input, composerTokens)
       : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
+  const mentionAutocompleteAvailable = Boolean(
+    workingDirectory && mentionRequestScope,
+  );
+  const mentionAutocompleteOpen = Boolean(
+    mentionQuery && mentionAutocompleteAvailable,
+  );
 
   useLayoutEffect(() => {
     // Value changes are a resize trigger even though the measurement reads DOM.
@@ -711,7 +721,9 @@ export function ChatInputArea({
                   workingDirectory={workingDirectory}
                   requestScope={mentionRequestScope}
                   query={mentionQuery.query}
+                  listboxId={mentionListboxId}
                   keyboardController={mentionKeyboardController}
+                  onActiveDescendantChange={setMentionActiveDescendant}
                   onSelect={(entry) => {
                     const generation = mentionGeneration.current;
                     const next = insertComposerMention(
@@ -771,6 +783,16 @@ export function ChatInputArea({
           )}
           <textarea
             ref={textareaRef}
+            aria-autocomplete={
+              mentionAutocompleteAvailable ? 'list' : undefined
+            }
+            aria-haspopup={mentionAutocompleteAvailable ? 'listbox' : undefined}
+            aria-controls={
+              mentionAutocompleteOpen ? mentionListboxId : undefined
+            }
+            aria-activedescendant={
+              mentionAutocompleteOpen ? mentionActiveDescendant : undefined
+            }
             placeholder={placeholder}
             value={displayInput}
             disabled={disabled}
