@@ -1,8 +1,8 @@
 import { AnswerBasisAffordance } from '@kontourai/station-basis-pane/answer-basis-affordance';
 import { createSessionInventoryBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import { useProjectQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
 import { useBasisPaneLauncher } from '../../workspace-panes/BasisPaneLauncher';
 import { openSessionInventoryOccurrence } from '../chat-dock/sessionInventoryOccurrence';
 
@@ -22,7 +22,7 @@ export function ConnectedAnswerBasisAffordance({
     null,
   );
   const authority = useHostRequestAuthorityScope();
-  const projectQuery = useProjectQuery(projectSlug ?? '', {
+  const projectQuery = useScopedProjectQuery(projectSlug ?? '', {
     enabled: enabled && Boolean(projectSlug),
   }) as {
     data?: { id?: string };

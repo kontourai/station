@@ -7,7 +7,6 @@ import {
 import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
-  useProjectsQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -35,14 +34,14 @@ import { ConnectionBannerSource } from './components/notifications/ConnectionBan
 import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
 import { Empty, ErrorState } from './components/state';
 import { useAgents } from './contexts/AgentsContext';
-import {
-  useApiBase,
-  useHostRequestAuthorityScope,
-} from './contexts/ApiBaseContext';
+import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
 import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
-import { ProjectsProvider } from './contexts/ProjectsContext';
+import {
+  ProjectsProvider,
+  useScopedProjectsQuery,
+} from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
@@ -204,15 +203,11 @@ function App() {
       : null;
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const projectRequestScope = useHostRequestAuthorityScope();
   const {
     data: projects = [],
     isLoading: projectsLoading,
     isError: projectsError,
-  } = useProjectsQuery({
-    requestScope: projectRequestScope,
-    requireRequestScope: true,
-  });
+  } = useScopedProjectsQuery();
   const appConfig = useConfig();
   const { settings: featureSettings } = useFeatureSettings();
   const [showShortcutsCheatsheet, setShowShortcutsCheatsheet] = useState(false);

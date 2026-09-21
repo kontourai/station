@@ -17,6 +17,12 @@ import { PageFrame } from '../components/page-frame';
 // requires it. This harness mounts a fragment of that tree, and nothing
 // here asserts a surface reveal, so the command hook is supplied directly.
 const showSurfaceStub = vi.hoisted(() => vi.fn());
+// This fragment has no active connection; scoped Project reads stay disabled.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
 }));

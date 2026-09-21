@@ -26,6 +26,15 @@ let existingLayouts: Array<{ slug: string }> = [];
 let projectLayoutsLoading = false;
 let projectLayoutsError: Error | undefined;
 
+vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   canMaterializeKitProjectLayout: (entry: typeof enabledEntry) =>
     entry.lifecycle === 'installed' && entry.experience.status === 'enabled',

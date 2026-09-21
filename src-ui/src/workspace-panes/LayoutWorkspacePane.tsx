@@ -13,7 +13,6 @@ import {
   usePersonalLayoutsQuery,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
-  useProjectsQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { boardPath } from '../app-shell/board-route';
@@ -22,6 +21,7 @@ import { Button } from '../components/Button';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Empty } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { SDKAdapter } from '../core/SDKAdapter';
 import { LayoutRenderer } from '../layouts';
 import { layoutWorkspaceShape } from '../views/layout-workspace-shape';
@@ -151,7 +151,7 @@ export function LayoutWorkspacePane({
   // Every hook unconditionally, gated by `enabled`: which family this is
   // decides which queries run, not which hooks are called.
   const boards = usePersonalLayoutsQuery({ enabled: board !== null });
-  const projects = useProjectsQuery({ enabled: project !== null });
+  const projects = useScopedProjectsQuery({ enabled: project !== null });
   const projectMeta = project
     ? only(
         projects.data as readonly ProjectMetadata[] | undefined,
