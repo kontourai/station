@@ -21,6 +21,8 @@ import { AgentIcon } from '../icons/AgentIcon';
 import { LoadingDots } from '../LoadingDots';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
+  CHAT_READER_RESTORE_EVENT,
+  type ChatReaderRestoreRequest,
   type ChatScrollAnchor,
   captureChatScrollAnchor,
   createResizeReanchorGate,
@@ -158,6 +160,9 @@ function ChatMessageListComponent({
   const lastClientHeightRef = useRef<number | null>(null);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const [scrollAnchorVersion, setScrollAnchorVersion] = useState(0);
+  const [readerRestoreRequest, setReaderRestoreRequest] = useState<
+    (ChatReaderRestoreRequest & { version: number }) | null
+  >(null);
   const [streamingContentRevision, setStreamingContentRevision] = useState(0);
   const [submittedBlockIds, setSubmittedBlockIds] = useState<Set<string>>(
     () => new Set(),
@@ -249,6 +254,49 @@ function ChatMessageListComponent({
       return undefined;
     }
   })();
+
+  useLayoutEffect(() => {
+    const element = messagesContainerRef.current;
+    if (!element) return;
+    const restoreReader = (event: Event) => {
+      const request = (event as CustomEvent<ChatReaderRestoreRequest>).detail;
+      if (
+        !request ||
+        !Number.isFinite(request.scrollTop) ||
+        (request.anchor &&
+          (!request.anchor.key || !Number.isFinite(request.anchor.offset)))
+      )
+        return;
+      event.preventDefault();
+      isUserScrolledUpRef.current = true;
+      userScrollIntentRef.current = false;
+      visibleAnchorRef.current = request.anchor ?? null;
+      setIsUserScrolledUp(true);
+      setReaderRestoreRequest((current) => ({
+        ...request,
+        version: (current?.version ?? 0) + 1,
+      }));
+    };
+    element.addEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
+    return () =>
+      element.removeEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
+  }, []);
+
+  useEffect(() => {
+    void activeSession.id;
+    setReaderRestoreRequest(null);
+  }, [activeSession.id]);
+
+  useLayoutEffect(() => {
+    const element = messagesContainerRef.current;
+    if (!element || !readerRestoreRequest) return;
+    if (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
+    const restored = readerRestoreRequest.anchor
+      ? restoreChatScrollAnchor(element, readerRestoreRequest.anchor)
+      : false;
+    if (!restored) element.scrollTop = readerRestoreRequest.scrollTop;
+    if (restored) visibleAnchorRef.current = captureChatScrollAnchor(element);
+  }, [messages.length, readerRestoreRequest]);
 
   // A command-palette transcript result carries the stable runtime message id
   // in the location hash. Re-run when messages arrive, rather than trusting a
@@ -392,6 +440,7 @@ function ChatMessageListComponent({
     // reader intent. Only wheel/touch/pointer input arms the next scroll.
     if (!userScrollIntentRef.current) return;
     userScrollIntentRef.current = false;
+    setReaderRestoreRequest(null);
     if (hasOlderMessages && target.scrollTop <= 96) void loadOlder();
     setScrollAnchorVersion((version) => version + 1);
     // Resize animations can emit a scroll event between two ResizeObserver
@@ -408,6 +457,8 @@ function ChatMessageListComponent({
 
   const handleScrollToBottom = () => {
     if (messagesContainerRef.current) {
+      setReaderRestoreRequest(null);
+      visibleAnchorRef.current = null;
       messagesContainerRef.current.scrollTop =
         messagesContainerRef.current.scrollHeight;
       isUserScrolledUpRef.current = false;
@@ -660,7 +711,11 @@ function ChatMessageListComponent({
                   renderRow={renderTranscriptRow}
                   followTail={!isUserScrolledUp && !requestedMessageRowId}
                   anchorVersion={scrollAnchorVersion}
-                  revealRowId={requestedMessageRowId}
+                  revealRowId={
+                    requestedMessageRowId ?? readerRestoreRequest?.anchor?.key
+                  }
+                  restoreAnchor={readerRestoreRequest?.anchor}
+                  restoreAnchorVersion={readerRestoreRequest?.version}
                 />
               ) : (
                 transcriptRows.map((row) => (

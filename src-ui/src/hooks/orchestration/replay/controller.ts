@@ -1,5 +1,9 @@
 import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
 import type { ApiRequestScope } from '@kontourai/station-sdk';
+import {
+  CHAT_READER_RESTORE_EVENT,
+  type ChatReaderRestoreRequest,
+} from '../../../components/chat/chatScrollAnchor';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { navigationStore } from '../../../contexts/navigation-store';
 import {
@@ -404,8 +408,6 @@ export function returnToLatestConversation(): void {
   navigationStore.setActiveChat(context.sourceChatId);
   navigationStore.setDockState(true);
   let attempts = 0;
-  let settlementFrames = 0;
-  let readerIntentRestored = false;
   const restoreReader = () => {
     if (navigationStore.getSnapshot().activeChat !== context.sourceChatId)
       return;
@@ -415,31 +417,16 @@ export function returnToLatestConversation(): void {
       ),
     ].find((element) => element.dataset.chatSessionId === context.sourceChatId);
     if (transcript) {
-      if (!readerIntentRestored && context.sourceReaderAnchor) {
-        readerIntentRestored = true;
-        // Reapply the captured reader intent before the virtualizer's first
-        // follow-tail layout pass; otherwise that pass overwrites the anchor
-        // restoration with the newest turn.
-        transcript.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
-      }
-      const anchor = context.sourceReaderAnchor;
-      const row = anchor
-        ? [
-            ...transcript.querySelectorAll<HTMLElement>(
-              '[data-chat-message-key]',
-            ),
-          ].find((element) => element.dataset.chatMessageKey === anchor.key)
-        : undefined;
-      if (row && anchor) {
-        const transcriptTop = transcript.getBoundingClientRect().top;
-        transcript.scrollTop +=
-          row.getBoundingClientRect().top - transcriptTop - anchor.offset;
-      } else {
-        transcript.scrollTop = context.sourceScrollTop;
-      }
-      settlementFrames += 1;
-      if (settlementFrames < 20) requestAnimationFrame(restoreReader);
-      return;
+      const accepted = !transcript.dispatchEvent(
+        new CustomEvent<ChatReaderRestoreRequest>(CHAT_READER_RESTORE_EVENT, {
+          cancelable: true,
+          detail: {
+            anchor: context.sourceReaderAnchor,
+            scrollTop: context.sourceScrollTop,
+          },
+        }),
+      );
+      if (accepted) return;
     }
     attempts += 1;
     if (attempts < 20) requestAnimationFrame(restoreReader);
