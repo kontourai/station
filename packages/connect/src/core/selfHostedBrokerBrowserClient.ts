@@ -163,7 +163,7 @@ export class SelfHostedBrokerBrowserClient {
     // Freeze scalar/provider references at construction: later mutation of
     // the input object cannot re-point this client.
     this.#credentials = input.credentials;
-    this.#request = input.request ?? globalThis.fetch.bind(globalThis);
+    this.#request = (input.request ?? globalThis.fetch).bind(globalThis);
     this.#now = input.now ?? Date.now;
     this.#onCancelResponse = input.onCancelResponse ?? (() => {});
   }

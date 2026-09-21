@@ -313,7 +313,7 @@ describe('browser relay consumer (public boundary)', () => {
       trustRecord,
       trustStore: { isCurrent: async () => true },
       ice: iceProvider() as never,
-      createPeer: (config: RTCConfiguration) => {
+      createPeer: (_config: RTCConfiguration) => {
         const peer = fakePeer(OFFER, channels);
         if (first) {
           first = false;
@@ -345,7 +345,7 @@ describe('browser relay consumer (public boundary)', () => {
       trustRecord,
       trustStore: { isCurrent: async () => true },
       ice: iceProvider() as never,
-      createPeer: (config: RTCConfiguration) => {
+      createPeer: (_config: RTCConfiguration) => {
         const peer = fakePeer(OFFER, channels);
         peer.iceGatheringState = 'gathering';
         queueMicrotask(() => {
