@@ -1,6 +1,5 @@
 import {
   authenticatedFetch,
-  useConfigQuery,
   useUpdateConfigMutation,
 } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,6 +11,11 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { useRecoveryScope } from '../contexts/RecoveryQueryBoundary';
+import {
+  recoveryConfigKey,
+  useRecoveryConfig,
+} from '../hooks/useRecoveryConfig';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
@@ -503,8 +507,18 @@ function useUsageTelemetryDecision(
   // run, change the toggle in Settings, come back, and the choice offered to
   // "keep" a state that had already moved. The disclosure stays the fallback
   // because it is the only thing that can see the environment.
-  const { data: config } = useConfigQuery();
+  // Identity-scoped recovery read (not the shared bare-key
+  // `useConfigQuery`): under the stable boundary a bare entry would survive
+  // its connection — including a same-origin credential rotation.
+  const { apiBase: recoveryApiBase } = useApiBase();
+  const { identityKey: recoveryIdentityKey } = useRecoveryScope();
+  const scopedConfigKey = recoveryConfigKey(
+    recoveryApiBase,
+    recoveryIdentityKey,
+  );
+  const { data: config } = useRecoveryConfig();
   const updateConfig = useUpdateConfigMutation();
+  const scopedConfigClient = useQueryClient();
   const [settingError, setSettingError] = useState(false);
 
   // The server's own precedence (`config ?? STATION_TELEMETRY_ENABLED ??
@@ -549,6 +563,10 @@ function useUsageTelemetryDecision(
             setSettingError(true);
             return;
           }
+          // The shared mutation invalidates only the bare `['config']` key;
+          // the recovery read above is identity-scoped, so refresh it
+          // explicitly (nearest client = the recovery client in production).
+          scopedConfigClient.invalidateQueries({ queryKey: scopedConfigKey });
           acknowledge.mutate();
         },
         onError: () => setSettingError(true),

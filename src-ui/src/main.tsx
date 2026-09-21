@@ -289,6 +289,12 @@ function renderApp(): void {
                     <AuthorityQueryProvider localUiApiBase={localUiApiBase}>
                       <SyntaxHighlighterProvider>
                         <AuthProvider>
+                          {/* extension-registry stays in the protected
+                            query/auth boundary: PluginRegistryBootstrap
+                            invalidates ['layouts'] on the authority client
+                            and must never run against the observation
+                            bootstrap client. Navigation/toast read from
+                            the stable providers above. */}
                           <PermissionManager>
                             <KeyboardShortcutsProvider>
                               <ConversationsProvider>
@@ -315,18 +321,18 @@ function renderApp(): void {
                               </ConversationsProvider>
                             </KeyboardShortcutsProvider>
                           </PermissionManager>
+                          <DeferredCapabilityBoundary
+                            id="extension-registry"
+                            load={loadPluginRegistryBootstrap}
+                            copy={{
+                              failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
+                              failure:
+                                'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
+                            }}
+                          />
                         </AuthProvider>
                       </SyntaxHighlighterProvider>
                     </AuthorityQueryProvider>
-                    <DeferredCapabilityBoundary
-                      id="extension-registry"
-                      load={loadPluginRegistryBootstrap}
-                      copy={{
-                        failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
-                        failure:
-                          'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
-                      }}
-                    />
                   </ToastProvider>
                 </NavigationProvider>
               </QueryClientProvider>

@@ -317,7 +317,21 @@ function UserProbe() {
   );
 }
 
-function renderTree(harness: Harness, options?: { localUiApiBase?: string }) {
+function renderTree(
+  harness: Harness,
+  options?: {
+    localUiApiBase?: string;
+    /**
+     * Use the PRODUCTION observation read (real `getAuthorityObservation`
+     * through the stubbed global fetch) instead of the harness wire double,
+     * to prove the seam's own bounded timeout. Only for tests that stub
+     * `fetch` with black-hole semantics.
+     */
+    defaultObservation?: boolean;
+    /** Short deadline for black-hole tests; production default otherwise. */
+    observationTimeoutMs?: number;
+  },
+) {
   (Probe as unknown as { harness: Harness }).harness = harness;
   const bootstrap = new QueryClient({
     defaultOptions: {
@@ -333,10 +347,13 @@ function renderTree(harness: Harness, options?: { localUiApiBase?: string }) {
       <ConnectionsProbe />
       <QueryClientProvider client={bootstrap}>
         <AuthorityQueryProvider
-          fetchObservation={harness.fetchObservation}
+          {...(options?.defaultObservation
+            ? {}
+            : { fetchObservation: harness.fetchObservation })}
           storage={harness.asyncStorage.storage}
           localUiApiBase={options?.localUiApiBase ?? 'http://127.0.0.1:9'}
           persistThrottleTimeMs={0}
+          observationTimeoutMs={options?.observationTimeoutMs}
         >
           <Probe />
           {harness.mountReloadProbe ? <ReloadProbe /> : null}
@@ -1043,6 +1060,84 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     expect(harness.asyncStorage.data.get(authorityPersistenceKey(NS_A))).toBe(
       retainedBlob,
     );
+  });
+
+  it('a black-holed observation read fails bounded onto the repair path with nothing restored', async () => {
+    // The PRODUCTION observation read (real `getAuthorityObservation`,
+    // seam deadline overridden to 200ms) against a fake host that answers
+    // the seeded Default row but accepts-and-never-answers the new home —
+    // a black hole, not a refusal. Without the seam's explicit timeout the
+    // React Query caller signal alone disables the SDK deadline and this
+    // hangs forever; with it the read fails bounded as observation loss:
+    // status 'unverified' (not 401-'unavailable'), repair children mounted
+    // on a fresh ephemeral client, no namespace, no prior rows — and a
+    // later good read still verifies (the client is not poisoned).
+    const harness = createHarness();
+    // Installed before mount (mount observes Default immediately): answers
+    // everything until the hung home's URL is assigned after `addHome`.
+    let hungUrl = '';
+    stubFetch(async (url, init) => {
+      if (hungUrl !== '' && url.startsWith(hungUrl)) {
+        // Faithful black hole: like a real socket that never answers, the
+        // read settles only when the composed signal aborts (deadline or
+        // caller cancel), exactly as real `fetch` behaves.
+        const signal = init?.signal;
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+        await new Promise<void>((_, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          );
+        });
+        throw new DOMException('aborted', 'AbortError');
+      }
+      return new Response(JSON.stringify(OBS_DEFAULT), {
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const { unmount } = renderTree(harness, {
+      defaultObservation: true,
+      observationTimeoutMs: 200,
+    });
+    const defaultId = connections?.activeConnection?.id ?? '';
+    expect(defaultId).not.toBe('');
+    const { id: idH, url: urlH } = await addHome('hung');
+    hungUrl = urlH;
+    // Default verifies through the production read first.
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    expect(probe().getAttribute('data-namespace')).toBe(
+      buildAuthorityNamespace(OBS_DEFAULT),
+    );
+    const keysBeforeHang = [...harness.asyncStorage.data.keys()].sort();
+
+    await switchTo(idH);
+    // Bounded failure, not a hang: the repair path mounts with no identity.
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('unverified'),
+    );
+    expect(probe().getAttribute('data-namespace')).toBe('');
+    expect(probe().getAttribute('data-agents')).toBe('null');
+    // Fresh ephemeral client: none of the previous authority's rows leak
+    // into the hung home's tree (the probe stub's own current-id rows are
+    // fresh fetches, not restored shelves).
+    expect(probe().getAttribute('data-projects')).not.toContain(defaultId);
+    // The failure persisted nothing and deleted nothing.
+    expect([...harness.asyncStorage.data.keys()].sort()).toEqual(
+      keysBeforeHang,
+    );
+
+    // Recoverable: returning to Default re-verifies through a fresh read.
+    await switchTo(defaultId);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    expect(probe().getAttribute('data-namespace')).toBe(
+      buildAuthorityNamespace(OBS_DEFAULT),
+    );
+    unmount();
   });
 
   it('the legacy singleton blob is quarantined: never adopted, never deleted', async () => {

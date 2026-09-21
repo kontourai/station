@@ -20,7 +20,12 @@
  * is under test is the composition boundary (no unmount across a
  * transition), not the modal's internals — the hosted browser suites prove
  * the real modal. `ProtectedProbe` stands in for the protected workspace
- * (colliding `['projects']` key, home-tagged rows).
+ * (colliding `['projects']` key, home-tagged rows). `RecoveryConfigObserver`
+ * drives the REAL `useRecoveryConfig` (explicit origin, identity-scoped key)
+ * against a URL-prefix wire double for `authenticatedFetch`, recording every
+ * committed render AND layout effect — the transition tests prove no stale
+ * entry reaches either, including same-origin credential rotation through
+ * the real `setCredential` API.
  *
  * Each test states its own baseline through the public connections API on
  * unique origins and removes its rows afterwards. The boot-payload seed is
@@ -44,7 +49,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -54,6 +59,7 @@ import {
 } from '../contexts/AuthorityQueryContext';
 import { RecoveryQueryBoundary } from '../contexts/RecoveryQueryBoundary';
 import { useInvalidateCachesOnConnectionSwitch } from '../hooks/useInvalidateCachesOnConnectionSwitch';
+import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { buildAuthorityNamespace } from '../lib/authorityNamespace';
 import { resolveLocalUiSession } from '../lib/local-ui-bootstrap';
 
@@ -64,6 +70,49 @@ vi.mock('../platform/useBundledServerStatus', () => ({
   useBundledServerStatus: () => null,
   restartBundledServer: vi.fn(),
 }));
+
+/**
+ * Wire mock for the recovery config dispatch: the REAL `useRecoveryConfig`
+ * (explicit origin, identity-scoped key) runs against this double, so the
+ * transition tests below prove the production read path — not a probe-local
+ * reimplementation. Other SDK exports pass through untouched (the authority
+ * tree and connect store keep their real implementations).
+ */
+interface SdkWire {
+  configFetchPlan: Map<string, () => Promise<unknown>>;
+  configFetchLog: { url: string; activeId: string | undefined }[];
+}
+const sdkWire: SdkWire = {
+  configFetchPlan: new Map(),
+  configFetchLog: [],
+};
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...actual,
+    authenticatedFetch: async (input: unknown) => {
+      const url = String(input);
+      const activeId = connections?.activeConnection?.id;
+      sdkWire.configFetchLog.push({ url, activeId });
+      // Longest-prefix match: the '' fallback must never shadow a
+      // per-origin plan registered after it.
+      const plans = [...sdkWire.configFetchPlan.entries()].sort(
+        ([a], [b]) => b.length - a.length,
+      );
+      for (const [prefix, behavior] of plans) {
+        if (url.startsWith(prefix)) {
+          const data = await behavior();
+          return {
+            ok: true,
+            json: async () => ({ success: true, data }),
+          };
+        }
+      }
+      throw new Error(`no config wire plan for ${url}`);
+    },
+  };
+});
 
 const OBS_A: AuthorityObservation = {
   schemaVersion: 'station.authority-observation/v1',
@@ -112,8 +161,8 @@ interface Harness {
   observationPlan: Map<string, () => Promise<AuthorityObservation>>;
   projectPlan: Map<string, () => Promise<ProjectList>>;
   projectFetches: (string | undefined)[];
-  configPlan: Map<string, () => Promise<{ home: string }>>;
-  configFetches: (string | undefined)[];
+  configRenders: ConfigRecord[];
+  configLayouts: ConfigRecord[];
   accessMounts: number;
   accessUnmounts: number;
   asyncStorage: ReturnType<typeof memoryAsyncStorage>;
@@ -143,8 +192,8 @@ function createHarness(): Harness {
     observationPlan: new Map(),
     projectPlan: new Map(),
     projectFetches: [],
-    configPlan: new Map(),
-    configFetches: [],
+    configRenders: [],
+    configLayouts: [],
     accessMounts: 0,
     accessUnmounts: 0,
     asyncStorage: memoryAsyncStorage(),
@@ -205,33 +254,32 @@ function AccessRequestProbe() {
   );
 }
 
-/** Recovery-scoped read with a BARE key: must refetch per connection. */
-function RecoveryConfigProbe() {
+/**
+ * The REAL production recovery read (`useRecoveryConfig`: explicit origin,
+ * identity-scoped key) with a render-phase AND layout-effect observer. Both
+ * record every committed view as `{ active, snapshot }`, so a transition
+ * that served the previous connection's entry — to the render OR to a child
+ * layout effect running before the boundary's own reset — is caught even
+ * when no stale paint ever reaches the screen.
+ */
+interface ConfigRecord {
+  active: string | null;
+  snapshot: string;
+}
+function RecoveryConfigObserver() {
   const harness = (AccessRequestProbe as unknown as { harness: Harness })
     .harness;
-  const config = useQuery({
-    queryKey: ['config'],
-    queryFn: async () => {
-      const activeId = connections?.activeConnection?.id;
-      harness.configFetches.push(activeId);
-      const behavior =
-        (activeId && harness.configPlan.get(activeId)) ??
-        harness.configPlan.get('default');
-      if (behavior) return behavior();
-      return { home: activeId ?? 'none' };
-    },
-    // Infinity is the point: without the boundary's switch-scoped drop,
-    // this entry would serve the previous connection forever and the
-    // tests below would fail on stale data with no refetch.
-    staleTime: Number.POSITIVE_INFINITY,
-    retry: false,
+  const activeId = connections?.activeConnection?.id ?? null;
+  const config = useRecoveryConfig();
+  const snapshot = config.data ? JSON.stringify(config.data) : config.status;
+  harness.configRenders.push({ active: activeId, snapshot });
+  useLayoutEffect(() => {
+    harness.configLayouts.push({
+      active: connections?.activeConnection?.id ?? null,
+      snapshot: config.data ? JSON.stringify(config.data) : config.status,
+    });
   });
-  return (
-    <div
-      data-testid="recovery-config"
-      data-config={config.data ? JSON.stringify(config.data) : config.status}
-    />
-  );
+  return <div data-testid="recovery-config" data-config={snapshot} />;
 }
 
 /** Protected workspace read with the colliding key, quarantined per authority. */
@@ -282,7 +330,7 @@ function renderCompositionTree(harness: Harness) {
       <QueryClientProvider client={bootstrap}>
         <RecoveryQueryBoundary>
           <AccessRequestProbe />
-          <RecoveryConfigProbe />
+          <RecoveryConfigObserver />
         </RecoveryQueryBoundary>
         <AuthorityQueryProvider
           fetchObservation={harness.fetchObservation}
@@ -344,6 +392,11 @@ afterEach(async () => {
     }
   });
   connections = undefined;
+  // The SDK wire double is a module singleton: reset per test so fetch
+  // plans and logs never leak across tests. (The toast store is untouched
+  // baseline in this slice — no test here writes toasts.)
+  sdkWire.configFetchPlan.clear();
+  sdkWire.configFetchLog.length = 0;
   vi.mocked(resolveLocalUiSession).mockReset();
   vi.mocked(resolveLocalUiSession).mockResolvedValue({
     kind: 'host-unavailable',
@@ -354,6 +407,9 @@ describe('authority recovery composition (real provider tree, mocked wire)', () 
   it('an open access-request flow survives activation transitions with zero old private rows', async () => {
     const harness = createHarness();
     harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    sdkWire.configFetchPlan.set('', async () => ({
+      home: connections?.activeConnection?.id ?? 'none',
+    }));
     const { unmount } = renderCompositionTree(harness);
     const { id: idA, url: urlA } = await addHome('reca');
     const { id: idB, url: urlB } = await addHome('recb');
@@ -419,12 +475,27 @@ describe('authority recovery composition (real provider tree, mocked wire)', () 
     unmount();
   });
 
-  it('recovery reads are current-authority scoped: a bare-key entry never survives its connection', async () => {
+  it('recovery config is identity-scoped: no render or layout effect serves the previous connection', async () => {
+    // The production read (`useRecoveryConfig`: explicit origin +
+    // identity-scoped key) against a deferred wire for B. The render AND the
+    // layout-effect observer record every committed view; any record pairing
+    // B-active with A's data fails the test — including a commit whose paint
+    // never happens. The hook's five-minute staleTime is production parity:
+    // with the old bare key this data would simply persist (no refetch, no
+    // pending), so the pending assertions below are the scoped key proving
+    // itself, not the boundary's reset (which runs after child layout
+    // effects and could not save them).
     const harness = createHarness();
     harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    sdkWire.configFetchPlan.set('', async () => ({
+      home: connections?.activeConnection?.id ?? 'none',
+    }));
     const { unmount } = renderCompositionTree(harness);
     const { id: idA, url: urlA } = await addHome('reccfga');
     const { id: idB, url: urlB } = await addHome('reccfgb');
+    const configB = deferred<unknown>();
+    sdkWire.configFetchPlan.set(urlA, async () => ({ home: idA }));
+    sdkWire.configFetchPlan.set(urlB, () => configB.promise);
     harness.observationPlan.set(urlA, async () => OBS_A);
     harness.observationPlan.set(urlB, async () => OBS_B);
     await switchTo(idA);
@@ -433,21 +504,90 @@ describe('authority recovery composition (real provider tree, mocked wire)', () 
         screen.getByTestId('recovery-config').getAttribute('data-config'),
       ).toContain(idA),
     );
-    const fetchesAfterA = harness.configFetches.length;
+    const renderMark = harness.configRenders.length;
+    const layoutMark = harness.configLayouts.length;
 
-    // staleTime is Infinity: only the boundary's switch-scoped drop can
-    // cause a refetch here. Without it, config-A would serve under B
-    // forever and this assertion would fail on stale data.
     await switchTo(idB);
+    // While B's config is unresolved, every committed view under B-active
+    // is pending — in renders AND in layout effects. One record pairing
+    // B with A's data is the defect.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('recovery-config').getAttribute('data-config'),
+      ).toBe('pending'),
+    );
+    for (const record of harness.configRenders.slice(renderMark)) {
+      if (record.active === idB) {
+        expect(record.snapshot).not.toContain(idA);
+      }
+    }
+    for (const record of harness.configLayouts.slice(layoutMark)) {
+      if (record.active === idB) {
+        expect(record.snapshot).not.toContain(idA);
+      }
+    }
+
+    await act(async () => {
+      configB.resolve({ home: idB });
+    });
     await waitFor(() =>
       expect(
         screen.getByTestId('recovery-config').getAttribute('data-config'),
       ).toContain(idB),
     );
-    expect(harness.configFetches.length).toBeGreaterThan(fetchesAfterA);
-    expect(harness.configFetches).toContain(idB);
     unmount();
   });
+
+  it('same-origin credential rotation re-reads recovery config instead of serving the old entry', async () => {
+    // `setCredential` through the real Connections API bumps the authority
+    // generation and re-observes (same observation, same namespace), so the
+    // protected tree stays mounted while the recovery identity advances.
+    // The scoped key must refetch under the rotation; the old entry must
+    // never render as current afterwards.
+    let rotations = 0;
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    sdkWire.configFetchPlan.set('', async () => ({
+      home: connections?.activeConnection?.id ?? 'none',
+    }));
+    const { unmount } = renderCompositionTree(harness);
+    const { id: idA, url: urlA } = await addHome('recrot');
+    sdkWire.configFetchPlan.set(urlA, async () => ({
+      home: idA,
+      rotation: rotations,
+    }));
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('recovery-config').getAttribute('data-config'),
+      ).toContain(idA),
+    );
+
+    rotations += 1;
+    await act(async () => {
+      connections?.setCredential(idA, 'rotated-credential');
+    });
+    // New identity, new entry: a refetch dispatches (tagged with the new
+    // rotation) and the commit renders pending first — the old entry is
+    // unreachable under the new key, not merely invalidated.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('recovery-config').getAttribute('data-config'),
+      ).toContain('"rotation":1'),
+    );
+    expect(
+      sdkWire.configFetchLog.filter((entry) => entry.url.startsWith(urlA))
+        .length,
+    ).toBeGreaterThanOrEqual(2);
+    unmount();
+  });
+
+  // NOTE (root correction): toast/notification/action isolation across
+  // authority changes is a separate #481/106 follow-up, not proven here.
+  // The toast store stays a baseline module singleton in this slice; a
+  // connection-only ambient dismissal would miss same-origin rotations and
+  // mis-stamp late callbacks, so no scoped-toast test belongs in this file.
 
   it('the relocated switch invalidation still marks the targeted cache stale on a switch', async () => {
     // The archive#1290 hook moved with the client it targets

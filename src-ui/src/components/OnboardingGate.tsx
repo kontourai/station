@@ -34,7 +34,7 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
-import { useConfig } from '../contexts/ConfigContext';
+import { useRecoveryConfig } from '../hooks/useRecoveryConfig';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   shouldRenderSetupLauncher,
@@ -163,7 +163,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     rearm: rearmSetupBanner,
   } = useOnboardingSetupState();
   const firstRunChapterOpen = useFirstRunChapterOpen();
-  const config = useConfig();
+  // Identity-scoped recovery read (not the shared bare-key `useConfig`):
+  // under the stable boundary a bare entry would survive its connection.
+  const { data: config } = useRecoveryConfig();
   const wasInConnections = useRef(pathname.startsWith('/connections'));
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;

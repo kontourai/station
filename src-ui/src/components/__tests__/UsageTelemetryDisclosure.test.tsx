@@ -43,6 +43,23 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 
+// The disclosure reads config through the identity-scoped recovery hook
+// (never the shared bare-key query under the stable boundary). Mock at this
+// seam with the same mutable `appConfig` the SDK mock above serves, so this
+// suite keeps testing consent behavior, not scoping; scoping is covered
+// against the real boundary in authorityRecoveryComposition. The scope
+// context is satisfied through the same hook (no separate provider mock).
+vi.mock('../../hooks/useRecoveryConfig', () => ({
+  useRecoveryConfig: () => ({ data: appConfig.current }),
+  recoveryConfigKey: (...parts: unknown[]) => parts,
+}));
+vi.mock('../../contexts/RecoveryQueryBoundary', () => ({
+  useRecoveryScope: () => ({
+    apiBase: 'http://station.test',
+    identityKey: 'test-identity',
+  }),
+}));
+
 import {
   resetUsageTelemetryDisclosureDismissal,
   USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,
