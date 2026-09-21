@@ -1,4 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto';
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
 import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
@@ -31,13 +36,33 @@ import {
  * never claims otherwise.
  *
  * Crash honesty: a reservation alone does not prove an effect happened or
- * did not. `reserved`/`admitted` claims whose owner died stay exactly
- * there; the lookup projection presents them conservatively and nothing in
- * this store authorizes a resend — absence of evidence is never a replay
- * authorization.
+ * did not. `reserved`/`admitted`/`session-started` claims whose owner died
+ * stay exactly there; the lookup projection presents them conservatively
+ * and nothing in this store authorizes a resend — absence of evidence is
+ * never a replay authorization. A started session is NOT an accepted work
+ * request: `session-started` means the reserved session exists, while
+ * `accepted` additionally carries the real initial provider turn id from
+ * the dispatch that durably accepted the requested first turn. A crash
+ * between the two leaves the claim at `session-started` — reconcilable via
+ * the stable `initialClientTurnId` against existing durable turn evidence
+ * (turn.started events, the turn-dedup mapping), never auto-replayed.
+ *
+ * Ownership: the reserve-time owner secret is a real capability. Only its
+ * SHA-256 verifier is persisted; every transition recomputes the verifier
+ * from the presented token and compares exactly, so a wrong, random, or
+ * other-claim token advances nothing on any store instance sharing the
+ * file. The secret itself is never persisted, never projected, and never
+ * appears in lookup/409 output.
+ *
+ * Keys: the storage key is the unambiguous length-prefixed tuple
+ * `delegationAttemptClaimKey(callerDeviceId, attemptId)` — opaque device
+ * and attempt ids may both contain colons, so naive `${deviceId}:${attemptId}`
+ * joins can collide across grants. Reserve and lookup both validate the
+ * tuple components, and every persisted record's key must equal the
+ * recomputed tuple of its own identity fields.
  */
 
-const STORE_VERSION = 1 as const;
+const STORE_VERSION = 2 as const;
 
 /**
  * Explicit finite capacity. Every accepted key — including terminal
@@ -60,9 +85,18 @@ export type DelegationAttemptClaimState =
    */
   | 'admitted'
   /**
-   * The reserved session start is durably accepted (existing
-   * SessionStartBoundary/session.started evidence path). Terminal-positive:
-   * the taskId is the real receiver task handle.
+   * The reserved session exists (newly started and durably evidenced, or
+   * reattached after a read proved it). NOT an accepted work request: the
+   * requested initial turn has not been shown durably accepted yet. A crash
+   * here leaves the claim here — reconcilable, never replayed.
+   */
+  | 'session-started'
+  /**
+   * The requested initial turn is durably accepted: the dispatch returned
+   * the real provider turn id and it is recorded on the claim. Terminal-
+   * positive: the taskId is the real receiver task handle and
+   * initialTurnId is the real initial turn, so a lost acknowledgement
+   * resolves to exactly that task/turn via lookup without re-POSTing.
    */
   | 'accepted'
   /**
@@ -79,6 +113,7 @@ export type DelegationAttemptClaimState =
   | 'unresolved';
 
 export interface DelegationAttemptClaimRecord {
+  /** The unambiguous tuple key: `delegationAttemptClaimKey(callerDeviceId, attemptId)`. */
   readonly key: string;
   readonly attemptId: string;
   /** Server-resolved verified delegation-device grant id; never body trust. */
@@ -89,9 +124,24 @@ export interface DelegationAttemptClaimRecord {
    * The receiver-minted reserved task id (`task:<uuid>`). Minted AT RESERVE
    * time and used as the actual session id, so this field links the claim
    * to the existing SessionStartBoundary / session.started / turn evidence
-   * for the (at most one) session this claim ever allowed.
+   * for the (at most one) session this claim ever allowed. Preserved on the
+   * record in every state for honest inspection and reconciliation.
    */
   readonly taskId: string;
+  /**
+   * Stable initial client-turn identity, minted AT RESERVE time and passed
+   * as the `clientTurnId` of the one initial-turn dispatch. It links the
+   * claim to existing durable turn evidence (turn.started events and the
+   * turn-dedup mapping) so an unknown outcome stays reconcilable without
+   * ever authorizing a second dispatch.
+   */
+  readonly initialClientTurnId: string;
+  /**
+   * SHA-256 (hex) verifier of the reserve-time owner secret. The secret
+   * itself is never persisted — it is returned once to the reserver and
+   * recomputed-then-compared on every transition.
+   */
+  readonly ownerVerifier: string;
   state: DelegationAttemptClaimState;
   readonly createdAt: string;
   updatedAt: string;
@@ -105,6 +155,31 @@ export interface DelegationAttemptClaimRecord {
     readonly portableProjectId: string;
     readonly resourceId: string;
   };
+  /**
+   * The real provider turn id returned by the initial-turn dispatch. Set
+   * only by the owner when marking `accepted` — never invented, never
+   * replayed, never a second scheduler.
+   */
+  initialTurnId?: string;
+}
+
+/**
+ * The unambiguous storage key for a (caller grant, attempt) tuple.
+ * Length-prefixed so opaque ids containing `:` (or any other character)
+ * can never collide across grants: `5:ab:cd:3:ef:g` parses exactly one
+ * way. Both components must be nonempty; anything else is a programming
+ * error and throws before any claim is read or written.
+ */
+export function delegationAttemptClaimKey(
+  callerDeviceId: string,
+  attemptId: string,
+): string {
+  if (!callerDeviceId || !attemptId) {
+    throw new Error(
+      'Delegation attempt claim key components must both be nonempty',
+    );
+  }
+  return `${callerDeviceId.length}:${callerDeviceId}:${attemptId.length}:${attemptId}`;
 }
 
 interface DelegationAttemptClaimLedger {
@@ -117,48 +192,157 @@ const EMPTY_LEDGER: DelegationAttemptClaimLedger = Object.freeze({
   records: Object.freeze({}),
 });
 
+function isWellFormedAdmitted(
+  admitted: unknown,
+): admitted is NonNullable<DelegationAttemptClaimRecord['admitted']> {
+  if (!admitted || typeof admitted !== 'object') return false;
+  const candidate = admitted as Record<string, unknown>;
+  for (const field of [
+    'provider',
+    'modelId',
+    'projectSlug',
+    'localProjectId',
+  ] as const) {
+    const value = candidate[field];
+    if (value !== undefined && typeof value !== 'string') return false;
+  }
+  return (
+    typeof candidate.portableProjectId === 'string' &&
+    candidate.portableProjectId.length > 0 &&
+    typeof candidate.resourceId === 'string' &&
+    candidate.resourceId.length > 0
+  );
+}
+
 function isWellFormedClaimRecord(
   key: string,
   record: unknown,
 ): record is DelegationAttemptClaimRecord {
   if (!record || typeof record !== 'object') return false;
   const candidate = record as Record<string, unknown>;
-  return (
-    candidate.key === key &&
-    typeof candidate.attemptId === 'string' &&
-    candidate.attemptId.length > 0 &&
-    typeof candidate.callerDeviceId === 'string' &&
-    candidate.callerDeviceId.length > 0 &&
-    typeof candidate.intentDigest === 'string' &&
-    /^[0-9a-f]{64}$/.test(candidate.intentDigest) &&
-    typeof candidate.taskId === 'string' &&
-    candidate.taskId.length > 0 &&
-    (candidate.state === 'reserved' ||
-      candidate.state === 'admitted' ||
-      candidate.state === 'accepted' ||
-      candidate.state === 'refused' ||
-      candidate.state === 'unresolved') &&
-    typeof candidate.createdAt === 'string' &&
-    typeof candidate.updatedAt === 'string'
-  );
+  if (candidate.key !== key) return false;
+  if (
+    typeof candidate.attemptId !== 'string' ||
+    candidate.attemptId.length === 0 ||
+    typeof candidate.callerDeviceId !== 'string' ||
+    candidate.callerDeviceId.length === 0
+  ) {
+    return false;
+  }
+  // The persisted key must be exactly the unambiguous tuple of the
+  // record's own identity fields — a hand-moved record under a colliding
+  // naive-joined key is malformation, not a claim.
+  let expectedKey: string;
+  try {
+    expectedKey = delegationAttemptClaimKey(
+      candidate.callerDeviceId,
+      candidate.attemptId,
+    );
+  } catch {
+    return false;
+  }
+  if (candidate.key !== expectedKey) return false;
+  if (
+    typeof candidate.intentDigest !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(candidate.intentDigest) ||
+    typeof candidate.taskId !== 'string' ||
+    candidate.taskId.length === 0 ||
+    typeof candidate.initialClientTurnId !== 'string' ||
+    candidate.initialClientTurnId.length === 0 ||
+    typeof candidate.ownerVerifier !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(candidate.ownerVerifier)
+  ) {
+    return false;
+  }
+  const state = candidate.state;
+  if (
+    state !== 'reserved' &&
+    state !== 'admitted' &&
+    state !== 'session-started' &&
+    state !== 'accepted' &&
+    state !== 'refused' &&
+    state !== 'unresolved'
+  ) {
+    return false;
+  }
+  if (
+    typeof candidate.createdAt !== 'string' ||
+    typeof candidate.updatedAt !== 'string'
+  ) {
+    return false;
+  }
+  // State-dependent required data, not just the root shape: an `admitted`
+  // payload that is present must be well-formed whenever it is present,
+  // and the post-resolution states require what their meaning promises —
+  // `admitted` facts for `admitted` and later, the real initial turn id
+  // for `accepted`. A record claiming a state without its evidence is
+  // malformation and fails closed.
+  if (
+    candidate.admitted !== undefined &&
+    !isWellFormedAdmitted(candidate.admitted)
+  ) {
+    return false;
+  }
+  if (
+    (state === 'admitted' ||
+      state === 'session-started' ||
+      state === 'accepted') &&
+    !isWellFormedAdmitted(candidate.admitted)
+  ) {
+    return false;
+  }
+  if (candidate.initialTurnId !== undefined) {
+    if (
+      typeof candidate.initialTurnId !== 'string' ||
+      candidate.initialTurnId.length === 0
+    ) {
+      return false;
+    }
+  }
+  if (
+    state === 'accepted' &&
+    (typeof candidate.initialTurnId !== 'string' ||
+      candidate.initialTurnId.length === 0)
+  ) {
+    return false;
+  }
+  return true;
 }
 
+/**
+ * Unique missing-file sentinel: only ENOENT falls back (inside
+ * `readJsonFile`), so reaching this comparison means the file is absent.
+ * EVERY present value — including JSON `null`/`false`/`0`/`""`, which are
+ * not ledgers — goes through full validation below and fails closed
+ * rather than being mistaken for a missing ledger with no claims.
+ */
+const MISSING_LEDGER: unique symbol = Symbol('missing-delegation-ledger');
+
 function readLedger(file: string): DelegationAttemptClaimLedger {
-  const stored = readJsonFile<DelegationAttemptClaimLedger | null>(file, null, {
+  const stored = readJsonFile<
+    DelegationAttemptClaimLedger | typeof MISSING_LEDGER
+  >(file, MISSING_LEDGER, {
     maxBytes: 4 * 1024 * 1024,
     label: 'Delegation attempt claim store',
   });
-  if (!stored) return EMPTY_LEDGER;
+  if (stored === MISSING_LEDGER) return EMPTY_LEDGER;
+  // Fail closed on malformation: a store whose shape is not exactly the
+  // v2 ledger (a present null/falsy non-object, array records, a key that
+  // is not the tuple of the record's own identity fields, a non-digest, a
+  // bad owner verifier, an unknown state, or a state without its required
+  // evidence) throws rather than forgetting a claim and permitting a
+  // duplicate execution. Corrupt JSON already throws inside `readJsonFile`
+  // (only a missing file falls back); a version mismatch (including every
+  // v1 ledger, which has no verifier, no tuple key, and no turn split)
+  // throws rather than being reinterpreted.
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+    throw new Error('Delegation attempt claim store is malformed');
+  }
   if (stored.version !== STORE_VERSION) {
     throw new Error(
       `Delegation attempt claim store version ${String(stored.version)} is not supported`,
     );
   }
-  // Fail closed on malformation: a store whose shape is not exactly the
-  // v1 ledger (array records, or any record with a key mismatch, a
-  // non-digest, or an unknown state) throws rather than forgetting a
-  // claim and permitting a duplicate execution. Corrupt JSON already
-  // throws inside `readJsonFile` (only a missing file falls back).
   if (
     !stored.records ||
     typeof stored.records !== 'object' ||
@@ -211,7 +395,13 @@ export function delegationAttemptIntentDigest(
 }
 
 export type ReserveDelegationAttemptOutcome =
-  | { readonly kind: 'created'; readonly ownerToken: string }
+  | {
+      readonly kind: 'created';
+      /** The reserve-time owner secret — returned exactly once, never persisted. */
+      readonly ownerToken: string;
+      /** The minted stable initial client-turn identity, persisted on the record. */
+      readonly initialClientTurnId: string;
+    }
   | { readonly kind: 'existing'; readonly record: DelegationAttemptClaimRecord }
   | { readonly kind: 'conflict'; readonly record: DelegationAttemptClaimRecord }
   | { readonly kind: 'capacity' };
@@ -235,15 +425,39 @@ export interface DelegationAttemptClaimStore {
     ownerToken: string,
     admitted: DelegationAttemptClaimRecord['admitted'],
   ): Promise<OwnerTransitionOutcome>;
+  markSessionStarted(
+    key: string,
+    ownerToken: string,
+  ): Promise<OwnerTransitionOutcome>;
   markAccepted(
     key: string,
     ownerToken: string,
+    initialTurnId: string,
   ): Promise<OwnerTransitionOutcome>;
   markRefused(key: string, ownerToken: string): Promise<OwnerTransitionOutcome>;
   markUnresolved(
     key: string,
     ownerToken: string,
   ): Promise<OwnerTransitionOutcome>;
+}
+
+/**
+ * SHA-256 (hex) verifier of an owner token. The token is a 256-bit secret
+ * returned exactly once at reserve; only this verifier is persisted.
+ */
+function ownerVerifierFor(ownerToken: string): string {
+  return createHash('sha256').update(ownerToken, 'utf8').digest('hex');
+}
+
+function isOwnerTokenValid(
+  record: DelegationAttemptClaimRecord,
+  ownerToken: string,
+): boolean {
+  if (ownerToken.length === 0) return false;
+  const presented = ownerVerifierFor(ownerToken);
+  const expected = record.ownerVerifier;
+  if (presented.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(presented), Buffer.from(expected));
 }
 
 interface FileDelegationAttemptClaimStoreOptions {
@@ -333,12 +547,37 @@ export class FileDelegationAttemptClaimStore
         result: ReserveDelegationAttemptOutcome;
         next?: DelegationAttemptClaimLedger;
       } => {
+        // The key is caller-supplied storage addressing: it must be exactly
+        // the unambiguous tuple of the claimed identity, or the reserve is
+        // a programming error and nothing is written.
+        const expectedKey = delegationAttemptClaimKey(
+          input.callerDeviceId,
+          input.attemptId,
+        );
+        if (input.key !== expectedKey) {
+          throw new Error(
+            'Delegation attempt claim key does not match the caller/attempt tuple',
+          );
+        }
         const existing = current.records[input.key];
         if (existing) {
-          // Same key: identical validated intent joins the existing claim (no
-          // second effect is ever launched from here); a different validated
-          // intent under the same correlation key is a conflict — the first
-          // accepted request owns the key outright.
+          // Same tuple key: identical validated intent joins the existing
+          // claim (no second effect is ever launched from here); a
+          // different validated intent under the same correlation key is a
+          // conflict — the first accepted request owns the key outright.
+          // The record's own identity fields are rechecked against the
+          // claimed tuple (fail closed on any mismatch, however
+          // unreachable under length-prefixed keys), so a key-boundary
+          // collision across two delegation grants can never disclose
+          // another grant's record or coalesce two grants into one claim.
+          if (
+            existing.callerDeviceId !== input.callerDeviceId ||
+            existing.attemptId !== input.attemptId
+          ) {
+            throw new Error(
+              'Delegation attempt claim identity does not match the caller/attempt tuple',
+            );
+          }
           return existing.intentDigest === input.intentDigest
             ? { result: { kind: 'existing', record: existing } as const }
             : { result: { kind: 'conflict', record: existing } as const };
@@ -349,18 +588,26 @@ export class FileDelegationAttemptClaimStore
           return { result: { kind: 'capacity' } as const };
         }
         const now = new Date().toISOString();
+        const ownerToken = randomBytes(32).toString('hex');
+        const initialClientTurnId = randomUUID();
         const record: DelegationAttemptClaimRecord = {
           key: input.key,
           attemptId: input.attemptId,
           callerDeviceId: input.callerDeviceId,
           intentDigest: input.intentDigest,
           taskId: input.taskId,
+          initialClientTurnId,
+          ownerVerifier: ownerVerifierFor(ownerToken),
           state: 'reserved',
           createdAt: now,
           updatedAt: now,
         };
         return {
-          result: { kind: 'created', ownerToken: randomUUID() } as const,
+          result: {
+            kind: 'created',
+            ownerToken,
+            initialClientTurnId,
+          } as const,
           next: {
             version: STORE_VERSION,
             records: { ...current.records, [input.key]: record },
@@ -385,16 +632,22 @@ export class FileDelegationAttemptClaimStore
       } => {
         const record = current.records[key];
         if (!record) return { result: { kind: 'not-owner' } as const };
-        // The owner token is issued EXACTLY once, at reserve, and is threaded
-        // server-internally only (never persisted, never public JSON, never
-        // accepted from any request): a duplicate reserve never receives one —
-        // it joins or throws — so no second owner exists to advance the claim,
-        // and after an owner crash nobody holds one, so the claim stays put.
-        // The token itself is an issuance marker, not a capability secret: the
-        // state machine below (allowedFrom) is what makes re-application go
-        // `stale`. An empty token is rejected as a programming-error guard;
-        // `refused` is terminal for every caller including the owner.
-        if (ownerToken.length === 0 || record.state === 'refused') {
+        // The owner secret is issued EXACTLY once, at reserve, and is
+        // threaded server-internally only (never persisted, never public
+        // JSON, never accepted from any request): a duplicate reserve never
+        // receives one — it joins or throws — so no second owner exists to
+        // advance the claim, and after an owner crash nobody holds one, so
+        // the claim stays put. Only the SHA-256 verifier is persisted, and
+        // EVERY transition recomputes it from the presented token and
+        // compares exactly: a wrong, random, empty, or other-claim token
+        // yields `not-owner` with no mutation, on every store instance
+        // sharing the file. The state machine below (allowedFrom) is what
+        // makes re-application go `stale`. `refused` is terminal for every
+        // caller including the owner.
+        if (!isOwnerTokenValid(record, ownerToken)) {
+          return { result: { kind: 'not-owner' } as const };
+        }
+        if (record.state === 'refused') {
           return { result: { kind: 'not-owner' } as const };
         }
         if (!allowedFrom.includes(record.state)) {
@@ -418,12 +671,34 @@ export class FileDelegationAttemptClaimStore
     });
   }
 
-  async markAccepted(
+  async markSessionStarted(
     key: string,
     ownerToken: string,
   ): Promise<OwnerTransitionOutcome> {
+    // The reserved session exists (durably evidenced start, or a read that
+    // proved it for the reattach path). This is NOT an accepted work
+    // request — the initial turn is still unproven.
     return this.#transition(key, ownerToken, ['admitted'], (record) => {
+      record.state = 'session-started';
+    });
+  }
+
+  async markAccepted(
+    key: string,
+    ownerToken: string,
+    initialTurnId: string,
+  ): Promise<OwnerTransitionOutcome> {
+    // Only from `session-started` and only with the real provider turn id
+    // the initial-turn dispatch returned: a started session alone never
+    // becomes `accepted`, and the turn id is recorded, never invented.
+    if (typeof initialTurnId !== 'string' || initialTurnId.length === 0) {
+      throw new Error(
+        'Delegation attempt claim acceptance requires the real initial turn id',
+      );
+    }
+    return this.#transition(key, ownerToken, ['session-started'], (record) => {
       record.state = 'accepted';
+      record.initialTurnId = initialTurnId;
     });
   }
 
@@ -447,10 +722,14 @@ export class FileDelegationAttemptClaimStore
     key: string,
     ownerToken: string,
   ): Promise<OwnerTransitionOutcome> {
+    // Reachable from `session-started` too: the session exists but the
+    // initial turn's fate is unknown (invocation may have happened). Never
+    // a resend authorization — only the owner advances here, and only
+    // forward into the unknown.
     return this.#transition(
       key,
       ownerToken,
-      ['reserved', 'admitted'],
+      ['reserved', 'admitted', 'session-started'],
       (record) => {
         record.state = 'unresolved';
       },
@@ -460,16 +739,25 @@ export class FileDelegationAttemptClaimStore
 
 /**
  * The bounded closed lookup projection: never a raw provider output,
- * transcript, error, prompt, path, or digest — only the claim state and,
- * when evidenced, the real receiver task handle. `none` (claim absent as
- * observed NOW) is explicitly NOT a resend authorization: a delayed
- * original request can still arrive.
+ * transcript, error, prompt, path, digest, owner verifier, or client-turn
+ * identity — only the claim state, the reserved receiver task reference
+ * (every known claim, for honest inspection and reconciliation against
+ * session/turn evidence), and, when evidenced, the real initial turn id.
+ * `none` (claim absent as observed NOW) is explicitly NOT a resend
+ * authorization: a delayed original request can still arrive.
  */
 export interface DelegationAttemptProjection {
   readonly attemptId: string;
   readonly state: 'none' | 'preparing' | 'accepted' | 'unresolved' | 'refused';
-  /** Present only when `state === 'accepted'`: the real receiver task handle. */
+  /**
+   * The reserved receiver task reference. Present for every KNOWN claim
+   * (including `preparing`/`unresolved`/`refused`) so an unknown outcome
+   * stays reconcilable against session/turn evidence; it is a reference,
+   * never a resend authorization and never proof the turn was accepted.
+   */
   readonly taskId?: string;
+  /** Present only when `state === 'accepted'`: the real initial turn id. */
+  readonly turnId?: string;
 }
 
 export function projectDelegationAttemptClaim(
@@ -480,16 +768,26 @@ export function projectDelegationAttemptClaim(
   switch (record.state) {
     case 'reserved':
     case 'admitted':
-      // Claimed, execution not yet durably evidenced. Conservative by
+    case 'session-started':
+      // Claimed, initial-turn acceptance not yet durably evidenced (a
+      // started session alone is NOT acceptance). Conservative by
       // construction (a dead owner's claim stays here); never a resend
-      // authorization.
-      return { attemptId, state: 'preparing' };
+      // authorization. The reserved task reference is preserved so the
+      // unknown outcome stays reconcilable.
+      return { attemptId, state: 'preparing', taskId: record.taskId };
     case 'accepted':
-      return { attemptId, state: 'accepted', taskId: record.taskId };
+      // The one real execution, resolved to exactly this task AND this
+      // initial turn: a lost acknowledgement settles here without re-POST.
+      return {
+        attemptId,
+        state: 'accepted',
+        taskId: record.taskId,
+        turnId: record.initialTurnId,
+      };
     case 'refused':
-      return { attemptId, state: 'refused' };
+      return { attemptId, state: 'refused', taskId: record.taskId };
     case 'unresolved':
-      return { attemptId, state: 'unresolved' };
+      return { attemptId, state: 'unresolved', taskId: record.taskId };
   }
 }
 
@@ -509,6 +807,8 @@ export class DelegationAttemptExistsError extends Error {
   constructor(
     readonly attemptId: string,
     readonly taskId: string,
+    /** The real initial turn id — the exact turn the lost ACK can resolve to. */
+    readonly turnId: string,
   ) {
     super(
       'A request with this attempt id was already accepted. The referenced task is the one and only execution.',

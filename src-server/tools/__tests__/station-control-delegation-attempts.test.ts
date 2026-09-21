@@ -8,11 +8,17 @@
  * - same-key concurrent creates: ONE provider effect (one start + one first
  *   turn); the loser names the claim (pending/exists), never a second task;
  * - mismatched validated intent under the same key conflicts with no effect;
- * - lost-ACK lookup after persisted start/turn evidence settles WITHOUT a
- *   re-POST (accepted + the real task handle);
- * - a crash between start invocation and acknowledgement settles
- *   `unresolved`, retains the claim, and a redelivery launches no second
- *   effect;
+ * - lost-ACK lookup after the dispatch returned its turn settles WITHOUT
+ *   a re-POST (accepted + the real task handle + the exact initial turn);
+ * - a crash between start invocation and turn acceptance settles
+ *   `unresolved` (a started session alone is NEVER acceptance), retains
+ *   the claim with its reserved reference, and a redelivery launches no
+ *   second effect;
+ * - a crash between turn acceptance and the claim write leaves
+ *   `session-started`, reconcilable via the stable client-turn identity,
+ *   never replayed;
+ * - the reattach path (existing reserved session) records session-started
+ *   first and accepts only on the real returned turn;
  * - a crash before the atomic rename commit leaves NO claim (the retry may
  *   proceed — nothing durable exists yet) and no effect;
  * - a clean pre-effect refusal settles `refused` (terminal tombstone; the
@@ -32,6 +38,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   DelegationAttemptConflictError,
   DelegationAttemptPendingError,
+  delegationAttemptClaimKey,
   FileDelegationAttemptClaimStore,
   projectDelegationAttemptClaim,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
@@ -162,6 +169,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+const CLAIM_KEY = delegationAttemptClaimKey('dev-verified-1', 'attempt-1');
+
 function claimInput(overrides: Record<string, unknown> = {}) {
   return {
     prompt: 'Ship the portable thing',
@@ -181,9 +190,11 @@ describe('receiver-local claim → single effect', () => {
     const result = await delegateTask(claimInput(), service as never);
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
-    expect(service.dispatchWithReceipt.mock.calls[0]![0]).toMatchObject({
-      type: 'sendTurn',
-    });
+    const turnCommand = service.dispatchWithReceipt.mock.calls[0]![0] as {
+      type: string;
+      input: Record<string, unknown>;
+    };
+    expect(turnCommand.type).toBe('sendTurn');
     // The reserved task id IS the started session id: the claim links to
     // the one real task through existing session evidence.
     const startedInput = service.startSessionInternal.mock.calls[0]![0] as {
@@ -191,9 +202,15 @@ describe('receiver-local claim → single effect', () => {
     };
     expect(result.taskId).toBe(startedInput.input.threadId);
     const store = new FileDelegationAttemptClaimStore(dir);
-    const record = await store.read('dev-verified-1:attempt-1');
+    const record = await store.read(CLAIM_KEY);
     expect(record?.state).toBe('accepted');
     expect(record?.taskId).toBe(result.taskId);
+    // Acceptance is the REAL provider turn id from the dispatch — recorded,
+    // never invented — and the dispatch carried the claim's stable
+    // client-turn identity for reconciliation.
+    expect(record?.initialTurnId).toBe('provider-turn-local');
+    expect(typeof turnCommand.input.clientTurnId).toBe('string');
+    expect(turnCommand.input.clientTurnId).toBe(record?.initialClientTurnId);
     // Server-derived admitted facts bound under the SAME claim, before the
     // provider effect — never part of the initial raw-intent digest.
     expect(record?.admitted).toMatchObject({
@@ -217,7 +234,7 @@ describe('receiver-local claim → single effect', () => {
     // the overlap is real: the loser must join, not create.
     const probe = new FileDelegationAttemptClaimStore(dir);
     await vi.waitFor(async () => {
-      expect(await probe.read('dev-verified-1:attempt-1')).toBeDefined();
+      expect(await probe.read(CLAIM_KEY)).toBeDefined();
     });
     const second = delegateTask(claimInput(), service as never);
     await expect(second).rejects.toBeInstanceOf(DelegationAttemptPendingError);
@@ -227,7 +244,7 @@ describe('receiver-local claim → single effect', () => {
     // Exactly one session start and one first turn across BOTH requests.
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
-    const record = await probe.read('dev-verified-1:attempt-1');
+    const record = await probe.read(CLAIM_KEY);
     expect(record?.state).toBe('accepted');
     expect(record?.taskId).toBe(result.taskId);
   });
@@ -252,27 +269,30 @@ describe('receiver-local claim → single effect', () => {
     const { delegateTask } = await import('../station-control-delegation.js');
     const result = await delegateTask(claimInput(), service as never);
     // The acknowledgement is "lost": settle purely from the durable claim,
-    // exactly as the authorized lookup does — no second create call.
+    // exactly as the authorized lookup does — no second create call. The
+    // lookup resolves to the EXACT task AND the exact initial turn.
     const store = new FileDelegationAttemptClaimStore(dir);
     const projection = projectDelegationAttemptClaim(
-      await store.read('dev-verified-1:attempt-1'),
+      await store.read(CLAIM_KEY),
       'attempt-1',
     );
     expect(projection).toEqual({
       attemptId: 'attempt-1',
       state: 'accepted',
       taskId: result.taskId,
+      turnId: 'provider-turn-local',
     });
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('crash classification — retained claims, never a second effect', () => {
-  test('a post-effect turn failure RETAINS the accepted claim; redelivery names the real task', async () => {
-    // The start is durably accepted (session evidence exists) BEFORE the
-    // first turn dispatches, so a turn-transport failure cannot unaccept
-    // the claim: the one real task genuinely exists and the redelivery
-    // names it instead of launching a second session.
+  test('a turn dispatch failure is NOT acceptance: unresolved, redelivery launches nothing', async () => {
+    // The session start is durably evidenced (session-started) but the
+    // initial turn dispatch threw — no provider turn id came back, so the
+    // claim must NOT read `accepted`: it goes `unresolved`, retaining the
+    // reserved task reference for reconciliation, and the redelivery pends
+    // with zero effects.
     let failTurn = true;
     const service = localService({
       onTurn: async () => {
@@ -287,9 +307,70 @@ describe('crash classification — retained claims, never a second effect', () =
       /provider transport died/,
     );
     const store = new FileDelegationAttemptClaimStore(dir);
-    expect((await store.read('dev-verified-1:attempt-1'))?.state).toBe(
-      'accepted',
+    const record = await store.read(CLAIM_KEY);
+    expect(record?.state).toBe('unresolved');
+    expect(record?.initialTurnId).toBeUndefined();
+    // The unknown outcome stays reconcilable: the projection keeps the
+    // reserved task reference (a reference only — not proof of a turn).
+    expect(projectDelegationAttemptClaim(record, 'attempt-1')).toMatchObject({
+      state: 'unresolved',
+      taskId: record?.taskId,
+    });
+    const error = await delegateTask(claimInput(), service as never).catch(
+      (caught: unknown) => caught,
     );
+    expect(error).toBeInstanceOf(DelegationAttemptPendingError);
+    // Still exactly one session start and one turn attempt — the redelivery
+    // executed nothing.
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('a crash between turn acceptance and the claim write leaves session-started, reconcilable, never replayed', async () => {
+    // The dispatch RETURNED its real turn id, but the owner died before the
+    // accept commit landed. The claim stays `session-started` (not
+    // accepted, not unresolved): the reserved task reference and the stable
+    // client-turn identity are preserved for reconciliation against durable
+    // turn evidence, and a redelivery launches no second effect.
+    let commits = 0;
+    const faulting = new FileDelegationAttemptClaimStore(dir, {
+      beforeCommit: () => {
+        commits += 1;
+        // Commits: 1 reserve, 2 bindAdmitted, 3 markSessionStarted,
+        // 4 markAccepted. Fault exactly the accept commit.
+        if (commits === 4) throw new Error('simulated crash on accept commit');
+      },
+    });
+    const service = localService();
+    const { delegateTask } = await import('../station-control-delegation.js');
+    await expect(
+      delegateTask(
+        claimInput({ delegationAttemptClaimStore: faulting }),
+        service as never,
+      ),
+    ).rejects.toThrow(/simulated crash on accept commit/);
+    const record = await faulting.read(CLAIM_KEY);
+    expect(record?.state).toBe('session-started');
+    expect(projectDelegationAttemptClaim(record, 'attempt-1')).toMatchObject({
+      state: 'preparing',
+      taskId: record?.taskId,
+    });
+    // Redelivery joins the indeterminate claim — pending, never a second
+    // session start and never a second turn.
+    await expect(
+      delegateTask(
+        claimInput({ delegationAttemptClaimStore: faulting }),
+        service as never,
+      ),
+    ).rejects.toBeInstanceOf(DelegationAttemptPendingError);
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('a redelivery after durable turn acceptance names the exact task AND turn', async () => {
+    const service = localService();
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const result = await delegateTask(claimInput(), service as never);
     const { DelegationAttemptExistsError } = await import(
       '../../services/orchestration/delegation-attempt-claim-store.js'
     );
@@ -297,10 +378,65 @@ describe('crash classification — retained claims, never a second effect', () =
       (caught: unknown) => caught,
     );
     expect(error).toBeInstanceOf(DelegationAttemptExistsError);
-    // Still exactly one session start and one turn attempt — the redelivery
-    // executed nothing.
+    if (!(error instanceof DelegationAttemptExistsError)) return;
+    // A lost ACK that re-POSTs learns the exact task/turn from the 409
+    // instead of launching anything: still one start, one turn.
+    expect(error.taskId).toBe(result.taskId);
+    expect(error.turnId).toBe('provider-turn-local');
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('an existing reserved session reattaches to session-started, then accepts on the real turn', async () => {
+    // The reserved session already exists (custom session id path): the
+    // read proves it, the claim records session-started (NOT accepted),
+    // and only the dispatch returning its turn id accepts.
+    const { delegateTask } = await import('../station-control-delegation.js');
+    // Self-calibrating binding: run the normal start path once and lift
+    // the EXACT server-stamped session binding the tool asserts on the
+    // reattach read, so this test can never drift from the tool's own
+    // binding contract.
+    const calibrator = localService();
+    // The session binding asserts the stamped userId against the caller's,
+    // so both runs carry the same user (as the production route does).
+    await delegateTask(
+      claimInput({ userId: 'reattach-user' }),
+      calibrator as never,
+    );
+    const startedCall = calibrator.startSessionInternal.mock.calls[0]![0] as {
+      type: string;
+      input: { metadata: Record<string, unknown> };
+    };
+    const bindingMetadata = startedCall.input.metadata;
+    const existingSessionId = 'task:11111111-1111-4111-8111-111111111111';
+    const reattachKey = delegationAttemptClaimKey(
+      'dev-verified-1',
+      'attempt-2',
+    );
+    const service = {
+      ...localService(),
+      readSession: vi.fn(async () => ({
+        session: { threadId: existingSessionId },
+        events: [{ method: 'session.configured', metadata: bindingMetadata }],
+      })),
+    };
+    const result = await delegateTask(
+      claimInput({
+        userId: 'reattach-user',
+        sessionId: existingSessionId,
+        delegationAttemptId: 'attempt-2',
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
+      }),
+      service as never,
+    );
+    expect(result.taskId).toBe(existingSessionId);
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+    const store = new FileDelegationAttemptClaimStore(dir);
+    const record = await store.read(reattachKey);
+    expect(record?.state).toBe('accepted');
+    expect(record?.taskId).toBe(existingSessionId);
+    expect(record?.initialTurnId).toBe('provider-turn-local');
   });
 
   test('an owner that dies while admitted leaves a pending claim: redelivery launches nothing', async () => {
@@ -313,7 +449,7 @@ describe('crash classification — retained claims, never a second effect', () =
       '../../services/orchestration/delegation-attempt-claim-store.js'
     );
     const created = await store.reserve({
-      key: 'dev-verified-1:attempt-1',
+      key: CLAIM_KEY,
       attemptId: 'attempt-1',
       callerDeviceId: 'dev-verified-1',
       intentDigest: delegationAttemptIntentDigest({
@@ -324,7 +460,7 @@ describe('crash classification — retained claims, never a second effect', () =
     });
     expect(created.kind).toBe('created');
     if (created.kind !== 'created') return;
-    await store.bindAdmitted('dev-verified-1:attempt-1', created.ownerToken, {
+    await store.bindAdmitted(CLAIM_KEY, created.ownerToken, {
       portableProjectId: PORTABLE_WORKSPACE.portableProjectId,
       resourceId: PORTABLE_WORKSPACE.resourceId,
       localProjectId: 'local-project-1',
@@ -340,11 +476,12 @@ describe('crash classification — retained claims, never a second effect', () =
     expect(service.startSessionInternal).not.toHaveBeenCalled();
     expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
     expect(
-      projectDelegationAttemptClaim(
-        await store.read('dev-verified-1:attempt-1'),
-        'attempt-1',
-      ),
-    ).toEqual({ attemptId: 'attempt-1', state: 'preparing' });
+      projectDelegationAttemptClaim(await store.read(CLAIM_KEY), 'attempt-1'),
+    ).toEqual({
+      attemptId: 'attempt-1',
+      state: 'preparing',
+      taskId: 'task:crashed-owner-minted',
+    });
   });
 
   test('a crash BEFORE the rename commit leaves NO claim: the retry may proceed', async () => {
@@ -366,7 +503,7 @@ describe('crash classification — retained claims, never a second effect', () =
       ),
     ).rejects.toThrow(/simulated crash/);
     // Nothing durable happened: no claim, no session, no turn.
-    expect(await faulting.read('dev-verified-1:attempt-1')).toBeUndefined();
+    expect(await faulting.read(CLAIM_KEY)).toBeUndefined();
     expect(service.startSessionInternal).not.toHaveBeenCalled();
     // The retry reserves cleanly (nothing was ever committed to conflict
     // with) and executes exactly once.
@@ -376,9 +513,7 @@ describe('crash classification — retained claims, never a second effect', () =
     );
     expect(result.taskId).toMatch(/^task:/);
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
-    expect((await faulting.read('dev-verified-1:attempt-1'))?.state).toBe(
-      'accepted',
-    );
+    expect((await faulting.read(CLAIM_KEY))?.state).toBe('accepted');
   });
 
   test('a clean pre-effect refusal settles refused: terminal, no effect, key never re-executes', async () => {
@@ -398,9 +533,7 @@ describe('crash classification — retained claims, never a second effect', () =
     expect(service.startSessionInternal).not.toHaveBeenCalled();
     expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
     const store = new FileDelegationAttemptClaimStore(dir);
-    expect((await store.read('dev-verified-1:attempt-1'))?.state).toBe(
-      'refused',
-    );
+    expect((await store.read(CLAIM_KEY))?.state).toBe('refused');
     // The refused key can never execute again — the SAME intent pends
     // against the tombstone, and changed intent under the key conflicts
     // (the original claim stands) — and the lookup names the terminal.
@@ -414,12 +547,12 @@ describe('crash classification — retained claims, never a second effect', () =
       ),
     ).rejects.toBeInstanceOf(DelegationAttemptConflictError);
     expect(service.startSessionInternal).not.toHaveBeenCalled();
+    const refusedRecord = await store.read(CLAIM_KEY);
     expect(
-      projectDelegationAttemptClaim(
-        await store.read('dev-verified-1:attempt-1'),
-        'attempt-1',
-      ),
-    ).toEqual({ attemptId: 'attempt-1', state: 'refused' });
+      projectDelegationAttemptClaim(refusedRecord, 'attempt-1'),
+    ).toMatchObject({ attemptId: 'attempt-1', state: 'refused' });
+    // The terminal tombstone keeps the reserved reference for inspection.
+    expect(refusedRecord?.taskId).toMatch(/^task:/);
   });
 
   test('a start-path explosion settles unresolved; redelivery launches nothing', async () => {
@@ -435,20 +568,18 @@ describe('crash classification — retained claims, never a second effect', () =
       /session start exploded/,
     );
     const store = new FileDelegationAttemptClaimStore(dir);
-    expect((await store.read('dev-verified-1:attempt-1'))?.state).toBe(
-      'unresolved',
-    );
+    expect((await store.read(CLAIM_KEY))?.state).toBe('unresolved');
     await expect(
       delegateTask(claimInput(), service as never),
     ).rejects.toBeInstanceOf(DelegationAttemptPendingError);
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    const unresolvedRecord = await store.read(CLAIM_KEY);
     expect(
-      projectDelegationAttemptClaim(
-        await store.read('dev-verified-1:attempt-1'),
-        'attempt-1',
-      ),
-    ).toEqual({ attemptId: 'attempt-1', state: 'unresolved' });
+      projectDelegationAttemptClaim(unresolvedRecord, 'attempt-1'),
+    ).toMatchObject({ attemptId: 'attempt-1', state: 'unresolved' });
+    // Unknown stays reconcilable: the reserved reference is preserved.
+    expect(unresolvedRecord?.taskId).toMatch(/^task:/);
   });
 });
 
@@ -476,7 +607,7 @@ describe('refusals before any claim — unsupported, unwired, legacy', () => {
     );
     expect(service.startSessionInternal).not.toHaveBeenCalled();
     const store = new FileDelegationAttemptClaimStore(dir);
-    expect(await store.read('dev-verified-1:attempt-1')).toBeUndefined();
+    expect(await store.read(CLAIM_KEY)).toBeUndefined();
   });
 
   test.each([
@@ -514,7 +645,7 @@ describe('refusals before any claim — unsupported, unwired, legacy', () => {
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
     // No claim owner was composed, so no claim file was even created.
     const store = new FileDelegationAttemptClaimStore(dir);
-    expect(await store.read('dev-verified-1:attempt-1')).toBeUndefined();
+    expect(await store.read(CLAIM_KEY)).toBeUndefined();
   });
 });
 

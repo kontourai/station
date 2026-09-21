@@ -678,17 +678,26 @@ export interface DelegationAttemptView {
   /**
    * - `none` — no claim under this key AS OBSERVED NOW. This is NOT
    *   permission to resend: a delayed original request can still arrive.
-   * - `preparing` — claimed, execution not yet durably evidenced.
+   * - `preparing` — claimed; the requested initial turn is not yet durably
+   *   evidenced (a started session alone is not acceptance).
    * - `accepted` — the one real execution; `taskId` is the receiver task
-   *   handle.
+   *   handle and `turnId` is the real initial turn. A lost acknowledgement
+   *   resolves to exactly that task/turn WITHOUT re-POSTing.
    * - `unresolved` — the invocation may have happened and completion is
    *   not proven. Never a resend authorization.
    * - `refused` — a clean pre-effect refusal was recorded (terminal; the
    *   attempt key can never execute again under changed intent).
    */
   state: 'none' | 'preparing' | 'accepted' | 'unresolved' | 'refused';
-  /** Present only when `state === 'accepted'`. */
+  /**
+   * The reserved receiver task reference. Present for every KNOWN claim so
+   * an unknown outcome stays reconcilable against session/turn evidence; a
+   * reference only — never proof the turn was accepted, never permission
+   * to resend.
+   */
   taskId?: string;
+  /** Present only when `state === 'accepted'`: the real initial turn id. */
+  turnId?: string;
 }
 
 /**

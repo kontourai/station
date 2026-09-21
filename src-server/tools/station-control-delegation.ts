@@ -77,6 +77,7 @@ import {
   DelegationAttemptConflictError,
   DelegationAttemptExistsError,
   DelegationAttemptPendingError,
+  delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
@@ -1288,6 +1289,8 @@ interface PeerPortableErrorEnvelope {
   /** #485 duplicate-attempt outcomes carry the closed attempt reference. */
   attemptId?: string;
   taskId?: string;
+  /** The receiver's real initial turn id, when it named one (exists). */
+  turnId?: string;
 }
 
 /**
@@ -1359,6 +1362,8 @@ export class PeerDelegationAttemptDuplicateError extends Error {
       | 'delegation_attempt_capacity',
     readonly attemptId: string | undefined,
     readonly taskId: string | undefined,
+    /** The receiver's real initial turn id, when it named one (exists). */
+    readonly turnId: string | undefined = undefined,
   ) {
     super(
       'The receiving Station already holds a claim for this attempt; do not resend it.',
@@ -1405,6 +1410,7 @@ async function postPeerPortableDelegation<T>(
         payload.code as PeerDelegationAttemptDuplicateError['code'],
         typeof payload.attemptId === 'string' ? payload.attemptId : undefined,
         typeof payload.taskId === 'string' ? payload.taskId : undefined,
+        typeof payload.turnId === 'string' ? payload.turnId : undefined,
       );
     }
     const refusal = peerPortableRefusalFor(response.status, payload);
@@ -4211,6 +4217,7 @@ export async function delegateTask(
         key: string;
         ownerToken: string;
         taskId: string;
+        initialClientTurnId: string;
       }
     | undefined = await (async () => {
     if (!input.delegationAttemptId) return undefined;
@@ -4240,8 +4247,15 @@ export async function delegateTask(
       input.sessionId && TASK_SESSION_ID_PATTERN.test(input.sessionId)
         ? input.sessionId
         : `task:${randomUUID()}`;
+    // The storage key is the unambiguous length-prefixed tuple of the
+    // verified caller grant and the attempt id — never a naive
+    // colon-join, whose boundary collides across grants.
+    const claimKey = delegationAttemptClaimKey(
+      attemptCaller.deviceId,
+      input.delegationAttemptId,
+    );
     const outcome = await claimStore.reserve({
-      key: `${attemptCaller.deviceId}:${input.delegationAttemptId}`,
+      key: claimKey,
       attemptId: input.delegationAttemptId,
       callerDeviceId: attemptCaller.deviceId,
       intentDigest: delegationAttemptIntentDigest({
@@ -4251,16 +4265,26 @@ export async function delegateTask(
       }),
       taskId: reservedTaskId,
     });
-    // Same key + same validated intent: join the existing claim and name
+    // Same tuple + same validated intent: join the existing claim and name
     // it — NEVER launch a second effect. `accepted` names the one real
-    // task; anything earlier is an explicit pending/unknown with the
+    // task AND its real initial turn (a lost ACK resolves to exactly
+    // that); anything earlier is an explicit pending/unknown with the
     // attempt reference (the caller's remedy is the authorized lookup,
-    // never a resend). Mismatched digest under the same key refuses.
+    // never a resend). Mismatched digest under the same tuple refuses.
     if (outcome.kind === 'existing') {
       if (outcome.record.state === 'accepted') {
+        // Fail closed on a claim that reads `accepted` without its turn
+        // evidence: the store validator guarantees it, so its absence is
+        // corruption, never a handle to manufacture.
+        if (!outcome.record.initialTurnId) {
+          throw new Error(
+            'Delegation attempt claim is accepted without its initial turn; refusing rather than naming a handle.',
+          );
+        }
         throw new DelegationAttemptExistsError(
           input.delegationAttemptId,
           outcome.record.taskId,
+          outcome.record.initialTurnId,
         );
       }
       throw new DelegationAttemptPendingError(input.delegationAttemptId);
@@ -4272,26 +4296,32 @@ export async function delegateTask(
       throw new DelegationAttemptCapacityError();
     }
     return {
-      key: `${attemptCaller.deviceId}:${input.delegationAttemptId}`,
+      key: claimKey,
       ownerToken: outcome.ownerToken,
       taskId: reservedTaskId,
+      initialClientTurnId: outcome.initialClientTurnId,
     };
   })();
   // Claim-lifecycle classification for everything below the reserve:
   // - throws BEFORE the session start is invoked are clean pre-effect
   //   refusals → the claim is retained as terminal `refused` (a refused
   //   key can never re-execute under changed intent);
-  // - an invocation that may have happened (indeterminate start or anything
-  //   after the start call) → `unresolved`, retained, never a resend
-  //   authorization;
-  // - a durably accepted start → `accepted` (marked immediately, before
-  //   the first turn dispatch).
+  // - an invocation that may have happened (indeterminate start, or the
+  //   start was invoked but the initial turn's fate is unknown) →
+  //   `unresolved`, retained, never a resend authorization;
+  // - a durably evidenced session start → `session-started` (marked
+  //   immediately, before the first turn dispatch). This is NOT an
+  //   accepted work request;
+  // - the initial-turn dispatch returning its real provider turn id →
+  //   `accepted` with that turn recorded (marked immediately, before
+  //   anything else runs).
   // Mark failures inside this handler are swallowed deliberately: a claim
-  // that fails to advance stays `reserved`/`admitted`, which is the
-  // conservative projection — it can only understate, never overstate, and
-  // it never authorizes a resend.
+  // that fails to advance stays at its earlier state, which is the
+  // conservative projection — it can only understate, never overstate,
+  // and it never authorizes a resend.
   let attemptStartInvoked = false;
-  let attemptStartAccepted = false;
+  let attemptInitialTurnReturned = false;
+  let attemptInitialTurnAccepted = false;
   const settleAttemptClaim = async (
     classify: 'refused' | 'unresolved',
   ): Promise<void> => {
@@ -4546,6 +4576,21 @@ export async function delegateTask(
         bindingTarget,
         readAuthority.userId,
       );
+      // #485: reattach path — the read just proved the reserved session
+      // exists. Record `session-started` (NOT accepted: the requested
+      // initial turn is still unproven) before the turn dispatch below.
+      if (attemptClaim) {
+        const startedMark =
+          await input.delegationAttemptClaimStore!.markSessionStarted(
+            attemptClaim.key,
+            attemptClaim.ownerToken,
+          );
+        if (startedMark.kind !== 'applied') {
+          throw new Error(
+            'Delegation attempt claim could not advance; no turn was dispatched.',
+          );
+        }
+      }
     } else {
       // archive#4543 fix: `environmentId` (like `conversationId`) is a
       // RESERVED_ORCHESTRATION_METADATA_KEYS entry — `prepareStart` strips it
@@ -4674,16 +4719,22 @@ export async function delegateTask(
       }
       // #485: the reserved session start is durably accepted (the existing
       // SessionStartBoundary / session.started evidence path owns that
-      // fact). Mark the claim `accepted` BEFORE the first turn dispatch so
-      // a crash in the turn path still leaves the truthful, evidence-backed
-      // state; the reserved taskId IS the started session id, so the claim
-      // is permanently linked to the one real task.
+      // fact). Mark the claim `session-started` BEFORE the first turn
+      // dispatch so a crash in the turn path still leaves the truthful,
+      // evidence-backed state — a started session alone is NOT an accepted
+      // work request. The reserved taskId IS the started session id, so
+      // the claim is permanently linked to the one real task.
       if (attemptClaim) {
-        const marked = await input.delegationAttemptClaimStore!.markAccepted(
-          attemptClaim.key,
-          attemptClaim.ownerToken,
-        );
-        if (marked.kind === 'applied') attemptStartAccepted = true;
+        const marked =
+          await input.delegationAttemptClaimStore!.markSessionStarted(
+            attemptClaim.key,
+            attemptClaim.ownerToken,
+          );
+        if (marked.kind !== 'applied') {
+          throw new Error(
+            'Delegation attempt claim could not advance; no turn was dispatched.',
+          );
+        }
       }
     }
     // #484 phase A: recheck again at the turn boundary — this covers the
@@ -4692,7 +4743,13 @@ export async function delegateTask(
     // options so the turn-effect path rechecks it adjacent to the adapter
     // sendTurn invocation. Refusal fails the turn BEFORE the provider effect.
     await receiverAdmission?.recheck();
-    await orchestrationService.dispatchWithReceipt(
+    // #485: the one initial-turn dispatch carries the claim's stable
+    // `initialClientTurnId`, linking it to existing durable turn evidence
+    // (turn.started events, the turn-dedup mapping) for reconciliation.
+    // Only the dispatch RETURNING its real provider turn id advances the
+    // claim to `accepted` with that turn recorded — never invented, never
+    // a second dispatch for the same claim.
+    const attemptTurnDispatch = await orchestrationService.dispatchWithReceipt(
       {
         type: 'sendTurn',
         input: {
@@ -4706,6 +4763,9 @@ export async function delegateTask(
           ...(resolved.modelOptions
             ? { modelOptions: { ...resolved.modelOptions } }
             : {}),
+          ...(attemptClaim
+            ? { clientTurnId: attemptClaim.initialClientTurnId }
+            : {}),
         },
       },
       dispatchContextForAuthority(
@@ -4717,6 +4777,38 @@ export async function delegateTask(
         ? { receiverExecutionAdmission: receiverEffectAdmission }
         : undefined,
     );
+    // The dispatch returning means the turn was durably accepted by the
+    // adapter (the dedup-hit path returns the SAME already-accepted turn
+    // rather than executing again). Record that flag before the claim
+    // write so a later failure cannot misclassify the claim as
+    // never-dispatched.
+    const attemptInitialTurnId =
+      attemptTurnDispatch.result &&
+      typeof attemptTurnDispatch.result === 'object' &&
+      'turnId' in attemptTurnDispatch.result &&
+      typeof attemptTurnDispatch.result.turnId === 'string' &&
+      attemptTurnDispatch.result.turnId.length > 0
+        ? attemptTurnDispatch.result.turnId
+        : undefined;
+    if (attemptClaim) {
+      if (!attemptInitialTurnId) {
+        throw new Error(
+          'Delegation attempt turn acceptance did not include a provider turn id; no turn was proven accepted.',
+        );
+      }
+      attemptInitialTurnReturned = true;
+      const marked = await input.delegationAttemptClaimStore!.markAccepted(
+        attemptClaim.key,
+        attemptClaim.ownerToken,
+        attemptInitialTurnId,
+      );
+      if (marked.kind !== 'applied') {
+        throw new Error(
+          'Delegation attempt claim could not record its accepted turn; the turn stands as dispatched.',
+        );
+      }
+      attemptInitialTurnAccepted = true;
+    }
     delegatedTasks.add(1, {
       target: bindingTarget.kind,
       environment: target.kind,
@@ -4749,10 +4841,15 @@ export async function delegateTask(
     };
   } catch (attemptError) {
     if (attemptClaim) {
-      if (attemptStartAccepted) {
-        // The session start is durably accepted and the claim already
-        // reads `accepted`; a later failure (e.g. the first turn dispatch)
-        // cannot unaccept it. The claim is retained exactly as it is.
+      if (attemptInitialTurnAccepted || attemptInitialTurnReturned) {
+        // The initial turn was durably accepted by the adapter (the
+        // dispatch returned its real turn id) and the claim already reads
+        // `accepted` — or, if the claim write itself failed, `session-
+        // started`, which preserves the reserved task reference and the
+        // stable client-turn identity for reconciliation against durable
+        // turn evidence. A later failure cannot unaccept the turn, and the
+        // claim is retained exactly as it is: never refused, never
+        // unresolved into a resend.
       } else if (attemptStartInvoked) {
         await settleAttemptClaim('unresolved');
       } else {

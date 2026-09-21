@@ -367,6 +367,7 @@ import { recoverCompletedTaskDispatches } from '../../services/orchestration/com
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
   type DelegationAttemptClaimStore,
+  delegationAttemptClaimKey,
   projectDelegationAttemptClaim,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
@@ -2808,13 +2809,14 @@ export function configureRuntimeRoutes(
       lookupDelegationAttempt: async (input) => {
         const store: DelegationAttemptClaimStore =
           context.delegationAttemptClaims;
-        const record = await store.read(
-          `${input.callerDeviceId}:${input.attemptId}`,
-        );
-        // The key is composed from the verified caller inputs, but both
-        // components admit `:` — re-verify the record's own identity fields
-        // so a key-boundary collision across two delegation grants can never
+        // The key is the unambiguous length-prefixed tuple of the verified
+        // caller grant and the attempt id (both components admit `:`).
+        // The record's own identity fields are STILL rechecked below, so a
+        // key-boundary collision across two delegation grants can never
         // disclose another grant's claim state or task handle.
+        const record = await store.read(
+          delegationAttemptClaimKey(input.callerDeviceId, input.attemptId),
+        );
         if (
           !record ||
           record.callerDeviceId !== input.callerDeviceId ||

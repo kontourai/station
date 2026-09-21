@@ -1933,6 +1933,7 @@ export function createOrchestrationRoutes(
             code: error.code,
             attemptId: error.attemptId,
             taskId: error.taskId,
+            turnId: error.turnId,
           },
           409,
         );
@@ -1955,7 +1956,8 @@ export function createOrchestrationRoutes(
       }
       if (error instanceof PeerDelegationAttemptDuplicateError) {
         // #485: the receiver's duplicate outcome relayed verbatim — same
-        // closed code, same attempt reference; never a generic fault.
+        // closed code, same attempt reference (and the exact initial turn
+        // when the receiver named one); never a generic fault.
         return c.json(
           {
             success: false,
@@ -1963,6 +1965,7 @@ export function createOrchestrationRoutes(
             code: error.code,
             ...(error.attemptId ? { attemptId: error.attemptId } : {}),
             ...(error.taskId ? { taskId: error.taskId } : {}),
+            ...(error.turnId ? { turnId: error.turnId } : {}),
           },
           409,
         );

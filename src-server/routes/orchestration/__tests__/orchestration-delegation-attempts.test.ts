@@ -174,7 +174,11 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
     ],
     [
       'exists',
-      new DelegationAttemptExistsError('attempt-9', 'task:real-1'),
+      new DelegationAttemptExistsError(
+        'attempt-9',
+        'task:real-1',
+        'provider-turn-9',
+      ),
       'delegation_attempt_exists',
       409,
     ],
@@ -226,6 +230,9 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
       }
       if (code === 'delegation_attempt_exists') {
         expect(body.taskId).toBe('task:real-1');
+        // The exact initial turn rides along: a lost ACK resolves to that
+        // task AND that turn without re-POSTing.
+        expect(body.turnId).toBe('provider-turn-9');
       }
       const serialized = JSON.stringify(body);
       expect(serialized).not.toContain('Ship it');
@@ -240,6 +247,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
           'delegation_attempt_exists',
           'attempt-9',
           'task:receiver-real-1',
+          'provider-turn-remote-1',
         ),
       );
     const app = createOrchestrationRoutes(
@@ -264,6 +272,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
     expect(body.code).toBe('delegation_attempt_exists');
     expect(body.attemptId).toBe('attempt-9');
     expect(body.taskId).toBe('task:receiver-real-1');
+    expect(body.turnId).toBe('provider-turn-remote-1');
   });
 
   test('an attempt refusal from the tool keeps its code (not laundered into 500)', async () => {
