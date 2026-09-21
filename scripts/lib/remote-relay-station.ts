@@ -30,8 +30,8 @@ import {
   waitForSuiteSettlement,
 } from './owned-process.mjs';
 
-export const REMOTE_RELAY_DESCRIPTOR_VERSION = 'remote-relay-descriptor/v1';
-export const REMOTE_RELAY_RUN_CONFIG_VERSION = 'remote-relay-run/v1';
+const REMOTE_RELAY_DESCRIPTOR_VERSION = 'remote-relay-descriptor/v1';
+const REMOTE_RELAY_RUN_CONFIG_VERSION = 'remote-relay-run/v1';
 const repo = resolve(import.meta.dirname, '../..');
 const shaPattern = /^[a-f0-9]{40}$/;
 function requirePath(path: string): void {
@@ -140,9 +140,7 @@ export interface RelayDescriptor {
   dtlsCertificatePath: string;
   dtlsPrivateKeyPath: string;
 }
-export async function remoteRelayInit(
-  runRoot: string,
-): Promise<RelayDescriptor> {
+async function remoteRelayInit(runRoot: string): Promise<RelayDescriptor> {
   assert(process.platform !== 'win32', 'remote_relay_custody_unsupported');
   privateDirectory(runRoot);
   const identity = await sourceIdentity();
@@ -272,7 +270,7 @@ function parseConfig(bytes: Buffer): RelayRunConfig {
     turn: { url: turn.url, username: turn.username, password: turn.password },
   };
 }
-export async function remoteRelayRun(
+async function remoteRelayRun(
   configPath: string,
 ): Promise<{ code: number; settled: boolean }> {
   assert(process.platform !== 'win32', 'remote_relay_custody_unsupported');
