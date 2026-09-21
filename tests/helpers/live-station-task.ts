@@ -246,7 +246,10 @@ function isTaskRoomAgentEditReceipt(
   );
 }
 
-export async function stopStation(live: LiveStation): Promise<void> {
+export async function stopStation(
+  live: LiveStation,
+  options: { environment?: NodeJS.ProcessEnv } = {},
+): Promise<void> {
   const args = [
     'stop',
     `--instance=${live.instance}`,
@@ -254,10 +257,11 @@ export async function stopStation(live: LiveStation): Promise<void> {
     `--port=${live.serverPort}`,
     `--ui-port=${live.uiPort}`,
   ];
+  const inherited = options.environment ?? process.env;
   await runCommand(...stationCommand(args), {
     env: {
-      ...process.env,
-      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
+      ...inherited,
+      PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
     },
