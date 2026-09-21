@@ -218,12 +218,44 @@ The first collaborator profile is deliberately read-only. It admits account
 controls and membership-filtered Project catalogue/detail reads, sets
 `Cache-Control: no-store`, and binds response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
-streamed chunk. Project mutations and unrelated personal configuration,
-plugin, terminal, coding, secret and orchestration surfaces fail closed even if
-the Device scope is broader. Existing unbound local/operator Devices retain
+streamed chunk. The audited administration endpoints below are the only
+additional Project mutations admitted here. Unrelated personal configuration,
+plugin, terminal, coding, secret and orchestration surfaces remain denied even
+if the Device scope is broader. Existing unbound local/operator Devices retain
 their prior behavior. Existing Tailnet person bindings remain a separate
 personal-device mechanism; they do not become Project membership through this
 account contract.
+
+#### Invited administrators through the API
+
+An accepted Project administrator can read `GET /api/projects/:slug/access`
+with an approved account-bound Device carrying `orchestration:read`. To manage
+members or invitation links, the operator must independently approve
+`orchestration:operate` on that Device through the existing
+`POST /api/pairing/devices/:deviceId/scope` endpoint. Grant exactly
+`["orchestration:read", "orchestration:operate"]`; the standard personal-device
+preset includes terminal access and is not the collaborator-management grant.
+The person remains signed in as their own account throughout this workflow.
+
+The audited POST leaves beneath `/api/projects/:slug/access` are
+`invitations`, `invitations/:invitationId/revoke`, `members`, and `transfer`.
+Read the current administration response for its exact Project scope and member
+revisions before submitting a change. Current membership must independently
+permit the action: an operate grant does not turn a viewer into an admin, and
+ownership transfer remains owner-only. Enabling sharing is operator-only.
+Stale revisions and replaced Project scopes refuse rather than overwrite.
+
+Administration views and invitation tokens recheck current account, Device,
+Project incarnation, and management permission before delivery and each queued
+body chunk. A committed mutation is not retried if its response becomes
+unauthorized. Self-demotion or self-revocation can still return the contentless
+`{ "changed": true }` acknowledgement while the same request credential/account
+and Project incarnation remain valid; this acknowledgement carries no protected
+member or token data. Already downloaded plaintext cannot be recalled.
+
+These are backend API capabilities. The invited-admin controls in the guest UI
+and the independent-person browser journey have separate qualification work;
+the backend tests do not establish that user journey.
 
 For authenticated members, the existing Project catalogue/detail endpoints
 return `station.member-project/v1` views: Project ID, slug, name, optional icon
