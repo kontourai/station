@@ -14,6 +14,10 @@ let environmentsFailure = false;
 let environmentsLoading = false;
 let projectLoading = false;
 let projectFailure = false;
+// The selected Project record's LOCAL incarnation id (#480 identity
+// lifetime). Matches the identity fixture's association by default; the
+// stale-incarnation tests replace it to model a same-slug delete/recreate.
+let projectId: string | undefined = 'project:station';
 let staleDiscoveryEnvironment: string | undefined;
 const retryProject = vi.fn();
 const retryIdentity = vi.fn();
@@ -112,8 +116,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       data: projectLoading
         ? undefined
         : projectDefaultEnvironment
-          ? { defaultEnvironment: projectDefaultEnvironment }
-          : {},
+          ? { id: projectId, defaultEnvironment: projectDefaultEnvironment }
+          : { id: projectId },
       isSuccess: !projectLoading && !projectFailure,
       isError: projectFailure,
       refetch: retryProject,
@@ -258,6 +262,7 @@ describe('DelegationLauncher', () => {
     environmentsLoading = false;
     projectLoading = false;
     projectFailure = false;
+    projectId = 'project:station';
     staleDiscoveryEnvironment = undefined;
     retryProject.mockReset();
     retryIdentity.mockReset();
@@ -1333,6 +1338,127 @@ describe('DelegationLauncher', () => {
       screen.getByRole('button', { name: 'Retry Project identity' }),
     );
     expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('a same-slug recreated Project blocks dispatch on the stale incarnation and never sends the old portable id', () => {
+    // Same Home, same slug, NEW local incarnation: the cached identity still
+    // names the deleted Project. The selected Project record owns the
+    // answer — mismatch is a named blocked state, no dispatch, no fallback.
+    projectId = 'project:station-recreated';
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Recreated draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(
+      screen.getByText(/changed on this Station since its placement/),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Recreated draft',
+    );
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-peer-b',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('correct association on fresh data restores placement for the recreated Project', () => {
+    projectId = 'project:station-recreated';
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const { rerender } = render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Recreated draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(
+      screen.getByText(/changed on this Station since its placement/),
+    ).toBeTruthy();
+    // The identity read resolves FRESH data whose association names the
+    // recreated incarnation: the mismatch clears and placement works, with
+    // the RECREATED Project's portable id — never the old one.
+    projectIdentity = {
+      ...singleRepoIdentity(),
+      identity: {
+        ...singleRepoIdentity().identity,
+        id: 'portable:station-recreated',
+      },
+      association: {
+        portableProjectId: 'portable:station-recreated',
+        localProjectId: 'project:station-recreated',
+        localProjectSlug: 'station',
+      },
+    };
+    rerender(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Recreated draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByText(/changed on this Station since its placement/),
+    ).toBeNull();
+    const delegate = screen.getByRole('button', { name: 'Delegate' });
+    expect(delegate).toHaveProperty('disabled', false);
+    fireEvent.submit(delegate.closest('form')!);
+    expect(mutateAsync).toHaveBeenCalledOnce();
+    const envelope = mutateAsync.mock.calls[0]![0] as Record<string, any>;
+    expect(envelope.input.target.workspace).toMatchObject({
+      kind: 'project-portable',
+      portableProjectId: 'portable:station-recreated',
+    });
   });
 
   test('a loading identity blocks peer dispatch until it resolves', () => {

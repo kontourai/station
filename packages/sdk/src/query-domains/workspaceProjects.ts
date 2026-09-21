@@ -249,16 +249,53 @@ export function useProjectQuery(
 }
 
 /**
+ * A fetched identity view names a DIFFERENT local Project incarnation than
+ * the one the reader expected (#480 identity-lifetime review). Thrown from
+ * inside the query so react-query records an ERROR, never a success: a
+ * same-Home same-slug delete/recreate (or a stale server/proxy answer) must
+ * not hand the old incarnation's portable id or resources to a caller that
+ * selected the replacement. Keying on the expected id keeps the OLD cache
+ * entry unreachable; this validation keeps a wrong PAYLOAD unreachable.
+ * Name+codes only — no server message text is trusted or relayed.
+ */
+export class ProjectIdentityIncarnationMismatchError extends Error {
+  readonly expectedLocalProjectId: string;
+  readonly actualLocalProjectId: string | undefined;
+  constructor(expected: string, actual: string | undefined) {
+    super(
+      'The Project on this Station changed since its placement details were opened. Retry to load the current Project.',
+    );
+    this.name = 'ProjectIdentityIncarnationMismatchError';
+    this.expectedLocalProjectId = expected;
+    this.actualLocalProjectId = actual;
+  }
+}
+
+/**
  * Portable identity of one Project on the captured Home/authority
  * (#480/#1964 placement). Same scope contract as {@link useProjectQuery}:
  * the key carries Home, authority and Project, so a late identity response
  * for a previous scope can never satisfy a new one. Consumes the
  * project-identity SDK subpath through the caller's captured requestScope —
  * never a global-origin read.
+ *
+ * Identity lifetime: a slug key alone cannot distinguish a Project
+ * incarnation from its delete/recreate replacement under the SAME slug, and
+ * react-query keeps the last success while refetching — so callers that know
+ * the local Project record they selected SHOULD pass
+ * `expectedProjectId`. It joins the cache key AND validates the response's
+ * `association.localProjectId`: a cached entry or late response from the
+ * previous incarnation is never delivered as success (typed
+ * {@link ProjectIdentityIncarnationMismatchError}, retried like any other
+ * error). Omitted (legacy callers) keeps the prior slug-keyed behavior
+ * byte-for-byte.
  */
 export function useProjectIdentityQuery(
   slug: string,
-  config?: ProjectReadQueryConfig<ProjectIdentityView>,
+  config?: ProjectReadQueryConfig<ProjectIdentityView> & {
+    /** The local Project id the caller selected; see the incarnations note. */
+    expectedProjectId?: string;
+  },
 ) {
   const candidate = config?.requestScope;
   const requestScope = isApiRequestScope(candidate)
@@ -266,6 +303,13 @@ export function useProjectIdentityQuery(
     : undefined;
   const scoped = requestScope !== undefined;
   const unavailable = config?.requireRequestScope === true && !scoped;
+  // Only a non-empty expected id may join the key: an empty one must never
+  // become a segment that merges distinct incarnations into one entry.
+  const expectedProjectId =
+    typeof config?.expectedProjectId === 'string' &&
+    config.expectedProjectId.length > 0
+      ? config.expectedProjectId
+      : undefined;
   const queryKey = unavailable
     ? ['projects', slug, 'identity', 'unavailable']
     : scoped
@@ -275,19 +319,42 @@ export function useProjectIdentityQuery(
           'identity',
           requestScope.apiBase,
           requestScope.authorityKey,
+          ...(expectedProjectId ? [expectedProjectId] : []),
         ]
-      : ['projects', slug, 'identity'];
+      : [
+          'projects',
+          slug,
+          'identity',
+          ...(expectedProjectId ? [expectedProjectId] : []),
+        ];
   return useApiQuery<ProjectIdentityView>(
     queryKey,
     async (signal) => {
-      if (unavailable) throw new StationRequestAuthorityError();
-      if (scoped)
-        return getProjectIdentity(requestScope.apiBase, slug, {
-          requestScope,
-          signal,
-        });
-      const apiBase = await _getApiBase();
-      return getProjectIdentity(apiBase, slug, { signal });
+      const load = () => {
+        if (unavailable)
+          return Promise.reject(new StationRequestAuthorityError());
+        if (scoped)
+          return getProjectIdentity(requestScope.apiBase, slug, {
+            requestScope,
+            signal,
+          });
+        return _getApiBase().then((apiBase) =>
+          getProjectIdentity(apiBase, slug, { signal }),
+        );
+      };
+      const view = await load();
+      // Response-side guard: even a fresh fetch that answers with the WRONG
+      // incarnation (stale server cache, proxy) is an error, never success.
+      if (
+        expectedProjectId &&
+        view?.association?.localProjectId !== expectedProjectId
+      ) {
+        throw new ProjectIdentityIncarnationMismatchError(
+          expectedProjectId,
+          view?.association?.localProjectId,
+        );
+      }
+      return view;
     },
     {
       ...config,

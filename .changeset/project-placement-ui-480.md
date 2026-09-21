@@ -6,7 +6,13 @@ Add `useProjectIdentityQuery(slug, config)` — the scoped React read for a
 Project's portable identity (#480). It follows the `useProjectQuery` scope
 contract (cache key carries API base, authority key and slug; a missing
 scope fails closed), consuming the `project-identity` subpath through the
-caller's captured request scope. Only a 404 carrying the
+caller's captured request scope. Callers that know the selected local
+Project record can pass `expectedProjectId`: it joins the cache key and
+validates the response's `association.localProjectId`, so a same-slug
+delete/recreate or stale server answer never delivers the previous
+incarnation's portable identity as success (typed
+`ProjectIdentityIncarnationMismatchError`, recoverable by refetch).
+Only a 404 carrying the
 `project_identity_not_prepared` wire code is a verified not-prepared
 Project — see `projectIdentityReadFailure` / `isProjectIdentityNotPrepared`;
 a 404 without that code (older server, proxy, removed Project), denial,

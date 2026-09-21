@@ -613,8 +613,16 @@ Reads a Project's portable identity for personal-peer placement (#480). It
 accepts the same scoped configuration as `useProjectQuery` — the cache key
 carries the API base, authority key and slug, so a late identity response
 for a previous Home or authority can never satisfy the current selection,
-and a missing scope fails closed instead of reading ambient state. The
-identity carries the portable Project id plus its public repository
+and a missing scope fails closed instead of reading ambient state. Callers
+that know the local Project record they selected should also pass
+`expectedProjectId`: it joins the cache key and validates the response's
+`association.localProjectId`, so a same-slug delete/recreate (or a stale
+server answer) never delivers the previous incarnation's portable id or
+resources as success — the read surfaces a typed
+`ProjectIdentityIncarnationMismatchError` and recovers through the
+ordinary refetch when fresh data carries the correct association. Omitted,
+the hook keeps its prior slug-keyed behavior. The identity carries the
+portable Project id plus its public repository
 labels/ids (no checkout paths, no credentials); the declared
 execution-root repository, else a sole repository, selects the executable
 resource, while multiple repositories require an explicit choice. Only a

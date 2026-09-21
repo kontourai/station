@@ -85,6 +85,8 @@ export const PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE =
   'Retry when ready \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
 export const PORTABLE_OFFER_UNVERIFIED_NOTICE =
   'Offer not verified from here \u2014 the selected Station confirms whether it currently offers this Project resource when the task is submitted.';
+export const PORTABLE_IDENTITY_STALE_INCARNATION_NOTICE =
+  'This Project changed on this Station since its placement details were opened. Nothing was sent; retry to load the current Project.';
 export const PORTABLE_AUTHORITY_STALE_NOTICE =
   'Station access changed before the task could start. The draft is kept; choose the Station again and retry.';
 
@@ -190,6 +192,11 @@ export function DelegationLauncher({
     refetch: retryIdentity,
   } = useScopedProjectIdentityQuery(projectSlug ?? '', {
     enabled: isOpen && Boolean(projectSlug),
+    // Identity-lifetime binding (#480 review): the selected Project's local
+    // id joins the cache key and validates the response, so a same-Home
+    // same-slug delete/recreate can never serve the previous incarnation's
+    // portable id or resources from cache or a late response.
+    expectedProjectId: project?.id,
   });
   const configuredEnvironmentId =
     project?.defaultEnvironment?.kind === 'saved'
@@ -400,7 +407,19 @@ export function DelegationLauncher({
     identityLoaded &&
     Boolean(portableProjectId) &&
     Boolean(resourceId);
-  const portableBlocked = portablePlacement && !portableReady;
+  // Defense-in-depth over the SDK key/response binding: cached success data
+  // (or a hook caller that did not pass expectedProjectId) could still name
+  // a previous incarnation of the SAME slug. The selected Project record is
+  // the owner of the answer — mismatch is a named blocked state, never a
+  // dispatch and never a fallback to slug/path/local.
+  const identityIncarnationMismatch = Boolean(
+    portablePlacement &&
+      identityLoaded &&
+      typeof project?.id === 'string' &&
+      projectIdentity?.association.localProjectId !== project.id,
+  );
+  const portableBlocked =
+    portablePlacement && (!portableReady || identityIncarnationMismatch);
   const portableResourceName = portableReady
     ? (identityResources.find((resource) => resource.id === resourceId)?.name ??
       resourceId)
@@ -708,6 +727,14 @@ export function DelegationLauncher({
               <span className="delegation-launcher__hint">
                 {PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE}
               </span>
+              <button type="button" onClick={() => void retryIdentity()}>
+                Retry Project identity
+              </button>
+            </div>
+          )}
+          {identityIncarnationMismatch && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_IDENTITY_STALE_INCARNATION_NOTICE}</span>
               <button type="button" onClick={() => void retryIdentity()}>
                 Retry Project identity
               </button>

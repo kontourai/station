@@ -604,6 +604,7 @@ export {
   type PluginSettingField,
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
+  ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
   type ProviderCommandDescriptor,

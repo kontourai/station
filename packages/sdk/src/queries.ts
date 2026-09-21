@@ -758,6 +758,7 @@ export {
   layoutCatalogRetryDelay,
   type ModelConnectionMutationInput,
   type ModelConnectionSmokeInput,
+  ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
   projectIdentityReadFailure,

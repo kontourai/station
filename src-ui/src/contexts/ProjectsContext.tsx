@@ -23,7 +23,17 @@ import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 type AppProjectReadConfig<T> = Omit<
   ProjectReadQueryConfig<T>,
   'requestScope' | 'requireRequestScope' | 'durableAuthorityId'
->;
+> & {
+  /**
+   * Identity-lifetime binding (#480 review), forwarded to
+   * `useProjectIdentityQuery`: the selected local Project record id joins
+   * the identity cache key and validates the response association, so a
+   * same-slug delete/recreate can never serve the previous incarnation.
+   * Meaningless to the list/detail reads; consumed only by
+   * `useScopedProjectIdentityQuery`.
+   */
+  expectedProjectId?: string;
+};
 
 /**
  * Canonical app-owner Project LIST read. Returns the full typed query result
