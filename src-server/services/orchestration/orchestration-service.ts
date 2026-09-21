@@ -55,6 +55,7 @@ import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -186,6 +187,11 @@ import {
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
 import {
+  type PortableExecutionConsentIdentity,
+  portableConsentOfStartedMetadata,
+  ReceiverExecutionRefusal,
+} from '../projects/project-contribution-service.js';
+import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
@@ -282,6 +288,7 @@ import {
 } from './session-authorization.js';
 import {
   createSessionCommandModule,
+  type ReceiverExecutionEffectAdmission,
   type SessionCommand,
   type SessionCommandContext,
   type SessionCommandImplementation,
@@ -361,6 +368,12 @@ interface OrchestrationDispatchInternalOptions {
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  /**
+   * #484 phase A: receiver-owned portable-execution recheck, awaited inside
+   * the provider-effect path (start/sendTurn) adjacent to the adapter
+   * invocation. Server-composed only; never reachable from an HTTP body.
+   */
+  receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
@@ -889,6 +902,129 @@ function stripReservedCapabilityMetadata<
   return { ...input, metadata, modelOptions } as T;
 }
 
+/**
+ * #484 phase A: verify the ACTUAL prepared provider input against the
+ * server-minted admitted coordinate adjacent to the adapter invocation. A
+ * re-derived cwd (e.g. `resolveStartSessionCwd` falling back to the compat
+ * project default), a re-targeted thread, or a project-slug mismatch
+ * refuses BEFORE the effect instead of executing a workspace the admission
+ * never named. Paths compare normalized (`~/x` and its spelled-out form
+ * are the same checkout); an absent cwd or project can never satisfy a
+ * present admission. No-op when the caller carries no admitted coordinate.
+ */
+function verifyReceiverStartEffect(
+  admission: ReceiverExecutionEffectAdmission | undefined,
+  actual: {
+    threadId: string;
+    cwd?: string;
+    projectSlug?: unknown;
+    consent?: PortableExecutionConsentIdentity | undefined;
+  },
+): void {
+  const admitted = admission?.admitted;
+  if (!admitted) return;
+  const actualCwd =
+    actual.cwd === undefined ? undefined : resolve(expandTilde(actual.cwd));
+  if (
+    actual.threadId !== admitted.threadId ||
+    actualCwd !== admitted.cwd ||
+    actual.projectSlug !== admitted.projectSlug
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  // A directory is NOT a project identity: when the prepared input states a
+  // portable consent identity it must be the admitted one — a different
+  // stated association is never silently mapped onto the admitted checkout.
+  if (
+    actual.consent &&
+    (actual.consent.portableProjectId !== admitted.portableProjectId ||
+      actual.consent.resourceId !== admitted.resourceId)
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+}
+
+/**
+ * #484 phase A follow-up: verify a turn against the ACTUAL persisted/runtime
+ * session — not just the turn input's thread id. A turn carries no
+ * cwd/project of its own, so the input coordinate cannot prove the provider
+ * state: the thread's live session may run in another checkout (a colliding
+ * reattach the start guard refused is gone, but a swapped/restored runtime
+ * row is still the wrong engine). The live read-model session wins; the
+ * durable `provider_session_state` row is the boot-recovery fallback. A
+ * session that cannot name its directory cannot prove it is the admitted
+ * checkout, so a missing cwd refuses.
+ *
+ * A directory is NOT a project identity: two projects can legitimately
+ * share a path. So the admitted portable association must ALSO be proven
+ * against the thread's OWN server-owned persisted consent
+ * (`persistedConsent`, any-marker-wins over the binding history — the read
+ * a metadata-dropping adapter cannot erase): absent or different
+ * portableProjectId/resourceId refuses, even when the cwd matches. An
+ * unmarked legacy session is never implicitly promoted into a portable
+ * project. `startedMeta` is the latest `session.configured`/
+ * `session.started` metadata when the caller has it: a STATED project or
+ * consent identity there must agree too (a different stated association is
+ * never silently mapped), but the authoritative proof is the persisted
+ * history, not the latest event alone — adapters publish `session.configured`
+ * with reconstructed metadata that can omit the marker.
+ */
+function verifyReceiverTurnEffect(
+  admitted: NonNullable<ReceiverExecutionEffectAdmission['admitted']>,
+  actualSession: { threadId?: string; cwd?: string } | undefined,
+  startedMeta: Record<string, unknown> | undefined,
+  persistedConsent: PortableExecutionConsentIdentity | undefined,
+): void {
+  const actualCwd =
+    actualSession?.cwd === undefined
+      ? undefined
+      : resolve(expandTilde(actualSession.cwd));
+  if (
+    actualSession?.threadId !== admitted.threadId ||
+    actualCwd !== admitted.cwd
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  if (
+    !persistedConsent ||
+    persistedConsent.portableProjectId !== admitted.portableProjectId ||
+    persistedConsent.resourceId !== admitted.resourceId
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  const metaProject = startedMeta?.projectSlug;
+  if (metaProject !== undefined && metaProject !== admitted.projectSlug)
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  const statedConsent = portableConsentOfStartedMetadata(startedMeta);
+  if (
+    statedConsent &&
+    (statedConsent.portableProjectId !== admitted.portableProjectId ||
+      statedConsent.resourceId !== admitted.resourceId)
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+}
+
+/**
+ * #484 phase A follow-up: the consent-marker reader lives in
+ * `project-contribution-service.ts` (shared with the session command
+ * module); the history scan below is the service's event-store application
+ * of it.
+ */
+
 /** True when `candidate` is `root` itself or a directory inside it. */
 function isWithinDirectory(root: string, candidate: string): boolean {
   if (candidate === root) return true;
@@ -1215,6 +1351,21 @@ export class OrchestrationService {
    */
   private readonly inFlightSteers = new Set<string>();
   private readonly sessionReadModel = new Map<string, ProviderSession>();
+  /**
+   * #484 phase A follow-up: per-thread verdict cache for the central
+   * portable fail-closed check. A thread's `session.started`/
+   * `session.configured` history is final before its first turn can
+   * dispatch (the service stamps its marker event in `recordStarted`,
+   * synchronously after the adapter's own publish and before the start
+   * outcome is accepted; recovery replays only already-durable history),
+   * so a cached verdict can never go stale within a session's lifetime.
+   * `undefined` = not yet read; never a persisted fact, only a lookup
+   * shortcut — the event store remains the authority.
+   */
+  private readonly portableConsentByThread = new Map<
+    string,
+    { portableProjectId: string; resourceId: string } | null
+  >();
   /**
    * Webhook turns retain their event/command receipts but never enter the
    * ordinary session inventory. The durable event metadata rehydrates this
@@ -2283,6 +2434,18 @@ export class OrchestrationService {
     if (!existing) {
       throw new Error('Credential profile recovery session is unavailable.');
     }
+    // #484 phase A follow-up: credential-recovery replays carry no
+    // admission context, and the caller follows this restart with a DIRECT
+    // `adapter.sendTurn` that bypasses dispatch — so a thread whose
+    // persisted binding carries portable consent refuses HERE, before any
+    // provider effect, instead of replaying a portable session the current
+    // offer never authorized. Unmarked (legacy/ordinary) sessions pass
+    // through byte-identical.
+    if (this.persistedPortableConsentOfThread(input.threadId))
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This portable task cannot continue without a current execution offer for its Project resource.',
+      );
     // archive#3476: resolve by the session's own persisted provider rather
     // than by probing every adapter for a live thread. This path REPLACES the
     // provider process wholesale, so it must work for a session restored at
@@ -3297,6 +3460,72 @@ export class OrchestrationService {
     return items;
   }
 
+  /**
+   * #484 phase A follow-up: the CENTRAL portable fail-closed read — the
+   * persisted server-minted consent marker for one thread, consulted by
+   * EVERY provider turn path that arrives without a fresh admission
+   * (ordinary dispatch, interrupted-turn recovery, credential redispatch:
+   * none of them carry admission context). A marked thread without
+   * admission refuses before the adapter runs; unmarked (legacy/ordinary)
+   * threads pass through byte-identical. Reads the event-store authority
+   * (latest `session.configured`, else latest `session.started`), never a
+   * parallel registry and never the request. Returns undefined when there
+   * is no store (harnesses without durability have no persisted marker) or
+   * no marker.
+   */
+  persistedPortableConsentOfThread(
+    threadId: string,
+  ): PortableExecutionConsentIdentity | undefined {
+    const cached = this.portableConsentByThread.get(threadId);
+    if (cached !== undefined) return cached ?? undefined;
+    // Any-marker-wins across the whole binding history: consent is stamped
+    // at portable start and can never be cleared by a later metadata rewrite
+    // or by omitting the marker — mirroring the reserved-key strip that
+    // keeps it off every public request. The map above is ONLY a lookup
+    // shortcut for this history scan: it never skips the admission recheck
+    // or any role/offer check, and its lifecycle is owned, not final —
+    // `forgetThreadState` (every deletion/quarantine/replacement path)
+    // retires the entry, and a fresh non-portable `recordStarted`
+    // supersedes a stale verdict, so a recreated thread id can never
+    // inherit a dead session's positive. The store stays the authority.
+    let consent: PortableExecutionConsentIdentity | undefined;
+    for (const event of this.options.eventStore?.listEvents(threadId) ?? []) {
+      const method = (event.payload as { method?: unknown })?.method;
+      if (method !== 'session.started' && method !== 'session.configured')
+        continue;
+      const metadata = (event.payload as { metadata?: unknown })?.metadata;
+      consent =
+        portableConsentOfStartedMetadata(
+          metadata && typeof metadata === 'object'
+            ? (metadata as Record<string, unknown>)
+            : undefined,
+        ) ?? consent;
+      if (consent) break;
+    }
+    this.portableConsentByThread.set(threadId, consent ?? null);
+    return consent;
+  }
+
+  /**
+   * #484 phase A follow-up: latest `session.configured`/`session.started`
+   * metadata for one thread, for the turn-effect identity check. Undefined
+   * when the thread has no binding events yet — the caller treats absence
+   * as "no further metadata signal", never as consent.
+   */
+  latestStartedMetadataOfThread(
+    threadId: string,
+  ): Record<string, unknown> | undefined {
+    const store = this.options.eventStore;
+    for (const method of ['session.configured', 'session.started'] as const) {
+      const payload = store?.latestEventByMethod(threadId, method)?.payload as
+        | { metadata?: unknown }
+        | undefined;
+      if (payload?.metadata && typeof payload.metadata === 'object')
+        return payload.metadata as Record<string, unknown>;
+    }
+    return undefined;
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
@@ -4279,8 +4508,22 @@ export class OrchestrationService {
             );
         },
         requireAdapter: (provider) => this.requireAdapter(provider),
-        materializeRestoredSession: (threadId, admission) =>
-          this.materializeRecoveredSession(threadId, admission),
+        materializeRestoredSession: (threadId, admission, receiverAdmission) =>
+          this.materializeRecoveredSession(
+            threadId,
+            admission,
+            receiverAdmission,
+          ),
+        // #484 phase A follow-up: the reattach effect's persisted
+        // portable-binding read — the service's own event-store authority
+        // (consent history + latest binding metadata), never a parallel
+        // registry and never the request.
+        persistedPortableBinding: {
+          consentOfThread: (threadId) =>
+            this.persistedPortableConsentOfThread(threadId),
+          latestStartedMetadata: (threadId) =>
+            this.latestStartedMetadataOfThread(threadId),
+        },
         prepareStart: async (input, context, internal, adapter) => {
           if (!internal?.skipModelOptionSupportCheck) {
             const unsupported = unsupportedModelOptionKeys(
@@ -4310,8 +4553,16 @@ export class OrchestrationService {
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
+            // #484 phase A: the receiver admission's server-minted admitted
+            // coordinate binds the portable start the same way a
+            // provisioned worktree binds a foreground one — so a non-default
+            // bound resource path (outside the compat project default) is
+            // admitted rather than re-derived, and never forged: the
+            // coordinate arrives only via internal options, and the effect
+            // closure below verifies the prepared input against it.
             internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace),
+              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+              internal?.receiverExecutionAdmission?.admitted,
             this.options.resolveProjectSessionDirectory,
           );
           if (internal?.reviewIsolation) {
@@ -4343,6 +4594,21 @@ export class OrchestrationService {
                 ...startInput.metadata,
                 conversationId: internal.conversationIdentity.conversationId,
                 environmentId: internal.conversationIdentity.environmentId,
+              },
+            };
+          }
+          // #484 phase A: re-stamp the server-minted portable consent
+          // marker after the reserved-key strip (which removed any
+          // caller-forged value) so the persisted session binding carries
+          // the exact consent identity continuation paths enforce.
+          if (internal?.portableExecutionConsent) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                  ...internal.portableExecutionConsent,
+                },
               },
             };
           }
@@ -4406,6 +4672,49 @@ export class OrchestrationService {
                   internal?.sessionStartAdmission,
                 ),
               );
+            // #484 phase A: the receiver-owned offer/binding recheck runs
+            // INSIDE the provider-effect path — after every preceding await
+            // and adjacent to the adapter invocation — so a withdrawn offer
+            // or lost binding refuses instead of starting a session it no
+            // longer authorizes. The ACTUAL prepared input is then verified
+            // against the admitted coordinate (a re-derived cwd or
+            // re-targeted thread refuses BEFORE the adapter runs).
+            // Carried as the effect closure passed into the foreground
+            // admission when both are present, so neither guard is bypassed.
+            // The admitted coordinate is OWNED (snapshotted) before the
+            // recheck await — the post-await verify must answer for the
+            // association the effect was admitted for, never a mutated one.
+            const invokeWithReceiverAdmission = () => {
+              const startAdmission = internal?.receiverExecutionAdmission;
+              const admittedSnapshot = startAdmission?.admitted
+                ? { ...startAdmission.admitted }
+                : undefined;
+              return startAdmission
+                ? startAdmission
+                    .recheck()
+                    .then(() =>
+                      verifyReceiverStartEffect(
+                        admittedSnapshot
+                          ? {
+                              admitted: admittedSnapshot,
+                              recheck: startAdmission.recheck,
+                            }
+                          : undefined,
+                        {
+                          threadId: input.threadId,
+                          cwd: input.cwd,
+                          projectSlug: input.metadata?.projectSlug,
+                          consent: portableConsentOfStartedMetadata(
+                            input.metadata && typeof input.metadata === 'object'
+                              ? (input.metadata as Record<string, unknown>)
+                              : undefined,
+                          ),
+                        },
+                      ),
+                    )
+                    .then(invoke)
+                : invoke();
+            };
             session = await (internal?.foregroundInvocationAdmission
               ? internal.foregroundInvocationAdmission.invoke(
                   'start',
@@ -4415,9 +4724,9 @@ export class OrchestrationService {
                     agentId: input.metadata?.agentSlug,
                     projectSlug: input.metadata?.projectSlug,
                   },
-                  invoke,
+                  invokeWithReceiverAdmission,
                 )
-              : invoke());
+              : invokeWithReceiverAdmission());
           } finally {
             admissionLease?.release();
           }
@@ -4426,13 +4735,46 @@ export class OrchestrationService {
           });
           return session;
         },
-        recordStarted: (adapter, input) =>
+        recordStarted: (adapter, input) => {
           this.modelLaunch.recordAcceptedModelLaunchPlan(
             adapter,
             this.modelLaunch.modelLaunchPlanFromInput(input),
             input.resumeCursor === undefined ? 'start' : 'resume',
             this.modelLaunch.modelLaunchRequestedOverrideFromInput(input),
-          ),
+          );
+          // #484 phase A follow-up: the SERVICE durably stamps the
+          // server-minted portable consent marker as its own
+          // `session.configured` event — not via the adapter — so the
+          // persisted binding carries the exact consent identity even
+          // when the adapter drops or reconstructs `input.metadata` in
+          // its own `session.started` publish. Spreads the prepared
+          // start metadata (already reserved-stripped and consent
+          // re-stamped in `prepareStart`, so no public caller can forge
+          // or clear it) so binding keys and project identity ride
+          // along. Only for portable starts; legacy starts publish
+          // nothing new here.
+          const consent = portableConsentOfStartedMetadata(input.metadata);
+          if (consent) {
+            this.portableConsentByThread.set(input.threadId, consent);
+            this.projectAndPublishEvent({
+              eventId: crypto.randomUUID(),
+              provider: adapter.provider,
+              threadId: input.threadId,
+              createdAt: new Date().toISOString(),
+              method: 'session.configured',
+              sessionId: input.threadId,
+              ...(input.cwd ? { cwd: input.cwd } : {}),
+              metadata: { ...input.metadata },
+            });
+          } else {
+            // A fresh non-portable start supersedes any cached verdict for
+            // this thread id: the prepared metadata just survived the
+            // reserved-key strip with no consent re-stamp, so no portable
+            // execution begins here, and a recreated id must not inherit a
+            // dead session's positive.
+            this.portableConsentByThread.delete(input.threadId);
+          }
+        },
         ensureStartedSessionCurrent: async (adapter, session, signal) => {
           if (signal?.aborted) {
             await this.adapterRetirement.cleanupObsoleteStartedSession(
@@ -4777,8 +5119,16 @@ export class OrchestrationService {
             // webhooks, Discord, delegated-task dispatch and continue, and
             // the recovery coordinator's own replay — because every one of
             // them ends at `dispatch({ type: 'sendTurn' })`.
+            // #484 phase A follow-up: a turn carrying a fresh portable
+            // admission authorizes the spawn it may need (the service
+            // rechecks and verifies at the spawn effect); without one a
+            // marked thread refuses before spawning.
             materializeSession: (threadId) =>
-              this.materializeRecoveredSession(threadId),
+              this.materializeRecoveredSession(
+                threadId,
+                undefined,
+                internal?.receiverExecutionAdmission,
+              ),
           });
           const {
             reviewIsolation: _untrustedReviewIsolation,
@@ -5287,6 +5637,77 @@ export class OrchestrationService {
                       throw new SessionTurnStartIndeterminateError();
                     }
                   };
+                  // #484 phase A follow-up: the receiver-owned offer/binding
+                  // recheck runs INSIDE the turn-effect path, adjacent to
+                  // the adapter sendTurn invocation — a revocation that
+                  // lands after the session start still refuses before the
+                  // provider effect. The admitted coordinate is OWNED
+                  // (snapshotted) before the recheck await, and the
+                  // post-await verify answers against the ACTUAL
+                  // persisted/runtime session — never the turn input's
+                  // bare thread id, which cannot prove provider state.
+                  // Without admission (ordinary dispatch, interrupted-turn
+                  // recovery, credential redispatch — none carry admission
+                  // context) the CENTRAL fail-closed applies: a thread
+                  // whose persisted binding carries portable consent
+                  // refuses here instead of executing a portable session
+                  // the current offer never authorized.
+                  const invokeWithReceiverAdmission = () => {
+                    const turnAdmission = internal?.receiverExecutionAdmission;
+                    const admittedSnapshot = turnAdmission?.admitted
+                      ? { ...turnAdmission.admitted }
+                      : undefined;
+                    if (!turnAdmission) {
+                      if (
+                        this.persistedPortableConsentOfThread(
+                          turnInput.threadId,
+                        )
+                      )
+                        throw new ReceiverExecutionRefusal(
+                          'receiver_execution_not_offered',
+                          'This portable task cannot continue without a current execution offer for its Project resource.',
+                        );
+                      return invoke();
+                    }
+                    if (
+                      admittedSnapshot &&
+                      turnInput.threadId !== admittedSnapshot.threadId
+                    )
+                      throw new ReceiverExecutionRefusal(
+                        'receiver_execution_unavailable',
+                        'The offered Project resource is unavailable.',
+                      );
+                    if (!admittedSnapshot)
+                      return turnAdmission.recheck().then(invoke);
+                    return turnAdmission
+                      .recheck()
+                      .then(() => {
+                        const live = this.sessionReadModel.get(
+                          turnInput.threadId,
+                        );
+                        const persisted =
+                          live ??
+                          this.options.eventStore?.readSessionByThread(
+                            turnInput.threadId,
+                          );
+                        verifyReceiverTurnEffect(
+                          admittedSnapshot,
+                          persisted
+                            ? {
+                                threadId: persisted.threadId,
+                                cwd: persisted.cwd,
+                              }
+                            : undefined,
+                          this.latestStartedMetadataOfThread(
+                            turnInput.threadId,
+                          ),
+                          this.persistedPortableConsentOfThread(
+                            turnInput.threadId,
+                          ),
+                        );
+                      })
+                      .then(invoke);
+                  };
                   return internal?.foregroundInvocationAdmission
                     ? internal.foregroundInvocationAdmission.invoke(
                         adapter.provider === 'station-agent'
@@ -5304,9 +5725,9 @@ export class OrchestrationService {
                             internal.foregroundInvocationAdmission.project.slug,
                           message: turnInput.displayInput ?? turnInput.input,
                         },
-                        invoke,
+                        invokeWithReceiverAdmission,
                       )
-                    : invoke();
+                    : invokeWithReceiverAdmission();
                 },
                 await (async () => {
                   const persisted =
@@ -6498,6 +6919,12 @@ export class OrchestrationService {
     this.threadProviders.delete(threadId);
     this.sessionReadModel.delete(threadId);
     this.sessionConnectionIds.delete(threadId);
+    // #484 phase A follow-up: the portable-consent verdict is per-incarnation,
+    // not per-id — every deletion/quarantine/replacement path converges here,
+    // so the cache retires here unconditionally. A recreated thread id
+    // re-derives from the store (or records a fresh verdict at start) and can
+    // never inherit a dead session's positive.
+    this.portableConsentByThread.delete(threadId);
     this.sessionAuthz.forgetTenantContext(threadId);
     if (divergent.policyThreads) this.flowPolicy.forgetPolicyBinding(threadId);
     if (divergent.flowBoundThreads) this.flowPolicy.forgetFlowBinding(threadId);
@@ -7209,12 +7636,14 @@ export class OrchestrationService {
   private materializeRecoveredSession(
     threadId: string,
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+    receiverAdmission?: ReceiverExecutionEffectAdmission,
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
     const started = this.materializeRecoveredSessionOnce(
       threadId,
       admission,
+      receiverAdmission,
     ).finally(() => {
       this.materializingSessions.delete(threadId);
     });
@@ -7225,6 +7654,7 @@ export class OrchestrationService {
   private async materializeRecoveredSessionOnce(
     threadId: string,
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+    receiverAdmission?: ReceiverExecutionEffectAdmission,
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
@@ -7238,6 +7668,37 @@ export class OrchestrationService {
     }
     const adapter = this.options.adapterRegistry.get(session.provider);
     if (!adapter) return undefined;
+    // #484 phase A follow-up: ENGINE START is itself a provider effect for
+    // ACP/Codex/plugin engines, not harmless runtime allocation — spawning
+    // one for a portable session no current offer authorizes is the exact
+    // wrong-resource execution the effect guards exist to prevent. A thread
+    // whose persisted binding carries portable consent materializes ONLY
+    // under a fully validated fresh admission: the admitted coordinate is
+    // OWNED before the recheck await, the recheck runs adjacent to the
+    // spawn, and the dormant row answers for the admitted association
+    // (thread + exact cwd + required consent identity + stated project).
+    // Without admission the spawn refuses BEFORE any adapter start/adopt/
+    // process spawn. The refusal retains the persisted record and
+    // resumeCursor untouched — the session stays dormant and re-routable,
+    // never quarantined or closed. Legacy/unmarked recovery is
+    // byte-identical.
+    const recoveredAdmitted = receiverAdmission?.admitted
+      ? { ...receiverAdmission.admitted }
+      : undefined;
+    if (recoveredAdmitted && receiverAdmission) {
+      await receiverAdmission.recheck();
+      verifyReceiverTurnEffect(
+        recoveredAdmitted,
+        { threadId: session.threadId, cwd: session.cwd },
+        this.latestStartedMetadataOfThread(threadId),
+        this.persistedPortableConsentOfThread(threadId),
+      );
+    } else if (this.persistedPortableConsentOfThread(threadId)) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_not_offered',
+        'This portable task cannot continue without a current execution offer for its Project resource.',
+      );
+    }
     const tenantExecutionContext =
       this.sessionAuthz.tenantContextFor(threadId) ??
       session.tenantExecutionContext;

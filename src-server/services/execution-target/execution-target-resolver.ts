@@ -78,6 +78,35 @@ export interface ExecutionTargetResolverDependencies {
     slug: string,
   ) => Promise<ResolvedProjectView | undefined>;
   /**
+   * #484 phase A: the receiver-side owner of the `project-portable` intent.
+   * Receives the portable Project id + resource id EXACTLY as the caller
+   * sent them and answers with the ADMITTED receiver-local project — the
+   * implementation (the contribution service's `authorizeReceiverExecution`)
+   * refuses unless the operator currently offers execution for exactly this
+   * pair and the resource is currently bound. Optional: a composition that
+   * does not wire it refuses the portable intent outright rather than
+   * falling back to a slug/path resolution.
+   */
+  getPortableProject?: (
+    access: EnvironmentAccess,
+    portableProjectId: string,
+    resourceId: string,
+  ) => Promise<
+    | (ResolvedProjectView & {
+        slug: string;
+        /**
+         * #484 phase A: the admission's checked canonical path for the
+         * EXACT requested resource, and the manifest execution root when
+         * it selects that resource. The workspace resolves from
+         * `executionRoot ?? resourcePath ?? workingDirectory` — never
+         * from the compat default alone.
+         */
+        resourcePath?: string;
+        executionRoot?: string;
+      })
+    | undefined
+  >;
+  /**
    * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2) —
    * the fallback a project that names no workspace mode of its own lands on,
    * ahead of `'shared'`.
@@ -286,6 +315,51 @@ async function resolveWorkspace(
         // expanded form, and the continuation guard compares the two as
         // strings. `verifiedProjectPath` stays outside it — remote path.
         cwd: access.verifiedProjectPath ?? resolve(expandTilde(cwd)),
+      },
+    };
+  }
+
+  if (workspace.kind === 'project-portable') {
+    // #484 phase A: the portable intent has NO caller-owned address — no
+    // slug, no cwd, no isolation override. The whole workspace resolves
+    // from the receiver-owned admission; a composition without one refuses
+    // instead of falling back.
+    if (!deps.getPortableProject) {
+      throw new Error(
+        'Portable execution is not admitted by this Station: no offer admission is wired.',
+      );
+    }
+    const project = await deps.getPortableProject(
+      access,
+      workspace.portableProjectId,
+      workspace.resourceId,
+    );
+    // #484 phase A: the admitted EXACT path wins over the compat default —
+    // a non-default bound repo (or a repository-relative execution root)
+    // resolves elsewhere, and starting the default checkout would execute
+    // the wrong repository. `workingDirectory` remains the last-resort
+    // fallback only for admissions minted before the exact path existed.
+    const rawCwd =
+      project?.executionRoot ??
+      project?.resourcePath ??
+      project?.workingDirectory;
+    const exactCwd = rawCwd ? resolve(expandTilde(rawCwd)) : undefined;
+    if (!project || !exactCwd) {
+      throw new Error(
+        'The offered Project resource is unavailable for portable execution',
+      );
+    }
+    return {
+      workspace: {
+        kind: 'project',
+        projectSlug: project.slug,
+        cwd: exactCwd,
+        workspaceIsolation: {
+          mode: resolveWorkspaceIsolationMode(
+            project.defaultWorkspaceIsolation,
+            await deps.getStationDefaultWorkspaceIsolation?.(access),
+          ),
+        },
       },
     };
   }

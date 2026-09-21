@@ -1342,8 +1342,70 @@ receiver-owned offer. It is not shared-human membership authorization.
 Disabled or unnamed queries return no association or inventory. Offered entries
 carry the stored binding `verifiedAt`, or `null` for the compatibility working
 directory; `projectedAt` is never substituted for source observation time.
-This projection does not invoke a provider or authorize a Task attempt. Receiver
-admission must recheck it immediately before execution in the next #484 slice.
+This projection does not invoke a provider or authorize a Task attempt. The
+explicit execution mode below uses a separate receiver admission.
+
+### Explicit portable execution requests
+
+For already-enrolled personal peer Stations, a delegation can select the
+receiver's offered resource without sending a receiver-local directory:
+
+```json
+{
+  "prompt": "Inspect the selected checkout",
+  "target": {
+    "environment": { "kind": "saved", "id": "receiver-environment-id" },
+    "agent": "receiver-agent-id",
+    "workspace": {
+      "kind": "project-portable",
+      "portableProjectId": "shared-project-id",
+      "resourceId": "git.example.org/team/repository"
+    }
+  }
+}
+```
+
+Submit this body through the authenticated `POST /api/orchestration/delegations`
+route on the controlling Station. Enroll and verify the peer through the existing
+pairing and saved-peer workflow first. Both endpoints must support the
+`portableExecutionOffers` handshake capability. Prepare/attach the portable
+Project identity explicitly, bind the receiver's checkout, and have the receiver
+operator enable that exact resource through `PUT /api/project-contributions/offer`.
+The offer body requires `portableProjectId`, the receiver's `localProjectId`,
+`resourceId`, `enabled`, and `expected` (the previous offer, or `null` when absent).
+A stale offer update is a conflict, never an overwrite.
+
+The controller needs no local execution offer. The receiver resolves the exact
+portable Project/resource association, uses the checked resource directory and
+its applicable repository-relative execution root, and checks current consent
+and request authority adjacent to provider start and turn dispatch. Replacing
+the Project, manifest, binding or execution-root selection invalidates the
+captured admission even when the new directory has the same path. A delegation
+arriving from a peer cannot be forwarded onward with the receiver's saved peer
+credentials.
+
+Named 403 outcomes are `receiver_execution_not_offered`,
+`receiver_execution_unavailable`, `receiver_execution_forwarding_refused`, and
+`receiver_execution_authority_changed`. The sender rechecks its own request
+authority after peer discovery and immediately before forwarding.
+An older receiver without the capability and direct SSH portable dispatch are
+refused; neither substitutes a directory or local execution. Ordinary existing
+non-portable requests retain their current behavior.
+
+This mode narrows execution by explicit consent within existing personal-peer
+authority. It does not make a broad peer credential suitable for an invited
+collaborator, grant Project membership, or complete restricted shared-person
+execution. Portable sessions persist their server-issued association; currently
+continuation and recovery without a fresh admission are refused before provider
+effects. Fresh continuation admission, durable attempts, cancellation and
+reconnect reconciliation remain separate work. A resource binding can supply
+its checked directory without a legacy Project working directory. The receiver
+retains its Project and Station workspace-isolation policy: portable worktree
+execution currently refuses before provisioning or provider effects instead of
+silently selecting a shared checkout. Admission-backed worktree provisioning
+remains required work in #483/#484. Consult the live issues for
+qualification evidence; API and service tests do not prove two physical machines
+or independent people.
 
 ### 4.7 The backing view (sketch, not a full design)
 

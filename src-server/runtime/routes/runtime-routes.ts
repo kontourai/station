@@ -278,6 +278,7 @@ import {
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
   resolveClientOriginForRequest,
+  resolveInboundDeviceKindForRequest,
 } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -2704,6 +2705,19 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // #484 phase A: one lazy receiver-side admission service over the SAME
+  // pinned stores the contribution projection mount composes below (both
+  // mount inside this function; the closure only runs at request time).
+  let receiverContributionService: ProjectContributionService | undefined;
+  const receiverContributionServiceFor = () =>
+    (receiverContributionService ??= new ProjectContributionService({
+      source: context.storageAdapter,
+      manifests: contributionResolution.manifests as ProjectManifestStore,
+      bindings: contributionResolution.bindings as ProjectBindingsStore,
+      resolver: contributionResolution.resolver as ProjectResourceResolver,
+      config: context.configLoader,
+    }));
+
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -2747,6 +2761,23 @@ export function configureRuntimeRoutes(
         delegateTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+        ),
+      // #484 phase A: the receiver's offer admission for the explicit
+      // portable-execution intent, over the SAME contribution stores the
+      // projection mount uses.
+      authorizeReceiverExecution: (input, authorityCurrent) =>
+        receiverContributionServiceFor().authorizeReceiverExecution(
+          input,
+          authorityCurrent,
+        ),
+      // #484 no-onward-hop: the inbound credential's server-owned
+      // paired-device kind via the canonical composition (the SAME
+      // `identifyDevice` lookup the principal resolver above uses) —
+      // never body, userId, or metadata. `undefined` for non-device
+      // callers (operator, internal): they are never peers.
+      resolveInboundDeviceKind: (c) =>
+        resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
+          context.environmentSecurityService.identifyDevice(credential),
         ),
       executeForegroundMessage: (input) =>
         executeExecutionTargetMessage(

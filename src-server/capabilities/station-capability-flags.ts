@@ -35,6 +35,13 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // src-server/security/pairing-route-scopes.ts,
   // src-server/services/ssh/device-pairing-service.ts.
   scopedPairing: true,
+  // #484 phase A: the receiver understands the `project-portable` execution
+  // workspace intent and admits it ONLY through the operator's offer plus a
+  // currently-bound resource — never a local slug/path fallback. A static
+  // protocol fact about the admission surface (the handshake is public and
+  // unauthenticated; what is actually offered is readable only after
+  // authentication, from the contribution projection).
+  portableExecutionOffers: true,
   // Fleet inference (archive#1398): "this build understands the
   // `inference:invoke` pairing-scope token" (docs/design/inference-fleet.md
   // §3.3 point 2). A STATIC PROTOCOL FACT, never a participation signal —
