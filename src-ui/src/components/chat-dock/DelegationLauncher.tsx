@@ -83,14 +83,6 @@ export const PORTABLE_IDENTITY_UNAVAILABLE_NOTICE =
   'This Project\u2019s placement details couldn\u2019t be loaded.';
 export const PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE =
   'Retry when ready \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
-/**
- * Conditional setup help for an UNVERIFIED 404 only (#480 review): the read
- * may mean "never prepared", but it equally means an old Station without
- * the identity endpoint, a proxy 404, or a removed Project — so this offers
- * the prepare command as a possibility, never as the diagnosis.
- */
-export const PORTABLE_IDENTITY_MAYBE_UNPREPARED_HINT =
-  'If this Project has simply never had an identity prepared on this Station, `station projects prepare-identity <slug>` creates one \u2014 then retry.';
 export const PORTABLE_OFFER_UNVERIFIED_NOTICE =
   'Offer not verified from here \u2014 the selected Station confirms whether it currently offers this Project resource when the task is submitted.';
 export const PORTABLE_AUTHORITY_STALE_NOTICE =
@@ -119,12 +111,12 @@ export function projectIdentityFailureKind(
 
 /**
  * A 404 that verifies nothing — an old Station without the identity
- * endpoint, a proxy 404, a non-JSON 404 body, or a removed Project. Gets
- * retry plus conditional setup help, never an absence claim.
+ * endpoint, a proxy 404, a non-JSON 404 body, or a removed Project. Treated
+ * exactly like any other unavailable read: retry/access guidance only,
+ * never an absence claim and never speculative setup help (#480 final
+ * review — the unverified 404 has no established diagnosis, so naming the
+ * prepare command would expose implementation detail as if it were one).
  */
-export function isUnverifiedIdentityNotFound(error: unknown): boolean {
-  return projectIdentityReadFailure(error) === 'not-found-unverified';
-}
 
 type PlacementResource = {
   id: string;
@@ -396,9 +388,6 @@ export function DelegationLauncher({
   const portableIdentityMissing = identityFailureKind === 'missing';
   const portableIdentityDenied = identityFailureKind === 'denied';
   const portableIdentityUnavailable = identityFailureKind === 'unavailable';
-  // Unverified 404 only: conditional setup help without claiming absence.
-  const identityMaybeUnprepared =
-    portableIdentityFailure && isUnverifiedIdentityNotFound(identityError);
   const portableResourceMissing =
     portablePlacement && identityLoaded && identityResources.length === 0;
   const portableResourceChoiceRequired =
@@ -719,11 +708,6 @@ export function DelegationLauncher({
               <span className="delegation-launcher__hint">
                 {PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE}
               </span>
-              {identityMaybeUnprepared && (
-                <span className="delegation-launcher__hint">
-                  {PORTABLE_IDENTITY_MAYBE_UNPREPARED_HINT}
-                </span>
-              )}
               <button type="button" onClick={() => void retryIdentity()}>
                 Retry Project identity
               </button>

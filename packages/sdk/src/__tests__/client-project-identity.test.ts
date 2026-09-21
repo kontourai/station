@@ -329,9 +329,15 @@ describe('Project identity client', () => {
 
     test.each([
       { name: 'denial', error: Object.assign(new Error('x'), { status: 401 }) },
-      { name: 'forbidden', error: Object.assign(new Error('x'), { status: 403 }) },
+      {
+        name: 'forbidden',
+        error: Object.assign(new Error('x'), { status: 403 }),
+      },
       { name: 'transport failure', error: new TypeError('fetch failed') },
-      { name: 'server failure', error: Object.assign(new Error('x'), { status: 503 }) },
+      {
+        name: 'server failure',
+        error: Object.assign(new Error('x'), { status: 503 }),
+      },
       { name: 'malformed body', error: new Error('cannot validate') },
       { name: 'no error', error: undefined },
     ])('$name is never a verified absence', ({ error }) => {

@@ -1131,7 +1131,7 @@ describe('DelegationLauncher', () => {
     expect(retryIdentity).toHaveBeenCalledOnce();
   });
 
-  test('a removed Project 404 stays unavailable with conditional help, never an absence claim', () => {
+  test('a removed Project 404 stays unavailable with retry only, never an absence or setup claim', () => {
     identityFailure = true;
     // Removed Project: a 404 carrying the GENERIC storage code — the same
     // status as genuine missing, a different verified fact. The absence
@@ -1169,8 +1169,9 @@ describe('DelegationLauncher', () => {
     expect(screen.getByText(/couldn\u2019t be loaded/)).toBeTruthy();
     // No absence claim...
     expect(screen.queryByText(/has no portable identity/)).toBeNull();
-    // ...but conditional setup help as a stated possibility.
-    expect(screen.getByText(/never had an identity prepared/)).toBeTruthy();
+    // ...and no speculative setup help: an unverified 404 has no
+    // established diagnosis, so only retry/access guidance is shown.
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
       'disabled',
       true,
@@ -1186,7 +1187,7 @@ describe('DelegationLauncher', () => {
     expect(retryIdentity).toHaveBeenCalledOnce();
   });
 
-  test('an unknown-endpoint 404 stays unavailable with conditional help', () => {
+  test('an unknown-endpoint 404 stays unavailable with retry only', () => {
     identityFailure = true;
     // Old Station without the identity endpoint, or a proxy 404 page: a 404
     // with no machine code at all.
@@ -1221,7 +1222,7 @@ describe('DelegationLauncher', () => {
     });
     expect(screen.getByText(/couldn\u2019t be loaded/)).toBeTruthy();
     expect(screen.queryByText(/has no portable identity/)).toBeNull();
-    expect(screen.getByText(/never had an identity prepared/)).toBeTruthy();
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
       'disabled',
       true,

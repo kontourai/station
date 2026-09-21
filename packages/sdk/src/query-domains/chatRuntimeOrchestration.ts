@@ -303,20 +303,48 @@ export async function delegateOrchestrationTask(
   return delegateTaskClient(resolvedApiBase, body, opts);
 }
 
+/**
+ * What `useDelegateOrchestrationTaskMutation`'s mutation function accepts.
+ * The plain `DelegateTaskInput` form is the ORIGINAL published shape
+ * (station-core 0.x, exported from the SDK barrel): it keeps its exact old
+ * behavior — the hook's `apiBase` default and the ambient authority, no
+ * captured scope — so existing consumers are unaffected. Placement callers
+ * (#480) use the explicit per-invocation envelope instead.
+ */
+export type DelegateOrchestrationTaskMutationVariables =
+  | DelegateTaskInput
+  | DelegateOrchestrationTaskInvocation;
+
+function isDelegateOrchestrationTaskInvocation(
+  variables: DelegateOrchestrationTaskMutationVariables,
+): variables is DelegateOrchestrationTaskInvocation {
+  return (
+    typeof variables === 'object' &&
+    variables !== null &&
+    'input' in variables &&
+    typeof (variables as DelegateOrchestrationTaskInvocation).input === 'object'
+  );
+}
+
 export function useDelegateOrchestrationTaskMutation(
   apiBase?: string,
   options?: MutationOptions<
     DelegatedTaskHandle,
-    DelegateOrchestrationTaskInvocation
+    DelegateOrchestrationTaskMutationVariables
   >,
 ) {
   return useMutation({
-    mutationFn: (invocation: DelegateOrchestrationTaskInvocation) => {
-      const scope = snapshotInvocationScope(invocation.requestScope);
-      const invocationApiBase = invocation.apiBase ?? apiBase;
+    mutationFn: (variables: DelegateOrchestrationTaskMutationVariables) => {
+      // Legacy published shape: the input IS the request body, resolved
+      // against the hook default and ambient authority exactly as before.
+      if (!isDelegateOrchestrationTaskInvocation(variables)) {
+        return delegateOrchestrationTask({ ...variables, apiBase });
+      }
+      const scope = snapshotInvocationScope(variables.requestScope);
+      const invocationApiBase = variables.apiBase ?? apiBase;
       return delegateOrchestrationTask(
         {
-          ...invocation.input,
+          ...variables.input,
           ...(invocationApiBase === undefined
             ? {}
             : { apiBase: invocationApiBase }),

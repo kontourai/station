@@ -202,6 +202,41 @@ describe('delegateOrchestrationTask per-invocation authority (#480 review)', () 
     });
   });
 
+  test('the legacy published input shape still dispatches against the hook default', async () => {
+    _setApiBase('https://ambient-legacy.example.test');
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(delegationSuccess());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(
+      () => useDelegateOrchestrationTaskMutation(HOME_A),
+      { wrapper: wrapperFor(client) },
+    );
+    // EXACTLY the pre-#480 call shape: a bare DelegateTaskInput, no envelope.
+    const handle = await result.current.mutateAsync({
+      prompt: 'Ship it legacy',
+      target: { environment: { kind: 'current' }, agent: agentId('codex') },
+    });
+
+    expect(handle.taskId).toBe('task:1');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      { body?: unknown },
+    ];
+    // Old behavior preserved: hook apiBase default, ambient authority, and
+    // the public body is the input itself.
+    expect(url).toBe(`${HOME_A}${DELEGATIONS_PATH}`);
+    expect(JSON.parse(String(init.body))).toEqual({
+      prompt: 'Ship it legacy',
+      target: { environment: { kind: 'current' }, agent: 'codex' },
+    });
+  });
+
   test('the mutation honors per-invocation transport over later hook options', async () => {
     const client = new QueryClient({
       defaultOptions: { mutations: { retry: false } },

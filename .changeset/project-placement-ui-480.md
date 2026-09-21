@@ -14,11 +14,14 @@ transport and malformed responses stay errors and never read as absence.
 `StationHttpError` now preserves the envelope's machine `code` for
 status+code branching (never message-text sniffing).
 
-`useDelegateOrchestrationTaskMutation` now takes a per-invocation
-`{ input, apiBase?, requestScope? }` envelope: the captured Home address
-and authority scalars travel through the transport's authority guards and
-the public request body stays exactly `DelegateTaskInput` — a Home or
-credential rotation across the awaits refuses instead of dispatching the
-old intent under new credentials, and late hook-option changes cannot
-redirect an in-flight dispatch. `delegateOrchestrationTask` accepts an
-optional `ClientRequestOptions` second parameter.
+`useDelegateOrchestrationTaskMutation` keeps its published call shape — a
+plain `DelegateTaskInput` resolved against the hook's `apiBase` default and
+ambient authority, unchanged for existing consumers — and additionally
+accepts a per-invocation `{ input, apiBase?, requestScope? }` envelope: the
+captured Home address and authority scalars travel through the transport's
+authority guards and the public request body stays exactly
+`DelegateTaskInput` — a Home or credential rotation across the awaits
+refuses instead of dispatching the old intent under new credentials, and
+late hook-option changes cannot redirect an in-flight dispatch.
+`delegateOrchestrationTask` accepts an optional `ClientRequestOptions`
+second parameter.

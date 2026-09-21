@@ -621,7 +621,7 @@ resource, while multiple repositories require an explicit choice. Only a
 404 read carrying the not-prepared code is a verified not-prepared Project
 (prepare one explicitly before placing it); a 404 without that code — an
 older Station, a proxy, or a Project that no longer exists here — stays
-unavailable with retry and conditional setup help, never an absence claim.
+unavailable with retry, never an absence claim or speculative setup help.
 A denied, failed or malformed read refuses visibly and never reads as
 absence. Offer eligibility stays unverified until an authorized
 controller-side offer query exists — the receiving Station confirms on
@@ -629,13 +629,16 @@ submit.
 
 ### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
 
-Dispatches one delegated task. The mutation variable is a per-invocation
-envelope — `{ input, apiBase?, requestScope? }` — so the Home address and
-authority the caller captured are frozen for that dispatch: a rotation
+Dispatches one delegated task. The mutation variable is backwards
+compatible with the original published shape — a plain `DelegateTaskInput`,
+which resolves against the hook's `apiBase` default and the ambient
+authority exactly as before. The recommended form is the per-invocation
+envelope — `{ input, apiBase?, requestScope? }` — which freezes the Home
+address and authority the caller captured for that dispatch: a rotation
 across the awaits refuses instead of sending the old intent under new
 credentials, and a late option change cannot redirect an in-flight call.
-The public request body stays exactly `input` (prompt, target, optional
-parent task); the scope is transport-only and never sent.
+The public request body stays exactly the input (prompt, target, optional
+parent task) in both forms; the scope is transport-only and never sent.
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
