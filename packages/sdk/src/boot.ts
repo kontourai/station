@@ -76,42 +76,12 @@ export async function seedBootPayload(
     );
     return;
   }
-  const section = (name: string) =>
-    payload.sections[name]?.error ? undefined : payload.sections[name]?.data;
-  const seed = (key: readonly unknown[], data: unknown) => {
-    if (
-      (queryClient.getQueryState(key)?.dataUpdatedAt ?? 0) <
-      bootRequest.startedAt
-    )
-      queryClient.setQueryData(key, data);
-  };
-  const auth = section('auth');
-  if (auth !== undefined) seed(authStatusQueryKey(), auth);
-  const config = section('config');
-  if (config?.success) seed(configQueryKey(), config.data);
-  const capabilities = section('capabilities');
-  if (capabilities !== undefined)
-    seed(serverCapabilitiesQueryKey(), capabilities);
-  const branding = section('branding');
-  if (branding?.success) {
-    const data = branding.data ?? {};
-    seed(brandingQueryKey(), {
-      appName: data.name || 'Station',
-      logo: data.logo ?? null,
-      theme: data.theme ?? null,
-      welcomeMessage: data.welcomeMessage ?? null,
-    });
-  }
-  const agents = section('agents');
-  // station#3824: the value under `['agents']` is an AgentCatalogProjection,
-  // not the bare array the boot envelope carries. Built through the SAME
-  // mapping `fetchAgentCatalog` uses, so the seeded value and the fetched one
-  // cannot drift into different shapes again.
-  if (agents?.success) seed(agentsQueryKey(), toAgentCatalogProjection(agents));
-  const projects = section('projects');
-  if (projects?.success) seed(projectsQueryKey(), projects.data);
-  const models = section('models');
-  if (models?.success) seed(modelsQueryKey(), models.data);
+  await seedBootPayloadGuarded(
+    queryClient,
+    payload,
+    bootRequest.startedAt,
+    () => true,
+  );
 }
 
 export async function fetchAndSeedBootPayload(

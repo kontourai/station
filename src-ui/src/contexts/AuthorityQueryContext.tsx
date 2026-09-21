@@ -183,7 +183,7 @@ function createAuthorityClient(): QueryClient {
  * is only a focus/online-manager refcount and must NOT be called manually
  * alongside a provider unmount. See the module audit above.
  */
-export function retireAuthorityClient(queryClient: QueryClient): void {
+function retireAuthorityClient(queryClient: QueryClient): void {
   void queryClient.cancelQueries();
 }
 
