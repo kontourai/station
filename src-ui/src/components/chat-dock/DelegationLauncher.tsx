@@ -100,7 +100,7 @@ const PORTABLE_AUTHORITY_STALE_NOTICE =
  * and never invent absence or readiness. Branches on transport status +
  * machine code, never on message text.
  */
-export type ProjectIdentityFailureKind = 'missing' | 'denied' | 'unavailable';
+type ProjectIdentityFailureKind = 'missing' | 'denied' | 'unavailable';
 
 function projectIdentityFailureKind(
   error: unknown,
