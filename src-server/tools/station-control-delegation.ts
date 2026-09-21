@@ -913,7 +913,10 @@ function peerPortableRefusalFor(
   }
   if (status !== 403) return undefined;
   const code = payload?.code;
-  if (typeof code === 'string' && code in RECEIVER_EXECUTION_REFUSAL_COPY) {
+  if (
+    typeof code === 'string' &&
+    Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, code)
+  ) {
     return new ReceiverExecutionRefusal(
       code as ReceiverExecutionRefusal['code'],
       RECEIVER_EXECUTION_REFUSAL_COPY[code as ReceiverExecutionRefusal['code']],
@@ -923,7 +926,10 @@ function peerPortableRefusalFor(
     typeof payload?.error === 'object' && payload.error !== null
       ? payload.error.code
       : undefined;
-  if (nested === 'insufficient_scope') {
+  if (
+    payload?.error === 'insufficient_scope' ||
+    nested === 'insufficient_scope'
+  ) {
     return new ReceiverExecutionRefusal(
       'receiver_execution_authority_changed',
       RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
@@ -968,16 +974,10 @@ async function postPeerPortableDelegation<T>(
   if (!response.ok) {
     const refusal = peerPortableRefusalFor(response.status, payload);
     if (refusal) throw refusal;
-    throw new Error(
-      (typeof payload?.error === 'string' && payload.error) ||
-        unavailableMessage,
-    );
+    throw new Error(unavailableMessage);
   }
   if (!payload?.success || payload.data === undefined) {
-    throw new Error(
-      (typeof payload?.error === 'string' && payload.error) ||
-        unavailableMessage,
-    );
+    throw new Error(unavailableMessage);
   }
   return payload.data;
 }

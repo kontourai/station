@@ -3472,21 +3472,47 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
       );
     });
 
-    test('maps a peer insufficient_scope 403 to the authority-changed refusal', async () => {
-      installPortablePeerFetch(() =>
-        json({ error: { code: 'insufficient_scope' } }, 403),
-      );
-      const { delegateTask } = await import('../station-control-delegation.js');
-      const error = await delegateTask(portableInput()).catch(
-        (caught: unknown) => caught,
-      );
-      expect((error as { name?: string }).name).toBe(
-        'ReceiverExecutionRefusal',
-      );
-      expect((error as { code?: string }).code).toBe(
-        'receiver_execution_authority_changed',
-      );
-    });
+    test.each(['insufficient_scope', { code: 'insufficient_scope' }])(
+      'maps a peer insufficient_scope 403 (%j) to the authority-changed refusal',
+      async (errorBody) => {
+        installPortablePeerFetch(() => json({ error: errorBody }, 403));
+        const { delegateTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await delegateTask(portableInput()).catch(
+          (caught: unknown) => caught,
+        );
+        expect((error as { name?: string }).name).toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBe(
+          'receiver_execution_authority_changed',
+        );
+      },
+    );
+
+    test.each(['constructor', 'toString', '__proto__'])(
+      'rejects inherited property %s as an unknown refusal code',
+      async (code) => {
+        installPortablePeerFetch(() =>
+          json({ code, error: 'private peer diagnostic' }, 403),
+        );
+        const { delegateTask } = await import(
+          '../station-control-delegation.js'
+        );
+        const error = await delegateTask(portableInput()).catch(
+          (caught: unknown) => caught,
+        );
+        expect(error).toBeInstanceOf(Error);
+        expect((error as { name?: string }).name).not.toBe(
+          'ReceiverExecutionRefusal',
+        );
+        expect((error as { code?: string }).code).toBeUndefined();
+        expect((error as Error).message).toBe(
+          'The selected Station could not start the delegated task',
+        );
+      },
+    );
 
     test('does NOT launder an unknown peer 500 into an authorization refusal', async () => {
       installPortablePeerFetch(() =>
@@ -3499,7 +3525,9 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
       expect((error as { name?: string }).name).not.toBe(
         'ReceiverExecutionRefusal',
       );
-      expect((error as Error).message).toContain('database on fire');
+      expect((error as Error).message).toBe(
+        'The selected Station could not start the delegated task',
+      );
     });
   });
 });
