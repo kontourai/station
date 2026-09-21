@@ -392,7 +392,16 @@ try {
     station: {
       base: applicationOrigin,
       stationId: trust.stationId,
-      operator: { credential: security.credential },
+      operator: {
+        credential: security.credential,
+        credentialOrigin: applicationOrigin,
+        requireCredential: true,
+        headers: { Origin: applicationOrigin },
+        redirect: 'error',
+        timeoutMs: 15000,
+        maxResponseBytes: 128 * 1024,
+        signal: abort.signal,
+      },
     },
     browserOrigin,
     signal: abort.signal,

@@ -12,7 +12,10 @@ import {
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
 import { getAccountAuthentication } from '@kontourai/station-sdk/account-authentication';
-import { createProject } from '@kontourai/station-sdk/client';
+import {
+  type ClientRequestOptions,
+  createProject,
+} from '@kontourai/station-sdk/client';
 import {
   changeLocalAccount,
   getLocalAccounts,
@@ -44,7 +47,10 @@ async function close(server: Server) {
 type RelayAccountStationController = {
   base: string;
   stationId: string;
-  operator: { credential: string };
+  operator: ClientRequestOptions & {
+    credential: string;
+    credentialOrigin: string;
+  };
 };
 
 type RelayAccountProvisionInput<S extends RelayAccountStationController> = {
