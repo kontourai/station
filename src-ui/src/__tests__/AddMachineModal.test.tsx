@@ -32,13 +32,13 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
-  ConnectionManagerModal: ({ initialPanel }: { initialPanel: string }) => (
-    <div data-testid="connection-manager">{initialPanel}</div>
-  ),
-  // The SSH branch renders SshComputerCreatorDialog, which reads the device
-  // presentation and so reaches `useConnections` for the active api base.
-  // A factory mock makes any unlisted export a hard throw, so this owes the
-  // line even though nothing here asserts on the connection.
+  // The control goal fires the shared open-connections event instead of
+  // mounting this package's modal (composition boundary: the chooser lives
+  // in the replaceable protected tree). The SSH branch renders
+  // SshComputerCreatorDialog, which reads the device presentation and so
+  // reaches `useConnections` for the active api base. A factory mock makes
+  // any unlisted export a hard throw, so this owes the line even though
+  // nothing here asserts on the connection.
   useConnections: () => ({ apiBase: 'http://station.test' }),
 }));
 
@@ -73,14 +73,26 @@ describe('AddMachineModal', () => {
     ).toBeTruthy();
   });
 
-  test('the control branch opens the shared pairing panel', () => {
-    render(<AddMachineModal isOpen onClose={vi.fn()} />);
+  test('the control branch hands off to the stable recovery modal instead of mounting its own', async () => {
+    // Composition boundary: this chooser lives in the replaceable
+    // protected tree, so mounting a `ConnectionManagerModal` here would
+    // unmount the open access-request flow on the next authority
+    // activation transition. The control goal fires the shared
+    // open-connections event (the recovery shell owns the one modal state
+    // machine) and closes the chooser.
+    const { consumePendingConnectionsModal } = await import(
+      '../lib/connectionModalEvents'
+    );
+    const onClose = vi.fn();
+    render(<AddMachineModal isOpen onClose={onClose} />);
     fireEvent.click(
       screen.getByText('Control this Station from another device'),
     );
-    expect(screen.getByTestId('connection-manager').textContent).toBe(
-      'pair-host',
-    );
+    expect(consumePendingConnectionsModal()).toEqual({ mode: 'pair-host' });
+    // The chooser hands off and asks its owner to close (in production the
+    // owner flips `isOpen`; here `onClose` is a stub, so the chooser itself
+    // is still rendered — assert the handoff, not the owner's close).
+    expect(onClose).toHaveBeenCalled();
   });
 
   test('the Station branch opens the address dialog, and adding one persists it locally', async () => {

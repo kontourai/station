@@ -599,13 +599,39 @@ Fetches a single project by slug. It accepts the same scoped configuration as
 `useProjectsQuery`; the authority follows the slug in the key so existing
 `['projects', slug]` invalidation prefixes still reach every scoped detail.
 Unscoped callers retain the legacy key and ambient API-base behavior for
-compatibility. The first host migration covers the root Project catalogue and
-`ProjectsContext`; secondary direct hook callers remain a later migration.
+compatibility. Station's main-app Project list/detail consumers capture this
+scope through `ProjectsContext`.
 The current host scope represents Connect's authenticated connection authority
 generation (and a native binding when present). It does not independently name
 an account principal or tenant. A same-origin cookie-account change that leaves
 that connection generation unchanged is therefore outside this tranche; full
 account/principal cache lifetime composition remains required.
+
+### Durable Project query identity and startup seeding
+
+A verified host may additionally supply `durableAuthorityId` to Project list,
+detail and reorder configuration. Use the same non-empty identifier for readers
+and mutations, derived from the server-observed environment, principal and public
+grant. It replaces only the live authority-key segment in the data key; the API
+base remains in the key and `requestScope` still guards dispatch and response
+consumption. Never use an activation epoch, credential value or token hash as a
+durable identity. Omitted or empty identifiers preserve prior live-key behavior.
+
+The Station shell uses separate query clients and IndexedDB keys for verified
+identities. Returning to a home requires a fresh observation for that activation;
+a cached successful observation cannot activate old data during revalidation.
+Failed or unsupported observations use fresh nonpersisted contexts. Other-home
+copies and the old singleton blob remain on disk without being adopted into an
+unverified identity. Mutations are neither saved nor hydrated from these snapshots.
+This does not make connection evidence a substitute for account authentication or
+qualify every legacy query, mutation, draft or queue path.
+
+`@kontourai/station-sdk/boot` exports `fetchBootPayloadAt(apiBase)` and
+`seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)`. Capture the
+origin and request authority before fetching; the guard must verify both that
+captured authority and the destination client. Seeding checks it before every
+cache write and preserves newer individual reads. The ambient legacy boot helper
+remains available for existing callers; it is not the multi-home host path.
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 

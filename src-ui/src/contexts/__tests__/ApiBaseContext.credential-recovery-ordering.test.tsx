@@ -35,6 +35,13 @@ vi.mock('../../hooks/useSystemStatus', () => ({
 vi.mock('../../hooks/useInvalidateCachesOnConnectionSwitch', () => ({
   useInvalidateCachesOnConnectionSwitch: () => {},
 }));
+// The gate reads config through the identity-scoped recovery hook (never
+// the shared bare-key query under the stable boundary); substitute there so
+// this suite keeps testing the credential transport, not scoping.
+vi.mock('../../hooks/useRecoveryConfig', () => ({
+  useRecoveryConfig: () => ({ data: undefined }),
+  recoveryConfigKey: (...parts: unknown[]) => parts,
+}));
 vi.mock('../../components/UsageTelemetryDisclosure', () => ({
   UsageTelemetryDisclosure: () => null,
 }));
