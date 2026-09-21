@@ -300,4 +300,49 @@ describe('self-hosted broker runtime lifecycle', () => {
     rejectOperation(impostor);
     await expect(shuttingDown).rejects.toBe(impostor);
   });
+  test('a blocked poll does not starve the renew control loop, and renew failure stops both', async () => {
+    const f = fixture();
+    let releasePoll = () => {};
+    const pollGate = new Promise<unknown>((resolve) => {
+      releasePoll = () => resolve(undefined);
+    });
+    f.connector.poll.mockImplementation(() => pollGate);
+    f.connector.renew.mockRejectedValueOnce(new Error('renew failed'));
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      heartbeatMs: 30_000,
+      renewMs: 1_000,
+      pollMs: 1_000,
+      operationSettleMs: 50,
+    });
+    await runtime.start();
+    // Poll is blocked, yet the independent control loop still runs renew.
+    await vi.waitFor(() => expect(f.connector.poll).toHaveBeenCalled());
+    await vi.waitFor(() => expect(f.connector.renew).toHaveBeenCalled(), {
+      timeout: 5_000,
+    });
+    releasePoll();
+    await expect(runtime.shutdown()).rejects.toThrow('renew failed');
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
+  test('an observed lease expiry bounds the next deadline instead of renewing past it', async () => {
+    const f = fixture();
+    f.connector.register.mockResolvedValueOnce({
+      registeredAt: 1_000,
+      revision: 0,
+      expiresAt: 1_500,
+    });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      heartbeatMs: 30_000,
+      renewMs: 1_000,
+      pollMs: 60_000,
+    });
+    await runtime.start();
+    await expect(runtime.shutdown()).rejects.toThrow(
+      'broker_runtime_lease_expired',
+    );
+    expect(f.connector.renew).not.toHaveBeenCalled();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
 });

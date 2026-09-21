@@ -505,6 +505,7 @@ export class StationRuntime {
     start(): Promise<void>;
     shutdown(): Promise<void>;
   };
+  private selfHostedBrokerShutdown?: Promise<void>;
 
   private readonly projectSharingEnabled: boolean;
   private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
@@ -3224,6 +3225,14 @@ export class StationRuntime {
       }
     } catch (error) {
       virtualApplication?.stop();
+      try {
+        await this.retireSelfHostedBroker();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'Runtime startup cleanup was incomplete.',
+        );
+      }
       throw error;
     } finally {
       if (this.initializeInFlight === inFlight) {
@@ -4359,7 +4368,9 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
-    await this.selfHostedBroker?.shutdown();
+    // Begin broker retirement without delaying ordinary teardown on its I/O.
+    // The aggregate cleanup joins it before this home can be released.
+    void this.retireSelfHostedBroker();
     this.virtualApplicationLifetime?.abort();
     this.virtualApplication?.stop();
 
@@ -4394,6 +4405,23 @@ export class StationRuntime {
       },
     );
     return this.shutdownPromise;
+  }
+
+  private retireSelfHostedBroker(): Promise<void> {
+    if (this.selfHostedBrokerShutdown) return this.selfHostedBrokerShutdown;
+    const broker = this.selfHostedBroker;
+    if (!broker) return Promise.resolve();
+    try {
+      this.selfHostedBrokerShutdown = broker.shutdown().then(() => {
+        if (this.selfHostedBroker === broker) this.selfHostedBroker = undefined;
+      });
+    } catch (error) {
+      this.selfHostedBrokerShutdown = Promise.reject(error);
+    }
+    // Keep failures observable at the aggregate join, never unhandled between
+    // starting retirement and finishing the other runtime cleanup.
+    void this.selfHostedBrokerShutdown.catch(() => {});
+    return this.selfHostedBrokerShutdown;
   }
 
   private async shutdownAfterConfigurationDrain(): Promise<void> {
@@ -4548,6 +4576,11 @@ export class StationRuntime {
       // shutdown indefinitely. POSIX tolerates deleting a directory with an
       // open file inside it, which hid this; Windows does not.
       this.orchestrationEventStore.close();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.selfHostedBrokerShutdown;
     } catch (error) {
       failures.push(error);
     }

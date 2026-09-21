@@ -46,7 +46,8 @@ export class SelfHostedBrokerRuntime {
   readonly #operationSettleMs: number;
   #start: Promise<void> | undefined;
   #shutdown: Promise<void> | undefined;
-  #loop: Promise<void> | undefined;
+  #loops: Promise<void>[] = [];
+  #loopsDone: Promise<void> | undefined;
   #withdraw: Promise<void> | undefined;
   #autoWithdraw: Promise<void> | undefined;
   #failure: unknown;
@@ -85,40 +86,55 @@ export class SelfHostedBrokerRuntime {
         const registration = this.options.connector.register(
           this.#abort.signal,
         );
-        await this.#joinAbortable(
+        const started = await this.#joinAbortable(
           registration,
           'broker_runtime_register_unsettled',
         );
         if (this.#abort.signal.aborted) throw this.#abortReason();
-        // The loop settles independently: its rejection handler records the
-        // failure and retires automatically, so start() returns once the
-        // initial registration is confirmed.
-        this.#loop = this.#run().then(
-          () => {
-            this.#unlinkApplicationAbort();
-            // An idle abort (sleep resolved by the abort event) exits the
-            // loop normally. That is still a retirement, not a leak: withdraw
-            // without recording a failure.
-            if (
-              this.#abort.signal.aborted ||
-              this.options.application.signal.aborted
-            ) {
+        // Observed lease expiry bounds every future deadline: never renew
+        // after a known expiry.
+        let knownExpiry: number | undefined =
+          typeof (started as { expiresAt?: unknown } | undefined)?.expiresAt ===
+          'number'
+            ? (started as { expiresAt: number }).expiresAt
+            : undefined;
+        const onExpiry = (value: unknown): void => {
+          const expiresAt = (value as { expiresAt?: unknown } | undefined)
+            ?.expiresAt;
+          if (typeof expiresAt === 'number') knownExpiry = expiresAt;
+        };
+        const settleLoop = (work: Promise<void>): Promise<void> =>
+          work.then(
+            () => {
+              this.#unlinkApplicationAbort();
+              if (
+                this.#abort.signal.aborted ||
+                this.options.application.signal.aborted
+              ) {
+                this.#retireAutomatically();
+              }
+            },
+            (error: unknown) => {
+              this.#unlinkApplicationAbort();
+              if (this.#isCleanAbortCancellation(error)) {
+                this.#retireAutomatically();
+                return;
+              }
+              this.#recordFailure(error);
+              if (!this.#abort.signal.aborted) this.#abort.abort(error);
               this.#retireAutomatically();
-            }
-          },
-          (error: unknown) => {
-            this.#unlinkApplicationAbort();
-            // A clean abort cancellation (an abort-aware operation rejecting
-            // with the abort reason) is an orderly shutdown, not a failure.
-            if (this.#isCleanAbortCancellation(error)) {
-              this.#retireAutomatically();
-              return;
-            }
-            this.#recordFailure(error);
-            this.#abort.abort(error);
-            this.#retireAutomatically();
-          },
+            },
+          );
+        // Independent heartbeat/renew control loop and single poll loop; a
+        // failure in either stops both (abort) and both are settled before
+        // withdrawal. No retries: any operation failure ends the loops.
+        const control = settleLoop(
+          this.#runControl(() => knownExpiry, onExpiry),
         );
+        const poller = settleLoop(this.#runPoll());
+        this.#loops = [control, poller];
+        this.#loopsDone = Promise.allSettled(this.#loops).then(() => undefined);
+        void this.#loopsDone;
       } catch (error) {
         this.#unlinkApplicationAbort();
         if (!this.#abort.signal.aborted) this.#abort.abort(error);
@@ -132,29 +148,53 @@ export class SelfHostedBrokerRuntime {
       }
     })());
   }
-  async #run() {
+  async #runControl(
+    knownExpiry: () => number | undefined,
+    onExpiry: (value: unknown) => void,
+  ) {
     let heartbeat = Date.now() + this.options.heartbeatMs,
-      renew = Date.now() + this.options.renewMs,
-      poll = 0;
+      renew = Date.now() + this.options.renewMs;
     while (
       !this.#abort.signal.aborted &&
       !this.options.application.signal.aborted
     ) {
       const now = Date.now();
+      const expiry = knownExpiry();
+      if (expiry !== undefined && now >= expiry)
+        throw new Error('broker_runtime_lease_expired');
       if (now >= heartbeat) {
-        await this.#joinAbortable(
+        const result = await this.#joinAbortable(
           this.options.connector.register(this.#abort.signal),
           'broker_runtime_heartbeat_unsettled',
         );
+        onExpiry(result);
         heartbeat = Date.now() + this.options.heartbeatMs;
       }
       if (now >= renew) {
-        await this.#joinAbortable(
+        const expiryNow = knownExpiry();
+        if (expiryNow !== undefined && Date.now() >= expiryNow)
+          throw new Error('broker_runtime_lease_expired');
+        const result = await this.#joinAbortable(
           this.options.connector.renew(this.#abort.signal),
           'broker_runtime_renew_unsettled',
         );
+        onExpiry(result);
         renew = Date.now() + this.options.renewMs;
       }
+      if (this.#abort.signal.aborted || this.options.application.signal.aborted)
+        break;
+      await this.#sleep(
+        Math.min(this.options.heartbeatMs, this.options.renewMs),
+      );
+    }
+  }
+  async #runPoll() {
+    let poll = 0;
+    while (
+      !this.#abort.signal.aborted &&
+      !this.options.application.signal.aborted
+    ) {
+      const now = Date.now();
       if (now >= poll) {
         await this.#joinAbortable(
           this.options.connector.poll(this.#abort.signal),
@@ -164,7 +204,7 @@ export class SelfHostedBrokerRuntime {
       }
       if (this.#abort.signal.aborted || this.options.application.signal.aborted)
         break;
-      await this.#sleep();
+      await this.#sleep(this.options.pollMs);
     }
   }
   shutdown() {
@@ -187,10 +227,7 @@ export class SelfHostedBrokerRuntime {
           startError = error;
         },
       );
-      await this.#loop?.then(
-        () => undefined,
-        () => undefined,
-      );
+      await this.#loopJoin();
       this.#unlinkApplicationAbort();
       let withdrawError: unknown;
       let withdrawFailed = false;
@@ -319,15 +356,15 @@ export class SelfHostedBrokerRuntime {
     }
     throw raceError;
   }
-  #sleep(): Promise<void> {
+  async #loopJoin(): Promise<void> {
+    if (this.#loopsDone) await this.#loopsDone;
+    else if (this.#loops.length) await Promise.allSettled(this.#loops);
+  }
+  #sleep(delayMs: number): Promise<void> {
     const owned = this.#abort.signal;
     const applicationSignal = this.options.application.signal;
     if (owned.aborted || applicationSignal.aborted) return Promise.resolve();
-    const delay = Math.min(
-      this.options.heartbeatMs,
-      this.options.renewMs,
-      this.options.pollMs,
-    );
+    const delay = delayMs;
     return new Promise<void>((resolve) => {
       const timer = setTimeout(onWake, delay);
       function onWake(): void {
