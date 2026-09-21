@@ -28,7 +28,7 @@
  * against a field-identical reason) and the remote-peer forwarding path.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -161,9 +161,7 @@ afterEach(async () => {
 
 describe('delegation provider-plan quota connected projection (#2265)', () => {
   let tmp: string;
-  let shimBin: string;
   let fakeHome: string;
-  let previousPath: string | undefined;
   let previousStationHome: string | undefined;
   let eventStore: EventStore;
   let service: OrchestrationService;
@@ -174,23 +172,13 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
   beforeEach(() => {
     // The real adapter's readiness derivation (`assertAdapterReady` in the
     // service) probes the connection's CLI through `findCliBinary` +
-    // `runCliCommand`. A throwaway shim binary on PATH plus an admissible
-    // throwaway STATION_HOME make that real derivation report installed in
-    // this sandbox — the same environmental admission the ACP suite needs
-    // (see that suite's prerequisite test). No product seam is stubbed.
+    // `runCliCommand`. Use this process's real Node executable for the
+    // version probe on every platform; the injected ACP process owns the
+    // protocol. An isolated STATION_HOME keeps the probe admissible.
     tmp = mkdtempSync(join(tmpdir(), 'station-quota-connected-'));
-    shimBin = join(tmp, 'bin');
-    mkdirSync(shimBin, { recursive: true });
-    writeFileSync(
-      join(shimBin, 'opencode'),
-      '#!/bin/sh\necho "opencode 1.0.0"\nexit 0\n',
-      { mode: 0o755 },
-    );
     fakeHome = join(tmp, 'station-home');
     mkdirSync(fakeHome, { recursive: true });
-    previousPath = process.env.PATH;
     previousStationHome = process.env.STATION_HOME;
-    process.env.PATH = `${shimBin}:${previousPath ?? ''}`;
     process.env.STATION_HOME = fakeHome;
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
@@ -242,7 +230,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
         {
           id: CONNECTION_ID,
           name: 'OpenCode',
-          command: 'opencode',
+          command: process.execPath,
           args: [],
           enabled: true,
         },
@@ -291,15 +279,17 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
     } as never);
   });
 
-  afterEach(() => {
-    eventStore.close();
-    rmSync(tmp, { recursive: true, force: true });
-    if (previousPath === undefined) delete process.env.PATH;
-    else process.env.PATH = previousPath;
-    if (previousStationHome === undefined) delete process.env.STATION_HOME;
-    else process.env.STATION_HOME = previousStationHome;
-    vi.unstubAllGlobals();
-    fetchMock.mockReset();
+  afterEach(async () => {
+    try {
+      await service.shutdown();
+    } finally {
+      eventStore.close();
+      rmSync(tmp, { recursive: true, force: true });
+      if (previousStationHome === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previousStationHome;
+      vi.unstubAllGlobals();
+      fetchMock.mockReset();
+    }
   });
 
   test('a fake ACP quota rejection persists through the EventStore and reads back via the real delegation routes and SDK', async () => {

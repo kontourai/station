@@ -53,7 +53,7 @@ export const PROVIDER_PLAN_QUOTA_MESSAGE =
  * means the civil timestamp arrived with no timezone designator: Station
  * repeats it verbatim and never computes from it.
  */
-export const PROVIDER_QUOTA_RESET_PRECISION_UNQUALIFIED = 'unqualified';
+const PROVIDER_QUOTA_RESET_PRECISION_UNQUALIFIED = 'unqualified';
 
 /** Upper bound accepted for a caller-supplied qualified retry-after (24 h). */
 const QUOTA_RETRY_AFTER_MAX_MS = 24 * 60 * 60_000;
