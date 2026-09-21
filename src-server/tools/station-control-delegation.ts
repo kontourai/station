@@ -80,6 +80,7 @@ import type { OrchestrationService } from '../services/orchestration/orchestrati
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   type PortableExecutionConsentIdentity,
+  portableConsentOfStartedMetadata,
   RECEIVER_EXECUTION_REFUSAL_COPY,
   type ReceiverExecutionAdmission,
   ReceiverExecutionRefusal,
@@ -2487,19 +2488,7 @@ function sessionBinding(detail: {
 function portableConsentOfBinding(
   metadata: Record<string, unknown> | undefined,
 ): PortableExecutionConsentIdentity | undefined {
-  const marker = metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
-  if (!marker || typeof marker !== 'object') return undefined;
-  const { portableProjectId, resourceId, localProjectId } = marker as Record<
-    string,
-    unknown
-  >;
-  if (typeof portableProjectId !== 'string' || typeof resourceId !== 'string')
-    return undefined;
-  return {
-    portableProjectId,
-    resourceId,
-    ...(typeof localProjectId === 'string' ? { localProjectId } : {}),
-  };
+  return portableConsentOfStartedMetadata(metadata);
 }
 
 /**

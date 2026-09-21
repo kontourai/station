@@ -189,6 +189,7 @@ import {
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
+  RECEIVER_EXECUTION_REFUSAL_COPY,
   ReceiverExecutionRefusal,
   requirePortableIncarnationMatch,
 } from '../projects/project-contribution-service.js';
@@ -968,7 +969,7 @@ function portableRefusalForUnadmittedThread(
   if (persistedConsent && !persistedConsent.localProjectId)
     return new ReceiverExecutionRefusal(
       'receiver_execution_consent_stale',
-      'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_consent_stale,
     );
   return new ReceiverExecutionRefusal(
     'receiver_execution_not_offered',

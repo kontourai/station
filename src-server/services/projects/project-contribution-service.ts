@@ -82,7 +82,7 @@ export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
   receiver_execution_forwarding_refused:
     'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
   receiver_execution_consent_stale:
-    'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+    'The original Project identity of this portable task cannot be verified. Start a new portable execution.',
 };
 
 /**
@@ -117,13 +117,25 @@ export function portableConsentOfStartedMetadata(
   metadata: Record<string, unknown> | undefined,
 ): PortableExecutionConsentIdentity | undefined {
   const marker = metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
-  if (!marker || typeof marker !== 'object') return undefined;
+  if (marker === undefined) return undefined;
+  const stale = () =>
+    new ReceiverExecutionRefusal(
+      'receiver_execution_consent_stale',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_consent_stale,
+    );
+  if (!marker || typeof marker !== 'object' || Array.isArray(marker))
+    throw stale();
   const { portableProjectId, resourceId, localProjectId } = marker as Record<
     string,
     unknown
   >;
-  if (typeof portableProjectId !== 'string' || typeof resourceId !== 'string')
-    return undefined;
+  if (
+    typeof portableProjectId !== 'string' ||
+    !portableProjectId.trim() ||
+    typeof resourceId !== 'string' ||
+    !resourceId.trim()
+  )
+    throw stale();
   return {
     portableProjectId,
     resourceId,
