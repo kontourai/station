@@ -259,6 +259,7 @@ const resourceSpecs: Record<string, ResourceSpec> = {
     customActions: {
       identity: runProjectIdentityCommand,
       'prepare-identity': runProjectIdentityCommand,
+      'execution-root': runProjectIdentityCommand,
       attach: runProjectIdentityCommand,
       layouts: async (apiBase, parsed) => {
         await runProjectLayoutCommand(apiBase, parsed);

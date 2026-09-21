@@ -5,6 +5,7 @@ import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import {
   type ProjectAttachRequest,
   type ProjectAttachResult,
+  type ProjectExecutionRootMutationRequest,
   type ProjectIdentityView,
   type ProjectPortableIdentity,
   selectPrimaryResource,
@@ -43,6 +44,7 @@ export class ProjectIdentityService {
     private readonly manifests: ProjectIdentityManifestPort,
     private readonly readRemotes: CheckoutRemoteReader,
     private readonly hostAliases: () => Record<string, string>,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   async read(slug: string): Promise<ProjectIdentityView> {
@@ -121,6 +123,58 @@ export class ProjectIdentityService {
         throw readError;
       }
     }
+  }
+
+  async updateExecutionRoot(
+    slug: string,
+    input: Omit<ProjectExecutionRootMutationRequest, 'expectedIdentity'> & {
+      expectedIdentity: unknown;
+    },
+  ): Promise<ProjectIdentityView> {
+    const expectedIdentity = parseProjectPortableIdentity(
+      input.expectedIdentity,
+    );
+    if (
+      typeof input.expectedLocalProjectId !== 'string' ||
+      !input.expectedLocalProjectId
+    )
+      throw new ProjectIdentityValidationError(
+        'A current local Project identity guard is required.',
+      );
+    const revision = this.storage.projectRevision(slug);
+    if (revision.value.id !== input.expectedLocalProjectId)
+      throw new FileStorageConflictError(
+        'The local Project changed before the execution root could update.',
+      );
+    if (!revision.replaceManifest)
+      throw new FileStorageUnavailableError(
+        'The Project store cannot atomically update portable identity.',
+      );
+    const record = this.manifests.readRecord(slug);
+    if (!record)
+      throw new FileStorageNotFoundError(
+        'This Project has no portable identity. Prepare it explicitly before selecting an execution root.',
+      );
+    const current = parseProjectPortableIdentity(record);
+    if (!isDeepStrictEqual(current, expectedIdentity))
+      throw new FileStorageConflictError(
+        'Project identity changed before the execution root could update.',
+      );
+    const unchanged = isDeepStrictEqual(
+      current.executionRoot ?? null,
+      input.executionRoot,
+    );
+    const candidate = unchanged
+      ? current
+      : parseProjectPortableIdentity({
+          ...current,
+          ...(input.executionRoot === null
+            ? { executionRoot: undefined }
+            : { executionRoot: input.executionRoot }),
+          updatedAt: this.now().toISOString(),
+        });
+    await revision.replaceManifest(record, candidate);
+    return identityView(revision.value, candidate);
   }
 
   private view(project: ProjectConfig): ProjectIdentityView {

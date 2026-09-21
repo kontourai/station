@@ -576,6 +576,11 @@ Shape (illustrative; the contract lands in `packages/contracts` at slice 1):
     { "id": "local:scratch", "kind": "local-only", "label": "Scratch notes" }
   ],
 
+  "executionRoot": {
+    "repoId": "github.com/kontourai/station",
+    "path": "apps/station"
+  },
+
   "knowledge": [
     { "namespaceId": "default", "root": { "kind": "station-managed" } },
     { "namespaceId": "rules",   "root": { "kind": "repo", "repoId": "github.com/kontourai/station", "path": "docs" } }
@@ -778,14 +783,28 @@ Adapters without this atomic creation capability refuse attachment before
 creating an ordinary Project. An occupied directory is preserved.
 
 The snapshot has a closed field set and uses the existing manifest/resource
-validator. It carries no local path, account, membership, credential or home
-authority. The SDK also validates the receiving association and retains the
+validator. Its optional `executionRoot` carries only a named resource and a
+repo-relative path. Slash and backslash separators have the same portable
+meaning and are converted to the destination platform at resolution. It carries
+no local path, account, membership, credential or home authority. The SDK also
+validates the receiving association and retains the
 original request through asynchronous work. The API does not merge same-remote
 Projects, import private history, select among multiple local realizations,
-clone files or authorize execution. Receiver admission, resource-relative
-execution roots, home location, membership and the integrated target picker
+clone files or authorize execution. At engine start, the destination resolves
+the named resource through its private binding, requires the selected path to
+exist as a directory, and realpath-checks containment so a symlink cannot leave
+the checkout. Binding and directory resolution still do not authorize compute.
+Receiver admission, home location, membership and the integrated target picker
 retain their separate implementation and acceptance boundaries. See the
 [SDK identity API](../reference/sdk.md#portable-project-identity).
+
+The authenticated execution-root mutation carries the caller's complete current
+portable identity and receiver-local Project ID as optimistic guards. The
+Project storage owner checks both and the current local Project revision under one mutation lock before
+atomically replacing the sidecar. Setting a root validates only its declared
+resource and relative path; the resource may be intentionally unbound. Clearing
+removes only the selection, and an exact replay performs no write. Neither action
+changes the portable ID, bindings, membership, history, or compute authority.
 
 `POST /api/projects/:slug/bind` holds the selected Project revision while it
 verifies the checkout, publishes the binding and derives the response view.
@@ -1303,6 +1322,28 @@ Three consequences, each checkable:
 
 The migration rule in §5 is the same invariant expressed in data: an existing
 project does not acquire a contribution because it had a path.
+
+### Receiver execution offers
+
+Project execution offers are stored only in
+`AppConfig.contribution["project:<portableProjectId>"]` and default off. The
+dedicated offer mutation requires Station's bound local-operator authority and
+an exact current local/portable Project association plus the expected current
+offer. A remote operate credential may round-trip an unchanged contribution map
+while saving another setting, but cannot add, remove, replace, enable, or disable
+consent. The comparison occurs inside ConfigLoader's serialized mutation owner,
+so a queued stale save cannot overwrite a newer local offer.
+
+The scoped query accepts only a portable Project ID and resource ID. Its caller
+identity comes from a current authenticated paired-device credential whose
+server record is `kind: "delegation"`; the body carries no Station or environment
+identity. This is the existing broad personal-peer grant narrowed by the exact
+receiver-owned offer. It is not shared-human membership authorization.
+Disabled or unnamed queries return no association or inventory. Offered entries
+carry the stored binding `verifiedAt`, or `null` for the compatibility working
+directory; `projectedAt` is never substituted for source observation time.
+This projection does not invoke a provider or authorize a Task attempt. Receiver
+admission must recheck it immediately before execution in the next #484 slice.
 
 ### 4.7 The backing view (sketch, not a full design)
 

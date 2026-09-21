@@ -101,12 +101,16 @@ func run(dir string) error {
 	var applicationDone <-chan struct{}
 	switch cfg.Profile {
 	case "application":
-		if cfg.ProtocolVersion != "station.application-ipc/v1" || cfg.ApplicationChannelLabel == "" || cfg.LifetimeSeconds < 1 || cfg.LifetimeSeconds > 86400 { return errors.New("invalid application profile") }
+		if cfg.ProtocolVersion != "station.application-ipc/v1" || cfg.ApplicationChannelLabel == "" || cfg.LifetimeSeconds < 1 || cfg.LifetimeSeconds > 86400 {
+			return errors.New("invalid application profile")
+		}
 		application = newApplicationBridge(reportFailure)
 		applicationDone = application.done
 		defer application.close()
 	case "diagnosticEcho":
-		if cfg.ProtocolVersion != "station.diagnostic-echo/v1" || cfg.ApplicationChannelLabel != "" { return errors.New("invalid diagnostic profile") }
+		if cfg.ProtocolVersion != "station.diagnostic-echo/v1" || cfg.ApplicationChannelLabel != "" {
+			return errors.New("invalid diagnostic profile")
+		}
 	default:
 		return errors.New("unknown peer profile")
 	}
@@ -116,11 +120,22 @@ func run(dir string) error {
 		if err := publish(dir, "state.json", map[string]any{"state": s.String()}); err != nil {
 			reportFailure(err)
 		}
-		if s == webrtc.PeerConnectionStateConnected { if pair,e:=pc.SCTP().Transport().ICETransport().GetSelectedCandidatePair(); e==nil && pair!=nil { _ = publish(dir,"transport.json",map[string]string{"local":pair.Local.Typ.String(),"remote":pair.Remote.Typ.String()}) } }
+		if s == webrtc.PeerConnectionStateConnected {
+			pair, pairErr := pc.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
+			if pairErr == nil && pair != nil {
+				if err := publish(dir, "transport.json", map[string]string{"local": pair.Local.Typ.String(), "remote": pair.Remote.Typ.String()}); err != nil {
+					reportFailure(err)
+				}
+			}
+		}
 	})
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		if cfg.Profile == "application" {
-			if dc.Label() == cfg.ApplicationChannelLabel { application.add(dc) } else { _ = dc.Close() }
+			if dc.Label() == cfg.ApplicationChannelLabel {
+				application.add(dc)
+			} else {
+				_ = dc.Close()
+			}
 			return
 		}
 		if cfg.Profile != "diagnosticEcho" || dc.Label() != "station-lab-v1" {
@@ -178,7 +193,11 @@ func run(dir string) error {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(signals)
 	var lifetime <-chan time.Time
-	if cfg.Profile == "diagnosticEcho" { lifetime = time.After(90 * time.Second) } else { lifetime = time.After(time.Duration(cfg.LifetimeSeconds)*time.Second) }
+	if cfg.Profile == "diagnosticEcho" {
+		lifetime = time.After(90 * time.Second)
+	} else {
+		lifetime = time.After(time.Duration(cfg.LifetimeSeconds) * time.Second)
+	}
 	select {
 	case <-signals:
 		return nil

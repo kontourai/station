@@ -420,6 +420,100 @@ describe('ConnectionInspector Interface', () => {
     });
   });
 
+  // The opencode-delegate-readiness live observation: the probe's initialize
+  // handshake failed, the connection read 'degraded', and the agent catalog
+  // refused dispatch with the readiness evidence's POSITIVE summary ("A live
+  // model or capability catalog is available."). The view must carry the
+  // engine's actual observation so refusals can quote a real reason.
+  test('projects the failed ACP probe observation as the not-ready state reason', async () => {
+    const subject = (lastError: { message: string; phase: string } | null) =>
+      createConnectionInspector({
+        adapters: () => [],
+        appConfig: () =>
+          ({ agentConnections: { acp: { enabled: true } } }) as any,
+        acpConnections: () =>
+          [{ id: 'opencode', name: 'OpenCode', enabled: true }] as any,
+        acpStatus: () => ({
+          connections: [
+            {
+              id: 'opencode',
+              status: 'unavailable',
+              configOptions: [],
+              ...(lastError ? { lastError } : {}),
+            },
+          ],
+        }),
+        publicConnection: (runtimeId) => ({
+          id: engineConnectionId('opencode'),
+          engineId: runtimeId,
+        }),
+        now: () => Date.now(),
+      });
+
+    const failed = await subject({
+      message:
+        'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+      phase: 'initialize',
+    }).inspect({ kind: 'runtime-capability-inventory' });
+    const failedView = (
+      failed as {
+        connections: Array<{
+          status: string;
+          config: { readinessReason?: string };
+        }>;
+      }
+    ).connections[0];
+    expect(failedView.status).toBe('degraded');
+    expect(failedView.config.readinessReason).toBe(
+      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+    );
+
+    const silent = await subject(null).inspect({
+      kind: 'runtime-capability-inventory',
+    });
+    const silentView = (
+      silent as {
+        connections: Array<{
+          status: string;
+          config: { readinessReason?: string };
+        }>;
+      }
+    ).connections[0];
+    expect(silentView.status).toBe('degraded');
+    expect(silentView.config.readinessReason).toBe(
+      'No successful initialize handshake has been observed yet.',
+    );
+
+    const ready = await createConnectionInspector({
+      adapters: () => [],
+      appConfig: () =>
+        ({ agentConnections: { acp: { enabled: true } } }) as any,
+      acpConnections: () =>
+        [{ id: 'opencode', name: 'OpenCode', enabled: true }] as any,
+      acpStatus: () => ({
+        connections: [
+          {
+            id: 'opencode',
+            status: 'available',
+            lastError: { message: 'stale failure', phase: 'initialize' },
+          },
+        ],
+      }),
+      publicConnection: (runtimeId) => ({
+        id: engineConnectionId('opencode'),
+        engineId: runtimeId,
+      }),
+      now: () => Date.now(),
+    }).inspect({ kind: 'runtime-capability-inventory' });
+    const readyView = (
+      ready as {
+        connections: Array<{ status: string; config: Record<string, unknown> }>;
+      }
+    ).connections[0];
+    expect(readyView.status).toBe('ready');
+    expect(readyView.config.readinessReason).toBeUndefined();
+  });
+
   test('keeps prerequisite and command failures partial without rejecting the Interface', async () => {
     const subject = inspector({
       provider: 'codex',

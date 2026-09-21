@@ -386,23 +386,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         transcripts: orchestration,
       });
     }
-    const project = {
-      id: task.projectId,
-      slug: task.projectId,
-      name: 'Project',
-      workingDirectory: roomHomeDir,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-    };
-    const taskGraph = taskReferences
-      ? new TaskGraphService(roomHomeDir, {
-          projectService: { getProject: () => project },
-        })
-      : undefined;
-    const referenceTask = await taskGraph?.createTask({
-      projectId: task.projectId,
-      title: 'Kept answer',
-    });
     const membershipStorage = withMembership
       ? new FileStorageAdapter(roomHomeDir)
       : undefined;
@@ -422,6 +405,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     const privateProject = await membershipProjects?.createProject({
       name: 'Private marker',
       slug: 'private-project',
+    });
+    const project = sharedProject ?? {
+      id: task.projectId,
+      slug: task.projectId,
+      name: 'Project',
+      workingDirectory: roomHomeDir,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+    };
+    const taskGraph =
+      taskReferences || withMembership
+        ? new TaskGraphService(roomHomeDir, {
+            projectService: { getProject: () => project },
+          })
+        : undefined;
+    const referenceTask = await taskGraph?.createTask({
+      projectId: project.id,
+      title: 'Kept answer',
     });
     const membership = membershipStorage
       ? createProjectMembershipRuntime(
@@ -449,6 +450,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       : undefined;
     const context = deepStub({
       projectMembership: membership?.service,
+      projectSharedTasks: membership?.sharedTasks,
       ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
       deploymentAuthentication: localAccounts ?? deploymentAuthentication,
       localAccounts,
@@ -513,6 +515,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       pairing,
       paired,
       referenceTask,
+      taskGraph,
     };
   }
 
@@ -700,6 +703,35 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(refused.status).toBe(413);
       expect(cancel).toHaveBeenCalledOnce();
     }
+  });
+
+  test('portable execution-root mutation is bounded before its route reads an oversized body', async () => {
+    const { app, roomRuntime } = await setup('device');
+    searchCleanup.unshift(async () => {
+      await roomRuntime.close();
+    });
+    const cancel = vi.fn();
+    const oversized = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(256 * 1024));
+      },
+      cancel,
+    });
+    const response = await app.request(
+      '/api/projects/example/identity/execution-root',
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPERATOR_SECRET}`,
+        },
+        body: oversized,
+        duplex: 'half',
+      } as RequestInit,
+      REMOTE_TAILNET_ENV,
+    );
+    expect(response.status).toBe(413);
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   test('explicit operator pairing binds two devices to one person through real HTTP authorization and refuses conflicting identity', async () => {
@@ -1033,6 +1065,164 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           })),
           Authorization: `Bearer ${replacement.credential}`,
         });
+      const sharedTaskId = h.referenceTask!.id;
+      expect(
+        (
+          await h.app.request(`${origin}/api/tasks/${sharedTaskId}/room`, {
+            headers: {
+              Origin: origin,
+              Authorization: `Bearer ${OPERATOR_SECRET}`,
+            },
+          })
+        ).status,
+      ).toBe(200);
+      const operatorHeaders = {
+        Origin: origin,
+        Authorization: `Bearer ${OPERATOR_SECRET}`,
+        'Content-Type': 'application/json',
+      };
+      const messageMarker = 'explicit-shared-room-message';
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/tasks/${sharedTaskId}/room/messages`,
+            {
+              method: 'POST',
+              headers: operatorHeaders,
+              body: JSON.stringify({
+                proposalId: 'shared-message-1',
+                text: messageMarker,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      const documentMarker = 'explicit shared document';
+      const planResponse = await h.app.request(
+        `${origin}/api/tasks/${sharedTaskId}/room/edit-plan`,
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            intentId: 'shared-document-1',
+            desiredText: documentMarker,
+            selection: { anchor: 0, focus: 0 },
+          }),
+        },
+      );
+      const planEnvelope = (await planResponse.json()) as {
+        data?: unknown;
+      } & Record<string, unknown>;
+      const plan = (planEnvelope.data ?? planEnvelope) as {
+        kind: string;
+        intentId: string;
+        digest: string;
+      };
+      expect(plan.kind).toBe('planned');
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/tasks/${sharedTaskId}/room/batches`,
+            {
+              method: 'POST',
+              headers: operatorHeaders,
+              body: JSON.stringify({
+                intentId: plan.intentId,
+                intentDigest: plan.digest,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      const sharedTask = await h.app.request(
+        `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
+        {
+          method: 'PUT',
+          headers: {
+            Origin: origin,
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
+          },
+        },
+      );
+      expect(sharedTask.status, await sharedTask.clone().text()).toBe(201);
+      const sharedTaskReceipt = (await sharedTask.json()) as {
+        data: { shareId: string };
+      };
+      const operatorPublication = await h.app.request(
+        `${origin}/api/projects/example/shared-work/${sharedTaskId}/publication`,
+        { headers: operatorHeaders },
+      );
+      expect(
+        operatorPublication.status,
+        await operatorPublication.clone().text(),
+      ).toBe(200);
+      expect(await operatorPublication.json()).toMatchObject({
+        data: {
+          kind: 'shared',
+          publication: {
+            project: {
+              localProjectId: expect.any(String),
+            },
+            task: { id: sharedTaskId },
+            shareId: sharedTaskReceipt.data.shareId,
+          },
+        },
+      });
+      expect(
+        (await projectRead('/api/projects/example/shared-work')).status,
+      ).toBe(200);
+      const sharedHistory = await projectRead(
+        `/api/projects/example/shared-work/${sharedTaskId}/history`,
+      );
+      expect(sharedHistory.status).toBe(200);
+      expect(await sharedHistory.text()).toContain(messageMarker);
+      const sharedDocument = await projectRead(
+        `/api/projects/example/shared-work/${sharedTaskId}/document`,
+      );
+      expect(sharedDocument.status).toBe(200);
+      expect(await sharedDocument.text()).toContain(documentMarker);
+      expect(
+        (
+          await projectRead(
+            '/api/projects/example/shared-work/private-task/history',
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (await projectRead(`/api/tasks/${sharedTaskId}/room/history`)).status,
+      ).toBe(403);
+      expect(
+        (
+          await projectRead(
+            `/api/projects/example/shared-work/${sharedTaskId}/publication`,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await h.app.request(
+            `${origin}/api/projects/example/shared-work/${sharedTaskId}`,
+            {
+              method: 'DELETE',
+              headers: {
+                Origin: origin,
+                Authorization: `Bearer ${OPERATOR_SECRET}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                shareId: sharedTaskReceipt.data.shareId,
+              }),
+            },
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await projectRead(
+            `/api/projects/example/shared-work/${sharedTaskId}/history`,
+          )
+        ).status,
+      ).toBe(404);
       const shared = await projectRead('/api/projects/example');
       expect(shared.status, await shared.clone().text()).toBe(200);
       const sharedBody = await shared.json();
@@ -1047,6 +1237,53 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(JSON.stringify(sharedBody)).not.toMatch(
         /workingDirectory|private-provider-marker|private-model-marker/,
       );
+      // Execution offers (review 5, correction 4): the SAME fully
+      // authenticated account-bound collaborator — project read admitted,
+      // session live, device current — is still NOT a delegation receiver.
+      // Shared-human authorization never satisfies the receiver authority,
+      // so the contribution query refuses with the route's own 403 (an
+      // entirely different sentence from the unauthenticated 401 a bare
+      // account-bound bearer earns).
+      const contributionQuery = await request(
+        '/api/project-contributions/query',
+        {
+          portableProjectId: 'prj_shared',
+          resourceId: 'git.example/acme/repo',
+        },
+        {
+          ...(await boundClient.headers(boundSession, {
+            method: 'POST',
+            url: origin + '/api/project-contributions/query',
+          })),
+          Authorization: `Bearer ${replacement.credential}`,
+        },
+      );
+      expect(
+        contributionQuery.status,
+        await contributionQuery.clone().text(),
+      ).toBe(403);
+      const guestMutationPath = '/api/projects/example/identity/execution-root';
+      const guestMutation = await h.app.request(
+        origin + guestMutationPath,
+        {
+          method: 'PUT',
+          headers: {
+            ...(await boundClient.headers(boundSession, {
+              method: 'PUT',
+              url: origin + guestMutationPath,
+            })),
+            Authorization: `Bearer ${replacement.credential}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            expectedIdentity: {},
+            expectedLocalProjectId: h.sharedProject!.id,
+            executionRoot: null,
+          }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(guestMutation.status).toBe(403);
       const privateProject = await projectRead('/api/projects/private-project');
       expect(privateProject.status).toBe(404);
       expect(JSON.stringify(await privateProject.json())).not.toContain(

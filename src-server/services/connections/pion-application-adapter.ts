@@ -104,6 +104,28 @@ function boundedOutput(
   });
   return () => text;
 }
+function diagnosticMessages(directory: string) {
+  const value = readJsonFile<Record<string, unknown>>(
+    join(directory, 'messages.json'),
+    { messages: [], local: '', remote: '' },
+    { maxBytes: 128 * 1024, label: 'Pion diagnostic messages' },
+  );
+  if (
+    Object.keys(value).sort().join(',') !== 'local,messages,remote' ||
+    !Array.isArray(value.messages) ||
+    value.messages.length > 8 ||
+    !value.messages.every(
+      (message) =>
+        typeof message === 'string' && Buffer.byteLength(message) <= 65_536,
+    ) ||
+    typeof value.local !== 'string' ||
+    Buffer.byteLength(value.local) > 32 ||
+    typeof value.remote !== 'string' ||
+    Buffer.byteLength(value.remote) > 32
+  )
+    throw new Error('pion_diagnostic_messages_invalid');
+  return value.messages as string[];
+}
 export async function startPionApplicationAdapter(
   input: PionApplicationAdapterInput,
   dependencies: PionAdapterDependencies = defaultDependencies,
@@ -315,7 +337,10 @@ export async function startPionApplicationAdapter(
                 maxBytes: 4096,
                 label: 'Pion state',
               }),
-            readMessages: () => [] as string[],
+            readMessages: () =>
+              input.profile === 'diagnosticEcho'
+                ? diagnosticMessages(directory)
+                : [],
             close,
           };
         }

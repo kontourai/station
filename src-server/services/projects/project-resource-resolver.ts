@@ -162,7 +162,7 @@
  * costs nothing under §6.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import {
@@ -176,6 +176,7 @@ import {
 } from '@kontourai/station-contracts/project-identity';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { projectResourceResolutions } from '../../telemetry/metrics.js';
+import { assertPathInside } from '../../utils/path-containment.js';
 import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
 import {
   type CheckoutRemoteReader,
@@ -256,14 +257,82 @@ export class ProjectResourceResolver {
     return result;
   }
 
+  /** Resolve the manifest-selected execution directory from one manifest snapshot. */
+  async resolveProjectExecutionRoot(
+    projectSlug: string,
+  ): Promise<string | undefined> {
+    const project = this.source.getProject(projectSlug);
+    const manifest = this.manifests.readProjectManifest(projectSlug);
+    const selection = manifest?.executionRoot;
+    const result = await this.resolve(
+      projectSlug,
+      selection?.repoId,
+      project,
+      manifest ?? null,
+    );
+    if (!isWellFormedResolution(result)) {
+      throw new Error(
+        `resolveProjectResource produced a malformed resolution for ${projectSlug}: ${JSON.stringify(result)}`,
+      );
+    }
+    projectResourceResolutions.add(1, { state: result.state });
+    if (result.state !== 'bound') {
+      if (
+        !selection &&
+        result.state === 'unbound' &&
+        !project.workingDirectory
+      ) {
+        const resource = manifest?.repos.find(
+          (entry) => entry.id === result.resourceId,
+        );
+        if (!manifest || resource?.kind === 'local-only') return undefined;
+      }
+      throw new Error(
+        `Project '${projectSlug}' cannot start here (${result.state}): ${result.reason}`,
+      );
+    }
+    if (!selection) return result.path;
+
+    // Portable manifests accept either separator so a Windows-authored root
+    // resolves to the same directory on POSIX (and vice versa).
+    const portableSegments = selection.path
+      .replace(/[\\/]$/, '')
+      .split(/[\\/]/);
+    const candidate = resolvePath(result.path, ...portableSegments);
+    assertPathInside(result.path, candidate, 'Project execution root');
+    if (!existsSync(candidate)) {
+      throw new Error(
+        `Project '${projectSlug}' execution root does not exist: ${selection.path}`,
+      );
+    }
+    const canonicalRoot = realpathSync(result.path);
+    const canonicalCandidate = realpathSync(candidate);
+    assertPathInside(
+      canonicalRoot,
+      canonicalCandidate,
+      'Project execution root',
+    );
+    if (!statSync(canonicalCandidate).isDirectory()) {
+      throw new Error(
+        `Project '${projectSlug}' execution root is not a directory: ${selection.path}`,
+      );
+    }
+    return canonicalCandidate;
+  }
+
   private async resolve(
     projectSlug: string,
     resourceId?: string,
+    projectSnapshot?: ProjectConfig,
+    manifestSnapshot?: ProjectManifest | null,
   ): Promise<ResourceResolutionResult> {
-    const project = this.source.getProject(projectSlug);
+    const project = projectSnapshot ?? this.source.getProject(projectSlug);
     // Decision 1: read only. A project with no manifest stays on the compat
     // branch until a WRITE path backfills it.
-    const manifest = this.manifests.readProjectManifest(projectSlug);
+    const manifest =
+      manifestSnapshot === undefined
+        ? this.manifests.readProjectManifest(projectSlug)
+        : (manifestSnapshot ?? undefined);
 
     if (!manifest) {
       if (resourceId !== undefined) {

@@ -158,7 +158,10 @@
 .sidebar__mobile-close {
   margin-left: auto;
   color: var(--text-muted);
-  padding: 4px;
+  /* Station's mobile touch-target floor; the visible glyph stays 16px. */
+  width: 44px;
+  height: 44px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;

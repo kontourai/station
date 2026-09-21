@@ -229,6 +229,42 @@ describe('production Pion application adapter ownership', () => {
     await expect(retainedAdapter.close()).rejects.toThrow('unconfirmed');
     expect(release).toHaveBeenCalledOnce();
   });
+  test('diagnostic echo exposes only bounded, validated message receipts', async () => {
+    let directory = '';
+    const dependencies = {
+      ...base,
+      createTemp: async (label: string) => {
+        directory = await createStationTempDir(label);
+        return directory;
+      },
+      spawn: ((_c: string, _a: string[], options: any) => ({
+        proc: child(options.cwd),
+        release: vi.fn(),
+      })) as typeof spawnOwnedChild,
+    };
+    const adapter = await startPionApplicationAdapter(input(), dependencies);
+    expect(adapter.readMessages()).toEqual([]);
+    writeFileSync(
+      `${directory}/messages.json`,
+      JSON.stringify({ messages: ['echo'], local: 'relay', remote: 'relay' }),
+      { mode: 0o600 },
+    );
+    expect(adapter.readMessages()).toEqual(['echo']);
+    writeFileSync(
+      `${directory}/messages.json`,
+      JSON.stringify({
+        messages: ['echo'],
+        local: 'relay',
+        remote: 'relay',
+        secret: 'no',
+      }),
+      { mode: 0o600 },
+    );
+    expect(() => adapter.readMessages()).toThrow(
+      'pion_diagnostic_messages_invalid',
+    );
+    await adapter.close();
+  });
   test('configured deadline owns shutdown and missing-directory verification retains registry authority', async () => {
     let directory = '';
     const release = vi.fn();

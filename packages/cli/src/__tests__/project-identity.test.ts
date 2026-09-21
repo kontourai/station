@@ -78,6 +78,67 @@ test.each(['identity', 'prepare-identity'])(
   },
 );
 
+test('execution-root reads an exact guard then sets the portable selection', async () => {
+  const updated = {
+    ...identity,
+    executionRoot: { repoId: 'github.com/example/project', path: 'apps/web' },
+  };
+  fetchMock
+    .mockResolvedValueOnce(response('source'))
+    .mockResolvedValueOnce(response('source', updated));
+  await runCoreCommand('projects', [
+    'execution-root',
+    'source',
+    ...credentials,
+    '--repo-id=github.com/example/project',
+    '--path=apps/web',
+  ]);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  const mutation = fetchMock.mock.calls[1];
+  expect(mutation?.[0]).toBe(
+    `${apiBase}/api/projects/source/identity/execution-root`,
+  );
+  expect(JSON.parse(String(mutation?.[1]?.body))).toEqual({
+    expectedIdentity: identity,
+    expectedLocalProjectId: 'local-destination',
+    executionRoot: updated.executionRoot,
+  });
+});
+
+test.each([
+  ['--clear', '--path=apps/web'],
+  ['--repo-id=git.example/acme/repo'],
+  ['--path=apps/web'],
+  ['--repo-id=github.com/example/project', '--path=../outside'],
+])(
+  'execution-root rejects invalid flag combination before network',
+  async (...flags) => {
+    await expect(
+      runCoreCommand('projects', [
+        'execution-root',
+        'source',
+        ...credentials,
+        ...flags,
+      ]),
+    ).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  },
+);
+
+test('execution-root refuses an unknown resource after the guarded read and before mutation', async () => {
+  fetchMock.mockResolvedValueOnce(response('source'));
+  await expect(
+    runCoreCommand('projects', [
+      'execution-root',
+      'source',
+      ...credentials,
+      '--repo-id=github.com/example/other',
+      '--path=apps/web',
+    ]),
+  ).rejects.toThrow('does not declare resource');
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
 test.each([undefined, '~/receiver/checkout', 'C:\\work\\project'])(
   'attachment keeps destination path %s on the destination',
   async (path) => {
