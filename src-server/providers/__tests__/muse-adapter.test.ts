@@ -17,12 +17,18 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
+  MUSE_DEFAULT_IDLE_TIMEOUT_MS,
+  MUSE_DEFAULT_TOTAL_TIMEOUT_MS,
+  MUSE_MAX_SUPERVISION_TIMEOUT_MS,
   MUSE_PROVIDER_OVERRIDE_ENV,
   MUSE_REFUSED_VALUE_MAX_CHARS,
   MUSE_STDOUT_BUFFER_MAX_CHARS,
+  MUSE_TURN_IDLE_TIMEOUT_CODE,
+  MUSE_TURN_TOTAL_TIMEOUT_CODE,
   MuseAdapter,
   museCredentialPath,
   resolveMuseProviderOverride,
+  resolveMuseSupervisionBound,
 } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
 import {
@@ -2109,5 +2115,224 @@ describe('MuseAdapter tool events', () => {
     // `call_id` appears only on the result; a started event would have to
     // borrow task_lifecycle's task_id and would never pair.
     expect(methods).not.toContain('tool.started');
+  });
+});
+
+/**
+ * #2269: idle (default 30 min since last verified protocol activity) plus
+ * FIXED total (default 2 h since turn start; explicit `turnTimeoutMs`
+ * remains an absolute total override). Spawn-free like the rest of this
+ * suite: short real-timer budgets for the behavior edges, fake-clock for
+ * the headline "active work survives past the old 30-minute wall cutoff".
+ */
+describe('Muse turn supervision (#2269)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('supervision bounds fail closed to documented defaults, never to disabled', () => {
+    expect(MUSE_DEFAULT_IDLE_TIMEOUT_MS).toBe(30 * 60_000);
+    expect(MUSE_DEFAULT_TOTAL_TIMEOUT_MS).toBe(2 * 60 * 60_000);
+    expect(MUSE_MAX_SUPERVISION_TIMEOUT_MS).toBe(24 * 60 * 60_000);
+    for (const invalid of [
+      undefined,
+      0,
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      MUSE_MAX_SUPERVISION_TIMEOUT_MS + 1,
+    ]) {
+      expect(resolveMuseSupervisionBound(invalid, 1234)).toBe(1234);
+    }
+    expect(resolveMuseSupervisionBound(500, 1234)).toBe(500);
+    expect(
+      resolveMuseSupervisionBound(MUSE_MAX_SUPERVISION_TIMEOUT_MS, 1234),
+    ).toBe(MUSE_MAX_SUPERVISION_TIMEOUT_MS);
+  });
+
+  test('invalid turnTimeoutMs/turnIdleTimeoutMs declare bounded defaults on turn.started', async () => {
+    const harness = createHarness({
+      turnTimeoutMs: 0,
+      turnIdleTimeoutMs: Number.NaN,
+    });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-invalid-bounds',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'thread-invalid-bounds',
+      input: 'hi',
+    });
+    const events = await drain(harness.iterator, 3, 'invalid bounds');
+    expect(events[2]).toMatchObject({ method: 'turn.started' });
+    const supervision = events[2].metadata.supervision;
+    expect(supervision).toMatchObject({
+      provider: 'muse',
+      turnId: events[2].turnId,
+      idleLimitMs: MUSE_DEFAULT_IDLE_TIMEOUT_MS,
+      totalLimitMs: MUSE_DEFAULT_TOTAL_TIMEOUT_MS,
+    });
+    expect(
+      Date.parse(supervision.deadlineAt) - Date.parse(supervision.startedAt),
+    ).toBe(MUSE_DEFAULT_TOTAL_TIMEOUT_MS);
+  });
+
+  test('a genuinely silent turn settles with the distinct idle code and frees the slot', async () => {
+    const harness = createHarness({
+      turnIdleTimeoutMs: 40,
+      turnTimeoutMs: 30_000,
+    });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-idle',
+    });
+    const turn = await harness.adapter.sendTurn({
+      threadId: 'thread-idle',
+      input: 'hi',
+    });
+    // Nothing written, child never exits: the idle window — not the 30 s
+    // absolute budget — ends this turn.
+    const events = await drain(harness.iterator, 4, 'idle deadline');
+    expect(events.map((event) => event.method)).toEqual([
+      'session.started',
+      'session.configured',
+      'turn.started',
+      'runtime.error',
+    ]);
+    expect(events[3]).toMatchObject({
+      method: 'runtime.error',
+      code: MUSE_TURN_IDLE_TIMEOUT_CODE,
+      turnId: turn.turnId,
+    });
+    expect(String(events[3].message)).toContain('40ms');
+    expect(harness.processes[0].killed).toBe(true);
+
+    // Terminated and reaped: exactly one terminal (the recovery turn.started
+    // arrives next, proving no duplicate terminal was queued), slot freed.
+    expect(harness.released).toBe(1);
+    await harness.adapter.sendTurn({
+      threadId: 'thread-idle',
+      input: 'again',
+    });
+    expect(harness.processes).toHaveLength(2);
+    const next = await nextEvent(harness.iterator, 'idle recovery');
+    expect(next.method).toBe('turn.started');
+    // Last iterator use in this test: the losing waiter must not swallow a
+    // later real event (see `expectNoFurtherEvent`'s contract above).
+    await expectNoFurtherEvent(harness.iterator, 'idle deadline');
+  });
+
+  test('verified activity survives past the old 30-minute cutoff; duplicates and noise do not extend idle', async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-policy',
+      });
+      await harness.adapter.sendTurn({
+        threadId: 'thread-policy',
+        input: 'hi',
+      });
+      const emitLine = async (line: string) => {
+        harness.processes[0].stdout.write(`${line}\n`);
+        await vi.advanceTimersByTimeAsync(0);
+      };
+      const minute = 60_000;
+
+      // Verified activity at t=0 and t=29min.
+      await emitLine(MUSE_META_OUTPUT_DELTA_1);
+      await vi.advanceTimersByTimeAsync(29 * minute);
+      await emitLine(MUSE_META_OUTPUT_DELTA_2);
+
+      // t=58min: past the old 30-minute wall-clock cutoff from turn start.
+      // Under the old single-deadline code this turn would already be dead;
+      // under the declared idle policy it is alive on verified activity.
+      await vi.advanceTimersByTimeAsync(29 * minute);
+      await expect(
+        harness.adapter.sendTurn({
+          threadId: 'thread-policy',
+          input: 'intruder',
+        }),
+      ).rejects.toThrow('active turn');
+
+      // A newly identified tool result at t=58 IS verified activity, so the
+      // idle window moves to t=88min. Twenty minutes later the SAME receipt
+      // replays, beside a malformed line, an unknown heartbeat-shaped frame,
+      // and stderr noise: none of those reschedules anything, so the turn
+      // still ends at t=88min. (If the replay refreshed idle, the slot would
+      // still be held at t=95min and the recovery sendTurn below would
+      // reject instead of resolving — no hanging wait needed.)
+      await emitLine(MUSE_TOOL_RESULT);
+      await vi.advanceTimersByTimeAsync(20 * minute);
+      await emitLine(MUSE_TOOL_RESULT);
+      await emitLine('this is not json');
+      await emitLine(MUSE_ECHO_TASK_LIFECYCLE);
+      harness.processes[0].stderr.write('muse: workspace root: /work\n');
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(17 * minute);
+
+      // t=95min: the idle deadline fired at t=88min, so the slot is free.
+      expect(harness.released).toBe(1);
+      await harness.adapter.sendTurn({
+        threadId: 'thread-policy',
+        input: 'again',
+      });
+      expect(harness.processes).toHaveLength(2);
+
+      const events = await drain(harness.iterator, 9, 'idle policy');
+      const error = events.find((event) => event.method === 'runtime.error');
+      expect(error).toMatchObject({
+        code: MUSE_TURN_IDLE_TIMEOUT_CODE,
+      });
+      // Both receipts are still transcript fact (published twice) — the
+      // replay just never bought idle time.
+      expect(
+        events.filter((event) => event.method === 'tool.completed'),
+      ).toHaveLength(2);
+      // Exactly one terminal: the last event is the recovery turn's start.
+      expect(events[8]).toMatchObject({ method: 'turn.started' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('sustained valid activity still hits the fixed total — and an invalid total never disables it', async () => {
+    vi.useFakeTimers();
+    try {
+      // `turnTimeoutMs: 0` is invalid: fail-closed to the 2 h fixed total.
+      const harness = createHarness({ turnTimeoutMs: 0 });
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-total',
+      });
+      await harness.adapter.sendTurn({
+        threadId: 'thread-total',
+        input: 'hi',
+      });
+      const minute = 60_000;
+      // Fresh verified activity every 29 minutes keeps idle at bay forever.
+      for (let round = 0; round < 4; round += 1) {
+        await vi.advanceTimersByTimeAsync(29 * minute);
+        harness.processes[0].stdout.write(`${MUSE_META_OUTPUT_DELTA_1}\n`);
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      // t=116min of genuine activity: the absolute budget still ends it.
+      await vi.advanceTimersByTimeAsync(5 * minute);
+      const events = await drain(harness.iterator, 8, 'total policy');
+      const error = events.find((event) => event.method === 'runtime.error');
+      expect(error).toMatchObject({
+        code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
+      });
+      expect(harness.processes[0].killed).toBe(true);
+      expect(harness.released).toBe(1);
+      await harness.adapter.sendTurn({
+        threadId: 'thread-total',
+        input: 'again',
+      });
+      expect(harness.processes).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -586,6 +586,155 @@ export function delegatedCapabilityDelivery(
   return { ...(prompt ? { prompt } : {}), dropped };
 }
 
+/**
+ * #2269: effective per-turn supervision for a delegated task's current turn.
+ *
+ * Forwarded from the serving Station's canonical facts only: the owning
+ * adapter's host-authored `turn.started` supervision declaration, joined to
+ * the live watchdog observation (`turnProgress`) so a stale prior turn's
+ * facts are never presented as current. Request/child/user metadata is
+ * never a source. Adapters without a declared hard budget omit this
+ * entirely — consumers render "no declared budget", never an invention.
+ */
+export interface DelegatedTurnSupervision {
+  provider: string;
+  turnId: string;
+  /** Absolute wall-clock ceiling for the turn (ISO timestamp). */
+  deadlineAt: string;
+  /** Milliseconds elapsed since turn start at read time (>= 0). */
+  elapsedMs: number;
+  /** Milliseconds until the absolute deadline at read time (>= 0). */
+  remainingMs: number;
+  /** Idle window: a full silence of verified activity this long ends the turn. */
+  idleLimitMs: number;
+  /** Absolute turn budget; neither activity nor approval moves it. */
+  totalLimitMs: number;
+  /** Last verified protocol activity the watchdog observed, when known. */
+  lastProgressEventAt?: string;
+}
+
+/**
+ * #2269: a typed, safe reason for a delegated task's current outcome. Only
+ * the serving Station's own attribution vocabulary (`terminalAttribution`)
+ * is forwarded; anything else stays a redacted generic.
+ */
+export interface DelegatedTaskReason {
+  code: string;
+  detail?: string;
+}
+
+/** Upper bound accepted for forwarded supervision limits (24 h; mirrors the muse adapter cap). */
+const DELEGATED_SUPERVISION_LIMIT_MAX_MS = 24 * 60 * 60_000;
+
+function optionalPositiveBoundedMs(value: unknown): number | undefined {
+  return typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= DELEGATED_SUPERVISION_LIMIT_MAX_MS
+    ? value
+    : undefined;
+}
+
+function optionalIsoTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? value : undefined;
+}
+
+/**
+ * #2269: derive the current turn's supervision from canonical facts only.
+ * The adapter's `turn.started` declaration counts only when it names the
+ * turn the watchdog is still observing (`turnProgress.turnId`) — a stale
+ * prior turn's declaration is dropped, and a malformed declaration is
+ * dropped rather than repaired. Returns `undefined` for "no declared
+ * budget" (honest unknown).
+ */
+export function delegatedTurnSupervision(
+  session: Record<string, unknown>,
+  events: Array<Record<string, unknown>>,
+  nowMs: number = Date.now(),
+): DelegatedTurnSupervision | undefined {
+  const progress =
+    session.turnProgress && typeof session.turnProgress === 'object'
+      ? (session.turnProgress as Record<string, unknown>)
+      : undefined;
+  const observedTurnId =
+    typeof progress?.turnId === 'string' ? progress.turnId : undefined;
+  if (!observedTurnId) return undefined;
+  const lastProgressEventAt =
+    typeof progress?.lastProgressEventAt === 'string'
+      ? progress.lastProgressEventAt
+      : undefined;
+  const declared = [...events]
+    .reverse()
+    .find((event) => event.method === 'turn.started');
+  const supervision =
+    declared?.metadata && typeof declared.metadata === 'object'
+      ? ((declared.metadata as Record<string, unknown>).supervision as
+          | Record<string, unknown>
+          | undefined)
+      : undefined;
+  if (!supervision || typeof supervision !== 'object') return undefined;
+  // The declaration must name the turn still under observation — otherwise
+  // it is a stale prior turn's fact, not the current turn's policy.
+  if (supervision.turnId !== observedTurnId) return undefined;
+  const idleLimitMs = optionalPositiveBoundedMs(supervision.idleLimitMs);
+  const totalLimitMs = optionalPositiveBoundedMs(supervision.totalLimitMs);
+  const startedAt = optionalIsoTimestamp(supervision.startedAt);
+  const deadlineAt = optionalIsoTimestamp(supervision.deadlineAt);
+  if (
+    idleLimitMs === undefined ||
+    totalLimitMs === undefined ||
+    startedAt === undefined ||
+    deadlineAt === undefined ||
+    typeof supervision.provider !== 'string' ||
+    !supervision.provider
+  ) {
+    return undefined;
+  }
+  const startedMs = Date.parse(startedAt);
+  const deadlineMs = Date.parse(deadlineAt);
+  if (!(deadlineMs > startedMs)) return undefined;
+  return {
+    provider: supervision.provider,
+    turnId: observedTurnId,
+    deadlineAt,
+    elapsedMs: Math.max(0, nowMs - startedMs),
+    remainingMs: Math.max(0, deadlineMs - nowMs),
+    idleLimitMs,
+    totalLimitMs,
+    ...(lastProgressEventAt ? { lastProgressEventAt } : {}),
+  };
+}
+
+/**
+ * #2269: forward the serving Station's typed terminal attribution only.
+ * Raw event messages and provider logs are never a source here, so unknown
+ * provider errors stay a redacted generic kind.
+ */
+export function delegatedTaskReason(
+  session: Record<string, unknown>,
+): DelegatedTaskReason | undefined {
+  const attribution =
+    session.terminalAttribution &&
+    typeof session.terminalAttribution === 'object'
+      ? (session.terminalAttribution as Record<string, unknown>)
+      : undefined;
+  if (
+    !attribution ||
+    typeof attribution.kind !== 'string' ||
+    !attribution.kind
+  ) {
+    return undefined;
+  }
+  return {
+    code: attribution.kind,
+    ...(typeof attribution.detail === 'string' && attribution.detail
+      ? { detail: attribution.detail }
+      : {}),
+  };
+}
+
 export interface DelegatedTaskSnapshot {
   /** Durable selector for continuation; `taskId` is retained for compatibility. */
   conversationId: string;
@@ -617,6 +766,23 @@ export interface DelegatedTaskSnapshot {
   capabilityDelivery?: DelegatedCapabilityDelivery;
   eventCount: number;
   lastEvent?: { method: string; createdAt?: string };
+  /**
+   * #2269: effective supervision for the CURRENT turn, forwarded — never
+   * re-derived — from the serving Station's own facts (the owning adapter's
+   * `turn.started` supervision declaration joined to the live watchdog
+   * observation). Absent means the provider declared no hard budget or the
+   * turn already ended: an honest unknown, never a synthesized deadline.
+   */
+  supervision?: DelegatedTurnSupervision;
+  /**
+   * #2269 (covers the necessary part of #2265): the serving Station's typed
+   * terminal attribution for the current non-clean outcome, forwarded as-is.
+   * Unknown provider errors stay a redacted generic kind — raw event
+   * messages and provider logs are never forwarded here.
+   */
+  reason?: DelegatedTaskReason;
+  /** #2269: lifecycle transition reason the serving Station folded, if any. */
+  transitionReason?: string;
   pendingRequest?: {
     id: string;
     title?: string;
@@ -2003,7 +2169,11 @@ function delegatedConversationId(
   );
 }
 
-function snapshotFor(options: {
+/**
+ * Derive the delegate seam's task snapshot. Exported for its unit tests;
+ * production callers go through `observeDelegatedTask` and friends below.
+ */
+export function snapshotFor(options: {
   target: DelegationTarget;
   detail: {
     session?: Record<string, unknown>;
@@ -2070,6 +2240,21 @@ function snapshotFor(options: {
               : {}),
           },
         }
+      : {}),
+    // #2269: forwarded canonical facts only — the serving Station's own
+    // watchdog observation joined to the owning adapter's declaration
+    // (`supervision`), plus its typed terminal attribution (`reason`).
+    // Never request metadata, never raw logs. Absent is honest unknown.
+    ...(() => {
+      const supervision = delegatedTurnSupervision(session, events);
+      return supervision ? { supervision } : {};
+    })(),
+    ...(() => {
+      const reason = delegatedTaskReason(session);
+      return reason ? { reason } : {};
+    })(),
+    ...(typeof session.transitionReason === 'string' && session.transitionReason
+      ? { transitionReason: session.transitionReason }
       : {}),
     ...(pendingRequest
       ? {

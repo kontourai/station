@@ -323,6 +323,46 @@ function formatCreateSummary(handle: DelegatedTaskHandle): string {
   return lines.join('\n');
 }
 
+/**
+ * #2269: renders the serving Station's forwarded supervision facts — the
+ * effective absolute budget, remaining time, and idle window for the current
+ * turn. Rendered only when the server declared them; an undeclared budget
+ * renders nothing (honest unknown, never a client-side invention).
+ */
+function supervisionLines(
+  supervision: DelegatedTaskSnapshot['supervision'],
+): string[] {
+  if (!supervision) return [];
+  const lines = [
+    `Turn budget: ${formatDurationMs(supervision.totalLimitMs)} total ` +
+      `(${formatDurationMs(supervision.remainingMs)} remaining, ` +
+      `deadline ${supervision.deadlineAt})`,
+    `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} ` +
+      `since last verified activity${
+        supervision.lastProgressEventAt
+          ? ` (last activity at ${supervision.lastProgressEventAt}; ` +
+            `no progress observed since — the turn may be working quietly)`
+          : ''
+      }`,
+  ];
+  return lines;
+}
+
+/** Compact `90s` / `30m` / `2h` rendering for forwarded millisecond budgets. */
+function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return 'unknown';
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    const rest = seconds % 60;
+    return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes ? `${hours}h ${restMinutes}m` : `${hours}h`;
+}
+
 function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
   const lines = [
     `Task ${snapshot.taskId}: ${snapshot.status}${
@@ -344,6 +384,17 @@ function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
           : ''
       }`,
     );
+  }
+  lines.push(...supervisionLines(snapshot.supervision));
+  if (snapshot.reason) {
+    lines.push(
+      `Reason: ${snapshot.reason.code}${
+        snapshot.reason.detail ? ` — ${snapshot.reason.detail}` : ''
+      }`,
+    );
+  }
+  if (snapshot.transitionReason) {
+    lines.push(`Transition: ${snapshot.transitionReason}`);
   }
   if (snapshot.pendingRequest) {
     lines.push(

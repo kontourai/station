@@ -97,6 +97,39 @@ on `reason === 'resource_posture'`, or subscribing to `job.refused`, will stop
 receiving them. `scheduler_concurrency_limit` is the only deferral reason the
 built-in scheduler now emits.
 
+## Delegation turn supervision (#2269)
+
+A delegated task's current turn carries two distinct, finite bounds:
+
+| Bound | Owner | Semantics | Muse default |
+|---|---|---|---|
+| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. | 30 min |
+| Total (absolute budget) | Owning adapter | Fixed wall-clock ceiling from turn start. Activity, approval, and progress never move it (`muse-turn-timeout`, unchanged string). An explicit positive finite `turnTimeoutMs` remains an absolute total override — never reinterpreted as idle. | 2 h |
+
+Both bounds fail closed: absent, zero, negative, NaN, infinite, or above the
+24 h cap resolves to the documented default, never to "no bound". No
+request, child, or user metadata can choose or extend either bound.
+
+The shared 3-minute stall watchdog (`TurnStallWatchdog` /
+`TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
+no progress was *observed* — quiet providers (notably long Muse tool calls,
+which emit no `tool.started`) may be working quietly, and the marker must
+never be rendered as proof of a stall.
+
+Surfaces (`orchestration.ts`: `TurnProgressObservation.supervision`,
+`TurnSupervisionFacts`; delegation `snapshotFor` → `DelegatedTaskSnapshot`
+`supervision`/`reason`/`transitionReason`; `station delegate status`):
+
+- Supervision facts are forwarded from the owning adapter's own
+  `turn.started` declaration joined to the live watchdog observation. A
+  stale prior turn's facts and a malformed declaration are dropped.
+  Adapters without a declared hard budget omit supervision: consumers render
+  "no declared budget", never a deadline derived from RPC timeouts or
+  metadata.
+- `reason` forwards only the serving Station's typed `terminalAttribution`.
+  Unknown provider errors stay a redacted generic kind; raw event messages
+  and provider logs are never forwarded.
+
 ## Compatibility
 
 `conversation-pull-request-links` defines exact provider, host, repository, and

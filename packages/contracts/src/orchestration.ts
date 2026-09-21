@@ -516,6 +516,39 @@ export interface TurnProgressSilence {
 export interface TurnProgressObservation {
   lastProgressEventAt: string;
   progressSilence?: TurnProgressSilence;
+  /**
+   * #2269: host-authored supervision facts for the observed turn, when the
+   * owning adapter declared a finite budget on its own `turn.started` event.
+   * Absent means the provider declared no hard budget — an honest unknown,
+   * never a synthesized deadline. Consumers render it as-is and must not
+   * derive a deadline from RPC/discovery timeouts or request metadata.
+   */
+  supervision?: TurnSupervisionFacts;
+}
+
+/**
+ * #2269: the finite per-turn supervision an adapter declared for one turn.
+ *
+ * Both limits are wall-clock from `startedAt`: `idleLimitMs` fires after a
+ * full window with no verified protocol activity; `totalLimitMs` is an
+ * absolute ceiling no activity or approval can move. Either may be absent
+ * per-provider; when both are absent the turn has no declared hard budget.
+ *
+ * Producer rule: only the adapter that owns the child process may publish
+ * these facts (on its own `turn.started` metadata), and only the delegation
+ * projection may forward them. Request/child/user metadata is never a
+ * source — it is untrusted input, not a budget override.
+ */
+export interface TurnSupervisionFacts {
+  provider: ProviderSession['provider'];
+  turnId: string;
+  startedAt: string;
+  /** Absolute wall-clock deadline for the turn (ISO timestamp). */
+  deadlineAt: string;
+  /** Idle window: full silence of verified protocol activity this long ends the turn. */
+  idleLimitMs: number;
+  /** Absolute turn budget in milliseconds; never rescheduled by activity. */
+  totalLimitMs: number;
 }
 
 /**

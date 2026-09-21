@@ -100,20 +100,73 @@ export interface MuseAdapterOptions {
     signal?: AbortSignal,
   ) => Promise<CliCommandResult | null>;
   /**
-   * Per-turn deadline in milliseconds. `muse exec` has no timeout of its own,
-   * so a wedged child would otherwise hold the turn (and `hasOpenTurn`) open
-   * forever. Generous by default — this is a backstop for a hung process, not
-   * a latency budget for a long answer.
+   * Absolute per-turn budget in milliseconds. `muse exec` has no timeout of
+   * its own, so a wedged child would otherwise hold the turn (and
+   * `hasOpenTurn`) open forever. An explicit positive finite value is an
+   * ABSOLUTE total override (wall-clock from turn start; activity and
+   * approval never move it). Absent/invalid means the fixed total default
+   * below. Never read from request/child/user metadata — server-owned only.
    */
   turnTimeoutMs?: number;
+  /**
+   * Idle limit in milliseconds: a full window with no verified protocol
+   * activity (non-empty streamed text, or a newly identified tool result)
+   * ends the turn. Absent/invalid means the idle default below.
+   * Server-owned only, like `turnTimeoutMs`.
+   */
+  turnIdleTimeoutMs?: number;
 }
 
 /**
- * Backstop only: a `muse exec` still streaming after this is treated as hung.
- * Long model answers finish well inside it; the value exists so a wedged child
- * cannot hold a turn open for the life of the process.
+ * #2269: two finite bounds, distinct owners/semantics.
+ *
+ * - IDLE (default 30 min): a full window with no VERIFIED protocol activity
+ *   (non-empty streamed text, or a newly identified tool result) ends the
+ *   turn. Active work survives past the old 30-minute wall-clock cutoff by
+ *   this declared policy: each verified activity reschedules the idle timer.
+ * - TOTAL (default 2 h, fixed): absolute wall-clock ceiling from turn start.
+ *   Neither activity nor approval moves it, so endless heartbeats/noops still
+ *   stop. An explicit positive finite `turnTimeoutMs` remains an ABSOLUTE
+ *   total override (it is never reinterpreted as idle).
+ *
+ * Invalid (absent/zero/negative/NaN/Infinity/out-of-range) never disables a
+ * bound — each falls back to its bounded default (fail-closed, mirroring
+ * `resolveTurnStallWindowMs`). No request/child/user metadata can choose or
+ * extend either bound. Both are capped at 24 h (well inside Node's
+ * setTimeout range); anything above resolves to the default, not the cap.
  */
-const MUSE_DEFAULT_TURN_TIMEOUT_MS = 30 * 60_000;
+export const MUSE_DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
+export const MUSE_DEFAULT_TOTAL_TIMEOUT_MS = 2 * 60 * 60_000;
+export const MUSE_MAX_SUPERVISION_TIMEOUT_MS = 24 * 60 * 60_000;
+/**
+ * Fail-closed resolution of one supervision bound: a positive finite number
+ * within the 24 h cap is honored; anything else (absent, zero, negative,
+ * NaN, Infinity, above the cap) resolves to the documented default — never
+ * to "no bound". Exported for unit tests.
+ */
+export function resolveMuseSupervisionBound(
+  value: number | undefined,
+  defaultMs: number,
+): number {
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= MUSE_MAX_SUPERVISION_TIMEOUT_MS
+  ) {
+    return value;
+  }
+  return defaultMs;
+}
+
+/** Terminal error code when a turn exhausts its idle window with no verified activity. */
+export const MUSE_TURN_IDLE_TIMEOUT_CODE = 'muse-turn-idle-timeout';
+/**
+ * Terminal error code when a turn exhausts its absolute budget. Kept as the
+ * pre-#2269 `muse-turn-timeout` string so existing timeout attribution keeps
+ * matching; the idle code above is the distinct new one.
+ */
+export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
 
 /**
  * Cap on the unterminated stdout tail carried across chunk boundaries. muse
@@ -123,6 +176,16 @@ const MUSE_DEFAULT_TURN_TIMEOUT_MS = 30 * 60_000;
  * dropped instead of growing the turn's memory without limit.
  */
 export const MUSE_STDOUT_BUFFER_MAX_CHARS = 1_048_576;
+
+/**
+ * #2269: bound on remembered tool-result ids per turn (replay dedup for idle
+ * rescheduling). A duplicate `tool_result` receipt must not extend the idle
+ * window; the ids are remembered so a replay reads as a replay. The queue
+ * evicts oldest-first past this cap — an evicted id replaying reads as new,
+ * which only reschedules idle on what is still a protocol frame the child
+ * actually emitted (and the absolute total still bounds the turn).
+ */
+const MUSE_SEEN_TOOL_CALL_IDS_MAX = 500;
 
 /**
  * Where the muse CLI stores its credential, honoring XDG. Presence only —
@@ -433,6 +496,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly credentialFileExists: (path: string) => boolean;
   private readonly findBinary: (command: string) => string | null;
   private readonly turnTimeoutMs: number;
+  private readonly turnIdleTimeoutMs: number;
   /**
    * Resolved ONCE, at construction, from {@link MUSE_PROVIDER_OVERRIDE_ENV}:
    * a mid-run env mutation cannot change what a session's later turns run
@@ -462,7 +526,17 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.env = options.env ?? process.env;
     this.credentialFileExists = options.credentialFileExists ?? existsSync;
     this.findBinary = options.findBinary ?? findCliBinary;
-    this.turnTimeoutMs = options.turnTimeoutMs ?? MUSE_DEFAULT_TURN_TIMEOUT_MS;
+    // #2269 correction: invalid values fail CLOSED to the bounded defaults —
+    // the old `Number.isFinite(...) || <= 0 → return (no timer)` shape
+    // silently disabled the bound on 0/NaN/negative/Infinity.
+    this.turnTimeoutMs = resolveMuseSupervisionBound(
+      options.turnTimeoutMs,
+      MUSE_DEFAULT_TOTAL_TIMEOUT_MS,
+    );
+    this.turnIdleTimeoutMs = resolveMuseSupervisionBound(
+      options.turnIdleTimeoutMs,
+      MUSE_DEFAULT_IDLE_TIMEOUT_MS,
+    );
     let refusal: MuseProviderOverrideRefusal | undefined;
     this.providerOverride = resolveMuseProviderOverride(this.env, (refused) => {
       refusal = refused;
@@ -731,6 +805,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       cleanupImages();
       throw error;
     }
+    const turnStartedAt = Date.now();
     const turn: MuseActiveTurn = {
       turnId,
       process: spawned.process,
@@ -741,7 +816,11 @@ export class MuseAdapter implements ProviderAdapterShape {
           cleanupImages();
         }
       },
-      startedAt: Date.now(),
+      startedAt: turnStartedAt,
+      idleLimitMs: this.turnIdleTimeoutMs,
+      totalLimitMs: this.turnTimeoutMs,
+      lastProgressAt: turnStartedAt,
+      seenToolCallIds: [],
       outputText: '',
       settled: false,
       interrupted: false,
@@ -766,7 +845,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       updatedAt: this.now().toISOString(),
     };
     this.attachProcess(record, turn);
-    this.armTurnDeadline(record, turn);
+    this.armTurnDeadlines(record, turn);
 
     // Independent review MEDIUM-1: carries the server-owned
     // `firstTurnInstructionsComposed` marker (reserved metadata, stripped
@@ -774,6 +853,11 @@ export class MuseAdapter implements ProviderAdapterShape {
     // record — see the constant's doc comment in provider.ts — so the
     // delegate-seam disclosure can derive 'delivered' from this turn
     // having actually composed it, not merely from having started.
+    // #2269: host-authored supervision facts for the delegation projection.
+    // Computed here from server-owned config only — never from
+    // `input.metadata` (caller-influenced) or child output. The projection
+    // forwards these; other adapters omit them (honest unknown).
+    const turnStartedAtIso = new Date(turnStartedAt).toISOString();
     const turnStartedMetadata: Record<string, unknown> = {
       ...(input.recoveryCorrelationId
         ? { recoveryCorrelationId: input.recoveryCorrelationId }
@@ -781,6 +865,14 @@ export class MuseAdapter implements ProviderAdapterShape {
       ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
         ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
         : {}),
+      supervision: {
+        provider: this.provider,
+        turnId,
+        startedAt: turnStartedAtIso,
+        deadlineAt: new Date(turnStartedAt + this.turnTimeoutMs).toISOString(),
+        idleLimitMs: this.turnIdleTimeoutMs,
+        totalLimitMs: this.turnTimeoutMs,
+      },
     };
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1051,6 +1143,10 @@ export class MuseAdapter implements ProviderAdapterShape {
         itemId: turn.itemId,
         delta: effect.delta,
       });
+      // `translateMuseRecord` already drops empty deltas, so reaching here is
+      // verified protocol activity — never a heartbeat. Reschedules IDLE only;
+      // the absolute total never moves.
+      this.noteVerifiedActivity(record, turn);
       return;
     }
 
@@ -1059,6 +1155,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       // on the result, so there is no honest id to open a `tool.started` with
       // (see muse-adapter-events.ts). Its own itemId keeps the tool row
       // distinct from the assistant text item.
+      const isNewToolResult = !turn.seenToolCallIds.includes(effect.toolCallId);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -1072,6 +1169,16 @@ export class MuseAdapter implements ProviderAdapterShape {
         status: effect.status,
         ...(effect.output === null ? {} : { output: effect.output }),
       });
+      // Replay/duplicate completion receipts must not extend idle: only a
+      // NEWLY identified tool result counts. Malformed/unknown/heartbeat
+      // frames never reach this branch (`ignored` returns above).
+      if (isNewToolResult) {
+        if (turn.seenToolCallIds.length >= MUSE_SEEN_TOOL_CALL_IDS_MAX) {
+          turn.seenToolCallIds.shift();
+        }
+        turn.seenToolCallIds.push(effect.toolCallId);
+        this.noteVerifiedActivity(record, turn);
+      }
       return;
     }
 
@@ -1321,13 +1428,17 @@ export class MuseAdapter implements ProviderAdapterShape {
   /**
    * Idempotent slot release, run when the child is GONE (exit or spawn error)
    * or after termination is confirmed — never merely because the turn
-   * settled. It drops the owned-process registry record, clears the per-turn
-   * deadline, and frees the session's single turn slot.
+   * settled. It drops the owned-process registry record, clears both
+   * per-turn deadlines, and frees the session's single turn slot.
    */
   private finishTurn(record: MuseSessionRecord, turn: MuseActiveTurn): void {
-    if (turn.timeoutHandle) {
-      clearTimeout(turn.timeoutHandle);
-      turn.timeoutHandle = undefined;
+    if (turn.totalTimeoutHandle) {
+      clearTimeout(turn.totalTimeoutHandle);
+      turn.totalTimeoutHandle = undefined;
+    }
+    if (turn.idleTimeoutHandle) {
+      clearTimeout(turn.idleTimeoutHandle);
+      turn.idleTimeoutHandle = undefined;
     }
     // Deliberately does NOT release the owned-process record. Freeing the turn
     // slot is a usability act (the session must not stay blocked by a wedged
@@ -1349,34 +1460,93 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * Arms the per-turn deadline. `muse exec` has no timeout of its own, so a
-   * child that hangs (or one that emits `run_terminal` and then never exits)
-   * is the last remaining way a turn can stay open forever. The turn is
-   * settled with a terminal event FIRST — so the reason the user sees is the
-   * timeout, not a downstream "exited before reporting a terminal result" —
-   * and the child is then terminated and the slot freed.
+   * Arms both per-turn deadlines. `muse exec` has no timeout of its own, so
+   * a child that hangs (or one that emits `run_terminal` and then never
+   * exits) is the last remaining way a turn can stay open forever.
+   *
+   * - TOTAL is armed once and never rescheduled: activity, approval, and
+   *   progress never move it. An explicit `turnTimeoutMs` override is this
+   *   same absolute timer with a different value.
+   * - IDLE is rescheduled by verified protocol activity alone
+   *   (`noteVerifiedActivity`). Malformed/unknown/heartbeat/stderr frames and
+   *   duplicate completion receipts never touch it.
+   *
+   * Both settle with a terminal event FIRST — so the reason the user sees is
+   * the timeout, not a downstream "exited before reporting a terminal
+   * result" — and the child is then terminated and the slot freed, in the
+   * same settle→terminate→finish order as before.
    */
-  private armTurnDeadline(
+  private armTurnDeadlines(
     record: MuseSessionRecord,
     turn: MuseActiveTurn,
   ): void {
-    if (!Number.isFinite(this.turnTimeoutMs) || this.turnTimeoutMs <= 0) return;
-    const handle = setTimeout(() => {
+    const totalHandle = setTimeout(() => {
       this.settleTurn(record, turn, {
         kind: 'error',
         outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
         error: {
-          message: `Muse did not finish the turn within ${this.turnTimeoutMs}ms and was terminated.`,
-          code: 'muse-turn-timeout',
+          message: `Muse did not finish the turn within ${turn.totalLimitMs}ms (absolute turn budget) and was terminated.`,
+          code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
         },
       });
       void this.terminateTurn(turn).finally(() => {
         this.finishTurn(record, turn);
       });
-    }, this.turnTimeoutMs);
+    }, turn.totalLimitMs);
     // A pending backstop must never be the reason the process stays alive.
+    totalHandle.unref?.();
+    turn.totalTimeoutHandle = totalHandle;
+    this.armIdleDeadline(record, turn);
+  }
+
+  /**
+   * (Re)arms the idle deadline `idleLimitMs` from now. Called once at turn
+   * start and again on every verified protocol activity. Never called for
+   * anything else — notably never for approval state (muse has no approval
+   * channel) and never by the total path.
+   */
+  private armIdleDeadline(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+  ): void {
+    if (turn.idleTimeoutHandle) {
+      clearTimeout(turn.idleTimeoutHandle);
+      turn.idleTimeoutHandle = undefined;
+    }
+    if (turn.settled) return;
+    const idleLimitMs = turn.idleLimitMs;
+    const handle = setTimeout(() => {
+      const lastActivityIso = new Date(turn.lastProgressAt).toISOString();
+      this.settleTurn(record, turn, {
+        kind: 'error',
+        outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
+        error: {
+          message: `Muse turn was idle for ${idleLimitMs}ms with no verified protocol activity (last activity at ${lastActivityIso}; no progress observed — the turn may have been working quietly) and was terminated.`,
+          code: MUSE_TURN_IDLE_TIMEOUT_CODE,
+        },
+      });
+      void this.terminateTurn(turn).finally(() => {
+        this.finishTurn(record, turn);
+      });
+    }, idleLimitMs);
     handle.unref?.();
-    turn.timeoutHandle = handle;
+    turn.idleTimeoutHandle = handle;
+  }
+
+  /**
+   * Records verified protocol activity and reschedules the IDLE deadline
+   * only. Callers are `handleStdoutLine`'s text-delta and new-tool-result
+   * branches — i.e. facts the child actually emitted — never stderr noise,
+   * malformed lines, heartbeats, or duplicate receipts.
+   */
+  private noteVerifiedActivity(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+  ): void {
+    if (turn.settled) return;
+    if (record.activeTurn !== turn) return;
+    turn.lastProgressAt = Date.now();
+    this.armIdleDeadline(record, turn);
   }
 
   private terminateTurn(turn: MuseActiveTurn): Promise<boolean> {

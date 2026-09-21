@@ -424,7 +424,14 @@ function stripTerminalControlCharacters(value: string): string {
 }
 
 function isTimeoutEvidence(code: string | undefined): boolean {
-  return code === 'muse-turn-timeout' || code === 'turn-timeout';
+  // #2269: the muse absolute-budget code keeps its pre-existing string so
+  // this mapping is unchanged; the distinct idle code maps to the same
+  // typed `timeout` attribution (never a raw provider message).
+  return (
+    code === 'muse-turn-timeout' ||
+    code === 'muse-turn-idle-timeout' ||
+    code === 'turn-timeout'
+  );
 }
 
 function isNoOutputEvidence(code: string | undefined): boolean {
