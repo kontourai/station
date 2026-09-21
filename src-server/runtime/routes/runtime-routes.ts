@@ -278,8 +278,13 @@ import {
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
   resolveClientOriginForRequest,
+  resolveInboundDelegationDeviceForRequest,
   resolveInboundDeviceKindForRequest,
 } from '../../security/runtime-request-security.js';
+import {
+  projectDelegationAttemptClaim,
+  type DelegationAttemptClaimStore,
+} from '../../services/orchestration/delegation-attempt-claim-store.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -604,6 +609,12 @@ export interface ConfigureRuntimeRoutesContext {
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
+  /**
+   * #485 receiver request-claim slice: the runtime-owned durable claim
+   * owner for opt-in portable delegation attempts. Separate from the
+   * prunable UI ActionOperation ledger by design.
+   */
+  delegationAttemptClaims: import('../../services/orchestration/delegation-attempt-claim-store.js').DelegationAttemptClaimStore;
   orchestrationEventStore?: EventStore;
   pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
@@ -2762,6 +2773,9 @@ export function configureRuntimeRoutes(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
+      // #485: the receiver's durable attempt-claim owner, threaded through
+      // the route seam into the tool's receiver-local path.
+      delegationAttemptClaimStore: context.delegationAttemptClaims,
       // #484 phase A: the receiver's offer admission for the explicit
       // portable-execution intent, over the SAME contribution stores the
       // projection mount uses.
@@ -2779,6 +2793,25 @@ export function configureRuntimeRoutes(
         resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
           context.environmentSecurityService.identifyDevice(credential),
         ),
+      // #485 receiver request-claim slice: the verified delegation-kind
+      // grant (kind `delegation` + `orchestration:operate` + live id match)
+      // — the ONLY identity a receiver claim or attempt lookup is keyed
+      // by. Server-derived from the middleware-owned principal.
+      resolveInboundDelegationDevice: (c) =>
+        resolveInboundDelegationDeviceForRequest(c.req.raw, (credential) =>
+          context.environmentSecurityService.identifyDevice(credential),
+        ),
+      // #485: the authorized read-only exact-attempt lookup over the
+      // durable claim owner. Bounded closed projection only — no prompts,
+      // paths, digests, transcripts, or provider output; `none` (observed
+      // now) is never permission to resend.
+      lookupDelegationAttempt: async (input) => {
+        const store: DelegationAttemptClaimStore = context.delegationAttemptClaims;
+        const record = await store.read(
+          `${input.callerDeviceId}:${input.attemptId}`,
+        );
+        return projectDelegationAttemptClaim(record, input.attemptId);
+      },
       executeForegroundMessage: (input) =>
         executeExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },

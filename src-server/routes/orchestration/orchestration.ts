@@ -87,6 +87,14 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
+import {
+  DelegationAttemptCapacityError,
+  DelegationAttemptClaimStore,
+  DelegationAttemptConflictError,
+  DelegationAttemptExistsError,
+  DelegationAttemptPendingError,
+  type DelegationAttemptProjection,
+} from '../../services/orchestration/delegation-attempt-claim-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -105,6 +113,7 @@ import {
   ReceiverExecutionRefusal,
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
+import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
 import {
   orchestrationStreamDuration,
@@ -417,6 +426,20 @@ export const delegateTaskSchema = z.object({
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
+  /**
+   * #485 receiver request-claim slice: CLOSED, OPT-IN correlation for
+   * portable delegation creates. Opaque caller-minted token — never an
+   * authorization by itself; the receiver keys its durable claim by the
+   * VERIFIED delegation peer grant plus this token. Senders must gate the
+   * field on the receiver's advertised `delegationAttemptClaims` handshake
+   * capability: an older receiver would silently strip it here (its schema
+   * never had the field) and the sender would falsely believe a claim
+   * exists. Legacy bodies without the field are byte-unchanged.
+   */
+  attemptId: z
+    .string()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/)
+    .optional(),
 });
 
 const inputRequestReferenceSchema = z.object({
@@ -645,6 +668,21 @@ interface DelegateTaskRequest {
   inboundDeviceKind?: 'device' | 'delegation';
   /** Server-bound sender authority, checked again before forwarding. */
   isRequestAuthorityCurrent?: () => boolean;
+  /**
+   * #485: the validated opt-in attempt correlation id from the request
+   * body (closed charset/bounds at the schema above). Forwarded in the
+   * portable peer body; claimed on THIS Station only when the verified
+   * caller grant composes below and this Station is the executing
+   * receiver. Never an authorization by itself.
+   */
+  delegationAttemptId?: string;
+  /**
+   * #485: the verified delegation-kind device grant behind the CURRENT
+   * request, resolved by the runtime from the middleware-owned principal
+   * (never body/user labels). Required, together with the claim owner, for
+   * a receiver-local attempt claim and for the authorized lookup.
+   */
+  delegationAttemptCaller?: { readonly deviceId: string };
 }
 
 interface ForegroundMessageRequest {
@@ -938,6 +976,32 @@ export function createOrchestrationRoutes(
     resolveInboundDeviceKind?: (
       c: PrincipalResolutionContext,
     ) => 'device' | 'delegation' | undefined;
+    /**
+     * #485 receiver request-claim slice: resolves the VERIFIED
+     * delegation-kind device grant (kind `delegation` +
+     * `orchestration:operate` + live id match) for the CURRENT request from
+     * the middleware-owned principal. The only identity a receiver claim or
+     * an authorized attempt lookup is keyed by — never body, userId, or
+     * reported origin. `undefined` for operator/internal/personal-device
+     * callers and revoked grants.
+     */
+    resolveInboundDelegationDevice?: (
+      c: PrincipalResolutionContext,
+    ) => { readonly id: string } | undefined;
+    /**
+     * #485: the authorized read-only exact-attempt lookup over the durable
+     * claim owner. Returns the bounded closed projection only for the SAME
+     * verified delegation grant the claim was keyed by.
+     */
+    lookupDelegationAttempt?: (input: {
+      attemptId: string;
+      callerDeviceId: string;
+    }) => Promise<DelegationAttemptProjection>;
+    /**
+     * #485: the receiver's durable attempt-claim owner, composed once by
+     * the runtime. Server-only; never public JSON.
+     */
+    delegationAttemptClaimStore?: DelegationAttemptClaimStore;
     executeForegroundMessage?: (
       input: ForegroundMessageRequest,
     ) => Promise<unknown>;
@@ -1793,12 +1857,41 @@ export function createOrchestrationRoutes(
             )
         : undefined;
       const portableIntent = body.target.workspace?.kind === 'project-portable';
+      // #485 receiver request-claim slice: validate the opt-in correlation
+      // at the route seam. The attempt id is admitted ONLY on a portable
+      // intent (any other topology is an explicit refusal, never a silent
+      // strip); the verified delegation caller grant is composed from the
+      // middleware-owned principal — an operator or personal-device caller
+      // forwards the id but can never claim, and on the receiver-local path
+      // that composition is REQUIRED.
+      if (body.attemptId !== undefined && !portableIntent) {
+        return c.json(
+          {
+            success: false,
+            error: RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
+            code: 'delegation_attempt_unsupported',
+          },
+          403,
+        );
+      }
+      const delegationAttemptCaller = body.attemptId
+        ? deps.resolveInboundDelegationDevice?.(c)
+        : undefined;
       const data = await deps.delegateTask({
         ...body,
         target: normalizeExecutionTarget(body.target),
         userId,
         principal,
         clientOrigin,
+        ...(body.attemptId
+          ? { delegationAttemptId: body.attemptId }
+          : {}),
+        ...(body.attemptId && delegationAttemptCaller
+          ? { delegationAttemptCaller }
+          : {}),
+        ...(deps.delegationAttemptClaimStore
+          ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
+          : {}),
         ...(portableIntent
           ? {
               authorizeReceiverExecution,
@@ -1810,6 +1903,63 @@ export function createOrchestrationRoutes(
       });
       return c.json({ success: true, data });
     } catch (error) {
+      // #485: the receiver's typed duplicate outcomes — an explicit
+      // pending/unknown or exists reference with the attempt id, NEVER a
+      // manufactured completed handle and never a resend authorization.
+      if (error instanceof DelegationAttemptPendingError) {
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            attemptId: error.attemptId,
+            outcome: 'pending',
+          },
+          409,
+        );
+      }
+      if (error instanceof DelegationAttemptExistsError) {
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            attemptId: error.attemptId,
+            taskId: error.taskId,
+          },
+          409,
+        );
+      }
+      if (
+        error instanceof DelegationAttemptConflictError ||
+        error instanceof DelegationAttemptCapacityError
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            ...(error instanceof DelegationAttemptConflictError
+              ? { attemptId: error.attemptId }
+              : {}),
+          },
+          409,
+        );
+      }
+      if (error instanceof PeerDelegationAttemptDuplicateError) {
+        // #485: the receiver's duplicate outcome relayed verbatim — same
+        // closed code, same attempt reference; never a generic fault.
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: error.code,
+            ...(error.attemptId ? { attemptId: error.attemptId } : {}),
+            ...(error.taskId ? { taskId: error.taskId } : {}),
+          },
+          409,
+        );
+      }
       if (error instanceof ReceiverExecutionRefusal)
         return c.json(
           {
@@ -1893,6 +2043,55 @@ export function createOrchestrationRoutes(
       return c.json({ success: true, data });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  // #485 receiver request-claim slice: the authorized read-only lookup for
+  // an exact opt-in attempt, served by the ACTUAL executing receiver only.
+  // Authority: the CURRENT verified delegation-kind device grant with the
+  // orchestration operate scope — the exact grant the claim is keyed by.
+  // A non-delegation caller (operator, personal device, internal token) or
+  // a revoked/rotated grant is refused with NO data. The projection is the
+  // bounded closed shape only — never a prompt, path, digest, transcript,
+  // or provider output — and `none` is explicitly NOT permission to resend:
+  // absence observed now does not fence a delayed original request.
+  app.get('/delegations/attempts/:attemptId', async (c) => {
+    if (!deps.lookupDelegationAttempt) {
+      return c.json(
+        { success: false, error: 'Attempt lookup is unavailable' },
+        503,
+      );
+    }
+    const attemptId = param(c, 'attemptId');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(attemptId)) {
+      return c.json(
+        { success: false, error: 'Invalid attempt id' },
+        400,
+      );
+    }
+    const caller = deps.resolveInboundDelegationDevice?.(c);
+    if (!caller) {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Attempt lookup requires a current verified delegation peer grant.',
+          code: 'delegation_attempt_caller_unsupported',
+        },
+        403,
+      );
+    }
+    try {
+      const data = await deps.lookupDelegationAttempt({
+        attemptId,
+        callerDeviceId: caller.id,
+      });
+      return c.json({ success: true, data });
+    } catch (error) {
+      return c.json(
+        { success: false, error: errorMessage(error) },
+        400,
+      );
     }
   });
 

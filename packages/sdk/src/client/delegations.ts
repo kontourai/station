@@ -138,6 +138,19 @@ export interface DelegateTaskInput {
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
+  /**
+   * #485 receiver request-claim slice: CLOSED, OPT-IN correlation for
+   * portable delegation creates. A caller-minted opaque token, stable
+   * across retries of the SAME logical request. Gate sending this field on
+   * the receiver's advertised `delegationAttemptClaims` handshake
+   * capability — an older receiver silently strips it and no claim exists.
+   * Never an authorization by itself: the receiver keys its durable claim
+   * by the verified delegation peer grant plus this token, refuses a
+   * redelivered request whose validated intent differs, and answers the
+   * exact-attempt lookup (`lookupDelegationAttempt`) for the SAME grant
+   * only. `none`/unknown from a lookup is NOT permission to resend.
+   */
+  attemptId?: string;
 }
 
 function delegationRequestProjection(
@@ -149,6 +162,7 @@ function delegationRequestProjection(
     ...(input.parentTaskId === undefined
       ? {}
       : { parentTaskId: input.parentTaskId }),
+    ...(input.attemptId === undefined ? {} : { attemptId: input.attemptId }),
   };
 }
 
@@ -650,4 +664,49 @@ export async function listDelegatedTasks(
     await unwrapDelegationResponse<DelegatedTaskInventory>(response);
   inventory.tasks = inventory.tasks.map(normalizeDelegationIdentity);
   return inventory;
+}
+
+/**
+ * #485 receiver request-claim slice — the bounded closed projection of one
+ * durable receiver attempt claim. Declared locally (SDK package boundary):
+ * it mirrors the receiver's `GET /api/orchestration/delegations/attempts/:attemptId`
+ * response. Never contains a prompt, path, digest, transcript, or provider
+ * output.
+ */
+export interface DelegationAttemptView {
+  attemptId: string;
+  /**
+   * - `none` — no claim under this key AS OBSERVED NOW. This is NOT
+   *   permission to resend: a delayed original request can still arrive.
+   * - `preparing` — claimed, execution not yet durably evidenced.
+   * - `accepted` — the one real execution; `taskId` is the receiver task
+   *   handle.
+   * - `unresolved` — the invocation may have happened and completion is
+   *   not proven. Never a resend authorization.
+   * - `refused` — a clean pre-effect refusal was recorded (terminal; the
+   *   attempt key can never execute again under changed intent).
+   */
+  state: 'none' | 'preparing' | 'accepted' | 'unresolved' | 'refused';
+  /** Present only when `state === 'accepted'`. */
+  taskId?: string;
+}
+
+/**
+ * `GET /api/orchestration/delegations/attempts/:attemptId` — the authorized
+ * read-only lookup for one exact opt-in attempt. Served by the ACTUAL
+ * executing receiver only; requires the CURRENT verified delegation peer
+ * grant the claim is keyed by (the server refuses everyone else with no
+ * data). Use this to settle a lost acknowledgement WITHOUT re-POSTing the
+ * create request.
+ */
+export async function lookupDelegationAttempt(
+  apiBase: string,
+  attemptId: string,
+  opts?: ClientRequestOptions,
+): Promise<DelegationAttemptView> {
+  const response = await getJson(
+    `${apiBase}/api/orchestration/delegations/attempts/${encodeURIComponent(attemptId)}`,
+    opts,
+  );
+  return unwrapDelegationResponse<DelegationAttemptView>(response);
 }

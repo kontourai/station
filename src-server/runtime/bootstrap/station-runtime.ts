@@ -374,6 +374,7 @@ import {
   ActionOperationService,
   FileActionOperationStore,
 } from '../../services/operations/action-operation-service.js';
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import { FleetDispatchActionOperationObserver } from '../../services/operations/fleet-dispatch-action-operation-observer.js';
 import {
   createMCPToolProvenanceGeneration,
@@ -998,6 +999,8 @@ export class StationRuntime {
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
+  /** #485: durable receiver request-claim owner for opt-in attempts. */
+  private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
 
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,
@@ -1186,6 +1189,12 @@ export class StationRuntime {
         });
       this.actionOperations = new ActionOperationService(
         new FileActionOperationStore(projectHomeDir),
+      );
+      // #485 receiver request-claim slice: the durable execution-domain
+      // owner for opt-in portable delegation attempts — deliberately a
+      // separate store from the prunable UI ActionOperation ledger.
+      this.delegationAttemptClaims = new FileDelegationAttemptClaimStore(
+        projectHomeDir,
       );
       // Reported at the first moment there is a logger to report it with. The
       // quarantine itself has to run before this — before the EventStore that
@@ -3920,6 +3929,7 @@ export class StationRuntime {
       taskDispatcher: this.taskDispatcher,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
+      delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,

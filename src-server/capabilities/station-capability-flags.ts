@@ -42,6 +42,17 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // unauthenticated; what is actually offered is readable only after
   // authentication, from the contribution projection).
   portableExecutionOffers: true,
+  // #485 receiver request-claim slice: the receiver understands the opt-in
+  // `attemptId` field on portable delegation create and durably claims
+  // accepted requests under `(verified delegation device, attemptId)`
+  // before execution preparation; an authorized exact-attempt lookup
+  // answers a bounded closed projection. A STATIC protocol fact — the
+  // handshake is public and unauthenticated, so the flag says nothing
+  // about which attempts (if any) are claimed. Senders MUST gate sending
+  // `attemptId` on this flag: an older receiver would silently strip the
+  // field (its schema has never heard of it) and the sender would believe
+  // a durable claim exists when none does.
+  delegationAttemptClaims: true,
   // Fleet inference (archive#1398): "this build understands the
   // `inference:invoke` pairing-scope token" (docs/design/inference-fleet.md
   // §3.3 point 2). A STATIC PROTOCOL FACT, never a participation signal —
