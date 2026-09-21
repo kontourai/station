@@ -5,7 +5,7 @@
  * reviewed commands. Dependency hooks resolve reviewed local files; the
  * package manager's exact version is verified before it is used.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { delimiter, dirname, isAbsolute, resolve } from 'node:path';
@@ -109,13 +109,38 @@ function checkedFile(path, description) {
 // a bare `npm` and broke on Windows.
 export { resolveNpmCli };
 
+// spawnSync owns the documented argv0 contract; keep ordinary execFileSync
+// behavior when no distinct invocation name is needed.
+function execWithInvocationName(command, args, options) {
+  if (options.argv0 === undefined) return execFileSync(command, args, options);
+  const result = spawnSync(command, args, options);
+  if (result.error)
+    throw Object.assign(result.error, {
+      status: result.status,
+      signal: result.signal,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  if (result.status !== 0) {
+    const detail = String(result.stderr ?? '').slice(-6000);
+    throw Object.assign(
+      new Error(
+        `Command failed (${result.signal ?? result.status}): ${command}${detail ? `\n${detail}` : ''}`,
+      ),
+      result,
+    );
+  }
+  return result.stdout;
+}
+
 function command(command, args, options = {}) {
-  return execFileSync(command, args, {
+  return execWithInvocationName(command, args, {
     cwd: options.cwd ?? root,
     stdio: 'inherit',
     timeout: options.timeout ?? 120_000,
     env: { ...process.env, ...options.env },
     windowsHide: true,
+    ...(options.argv0 !== undefined ? { argv0: options.argv0 } : {}),
   });
 }
 
@@ -149,7 +174,7 @@ export function pnpmInvocation({
   env = process.env,
   node = process.execPath,
   platform = process.platform,
-  exec = execFileSync,
+  exec = execWithInvocationName,
 } = {}) {
   const manifest = JSON.parse(
     readFileSync(resolve(cwd, 'package.json'), 'utf8'),
@@ -185,9 +210,20 @@ export function pnpmInvocation({
   );
   if (candidate) {
     const cli = realpathSync(candidate);
+    // #2280: a non-JS driver (mise exec shim, native binary) may dispatch on
+    // its invocation name, so keep the canonical executable identity as the
+    // command and carry the discovered alias separately as argv0. The alias
+    // itself may live inside the retired node_modules tree, so it must never
+    // become the launched path. JS/Corepack entries dispatch on their script
+    // path and need no argv0. argv0 is omitted (undefined) when the alias and
+    // the canonical driver are the same file.
     const invocation = /\.[cm]?js$/.test(cli)
       ? { command: node, args: [cli] }
-      : { command: cli, args: [] };
+      : {
+          command: cli,
+          args: [],
+          ...(candidate !== cli ? { argv0: candidate } : {}),
+        };
     // A package manager may replace its own tree during install. Reject any
     // driver inside it before even invoking that driver's version probe.
     prepareDependencyInstallDrivers({
@@ -213,6 +249,7 @@ export function pnpmInvocation({
         encoding: 'utf8',
         timeout: 10_000,
         windowsHide: true,
+        ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
       }).trim();
     } catch (error) {
       // A Corepack shim can exist without the pinned manager installed.
@@ -256,6 +293,7 @@ export function pnpmCommand(
     cwd,
     timeout: inertInstallTimeout(),
     env: { npm_config_ignore_scripts: 'true' },
+    ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
   });
 }
 
@@ -652,6 +690,9 @@ export function install(
     args: drivers.scriptPath
       ? [drivers.scriptPath, ...invocation.args.slice(1)]
       : [...invocation.args],
+    // #2280: the invocation name rides along as a string only; the guarded
+    // canonical driver above stays the launched executable.
+    ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
   };
   const allowlist = execution.check({ cwd: execution.root, bootstrap: true });
   const verified = withDependencyInstallGuard({
