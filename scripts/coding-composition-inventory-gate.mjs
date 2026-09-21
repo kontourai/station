@@ -78,6 +78,11 @@ const expectedDependencies = new Map(
     // sentence per unavailable reason, not a receipt the composition emits.
     'src-ui/src/app-shell/codingEvidenceUnavailableCopy.ts': 'presentation',
     'src-ui/src/components/chat-dock/ChatDock.tsx': 'chat-handoff',
+    // The composer’s bounded file mention picker reads the project-scoped
+    // Coding file-search projection through the SDK. It renders no Coding
+    // pane and grants no workspace authority; classify the dependency at the
+    // chat handoff seam so the inventory remains explicit.
+    'src-ui/src/components/chat/FileMentionAutocomplete.tsx': 'chat-handoff',
     // `ChatDockProjectContext.tsx` was declared here for its
     // `codingLayoutSlug` prop: the project row's directory segment doubled as
     // a link into the session's Coding layout. #1536 F retired that segment

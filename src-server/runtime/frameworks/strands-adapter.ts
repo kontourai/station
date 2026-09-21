@@ -498,6 +498,7 @@ export class StrandsFramework {
       isHistoryCurrent?: () => Promise<boolean>,
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
+      const purposeEnabledToolNames = new Set<string>();
 
       const resolvedPrompt =
         typeof opts.processedPrompt === 'function'
@@ -507,7 +508,11 @@ export class StrandsFramework {
         model,
         messages: history,
         systemPrompt: resolvedPrompt,
-        tools: createStrandsFunctionTools(tools, deniedToolCalls),
+        tools: createStrandsFunctionTools(
+          tools,
+          deniedToolCalls,
+          purposeEnabledToolNames,
+        ),
       });
 
       const invocationCtx: InvocationContext = ownedInvocation ?? {
@@ -542,6 +547,7 @@ export class StrandsFramework {
         hooks: conformAgentHooks('strands', config.hooks),
         deniedToolCalls,
         invocationCtx,
+        purposeEnabledToolNames,
         memoryAdapter: opts.memoryAdapter as unknown as IMemory,
         logger: opts.logger,
         resolvedModel,
@@ -630,11 +636,16 @@ export class StrandsFramework {
       isHistoryCurrent?: () => Promise<boolean>,
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
+      const purposeEnabledToolNames = new Set<string>();
       const agent = new StrandsAgent({
         model: opts.model,
         messages: history,
         systemPrompt: resolved,
-        tools: createStrandsFunctionTools(opts.tools || [], deniedToolCalls),
+        tools: createStrandsFunctionTools(
+          opts.tools || [],
+          deniedToolCalls,
+          purposeEnabledToolNames,
+        ),
       });
       // Agent-scoped BASE identity shared by the gate and the wrapper
       // (mirrors createAgent) — agentSlug only, never mutated. Per-request
@@ -662,6 +673,7 @@ export class StrandsFramework {
         hooks: conformAgentHooks('strands', opts.hooks),
         deniedToolCalls,
         invocationCtx,
+        purposeEnabledToolNames,
       });
       // archive#914: `createAgent` above passes the adapter into this slot "so
       // conversations persist"; passing null here gave temp agents no

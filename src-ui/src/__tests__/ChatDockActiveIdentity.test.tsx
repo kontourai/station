@@ -69,6 +69,27 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     ).not.toBeNull();
   });
 
+  test('shows only a server-issued driven-from origin', () => {
+    const { rerender } = render(
+      <ChatDockActiveIdentity session={session} onClose={vi.fn()} />,
+    );
+    expect(screen.queryByText('Driven from delegation')).toBeNull();
+    rerender(
+      <ChatDockActiveIdentity
+        session={session}
+        inputOrigin={{
+          kind: 'delegation',
+          taskId: 'task:review',
+          title: 'Review Station',
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText('Driven from delegation').getAttribute('title'),
+    ).toBe('Driven from delegated task: Review Station');
+  });
+
   test('the title and the token each carry their full text as a tooltip, because each ellipsizes', () => {
     render(
       <ChatDockActiveIdentity

@@ -1,3 +1,4 @@
+import { toolPurposeView } from '../../components/chat/tool-display-view';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { derivePlanArtifactFromStreamingState } from '../../utils/planArtifacts';
@@ -191,6 +192,7 @@ export function handleToolStartedEvent(
 ) {
   upsertToolPartOnEventTurn(event, {
     toolName: event.toolName,
+    purpose: toolPurposeView(event),
     args: event.arguments || {},
     state: 'running',
     activityAt: event.createdAt,
@@ -247,6 +249,7 @@ export function handleToolCompletedEvent(
   const policyDenied = event.policyDenied === true;
   const updates = {
     toolName: event.toolName,
+    purpose: toolPurposeView(event),
     sourceEventId: event.eventId,
     state:
       event.status === 'success'

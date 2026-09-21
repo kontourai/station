@@ -174,6 +174,22 @@ for (const theme of ['light', 'dark']) {
       expect(box.x + box.width).toBeLessThanOrEqual(390);
       expect(box.height).toBeGreaterThanOrEqual(44);
     }
+    const toolbarButtons = [
+      panel.getByRole('button', { name: 'Fit', exact: true }),
+      panel.getByRole('button', { name: 'Actual size', exact: true }),
+      panel.getByRole('button', { name: 'Zoom out', exact: true }),
+      panel.getByRole('button', { name: 'Zoom in', exact: true }),
+    ];
+    const toolbarTop = (await toolbarButtons[0].boundingBox())!.y;
+    for (const button of toolbarButtons)
+      expect((await button.boundingBox())!.y).toBe(toolbarTop);
+    const level = (await panel.getByLabel('Image zoom level').boundingBox())!;
+    const firstButton = (await toolbarButtons[0].boundingBox())!;
+    expect(level.y + level.height / 2).toBeCloseTo(
+      firstButton.y + firstButton.height / 2,
+      1,
+    );
+    await expect(panel.getByText('Pinch to zoom. Drag to pan.')).toBeVisible();
     const view = panel.getByRole('region', { name: 'Image viewport' });
     await view.focus();
     await page.keyboard.press('Tab');
@@ -189,6 +205,38 @@ for (const theme of ['light', 'dark']) {
     await page.screenshot({
       path: testInfo.outputPath(`image-preview-${theme}.png`),
     });
+  });
+}
+
+for (const width of [320, 402]) {
+  test(`image zoom toolbar remains one touch-safe row at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await mount(page);
+    const controls = dialog(page).getByRole('group', { name: 'Image zoom' });
+    const buttons = await controls.getByRole('button').all();
+    const first = (await buttons[0].boundingBox())!;
+    for (const button of buttons) {
+      const box = (await button.boundingBox())!;
+      expect(box.y).toBe(first.y);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+    const level = (await controls
+      .getByLabel('Image zoom level')
+      .boundingBox())!;
+    expect(level.y + level.height / 2).toBeCloseTo(
+      first.y + first.height / 2,
+      1,
+    );
+    await expect(controls.getByRole('button', { name: 'Zoom out' })).toHaveText(
+      '−',
+    );
+    await expect(controls.getByRole('button', { name: 'Zoom in' })).toHaveText(
+      '+',
+    );
   });
 }
 

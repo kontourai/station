@@ -23,6 +23,7 @@ interface ApprovalRequestMetadata {
   conversationId?: string;
   conversationTitle?: string;
   description?: string;
+  purpose?: string;
   server?: string | null;
   source: 'acp' | 'runtime';
   title: string;

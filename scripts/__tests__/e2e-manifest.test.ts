@@ -211,10 +211,13 @@ describe('e2e manifest', () => {
       // dock-chrome settings a region write mirrors.
       'tests/activity-pane.spec.ts': expect.any(String),
       'tests/project-architecture.spec.ts': expect.any(String),
+      'tests/buffered-answer-delivery.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
+      'tests/conversation-timeline.spec.ts',
+      'tests/mobile-chat-composer.spec.ts',
       'tests/agents-readiness-board.spec.ts',
       // station#3843: seeds a live non-ready agent and opens a second browser
       // context holding the runner's own browser-session credential.

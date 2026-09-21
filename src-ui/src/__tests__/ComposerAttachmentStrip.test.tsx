@@ -142,6 +142,34 @@ describe('ComposerAttachmentStrip', () => {
     expect(screen.getByText('Choose file again to retry')).toBeTruthy();
     expect(screen.getByLabelText('Choose expired.txt again')).toBeTruthy();
   });
+
+  test('names a retained retryable stage as an action instead of exposing its enum', () => {
+    const retry = vi.fn();
+    render(
+      <ComposerAttachmentStrip
+        attachments={[attachment()]}
+        stages={[
+          {
+            clientAttachmentId: 'a1',
+            name: 'screenshot.webp',
+            mimeType: 'image/webp',
+            size: 1_048_576,
+            state: 'retryable',
+            progress: 0,
+            error: 'Attachment upload did not finish.',
+          },
+        ]}
+        onRemove={vi.fn()}
+        onRetry={retry}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Retry required before sending')).toBeTruthy();
+    expect(screen.queryByText('retryable')).toBeNull();
+    screen.getByRole('button', { name: 'Retry screenshot.webp' }).click();
+    expect(retry).toHaveBeenCalledWith('a1');
+  });
 });
 
 describe('AttachmentPreviewMenu', () => {

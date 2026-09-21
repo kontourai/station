@@ -305,6 +305,13 @@ export function buildOrchestrationSessionSummary(options: {
   const lastEvent = events.at(-1);
   const lifecycle = projectSessionLifecycle({ session: base, events });
   const delegation = extractDelegationContext(events);
+  const inputOrigin = delegation
+    ? {
+        kind: 'delegation' as const,
+        taskId: delegation.taskId,
+        ...(delegation.title ? { title: delegation.title } : {}),
+      }
+    : undefined;
   const effectiveSelection = extractEffectiveModelSelection(events);
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
@@ -403,6 +410,7 @@ export function buildOrchestrationSessionSummary(options: {
       : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
     ...(delegation ? { delegation } : {}),
+    ...(inputOrigin ? { inputOrigin } : {}),
     ...(displayTitle ? { displayTitle } : {}),
     ...effectiveSelection,
     ...((selectionReceipt.requestedModel ?? effectiveSelection.effectiveModel)

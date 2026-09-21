@@ -8,6 +8,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -132,6 +133,7 @@ import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
+import { resolveWorkspaceIdentity } from '../workspace-identity.js';
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
@@ -316,6 +318,7 @@ class FakeAdapter implements ProviderAdapterShape {
         threadId: input.threadId,
         status: 'ready',
         model: input.modelId,
+        cwd: input.cwd,
         createdAt: now,
         updatedAt: now,
       };
@@ -796,7 +799,230 @@ describe('OrchestrationService', () => {
     });
   });
 
+  describe('workspace restore execution exclusion', () => {
+    async function startAndSend(threadId: string, cwd: string) {
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'bedrock', cwd },
+      });
+      return service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: `turn for ${threadId}` },
+      });
+    }
+
+    async function workspaceKey(cwd: string): Promise<string> {
+      const identity = await resolveWorkspaceIdentity(cwd);
+      if (identity.kind === 'remote')
+        throw new Error('expected local workspace');
+      return identity.key;
+    }
+
+    function createGitWorkspace(): {
+      root: string;
+      child: string;
+      link: string;
+    } {
+      const root = join(tmp, `repo-${randomUUID()}`);
+      const child = join(root, 'packages', 'child');
+      const link = join(tmp, `repo-link-${randomUUID()}`);
+      mkdirSync(child, { recursive: true });
+      execGitSync(['init', root]);
+      symlinkSync(root, link, 'dir');
+      return { root, child, link };
+    }
+
+    test('local non-Git chats send turns and unrelated workspaces remain concurrent', async () => {
+      const first = mkdtempSync(join(tmp, 'plain-a-'));
+      const second = mkdtempSync(join(tmp, 'plain-b-'));
+
+      await startAndSend('plain-chat', first);
+
+      expect(bedrock.sendTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: 'plain-chat' }),
+      );
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(second),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+    });
+
+    test.each(['subdirectory', 'symlink'] as const)(
+      'refuses restore while a turn from a Git %s is active',
+      async (variant) => {
+        const repo = createGitWorkspace();
+        await startAndSend(
+          `git-${variant}`,
+          variant === 'subdirectory' ? repo.child : repo.link,
+        );
+
+        await expect(
+          service.runWorkspaceRestore(
+            await workspaceKey(repo.root),
+            async () => undefined,
+          ),
+        ).rejects.toThrow('workspace_has_active_turn');
+      },
+    );
+
+    test('does not probe inactive deleted history while admitting a restore', async () => {
+      const deleted = mkdtempSync(join(tmp, 'deleted-history-'));
+      eventStore.upsertSession({
+        provider: 'bedrock',
+        threadId: 'inactive-deleted',
+        status: 'ready',
+        cwd: deleted,
+        createdAt: '2026-09-20T00:00:00.000Z',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+      });
+      rmSync(deleted, { recursive: true });
+      const current = mkdtempSync(join(tmp, 'current-workspace-'));
+
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(current),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+    });
+
+    test('holds a new-session turn before provider effect until an exclusive restore releases', async () => {
+      const cwd = mkdtempSync(join(tmp, 'exclusive-'));
+      const release = deferred<void>();
+      let restoreEntered = false;
+      const restoring = service.runWorkspaceRestore(
+        await workspaceKey(cwd),
+        async () => {
+          restoreEntered = true;
+          await release.promise;
+        },
+      );
+      await waitFor(() => restoreEntered, Boolean);
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'starts-during-restore', provider: 'bedrock', cwd },
+      });
+
+      let turnSettled = false;
+      const turn = service
+        .dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: 'starts-during-restore',
+            input: 'wait for restore',
+          },
+        })
+        .finally(() => {
+          turnSettled = true;
+        });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(restoreEntered).toBe(true);
+      expect(turnSettled).toBe(false);
+      expect(bedrock.sendTurn).not.toHaveBeenCalled();
+
+      release.resolve();
+      await restoring;
+      await turn;
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a restarted service refuses restore from the durable possible-effect boundary', async () => {
+      const cwd = mkdtempSync(join(tmp, 'durable-active-'));
+      await startAndSend('durable-active', cwd);
+      const restartedAdapter = new FakeAdapter('bedrock');
+      const restarted = new OrchestrationService({
+        adapterRegistry: createRegistry([restartedAdapter]),
+        eventBus: new EventBus(),
+        eventStore,
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+
+      await expect(
+        restarted.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => undefined,
+        ),
+      ).rejects.toThrow('workspace_has_active_turn');
+    });
+
+    test('an indeterminate provider start keeps restore blocked for deferred recovery', async () => {
+      const cwd = mkdtempSync(join(tmp, 'failed-start-'));
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'failed-start', provider: 'bedrock', cwd },
+      });
+      bedrock.sendTurn.mockRejectedValueOnce(new Error('provider unavailable'));
+
+      await expect(
+        service.dispatch({
+          type: 'sendTurn',
+          input: { threadId: 'failed-start', input: 'will fail' },
+        }),
+      ).rejects.toThrow('may have started');
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => 'restored',
+        ),
+      ).rejects.toThrow('workspace_has_active_turn');
+    });
+
+    test('a terminal observed before provider acceptance cannot resurrect a workspace reservation', async () => {
+      const cwd = mkdtempSync(join(tmp, 'terminal-before-accept-'));
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'terminal-before-accept', provider: 'bedrock', cwd },
+      });
+      const accepted = deferred<ProviderTurnStartResult>();
+      bedrock.sendTurn.mockReturnValueOnce(accepted.promise);
+      const sending = service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'terminal-before-accept',
+          input: 'fast terminal',
+          clientTurnId: 'terminal-before-accept-client',
+        },
+      });
+      await waitFor(() => bedrock.sendTurn.mock.calls.length, Boolean);
+      bedrock.events.push({
+        eventId: 'terminal-before-accept-event',
+        provider: 'bedrock',
+        threadId: 'terminal-before-accept',
+        turnId: 'terminal-before-accept-turn',
+        method: 'turn.completed',
+        createdAt: new Date().toISOString(),
+      });
+      await waitFor(
+        () => eventStore.listEvents('terminal-before-accept'),
+        (events) =>
+          events.some((event) => event.payload.method === 'turn.completed'),
+      );
+      accepted.resolve({
+        threadId: 'terminal-before-accept',
+        turnId: 'terminal-before-accept-turn',
+      });
+
+      await expect(sending).resolves.toMatchObject({
+        threadId: 'terminal-before-accept',
+        turnId: 'terminal-before-accept-turn',
+      });
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+    });
+  });
+
   afterEach(() => {
+    bedrock.events.close();
+    claude.events.close();
     eventStore.close();
     rmSync(tmp, { recursive: true, force: true });
     // archive#1101: drop any dangling waitForReceipt()/subscribeForTest()
@@ -12451,7 +12677,11 @@ describe('OrchestrationService', () => {
       });
       claude.sendTurn.mockClear();
       const inFlight = deferred<ProviderTurnStartResult>();
-      claude.sendTurn.mockReturnValueOnce(inFlight.promise);
+      const providerEntered = deferred<void>();
+      claude.sendTurn.mockImplementationOnce(() => {
+        providerEntered.resolve();
+        return inFlight.promise;
+      });
 
       const firstDispatch = service.dispatch({
         type: 'sendTurn',
@@ -12461,12 +12691,9 @@ describe('OrchestrationService', () => {
           clientTurnId: 'client-turn-inflight',
         },
       });
-      // Let the first dispatch's claim land (everything up to
-      // `adapter.sendTurn` is synchronous/microtask work; the deferred
-      // `inFlight` promise is the only thing actually pending) before the
-      // second one starts, so it observes an in-flight (not yet resolved)
-      // claim rather than racing the first claim.
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Workspace identity resolution is intentionally asynchronous. Observe
+      // the actual provider boundary instead of assuming it fits in a timer.
+      await providerEntered.promise;
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
 
       const secondDispatch = service.dispatch({
@@ -16326,27 +16553,36 @@ describe('OrchestrationService', () => {
    * projection before the timeout's `stopSession` dispatch tears it down).
    */
   test('arms internal-stop suppression for a smoke turn that times out mid-flight', async () => {
+    const startedAt = Date.now();
+    let observedNow = startedAt;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => observedNow);
     claude.sendTurn.mockImplementationOnce(async (input) => {
-      queueMicrotask(() => {
-        claude.events.push({
-          eventId: 'suppressed-smoke-started',
-          provider: 'claude',
-          threadId: input.threadId,
-          turnId: 'suppressed-smoke-turn',
-          createdAt: new Date().toISOString(),
-          method: 'turn.started',
-          prompt: input.input,
-        });
+      claude.events.push({
+        eventId: 'suppressed-smoke-started',
+        provider: 'claude',
+        threadId: input.threadId,
+        turnId: 'suppressed-smoke-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: input.input,
       });
+      await waitFor(
+        () => eventStore.listEvents(input.threadId),
+        (events) =>
+          events.some((event) => event.payload.method === 'turn.started'),
+      );
+      observedNow = startedAt + 1_001;
       return { threadId: input.threadId, turnId: 'suppressed-smoke-turn' };
     });
-    const result = await service.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+    const result = await service
+      .runConnectionSmoke({
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 1_000,
+      })
+      .finally(() => now.mockRestore());
 
     expect(result).toMatchObject({ ok: false, reasonCode: 'timeout' });
     expect(claude.stopSession).toHaveBeenCalledOnce();
@@ -18229,6 +18465,7 @@ describe('OrchestrationService', () => {
   });
 
   test('recoverOrchestrationSessions replays the persisted session.started metadata (minus the reserved capabilityDelivery key) and applies resolveSessionAgent before adapter.startSession (#895 wave B)', async () => {
+    const recoveryCwd = mkdtempSync(join(tmp, 'recovery-project-'));
     eventStore.appendEvent({
       eventId: 'evt-session-started-recovery',
       provider: 'claude',
@@ -18239,7 +18476,7 @@ describe('OrchestrationService', () => {
       initialState: 'created',
       metadata: {
         agentSlug: 'my-agent',
-        cwd: '/workspace/project',
+        cwd: recoveryCwd,
         [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
           agentSlug: 'my-agent',
           skills: { source: 'agent', requested: ['writing'], undelivered: [] },
@@ -18251,7 +18488,7 @@ describe('OrchestrationService', () => {
       threadId: 'thread-recovery-agent',
       status: 'running',
       model: 'claude-sonnet',
-      cwd: '/workspace/project',
+      cwd: recoveryCwd,
       persistSession: true,
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T00:00:05.000Z',
@@ -18285,7 +18522,7 @@ describe('OrchestrationService', () => {
         threadId: 'thread-recovery-agent',
         metadata: expect.objectContaining({
           agentSlug: 'my-agent',
-          cwd: '/workspace/project',
+          cwd: recoveryCwd,
         }),
       }),
     );
@@ -18294,7 +18531,7 @@ describe('OrchestrationService', () => {
         threadId: 'thread-recovery-agent',
         metadata: expect.objectContaining({
           agentSlug: 'my-agent',
-          cwd: '/workspace/project',
+          cwd: recoveryCwd,
         }),
         agent: {
           slug: 'my-agent',
@@ -18305,6 +18542,8 @@ describe('OrchestrationService', () => {
   });
 
   test('recoverOrchestrationSessions replays the LATEST persisted session.started metadata when multiple exist for a thread (#895 wave B review LOW)', async () => {
+    const oldCwd = mkdtempSync(join(tmp, 'recovery-old-'));
+    const newCwd = mkdtempSync(join(tmp, 'recovery-new-'));
     eventStore.appendEvent({
       eventId: 'evt-session-started-old',
       provider: 'claude',
@@ -18313,7 +18552,7 @@ describe('OrchestrationService', () => {
       method: 'session.started',
       sessionId: 'thread-recovery-latest-metadata',
       initialState: 'created',
-      metadata: { agentSlug: 'agent-old', cwd: '/workspace/old' },
+      metadata: { agentSlug: 'agent-old', cwd: oldCwd },
     } as any);
     eventStore.appendEvent({
       eventId: 'evt-session-started-new',
@@ -18323,14 +18562,14 @@ describe('OrchestrationService', () => {
       method: 'session.started',
       sessionId: 'thread-recovery-latest-metadata',
       initialState: 'created',
-      metadata: { agentSlug: 'agent-new', cwd: '/workspace/new' },
+      metadata: { agentSlug: 'agent-new', cwd: newCwd },
     } as any);
     eventStore.upsertSession({
       provider: 'claude',
       threadId: 'thread-recovery-latest-metadata',
       status: 'running',
       model: 'claude-sonnet',
-      cwd: '/workspace/new',
+      cwd: newCwd,
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T01:00:05.000Z',
     });
@@ -18354,19 +18593,20 @@ describe('OrchestrationService', () => {
         threadId: 'thread-recovery-latest-metadata',
         metadata: expect.objectContaining({
           agentSlug: 'agent-new',
-          cwd: '/workspace/new',
+          cwd: newCwd,
         }),
       }),
     );
   });
 
   test('a throwing resolveSessionAgent logs and recovery continues into adapter.startSession (#895 wave B review LOW)', async () => {
+    const recoveryCwd = mkdtempSync(join(tmp, 'recovery-resolver-'));
     eventStore.upsertSession({
       provider: 'claude',
       threadId: 'thread-recovery-resolver-throws',
       status: 'running',
       model: 'claude-sonnet',
-      cwd: '/workspace/project',
+      cwd: recoveryCwd,
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-01T00:00:05.000Z',
     });

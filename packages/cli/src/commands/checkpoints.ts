@@ -542,14 +542,32 @@ export async function runCheckpointsCommand(
       process.exitCode = 1;
       return;
     }
-    const response = await (deps.fetch ?? fetch)(
-      `${apiBase.replace(/\/$/, '')}/api/orchestration/sessions/${encodeURIComponent(thread)}/checkpoints/${encodeURIComponent(turn)}/restore`,
+    const baseUrl = `${apiBase.replace(/\/$/, '')}/api/orchestration/sessions/${encodeURIComponent(thread)}/checkpoints/${encodeURIComponent(turn)}`;
+    const previewResponse = await (deps.fetch ?? fetch)(
+      `${baseUrl}/restore-preview`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ confirmed: true, phase }),
+        body: JSON.stringify({ phase }),
       },
     );
+    const previewBody = (await previewResponse.json()) as any;
+    if (!previewResponse.ok || !previewBody?.data?.previewId) {
+      err(
+        `station checkpoints restore preview failed (${previewResponse.status}): ${JSON.stringify(previewBody)}`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const response = await (deps.fetch ?? fetch)(`${baseUrl}/restore`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        confirmed: true,
+        previewId: previewBody.data.previewId,
+        expectedCurrentTreeSha: previewBody.data.currentTreeSha,
+      }),
+    });
     const body = await response.json();
     if (!response.ok) {
       err(

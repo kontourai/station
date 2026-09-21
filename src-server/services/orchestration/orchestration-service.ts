@@ -333,6 +333,8 @@ import {
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
+import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
+import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
 type UsageTelemetryObserver = {
   trackSessionRecovery(
@@ -1251,6 +1253,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly workspaceExecutionBarrier = new WorkspaceExecutionBarrier();
   private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
   private readonly nativeOutputGrants = createNativeOutputGrantAuthority();
@@ -1632,6 +1635,7 @@ export class OrchestrationService {
       createInMemorySessionTurnBoundaryAuthority();
     this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
       this.sessionStartBoundaries,
+      this.workspaceExecutionBarrier,
     );
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
@@ -3058,6 +3062,42 @@ export class OrchestrationService {
     return sessions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
+  async runWorkspaceRestore<T>(
+    workspaceKey: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.sessionExecutionCoordinator.runWorkspaceExclusive(
+      workspaceKey,
+      async () => {
+        if (!this.options.eventStore)
+          throw new Error('workspace_coordination_unavailable');
+        const possible = this.options.eventStore
+          .readSessions()
+          .filter((session) =>
+            this.sessionExecutionCoordinator.hasActiveTurn(session.threadId),
+          );
+        const sessionIds: string[] = [];
+        for (const session of possible) {
+          if (!session.cwd)
+            throw new Error('workspace_coordination_unavailable');
+          const identity = await resolveWorkspaceIdentity(
+            session.cwd,
+            session.controlMode === 'read-only-attached' ? 'remote' : 'local',
+          );
+          if (identity.kind !== 'remote' && identity.key === workspaceKey)
+            sessionIds.push(session.threadId);
+        }
+        if (
+          sessionIds.some((threadId) =>
+            this.sessionExecutionCoordinator.hasActiveTurn(threadId),
+          )
+        )
+          throw new Error('workspace_has_active_turn');
+        return operation();
+      },
+    );
+  }
+
   /**
    * Persist the delegating Station's own dispatch receipt for work owned by a
    * paired peer. This is a compact Activity record, not a copy of the peer's
@@ -4151,6 +4191,19 @@ export class OrchestrationService {
     return this.sessionAuthz.canReadSession(threadId, authority);
   }
 
+  canUserMutateSession(
+    threadId: string,
+    userId: string | undefined,
+    tenantExecutionContext: TenantExecutionContext | undefined,
+  ): boolean {
+    this.initialize();
+    return this.sessionAuthz.canReadSessionForCommand(
+      threadId,
+      userId,
+      tenantExecutionContext,
+    );
+  }
+
   /**
    * Presence-subject resolution (body lives in SessionAuthorization —
    * epic archive#4024, archive#4166); the initialize() latch stays here (T9).
@@ -5053,13 +5106,6 @@ export class OrchestrationService {
             command.input.threadId,
             INTERNAL_SESSION_READ_SCOPE,
           );
-          if (
-            current &&
-            foldedSessionLifecycleState(current.session.lifecycleState) ===
-              'completed'
-          ) {
-            throw new SessionEndedError();
-          }
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: command.input.threadId,
             threadProviders: this.threadProviders,
@@ -5544,20 +5590,26 @@ export class OrchestrationService {
                       if (earlyOriginEvent) {
                         this.projectAndPublishEvent(earlyOriginEvent);
                       }
-                      const settled = boundary.accepted(
-                        accepted.turnId,
-                        new Date().toISOString(),
-                      );
-                      if (settled.kind !== 'applied') {
-                        claimOutcome = 'retain';
-                        throw new SessionTurnStartIndeterminateError();
-                      }
                       if (
                         !this.sessionExecutionCoordinator.markTurnAccepted(
                           turnInput.threadId,
                           accepted.turnId,
                         )
                       ) {
+                        const settled = boundary.terminalObserved(
+                          accepted.turnId,
+                        );
+                        if (settled.kind !== 'applied') {
+                          claimOutcome = 'retain';
+                          throw new SessionTurnStartIndeterminateError();
+                        }
+                        return accepted;
+                      }
+                      const settled = boundary.accepted(
+                        accepted.turnId,
+                        new Date().toISOString(),
+                      );
+                      if (settled.kind !== 'applied') {
                         claimOutcome = 'retain';
                         throw new SessionTurnStartIndeterminateError();
                       }
@@ -5677,6 +5729,23 @@ export class OrchestrationService {
                       )
                     : invokeWithReceiverAdmission();
                 },
+                await (async () => {
+                  const persisted =
+                    this.options.eventStore?.readSessionByThread(
+                      turnInput.threadId,
+                    );
+                  const cwd =
+                    this.sessionReadModel.get(turnInput.threadId)?.cwd ??
+                    persisted?.cwd;
+                  if (!cwd) return undefined;
+                  const identity = await resolveWorkspaceIdentity(
+                    cwd,
+                    persisted?.controlMode === 'read-only-attached'
+                      ? 'remote'
+                      : 'local',
+                  );
+                  return identity.kind === 'remote' ? undefined : identity.key;
+                })(),
               );
             } catch (error) {
               if (!(error instanceof SessionTurnStartIndeterminateError)) {

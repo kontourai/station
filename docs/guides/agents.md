@@ -117,6 +117,27 @@ Flow:
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
 
+### Tool purpose display support
+
+Station can invite an agent to state a short purpose for a tool call only when
+Station owns both the model-visible object schema and the execution adapter.
+The purpose is untrusted display text; it never changes approval or policy.
+
+| Tool source | Purpose field | Executor arguments |
+| --- | --- | --- |
+| Station-owned Strands tool with a plain object schema | Supported | Reserved metadata is stripped before execution |
+| Station-owned VoltAgent tool with a plain object schema | Supported | Reserved metadata is stripped before execution |
+| Composed, `$ref`, non-object, or colliding schema | Not injected | Arguments remain unchanged |
+| MCP/provider tool or external Claude, Codex, or ACP schema | Not injected | Arguments remain unchanged |
+
+The canonical event keeps actual tool identity, arguments, status, provenance,
+and optional stated purpose as separate fields. History, replay, approval
+previews, and live rows therefore agree without treating purpose as evidence
+that a call is safe. The native framework adapter binds the purpose from the
+first real tool-call stream event before Station publishes `tool.started`;
+framework lifecycle hooks may run later and cannot be used as the ordering
+source for the live row.
+
 ---
 
 ## Agent Hooks

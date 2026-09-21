@@ -123,6 +123,23 @@ const FOREGROUND_MESSAGE_INDETERMINATE_ERROR =
 const FOREGROUND_CONTINUATION_INDETERMINATE_ERROR =
   'Foreground Agent continuation may have started. Do not retry automatically.';
 
+const CHECKPOINT_RESTORE_REASONS = new Set([
+  'authorization_changed',
+  'checkpoint_failed',
+  'checkpoint_identity_mismatch',
+  'checkpoint_missing',
+  'checkpoint_pruned',
+  'preview_invalid',
+  'restore_verification_failed',
+  'workspace_changed',
+  'workspace_checkpoint_unsupported',
+]);
+
+function checkpointRestoreReason(error: unknown): string {
+  const reason = error instanceof Error ? error.message : '';
+  return CHECKPOINT_RESTORE_REASONS.has(reason) ? reason : 'restore_failed';
+}
+
 const reviewedSourceAssociationSchema = z
   .object({
     version: z.literal('station.reviewed-source-association/v1'),
@@ -1045,11 +1062,20 @@ export function createOrchestrationRoutes(
      * intact one.
      */
     listThreadCheckpoints?: (threadId: string) => Promise<unknown[]>;
-    restoreThreadCheckpoint?: (input: {
+    previewThreadCheckpointRestore?: (input: {
       threadId: string;
       turnId: string;
       phase: 'baseline' | 'settle';
+      ownerKey: string;
+    }) => Promise<unknown>;
+    restoreThreadCheckpoint?: (input: {
+      threadId: string;
+      turnId: string;
+      previewId: string;
+      expectedCurrentTreeSha: string;
+      ownerKey: string;
       confirmed: true;
+      isAuthorized?: () => boolean;
     }) => Promise<unknown>;
     listCheckpointRestoreEvents?: (threadId: string) => unknown[];
     /** Shared status envelope for the existing attached-session handoff. */
@@ -1064,6 +1090,15 @@ export function createOrchestrationRoutes(
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
+  const mutationIdentity = (c: PrincipalResolutionContext) => {
+    const { userId } = resolveActorPrincipal(deps, c);
+    const tenant = getTenantRequestContext(c.req.raw);
+    return {
+      userId,
+      tenant: tenantExecutionContextForRequest(c.req.raw),
+      ownerKey: JSON.stringify([userId, tenant?.tenantId ?? null]),
+    };
+  };
   /**
    * One in-flight peer-delegation reconciliation per caller.
    *
@@ -2134,6 +2169,58 @@ export function createOrchestrationRoutes(
     });
   });
 
+  app.post(
+    '/sessions/:threadId/checkpoints/:turnId/restore-preview',
+    async (c) => {
+      if (!deps.previewThreadCheckpointRestore)
+        return c.json(
+          { success: false, error: 'Workspace restore preview is unavailable' },
+          503,
+        );
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const threadId = param(c, 'threadId');
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const body = await c.req.json().catch(() => ({}));
+      const parsed = z
+        .object({ phase: z.enum(['baseline', 'settle']).default('settle') })
+        .safeParse(body);
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid restore preview' },
+          400,
+        );
+      try {
+        return c.json({
+          success: true,
+          data: await deps.previewThreadCheckpointRestore({
+            threadId,
+            turnId: param(c, 'turnId'),
+            phase: parsed.data.phase,
+            ownerKey: identity.ownerKey,
+          }),
+        });
+      } catch (error) {
+        return c.json(
+          {
+            success: false,
+            error: 'Workspace restore preview failed',
+            reason: checkpointRestoreReason(error),
+          },
+          409,
+        );
+      }
+    },
+  );
+
   app.post('/sessions/:threadId/checkpoints/:turnId/restore', async (c) => {
     if (!deps.restoreThreadCheckpoint)
       return c.json(
@@ -2144,18 +2231,32 @@ export function createOrchestrationRoutes(
         503,
       );
     const threadId = param(c, 'threadId');
-    if (!orchestrationService.canUserReadSession(threadId, readAuthorityFor(c)))
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
       return c.json({ success: false, error: 'Session not found' }, 404);
     const body = await c.req.json().catch(() => null);
     const parsed = z
       .object({
         confirmed: z.literal(true),
-        phase: z.enum(['baseline', 'settle']).default('settle'),
+        previewId: z.string().uuid(),
+        expectedCurrentTreeSha: z.string().regex(/^[0-9a-f]{40,64}$/),
       })
       .safeParse(body);
     if (!parsed.success)
       return c.json(
-        { success: false, error: 'Explicit confirmation is required' },
+        {
+          success: false,
+          error:
+            'A current restore preview and explicit confirmation are required',
+        },
         400,
       );
     try {
@@ -2164,11 +2265,19 @@ export function createOrchestrationRoutes(
         data: await deps.restoreThreadCheckpoint({
           threadId,
           turnId: param(c, 'turnId'),
+          ownerKey: identity.ownerKey,
+          isAuthorized: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+            orchestrationService.canUserMutateSession(
+              threadId,
+              identity.userId,
+              identity.tenant,
+            ),
           ...parsed.data,
         }),
       });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : 'restore_failed';
+      const reason = checkpointRestoreReason(error);
       const status =
         reason === 'checkpoint_missing' || reason === 'checkpoint_pruned'
           ? 404

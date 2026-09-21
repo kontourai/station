@@ -16,6 +16,7 @@
  * this doesn't invent a second naming scheme.
  */
 import { formatToolName } from '../../utils/chat-progress';
+import { toolDisplayView } from './tool-display-view';
 
 export type ToolCallKind = 'read' | 'write' | 'exec' | 'search' | 'other';
 
@@ -79,8 +80,7 @@ export interface ToolCallPhaseInput {
  */
 export function isToolCallAwaitingApproval(part: ToolCallPhaseInput): boolean {
   if (part.needsApproval !== true) return false;
-  const error = part.error ?? part.errorText;
-  const result = part.result ?? part.output;
+  const { error, result } = toolDisplayView(part);
   const cancelled = part.cancelled === true || part.state === 'cancelled';
   const failed = Boolean(error) || part.state === 'error';
   const unresolved = part.state === 'unresolved';

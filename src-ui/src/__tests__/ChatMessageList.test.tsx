@@ -61,6 +61,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { CHAT_READER_RESTORE_EVENT } from '../components/chat/chatScrollAnchor';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 describe('ChatMessageList', () => {
@@ -199,6 +200,60 @@ describe('ChatMessageList', () => {
       />,
     );
     expect(scroller.scrollTop).toBe(250);
+  });
+
+  test('scrolling to latest releases a restored reader anchor through later layout and message growth', () => {
+    const session = resizeSession();
+    const view = render(
+      <ChatMessageList
+        activeSession={session}
+        fontSize={14}
+        layoutHeight={400}
+        showReasoning
+        showToolDetails
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+    const scroller = screen.getByRole('log');
+    installScrollGeometry(scroller);
+    const anchor = scroller.querySelector<HTMLElement>(
+      '[data-chat-message-key]',
+    )!;
+    scroller.scrollTop = 200;
+    fireEvent(
+      scroller,
+      new CustomEvent(CHAT_READER_RESTORE_EVENT, {
+        cancelable: true,
+        detail: {
+          anchor: {
+            key: anchor.dataset.chatMessageKey,
+            offset: anchor.getBoundingClientRect().top,
+          },
+          scrollTop: 200,
+        },
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scroll to bottom' }));
+    expect(scroller.scrollTop).toBe(1_000);
+
+    view.rerender(
+      <ChatMessageList
+        activeSession={{
+          ...session,
+          messages: [
+            ...session.messages,
+            { role: 'assistant', content: 'new answer', timestamp: 11 },
+          ],
+        }}
+        fontSize={14}
+        layoutHeight={350}
+        showReasoning
+        showToolDetails
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+    expect(scroller.scrollTop).toBe(1_000);
   });
 
   test('materializes collision-safe anchors for fragment overrides and streaming', () => {

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test } from 'vitest';
 import { activeChatsStore } from '../../../../contexts/active-chats-store';
+import { deviceSettingsStore } from '../../../../lib/device-settings-store';
 import {
   closeActiveReplay,
   getActiveReplay,
@@ -38,6 +39,23 @@ afterEach(() => {
   stopReplayCapture();
   closeActiveReplay();
   activeChatsStore.removeChat('source');
+  deviceSettingsStore.reset('featureSettings');
+});
+
+test('client capture records buffered source presentation while preserving raw replay coverage', () => {
+  deviceSettingsStore.set('featureSettings', {
+    ...deviceSettingsStore.get('featureSettings'),
+    smoothReveal: false,
+    bufferedDelivery: true,
+  });
+  startReplayCapture('host', { threadId: 'source', agentSlug: 'codex' });
+  recordReplayRuntime('host', event);
+  const captured = stopReplayCapture()!;
+  expect(captured.presentation).toEqual({ answerDelivery: 'buffered' });
+  expect(captured.frames?.[0]).toMatchObject({
+    kind: 'runtime',
+    event: { eventId: 'start' },
+  });
 });
 
 test('rejects malformed nested history, snapshot and chat data before opening', async () => {

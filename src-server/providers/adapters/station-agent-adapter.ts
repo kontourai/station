@@ -30,6 +30,11 @@ import {
   currentNativeForegroundRelay,
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
+import {
+  extractToolPurpose,
+  takeToolPurpose,
+  toolPurposeForCall,
+} from '../../runtime/frameworks/tool-purpose.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -526,6 +531,8 @@ export function mapStationAgentStreamEvent(options: {
    * way, and nothing in the chunks that would distinguish them.
    */
   pendingIdlessToolCalls: PendingIdlessToolCall[];
+  /** Test/internal explicit scope; production resolves the native relay ALS. */
+  purposeScope?: object;
 }): {
   outputDelta?: string;
   finishReason?: ReturnType<typeof finishReason>;
@@ -597,6 +604,10 @@ export function mapStationAgentStreamEvent(options: {
     // "no result was reported". Paired, the call is ordinary: tracked at the
     // start, deleted by its result, and settled honestly if neither arrives.
     const toolCallId = reportedCallId ?? crypto.randomUUID();
+    const trustedPurpose = toolPurposeForCall(toolCallId, options.purposeScope);
+    const purposeful = trustedPurpose
+      ? extractToolPurpose(event.input)
+      : { input: event.input };
     if (!reportedCallId) {
       const openedName = reportedToolName(event);
       options.pendingIdlessToolCalls.push({
@@ -610,7 +621,8 @@ export function mapStationAgentStreamEvent(options: {
       method: 'tool.started',
       toolCallId,
       toolName: safeToolName(event),
-      arguments: event.input,
+      arguments: purposeful.input,
+      ...(trustedPurpose ? { purpose: trustedPurpose } : {}),
     });
     return {
       toolOpened: {
@@ -634,6 +646,7 @@ export function mapStationAgentStreamEvent(options: {
           reportedToolName(event),
         )?.toolCallId;
     const toolCallId = reportedCallId ?? pairedCallId ?? crypto.randomUUID();
+    const purpose = takeToolPurpose(toolCallId, options.purposeScope);
     const error = stringField(event.error);
     // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's
@@ -658,6 +671,7 @@ export function mapStationAgentStreamEvent(options: {
       method: 'tool.completed',
       toolCallId,
       toolName: safeToolName(event),
+      ...(purpose ? { purpose } : {}),
       status: error ? 'error' : 'success',
       ...(error
         ? { error, ...(policyDenied ? { policyDenied: true } : {}) }
@@ -681,12 +695,14 @@ export function mapStationAgentStreamEvent(options: {
     const requestId = stringField(event.approvalId);
     if (!requestId) return {};
     const toolName = stringField(event.toolName);
+    const purpose = stringField(event.purpose);
     publish({
       ...base,
       method: 'request.opened',
       requestId,
       requestType: 'approval',
       title: stringField(event.tool) ?? toolName ?? 'Allow tool call',
+      ...(purpose ? { purpose } : {}),
       ...(stringField(event.toolDescription)
         ? { description: stringField(event.toolDescription) }
         : {}),
@@ -697,6 +713,7 @@ export function mapStationAgentStreamEvent(options: {
           : {}),
         ...(stringField(event.tool) ? { tool: stringField(event.tool) } : {}),
         ...(event.toolArgs !== undefined ? { toolArgs: event.toolArgs } : {}),
+        ...(purpose ? { purpose } : {}),
       },
     });
     return { approvalOpened: { requestId, ...(toolName ? { toolName } : {}) } };

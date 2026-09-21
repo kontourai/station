@@ -1,0 +1,612 @@
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { expect, type Locator } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
+import { mockChatShell } from './helpers/chat-shell-fixture';
+import { test } from './helpers/fixture-audit';
+import { dismissSetupLauncher, seedActiveChats } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
+
+const json = (data: unknown) => ({
+  status: 200,
+  contentType: 'application/json',
+  body: JSON.stringify({ success: true, data }),
+});
+
+async function touchTargetSize(locator: Locator) {
+  return locator.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  });
+}
+
+async function visibleReaderAnchor(transcript: Locator) {
+  return transcript.evaluate((element) => {
+    const viewport = element.getBoundingClientRect();
+    const visible = [
+      ...element.querySelectorAll<HTMLElement>('[data-chat-message-key]'),
+    ]
+      .map((row) => ({ row, box: row.getBoundingClientRect() }))
+      .filter(
+        ({ box }) => box.bottom > viewport.top && box.top < viewport.bottom,
+      )
+      .sort(
+        (left, right) =>
+          Math.abs(left.box.top - viewport.top) -
+          Math.abs(right.box.top - viewport.top),
+      )[0];
+    if (!visible) return null;
+    return {
+      key: visible.row.dataset.chatMessageKey ?? '',
+      offset: visible.box.top - viewport.top,
+    };
+  });
+}
+
+function expectTouchTarget(size: { width: number; height: number }) {
+  expect(size.width).toBeGreaterThanOrEqual(44);
+  expect(size.height).toBeGreaterThanOrEqual(44);
+}
+
+test('conversation timeline restores a checkpoint with bounded refusal copy', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockChatShell(page);
+  await seedActiveChats(page, [
+    {
+      sessionId: 'restore-chat',
+      conversationId: 'restore-chat',
+      agentSlug: 'station',
+      title: 'Restore fixture',
+      model: 'gpt-5',
+      provider: 'codex',
+      orchestrationSessionStarted: true,
+    },
+    {
+      sessionId: 'conversation-timeline',
+      conversationId: 'conversation-timeline',
+      agentSlug: 'station',
+      provider: 'codex',
+      agentConnectionId: 'codex',
+      model: 'gpt-5',
+      requestedModel: 'gpt-5',
+      projectSlug: 'default',
+      projectName: 'Default',
+      orchestrationSessionStarted: true,
+      orchestrationStatus: 'closed',
+      orchestrationTurnOpen: false,
+      messages: [],
+      ephemeralMessages: [],
+    },
+  ]);
+  const currentTurns = buildLongSessionTurns({
+    threadId: 'conversation-timeline',
+    provider: 'codex',
+    turnCount: 30,
+    promptText: (index) => `Current question ${index}`,
+  });
+  const oldTurns = buildLongSessionTurns({
+    threadId: 'older-execution',
+    provider: 'codex',
+    turnCount: 3,
+    promptText: (index) => `Earlier question ${index}`,
+  });
+  const restoreTurns = buildLongSessionTurns({
+    threadId: 'restore-chat',
+    provider: 'codex',
+    turnCount: 30,
+    replyText: () => 'Checkpoint restore fixture.',
+  });
+  await mockRuntimeConversation(page, {
+    id: 'restore-chat',
+    agentSlug: 'station',
+    title: 'Restore fixture',
+    provider: 'codex',
+    model: 'gpt-5',
+    canContinue: true,
+    turns: () => restoreTurns,
+  });
+  await mockRuntimeConversation(page, {
+    id: 'conversation-timeline',
+    agentSlug: 'station',
+    title: 'Timeline fixture',
+    provider: 'codex',
+    model: 'gpt-5',
+    canContinue: true,
+    turns: () => currentTurns,
+  });
+  await page.route('**/api/conversations/conversation-timeline', (route) =>
+    route.fulfill(
+      json({
+        id: 'conversation-timeline',
+        agentSlug: 'station',
+        title: 'Timeline fixture',
+      }),
+    ),
+  );
+  await page.route('**/api/conversations/restore-chat', (route) =>
+    route.fulfill(
+      json({
+        id: 'restore-chat',
+        agentSlug: 'station',
+        title: 'Restore fixture',
+      }),
+    ),
+  );
+  await page.route(
+    '**/api/orchestration/conversations/conversation-timeline/event-window**',
+    (route) => {
+      const requestedLimit = Number(
+        new URL(route.request().url()).searchParams.get('turnLimit') ?? '10',
+      );
+      const pageTurns = currentTurns.slice(-requestedLimit);
+      return route.fulfill(
+        json({
+          protocolVersion: 1,
+          conversationId: 'conversation-timeline',
+          currentSessionId: 'conversation-timeline',
+          session: { threadId: 'conversation-timeline', status: 'idle' },
+          sessionLineage: [
+            {
+              sessionId: 'older-execution',
+              agentSlug: 'station',
+              agentDisplayName: 'Station',
+            },
+            {
+              sessionId: 'conversation-timeline',
+              agentSlug: 'station',
+              agentDisplayName: 'Station',
+            },
+          ],
+          handoffs: [],
+          contextBoundaries: [],
+          events: pageTurns.flat().map((event, index) => ({
+            sequence:
+              currentTurns.flat().length - pageTurns.flat().length + index + 1,
+            event,
+          })),
+          hasMore: requestedLimit < currentTurns.length,
+          nextCursor:
+            requestedLimit < currentTurns.length ? 'older-turns-10' : undefined,
+          watermark: currentTurns.length,
+        }),
+      );
+    },
+  );
+  await page.route(
+    (url) =>
+      url.pathname.startsWith('/api/orchestration/sessions/') &&
+      url.pathname.endsWith('/checkpoints'),
+    (route) =>
+      route.fulfill(
+        json([
+          {
+            turnId: 'turn-29',
+            changedFiles: {
+              status: 'available',
+              files: [{ status: 'modified', path: 'src/app.ts' }],
+            },
+          },
+        ]),
+      ),
+  );
+  let restoreAttempts = 0;
+  await page.route(
+    '**/api/orchestration/sessions/restore-chat/checkpoints/turn-29/restore-preview',
+    (route) =>
+      route.fulfill(
+        json({
+          previewId: `11111111-1111-4111-8111-${String(restoreAttempts + 1).padStart(12, '0')}`,
+          threadId: 'restore-chat',
+          turnId: 'turn-29',
+          phase: 'settle',
+          checkpointId: 'checkpoint-29',
+          repoRoot: '/fixture/repo',
+          targetTreeSha: 'a'.repeat(40),
+          targetCommitSha: 'c'.repeat(40),
+          currentTreeSha: 'b'.repeat(40),
+          paths: [{ status: 'M', path: 'src/app.ts' }],
+          pathsTruncated: false,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      ),
+  );
+  await page.route(
+    '**/api/orchestration/sessions/restore-chat/checkpoints/turn-29/restore',
+    (route) => {
+      restoreAttempts += 1;
+      return route.fulfill(
+        restoreAttempts === 1
+          ? {
+              status: 409,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                success: false,
+                error: 'Workspace checkpoint restore failed',
+                reason: 'workspace_changed',
+              }),
+            }
+          : json({ restored: true }),
+      );
+    },
+  );
+  await page.route(
+    /\/api\/orchestration\/sessions\/(conversation-timeline|older-execution)\/event-page(?:\?.*)?$/,
+    (route) => {
+      const threadId = decodeURIComponent(
+        new URL(route.request().url()).pathname.split('/').at(-2)!,
+      );
+      const events = (
+        threadId === 'older-execution' ? oldTurns : currentTurns
+      ).flat();
+      return route.fulfill(
+        json({
+          session: { model: 'gpt-5' },
+          events: events.map((event, index) => ({
+            sequence: index + 1,
+            event,
+          })),
+          nextSequence: events.length,
+          hasMore: false,
+        }),
+      );
+    },
+  );
+
+  await page.goto('/?dock=open&maximize=true&chat=restore-chat');
+  await dismissSetupLauncher(page);
+  const restoreAnswer = page
+    .locator('[id="transcript-message-turn-29-started%3Aassistant"]')
+    .locator('.message-row');
+  await restoreAnswer
+    .getByRole('button', { name: 'Answer details and actions' })
+    .click();
+  await page.getByText('1 changed file').click();
+  await page
+    .getByRole('button', { name: 'Restore workspace to here…' })
+    .click();
+  await expect(page.getByRole('alertdialog')).toContainText('src/app.ts');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Restore workspace to here…' })
+    .click();
+  await page
+    .getByRole('button', { name: 'Restore workspace', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'The workspace changed after the preview. Review a new preview. No files were changed.',
+  );
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Restore workspace to here…' })
+    .click();
+  await page
+    .getByRole('button', { name: 'Restore workspace', exact: true })
+    .click();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  expect(restoreAttempts).toBe(2);
+
+  const evidenceRoot = join(
+    process.cwd(),
+    '.kontourai',
+    'chat-563',
+    basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+  );
+  mkdirSync(evidenceRoot, { recursive: true });
+  await page.screenshot({
+    path: testInfo.outputPath('timeline-workspace-restore-success.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('timeline-workspace-restore-success.png'),
+    join(evidenceRoot, 'timeline-workspace-restore-success.png'),
+  );
+});
+
+test('conversation timeline crosses execution history, preserves the live draft, and forks explicitly', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockChatShell(page);
+  await seedActiveChats(page, [
+    {
+      sessionId: 'conversation-timeline',
+      conversationId: 'conversation-timeline',
+      agentSlug: 'station',
+      model: 'gpt-5',
+    },
+  ]);
+  const currentTurns = buildLongSessionTurns({
+    threadId: 'conversation-timeline',
+    provider: 'codex',
+    turnCount: 30,
+    promptText: (index) => `Current question ${index}`,
+  });
+  const oldTurns = buildLongSessionTurns({
+    threadId: 'older-execution',
+    provider: 'codex',
+    turnCount: 3,
+    promptText: (index) => `Earlier question ${index}`,
+  });
+  await mockRuntimeConversation(page, {
+    id: 'conversation-timeline',
+    agentSlug: 'station',
+    title: 'Timeline fixture',
+    provider: 'codex',
+    model: 'gpt-5',
+    canContinue: true,
+    turns: () => currentTurns,
+  });
+  await page.route('**/api/conversations/conversation-timeline', (route) =>
+    route.fulfill(
+      json({
+        id: 'conversation-timeline',
+        agentSlug: 'station',
+        title: 'Timeline fixture',
+      }),
+    ),
+  );
+  await page.route(
+    '**/api/orchestration/conversations/conversation-timeline/event-window**',
+    (route) => {
+      const requestedLimit = Number(
+        new URL(route.request().url()).searchParams.get('turnLimit') ?? '10',
+      );
+      const pageTurns = currentTurns.slice(-requestedLimit);
+      return route.fulfill(
+        json({
+          protocolVersion: 1,
+          conversationId: 'conversation-timeline',
+          currentSessionId: 'conversation-timeline',
+          session: { threadId: 'conversation-timeline', status: 'idle' },
+          sessionLineage: [
+            {
+              sessionId: 'older-execution',
+              agentSlug: 'station',
+              agentDisplayName: 'Station',
+            },
+            {
+              sessionId: 'conversation-timeline',
+              agentSlug: 'station',
+              agentDisplayName: 'Station',
+            },
+          ],
+          handoffs: [],
+          contextBoundaries: [],
+          events: pageTurns.flat().map((event, index) => ({
+            sequence:
+              currentTurns.flat().length - pageTurns.flat().length + index + 1,
+            event,
+          })),
+          hasMore: requestedLimit < currentTurns.length,
+          nextCursor:
+            requestedLimit < currentTurns.length ? 'older-turns-10' : undefined,
+          watermark: currentTurns.length,
+        }),
+      );
+    },
+  );
+  await page.route(
+    /\/api\/orchestration\/sessions\/(conversation-timeline|older-execution)\/event-page(?:\?.*)?$/,
+    (route) => {
+      const threadId = decodeURIComponent(
+        new URL(route.request().url()).pathname.split('/').at(-2)!,
+      );
+      const events = (
+        threadId === 'older-execution' ? oldTurns : currentTurns
+      ).flat();
+      return route.fulfill(
+        json({
+          session: { model: 'gpt-5' },
+          events: events.map((event, index) => ({
+            sequence: index + 1,
+            event,
+          })),
+          nextSequence: events.length,
+          hasMore: false,
+        }),
+      );
+    },
+  );
+
+  await page.goto('/?dock=open&maximize=true&chat=conversation-timeline');
+  await dismissSetupLauncher(page);
+  const composer = page.locator('textarea[placeholder*="Type a message"]');
+  await composer.fill('Keep this live draft');
+  const liveTranscript = page.getByRole('log', {
+    name: 'Conversation transcript',
+  });
+  const tailScrollTop = await liveTranscript.evaluate(
+    (element) => element.scrollTop,
+  );
+  await liveTranscript.hover();
+  await page.mouse.wheel(0, -640);
+  await expect
+    .poll(() => liveTranscript.evaluate((element) => element.scrollTop))
+    .toBeLessThan(tailScrollTop);
+  const liveAnchor = await visibleReaderAnchor(liveTranscript);
+  expect(liveAnchor?.key).toBeTruthy();
+  const openHistory = async () => {
+    await page.getByRole('button', { name: 'Chat actions' }).click();
+    await page.getByRole('menuitem', { name: 'Conversation history' }).click();
+  };
+  await openHistory();
+  await expect(page.getByText('History', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Historical conversation view' }),
+  ).toBeVisible();
+  await expect(composer).toHaveCount(0);
+  await page
+    .getByRole('combobox', { name: 'Conversation section' })
+    .selectOption('older-execution');
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Earlier question 0');
+
+  const evidenceRoot = join(
+    process.cwd(),
+    '.kontourai',
+    'chat-563',
+    basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+  );
+  mkdirSync(evidenceRoot, { recursive: true });
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('data-theme', 'dark'),
+  );
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    const timelineBox = await page
+      .getByRole('region', { name: 'Historical conversation view' })
+      .boundingBox();
+    const transcriptBox = await page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .boundingBox();
+    expect(timelineBox?.height ?? Infinity).toBeLessThanOrEqual(180);
+    expect(transcriptBox?.height ?? 0).toBeGreaterThanOrEqual(140);
+    expectTouchTarget(
+      await touchTargetSize(
+        page.getByRole('combobox', { name: 'Conversation section' }),
+      ),
+    );
+    expectTouchTarget(
+      await touchTargetSize(page.getByText('Details', { exact: true })),
+    );
+    expectTouchTarget(
+      await touchTargetSize(
+        page.getByRole('slider', { name: 'Conversation position' }),
+      ),
+    );
+    for (const name of [
+      'Previous turn',
+      'Next turn',
+      'Return to latest',
+      'Fork from here…',
+    ]) {
+      expectTouchTarget(
+        await touchTargetSize(page.getByRole('button', { name, exact: true })),
+      );
+    }
+    const screenshot = `timeline-history-${width}.png`;
+    await page.screenshot({
+      path: testInfo.outputPath(screenshot),
+      animations: 'disabled',
+    });
+    copyFileSync(
+      testInfo.outputPath(screenshot),
+      join(evidenceRoot, screenshot),
+    );
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('data-theme', 'light'),
+  );
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  const lightTimelineBox = await page
+    .getByRole('region', { name: 'Historical conversation view' })
+    .boundingBox();
+  const lightTranscriptBox = await page
+    .getByRole('log', { name: 'Conversation transcript' })
+    .boundingBox();
+  expect(lightTimelineBox?.height ?? Infinity).toBeLessThanOrEqual(180);
+  expect(lightTranscriptBox?.height ?? 0).toBeGreaterThanOrEqual(140);
+  expectTouchTarget(
+    await touchTargetSize(page.getByText('Details', { exact: true })),
+  );
+  expectTouchTarget(
+    await touchTargetSize(
+      page.getByRole('slider', { name: 'Conversation position' }),
+    ),
+  );
+  expect(
+    await page
+      .getByRole('combobox', { name: 'Conversation section' })
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          height: element.getBoundingClientRect().height,
+          fontSize: style.fontSize,
+          borderRadius: style.borderRadius,
+          appearance: style.appearance,
+        };
+      }),
+  ).toEqual(
+    expect.objectContaining({
+      height: expect.any(Number),
+      fontSize: '16px',
+      borderRadius: '6px',
+      appearance: 'none',
+    }),
+  );
+  expectTouchTarget(
+    await touchTargetSize(
+      page.getByRole('combobox', { name: 'Conversation section' }),
+    ),
+  );
+  for (const name of [
+    'Previous turn',
+    'Next turn',
+    'Return to latest',
+    'Fork from here…',
+  ]) {
+    expectTouchTarget(
+      await touchTargetSize(page.getByRole('button', { name, exact: true })),
+    );
+  }
+  await page.screenshot({
+    path: testInfo.outputPath('timeline-history-390-light.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('timeline-history-390-light.png'),
+    join(evidenceRoot, 'timeline-history-390-light.png'),
+  );
+  await page.evaluate(() =>
+    document.documentElement.setAttribute('data-theme', 'dark'),
+  );
+  await page.getByRole('button', { name: 'Return to latest' }).click();
+  await expect(composer).toHaveValue('Keep this live draft');
+  await expect
+    .poll(async () => {
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      return (await visibleReaderAnchor(liveTranscript))?.key;
+    })
+    .toBe(liveAnchor!.key);
+  await expect
+    .poll(async () => {
+      const restored = await visibleReaderAnchor(liveTranscript);
+      return restored
+        ? Math.abs(restored.offset - liveAnchor!.offset)
+        : Infinity;
+    })
+    .toBeLessThanOrEqual(2);
+
+  await openHistory();
+  await page
+    .getByRole('combobox', { name: 'Conversation section' })
+    .selectOption('older-execution');
+  await page.getByRole('button', { name: 'Fork from here…' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Fork from here' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel fork' }).click();
+  await expect(composer).toHaveValue('Keep this live draft');
+
+  await openHistory();
+  await page.getByRole('button', { name: 'Previous turn' }).click();
+  await page.getByRole('button', { name: 'Return to latest' }).click();
+  await expect(composer).toHaveValue('Keep this live draft');
+  await page.screenshot({
+    path: testInfo.outputPath('timeline-returned-live-success.png'),
+    animations: 'disabled',
+  });
+  copyFileSync(
+    testInfo.outputPath('timeline-returned-live-success.png'),
+    join(evidenceRoot, 'timeline-returned-live-success.png'),
+  );
+});

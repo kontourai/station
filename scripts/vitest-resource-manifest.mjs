@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Resolves real Git roots through bounded child processes in temporary repositories.
+  'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
   'scripts/__tests__/self-hosted-broker-cli.test.ts',
   // Races two real worker-owned SQLite connections at one lease CAS barrier.
@@ -453,6 +455,15 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  // #2269: drives the REAL muse adapter (production spawnOwnedChild +
+  // production terminateProcessTree, no injected terminate) against tiny
+  // Node fixtures emitting valid Muse JSONL with short injected idle/total
+  // bounds — no model, no billing, no 30-minute waits. Wall-clock values
+  // are observed bounds only: cases wait for stream facts (terminal events,
+  // pid files, process death) with generous caps, never exact firing times.
+  // Each case owns one child plus one grandchild at most, all under
+  // Station-owned tempdirs with the registry pointed at a disposable dir.
+  'src-server/providers/__tests__/muse-adapter.real-child.process.test.ts',
   // Forks the real Windows owned launcher with an IPC channel and a fake guard
   // (node itself, exiting on a bad module path) to prove the production
   // `onState` wiring delivers settlement-state messages to the coordinator.

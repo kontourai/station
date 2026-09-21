@@ -190,7 +190,7 @@ test.describe('pr-smoke live chat send', () => {
     // is and is not diagnosed about why).
     await ensureChatDockOpen(page);
 
-    const composer = page.getByPlaceholder('Type a message...');
+    const composer = page.getByPlaceholder(/^Type a message/);
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill('pr-smoke real send.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
