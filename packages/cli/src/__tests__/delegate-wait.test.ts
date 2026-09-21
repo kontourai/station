@@ -224,7 +224,7 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     expect(result.outcome).toBe('observation-lost');
     expect(result.exitCode).toBe(2);
     // A safe fixed category — the raw Error.message never reaches output.
-    expect(result.lastError).toBe('status read failed (Error)');
+    expect(result.lastError).toBe('status read failed');
     expect(result.lastError).not.toContain('socket hang up');
     // The last GOOD observation is preserved and NOT reclassified.
     expect(result.status).toBe('running');
@@ -304,16 +304,15 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     const timeoutText = describeObservationError(timeout);
     expect(timeoutText).toBe('status read timed out after 1234ms');
     expect(timeoutText).not.toContain('host:3141');
-    // Refusal: the response-derived message is dropped; the server CODE is
-    // the retained, bounded distinction.
+    // Both the response message and code are untrusted and must be dropped.
     expect(
       describeObservationError(
         new DelegationApiError(
           'refused: SECRET-BODY-CONTENT',
-          'deps_unavailable',
+          'SECRET-CODE-CONTENT',
         ),
       ),
-    ).toBe('status read refused by the Station (deps_unavailable)');
+    ).toBe('status read refused by the Station');
     expect(
       describeObservationError(new DelegationApiError('refused: SECRET')),
     ).toBe('status read refused by the Station');
@@ -333,7 +332,7 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     expect(result.outcome).toBe('observation-lost');
     expect(result.exitCode).toBe(2);
     expect(result.status).toBeUndefined();
-    expect(result.lastError).toBe('status read failed (Error)');
+    expect(result.lastError).toBe('status read failed');
   });
 });
 
@@ -347,6 +346,7 @@ describe('station delegate wait over HTTP', () => {
   let hangStatusReads = false;
   let failStatusReads: number | null = null;
   let failStatusError = 'boom';
+  let failStatusCode: string | undefined;
   let hungResponses: Array<{ destroy: () => void }> = [];
 
   beforeEach(async () => {
@@ -359,6 +359,7 @@ describe('station delegate wait over HTTP', () => {
     hangStatusReads = false;
     failStatusReads = null;
     failStatusError = 'boom';
+    failStatusCode = undefined;
     hungResponses = [];
 
     server = createServer((req, res) => {
@@ -379,7 +380,11 @@ describe('station delegate wait over HTTP', () => {
           return;
         }
         if (failStatusReads !== null) {
-          sendJson(failStatusReads, { success: false, error: failStatusError });
+          sendJson(failStatusReads, {
+            success: false,
+            error: failStatusError,
+            code: failStatusCode,
+          });
           return;
         }
         const status = statusQueue.shift() ?? 'running';
@@ -566,34 +571,52 @@ describe('station delegate wait over HTTP', () => {
     expect(process.listenerCount('SIGINT')).toBe(listenersBefore);
   });
 
-  test('an HTTP denial body is never echoed: lastError is a safe fixed category', async () => {
-    failStatusReads = 403;
-    failStatusError =
-      'credential rejected: SUPER-SECRET-SENTINEL-wait-42 do-not-echo';
-    const { runCli } = await import('../cli.js');
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
+  test.each([true, false])(
+    'an HTTP denial body and code are never echoed (json=%s)',
+    async (jsonMode) => {
+      failStatusReads = 403;
+      failStatusError =
+        'credential rejected: SUPER-SECRET-SENTINEL-wait-42 do-not-echo';
+      failStatusCode = 'SUPER-SECRET-CODE-wait-42';
+      const { runCli } = await import('../cli.js');
+      const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('exit');
+      }) as never);
 
-    await expect(
-      runCli(['delegate', 'wait', 'task:w', '--json', `--api-base=${apiBase}`]),
-    ).rejects.toThrow('exit');
+      await expect(
+        runCli([
+          'delegate',
+          'wait',
+          'task:w',
+          ...(jsonMode ? ['--json'] : []),
+          `--api-base=${apiBase}`,
+        ]),
+      ).rejects.toThrow('exit');
 
-    expect(exit).toHaveBeenCalledWith(2);
-    expect(consoleLog).toHaveBeenCalledTimes(1);
-    const stdout = consoleLog.mock.calls.map((call) => call[0]).join('\n');
-    const stderr = stderrWrite.mock.calls.map((call) => call[0]).join('');
-    const payload = JSON.parse(stdout);
-    expect(payload.ok).toBe(false);
-    expect(payload.data.outcome).toBe('observation-lost');
-    // Received-a-response refusal: the status itself is NOT echoed, and the
-    // category stays distinct from transport ('could not be reached') and
-    // timeout categories.
-    expect(payload.data.lastError).toBe('status read refused by the Station');
-    // The peer-controlled sentinel never reaches either stream.
-    expect(stdout).not.toContain('SUPER-SECRET-SENTINEL-wait-42');
-    expect(stderr).not.toContain('SUPER-SECRET-SENTINEL-wait-42');
-  });
+      expect(exit).toHaveBeenCalledWith(2);
+      expect(consoleLog).toHaveBeenCalledTimes(1);
+      const stdout = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+      const stderr = stderrWrite.mock.calls.map((call) => call[0]).join('');
+      if (jsonMode) {
+        const payload = JSON.parse(stdout);
+        expect(payload.ok).toBe(false);
+        expect(payload.data.outcome).toBe('observation-lost');
+        expect(payload.data.lastError).toBe(
+          'status read refused by the Station',
+        );
+      } else {
+        expect(stdout).toContain('status read refused by the Station');
+      }
+      // Received-a-response refusal: the status itself is NOT echoed, and the
+      // category stays distinct from transport ('could not be reached') and
+      // timeout categories.
+      // The peer-controlled sentinel never reaches either stream.
+      expect(stdout).not.toContain('SUPER-SECRET-SENTINEL-wait-42');
+      expect(stderr).not.toContain('SUPER-SECRET-SENTINEL-wait-42');
+      expect(stdout).not.toContain('SUPER-SECRET-CODE-wait-42');
+      expect(stderr).not.toContain('SUPER-SECRET-CODE-wait-42');
+    },
+  );
 
   test('human output reports the LAST observed status on a wait timeout, and reuses the status projection', async () => {
     statusQueue = ['running'];

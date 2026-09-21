@@ -165,9 +165,8 @@ export function describeObservationError(error: unknown): string {
     return `status read failed with HTTP ${error.status}`;
   }
   if (error instanceof DelegationApiError) {
-    return error.code
-      ? `status read refused by the Station (${error.code})`
-      : 'status read refused by the Station';
+    // The SDK carries response.code without validating its vocabulary.
+    return 'status read refused by the Station';
   }
   if (error instanceof Error && error.name === 'AbortError') {
     return 'status read aborted';
@@ -175,7 +174,7 @@ export function describeObservationError(error: unknown): string {
   if (error instanceof TypeError) {
     return 'the Station could not be reached';
   }
-  return `status read failed (${error instanceof Error ? error.name : 'unknown error'})`;
+  return 'status read failed';
 }
 
 export async function waitOnDelegatedTask(input: {
