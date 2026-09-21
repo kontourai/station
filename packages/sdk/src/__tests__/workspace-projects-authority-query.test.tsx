@@ -8,6 +8,7 @@ import { setClientCredentialResolver } from '../client/http';
 import {
   useProjectQuery,
   useProjectsQuery,
+  useReorderProjectsMutation,
 } from '../query-domains/workspaceProjects';
 
 const scopeA = {
@@ -229,5 +230,209 @@ describe('Project query authority scope', () => {
         'replacement',
       ]),
     ).toBeUndefined();
+  });
+});
+
+describe('Project query durable authority identity (#481)', () => {
+  const durable = 'v1|env=home|principal=human:alice|grant=operator';
+
+  function resolvingFetch(
+    fetch: ReturnType<typeof vi.fn>,
+    data: unknown = [{ slug: 'shared-slug', name: 'A' }],
+  ) {
+    // Fresh Response per call: a body can only be read once, so a shared
+    // mockResolvedValue starves every fetch after the first.
+    fetch.mockImplementation(() => Promise.resolve(response(data)));
+    vi.stubGlobal('fetch', fetch);
+  }
+
+  test('one durable id keeps one entry across live authority rotations (no refetch)', async () => {
+    setClientCredentialResolver(() => ({
+      origin: scopeA.apiBase,
+      requestAuthority: { ...scopeA, isCurrent: () => true },
+    }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    resolvingFetch(fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = renderHook(
+      ({ requestScope }) =>
+        useProjectsQuery({
+          requestScope,
+          requireRequestScope: true,
+          durableAuthorityId: durable,
+        }),
+      { wrapper: wrapper(client), initialProps: { requestScope: scopeA } },
+    );
+    await waitFor(() =>
+      expect(observer.result.current.data).toEqual([
+        { slug: 'shared-slug', name: 'A' },
+      ]),
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Same durable identity, rotated live authority: the STABLE entry is
+    // reused, not refetched. (The wire scope still guards dispatch; the
+    // key is what survives reloads.)
+    observer.rerender({ requestScope: scopeB });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(observer.result.current.data).toEqual([
+      { slug: 'shared-slug', name: 'A' },
+    ]);
+    expect(
+      client.getQueryData(['projects', 'list', scopeA.apiBase, durable]),
+    ).toEqual([{ slug: 'shared-slug', name: 'A' }]);
+  });
+
+  test('different durable ids partition one live authority', async () => {
+    setClientCredentialResolver(() => ({
+      origin: scopeA.apiBase,
+      requestAuthority: { ...scopeA, isCurrent: () => true },
+    }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    resolvingFetch(fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = renderHook(
+      ({ durableAuthorityId }: { durableAuthorityId: string }) =>
+        useProjectsQuery({
+          requestScope: scopeA,
+          requireRequestScope: true,
+          durableAuthorityId,
+        }),
+      { wrapper: wrapper(client), initialProps: { durableAuthorityId: 'a' } },
+    );
+    await waitFor(() => expect(observer.result.current.data).toBeDefined());
+    observer.rerender({ durableAuthorityId: 'b' });
+    await waitFor(() =>
+      expect(
+        client.getQueryData(['projects', 'list', scopeA.apiBase, 'b']),
+      ).toBeDefined(),
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('an empty durable id falls back to the live key (never a merged entry)', async () => {
+    setClientCredentialResolver(() => ({
+      origin: scopeA.apiBase,
+      requestAuthority: { ...scopeA, isCurrent: () => true },
+    }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    resolvingFetch(fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = renderHook(
+      () =>
+        useProjectsQuery({
+          requestScope: scopeA,
+          requireRequestScope: true,
+          durableAuthorityId: '',
+        }),
+      { wrapper: wrapper(client) },
+    );
+    await waitFor(() => expect(observer.result.current.data).toBeDefined());
+    expect(
+      client.getQueryData([
+        'projects',
+        'list',
+        scopeA.apiBase,
+        scopeA.authorityKey,
+      ]),
+    ).toBeDefined();
+    expect(
+      client.getQueryData(['projects', 'list', scopeA.apiBase, '']),
+    ).toBeUndefined();
+  });
+
+  test('the detail key honors the durable id', async () => {
+    setClientCredentialResolver(() => ({
+      origin: scopeA.apiBase,
+      requestAuthority: { ...scopeA, isCurrent: () => true },
+    }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    resolvingFetch(fetch, { slug: 'shared-slug', name: 'A' });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = renderHook(
+      () =>
+        useProjectQuery('shared-slug', {
+          requestScope: scopeA,
+          requireRequestScope: true,
+          durableAuthorityId: durable,
+        }),
+      { wrapper: wrapper(client) },
+    );
+    await waitFor(() =>
+      expect(observer.result.current.data).toMatchObject({ name: 'A' }),
+    );
+    expect(
+      client.getQueryData([
+        'projects',
+        'shared-slug',
+        'detail',
+        scopeA.apiBase,
+        durable,
+      ]),
+    ).toMatchObject({ name: 'A' });
+  });
+
+  test('a reorder with the same durable id settles the reader entry, not the live-key sibling', async () => {
+    setClientCredentialResolver(() => ({
+      origin: scopeA.apiBase,
+      requestAuthority: { ...scopeA, isCurrent: () => true },
+    }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    fetch.mockImplementation(async (input: unknown) => {
+      if (String(input).endsWith('/api/projects/order')) {
+        return response([]);
+      }
+      return response([{ slug: 'shared-slug', name: 'A' }]);
+    });
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false },
+      },
+    });
+    const durableEntry = ['projects', 'list', scopeA.apiBase, durable];
+    const liveEntry = ['projects', 'list', scopeA.apiBase, scopeA.authorityKey];
+    client.setQueryData(durableEntry, [
+      { slug: 'b', name: 'b' },
+      { slug: 'a', name: 'a' },
+    ]);
+    client.setQueryData(liveEntry, [{ slug: 'decoy', name: 'decoy' }]);
+
+    const { result } = renderHook(() => useReorderProjectsMutation(), {
+      wrapper: wrapper(client),
+    });
+    await act(async () => {
+      await result.current.mutateAsync({
+        order: ['a', 'b'],
+        requestScope: scopeA,
+        requireRequestScope: true,
+        durableAuthorityId: durable,
+      });
+    });
+
+    // Optimistic write + settle targeted the durable entry the reader owns.
+    expect(client.getQueryData(durableEntry)).toEqual([
+      { slug: 'a', name: 'a' },
+      { slug: 'b', name: 'b' },
+    ]);
+    // The live-key sibling was never touched.
+    expect(client.getQueryData(liveEntry)).toEqual([
+      { slug: 'decoy', name: 'decoy' },
+    ]);
+    expect(
+      fetch.mock.calls.filter(([url]) =>
+        String(url).endsWith('/api/projects/order'),
+      ),
+    ).toHaveLength(1);
   });
 });

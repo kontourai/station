@@ -43,6 +43,27 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 
+// This suite pins consent behavior through the PROTECTED contract (the
+// shared bare-key config query + `useUpdateConfigMutation`, the same write
+// path the Settings row uses): the optional recovery scope resolves null,
+// so the decision never touches the recovery mutations. The recovery
+// decision path (identity-scoped reads, guarded writes) is covered
+// against the real boundary in authorityRecoveryComposition and
+// authorityRecoveryScope; the protected-tree owners without any boundary
+// are covered in UsageTelemetryDisclosureOwners.
+vi.mock('../../hooks/useRecoveryConfig', () => ({
+  useRecoveryConfig: () => ({ data: appConfig.current }),
+  recoveryConfigKey: (...parts: unknown[]) => parts,
+}));
+vi.mock('../../contexts/RecoveryQueryBoundary', () => ({
+  useRecoveryScope: () => {
+    throw new Error(
+      'useRecoveryScope must be used within RecoveryQueryBoundary',
+    );
+  },
+  useOptionalRecoveryScope: () => null,
+}));
+
 import {
   resetUsageTelemetryDisclosureDismissal,
   USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,

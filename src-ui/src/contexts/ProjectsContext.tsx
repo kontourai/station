@@ -8,6 +8,7 @@ import {
 } from '@kontourai/station-sdk';
 import { type ReactNode } from 'react';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
+import { useAuthorityPersistence } from './AuthorityPersistenceContext';
 
 /**
  * App-owned Project read config: the caller shapes query behavior, while the
@@ -19,7 +20,7 @@ import { useHostRequestAuthorityScope } from './ApiBaseContext';
  */
 type AppProjectReadConfig<T> = Omit<
   ProjectReadQueryConfig<T>,
-  'requestScope' | 'requireRequestScope'
+  'requestScope' | 'requireRequestScope' | 'durableAuthorityId'
 >;
 
 /**
@@ -27,15 +28,22 @@ type AppProjectReadConfig<T> = Omit<
  * (data/isLoading/isError/refetch/…) — callers that need more than the
  * `useProjects()` projection use this instead of the SDK hook directly, so
  * every Project list read in the app shares one scope capture.
+ *
+ * The cache key names the VERIFIED durable namespace (stable across reloads)
+ * while the request itself travels on the live captured scope — see
+ * `durableAuthorityId` in the SDK. Post-repair freshness is owned by
+ * invalidation, not key churn.
  */
 export function useScopedProjectsQuery(
   config?: AppProjectReadConfig<ProjectMetadata[]>,
 ) {
   const requestScope = useHostRequestAuthorityScope();
+  const { namespace } = useAuthorityPersistence();
   return useProjectsQuery({
     ...config,
     requestScope,
     requireRequestScope: true,
+    durableAuthorityId: namespace ?? undefined,
   });
 }
 
@@ -48,10 +56,12 @@ export function useScopedProjectQuery(
   config?: AppProjectReadConfig<ProjectConfig>,
 ) {
   const requestScope = useHostRequestAuthorityScope();
+  const { namespace } = useAuthorityPersistence();
   return useProjectQuery(slug, {
     ...config,
     requestScope,
     requireRequestScope: true,
+    durableAuthorityId: namespace ?? undefined,
   });
 }
 

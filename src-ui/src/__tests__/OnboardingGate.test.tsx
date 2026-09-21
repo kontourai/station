@@ -104,6 +104,16 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: toastMocks.showToast }),
 }));
 
+// The gate reads config through the identity-scoped recovery hook (never
+// the shared bare-key query under the stable boundary). Mock at this seam
+// with the same mutable `configData` the SDK mock above serves, so the
+// firstRun-driven tests below keep their meaning; scoping itself is covered
+// against the real boundary in authorityRecoveryComposition.
+vi.mock('../hooks/useRecoveryConfig', () => ({
+  useRecoveryConfig: () => ({ data: configData }),
+  recoveryConfigKey: (...parts: unknown[]) => parts,
+}));
+
 vi.mock('../platform/native/notify', () => ({
   primeNativeNotifications: (...args: unknown[]) =>
     primeNativeNotificationsMock(...args),
