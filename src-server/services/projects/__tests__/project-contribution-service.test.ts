@@ -751,6 +751,120 @@ describe('ProjectContributionService', () => {
     );
   });
 
+  test('admission refuses when the execution-root selection changed during the capture awaits', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+      duringResolve: () => {
+        // The manifest gains an execution-root selection while the binding
+        // resolver runs: the capture cloned "no selection" before the
+        // await, so the final freshness check must refuse the stale
+        // rootless admission rather than start under it.
+        f!.setManifest({
+          ...f!.getManifest(),
+          executionRoot: {
+            repoId: 'git.example/acme/repo',
+            path: 'sub/dir',
+          },
+        } as never);
+      },
+    });
+    const pending = f.service.authorizeReceiverExecution(QUERY, () => true);
+    f.resolveResolution();
+    await expect(pending).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
+  test('an unchanged admission and its recheck stay valid (positive control)', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    await expect(admission.recheck()).resolves.toBeUndefined();
+    // A second recheck against the same unchanged state stays valid too:
+    // the baseline is the ORIGINAL capture, not a drifting re-resolution.
+    await expect(admission.recheck()).resolves.toBeUndefined();
+  });
+
+  test('an unchanged execution-root admission and its recheck stay valid (positive control)', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    f.setManifest({
+      ...f.getManifest(),
+      executionRoot: {
+        repoId: 'git.example/acme/repo',
+        path: 'sub/dir',
+      },
+    } as never);
+    f.setExecutionRootValue('/private/not-projected/sub/dir');
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.executionRoot).toBe(
+      '/private/not-projected/sub/dir',
+    );
+    await expect(admission.recheck()).resolves.toBeUndefined();
+  });
+
+  test('admission recheck refuses when the Project record was replaced under the same slug and cwd', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    // Same slug, same checkout, same manifest, same binding row — only the
+    // Project RECORD identity changed. The pre-fix recheck compared
+    // slug+cwd+path only and would PASS here, executing a different
+    // project's checkout as the admitted one.
+    f.setProject({
+      id: 'other-id',
+      slug: 'local',
+      workingDirectory: '/fixture/checkout',
+    });
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
+  test('admission recheck refuses when the binding row was replaced under the same cwd', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    // Same project, same manifest, same directory — only the binding ROW
+    // (its verification identity) changed. Within-invocation before/after
+    // equality passes on the fresh row, so only the ORIGINAL-admission
+    // baseline can refuse this.
+    f.setBinding({
+      verifiedAt: Date.parse('2026-09-20T11:30:00.000Z'),
+      projectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    });
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
   test('admission refuses a wrong portable id and a same-slug association change', async () => {
     const f = fixture({
       offered: true,
@@ -771,7 +885,10 @@ describe('ProjectContributionService', () => {
     // under a different resource association.
     await expect(
       f.service.authorizeReceiverExecution(
-        { portableProjectId: QUERY.portableProjectId, resourceId: 'git.example/acme/other' },
+        {
+          portableProjectId: QUERY.portableProjectId,
+          resourceId: 'git.example/acme/other',
+        },
         () => true,
       ),
     ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });

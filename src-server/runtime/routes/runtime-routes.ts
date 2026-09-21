@@ -278,6 +278,7 @@ import {
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
   resolveClientOriginForRequest,
+  resolveInboundDeviceKindForRequest,
 } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -2756,22 +2757,14 @@ export function configureRuntimeRoutes(
           authorityCurrent,
         ),
       // #484 no-onward-hop: the inbound credential's server-owned
-      // paired-device kind, read off the verified credential's device
-      // record (the SAME `identifyDevice` lookup the principal resolver
-      // above uses) — never body, userId, or metadata. `undefined` for
-      // non-device callers (operator, internal): they are never peers.
-      resolveInboundDeviceKind: (c) => {
-        const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(
-          c.req.raw,
-        );
-        if (runtimePrincipal?.authority !== 'device-credential')
-          return undefined;
-        return (
-          context.environmentSecurityService.identifyDevice(
-            runtimePrincipal.credential,
-          )?.kind ?? undefined
-        );
-      },
+      // paired-device kind via the canonical composition (the SAME
+      // `identifyDevice` lookup the principal resolver above uses) —
+      // never body, userId, or metadata. `undefined` for non-device
+      // callers (operator, internal): they are never peers.
+      resolveInboundDeviceKind: (c) =>
+        resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
+          context.environmentSecurityService.identifyDevice(credential),
+        ),
       executeForegroundMessage: (input) =>
         executeExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },

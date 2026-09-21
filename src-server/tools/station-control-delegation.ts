@@ -22,10 +22,6 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
-  LOCAL_OPERATOR_PROVIDER,
-  LOCAL_OPERATOR_SUBJECT,
-} from '@kontourai/station-contracts/principal';
-import {
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
   type EngineId,
@@ -3172,28 +3168,24 @@ export async function interruptDelegatedTask(
  * an explicit portable intent. The positive signal is the server-resolved
  * paired-device kind `delegation` (an enrolled peer's credential, read off
  * the verified credential's device record by runtime composition — never
- * body, userId, or metadata). `principal`/`clientOrigin` are the verified
- * caller facts the verdict is bound to: an operator or internal caller is
- * never a peer even against a corrupt record (fail toward the operator,
- * never toward peerage), and an ordinary personal device (`device`, or no
- * device at all) may still select a saved peer as its controller. Exported
- * for unit coverage of the derivation without a runtime.
+ * body, userId, or metadata), and it is DECISIVE: a delegation-kind device
+ * credential can carry a human person binding (or a WhoIs ingress
+ * identity) that names the local operator, so `principal`/`clientOrigin`
+ * are display/attribution facts that must never override the verified
+ * device kind into a forward. A true operator/internal caller carries no
+ * device-credential authority, so production composition resolves its kind
+ * to `undefined` (never a peer); an ordinary personal device resolves
+ * `device` and may still select a saved peer as its controller. The
+ * `principal`/`clientOrigin` parameters are retained so call sites keep
+ * passing the verified caller facts (and the derivation stays reviewable
+ * next to them), but they do not participate in the verdict. Exported for
+ * unit coverage of the derivation without a runtime.
  */
 export function isInboundDelegationPeer(
-  principal: PrincipalRef | undefined,
-  clientOrigin: ClientOrigin | undefined,
+  _principal: PrincipalRef | undefined,
+  _clientOrigin: ClientOrigin | undefined,
   inboundDeviceKind: 'device' | 'delegation' | undefined,
 ): boolean {
-  if (
-    clientOrigin?.actor.kind === 'operator' ||
-    clientOrigin?.actor.kind === 'internal'
-  )
-    return false;
-  if (
-    principal?.id ===
-    `human:${LOCAL_OPERATOR_PROVIDER}:${LOCAL_OPERATOR_SUBJECT}`
-  )
-    return false;
   return inboundDeviceKind === 'delegation';
 }
 
