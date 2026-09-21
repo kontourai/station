@@ -385,9 +385,13 @@ describe('PairedDevicesPanel', () => {
     renderPanel();
 
     await screen.findByText('Guest browser');
-    const row = screen.getByText('Guest browser').closest('.station-connect-row');
+    const row = screen
+      .getByText('Guest browser')
+      .closest('.station-connect-row');
     expect(row?.textContent).toContain('Account: Guest Person');
-    const ordinary = screen.getByText('Pixel 9').closest('.station-connect-row');
+    const ordinary = screen
+      .getByText('Pixel 9')
+      .closest('.station-connect-row');
     expect(ordinary?.textContent).not.toContain('Account:');
   });
 });

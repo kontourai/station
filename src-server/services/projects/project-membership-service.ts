@@ -199,7 +199,8 @@ export class ProjectMembershipService {
     return this.withManagement(
       capturedScope,
       authority,
-      (actor) => this.members.invite(capturedScope, actor.principal, capturedInput),
+      (actor) =>
+        this.members.invite(capturedScope, actor.principal, capturedInput),
       capturedIntent,
     );
   }

@@ -73,7 +73,8 @@ const BASE_PRESETS: ReadonlyArray<{
  * grant alone confers no Project membership; the person must separately be
  * a Project admin, and joining a Project never escalates this grant.
  */
-export const COLLABORATOR_MANAGEMENT_CHOICE = 'collaborator-management' as const;
+export const COLLABORATOR_MANAGEMENT_CHOICE =
+  'collaborator-management' as const;
 export type ScopeBaseChoice =
   | PairingScopePreset
   | typeof COLLABORATOR_MANAGEMENT_CHOICE;
@@ -249,7 +250,8 @@ export function DeviceScopeEditor({
             detail,
           })),
           {
-            option: COLLABORATOR_MANAGEMENT_OPTION.choice as ScopeBaseChoice | null,
+            option:
+              COLLABORATOR_MANAGEMENT_OPTION.choice as ScopeBaseChoice | null,
             label: COLLABORATOR_MANAGEMENT_OPTION.label,
             detail: COLLABORATOR_MANAGEMENT_OPTION.detail,
           },
@@ -259,26 +261,25 @@ export function DeviceScopeEditor({
             detail: NO_BASE_OPTION.detail,
           },
         ].map(({ option, label, detail }) => (
-            <label
-              className="station-connect-scope-editor__option"
-              key={option ?? 'none'}
-            >
-              <input
-                type="radio"
-                name={`scope-${deviceName}`}
-                checked={choice === option}
-                disabled={busy}
-                onChange={() => setChoice(option)}
-              />
-              <span>
-                <strong>{label}</strong>
-                <span className="station-connect-scope-editor__detail">
-                  {detail}
-                </span>
+          <label
+            className="station-connect-scope-editor__option"
+            key={option ?? 'none'}
+          >
+            <input
+              type="radio"
+              name={`scope-${deviceName}`}
+              checked={choice === option}
+              disabled={busy}
+              onChange={() => setChoice(option)}
+            />
+            <span>
+              <strong>{label}</strong>
+              <span className="station-connect-scope-editor__detail">
+                {detail}
               </span>
-            </label>
-          ),
-        )}
+            </span>
+          </label>
+        ))}
       </div>
 
       <div className="station-connect-scope-editor__group">

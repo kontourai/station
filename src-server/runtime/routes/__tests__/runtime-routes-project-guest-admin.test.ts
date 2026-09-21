@@ -1138,10 +1138,13 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(invitedPeer.status, await invitedPeer.clone().text()).toBe(200);
-    const peerToken = (
-      await readJson<{ data: { token: string } }>(invitedPeer)
-    ).data.token;
-    const peerPairing = h.pairAccountBound('actor-peer', GUEST_GRANT, PEER_SUBJECT);
+    const peerToken = (await readJson<{ data: { token: string } }>(invitedPeer))
+      .data.token;
+    const peerPairing = h.pairAccountBound(
+      'actor-peer',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
     const peer = h.guestHeaders(peerPairing.credential, 'fixture_account=peer');
     const peerAccepted = await h.request(
       '/api/account-auth/accept-invitation',

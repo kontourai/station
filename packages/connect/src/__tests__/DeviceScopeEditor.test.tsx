@@ -7,8 +7,8 @@ import {
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import {
-  closestBasePreset,
   COLLABORATOR_MANAGEMENT_CHOICE,
+  closestBasePreset,
   DeviceScopeEditor,
   scopeChoiceTokens,
   scopeSelectionTokens,
@@ -264,9 +264,10 @@ test('a stored read+operate scope still initialises as Delegation, not the colla
 });
 
 test('the collaborator choice resolves to exactly the delegation tokens', () => {
-  expect(scopeChoiceTokens(COLLABORATOR_MANAGEMENT_CHOICE, new Set())).toEqual(
-    ['orchestration:read', 'orchestration:operate'],
-  );
+  expect(scopeChoiceTokens(COLLABORATOR_MANAGEMENT_CHOICE, new Set())).toEqual([
+    'orchestration:read',
+    'orchestration:operate',
+  ]);
   expect(
     scopeChoiceTokens(COLLABORATOR_MANAGEMENT_CHOICE, new Set()).length,
   ).toBe(2);

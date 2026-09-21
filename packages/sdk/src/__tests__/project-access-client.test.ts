@@ -1,5 +1,5 @@
-import { PROJECT_MEMBER_ROLES } from '@kontourai/station-contracts/project-membership';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { PROJECT_MEMBER_ROLES } from '@kontourai/station-contracts/project-membership';
 import { afterEach, expect, test, vi } from 'vitest';
 import { changeProjectAccess } from '../client/project-access.js';
 
@@ -64,18 +64,14 @@ function stubResponder(seen: Array<{ url: string; body: unknown }>) {
 test('mutations carry the caller-captured expected actor when supplied', async () => {
   const seen: Array<{ url: string; body: unknown }> = [];
   stubResponder(seen);
-  await changeProjectAccess(
-    apiBase,
-    'example',
-    {
-      kind: 'invite',
-      scope,
-      email: null,
-      role: 'viewer',
-      expiresAt: invitation.expiresAt,
-      expectedActor: actor.id,
-    },
-  );
+  await changeProjectAccess(apiBase, 'example', {
+    kind: 'invite',
+    scope,
+    email: null,
+    role: 'viewer',
+    expiresAt: invitation.expiresAt,
+    expectedActor: actor.id,
+  });
   await changeProjectAccess(apiBase, 'example', {
     kind: 'revoke-invitation',
     scope,
