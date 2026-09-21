@@ -34,6 +34,15 @@ let unavailableSurveyProjects: Array<{
 }> = [];
 let proposedChangesErrored = false;
 
+vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => ({
     data: [{ slug: 'station' }, { slug: 'sol' }, { slug: 'security' }],

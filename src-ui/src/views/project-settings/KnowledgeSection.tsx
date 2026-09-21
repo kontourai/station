@@ -8,7 +8,6 @@ import {
   useKnowledgeScanMutation,
   useKnowledgeStatusQuery,
   useMigratePreIndexKnowledgeMutation,
-  useProjectQuery,
 } from '@kontourai/station-sdk';
 import { useRef, useState } from 'react';
 import {
@@ -19,6 +18,7 @@ import {
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
 import { errorText } from '../../utils/errorText';
 import type { DocMeta, KnowledgeStatus } from './types';
 import { getKnowledgeTimeAgo } from './utils';
@@ -190,7 +190,7 @@ export function KnowledgeSection({ slug }: { slug: string }) {
   const { data: status } = useKnowledgeStatusQuery(slug) as {
     data?: KnowledgeStatus | null;
   };
-  const { data: project } = useProjectQuery(slug) as {
+  const { data: project } = useScopedProjectQuery(slug) as {
     data?: { workingDirectory?: string | null };
   };
   const deleteMutation = useKnowledgeDeleteMutation(slug);

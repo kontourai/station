@@ -56,6 +56,15 @@ let shortcutWhenEnabled = true;
 // over `commands`, so a call here means the whole command list was rebuilt,
 // reranked and regrouped — the work is about.
 const indexRebuilds = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('../components/command-palette-utils', async (importOriginal) => {
   const actual =
     await importOriginal<

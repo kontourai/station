@@ -10,8 +10,6 @@ import {
   useAgentsQuery,
   useModelPickerCatalogQuery,
   useProjectLayoutQuery,
-  useProjectQuery,
-  useProjectsQuery,
 } from '@kontourai/station-sdk';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -27,7 +25,11 @@ import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import type { AgentData } from '../contexts/AgentsContext';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import {
+  type ProjectMetadata,
+  useScopedProjectQuery,
+  useScopedProjectsQuery,
+} from '../contexts/ProjectsContext';
 import {
   defaultManagedRuntimeConnection,
   guaranteeConcreteModel,
@@ -156,7 +158,7 @@ export function useNewChatSelectionModel({
     }));
   const appConfig = useConfig();
   const agentCatalog = useAgentsQuery();
-  const projectCatalog = useProjectsQuery();
+  const projectCatalog = useScopedProjectsQuery();
   const qualifiedAgents = useMemo(
     () =>
       revalidateSelection
@@ -220,9 +222,12 @@ export function useNewChatSelectionModel({
   };
   const selectedProjectSlug =
     selectedContext !== GLOBAL_CONTEXT ? selectedContext : null;
-  const selectedProjectQuery = useProjectQuery(selectedProjectSlug ?? '', {
-    enabled: !!selectedProjectSlug,
-  });
+  const selectedProjectQuery = useScopedProjectQuery(
+    selectedProjectSlug ?? '',
+    {
+      enabled: !!selectedProjectSlug,
+    },
+  );
   const { data: selectedProjectConfig } = selectedProjectQuery as {
     data?: {
       agents?: AgentId[];

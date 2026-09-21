@@ -33,6 +33,15 @@ const hoisted = vi.hoisted(() => ({
   capturedHost: null as { confirm: (r: unknown) => Promise<string> } | null,
 }));
 
+vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: hoisted.navigate }),
 }));
