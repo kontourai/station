@@ -187,6 +187,18 @@ lifecycle fold still classifies the session as `runtime_error`
 Station's per-turn idle/total supervision budgets and from generic
 transport errors, which stay a redacted generic with no detail.
 
+Bounds: the window must be a positive whole-hour count (`0 hour` stays
+generic); the reset day must exist in its month (February 31 and February
+29 on a non-leap year stay generic — display-only calendar plausibility,
+never a timezone or epoch); the protocol code must be a finite number.
+
+Session notice: the lifecycle fold's terminal attribution composes the
+same fixed guidance from the re-validated facts (window, reset text
+labelled timezone-less, wait/check then continue explicitly), so the
+existing session failure notice (SessionsView, Home) renders it with no
+UI changes and no raw provider text. A quota-coded terminal with forged
+details falls back to the generic fixed copy.
+
 Surfaces (`snapshotFor` → `DelegatedTaskSnapshot.reason`;
 `projectDelegatedTaskEvent`; `station delegate status`/`events`/`wait`):
 

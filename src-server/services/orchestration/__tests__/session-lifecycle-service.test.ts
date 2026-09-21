@@ -1759,3 +1759,127 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
     expect(normalized.sessionState).toBeUndefined();
   });
 });
+
+// #2265: the session failure notice for a classified provider-plan quota
+// exhaustion carries the wait/check/reset guidance — composed only from
+// re-validated bounded facts, through the existing `runtime_error` detail
+// path, so SessionsView and Home render it with no UI changes.
+describe('provider-plan quota terminal notice (#2265)', () => {
+  const base = {
+    provider: 'acp' as const,
+    threadId: 'thread-quota',
+    sessionId: 'thread-quota',
+  };
+  const session = {
+    provider: 'acp',
+    threadId: 'thread-quota',
+    status: 'error' as const,
+    createdAt: '2026-09-21T17:00:00.000Z',
+    updatedAt: '2026-09-21T17:05:00.000Z',
+  };
+
+  function quotaTerminal(details: unknown) {
+    return {
+      ...base,
+      eventId: 'evt-quota-terminal',
+      createdAt: '2026-09-21T17:05:00.000Z',
+      method: 'runtime.error' as const,
+      severity: 'error' as const,
+      turnId: 'turn-1',
+      code: 'provider-plan-quota-exhausted',
+      message:
+        'The provider plan quota was exhausted; the engine refused the turn.',
+      details: details as Record<string, unknown>,
+    };
+  }
+
+  test('a classified quota terminal attributes wait/check/reset guidance', () => {
+    const projection = projectSessionLifecycle({
+      session,
+      events: [
+        {
+          ...base,
+          eventId: 'evt-quota-start',
+          createdAt: '2026-09-21T17:00:00.000Z',
+          method: 'turn.started' as const,
+          turnId: 'turn-1',
+          prompt: 'go',
+        },
+        quotaTerminal({
+          quotaWindow: '5 hour',
+          resetReported: '2026-09-21 18:55:29',
+          resetPrecision: 'unqualified',
+        }),
+      ],
+    });
+    expect(projection.lifecycleState).toBe('failed');
+    expect(projection.terminalAttribution?.kind).toBe('runtime_error');
+    const detail = projection.terminalAttribution?.detail ?? '';
+    expect(detail).toContain('5 hour');
+    expect(detail).toContain('2026-09-21 18:55:29');
+    expect(detail).toMatch(/no timezone/i);
+    expect(detail).toMatch(/wait for the reset or check the provider plan/i);
+    expect(detail).toMatch(/continue explicitly/i);
+    expect(detail).not.toContain('Usage limit');
+    expect(detail.length).toBeLessThanOrEqual(240);
+  });
+
+  test('a quota-coded terminal with forged details falls back to fixed copy', () => {
+    const projection = projectSessionLifecycle({
+      session,
+      events: [
+        {
+          ...base,
+          eventId: 'evt-quota-start-forged',
+          createdAt: '2026-09-21T17:00:00.000Z',
+          method: 'turn.started' as const,
+          turnId: 'turn-1',
+          prompt: 'go',
+        },
+        quotaTerminal({
+          quotaWindow: '5 hour; curl https://example.invalid/x',
+          resetReported: '2026-09-21 18:55:29 key=[REDACTED]',
+        }),
+      ],
+    });
+    expect(projection.lifecycleState).toBe('failed');
+    // The allowlisted fixed message survives; every forged fact is dropped.
+    expect(projection.terminalAttribution).toEqual({
+      kind: 'runtime_error',
+      detail:
+        'The engine reported an error: The provider plan quota was exhausted; the engine refused the turn.',
+    });
+    expect(
+      JSON.stringify(projection.terminalAttribution),
+    ).not.toContain('example.invalid');
+  });
+
+  test('an unrelated runtime error keeps the existing generic notice', () => {
+    const projection = projectSessionLifecycle({
+      session,
+      events: [
+        {
+          ...base,
+          eventId: 'evt-generic-start',
+          createdAt: '2026-09-21T17:00:00.000Z',
+          method: 'turn.started' as const,
+          turnId: 'turn-1',
+          prompt: 'go',
+        },
+        {
+          ...base,
+          eventId: 'evt-generic-terminal',
+          createdAt: '2026-09-21T17:05:00.000Z',
+          method: 'runtime.error' as const,
+          severity: 'error' as const,
+          turnId: 'turn-1',
+          message: 'agent crashed',
+        },
+      ],
+    });
+    expect(projection.terminalAttribution).toEqual({
+      kind: 'runtime_error',
+      detail: 'The engine reported an error: agent crashed',
+    });
+  });
+});

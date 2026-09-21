@@ -16,6 +16,11 @@ import {
   isSessionLifecycleStateStopped,
   validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  formatProviderQuotaEventText,
+  PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  providerQuotaFactsFromDetails,
+} from '../../providers/provider-plan-quota.js';
 
 interface LifecycleProjection {
   lifecycleState: SessionLifecycleState;
@@ -339,6 +344,27 @@ function projectTerminalAttribution(options: {
   }
 
   if (options.terminalEvent?.method === 'runtime.error') {
+    // #2265: a classified provider-plan quota exhaustion carries its
+    // wait/check/reset guidance in the notice itself, composed ONLY from
+    // re-validated bounded facts. The reset text is provider-reported
+    // civil time with no timezone — repeated verbatim, never computed on.
+    // The kind stays `runtime_error`, so the existing Failed/Stopped
+    // notice surfaces (SessionsView, Home) render it unchanged. A
+    // quota-coded terminal with forged details falls through to the
+    // generic fixed copy below — never raw provider text.
+    if (options.terminalEvent.code === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE) {
+      const quotaFacts = providerQuotaFactsFromDetails(
+        options.terminalEvent.details,
+      );
+      if (quotaFacts) {
+        return {
+          kind: 'runtime_error',
+          detail:
+            `${formatProviderQuotaEventText(quotaFacts)} — wait for the ` +
+            `reset or check the provider plan, then continue explicitly.`,
+        };
+      }
+    }
     const detail = compactTerminalDetail(
       options.terminalEvent.message,
       'The engine reported an error: ',
