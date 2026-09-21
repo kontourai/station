@@ -194,11 +194,6 @@ async function main() {
       process.exit(exitCode);
     };
 
-    // A supervisor can disappear in the narrow interval before the shutdown
-    // closure exists. The guard remembered it; now converge through the same
-    // one-shot shutdown path rather than continuing as an orphan.
-    if (stdoutBrokenPipe) void gracefulShutdown('stdout_epipe', 1);
-
     process.on('SIGINT', () => void gracefulShutdown?.('SIGINT'));
     process.on('SIGTERM', () => void gracefulShutdown?.('SIGTERM'));
     armSupervisedParentWatchdog({
@@ -228,6 +223,8 @@ async function main() {
     ) {
       stdoutBrokenPipe = true;
     }
+    // Cover both an earlier async EPIPE and a synchronous handshake refusal.
+    if (stdoutBrokenPipe) void gracefulShutdown('stdout_epipe', 1);
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
