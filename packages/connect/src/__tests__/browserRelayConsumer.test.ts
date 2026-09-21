@@ -313,7 +313,7 @@ describe('browser relay consumer (public boundary)', () => {
       trustRecord,
       trustStore: { isCurrent: async () => true },
       ice: iceProvider() as never,
-      createPeer: (config: RTCConfiguration) => {
+      createPeer: (_config: RTCConfiguration) => {
         const peer = fakePeer(OFFER, channels);
         if (first) {
           first = false;
@@ -345,7 +345,7 @@ describe('browser relay consumer (public boundary)', () => {
       trustRecord,
       trustStore: { isCurrent: async () => true },
       ice: iceProvider() as never,
-      createPeer: (config: RTCConfiguration) => {
+      createPeer: (_config: RTCConfiguration) => {
         const peer = fakePeer(OFFER, channels);
         peer.iceGatheringState = 'gathering';
         queueMicrotask(() => {
@@ -636,4 +636,43 @@ describe('browser relay consumer (public boundary)', () => {
     await conn.connect(new AbortController().signal);
     expect(channels[0]!.label).toBe('station-application-v1');
   });
+});
+
+test('default browser fetch retains its global receiver', async () => {
+  const browserOrigin = 'https://browser.example';
+  vi.stubGlobal('location', { origin: browserOrigin });
+  vi.stubGlobal('fetch', async function (this: unknown) {
+    expect(this).toBe(globalThis);
+    return new Response(
+      JSON.stringify({
+        state: 'online',
+        routingGeneration: 1,
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+  });
+  try {
+    const client = new SelfHostedBrokerBrowserClient({
+      brokerOrigin: 'https://broker.example',
+      browserOrigin,
+      scope: {
+        stationId: randomUUID(),
+        enrollmentId: randomUUID(),
+        routingGeneration: 1,
+        browserOrigin,
+      },
+      credentials: {
+        capture: () => ({
+          id: 'credential-test',
+          secret: 'Z'.repeat(43),
+          isCurrent: () => true,
+        }),
+      },
+    });
+    await expect(
+      client.status(new AbortController().signal),
+    ).resolves.toMatchObject({ state: 'online' });
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
