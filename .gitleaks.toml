@@ -12,6 +12,13 @@ title = "station secret-scan config"
 useDefault = true
 
 [[allowlists]]
+description = "Exact CLI status-rendering explanatory comment"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^budget/reason$''']
+paths = ['''(^|/)packages/cli/src/commands/delegate\.ts$''']
+
+[[allowlists]]
 # Path-only allowlisting would hide ANY future secret committed into this file;
 # the AND condition keeps the exemption to the feature-toggle identifier shape
 # the FEATURE_META entries actually use (mirrors the Bedrock sentinel below).
