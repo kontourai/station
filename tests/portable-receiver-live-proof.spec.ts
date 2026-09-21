@@ -103,6 +103,9 @@ const ownedCleanups: Array<{ label: string; run: () => Promise<unknown> }> = [];
 let anyTestFailed = false;
 let setupError: Error | undefined;
 let fixture: ProofFixture | undefined;
+// The completed portable task id from the continuation test, reused by
+// the post-withdrawal continuation refusal below (serial suite order).
+let continuedTaskId: string | undefined;
 let evidenceDestination: string | undefined;
 /** Incremental, non-secret run metadata — written even on partial setup. */
 const runInfo: Record<string, unknown> = {};
@@ -1052,6 +1055,116 @@ test.describe
       );
     });
 
+    test('continues a portable task under a fresh offer admission on the receiver', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const firstToken = `portable-proof-first-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      const delegated = await delegateFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+        `Return this token unchanged: ${firstToken}`,
+      );
+      expect(delegated.status, JSON.stringify(delegated.payload)).toBe(200);
+      const taskId = ((delegated.payload as JsonRecord).data as JsonRecord)
+        .taskId as string;
+      expect(taskId).toBeTruthy();
+      // The first turn completes on the receiver before the follow-up.
+      await poll(
+        'the first delegated turn to complete on the receiver',
+        240_000,
+        async () => {
+          const observed = await api(
+            current.receiver.api,
+            'GET',
+            `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
+            { headers: operatorHeaders(current.delegationCredential) },
+          );
+          const data = (observed.payload as JsonRecord)?.data as
+            | JsonRecord
+            | undefined;
+          return (
+            observed.status === 200 &&
+            (data?.status === 'completed' || data?.status === 'failed')
+          );
+        },
+      );
+      continuedTaskId = taskId;
+
+      // The follow-up goes through the CONTROLLER (saved peer credential)
+      // to the receiver's continue route, which mints a FRESH admission
+      // from the thread's own persisted marker — the body carries no
+      // portable ids at all.
+      const baseline = await captureEffectBaseline(current);
+      const followToken = `portable-proof-continue-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      const continued = await api(
+        current.controller.api,
+        'POST',
+        `/api/orchestration/delegations/${encodeURIComponent(taskId)}/continue`,
+        {
+          body: {
+            message: `Return this token unchanged: ${followToken}`,
+            environmentId: current.receiverEnvironmentId,
+          },
+          headers: operatorHeaders(current.controllerOperator),
+        },
+      );
+      expect(continued.status, JSON.stringify(continued.payload)).toBe(200);
+
+      // ACTUAL launch observation: exactly ONE new muse exec for the
+      // follow-up, spawned INSIDE the receiver's nested execution root
+      // and carrying the follow-up token.
+      await poll(
+        'the follow-up muse exec launch observation',
+        120_000,
+        async () => {
+          const launches = await current.museExecLaunches();
+          return launches.some(
+            (entry) =>
+              entry.cwd === current.receiverExecutionRoot &&
+              entry.args.includes(followToken),
+          );
+        },
+      );
+      const launchesAfter = await current.museExecLaunches();
+      const turnLaunches = launchesAfter.slice(baseline.launches);
+      expect(turnLaunches.length).toBe(1);
+      expect(turnLaunches[0]!.cwd).toBe(current.receiverExecutionRoot);
+      expect(turnLaunches[0]!.args).toContain(followToken);
+
+      // PROVIDER output for the follow-up, from the receiver conversation.
+      await poll(
+        'the follow-up turn to complete on the receiver',
+        240_000,
+        async () => {
+          const events = await api(
+            current.receiver.api,
+            'GET',
+            `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
+            { headers: operatorHeaders(current.delegationCredential) },
+          );
+          return (
+            events.status === 200 &&
+            JSON.stringify(events.payload).includes(followToken)
+          );
+        },
+      );
+      const events = await api(
+        current.receiver.api,
+        'GET',
+        `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
+        { headers: operatorHeaders(current.delegationCredential) },
+      );
+      expect(events.status, JSON.stringify(events.payload)).toBe(200);
+      expect(JSON.stringify(events.payload)).toMatch(
+        new RegExp(`echo:[\\s\\S]*${followToken}`),
+      );
+    });
+
     test('refuses an undeclared resource at the receiver, over the real peer hop', async () => {
       test.setTimeout(120_000);
       test.fixme(setupError !== undefined, 'setup failed');
@@ -1264,6 +1377,40 @@ test.describe
       const refused = await delegateFromController(
         current,
         delegationTarget(current) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+      await assertNoProviderEffect(current, baseline);
+    });
+
+    test('refuses a portable continue after the operator withdraws the offer', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      expect(
+        continuedTaskId,
+        'the continuation test must complete a portable task first',
+      ).toBeTruthy();
+      const baseline = await captureEffectBaseline(current);
+      // The offer is withdrawn (previous test). The follow-up reaches the
+      // receiver over the real peer hop, the receiver's fresh mint finds
+      // no current offer, and the controller relays the receiver's own
+      // closed refusal — same code and 403, never a bare 4xx — with no
+      // provider effect.
+      const refused = await api(
+        current.controller.api,
+        'POST',
+        `/api/orchestration/delegations/${encodeURIComponent(continuedTaskId!)}/continue`,
+        {
+          body: {
+            message: 'follow-up after withdrawal',
+            environmentId: current.receiverEnvironmentId,
+          },
+          headers: operatorHeaders(current.controllerOperator),
+        },
       );
       expectPortableRefusal(
         refused,

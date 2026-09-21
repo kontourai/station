@@ -49,7 +49,8 @@ export class ReceiverExecutionRefusal extends Error {
       | 'receiver_execution_not_offered'
       | 'receiver_execution_unavailable'
       | 'receiver_execution_forwarding_refused'
-      | 'receiver_execution_authority_changed',
+      | 'receiver_execution_authority_changed'
+      | 'receiver_execution_consent_stale',
     message: string,
   ) {
     super(message);
@@ -77,12 +78,26 @@ export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
     'Portable execution authority changed before forwarding.',
   receiver_execution_forwarding_refused:
     'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
+  receiver_execution_consent_stale:
+    'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
 };
 
-/** The server-minted portable consent identity stamped on a session binding. */
+/**
+ * The server-minted portable consent identity stamped on a session binding.
+ *
+ * #484 continuation: `localProjectId` is the ORIGINAL receiver-local
+ * Project incarnation (the receiver Project record id the admission was
+ * captured against). It is optional HERE only so readers can recognize a
+ * pre-incarnation marker and fail closed with the named stale outcome —
+ * writers always stamp all three fields, and effect guards require all
+ * three. Never promote an unmarked legacy session into portable consent:
+ * absence of the whole marker is ordinary, absence of the incarnation
+ * inside a marker is stale.
+ */
 export interface PortableExecutionConsentIdentity {
   portableProjectId: string;
   resourceId: string;
+  localProjectId?: string;
 }
 
 /**
@@ -101,10 +116,85 @@ export function portableConsentOfStartedMetadata(
 ): PortableExecutionConsentIdentity | undefined {
   const marker = metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY];
   if (!marker || typeof marker !== 'object') return undefined;
-  const { portableProjectId, resourceId } = marker as Record<string, unknown>;
+  const { portableProjectId, resourceId, localProjectId } = marker as Record<
+    string,
+    unknown
+  >;
   if (typeof portableProjectId !== 'string' || typeof resourceId !== 'string')
     return undefined;
-  return { portableProjectId, resourceId };
+  return {
+    portableProjectId,
+    resourceId,
+    ...(typeof localProjectId === 'string' ? { localProjectId } : {}),
+  };
+}
+
+/**
+ * #484 continuation: prove the thread's OWN persisted portable association
+ * against the freshly admitted one. A directory is NOT a project identity
+ * (two projects can legitimately share a path), so the persisted consent
+ * must name the exact admitted portableProjectId/resourceId AND the exact
+ * admitted ORIGINAL local incarnation:
+ *
+ * - absent or different portableProjectId/resourceId → `unavailable` (the
+ *   thread never consented to this association; unmarked legacy sessions
+ *   are never implicitly promoted);
+ * - a marked thread whose marker predates the incarnation field → the
+ *   named `consent_stale` outcome (its association cannot be proven; it
+ *   retains its history and requires a new explicit execution, never a
+ *   silent upgrade);
+ * - a present-but-different incarnation → `unavailable` (same-path
+ *   Project replacement: the offered incarnation is gone).
+ */
+export function requirePortableIncarnationMatch(
+  admitted: {
+    portableProjectId: string;
+    resourceId: string;
+    localProjectId: string;
+  },
+  persistedConsent: PortableExecutionConsentIdentity | undefined,
+): void {
+  if (
+    !persistedConsent ||
+    persistedConsent.portableProjectId !== admitted.portableProjectId ||
+    persistedConsent.resourceId !== admitted.resourceId
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+  if (!persistedConsent.localProjectId)
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_consent_stale',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_consent_stale,
+    );
+  if (persistedConsent.localProjectId !== admitted.localProjectId)
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+}
+
+/**
+ * #484 continuation: the strict incarnation reader. Returns the full
+ * three-field consent only when the marker proves the ORIGINAL local
+ * Project incarnation; a pre-incarnation (two-field) marker returns
+ * undefined so effect guards fail closed with the named stale outcome
+ * instead of silently upgrading its authority. An unmarked session is
+ * not stale — it is ordinary — so callers must check the lenient reader
+ * first and only consult this one for marked threads.
+ */
+export function portableIncarnationOfStartedMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Required<PortableExecutionConsentIdentity> | undefined {
+  const consent = portableConsentOfStartedMetadata(metadata);
+  if (
+    !consent ||
+    typeof consent.localProjectId !== 'string' ||
+    consent.localProjectId.length === 0
+  )
+    return undefined;
+  return consent as Required<PortableExecutionConsentIdentity>;
 }
 
 /**
@@ -127,6 +217,14 @@ export interface ReceiverExecutionAdmission {
   readonly resourceId: string;
   readonly admittedProject: {
     readonly slug: string;
+    /**
+     * #484 continuation: the ORIGINAL receiver-local Project incarnation
+     * (the receiver Project record id this admission was captured
+     * against). Effect guards compare it against the persisted consent
+     * marker's incarnation, so a removed/recreated Project at the same
+     * path refuses instead of executing under a successor's identity.
+     */
+    readonly localProjectId: string;
     /**
      * The compat default checkout, EXPANDED — absent when the Project binds
      * the requested resource receiver-locally with no compat
@@ -771,6 +869,7 @@ export class ProjectContributionService {
     if (
       expect &&
       (expect.admitted.slug !== captured.projectSlug ||
+        expect.admitted.localProjectId !== captured.projectId ||
         expectedProjectRoot !== captured.absoluteProjectRoot ||
         expect.admitted.resourcePath !== resourcePath ||
         (expect.admitted.executionRoot ?? undefined) !==
@@ -802,6 +901,7 @@ export class ProjectContributionService {
     return {
       admitted: {
         slug: captured.projectSlug,
+        localProjectId: captured.projectId,
         ...(captured.absoluteProjectRoot === undefined
           ? {}
           : { workingDirectory: captured.absoluteProjectRoot }),

@@ -76,6 +76,7 @@ function admissionStub(
     ...ids,
     admittedProject: {
       slug: 'local',
+      localProjectId: 'local-project-1',
       workingDirectory: '/fixture/checkout',
       resourcePath: '/fixture/checkout',
     },
@@ -412,6 +413,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     expect(startMetadata[PORTABLE_EXECUTION_CONSENT_METADATA_KEY]).toEqual({
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
     });
     // The admission is ALSO threaded into the service internal options, so
     // the provider-effect path rechecks it adjacent to the actual adapter
@@ -428,10 +430,12 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       cwd: '/fixture/checkout',
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
     });
     expect(startInternal?.portableExecutionConsent).toEqual({
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
     });
     const turnInternal = (
       dispatchWithReceipt.mock.calls as unknown as Array<
@@ -652,6 +656,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             resourceId: 'git.example/acme/repo',
             admittedProject: {
               slug: 'local',
+              localProjectId: 'local-project-1',
               workingDirectory: '/fixture/checkout',
               resourcePath: '/fixture/checkout',
             },
@@ -1302,6 +1307,156 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           identifyDevice,
         ),
       ).toBeUndefined();
+    });
+  });
+
+  describe('POST /delegations/:taskId/continue|respond — portable follow-up factory (#484 continuation)', () => {
+    test('continue composes the mint factory (never a minted admission) and maps a wrapped refusal code to 403', async () => {
+      const continueDelegatedTask = vi.fn().mockResolvedValue({
+        taskId: 'task:1',
+        status: 'dispatched',
+      });
+      const authorizeReceiverExecution = vi
+        .fn()
+        .mockResolvedValue(admissionStub());
+      const isRequestPrincipalCurrent = vi.fn(() => true);
+      const app = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          continueDelegatedTask,
+          authorizeReceiverExecution,
+          isRequestPrincipalCurrent,
+        }),
+      );
+      const res = await app.request('/delegations/task:1/continue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'One more thing' }),
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+      // The route mints NOTHING eagerly — the follow-up body carries no
+      // portable ids at all, so there is nothing to mint for here. The
+      // tool mints on the executing receiver from the thread's own
+      // persisted marker.
+      expect(authorizeReceiverExecution).not.toHaveBeenCalled();
+      const input = continueDelegatedTask.mock.calls[0]![0] as Record<
+        string,
+        unknown
+      >;
+      expect(typeof input.authorizeReceiverExecution).toBe('function');
+      // The factory mints through the owner with the request-bound
+      // currency probe when the executor invokes it.
+      await (
+        input.authorizeReceiverExecution as (workspace: {
+          portableProjectId: string;
+          resourceId: string;
+        }) => Promise<unknown>
+      )({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      });
+      expect(authorizeReceiverExecution).toHaveBeenCalledTimes(1);
+      expect(authorizeReceiverExecution.mock.calls[0]![0]).toEqual({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      });
+      expect(typeof authorizeReceiverExecution.mock.calls[0]![1]).toBe(
+        'function',
+      );
+    });
+
+    test('continue maps an effect-path (wrapped) stale refusal to the exact 403', async () => {
+      const continueDelegatedTask = vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(
+            new Error(
+              'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+            ),
+            { code: 'receiver_execution_consent_stale' },
+          ),
+        );
+      const app = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          continueDelegatedTask,
+          authorizeReceiverExecution: vi.fn(),
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const res = await app.request('/delegations/task:1/continue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'One more thing' }),
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        error:
+          'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+        code: 'receiver_execution_consent_stale',
+      });
+      expect(continueDelegatedTask).toHaveBeenCalledTimes(1);
+    });
+
+    test('respond composes the mint factory and maps a wrapped refusal code to 403', async () => {
+      const respondToDelegatedTaskRequest = vi.fn().mockResolvedValue({
+        taskId: 'task:1',
+        requestId: 'request-1',
+        status: 'resolved',
+      });
+      const authorizeReceiverExecution = vi
+        .fn()
+        .mockResolvedValue(admissionStub());
+      const app = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          respondToDelegatedTaskRequest,
+          authorizeReceiverExecution,
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const res = await app.request('/delegations/task:1/respond', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: 'request-1', decision: 'accept' }),
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+      expect(authorizeReceiverExecution).not.toHaveBeenCalled();
+      const input = respondToDelegatedTaskRequest.mock.calls[0]![0] as Record<
+        string,
+        unknown
+      >;
+      expect(typeof input.authorizeReceiverExecution).toBe('function');
+
+      // A wrapped effect-path refusal keeps its exact 403 on respond too.
+      const refusing = vi.fn().mockRejectedValue(
+        Object.assign(
+          new Error('The offered Project resource is unavailable.'),
+          {
+            code: 'receiver_execution_unavailable',
+          },
+        ),
+      );
+      const refusingApp = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          respondToDelegatedTaskRequest: refusing,
+          authorizeReceiverExecution: vi.fn(),
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const refused = await refusingApp.request('/delegations/task:1/respond', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: 'request-1', decision: 'accept' }),
+      });
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        success: false,
+        error: 'The offered Project resource is unavailable.',
+        code: 'receiver_execution_unavailable',
+      });
     });
   });
 });

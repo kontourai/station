@@ -190,6 +190,7 @@ import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
   ReceiverExecutionRefusal,
+  requirePortableIncarnationMatch,
 } from '../projects/project-contribution-service.js';
 import {
   type CwdShadowSample,
@@ -937,15 +938,42 @@ function verifyReceiverStartEffect(
   // A directory is NOT a project identity: when the prepared input states a
   // portable consent identity it must be the admitted one — a different
   // stated association is never silently mapped onto the admitted checkout.
+  // #484 continuation: the stated incarnation must match too — a start
+  // prepared for a successor incarnation never executes under this
+  // admission.
   if (
     actual.consent &&
     (actual.consent.portableProjectId !== admitted.portableProjectId ||
-      actual.consent.resourceId !== admitted.resourceId)
+      actual.consent.resourceId !== admitted.resourceId ||
+      (actual.consent.localProjectId !== undefined &&
+        actual.consent.localProjectId !== admitted.localProjectId))
   )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
     );
+}
+
+/**
+ * #484 continuation: the refusal for a marked portable thread that arrives
+ * at an effect WITHOUT a fresh admission. A pre-incarnation (two-field)
+ * marker fails closed with the named stale outcome — its association
+ * cannot be proven and it requires a new explicit execution — while a
+ * fully-identified marker refuses for lack of a current offer. Unmarked
+ * threads never reach here (the callers check first).
+ */
+function portableRefusalForUnadmittedThread(
+  persistedConsent: PortableExecutionConsentIdentity | undefined,
+): ReceiverExecutionRefusal {
+  if (persistedConsent && !persistedConsent.localProjectId)
+    return new ReceiverExecutionRefusal(
+      'receiver_execution_consent_stale',
+      'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+    );
+  return new ReceiverExecutionRefusal(
+    'receiver_execution_not_offered',
+    'This portable task cannot continue without a current execution offer for its Project resource.',
+  );
 }
 
 /**
@@ -991,15 +1019,11 @@ function verifyReceiverTurnEffect(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
     );
-  if (
-    !persistedConsent ||
-    persistedConsent.portableProjectId !== admitted.portableProjectId ||
-    persistedConsent.resourceId !== admitted.resourceId
-  )
-    throw new ReceiverExecutionRefusal(
-      'receiver_execution_unavailable',
-      'The offered Project resource is unavailable.',
-    );
+  // #484 continuation: the thread's OWN persisted association must prove
+  // the exact admitted portable identity AND the exact admitted ORIGINAL
+  // incarnation — a pre-incarnation marker fails closed stale, a replaced
+  // incarnation refuses unavailable. Never promoted by cwd alone.
+  requirePortableIncarnationMatch(admitted, persistedConsent);
   const metaProject = startedMeta?.projectSlug;
   if (metaProject !== undefined && metaProject !== admitted.projectSlug)
     throw new ReceiverExecutionRefusal(
@@ -1010,7 +1034,9 @@ function verifyReceiverTurnEffect(
   if (
     statedConsent &&
     (statedConsent.portableProjectId !== admitted.portableProjectId ||
-      statedConsent.resourceId !== admitted.resourceId)
+      statedConsent.resourceId !== admitted.resourceId ||
+      (statedConsent.localProjectId !== undefined &&
+        statedConsent.localProjectId !== admitted.localProjectId))
   )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_unavailable',
@@ -2441,11 +2467,13 @@ export class OrchestrationService {
     // provider effect, instead of replaying a portable session the current
     // offer never authorized. Unmarked (legacy/ordinary) sessions pass
     // through byte-identical.
-    if (this.persistedPortableConsentOfThread(input.threadId))
-      throw new ReceiverExecutionRefusal(
-        'receiver_execution_not_offered',
-        'This portable task cannot continue without a current execution offer for its Project resource.',
+    {
+      const unadmittedConsent = this.persistedPortableConsentOfThread(
+        input.threadId,
       );
+      if (unadmittedConsent)
+        throw portableRefusalForUnadmittedThread(unadmittedConsent);
+    }
     // archive#3476: resolve by the session's own persisted provider rather
     // than by probing every adapter for a live thread. This path REPLACES the
     // provider process wholesale, so it must work for a session restored at
@@ -5559,6 +5587,19 @@ export class OrchestrationService {
                             context?.requestCurrent?.() !== false,
                         );
                       }
+                      // #484 continuation: the preparation above awaited
+                      // (native-memory history capture, model-selector
+                      // validation). Re-verify the captured offer/binding
+                      // AFTER those awaits and immediately before the
+                      // provider effect — a withdrawal, rebind, incarnation
+                      // replacement, policy change, or caller revocation
+                      // that landed during preparation refuses here. The
+                      // recheck compares freshly-read state against the
+                      // ORIGINAL admission baseline (and re-probes caller
+                      // currency), so it answers for the association the
+                      // effect was admitted for.
+                      if (internal?.receiverExecutionAdmission)
+                        await internal.receiverExecutionAdmission.recheck();
                       const accepted = await withTenantExecutionContext(
                         context?.tenantExecutionContext ?? boundTenant,
                         () =>
@@ -5632,6 +5673,23 @@ export class OrchestrationService {
                       if (error instanceof SessionTurnStartIndeterminateError) {
                         throw error;
                       }
+                      if (error instanceof ReceiverExecutionRefusal) {
+                        // #484 continuation: the post-preparation
+                        // offer/binding recheck refused BEFORE the provider
+                        // effect ran (`providerAccepted` is still false —
+                        // this fires before `sendAdapter`). This is a clean
+                        // refusal, not an ambiguous accepted effect, so it
+                        // must NOT convert to indeterminate below (which
+                        // would claim the provider may have started and
+                        // retain the client-turn claim against retry).
+                        // Settle the boundary claim so the thread is not
+                        // bricked, release the client-turn claim exactly
+                        // like the pre-effect refusal (which never claims
+                        // it), and rethrow with the closed refusal code.
+                        claimOutcome = 'release';
+                        boundary.indeterminate(new Date().toISOString());
+                        throw error;
+                      }
                       claimOutcome = 'retain';
                       boundary.indeterminate(new Date().toISOString());
                       throw new SessionTurnStartIndeterminateError();
@@ -5658,14 +5716,13 @@ export class OrchestrationService {
                       ? { ...turnAdmission.admitted }
                       : undefined;
                     if (!turnAdmission) {
-                      if (
+                      const unadmittedConsent =
                         this.persistedPortableConsentOfThread(
                           turnInput.threadId,
-                        )
-                      )
-                        throw new ReceiverExecutionRefusal(
-                          'receiver_execution_not_offered',
-                          'This portable task cannot continue without a current execution offer for its Project resource.',
+                        );
+                      if (unadmittedConsent)
+                        throw portableRefusalForUnadmittedThread(
+                          unadmittedConsent,
                         );
                       return invoke();
                     }
@@ -6212,6 +6269,53 @@ export class OrchestrationService {
                 'This session cannot currently answer the request.',
               );
           }
+          // #484 continuation: a portable thread answers a provider request
+          // ONLY under a fresh admission naming its exact association —
+          // rechecked here, after the request-verification awaits above and
+          // adjacent to the adapter effect, and verified against the ACTUAL
+          // persisted/runtime session (never the command's bare thread id).
+          // Without admission a marked thread refuses instead of answering a
+          // portable session the current offer never authorized. Deliberately
+          // no cold materialisation: answering needs a live engine holding
+          // the open request, and spawning one to answer would be new
+          // execution authority — a dormant portable thread refuses here
+          // through adapter resolution, with no provider effect.
+          {
+            const respondAdmission = internal?.receiverExecutionAdmission;
+            const respondAdmitted = respondAdmission?.admitted
+              ? { ...respondAdmission.admitted }
+              : undefined;
+            if (!respondAdmission) {
+              const unadmittedConsent = this.persistedPortableConsentOfThread(
+                command.threadId,
+              );
+              if (unadmittedConsent)
+                throw portableRefusalForUnadmittedThread(unadmittedConsent);
+            } else {
+              if (
+                respondAdmitted &&
+                command.threadId !== respondAdmitted.threadId
+              )
+                throw new ReceiverExecutionRefusal(
+                  'receiver_execution_unavailable',
+                  'The offered Project resource is unavailable.',
+                );
+              await respondAdmission.recheck();
+              if (respondAdmitted) {
+                const live =
+                  this.sessionReadModel.get(command.threadId) ??
+                  this.options.eventStore?.readSessionByThread(
+                    command.threadId,
+                  );
+                verifyReceiverTurnEffect(
+                  respondAdmitted,
+                  live ? { threadId: live.threadId, cwd: live.cwd } : undefined,
+                  this.latestStartedMetadataOfThread(command.threadId),
+                  this.persistedPortableConsentOfThread(command.threadId),
+                );
+              }
+            }
+          }
           await adapter.respondToRequest(
             command.threadId,
             command.requestId,
@@ -6306,7 +6410,12 @@ export class OrchestrationService {
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
           error instanceof SessionStopWhileStartingError ||
-          error instanceof RequestEventGuardError
+          error instanceof RequestEventGuardError ||
+          // #484 continuation: a portable refusal is a refusal to act, not
+          // a failed action — and its closed code must survive the wrapper
+          // so routes answer the exact 403 (never a 400 with a bare
+          // message) and session-turn-boundary receipts stay truthful.
+          error instanceof ReceiverExecutionRefusal
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -6322,9 +6431,13 @@ export class OrchestrationService {
         // inner errors keep their existing (message-only) projection
         // deliberately — widening which codes leak through this seam is a
         // separate, per-code decision.
+        // #484 continuation: a portable refusal's closed code is already a
+        // public contract (fixed copy per code, 403-mapped at every route),
+        // so it survives here exactly like the ended-session code.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
-          error instanceof RequestEventGuardError
+          error instanceof RequestEventGuardError ||
+          error instanceof ReceiverExecutionRefusal
           ? error.code
           : undefined,
       );
@@ -7693,11 +7806,10 @@ export class OrchestrationService {
         this.latestStartedMetadataOfThread(threadId),
         this.persistedPortableConsentOfThread(threadId),
       );
-    } else if (this.persistedPortableConsentOfThread(threadId)) {
-      throw new ReceiverExecutionRefusal(
-        'receiver_execution_not_offered',
-        'This portable task cannot continue without a current execution offer for its Project resource.',
-      );
+    } else {
+      const unadmittedConsent = this.persistedPortableConsentOfThread(threadId);
+      if (unadmittedConsent)
+        throw portableRefusalForUnadmittedThread(unadmittedConsent);
     }
     const tenantExecutionContext =
       this.sessionAuthz.tenantContextFor(threadId) ??
