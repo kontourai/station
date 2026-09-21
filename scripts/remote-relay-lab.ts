@@ -446,6 +446,8 @@ try {
     account.browser.password,
     account.browser.credential,
     account.browser.invitation,
+    account.sharedWork.sharedTask.messageMarker,
+    account.sharedWork.sharedTask.documentMarker,
     'Relay shared fixture',
   ])
     assert(

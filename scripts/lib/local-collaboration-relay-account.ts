@@ -11,6 +11,7 @@ import {
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import type { ProjectSharedTaskPublicationExpectation } from '@kontourai/station-contracts/project-shared-task';
 import { getAccountAuthentication } from '@kontourai/station-sdk/account-authentication';
 import {
   type ClientRequestOptions,
@@ -24,6 +25,10 @@ import {
   changeProjectAccess,
   getProjectAccess,
 } from '@kontourai/station-sdk/project-access-client';
+import {
+  shareProjectTask,
+  unshareProjectTask,
+} from '@kontourai/station-sdk/project-shared-tasks';
 import {
   acquireAccountLabPorts,
   startAccountLabStation,
@@ -112,6 +117,151 @@ export async function provisionRelayAccountStation<
     assert.equal(enabled.kind, 'enabled');
     if (enabled.kind !== 'enabled')
       throw new Error('Shared Project enablement failed');
+    type RelayTaskRecord = { id: string; createdAt: string };
+    const operatorHeaders = {
+      Authorization: `Bearer ${current.operator.credential}`,
+      'Content-Type': 'application/json',
+      Origin: current.base,
+    };
+    const createRealTask = async (
+      projectId: string,
+      title: string,
+    ): Promise<RelayTaskRecord> => {
+      const response = await fetch(`${current.base}/api/tasks`, {
+        method: 'POST',
+        headers: operatorHeaders,
+        body: JSON.stringify({ projectId, title }),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+        redirect: 'error',
+      });
+      const envelope = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        data?: { id: string; createdAt: string; status: string };
+      };
+      assert.equal(
+        response.status,
+        201,
+        envelope.error ?? 'Task create failed',
+      );
+      assert(envelope.data?.id);
+      assert(envelope.data?.createdAt);
+      assert.equal(envelope.data?.status, 'todo');
+      return { id: envelope.data.id, createdAt: envelope.data.createdAt };
+    };
+    const nonce = () => randomBytes(8).toString('hex');
+    const sharedTitle = `Relay shared task ${nonce()}`;
+    const sharedMessageMarker = `Relay shared human message ${nonce()}`;
+    const sharedDocumentMarker = `Relay shared document text ${nonce()}`;
+    const privateTitle = `Relay unpublished task ${nonce()}`;
+    const privateMessageMarker = `Relay unpublished message ${nonce()}`;
+    const privateDocumentMarker = `Relay unpublished document ${nonce()}`;
+    const sharedTask = await createRealTask(shared.slug, sharedTitle);
+    const unpublishedTask = await createRealTask(shared.slug, privateTitle);
+    const openRoom = async (taskId: string) => {
+      const response = await fetch(
+        `${current.base}/api/tasks/${encodeURIComponent(taskId)}/room`,
+        {
+          headers: operatorHeaders,
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+          redirect: 'error',
+        },
+      );
+      assert.equal(response.status, 200, await response.clone().text());
+      await response.text();
+    };
+    const postMessage = async (taskId: string, text: string) => {
+      await openRoom(taskId);
+      const response = await fetch(
+        `${current.base}/api/tasks/${encodeURIComponent(taskId)}/room/messages`,
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({ proposalId: `relay-${nonce()}`, text }),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+          redirect: 'error',
+        },
+      );
+      assert.equal(response.status, 200, await response.clone().text());
+      await response.text();
+    };
+    const postDocument = async (taskId: string, text: string) => {
+      await openRoom(taskId);
+      const planResponse = await fetch(
+        `${current.base}/api/tasks/${encodeURIComponent(taskId)}/room/edit-plan`,
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            intentId: `relay-doc-${nonce()}`,
+            desiredText: text,
+            selection: { anchor: 0, focus: 0 },
+          }),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+          redirect: 'error',
+        },
+      );
+      assert.equal(planResponse.status, 200, await planResponse.clone().text());
+      const planEnvelope = (await planResponse.json()) as {
+        data?: { intentId: string; digest: string };
+        intentId?: string;
+        digest?: string;
+      };
+      const plan = planEnvelope.data ?? planEnvelope;
+      assert(plan.intentId);
+      assert(plan.digest);
+      const batch = await fetch(
+        `${current.base}/api/tasks/${encodeURIComponent(taskId)}/room/batches`,
+        {
+          method: 'POST',
+          headers: operatorHeaders,
+          body: JSON.stringify({
+            intentId: plan.intentId,
+            intentDigest: plan.digest,
+          }),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
+          redirect: 'error',
+        },
+      );
+      assert.equal(batch.status, 200, await batch.clone().text());
+      await batch.text();
+    };
+    await postMessage(sharedTask.id, sharedMessageMarker);
+    await postDocument(sharedTask.id, sharedDocumentMarker);
+    await postMessage(unpublishedTask.id, privateMessageMarker);
+    await postDocument(unpublishedTask.id, privateDocumentMarker);
+    const sharedExpectation = (): ProjectSharedTaskPublicationExpectation => ({
+      project: enabled.view.scope,
+      task: { id: sharedTask.id, createdAt: sharedTask.createdAt },
+    });
+    const publication = await shareProjectTask(
+      current.base,
+      shared.slug,
+      sharedExpectation(),
+      current.operator,
+    );
+    assert.equal(publication.kind, 'shared');
+    if (publication.kind !== 'shared')
+      throw new Error('Shared Task publication failed');
+    let currentShareId = publication.publication.shareId;
+    const sharedWork = {
+      slug: shared.slug,
+      sharedTask: {
+        id: sharedTask.id,
+        createdAt: sharedTask.createdAt,
+        title: sharedTitle,
+        messageMarker: sharedMessageMarker,
+        documentMarker: sharedDocumentMarker,
+      },
+      unpublishedTask: {
+        id: unpublishedTask.id,
+        createdAt: unpublishedTask.createdAt,
+        title: privateTitle,
+        messageMarker: privateMessageMarker,
+        documentMarker: privateDocumentMarker,
+      },
+      expected: sharedExpectation(),
+    };
     const invitation = await changeProjectAccess(
       current.base,
       shared.slug,
@@ -253,6 +403,32 @@ export async function provisionRelayAccountStation<
     return {
       station: current,
       stop,
+      sharedWork,
+      async unshareSharedTask() {
+        const result = await unshareProjectTask(
+          current.base,
+          shared.slug,
+          currentShareId,
+          sharedExpectation(),
+          current.operator,
+        );
+        assert.deepEqual(result, { unshared: true });
+        return result;
+      },
+      async republishSharedTask() {
+        const next = await shareProjectTask(
+          current.base,
+          shared.slug,
+          sharedExpectation(),
+          current.operator,
+        );
+        assert.equal(next.kind, 'shared');
+        if (next.kind !== 'shared')
+          throw new Error('Shared Task republication failed');
+        assert.notEqual(next.publication.shareId, currentShareId);
+        currentShareId = next.publication.shareId;
+        return { shareId: currentShareId };
+      },
       browser: {
         apiBase: current.base,
         stationId: current.stationId,

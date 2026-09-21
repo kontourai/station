@@ -106,6 +106,86 @@ export async function runBrowserAccountScenario(
   assert.deepEqual(memberProjects[0].actions, ['view']);
   assert(Object.keys(memberProjects[0]).every((key) => memberKeys.has(key)));
   assert(!catalogue.body.includes(accountStation.browser.privateName));
+  const sharedWorkChecks: string[] = [];
+  const accountRequest = (path: string) =>
+    page.evaluate(browserApplicationAccountRequest, { path });
+  const work = accountStation.sharedWork;
+  assert(work, 'Published-work fixture is required');
+  const assertPublishedDocument = async () => {
+    const response = await accountRequest(
+      `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/document`,
+    );
+    assert.equal(response.status, 200, response.body);
+    const document = JSON.parse(response.body).data;
+    assert.equal(document.kind, 'snapshot');
+    assert.equal(document.project.id, work.expected.project.localProjectId);
+    assert.equal(document.project.slug, work.slug);
+    assert.equal(document.task.id, work.sharedTask.id);
+    assert.equal(document.task.createdAt, work.sharedTask.createdAt);
+    assert(document.text.includes(work.sharedTask.documentMarker));
+    for (const marker of [
+      work.unpublishedTask.title,
+      work.unpublishedTask.messageMarker,
+      work.unpublishedTask.documentMarker,
+    ])
+      assert(!response.body.includes(marker));
+    return response;
+  };
+
+  {
+    const sharedList = await accountRequest(
+      `/api/projects/${work.slug}/shared-work`,
+    );
+    assert.equal(sharedList.status, 200, sharedList.body);
+    const sharedItems = JSON.parse(sharedList.body).data;
+    assert(Array.isArray(sharedItems));
+    assert.equal(sharedItems.length, 1);
+    assert.equal(sharedItems[0].task.id, work.sharedTask.id);
+    assert.equal(sharedItems[0].task.createdAt, work.sharedTask.createdAt);
+    assert.deepEqual(sharedItems[0].project, work.expected.project);
+    assert(!sharedList.body.includes(work.unpublishedTask.id));
+    assert(!sharedList.body.includes(work.unpublishedTask.title));
+    sharedWorkChecks.push('shared-work catalogue contains shared Task only');
+    const sharedHistory = await accountRequest(
+      `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/history`,
+    );
+    assert.equal(sharedHistory.status, 200, sharedHistory.body);
+    assert(sharedHistory.body.includes(work.sharedTask.messageMarker));
+    assert(!sharedHistory.body.includes(work.unpublishedTask.messageMarker));
+    sharedWorkChecks.push('shared Task history exposes message marker');
+    const sharedDocument = await accountRequest(
+      `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/document`,
+    );
+    assert.equal(sharedDocument.status, 200, sharedDocument.body);
+    assert(sharedDocument.body.includes(work.sharedTask.documentMarker));
+    assert(!sharedDocument.body.includes(work.unpublishedTask.documentMarker));
+    sharedWorkChecks.push('shared Task document exposes text marker');
+    const unpublishedHistory = await accountRequest(
+      `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.unpublishedTask.id)}/history`,
+    );
+    assert.equal(unpublishedHistory.status, 404, unpublishedHistory.body);
+    assert(
+      !unpublishedHistory.body.includes(work.unpublishedTask.messageMarker),
+    );
+    const unpublishedDocument = await accountRequest(
+      `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.unpublishedTask.id)}/document`,
+    );
+    assert.equal(unpublishedDocument.status, 404, unpublishedDocument.body);
+    assert(
+      !unpublishedDocument.body.includes(work.unpublishedTask.documentMarker),
+    );
+    sharedWorkChecks.push('unpublished Task shared reads refuse with 404');
+    const ordinaryTask = await accountRequest(
+      `/api/tasks/${encodeURIComponent(work.unpublishedTask.id)}`,
+    );
+    assert.equal(ordinaryTask.status, 403, ordinaryTask.body);
+    assert(
+      !ordinaryTask.body.includes(work.unpublishedTask.messageMarker) &&
+        !ordinaryTask.body.includes(work.unpublishedTask.documentMarker),
+      'Ordinary Task ceiling must not expose body',
+    );
+    sharedWorkChecks.push('ordinary Task route ceiling refuses with 403');
+  }
   const privateRead = await page.evaluate(browserApplicationAccountRequest, {
     path: '/api/projects/relay-private',
   });
@@ -199,6 +279,25 @@ export async function runBrowserAccountScenario(
     404,
     'Membership revocation independently refuses the Project read',
   );
+  assert.equal(
+    (
+      await accountRequest(
+        `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/history`,
+      )
+    ).status,
+    404,
+    'Membership revocation refuses shared Task history',
+  );
+  assert.equal(
+    (
+      await accountRequest(
+        `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/document`,
+      )
+    ).status,
+    404,
+    'Membership revocation refuses shared Task document',
+  );
+  sharedWorkChecks.push('membership revocation refuses shared Task reads');
   const replacementInvitation = await accountStation.inviteAgain();
   assert.equal(
     (
@@ -218,7 +317,54 @@ export async function runBrowserAccountScenario(
     200,
     'Restored membership proves Device revocation is independent',
   );
+  assert.equal(
+    (
+      await accountRequest(
+        `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/history`,
+      )
+    ).status,
+    200,
+    'Membership restore restores shared Task history',
+  );
+  await assertPublishedDocument();
+  sharedWorkChecks.push('membership restore restores shared reads');
+  await accountStation.unshareSharedTask();
+  assert.equal(
+    (
+      await accountRequest(
+        `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/history`,
+      )
+    ).status,
+    404,
+    'Unshare refuses shared Task history while membership stands',
+  );
+  assert.equal(
+    (
+      await accountRequest(
+        `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/document`,
+      )
+    ).status,
+    404,
+    'Unshare refuses shared Task document while membership stands',
+  );
+  sharedWorkChecks.push('operator unshare refuses shared reads');
+  await accountStation.republishSharedTask();
+  assert.equal(
+    (
+      await accountRequest(
+        `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/history`,
+      )
+    ).status,
+    200,
+    'Republish restores shared Task history with a different shareId',
+  );
+  await assertPublishedDocument();
+  sharedWorkChecks.push('republish with new shareId restores shared reads');
   await beforeDeviceRevocation?.();
+  await assertPublishedDocument();
+  sharedWorkChecks.push(
+    'current transport reads the published document before Device revocation',
+  );
   await accountStation.revokeDevice();
   assert.equal(
     (
@@ -228,6 +374,16 @@ export async function runBrowserAccountScenario(
     ).status,
     401,
   );
+  assert.equal(
+    (
+      await accountRequest(
+        `/api/projects/${work.slug}/shared-work/${encodeURIComponent(work.sharedTask.id)}/history`,
+      )
+    ).status,
+    401,
+    'Device revocation independently refuses shared Task history',
+  );
+  sharedWorkChecks.push('device revocation refuses shared Task history');
   await page.evaluate(browserStopApplicationAccount);
   assert.equal(
     directApplicationAttempts,
@@ -247,11 +403,18 @@ export async function runBrowserAccountScenario(
       'account self and proof replay refusal',
       'invitation acceptance without new Device authority',
       'operator-observed viewer membership and permitted Project read',
+      ...sharedWorkChecks,
       'continuation renewal and revocation',
       'provider-session revocation and stable relogin',
       'membership revocation and invitation-based restoration',
       'Device revocation independently refuses a permitted Project read',
     ],
+    sharedWork: {
+      slug: work.slug,
+      sharedTaskId: work.sharedTask.id,
+      unpublishedTaskId: work.unpublishedTask.id,
+      checks: sharedWorkChecks,
+    },
     privateProject: privateBoundary,
   };
   writeFileSync(

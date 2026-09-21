@@ -959,6 +959,8 @@ try {
       accountStation.browser.password,
       accountStation.browser.credential,
       accountStation.browser.invitation,
+      accountStation.sharedWork.sharedTask.messageMarker,
+      accountStation.sharedWork.sharedTask.documentMarker,
     ])
       assert.equal(captured.includes(Buffer.from(secret)), false);
   }
