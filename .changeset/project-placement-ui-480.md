@@ -25,3 +25,15 @@ refuses instead of dispatching the old intent under new credentials, and
 late hook-option changes cannot redirect an in-flight dispatch.
 `delegateOrchestrationTask` accepts an optional `ClientRequestOptions`
 second parameter.
+
+Scope note (#480): the supported Project-placement path is the portable
+DELEGATION intent (`project-portable`) dispatched by the delegation
+launcher, where the receiving Station verifies the offer on submit. The
+FOREGROUND thread-execution path has no portable identity or receiver
+admission in this slice: a non-portable Project workspace resolved onto a
+paired Station is refused (`receiver_execution_not_offered`, zero remote
+effect) rather than silently run as an unrelated same-slug Project, and
+the thread-default environment picker no longer offers new paired
+Station selections while preserving an already-saved paired default.
+Full portable foreground identity/admission remains the next #480/#484
+slice.

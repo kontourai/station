@@ -408,7 +408,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     );
   });
 
-  test('lists authorized peer Stations and keeps a saved peer default selected', () => {
+  test('keeps a saved peer default preserved without offering new paired selections', () => {
     sdkMocks.project = {
       ...projectFixture,
       defaultEnvironment: { kind: 'saved', id: 'env-peer-b' as any },
@@ -428,17 +428,23 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     ];
     renderProjectSettings();
 
+    // No NEW paired-Station selection is offered: the foreground thread
+    // path has no portable admission (#480 scope correction).
     expect(
-      screen.getByRole('option', { name: 'box-b — Paired Station' }),
-    ).toBeTruthy();
-    expect(screen.getByLabelText('Default environment')).toHaveProperty(
-      'value',
-      'env-peer-b',
-    );
+      screen.queryByRole('option', { name: /Paired Station$/ }),
+    ).toBeNull();
+    // The saved peer default stays visible and selected, named as
+    // preserved-but-unsupported — never silently substituted with current.
+    expect(
+      screen.getByRole('option', {
+        name: 'env-peer-b — paired Station (not offered for new threads)',
+      }),
+    ).toHaveProperty('selected', true);
+    expect(screen.getByText(/saved default is a paired Station/)).toBeTruthy();
     expect(screen.queryByText(/not available in the current list/)).toBeNull();
   });
 
-  test('a saved peer default survives while either inventory is loading', () => {
+  test('a saved peer default survives while either inventory is loading, without offering new paired selections', () => {
     sdkMocks.project = {
       ...projectFixture,
       defaultEnvironment: { kind: 'saved', id: 'env-peer-b' as any },
@@ -465,9 +471,16 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       },
     ];
     rerender(<ProjectSettingsView slug="demo" />);
+    // Still no paired-Station option to newly select; the preserved saved
+    // default remains the selected value with the unsupported notice.
     expect(
-      screen.getByRole('option', { name: 'box-b — Paired Station' }),
-    ).toHaveProperty('selected', true);
+      screen.queryByRole('option', { name: /Paired Station$/ }),
+    ).toBeNull();
+    expect(screen.getByLabelText('Default environment')).toHaveProperty(
+      'value',
+      'env-peer-b',
+    );
+    expect(screen.getByText(/saved default is a paired Station/)).toBeTruthy();
   });
 
   test('names an unverifiable peer default when the peer inventory fails', () => {

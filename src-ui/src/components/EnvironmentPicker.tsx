@@ -7,10 +7,7 @@ import {
   useSshEnvironmentsQuery,
 } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
-import {
-  peerStationLabel,
-  selectablePeerStations,
-} from '../utils/peerEnvironmentOptions';
+import { selectablePeerStations } from '../utils/peerEnvironmentOptions';
 
 export const MISSING_ENVIRONMENT_NOTICE =
   "This project's saved environment is not available in the current list. Its selection is preserved; choose another environment or repair the connection.";
@@ -18,6 +15,17 @@ export const ENVIRONMENTS_UNAVAILABLE_NOTICE =
   'Saved environments are unavailable right now. The configured environment is preserved until the inventory can be loaded.';
 export const PEER_ENVIRONMENTS_UNAVAILABLE_NOTICE =
   'Paired Stations are unavailable right now. A saved paired default is preserved until the inventory can be loaded.';
+/**
+ * #480 final scope correction: the FOREGROUND thread-execution path has no
+ * portable identity or receiver-offer admission, so this picker must not
+ * offer NEW paired-Station selections — placing a Project there would run
+ * an unrelated same-slug Project on the peer. An already-saved paired
+ * default stays visible and preserved, named as not yet supported here,
+ * never silently substituted with the current Station. The portable
+ * DELEGATION launcher keeps its own authorized peer options.
+ */
+export const PEER_DEFAULT_UNSUPPORTED_NOTICE =
+  'This project\u2019s saved default is a paired Station. The selection is preserved, but starting new threads on paired Stations isn\u2019t supported here yet.';
 
 export function EnvironmentPicker({
   id,
@@ -31,10 +39,12 @@ export function EnvironmentPicker({
   onChange: (value: EnvironmentRef) => void;
 }) {
   const { data: environments, isSuccess, isError } = useSshEnvironmentsQuery();
-  // Same authorized peer options as the delegation launcher, through the one
-  // shared derivation: the `access:manage`-gated read 403s for a non-operator
-  // browser session, so peers render only on success and invited-account UI
-  // never gains a peer inventory here.
+  // The `access:manage`-gated peer read is used ONLY to classify an
+  // already-saved default (and to name the unavailable state); it offers no
+  // new peer selections (see PEER_DEFAULT_UNSUPPORTED_NOTICE). It 403s for
+  // a non-operator browser session, so invited-account UI never gains a
+  // peer inventory here. The portable delegation launcher keeps its own
+  // authorized peer options through the same shared derivation.
   const peerCredentialsQuery = usePeerCredentialsQuery();
   const peerStations = useMemo(
     () => selectablePeerStations(peerCredentialsQuery.data, environments),
@@ -44,11 +54,16 @@ export function EnvironmentPicker({
   const sshListed = environments?.some(
     (item) => item.profile.environmentId === savedId,
   );
+  const savedIdIsPeer = peerStations.some(
+    (peer) => peer.environmentId === savedId,
+  );
+  // The saved fallback option renders for everything that is not a listed
+  // SSH environment — including a preserved peer default, which must stay
+  // visible even though it is no longer offered as a new selection.
+  const sshOptionListed = sshListed ?? false;
   // `??` would be wrong here: a loaded-but-not-matching SSH list is `false`,
   // not unknown, and must still fall through to the peer list.
-  const listed =
-    (sshListed ?? false) ||
-    peerStations.some((peer) => peer.environmentId === savedId);
+  const listed = sshOptionListed || savedIdIsPeer;
   const dangling = Boolean(
     isSuccess && peerCredentialsQuery.isSuccess && savedId && !listed,
   );
@@ -79,10 +94,14 @@ export function EnvironmentPicker({
         }
       >
         <option value="current">This Station</option>
-        {!listed && savedId && (
+        {savedId && !sshOptionListed && (
           <option value={savedId}>
             {savedId} —{' '}
-            {dangling ? 'missing saved environment' : 'saved environment'}
+            {savedIdIsPeer
+              ? 'paired Station (not offered for new threads)'
+              : dangling
+                ? 'missing saved environment'
+                : 'saved environment'}
           </option>
         )}
         {(environments ?? [])
@@ -92,12 +111,15 @@ export function EnvironmentPicker({
               {item.profile.name}
             </option>
           ))}
-        {peerStations.map((peer) => (
-          <option key={`peer:${peer.environmentId}`} value={peer.environmentId}>
-            {peerStationLabel(peer)} — Paired Station
-          </option>
-        ))}
       </select>
+      {savedIdIsPeer && (
+        <p
+          className="editor-field-hint environment-picker__notice"
+          role="status"
+        >
+          {PEER_DEFAULT_UNSUPPORTED_NOTICE}
+        </p>
+      )}
       {dangling && (
         <p
           className="editor-field-hint environment-picker__notice"

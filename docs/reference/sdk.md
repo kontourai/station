@@ -625,7 +625,13 @@ unavailable with retry, never an absence claim or speculative setup help.
 A denied, failed or malformed read refuses visibly and never reads as
 absence. Offer eligibility stays unverified until an authorized
 controller-side offer query exists — the receiving Station confirms on
-submit.
+submit. Placement itself is supported only through the portable
+delegation intent (`project-portable`) dispatched by the delegation
+launcher; the foreground thread-execution path has no portable admission
+in this slice, so a non-portable Project workspace resolved onto a paired
+Station is refused rather than run as an unrelated same-slug Project, and
+the thread-default environment picker preserves — but no longer newly
+offers — paired-Station selections.
 
 ### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
 

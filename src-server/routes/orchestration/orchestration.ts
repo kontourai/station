@@ -1455,6 +1455,18 @@ export function createOrchestrationRoutes(
           409,
         );
       }
+      // #480 scope correction: a foreground Project dispatch a peer does
+      // not offer is a named refusal, not malformed input — exact safe
+      // copy by the closed code, never the raw target or internals.
+      if (error instanceof ReceiverExecutionRefusal)
+        return c.json(
+          {
+            success: false,
+            error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+            code: error.code,
+          },
+          403,
+        );
       // A stalled/unreachable server-side mount is temporary infrastructure
       // unavailability, not malformed client input (archive#2552).
       const unreachableWorkspace =
