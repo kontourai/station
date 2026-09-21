@@ -1,0 +1,4 @@
+# Confirmed prose-only false positive: "secret-minimized summary, budget/reason
+# lines included" in the initial wait implementation. Pin the historical match
+# exactly; do not exempt this file, this commit, or future credential matches.
+c48f31f8ce965ee706327a33ffba6cc69638cb87:packages/cli/src/commands/delegate.ts:generic-api-key:1330

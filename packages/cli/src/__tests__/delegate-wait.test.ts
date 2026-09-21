@@ -318,6 +318,27 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     ).toBe('status read refused by the Station');
   });
 
+  test('an early timer wake does not start a status read before the next poll is due', async () => {
+    const clock = fakeClock();
+    const observe = vi.fn(async () => snapshot('running'));
+    let wakes = 0;
+    const result = await waitOnDelegatedTask({
+      taskId: 'task:w',
+      timeoutMs: 1000,
+      intervalMs: 1000,
+      deps: {
+        observe,
+        now: clock.now,
+        sleep: async (ms) => {
+          clock.advance(wakes++ === 0 ? ms - 1 : ms);
+        },
+      },
+    });
+    expect(result.outcome).toBe('wait-timeout');
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(wakes).toBe(2);
+  });
+
   test('budget expiry with no successful observation is observation-lost, not wait-timeout', async () => {
     const clock = fakeClock();
     const observe = vi.fn(async () => {

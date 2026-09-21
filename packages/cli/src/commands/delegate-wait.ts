@@ -311,8 +311,10 @@ export async function waitOnDelegatedTask(input: {
       lastError = describeObservationError(error);
       return finish('observation-lost');
     }
-    const sleepMs = Math.min(input.intervalMs, deadline - now());
-    if (sleepMs > 0) await sleep(sleepMs);
+    // Timers may wake slightly early. Recheck the intended polling instant,
+    // rather than starting a final HTTP read with only a millisecond left.
+    const pollAt = Math.min(deadline, now() + input.intervalMs);
+    while (!aborted() && now() < pollAt) await sleep(pollAt - now());
   }
 }
 
