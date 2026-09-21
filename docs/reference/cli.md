@@ -964,7 +964,7 @@ station delegate --agent=station --json "Summarize the open work" --api-base=htt
 # {"ok":true,"kind":"delegate.create","data":{"taskId":"task:...","status":"dispatched",...}}
 
 station delegate status task:0f3c... --json
-station delegate wait task:0f3c... --timeout=1800 --json   # exit 0 on completed; 5 = deadline, still running
+station delegate wait task:0f3c... --timeout=1800 --json   # exit 0 on completed; 5 = deadline with the task last observed active
 station delegate events task:0f3c... --json
 station delegate --session=task:0f3c... "Also check the failing test" --json
 station delegate interrupt task:0f3c... --json
@@ -1052,16 +1052,24 @@ laundered into completion or failure:
 - `needs-action` — a `pendingRequest` is open, or status is `needs_input`,
   `review_pending`, or `blocked` (exit 4). The task is alive and waiting on
   you; answer with `station delegate respond` or `station approvals respond`.
-- `wait-timeout` — the deadline expired while the task is still `queued`/
-  `running` (exit 5). The task keeps running; re-run `wait` or check `status`.
+- `wait-timeout` — the deadline expired while the task was last observed
+  `queued`/`running` (exit 5). Waiting never stops the task, and it may have
+  advanced or finished since the last observation; re-run `wait` or check
+  `status` to see where it is now.
 - `observation-lost` — a status read failed (transport error, HTTP failure,
   or a read bounded out by the budget) (exit 2, the delegate transport-failure
-  code). The last good observation is reported and explicitly NOT classified
-  as a task failure; re-running `wait` is safe.
+  code). Output carries only a SAFE fixed error category (transport, HTTP
+  status, refusal code, timeout) — never the raw error message, URL, or
+  response body, which can carry peer-controlled content. The last good
+  observation is reported and explicitly NOT classified as a task failure;
+  after the loss the task's outcome is not known from here. Re-running
+  `wait` is safe.
 - `unknown` — the server reported `unknown`, or a status value this CLI
   version cannot classify (exit 6).
-- `interrupted` — Ctrl-C (exit 130). The listener is removed on exit; the
-  delegated task is unaffected.
+- `interrupted` — Ctrl-C (exit 130). The abort signal reaches the in-flight
+  status read itself, so a hung read cannot keep Ctrl-C blocked; the
+  listener is removed on exit. Observation stopped without cancelling the
+  task, and the task's current state is not known from here.
 
 The result reports the actually observed identifiers — the durable
 `conversationId` and the CURRENT child Session (`currentSessionId`) at the
@@ -1075,7 +1083,8 @@ suppressed, so the output stays machine-clean:
 `{"ok": <true only when completed>, "kind": "delegate.wait",
 "data": {outcome, exitCode, taskId, conversationId, currentSessionId,
 status, pendingRequest?, sessionChanged, previousSessionId?, pollCount,
-elapsedMs, timeoutMs, intervalMs, lastError?, lastSnapshot?}}`.
+elapsedMs, timeoutMs, intervalMs, lastError? (a safe fixed error
+category — never a raw message, URL, or response body), lastSnapshot?}}`.
 Human output shows concise progress on stderr and a final summary that
 reuses `status`'s safe projection; it states explicitly that a wait timeout
 leaves the task running. Raw provider logs are never printed.
@@ -1116,7 +1125,7 @@ is unchanged):
 - `2` — transport failure (the target Station is unreachable or timed out); for `wait`, also an observation lost while polling — never classified as a task failure
 - `3` — delegation rejection (a received-but-unsuccessful response: bad target, not ready, or a deps-unavailable/business-rejection response); for `wait`, the task reached `failed`/`canceled`
 - `4` — `--on-request=fail` found a request already pending right after dispatch/continue (the task is left alive, not torn down); for `wait`, the task needs your action (pending request / `needs_input` / `review_pending` / `blocked`)
-- `5` — `wait` deadline expired while the task is still running (not a failure — the task keeps running)
+- `5` — `wait` deadline expired with the task last observed active (not a failure — waiting never stops the task)
 - `6` — `wait` observed a task status of `unknown` (or one this CLI cannot classify)
 - `130` — `wait` interrupted by Ctrl-C (the delegated task is unaffected)
 

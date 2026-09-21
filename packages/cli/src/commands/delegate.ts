@@ -67,8 +67,6 @@ import {
   type DelegatedTaskFollowUpHandle,
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
-  type DelegatedTaskPendingRequest,
-  type DelegatedTaskReason,
   type DelegatedTaskRequestResponseHandle,
   type DelegatedTaskSnapshot,
   type DelegationOptions,
@@ -90,6 +88,17 @@ import {
   type ResolvedApiBase,
   requirePositional,
 } from './core-api.js';
+import {
+  type DelegateWaitResult,
+  formatDurationMs,
+  formatWaitOutcomeLine,
+  parseWaitSeconds,
+  WAIT_DEFAULT_INTERVAL_SECONDS,
+  WAIT_DEFAULT_TIMEOUT_SECONDS,
+  WAIT_MAX_INTERVAL_SECONDS,
+  WAIT_MAX_TIMEOUT_SECONDS,
+  waitOnDelegatedTask,
+} from './delegate-wait.js';
 import { explainRequestFailure } from './errors.js';
 import {
   executionEnvironment,
@@ -363,21 +372,6 @@ function supervisionLines(
       }`,
   ];
   return lines;
-}
-
-/** Compact `90s` / `30m` / `2h` rendering for forwarded millisecond budgets. */
-function formatDurationMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return 'unknown';
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    const rest = seconds % 60;
-    return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const restMinutes = minutes % 60;
-  return restMinutes ? `${hours}h ${restMinutes}m` : `${hours}h`;
 }
 
 function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
@@ -964,310 +958,15 @@ async function runDelegateTargets(
 }
 
 /**
- * #2264 — `station delegate wait <task-id>`: bounded, observation-only
- * completion waiting.
+ * #2264 — `station delegate wait` command seam. The observation loop,
+ * outcome classification, and duration/flag validation live in
+ * `./delegate-wait.ts`; this function owns the CLI seam: argument parsing,
+ * `--on`/environment resolution, SIGINT wiring, and output.
  *
- * Honesty contract (the reason this command exists):
- *
- * - TERMINAL provider outcomes come from the server's own status field.
- *   `completed` → exit 0; `failed`/`canceled` → exit 3.
- * - NEEDS USER ACTION (`pendingRequest` present, or status `needs_input`/
- *   `review_pending`/`blocked`) → exit 4 — the same exit `--on-request=fail`
- *   uses for "a request is pending, the task is alive and waiting on you".
- * - The caller's WAIT BUDGET expiring while the task is still active →
- *   exit 5. This is NOT task completion or failure: the delegated task keeps
- *   running and the output says so.
- * - The server reporting `unknown` (or a future status value this CLI cannot
- *   classify) → exit 6. Observation ambiguity is never laundered into
- *   completion or failure.
- * - OBSERVATION LOSS (a status read failed — transport error, HTTP failure,
- *   or a read bounded out by the remaining wait budget) → exit 2, the same
- *   transport-failure exit every other delegate verb uses. The last good
- *   observation is reported and explicitly NOT classified as a task failure.
- * - Ctrl-C → exit 130. The delegated task is unaffected; the message says so.
- *
- * The engine's execution budget (`supervision`, #2269) is server state this
- * command only displays — waiting longer than it, or shorter than it, never
- * dispatches, interrupts, or extends anything. There is deliberately no
- * progress-based kill policy and no heartbeat-driven wait extension: the
- * budget the operator passed is the budget that applies.
+ * Ctrl-C is a cooperative observation abort, never a task interrupt: the
+ * handler only flips an AbortSignal that both the wait loop and the
+ * in-flight status read itself observe. The listener is always removed.
  */
-
-const WAIT_DEFAULT_TIMEOUT_SECONDS = 3600;
-const WAIT_MAX_TIMEOUT_SECONDS = 86400;
-const WAIT_DEFAULT_INTERVAL_SECONDS = 5;
-const WAIT_MAX_INTERVAL_SECONDS = 3600;
-
-export type DelegateWaitOutcome =
-  | 'completed'
-  | 'failed'
-  | 'needs-action'
-  | 'wait-timeout'
-  | 'observation-lost'
-  | 'unknown'
-  | 'interrupted';
-
-/** Documented `delegate wait` exit codes (delegate-scoped, like AC9's). */
-const WAIT_EXIT_CODES: Record<DelegateWaitOutcome, number> = {
-  completed: 0,
-  'observation-lost': 2,
-  failed: 3,
-  'needs-action': 4,
-  'wait-timeout': 5,
-  unknown: 6,
-  interrupted: 130,
-};
-
-export interface DelegateWaitResult {
-  outcome: DelegateWaitOutcome;
-  exitCode: number;
-  taskId: string;
-  /** Observed identifiers — the actual conversation/child Session at the last observation. */
-  conversationId?: string;
-  currentSessionId?: string;
-  /** The canonical status as last observed, when any observation succeeded. */
-  status?: DelegatedTaskSnapshot['status'];
-  pendingRequest?: DelegatedTaskPendingRequest;
-  reason?: DelegatedTaskReason;
-  transitionReason?: string;
-  /** The current child Session changed under us (a continuation replaced it); the wait continued. */
-  sessionChanged: boolean;
-  previousSessionId?: string;
-  pollCount: number;
-  elapsedMs: number;
-  timeoutMs: number;
-  intervalMs: number;
-  /** Set for `observation-lost`: why the last read failed (never a task verdict). */
-  lastError?: string;
-  /** The last successful status snapshot, when one exists, for human rendering. */
-  lastSnapshot?: DelegatedTaskSnapshot;
-}
-
-export interface DelegateWaitDeps {
-  now?: () => number;
-  sleep?: (ms: number) => Promise<void>;
-  /**
-   * The single observation seam. Defaults to `observeDelegatedTask` bounded
-   * by the caller-supplied budget (`timeoutMs: remaining`), so a hung read
-   * can never run past the wait deadline. Tests inject a fake here — which
-   * also proves the wait loop touches nothing else on the delegation API.
-   */
-  observe?: (budgetMs: number) => Promise<DelegatedTaskSnapshot>;
-  /** Cooperative abort (Ctrl-C): checked before each poll and during sleeps. */
-  signal?: AbortSignal;
-  onPoll?: (snapshot: DelegatedTaskSnapshot, elapsedMs: number) => void;
-}
-
-/**
- * One honest classification of a status snapshot. Unknown/unrecognized
- * statuses (including a future server value this CLI has never heard of)
- * return `unknown` rather than being folded into success or failure.
- */
-function classifySnapshot(
-  snapshot: DelegatedTaskSnapshot,
-): DelegateWaitOutcome | 'active' {
-  switch (snapshot.status) {
-    case 'completed':
-      return 'completed';
-    case 'failed':
-    case 'canceled':
-      return 'failed';
-    case 'unknown':
-      return 'unknown';
-    default:
-      break;
-  }
-  if (snapshot.pendingRequest) return 'needs-action';
-  if (
-    snapshot.status === 'needs_input' ||
-    snapshot.status === 'review_pending' ||
-    snapshot.status === 'blocked'
-  ) {
-    return 'needs-action';
-  }
-  if (snapshot.status === 'queued' || snapshot.status === 'running') {
-    return 'active';
-  }
-  // A status value this CLI version does not know is honest unknown, not a guess.
-  return 'unknown';
-}
-
-export async function waitOnDelegatedTask(input: {
-  /** Required only when the default `observe` is used; injected observers ignore it. */
-  apiBase?: string;
-  taskId: string;
-  environmentId?: string;
-  timeoutMs: number;
-  intervalMs: number;
-  deps?: DelegateWaitDeps;
-}): Promise<DelegateWaitResult> {
-  const deps = input.deps ?? {};
-  const now = deps.now ?? Date.now;
-  const signal = deps.signal;
-  const observe =
-    deps.observe ??
-    ((budgetMs: number) => {
-      if (!input.apiBase) {
-        throw new Error(
-          'apiBase is required when no observe override is injected.',
-        );
-      }
-      return observeDelegatedTask(
-        input.apiBase,
-        input.taskId,
-        input.environmentId
-          ? { environmentId: input.environmentId }
-          : undefined,
-        // Bound each HTTP observation by the remaining wait budget so a hung
-        // read cannot silently outwait the deadline (explicit timeoutMs wins
-        // over the host default — see sdk/client/http.ts).
-        { timeoutMs: budgetMs },
-      );
-    });
-  const sleep =
-    deps.sleep ??
-    ((ms: number) => {
-      if (signal?.aborted) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const cleanup = () => {
-          if (timer) clearTimeout(timer);
-          signal?.removeEventListener('abort', onAbort);
-        };
-        const onAbort = () => {
-          cleanup();
-          resolve();
-        };
-        timer = setTimeout(() => {
-          cleanup();
-          resolve();
-        }, ms);
-        signal?.addEventListener('abort', onAbort);
-      });
-    });
-
-  const start = now();
-  const deadline = start + input.timeoutMs;
-  const base: Omit<DelegateWaitResult, 'outcome' | 'exitCode'> = {
-    taskId: input.taskId,
-    sessionChanged: false,
-    previousSessionId: undefined,
-    pollCount: 0,
-    elapsedMs: 0,
-    timeoutMs: input.timeoutMs,
-    intervalMs: input.intervalMs,
-  };
-  let lastSnapshot: DelegatedTaskSnapshot | undefined;
-  let lastError: string | undefined;
-
-  const finish = (
-    outcome: DelegateWaitOutcome,
-    extra?: Partial<DelegateWaitResult>,
-  ): DelegateWaitResult => ({
-    ...base,
-    outcome,
-    exitCode: WAIT_EXIT_CODES[outcome],
-    ...(lastSnapshot
-      ? {
-          conversationId: lastSnapshot.conversationId,
-          currentSessionId: lastSnapshot.currentSessionId,
-          status: lastSnapshot.status,
-          pendingRequest: lastSnapshot.pendingRequest,
-          reason: lastSnapshot.reason,
-          transitionReason: lastSnapshot.transitionReason,
-          lastSnapshot,
-        }
-      : {}),
-    elapsedMs: now() - start,
-    lastError,
-    ...extra,
-  });
-
-  while (true) {
-    if (signal?.aborted) return finish('interrupted');
-    const remaining = deadline - now();
-    if (remaining <= 0) {
-      // Last successful observation was active (or there was none): the wait
-      // budget expired. If the very first read already failed, that is an
-      // observation loss, not a running task we outlasted.
-      return lastSnapshot ? finish('wait-timeout') : finish('observation-lost');
-    }
-    try {
-      const snapshot = await observe(remaining);
-      const previous = lastSnapshot;
-      lastSnapshot = snapshot;
-      base.pollCount += 1;
-      if (previous && previous.currentSessionId !== snapshot.currentSessionId) {
-        // A continuation replaced the child Session. Observation only: keep
-        // waiting, and report the actual observed identifiers at the end.
-        base.sessionChanged = true;
-        base.previousSessionId = previous.currentSessionId;
-      }
-      deps.onPoll?.(snapshot, now() - start);
-      const classified = classifySnapshot(snapshot);
-      if (classified !== 'active') return finish(classified);
-    } catch (error) {
-      // A polling failure is an observation loss, never a task failure — and
-      // never a reason to redispatch anything. Report and stop.
-      lastError = error instanceof Error ? error.message : String(error);
-      return finish('observation-lost');
-    }
-    const sleepMs = Math.min(input.intervalMs, deadline - now());
-    if (sleepMs > 0) await sleep(sleepMs);
-  }
-}
-
-/**
- * Strict positive whole seconds, mirroring `environment access request`'s
- * `--timeout` convention. `/^\d+$/` deliberately rejects `1.5`, `1e3`,
- * `-1`, `NaN`, `Infinity`, and empty strings — malformed, nonfinite, and
- * out-of-range values are usage errors before any request.
- */
-function parseWaitSeconds(
-  parsed: ParsedCoreArgs,
-  name: 'timeout' | 'interval',
-  fallback: number,
-  max: number,
-): number {
-  const raw = optionalValueFlag(parsed, name);
-  if (raw === undefined) return fallback;
-  if (!/^\d+$/.test(raw.trim())) {
-    throw new Error(
-      `--${name} must be a positive whole number of seconds (1–${max}).`,
-    );
-  }
-  const value = Number(raw);
-  if (value < 1 || value > max) {
-    throw new Error(`--${name} must be between 1 and ${max} seconds.`);
-  }
-  return value;
-}
-
-function formatWaitOutcomeLine(result: DelegateWaitResult): string {
-  const ids = lastObservedIds(result);
-  switch (result.outcome) {
-    case 'completed':
-      return `Task ${result.taskId} completed after ${formatDurationMs(result.elapsedMs)}${ids}.`;
-    case 'failed':
-      return `Task ${result.taskId} reached a terminal failure (status: ${result.status})${ids}.`;
-    case 'needs-action':
-      return `Task ${result.taskId} needs your action before it can continue${ids}.`;
-    case 'wait-timeout':
-      return `Wait deadline reached after ${formatDurationMs(result.timeoutMs)}; task ${result.taskId} is still active (status: ${result.status})${ids}. The task keeps running — waiting is observation only and never stops it.`;
-    case 'observation-lost':
-      return `Observation lost while waiting on task ${result.taskId}: ${result.lastError}${result.status ? ` Last observed status: ${result.status}${ids}.` : ' No status was ever observed.'} An observation failure is not a task failure.`;
-    case 'unknown':
-      return `Task ${result.taskId} reported status '${result.status ?? 'unknown'}', which this CLI cannot classify${ids}.`;
-    case 'interrupted':
-      return `Interrupted while waiting on task ${result.taskId}${result.status ? ` (last observed status: ${result.status})` : ''}. The delegated task is unaffected and keeps running.`;
-  }
-}
-
-function lastObservedIds(result: DelegateWaitResult): string {
-  if (!result.conversationId) return '';
-  return ` — conversation ${result.conversationId}, current Session ${result.currentSessionId}`;
-}
-
 async function runDelegateWait(
   apiBase: string,
   parsed: ParsedCoreArgs,
@@ -1290,8 +989,6 @@ async function runDelegateWait(
     WAIT_MAX_INTERVAL_SECONDS,
   );
 
-  // Ctrl-C is a cooperative observation abort, never a task interrupt: the
-  // handler only flips an AbortSignal the wait loop checks.
   const controller = new AbortController();
   const onSigint = () => controller.abort();
   process.on('SIGINT', onSigint);
@@ -1303,8 +1000,8 @@ async function runDelegateWait(
       environmentId,
       timeoutMs: timeoutSeconds * 1000,
       intervalMs: intervalSeconds * 1000,
+      signal: controller.signal,
       deps: {
-        signal: controller.signal,
         onPoll: jsonMode
           ? undefined
           : (snapshot, elapsedMs) => {

@@ -10,7 +10,7 @@ import {
   test,
   vi,
 } from 'vitest';
-import { waitOnDelegatedTask } from '../commands/delegate.js';
+import { waitOnDelegatedTask } from '../commands/delegate-wait.js';
 import { readBody } from './helpers/http-test-helpers.js';
 
 /**
@@ -223,7 +223,9 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     });
     expect(result.outcome).toBe('observation-lost');
     expect(result.exitCode).toBe(2);
-    expect(result.lastError).toBe('socket hang up');
+    // A safe fixed category — the raw Error.message never reaches output.
+    expect(result.lastError).toBe('status read failed (Error)');
+    expect(result.lastError).not.toContain('socket hang up');
     // The last GOOD observation is preserved and NOT reclassified.
     expect(result.status).toBe('running');
     expect(result.currentSessionId).toBe('session:w');
@@ -259,6 +261,64 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     expect(result.status).toBe('running');
   });
 
+  test('an abort that races a terminal snapshot reports interrupted, never completion', async () => {
+    // Abort fires FIRST; the completed snapshot arrives late. The honest
+    // verdict is `interrupted` (which claims nothing about the task) — a
+    // raced-in snapshot must never be laundered into a completion claim.
+    const controller = new AbortController();
+    const observe = vi.fn(async () => {
+      controller.abort();
+      return snapshot('completed');
+    });
+    const result = await waitOnDelegatedTask({
+      taskId: 'task:w',
+      timeoutMs: 10_000,
+      intervalMs: 1_000,
+      signal: controller.signal,
+      deps: { observe, sleep: async () => {} },
+    });
+    expect(result.outcome).toBe('interrupted');
+    expect(result.exitCode).toBe(130);
+    expect(result.status).toBeUndefined();
+    expect(observe).toHaveBeenCalledTimes(1);
+  });
+
+  test('observation errors project to safe, distinct categories (no raw message/URL/body)', async () => {
+    const { describeObservationError } = await import(
+      '../commands/delegate-wait.js'
+    );
+    const { DelegationApiError, StationRequestTimeoutError } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    // Transport: no URL, no cause chain.
+    expect(
+      describeObservationError(
+        new TypeError('fetch failed: https://host:3141/path?token=abc'),
+      ),
+    ).toBe('the Station could not be reached');
+    // Timeout: no URL either.
+    const timeout = new StationRequestTimeoutError(
+      'https://host:3141/api/orchestration/delegations/task%3Aw',
+      1234,
+    );
+    const timeoutText = describeObservationError(timeout);
+    expect(timeoutText).toBe('status read timed out after 1234ms');
+    expect(timeoutText).not.toContain('host:3141');
+    // Refusal: the response-derived message is dropped; the server CODE is
+    // the retained, bounded distinction.
+    expect(
+      describeObservationError(
+        new DelegationApiError(
+          'refused: SECRET-BODY-CONTENT',
+          'deps_unavailable',
+        ),
+      ),
+    ).toBe('status read refused by the Station (deps_unavailable)');
+    expect(
+      describeObservationError(new DelegationApiError('refused: SECRET')),
+    ).toBe('status read refused by the Station');
+  });
+
   test('budget expiry with no successful observation is observation-lost, not wait-timeout', async () => {
     const clock = fakeClock();
     const observe = vi.fn(async () => {
@@ -273,7 +333,7 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     expect(result.outcome).toBe('observation-lost');
     expect(result.exitCode).toBe(2);
     expect(result.status).toBeUndefined();
-    expect(result.lastError).toBe('ECONNREFUSED');
+    expect(result.lastError).toBe('status read failed (Error)');
   });
 });
 
@@ -286,6 +346,7 @@ describe('station delegate wait over HTTP', () => {
   let statusQueue: string[] = [];
   let hangStatusReads = false;
   let failStatusReads: number | null = null;
+  let failStatusError = 'boom';
   let hungResponses: Array<{ destroy: () => void }> = [];
 
   beforeEach(async () => {
@@ -297,6 +358,7 @@ describe('station delegate wait over HTTP', () => {
     statusQueue = [];
     hangStatusReads = false;
     failStatusReads = null;
+    failStatusError = 'boom';
     hungResponses = [];
 
     server = createServer((req, res) => {
@@ -317,7 +379,7 @@ describe('station delegate wait over HTTP', () => {
           return;
         }
         if (failStatusReads !== null) {
-          sendJson(failStatusReads, { success: false, error: 'boom' });
+          sendJson(failStatusReads, { success: false, error: failStatusError });
           return;
         }
         const status = statusQueue.shift() ?? 'running';
@@ -424,7 +486,8 @@ describe('station delegate wait over HTTP', () => {
     expect(payload.ok).toBe(false);
     expect(payload.data.outcome).toBe('observation-lost');
     expect(payload.data.status).toBeUndefined();
-    expect(payload.data.lastError).toMatch(/boom|Delegation API error/);
+    // Safe fixed category: the server's error body ("boom") is not echoed.
+    expect(payload.data.lastError).toBe('status read refused by the Station');
   });
 
   test('a hung status read is bounded by the remaining wait budget, not left unbounded', async () => {
@@ -457,7 +520,82 @@ describe('station delegate wait over HTTP', () => {
     expect(payload.data.elapsedMs).toBeLessThan(15_000);
   });
 
-  test('human output explains a wait timeout leaves the task running, and reuses the status projection', async () => {
+  test('a REAL SIGINT cuts an in-flight hung status read promptly: exit 130, one clean envelope, no mutation, no leftovers', async () => {
+    hangStatusReads = true;
+    const { runCli } = await import('../cli.js');
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    const listenersBefore = process.listenerCount('SIGINT');
+    const startedAt = Date.now();
+
+    const pending = runCli([
+      'delegate',
+      'wait',
+      'task:w',
+      // Default-scale budget: without the signal reaching the in-flight read,
+      // Ctrl-C would stay blocked for this whole hour.
+      '--timeout=3600',
+      '--interval=5',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]).catch((error) => error);
+
+    // Wait until the read is genuinely in flight (the hang server holds it),
+    // which is after the SIGINT listener is installed, then send the real
+    // signal to our own process.
+    await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0));
+    process.kill(process.pid, 'SIGINT');
+    await pending;
+
+    // Prompt: the abort reached the fetch itself, not just the loop checks.
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+    expect(exit).toHaveBeenCalledWith(130);
+    expect(consoleLog).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(consoleLog.mock.calls[0][0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.data.outcome).toBe('interrupted');
+    expect(payload.data.status).toBeUndefined();
+    // No mutation, and exactly one (aborted) observation request.
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe('GET');
+    expect(requests[0].pathname).toBe(
+      '/api/orchestration/delegations/task%3Aw',
+    );
+    // Listener cleanup is guaranteed.
+    expect(process.listenerCount('SIGINT')).toBe(listenersBefore);
+  });
+
+  test('an HTTP denial body is never echoed: lastError is a safe fixed category', async () => {
+    failStatusReads = 403;
+    failStatusError =
+      'credential rejected: SUPER-SECRET-SENTINEL-wait-42 do-not-echo';
+    const { runCli } = await import('../cli.js');
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+
+    await expect(
+      runCli(['delegate', 'wait', 'task:w', '--json', `--api-base=${apiBase}`]),
+    ).rejects.toThrow('exit');
+
+    expect(exit).toHaveBeenCalledWith(2);
+    expect(consoleLog).toHaveBeenCalledTimes(1);
+    const stdout = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    const stderr = stderrWrite.mock.calls.map((call) => call[0]).join('');
+    const payload = JSON.parse(stdout);
+    expect(payload.ok).toBe(false);
+    expect(payload.data.outcome).toBe('observation-lost');
+    // Received-a-response refusal: the status itself is NOT echoed, and the
+    // category stays distinct from transport ('could not be reached') and
+    // timeout categories.
+    expect(payload.data.lastError).toBe('status read refused by the Station');
+    // The peer-controlled sentinel never reaches either stream.
+    expect(stdout).not.toContain('SUPER-SECRET-SENTINEL-wait-42');
+    expect(stderr).not.toContain('SUPER-SECRET-SENTINEL-wait-42');
+  });
+
+  test('human output reports the LAST observed status on a wait timeout, and reuses the status projection', async () => {
     statusQueue = ['running'];
     const { runCli } = await import('../cli.js');
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
@@ -478,8 +616,9 @@ describe('station delegate wait over HTTP', () => {
     expect(exit).toHaveBeenCalledWith(5);
     const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
     expect(printed).toContain('Wait deadline reached');
-    expect(printed).toContain('still active');
-    expect(printed).toContain('keeps running');
+    // The LAST observed status is reported — not a claim about right now.
+    expect(printed).toContain("last observed status is 'running'");
+    expect(printed).toContain('never stops the task');
     // The safe status projection (never raw provider logs) is reused.
     expect(printed).toContain('Task task:w: running');
     expect(printed).toContain('Current environment');
