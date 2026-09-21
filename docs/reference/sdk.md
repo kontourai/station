@@ -607,6 +607,23 @@ an account principal or tenant. A same-origin cookie-account change that leaves
 that connection generation unchanged is therefore outside this tranche; full
 account/principal cache lifetime composition remains required.
 
+### `useProjectIdentityQuery(slug: string, config?)`
+
+Reads a Project's portable identity for personal-peer placement (#480). It
+accepts the same scoped configuration as `useProjectQuery` — the cache key
+carries the API base, authority key and slug, so a late identity response
+for a previous Home or authority can never satisfy the current selection,
+and a missing scope fails closed instead of reading ambient state. The
+identity carries the portable Project id plus its public repository
+labels/ids (no checkout paths, no credentials); the declared
+execution-root repository, else a sole repository, selects the executable
+resource, while multiple repositories require an explicit choice. Only a
+404 read is a verified not-prepared Project (prepare one explicitly before
+placing it); a denied, failed or malformed read refuses visibly and never
+reads as absence. Offer eligibility stays unverified until an authorized
+controller-side offer query exists — the receiving Station confirms on
+submit.
+
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
 Fetches layouts for a project.

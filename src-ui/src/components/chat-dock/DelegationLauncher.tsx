@@ -69,12 +69,45 @@ export const PORTABLE_RESOURCE_MISSING_NOTICE =
   'This Project\u2019s portable identity declares no executable resource, so there is nothing to place on the selected Station yet.';
 export const PORTABLE_RESOURCE_CHOICE_NOTICE =
   'Choose which Project resource to place on the selected Station.';
-export const PORTABLE_SSH_NOTICE =
-  'Portable Project execution is not forwarded over SSH: this submits the target\u2019s own same-slug Project workspace, not this Project\u2019s portable identity. For portable placement choose a paired Station.';
+export const PORTABLE_SSH_UNSUPPORTED_NOTICE =
+  'This Project can\u2019t be placed on an SSH Station in this flow.';
+export const PORTABLE_SSH_UNSUPPORTED_GUIDANCE =
+  'Choose a paired Station to place this Project, or This Station to run it here. The prompt and Project choice are kept.';
+export const PORTABLE_IDENTITY_DENIED_NOTICE =
+  'This Station refused to share this Project\u2019s placement details.';
+export const PORTABLE_IDENTITY_DENIED_GUIDANCE =
+  'Check access and retry \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
+export const PORTABLE_IDENTITY_UNAVAILABLE_NOTICE =
+  'This Project\u2019s placement details couldn\u2019t be loaded.';
+export const PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE =
+  'Retry when ready \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
 export const PORTABLE_OFFER_UNVERIFIED_NOTICE =
   'Offer not verified from here \u2014 the selected Station confirms whether it currently offers this Project resource when the task is submitted.';
 export const PORTABLE_AUTHORITY_STALE_NOTICE =
   'Station access changed before the task could start. The draft is kept; choose the Station again and retry.';
+
+/**
+ * Verified identity-read outcome (#480 review). Only a 404 from the
+ * identity read is a VERIFIED not-prepared Project — the server confirmed
+ * no identity record exists, so prepare guidance is honest. A 401/403 is
+ * an authorization denial, and anything else (timeout, 5xx, malformed
+ * body) is an unavailable read: both refuse visibly with retry and never
+ * invent absence or readiness. Branches on the transport status the
+ * Station sent, never on message text.
+ */
+export type ProjectIdentityFailureKind = 'missing' | 'denied' | 'unavailable';
+
+export function projectIdentityFailureKind(
+  error: unknown,
+): ProjectIdentityFailureKind {
+  const status =
+    typeof error === 'object' && error !== null
+      ? (error as { status?: unknown }).status
+      : undefined;
+  if (status === 404) return 'missing';
+  if (status === 401 || status === 403) return 'denied';
+  return 'unavailable';
+}
 
 type PlacementResource = {
   id: string;
@@ -324,18 +357,28 @@ export function DelegationLauncher({
         'Selected Station');
   // Personal-peer portable placement is ONLY the paired-peer selection for an
   // already-linked Project. Current-Station execution keeps its explicit
-  // local workspace semantics; SSH keeps its explicit same-slug workspace
-  // semantics with a named portable-unsupported notice — neither is ever
-  // relabeled as portable, and a missing/unsupported portable intent refuses
-  // visibly instead of downgrading to slug/path/local.
+  // local workspace semantics. A Project selected for an SSH Station is
+  // REFUSED with a named repair state — choosing a transport is not consent
+  // to substitute a different same-named Project, so no slug/path/local
+  // dispatch is possible there. No-Project SSH delegation is unaffected.
   const isPeerEnvironment = selectedPeer !== undefined;
+  const isSshEnvironment =
+    selectedEnvironment !== undefined && !isPeerEnvironment;
   const portablePlacement = Boolean(projectSlug) && isPeerEnvironment;
+  // SSH + linked Project: blocked outright, never dispatched.
+  const sshProjectBlocked = Boolean(projectSlug) && isSshEnvironment;
   const portableProjectId = portablePlacement
     ? projectIdentity?.identity.id
     : undefined;
   const portableIdentityPending =
     portablePlacement && !identityLoaded && !identityFailed;
-  const portableIdentityMissing = portablePlacement && identityFailed;
+  const portableIdentityFailure = portablePlacement && identityFailed;
+  const identityFailureKind = portableIdentityFailure
+    ? projectIdentityFailureKind(identityError)
+    : null;
+  const portableIdentityMissing = identityFailureKind === 'missing';
+  const portableIdentityDenied = identityFailureKind === 'denied';
+  const portableIdentityUnavailable = identityFailureKind === 'unavailable';
   const portableResourceMissing =
     portablePlacement && identityLoaded && identityResources.length === 0;
   const portableResourceChoiceRequired =
@@ -349,8 +392,6 @@ export function DelegationLauncher({
     Boolean(portableProjectId) &&
     Boolean(resourceId);
   const portableBlocked = portablePlacement && !portableReady;
-  const showSshPortableNotice =
-    Boolean(projectSlug) && selectedEnvironment !== undefined;
   const portableResourceName = portableReady
     ? (identityResources.find((resource) => resource.id === resourceId)?.name ??
       resourceId)
@@ -377,6 +418,7 @@ export function DelegationLauncher({
       !prompt.trim() ||
       environmentUnavailable ||
       portableBlocked ||
+      sshProjectBlocked ||
       isDiscovering ||
       discoveryError
     )
@@ -598,10 +640,13 @@ export function DelegationLauncher({
               {ENVIRONMENTS_UNAVAILABLE_NOTICE}
             </p>
           )}
-          {showSshPortableNotice && (
-            <p className="delegation-launcher__hint" role="status">
-              {PORTABLE_SSH_NOTICE}
-            </p>
+          {sshProjectBlocked && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_SSH_UNSUPPORTED_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_SSH_UNSUPPORTED_GUIDANCE}
+              </span>
+            </div>
           )}
           {portableIdentityPending && (
             <p className="delegation-launcher__hint" role="status">
@@ -610,13 +655,31 @@ export function DelegationLauncher({
           )}
           {portableIdentityMissing && (
             <div className="delegation-launcher__discovery-error" role="alert">
-              <span>
-                {identityError instanceof Error && identityError.message
-                  ? identityError.message
-                  : PORTABLE_IDENTITY_MISSING_NOTICE}
-              </span>
+              <span>{PORTABLE_IDENTITY_MISSING_NOTICE}</span>
               <span className="delegation-launcher__hint">
                 {PORTABLE_IDENTITY_SETUP_GUIDANCE}
+              </span>
+              <button type="button" onClick={() => void retryIdentity()}>
+                Retry Project identity
+              </button>
+            </div>
+          )}
+          {portableIdentityDenied && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_IDENTITY_DENIED_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_IDENTITY_DENIED_GUIDANCE}
+              </span>
+              <button type="button" onClick={() => void retryIdentity()}>
+                Retry Project identity
+              </button>
+            </div>
+          )}
+          {portableIdentityUnavailable && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_IDENTITY_UNAVAILABLE_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE}
               </span>
               <button type="button" onClick={() => void retryIdentity()}>
                 Retry Project identity
@@ -820,7 +883,8 @@ export function DelegationLauncher({
               !prompt.trim() ||
               !selectedTarget?.ready ||
               environmentUnavailable ||
-              portableBlocked
+              portableBlocked ||
+              sshProjectBlocked
             }
           >
             {mutation.isPending ? 'Starting…' : 'Delegate'}

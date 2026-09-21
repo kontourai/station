@@ -40,6 +40,12 @@ let projectIdentity:
   | undefined;
 let identityLoading = false;
 let identityFailure = false;
+let identityError: unknown = Object.assign(
+  new Error(
+    'Project identity was not found. An existing Project may need explicit identity preparation.',
+  ),
+  { status: 404 },
+);
 let scopeStale = false;
 
 function singleRepoIdentity() {
@@ -102,11 +108,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess:
       !identityLoading && !identityFailure && projectIdentity !== undefined,
     isError: identityFailure,
-    error: identityFailure
-      ? new Error(
-          'Project identity was not found. An existing Project may need explicit identity preparation.',
-        )
-      : null,
+    error: identityFailure ? identityError : null,
     refetch: retryIdentity,
   }),
   useDelegationOptionsQuery: (
@@ -246,6 +248,12 @@ describe('DelegationLauncher', () => {
     projectIdentity = singleRepoIdentity();
     identityLoading = false;
     identityFailure = false;
+    identityError = Object.assign(
+      new Error(
+        'Project identity was not found. An existing Project may need explicit identity preparation.',
+      ),
+      { status: 404 },
+    );
     scopeStale = false;
     peerCredentials = undefined;
     mutateAsync.mockResolvedValue({
@@ -297,14 +305,12 @@ describe('DelegationLauncher', () => {
     ).toBe('true');
   });
 
-  test('shows Agent-only targets and delegates to a saved SSH environment', async () => {
+  test('shows Agent-only targets and delegates to a saved SSH environment without a Project', async () => {
     const onDelegated = vi.fn();
     render(
       <DelegationLauncher
         isOpen
         apiBase="http://station.test"
-        projectSlug="station"
-        projectName="Station"
         currentAgentId="codex"
         currentModel="gpt-5.6-sol"
         parentTaskId="codex:1721355900000"
@@ -350,6 +356,11 @@ describe('DelegationLauncher', () => {
     expect(screen.getAllByText(/GPT-5.6 Sol/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
 
+    // No-Project SSH delegation keeps its explicit semantics: no workspace,
+    // no Project substitution — and no SSH repair notice either.
+    expect(
+      screen.queryByText(/can\u2019t be placed on an SSH Station/),
+    ).toBeNull();
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
         prompt: 'Fix the mobile task controls',
@@ -357,7 +368,6 @@ describe('DelegationLauncher', () => {
           environment: { kind: 'saved', id: 'env-media' },
           agent: 'codex',
           model: { override: 'gpt-5.6-sol' },
-          workspace: { kind: 'project', projectSlug: 'station' },
         },
         parentTaskId: 'codex:1721355900000',
       }),
@@ -485,13 +495,15 @@ describe('DelegationLauncher', () => {
     expect(mutateAsync).not.toHaveBeenCalled();
     expect(discoveryInputs).not.toHaveBeenCalled();
     projectLoading = false;
-    projectDefaultEnvironment = { kind: 'saved', id: 'env-media' };
+    // The default resolves to This Station: local Project execution keeps
+    // its explicit local semantics (an SSH default would now refuse, below).
+    projectDefaultEnvironment = undefined;
     rerender(<DelegationLauncher {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         target: expect.objectContaining({
-          environment: { kind: 'saved', id: 'env-media' },
+          environment: { kind: 'current' },
         }),
       }),
     );
@@ -818,7 +830,7 @@ describe('DelegationLauncher', () => {
     expect(screen.getByRole('option', { name: 'This Station' })).toBeTruthy();
   });
 
-  test('an SSH target keeps its explicit same-slug workspace and names portable as unsupported', async () => {
+  test('a linked Project on an SSH Station is refused with no slug workspace dispatch', async () => {
     render(
       <DelegationLauncher
         isOpen
@@ -834,29 +846,30 @@ describe('DelegationLauncher', () => {
     fireEvent.change(screen.getByLabelText('Station'), {
       target: { value: 'env-media' },
     });
-    // Named state, not a silent relabel: portable is not forwarded over SSH.
-    expect(screen.getByText(/not forwarded over SSH/)).toBeTruthy();
+    // Named repair state: choosing SSH is not consent to substitute a
+    // different same-named Project — nothing may dispatch.
+    expect(
+      screen.getByText(/can\u2019t be placed on an SSH Station/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Choose a paired Station/)).toBeTruthy();
     await waitFor(() =>
       expect((screen.getByLabelText('Worker') as HTMLSelectElement).value).toBe(
         'agent:codex',
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
-
-    await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          target: expect.objectContaining({
-            environment: { kind: 'saved', id: 'env-media' },
-            workspace: { kind: 'project', projectSlug: 'station' },
-          }),
-        }),
-      ),
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
     );
-    const sent = mutateAsync.mock.calls[0][0] as {
-      target: { workspace: Record<string, unknown> };
-    };
-    expect(sent.target.workspace.kind).toBe('project');
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    // Draft and Station choice survive the refusal.
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Run over SSH',
+    );
+    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe(
+      'env-media',
+    );
   });
 
   test('multiple resources require an explicit choice and never guess', async () => {
@@ -999,8 +1012,14 @@ describe('DelegationLauncher', () => {
     );
   });
 
-  test('a missing identity blocks peer placement without a slug or local fallback', () => {
+  test('a verified missing identity blocks peer placement with prepare guidance', () => {
     identityFailure = true;
+    identityError = Object.assign(
+      new Error(
+        'Project identity was not found. An existing Project may need explicit identity preparation.',
+      ),
+      { status: 404 },
+    );
     projectIdentity = undefined;
     peerCredentials = [
       {
@@ -1027,9 +1046,8 @@ describe('DelegationLauncher', () => {
     fireEvent.change(screen.getByLabelText('Station'), {
       target: { value: 'env-peer-b' },
     });
-    expect(
-      screen.getByText(/may need explicit identity preparation/),
-    ).toBeTruthy();
+    // Only the verified 404 missing state gets prepare guidance.
+    expect(screen.getByText(/has no portable identity/)).toBeTruthy();
     expect(screen.getByText(/prepare-identity/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
       'disabled',
@@ -1043,6 +1061,101 @@ describe('DelegationLauncher', () => {
     );
     expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
       'Keep this peer draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('an authorization denial names access without inventing absence', () => {
+    identityFailure = true;
+    identityError = Object.assign(new Error('Forbidden'), { status: 403 });
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Denied peer draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/refused to share/)).toBeTruthy();
+    // A denial is not absence: no prepare guidance, no readiness claim.
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Denied peer draft',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry Project identity' }),
+    );
+    expect(retryIdentity).toHaveBeenCalledOnce();
+  });
+
+  test('a failed identity read names the outage without inventing absence', () => {
+    identityFailure = true;
+    identityError = new TypeError('fetch failed');
+    projectIdentity = undefined;
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Failed-read peer draft"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    expect(screen.getByText(/couldn\u2019t be loaded/)).toBeTruthy();
+    // A transport failure is not absence: no prepare guidance.
+    expect(screen.queryByText(/prepare-identity/)).toBeNull();
+    expect(screen.queryByText(/has no portable identity/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+      'Failed-read peer draft',
     );
     fireEvent.click(
       screen.getByRole('button', { name: 'Retry Project identity' }),

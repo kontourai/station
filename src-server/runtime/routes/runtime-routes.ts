@@ -865,6 +865,21 @@ export function resolveProjectDefaultEnvironmentRef(
   return configured;
 }
 
+/**
+ * The exact `projectDefaultEnvironment` dependency the foreground routes
+ * receive (#480/#1964 placement). The route wiring below and the
+ * composition tests share this factory, so a test that drives
+ * `/chat` through the factory's callback exercises the REAL production
+ * callback — reintroducing the old SSH-only `current` substitution
+ * anywhere on this path fails the composition, not just the unit.
+ */
+export function createProjectDefaultEnvironmentCallback(projectService: {
+  getProject(slug: string): { defaultEnvironment?: EnvironmentRef };
+}): (projectSlug: string) => EnvironmentRef {
+  return (projectSlug: string) =>
+    resolveProjectDefaultEnvironmentRef(projectService, projectSlug);
+}
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -2865,11 +2880,9 @@ export function configureRuntimeRoutes(
           idempotencyKey,
           authority,
         ),
-      projectDefaultEnvironment: (projectSlug) =>
-        resolveProjectDefaultEnvironmentRef(
-          context.projectService,
-          projectSlug,
-        ),
+      projectDefaultEnvironment: createProjectDefaultEnvironmentCallback(
+        context.projectService,
+      ),
       continueForegroundMessage: (input) =>
         continueExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
