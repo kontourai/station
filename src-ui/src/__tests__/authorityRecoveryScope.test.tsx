@@ -51,7 +51,10 @@ import {
   RecoveryQueryBoundary,
   useRecoveryScope,
 } from '../contexts/RecoveryQueryBoundary';
-import { recoveryConfigKey, useRecoveryConfig } from '../hooks/useRecoveryConfig';
+import {
+  recoveryConfigKey,
+  useRecoveryConfig,
+} from '../hooks/useRecoveryConfig';
 
 vi.mock('../platform/useBundledServerStatus', () => ({
   useBundledServerStatus: () => null,
@@ -295,8 +298,8 @@ describe('recovery request authority (real SDK guards)', () => {
     });
     expect(harness.fetchLog.length).toBe(dispatchesAtRotation);
     expect(
-      harness.recoveryClient
-        ?.getQueryState(recoveryConfigKey(urlA, scopeAKey!))?.data,
+      harness.recoveryClient?.getQueryState(recoveryConfigKey(urlA, scopeAKey!))
+        ?.data,
     ).toBeUndefined();
     for (const snapshot of harness.configSnapshots.slice(mark)) {
       expect(snapshot).not.toContain('"rotation":0');
@@ -411,7 +414,9 @@ describe('recovery request authority (real SDK guards)', () => {
       ).toBe(2),
     );
     await waitFor(() =>
-      expect(screen.getByText('You acknowledged this inventory.')).not.toBeNull(),
+      expect(
+        screen.getByText('You acknowledged this inventory.'),
+      ).not.toBeNull(),
     );
     expect(
       harness.recoveryClient?.getQueryData(

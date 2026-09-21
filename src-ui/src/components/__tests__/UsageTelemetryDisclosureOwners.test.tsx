@@ -50,9 +50,9 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 // protected client/context path instead of throwing.
 
 import {
+  resetUsageTelemetryDisclosureDismissal,
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
-  resetUsageTelemetryDisclosureDismissal,
 } from '../UsageTelemetryDisclosure';
 
 const DISCLOSURE_BODY = {
@@ -92,9 +92,9 @@ function renderSettingsSection() {
 test('OWNERS REGRESSION: Settings disclosure renders outside any recovery boundary', async () => {
   const { unmount } = renderSettingsSection();
   await waitFor(() =>
-    expect(
-      screen.getByText('Keep usage telemetry off').textContent,
-    ).toBe('Keep usage telemetry off'),
+    expect(screen.getByText('Keep usage telemetry off').textContent).toBe(
+      'Keep usage telemetry off',
+    ),
   );
   expect(screen.getByText('What Station sends')).not.toBeNull();
   unmount();
@@ -108,9 +108,9 @@ test('OWNERS REGRESSION: first-run disclosure step renders outside any recovery 
     </QueryClientProvider>,
   );
   await waitFor(() =>
-    expect(
-      screen.getByText('Keep usage telemetry off').textContent,
-    ).toBe('Keep usage telemetry off'),
+    expect(screen.getByText('Keep usage telemetry off').textContent).toBe(
+      'Keep usage telemetry off',
+    ),
   );
   expect(screen.getByTestId('first-run-disclosure')).not.toBeNull();
   unmount();
@@ -126,16 +126,12 @@ test('OWNERS CONTRACT: protected decision writes through the existing Settings c
     },
   );
   // The receipt write lands after the setting write succeeds.
-  authenticatedFetch.mockResolvedValueOnce(
-    disclosureResponse(DISCLOSURE_BODY),
-  );
+  authenticatedFetch.mockResolvedValueOnce(disclosureResponse(DISCLOSURE_BODY));
   authenticatedFetch.mockResolvedValue(
     disclosureResponse({ ...DISCLOSURE_BODY, acknowledged: true }),
   );
   const { unmount } = renderSettingsSection();
-  await waitFor(() =>
-    expect(screen.getByText('Turn it on')).not.toBeNull(),
-  );
+  await waitFor(() => expect(screen.getByText('Turn it on')).not.toBeNull());
   fireEvent.click(screen.getByText('Turn it on'));
   await waitFor(() =>
     expect(updateConfig).toHaveBeenCalledWith(
