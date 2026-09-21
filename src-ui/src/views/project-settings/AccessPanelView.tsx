@@ -79,8 +79,11 @@ export function AccessPanelView({
   // later refresh can never move the stamp onto a newer principal.
   const stamp = (
     command: Exclude<ProjectAccessCommand, { kind: 'enable' }>,
-  ): ProjectAccessCommand =>
-    expectedActor === undefined ? command : { ...command, expectedActor };
+  ): ProjectAccessCommand => ({
+    ...command,
+    scope: { ...command.scope },
+    ...(expectedActor === undefined ? {} : { expectedActor }),
+  });
   const actor = view.members.find(
     (member) =>
       member.principal.id === view.actingPrincipal.id &&

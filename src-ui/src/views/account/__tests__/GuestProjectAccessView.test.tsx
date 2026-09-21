@@ -345,6 +345,13 @@ test('a confirmation opened under one scope never submits as a newer cached scop
   fireEvent.click(revokes[revokes.length - 1]);
   await screen.findByRole('button', { name: 'Confirm change' });
 
+  const cached =
+    client.getQueryData<ProjectAccessAdministrationView>(accessKey)!;
+  // An in-place refresh must not alter the command already held by the dialog.
+  Object.assign(cached.scope, {
+    stationId: 'station-two',
+    portableProjectId: 'prj_replaced',
+  });
   current = {
     ...viewA,
     scope: { ...viewA.scope, stationId: 'station-two' },

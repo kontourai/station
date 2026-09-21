@@ -190,8 +190,6 @@ export function GuestProjectAccessView({
     // never retarget that intent onto the newer scope or principal. The
     // server comparison against fresh authority stays the authority; this
     // only guarantees the client sends the OLD intent, never a newer one.
-    // The fallback covers unstamped callers only — the panel below always
-    // stamps — and still runs before any await.
     const presented =
       client.getQueryData<ProjectAccessAdministrationView>(accessKey);
     if (!presented)
@@ -202,9 +200,13 @@ export function GuestProjectAccessView({
     // narrowing here keeps the intent stamping exact for the four leaves.
     if (command.kind === 'enable')
       throw new Error('Enabling Project sharing needs the Station operator.');
+    if (command.expectedActor !== principalId)
+      throw new Error(
+        'The acting account changed. Refresh access before trying again.',
+      );
     const stamped: ProjectAccessCommand = {
       ...command,
-      expectedActor: command.expectedActor ?? presented.actingPrincipal.id,
+      scope: { ...command.scope },
     };
     try {
       const outcome = await changeProjectAccess(
@@ -216,8 +218,7 @@ export function GuestProjectAccessView({
       await refreshReads();
       if (
         stamped.kind === 'change-member' &&
-        stamped.principalId ===
-          (stamped.expectedActor ?? presented.actingPrincipal.id) &&
+        stamped.principalId === stamped.expectedActor &&
         (stamped.role !== 'admin' || stamped.status !== 'active')
       )
         setBanner(
