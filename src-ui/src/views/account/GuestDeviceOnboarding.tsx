@@ -24,6 +24,11 @@ const loadSharedTasks = () =>
     default: GuestSharedTaskView,
   }));
 
+const loadProjectAccess = () =>
+  import('./GuestProjectAccessView').then(({ GuestProjectAccessView }) => ({
+    default: GuestProjectAccessView,
+  }));
+
 const options = (signal: AbortSignal) => ({
   authentication: 'omit' as const,
   signal,
@@ -283,6 +288,31 @@ export function GuestDeviceOnboarding({
               },
             }}
             pending={<SkeletonList count={1} label="Opening shared Tasks" />}
+          />
+          <LazyBoundary
+            key={`access:${principalId}:${detail.data.id}:${detail.data.slug}`}
+            load={loadProjectAccess}
+            componentProps={{
+              apiBase,
+              principalId,
+              project: {
+                id: detail.data.id,
+                slug: detail.data.slug,
+              },
+              onAccountRequired: () => {
+                void client.resetQueries({
+                  queryKey: ['account', apiBase, 'session'],
+                });
+              },
+              onAccessLost: () => {
+                setSelectedProject(undefined);
+                setNotice('Shared Project access changed. Projects refreshed.');
+                void projects.refetch();
+              },
+            }}
+            pending={
+              <SkeletonList count={1} label="Checking Project administration" />
+            }
           />
         </section>
       )}
