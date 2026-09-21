@@ -8,7 +8,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import {
   closestBasePreset,
+  COLLABORATOR_MANAGEMENT_CHOICE,
   DeviceScopeEditor,
+  scopeChoiceTokens,
   scopeSelectionTokens,
 } from '../react/connection-manager-modal/DeviceScopeEditor';
 
@@ -232,6 +234,42 @@ test('an operator can grant engine sign-in, and it is marked elevated', () => {
     ],
     standard,
   );
+});
+
+test('collaborator management applies exactly read+operate, never terminal or device management', () => {
+  const onApply = openEditor('orchestration:read');
+  fireEvent.click(
+    screen.getByRole('radio', { name: /Collaborator management/ }),
+  );
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', 'orchestration:operate'],
+    'orchestration:read',
+  );
+});
+
+test('a stored read+operate scope still initialises as Delegation, not the collaborator choice', () => {
+  openEditor('orchestration:read orchestration:operate');
+  expect(
+    (screen.getByRole('radio', { name: /^Delegation/ }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('radio', {
+        name: /Collaborator management/,
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(false);
+});
+
+test('the collaborator choice resolves to exactly the delegation tokens', () => {
+  expect(scopeChoiceTokens(COLLABORATOR_MANAGEMENT_CHOICE, new Set())).toEqual(
+    ['orchestration:read', 'orchestration:operate'],
+  );
+  expect(
+    scopeChoiceTokens(COLLABORATOR_MANAGEMENT_CHOICE, new Set()).length,
+  ).toBe(2);
 });
 
 test('an engine sign-in grant survives an unrelated base edit', () => {

@@ -361,4 +361,33 @@ describe('PairedDevicesPanel', () => {
       );
     });
   });
+
+  test('keeps the account binding visible next to an account-bound grant', async () => {
+    stubHost({
+      devices: [
+        device({
+          id: 'guest-browser',
+          name: 'Guest browser',
+          scope: 'orchestration:read orchestration:operate',
+          principalBinding: {
+            kind: 'account',
+            issuer: 'urn:station:test',
+            subject: 'guest-person',
+            displayName: 'Guest Person',
+            approvedAt: Date.now(),
+            approvalId: 'approval-1',
+            approvedBy: 'operator',
+          },
+        }),
+        device({ id: 'ordinary', name: 'Pixel 9', kind: 'device' }),
+      ],
+    });
+    renderPanel();
+
+    await screen.findByText('Guest browser');
+    const row = screen.getByText('Guest browser').closest('.station-connect-row');
+    expect(row?.textContent).toContain('Account: Guest Person');
+    const ordinary = screen.getByText('Pixel 9').closest('.station-connect-row');
+    expect(ordinary?.textContent).not.toContain('Account:');
+  });
 });

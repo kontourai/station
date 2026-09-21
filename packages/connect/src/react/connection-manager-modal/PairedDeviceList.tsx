@@ -3,6 +3,7 @@ import type { PairingScope } from '@kontourai/station-contracts/environment-secu
 import { useState } from 'react';
 import {
   describeDelegationStanding,
+  describeDeviceAccountBinding,
   describeDeviceActivity,
   describeDeviceProvenance,
   describeDeviceRevocation,
@@ -57,6 +58,7 @@ function DeviceRow({
   const [editingScope, setEditingScope] = useState(false);
   const activity = describeDeviceActivity(device, now);
   const provenance = describeDeviceProvenance(device);
+  const accountBinding = describeDeviceAccountBinding(device);
   const revocation = describeDeviceRevocation(device);
   // station#3845: what this device can delegate NOW, not what it was minted
   // for — its scope is editable, so the claim has to be re-derived.
@@ -90,6 +92,7 @@ function DeviceRow({
         <div className="station-connect-row__meta">
           {describeDeviceScope(device.scope)} · {activity.pairedLabel}
           {provenance ? ` · ${provenance}` : ''}
+          {accountBinding ? ` · ${accountBinding}` : ''}
         </div>
         <div className="station-connect-row__meta">
           {activity.revokedLabel ??
