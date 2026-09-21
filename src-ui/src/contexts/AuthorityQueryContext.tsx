@@ -108,18 +108,9 @@ import {
   type AsyncStorage,
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
-import {
-  createContext,
-  type ReactNode,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { SkeletonBlock } from '../components/state';
 import {
-  type AuthorityPersistenceStatus,
   authorityPersistenceKey,
   buildAuthorityNamespace,
 } from '../lib/authorityNamespace';
@@ -130,6 +121,7 @@ import {
 } from '../lib/queryPersistence';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
+import { AuthorityPersistenceContext } from './AuthorityPersistenceContext';
 
 export interface AuthorityObservationRequest {
   apiBase: string;
@@ -151,24 +143,6 @@ const defaultFetchAuthorityObservation: FetchAuthorityObservation = ({
     ...(requestScope ? { requestScope } : {}),
     signal,
   });
-
-interface AuthorityPersistenceContextValue {
-  status: AuthorityPersistenceStatus;
-  /** Active durable namespace, or the remembered one while unverified. */
-  namespace: string | null;
-  observation: AuthorityObservation | null;
-}
-
-const AuthorityPersistenceContext =
-  createContext<AuthorityPersistenceContextValue>({
-    status: 'unavailable',
-    namespace: null,
-    observation: null,
-  });
-
-export function useAuthorityPersistence(): AuthorityPersistenceContextValue {
-  return useContext(AuthorityPersistenceContext);
-}
 
 /** A 401 from the observation read: the credential is not authorized. */
 function isUnauthorizedObservationFailure(error: unknown): boolean {

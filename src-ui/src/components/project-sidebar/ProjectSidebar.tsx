@@ -12,7 +12,7 @@ import { buildInfo } from '../../build-info';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { useAuthorityPersistence } from '../../contexts/AuthorityQueryContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import {
   useDeviceSettings,

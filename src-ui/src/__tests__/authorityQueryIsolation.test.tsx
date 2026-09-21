@@ -46,10 +46,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // under test is the real one.
 import { _getApiBase } from '../../../packages/sdk/src/api-core';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
   AuthorityQueryProvider,
   type FetchAuthorityObservation,
-  useAuthorityPersistence,
 } from '../contexts/AuthorityQueryContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
