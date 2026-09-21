@@ -24,6 +24,11 @@ const loadSharedTasks = () =>
     default: GuestSharedTaskView,
   }));
 
+const loadProjectAccess = () =>
+  import('./GuestProjectAccessView').then(({ GuestProjectAccessView }) => ({
+    default: GuestProjectAccessView,
+  }));
+
 const options = (signal: AbortSignal) => ({
   authentication: 'omit' as const,
   signal,
@@ -214,7 +219,10 @@ export function GuestDeviceOnboarding({
       <div className="account-entry__guest-heading">
         <div>
           <h2 id="shared-projects-title">Available Projects</h2>
-          <p role="status">This browser has view-only Project access.</p>
+          <p role="status">
+            Shared Projects open read-only in this browser. People and
+            invitation administration is separate — see below.
+          </p>
         </div>
         <Button
           onClick={() => {
@@ -240,7 +248,7 @@ export function GuestDeviceOnboarding({
                 <div>
                   <strong>{project.name}</strong>
                   {project.description && <p>{project.description}</p>}
-                  <small>View only</small>
+                  <small>Shared work: view only</small>
                 </div>
                 <Button onClick={() => setSelectedProject(project.slug)}>
                   Read Project details
@@ -265,7 +273,10 @@ export function GuestDeviceOnboarding({
         >
           <h3>{detail.data.name}</h3>
           {detail.data.description && <p>{detail.data.description}</p>}
-          <p>Available action: View</p>
+          <p>
+            Shared work is view-only here. People and invitation management
+            below is for Project admins.
+          </p>
           <LazyBoundary
             key={`${principalId}:${detail.data.id}:${detail.data.slug}`}
             load={loadSharedTasks}
@@ -283,6 +294,31 @@ export function GuestDeviceOnboarding({
               },
             }}
             pending={<SkeletonList count={1} label="Opening shared Tasks" />}
+          />
+          <LazyBoundary
+            key={`access:${principalId}:${detail.data.id}:${detail.data.slug}`}
+            load={loadProjectAccess}
+            componentProps={{
+              apiBase,
+              principalId,
+              project: {
+                id: detail.data.id,
+                slug: detail.data.slug,
+              },
+              onAccountRequired: () => {
+                void client.resetQueries({
+                  queryKey: ['account', apiBase, 'session'],
+                });
+              },
+              onAccessLost: () => {
+                setSelectedProject(undefined);
+                setNotice('Shared Project access changed. Projects refreshed.');
+                void projects.refetch();
+              },
+            }}
+            pending={
+              <SkeletonList count={1} label="Checking Project administration" />
+            }
           />
         </section>
       )}
