@@ -531,6 +531,11 @@ setup; the browser is blocked from using it. This qualifies cross-machine
 TCP-over-SSH transport, not native remote UDP, a production deployment or a
 managed service.
 
+The account scenario also creates inert Tasks through the real API, publishes
+selected messages and a document, and proves that unpublished work in the same
+Project stays hidden. Unsharing, republication and membership/Device revocation
+are checked independently. No Task is dispatched to an agent or billable model.
+
 The run creates a private home beneath the isolated remote checkout and leaves
 that named fixture root and local evidence available for inspection. It does not
 restart an existing Station. Successful completion requires clean remote
