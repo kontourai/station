@@ -632,24 +632,24 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         capabilities: { portableExecutionOffers: true },
       });
       const inner = globalThis.fetch;
-      const wrapped = (async (input: unknown, init?: unknown) => {
-        const url = String(input);
+      const wrapped: typeof fetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
         if (
           url.startsWith(PEER_API) &&
           url.includes('/api/orchestration/delegations') &&
-          (init as any)?.method === 'POST'
+          init?.method === 'POST'
         ) {
           try {
             peerPosts.push({
               url,
-              body: JSON.parse(String((init as any)?.body ?? '{}')),
+              body: JSON.parse(String(init?.body ?? '{}')),
             });
           } catch {
             peerPosts.push({ url, body: undefined });
           }
         }
-        return (inner as typeof fetch)(input, init);
-      }) as never;
+        return inner(input, init);
+      };
       vi.stubGlobal('fetch', wrapped);
       unwrapFetch = () => {
         vi.stubGlobal('fetch', inner as never);
@@ -900,7 +900,14 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     });
 
     test('receiver-local execution mints through the factory and binds the admitted offer', async () => {
-      const receiverOffer = vi.fn(async () => admissionStub());
+      const receiverOffer = vi.fn(
+        async (
+          _workspace: Pick<
+            ReceiverExecutionAdmission,
+            'portableProjectId' | 'resourceId'
+          >,
+        ) => admissionStub(),
+      );
       const startSessionInternal = vi.fn(async () => ({
         status: 'accepted' as const,
       }));
