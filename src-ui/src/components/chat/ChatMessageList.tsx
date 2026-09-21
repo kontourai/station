@@ -161,8 +161,12 @@ function ChatMessageListComponent({
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const [scrollAnchorVersion, setScrollAnchorVersion] = useState(0);
   const [readerRestoreRequest, setReaderRestoreRequest] = useState<
-    (ChatReaderRestoreRequest & { version: number }) | null
+    (ChatReaderRestoreRequest & { sessionId: string; version: number }) | null
   >(null);
+  const currentReaderRestoreRequest =
+    readerRestoreRequest?.sessionId === activeSession.id
+      ? readerRestoreRequest
+      : null;
   const [streamingContentRevision, setStreamingContentRevision] = useState(0);
   const [submittedBlockIds, setSubmittedBlockIds] = useState<Set<string>>(
     () => new Set(),
@@ -274,29 +278,25 @@ function ChatMessageListComponent({
       setIsUserScrolledUp(true);
       setReaderRestoreRequest((current) => ({
         ...request,
+        sessionId: activeSession.id,
         version: (current?.version ?? 0) + 1,
       }));
     };
     element.addEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
     return () =>
       element.removeEventListener(CHAT_READER_RESTORE_EVENT, restoreReader);
-  }, []);
-
-  useEffect(() => {
-    void activeSession.id;
-    setReaderRestoreRequest(null);
   }, [activeSession.id]);
 
   useLayoutEffect(() => {
     const element = messagesContainerRef.current;
-    if (!element || !readerRestoreRequest) return;
+    if (!element || !currentReaderRestoreRequest) return;
     if (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
-    const restored = readerRestoreRequest.anchor
-      ? restoreChatScrollAnchor(element, readerRestoreRequest.anchor)
+    const restored = currentReaderRestoreRequest.anchor
+      ? restoreChatScrollAnchor(element, currentReaderRestoreRequest.anchor)
       : false;
-    if (!restored) element.scrollTop = readerRestoreRequest.scrollTop;
+    if (!restored) element.scrollTop = currentReaderRestoreRequest.scrollTop;
     if (restored) visibleAnchorRef.current = captureChatScrollAnchor(element);
-  }, [messages.length, readerRestoreRequest]);
+  }, [currentReaderRestoreRequest, messages.length]);
 
   // A command-palette transcript result carries the stable runtime message id
   // in the location hash. Re-run when messages arrive, rather than trusting a
@@ -712,10 +712,11 @@ function ChatMessageListComponent({
                   followTail={!isUserScrolledUp && !requestedMessageRowId}
                   anchorVersion={scrollAnchorVersion}
                   revealRowId={
-                    requestedMessageRowId ?? readerRestoreRequest?.anchor?.key
+                    requestedMessageRowId ??
+                    currentReaderRestoreRequest?.anchor?.key
                   }
-                  restoreAnchor={readerRestoreRequest?.anchor}
-                  restoreAnchorVersion={readerRestoreRequest?.version}
+                  restoreAnchor={currentReaderRestoreRequest?.anchor}
+                  restoreAnchorVersion={currentReaderRestoreRequest?.version}
                 />
               ) : (
                 transcriptRows.map((row) => (
