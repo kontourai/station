@@ -39,6 +39,20 @@ interface DelegatedTaskRecord {
   // failure on --on-request=fail's follow-up probe AFTER a successful
   // dispatch (never a dispatch failure itself).
   failNextStatus?: boolean;
+  // #2269: server-forwarded supervision/reason facts echoed by the status
+  // handler so the human-output rendering is pinned, not re-derived here.
+  supervision?: {
+    provider: string;
+    turnId: string;
+    deadlineAt: string;
+    elapsedMs: number;
+    remainingMs: number;
+    idleLimitMs: number;
+    totalLimitMs: number;
+    lastProgressEventAt?: string;
+  };
+  reason?: { code: string; detail?: string };
+  transitionReason?: string;
 }
 
 interface ConversationRecord {
@@ -222,6 +236,28 @@ describe('station delegate over HTTP', () => {
           ...(body.prompt === 'trigger status probe failure'
             ? { failNextStatus: true }
             : {}),
+          // #2269: a running muse turn with declared supervision and a
+          // typed reason, exactly as the server forwards them.
+          ...(body.prompt === 'trigger supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-supervised-1',
+                  deadlineAt: '2026-09-21T00:00:00.000Z',
+                  elapsedMs: 10 * 60_000,
+                  remainingMs: 110 * 60_000,
+                  idleLimitMs: 30 * 60_000,
+                  totalLimitMs: 2 * 60 * 60_000,
+                  lastProgressEventAt: '2026-09-20T22:10:00.000Z',
+                },
+                reason: {
+                  code: 'muse-turn-idle-timeout',
+                  detail:
+                    'The turn ended after a full window with no verified protocol activity.',
+                },
+                transitionReason: 'runtime_error',
+              }
+            : {}),
         };
         tasks.set(taskId, record);
         conversations.set(taskId, {
@@ -335,6 +371,11 @@ describe('station delegate over HTTP', () => {
               : {}),
             ...(record.pendingRequest
               ? { pendingRequest: record.pendingRequest }
+              : {}),
+            ...(record.supervision ? { supervision: record.supervision } : {}),
+            ...(record.reason ? { reason: record.reason } : {}),
+            ...(record.transitionReason
+              ? { transitionReason: record.transitionReason }
               : {}),
             canInterrupt: record.status === 'running',
             resumable: ['queued', 'completed', 'failed', 'canceled'].includes(
@@ -783,6 +824,71 @@ describe('station delegate over HTTP', () => {
     expect(printed).toContain(
       `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
     );
+  });
+
+  /**
+   * #2269: `delegate status` renders the serving Station's forwarded
+   * supervision facts (effective budget, remaining time, idle window) and
+   * the typed reason — and an undeclared budget renders nothing rather
+   * than a client-side invention.
+   */
+  test('status renders forwarded supervision budget and typed reason (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+
+    expect(printed).toContain(
+      'Turn budget (this turn only, not the whole task): 2h total (1h 50m remaining',
+    );
+    expect(printed).toContain('deadline 2026-09-21T00:00:00.000Z');
+    expect(printed).toContain(
+      'Idle limit: 30m with no verified protocol activity',
+    );
+    expect(printed).toContain('may be working quietly');
+    expect(printed).toContain(
+      'Reason: muse-turn-idle-timeout — The turn ended after a full window with no verified protocol activity.',
+    );
+    expect(printed).toContain('Transition: runtime_error');
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    const jsonOutput = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    expect(jsonOutput.data.supervision).toMatchObject({
+      provider: 'muse',
+      totalLimitMs: 2 * 60 * 60_000,
+      idleLimitMs: 30 * 60_000,
+    });
+    expect(jsonOutput.data.reason).toEqual({
+      code: 'muse-turn-idle-timeout',
+      detail:
+        'The turn ended after a full window with no verified protocol activity.',
+    });
   });
 
   test('rejects the retired direct connection selector before any request', async () => {
