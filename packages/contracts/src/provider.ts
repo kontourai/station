@@ -138,6 +138,21 @@ export const SESSION_VISIBILITY_METADATA_KEY = 'sessionVisibility';
 /** Durable conversation/Station ownership is always resolved by Station. */
 export const CONVERSATION_ID_RESERVED_METADATA_KEY = 'conversationId';
 export const ENVIRONMENT_ID_RESERVED_METADATA_KEY = 'environmentId';
+/**
+ * #484 phase A: server-minted marker that a session was started for an
+ * explicit portable-execution intent, carrying the admitted consent
+ * identity (`{ portableProjectId, resourceId }`). Reserved so no public
+ * caller can forge (or omit-then-claim) portable consent into the untyped
+ * `metadata` bag: continuation paths (`continueDelegatedTask`,
+ * `respondToDelegatedTaskRequest`) read this marker off the persisted
+ * session binding and refuse a portable continuation that arrives without
+ * a freshly re-admitted offer. The one legitimate writer is the
+ * delegation dispatch, through `startSessionInternal`'s
+ * `portableExecutionConsent` internal-only option, which re-stamps this
+ * key into `metadata` AFTER the reserved-key strip runs.
+ */
+export const PORTABLE_EXECUTION_CONSENT_METADATA_KEY =
+  'portableExecutionConsent';
 /** Immutable Agent presentation copied into session start/configuration metadata. */
 export const SESSION_AGENT_DISPLAY_NAME_METADATA_KEY = 'agentName';
 export const SESSION_AGENT_ICON_METADATA_KEY = 'agentIcon';
@@ -179,6 +194,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_VISIBILITY_METADATA_KEY,
   CONVERSATION_ID_RESERVED_METADATA_KEY,
   ENVIRONMENT_ID_RESERVED_METADATA_KEY,
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,

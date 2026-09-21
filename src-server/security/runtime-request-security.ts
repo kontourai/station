@@ -105,6 +105,28 @@ export function getRuntimeAuthenticatedRequestPrincipal(
  * bounded reported display metadata only; actor/device facts come from the
  * credential already accepted at the runtime security seam.
  */
+/**
+ * #484 no-onward-hop: the inbound credential's server-owned paired-device
+ * kind, read off the verified credential's device record — never body,
+ * userId, or metadata. Returns the record's kind only for a request the
+ * auth middleware already accepted as a device credential; every other
+ * caller (operator credential, internal token, unauthenticated) resolves
+ * `undefined` and is therefore never an inbound peer. This is the actual
+ * runtime composition the orchestration delegation route wires (not a
+ * test-only helper): a delegation-kind device keeps its kind here even
+ * when its human person binding or ingress identity names the local
+ * operator — that display fact lives in the principal, not in this verdict.
+ */
+export function resolveInboundDeviceKindForRequest(
+  request: Request,
+  identifyDevice: (credential: string) => { kind?: string } | null | undefined,
+): 'device' | 'delegation' | undefined {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (principal?.authority !== 'device-credential') return undefined;
+  const kind = identifyDevice(principal.credential)?.kind;
+  return kind === 'delegation' || kind === 'device' ? kind : undefined;
+}
+
 export function resolveClientOriginForRequest(request: Request): ClientOrigin {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   const actor =

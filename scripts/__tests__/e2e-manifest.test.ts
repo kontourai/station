@@ -156,6 +156,7 @@ describe('e2e manifest', () => {
       'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',
+      'tests/portable-receiver-live-proof.spec.ts',
       'tests/csp-shell.spec.ts',
       'tests/plugin-bundle-csp.spec.ts',
       'tests/coding-workspace-example.spec.ts',

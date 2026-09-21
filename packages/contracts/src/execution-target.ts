@@ -33,8 +33,11 @@ export type EnvironmentRef =
  * A workspace address interpreted by the target Environment.
  *
  * A project target uses the target Station's project catalog. A directory
- * target is an explicit path on that target. Neither form is an access or
- * transport configuration.
+ * target is an explicit path on that target. A portable target names the
+ * CONSENT identity — the portable Project id plus the offered resource —
+ * and the target Station resolves it against its own operator's execution
+ * offer; it is never an address the caller can aim at an arbitrary local
+ * path or slug. None of these forms is an access or transport configuration.
  */
 export type WorkspaceTarget =
   | {
@@ -44,7 +47,21 @@ export type WorkspaceTarget =
       /** Explicit thread selection; overrides the project's default. */
       workspaceIsolation?: WorkspaceIsolationConfig;
     }
-  | { kind: 'directory'; cwd: string };
+  | { kind: 'directory'; cwd: string }
+  | {
+      /**
+       * Explicit portable execution intent (#484 phase A): run on the
+       * receiving Station only if its operator currently offers execution
+       * for exactly this portable Project id and resource, and the resource
+       * is currently bound. A NEW UNION MEMBER on purpose — a receiver from
+       * before this intent fails validation on the whole workspace object
+       * rather than silently stripping fields and executing a local
+       * fallback.
+       */
+      kind: 'project-portable';
+      portableProjectId: string;
+      resourceId: string;
+    };
 
 /** Caller-owned model request. Resolution remains adapter- and server-owned. */
 export interface ExecutionModelRequest {

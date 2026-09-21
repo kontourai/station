@@ -23,7 +23,10 @@ import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestr
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
-import { SESSION_CAPABILITY_DELIVERY_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import {
@@ -98,6 +101,7 @@ import {
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { ProjectBindingsStore } from '../../projects/project-binding-store.js';
+import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
@@ -2818,6 +2822,1165 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessionByThread('forged-ephemeral')).not.toEqual(
       expect.objectContaining({ ephemeral: true }),
     );
+  });
+
+  // #484 phase A: the receiver effect admission is honored INSIDE the
+  // provider-effect path of the REAL service — between prepareStart's
+  // awaits and the adapter invocation. The adapter spy is the oracle, not
+  // the recheck mock: a withdrawn offer (or a workspace that is not the
+  // admitted one) must refuse BEFORE adapter.startSession/sendTurn runs.
+  // A passing recheck proves nothing; the spy staying silent does.
+  describe('portable receiver effect admission', () => {
+    const admittedFor = (threadId: string, cwd: string) => ({
+      recheck: async () => {},
+      admitted: {
+        threadId,
+        projectSlug: 'local',
+        cwd,
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      },
+    });
+
+    test('positive control: the adapter starts in the exact admitted cwd', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const outcome = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-positive',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-positive', tmp) },
+      );
+      if (outcome.status !== 'accepted') throw new Error(outcome.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      expect(claude.startSession.mock.calls[0]![0]).toMatchObject({
+        threadId: 'portable-positive',
+        cwd: tmp,
+      });
+    });
+
+    test('an offer withdrawn while the start is queued refuses before the adapter runs', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      let entered = false;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let alive = true;
+      const pending = service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-withdrawn',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: {
+            recheck: async () => {
+              entered = true;
+              await gate;
+              if (!alive)
+                throw new ReceiverExecutionRefusal(
+                  'receiver_execution_not_offered',
+                  'This Station does not currently offer execution for the requested Project resource.',
+                );
+            },
+            admitted: {
+              threadId: 'portable-withdrawn',
+              projectSlug: 'local',
+              cwd: tmp,
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+            },
+          },
+        },
+      );
+      for (let i = 0; i < 200 && !entered; i++)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(entered).toBe(true);
+      // The start has passed every prepareStart await and is queued at the
+      // adapter boundary; the offer dies NOW.
+      alive = false;
+      release();
+      const outcome = await pending;
+      expect(outcome.status).toBe('failed');
+      expect(claude.startSession).not.toHaveBeenCalled();
+    });
+
+    test('a workspace that is not the admitted one refuses before the adapter runs', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const outcome = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-retargeted',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-retargeted',
+            join(tmp, 'not-the-admitted-checkout'),
+          ),
+        },
+      );
+      expect(outcome.status).toBe('failed');
+      expect(claude.startSession).not.toHaveBeenCalled();
+    });
+
+    test('a turn on a thread the admission never named refuses before sendTurn runs', async () => {
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-turn',
+            provider: 'bedrock',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-turn', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor('some-other-thread', tmp),
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('a colliding task id reattaches only to the exact admitted workspace', async () => {
+      // Every real adapter echoes the start cwd on its session; the fake
+      // does not by default, so this test opts into production shape.
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      const dirB = join(tmp, 'checkout-b');
+      mkdirSync(dirB, { recursive: true });
+      const existing = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-collide',
+            provider: 'claude',
+            cwd: dirB,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (existing.status !== 'accepted') throw new Error(existing.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      // Ownership is established by a binding event carrying metadata.userId
+      // (the fake publishes none); without it the reattach refuses as
+      // "not found" before any guard under test runs.
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-collide',
+        eventId: 'evt-portable-collide-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-collide',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // A portable intent reuses the live thread id but is admitted for a
+      // DIFFERENT checkout: the reattach must refuse — the existing engine
+      // runs checkout-b, never the admitted directory — without spawning.
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-collide',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-collide', tmp) },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({ code: 'receiver_execution_unavailable' });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('an exact reattach reuses the admitted session without spawning', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const admission = {
+        ...admittedFor('portable-reuse', tmp),
+        recheck: vi.fn(async () => {}),
+      };
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reuse',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admission,
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reuse',
+        eventId: 'evt-portable-reuse-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-reuse',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Retry / duplicate delivery of the same portable intent: the live
+      // session IS the admitted workspace, so the reattach accepts — and
+      // the admission recheck ran at the reattach effect, not just at
+      // first start.
+      const reattached = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reuse',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admission },
+      );
+      if (reattached.status !== 'accepted') throw new Error(reattached.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      expect(admission.recheck).toHaveBeenCalled();
+    });
+
+    test('a rebind that lands while the reattach is queued refuses', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-rebind',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-rebind',
+        eventId: 'evt-portable-rebind-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-rebind',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-rebind',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: {
+            recheck: async () => {
+              throw new ReceiverExecutionRefusal(
+                'receiver_execution_not_offered',
+                'This Station does not currently offer execution for the requested Project resource.',
+              );
+            },
+            admitted: {
+              threadId: 'portable-rebind',
+              projectSlug: 'local',
+              cwd: tmp,
+              portableProjectId: 'prj_shared',
+              resourceId: 'git.example/acme/repo',
+            },
+          },
+        },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a turn answers for the actual runtime session, not the input coordinate', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-actual-session',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-actual-session',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // The admission names this thread but a checkout the runtime session
+      // never ran in: the thread id matches, the provider state does not.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-actual-session', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor(
+              'portable-actual-session',
+              join(tmp, 'some-other-checkout'),
+            ),
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // Positive control: the admission naming the thread's ACTUAL
+      // workspace dispatches to the provider.
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-actual-session', input: 'hello' },
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-actual-session',
+            tmp,
+          ),
+        },
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('recovery redispatch without admission refuses a marked session while legacy turns flow', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const consent = {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      };
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-recovery',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-recovery', tmp),
+          portableExecutionConsent: consent,
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Direct persistence proof: the fake publishes NOTHING, so this
+      // service-stamped binding event is the only durable marker — the
+      // read a recovery path would take through the canonical store seam.
+      const configured = eventStore.latestEventByMethod(
+        'portable-recovery',
+        'session.configured',
+      );
+      expect(
+        (
+          configured?.payload as
+            | { metadata?: Record<string, unknown> }
+            | undefined
+        )?.metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY],
+      ).toEqual(consent);
+      expect(
+        service.persistedPortableConsentOfThread('portable-recovery'),
+      ).toEqual(consent);
+      // The interrupted-turn / dispatch-recovery shape: a plain sendTurn
+      // with no admission context. The adapter must never run for the
+      // marked portable session.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-recovery', input: 'hello' },
+          },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toThrow(
+        'This portable task cannot continue without a current execution offer',
+      );
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // Legacy control: an unmarked session's admission-less turn flows.
+      const legacy = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-recovery-legacy',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacy.status !== 'accepted') throw new Error(legacy.message);
+      expect(
+        eventStore.latestEventByMethod(
+          'portable-recovery-legacy',
+          'session.configured',
+        ),
+      ).toBeUndefined();
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-recovery-legacy', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('credential recovery restart refuses a marked session before any provider effect', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const restart = (threadId: string) =>
+        (
+          service as unknown as {
+            restartCredentialProfileProviderSession: (input: {
+              threadId: string;
+              signal: AbortSignal;
+            }) => Promise<unknown>;
+          }
+        ).restartCredentialProfileProviderSession({
+          threadId,
+          signal: AbortSignal.timeout(5000),
+        });
+      const marked = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-credential-restart',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-credential-restart',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      );
+      if (marked.status !== 'accepted') throw new Error(marked.message);
+      const startsBefore = claude.startSession.mock.calls.length;
+      // The credential-replay shape bypasses dispatch and ends in a DIRECT
+      // adapter.sendTurn — so the restart seam itself must refuse: no
+      // respawn, no teardown of the live engine, no replay.
+      await expect(restart('portable-credential-restart')).rejects.toThrow(
+        'This portable task cannot continue without a current execution offer',
+      );
+      expect(claude.startSession.mock.calls.length).toBe(startsBefore);
+      expect(claude.stopSession).not.toHaveBeenCalled();
+      // Legacy control: an unmarked session restarts.
+      const legacy = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-credential-restart-legacy',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacy.status !== 'accepted') throw new Error(legacy.message);
+      await restart('portable-credential-restart-legacy');
+      expect(claude.startSession.mock.calls.length).toBeGreaterThan(
+        startsBefore,
+      );
+    });
+
+    test('public start metadata can neither forge nor clear portable consent', async () => {
+      const forged = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-forged',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: {
+              [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+                portableProjectId: 'prj_attacker',
+                resourceId: 'evil',
+              },
+            },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (forged.status !== 'accepted') throw new Error(forged.message);
+      // The reserved-key strip removed the forged marker before the
+      // adapter ran: no consent was minted, and none persisted.
+      expect(claude.startSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          metadata: expect.not.objectContaining({
+            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: expect.anything(),
+          }),
+        }),
+      );
+      expect(
+        service.persistedPortableConsentOfThread('portable-forged'),
+      ).toBeUndefined();
+      // And an unmarked session stays unmarked: its turns flow.
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-forged', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a turn admitted for the same cwd under a different portable project refuses', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-same-cwd',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-same-cwd', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Same thread, same checkout — but admitted for a DIFFERENT portable
+      // project/resource. A directory is not a project identity: refuses
+      // before the provider runs. Behavior lock (refused before this change
+      // too, via the latest-marker mismatch): the proof moved to the
+      // required history association.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-same-cwd', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {},
+              admitted: {
+                threadId: 'portable-same-cwd',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_other',
+                resourceId: 'git.example/other/repo',
+              },
+            },
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('an admission never promotes an unmarked legacy session into a portable project', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-promote',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // The admission names the legacy session's EXACT thread and checkout —
+      // still refuses: the thread never started as a portable execution, so
+      // there is no persisted association to prove.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-promote', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor('portable-promote', tmp),
+          },
+        ),
+      ).rejects.toThrow('The offered Project resource is unavailable.');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('a reattach to the same cwd under a different portable project refuses without spawning', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-project',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-reattach-project',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-project',
+        eventId: 'evt-portable-reattach-project-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-reattach-project',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Adversarial reattach: the caller-supplied task id collides with the
+      // live session's exact thread AND checkout, but the admission names a
+      // different portable project. Thread + cwd match; the persisted
+      // association does not — refuses without spawning.
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-project',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: {
+            recheck: async () => {},
+            admitted: {
+              threadId: 'portable-reattach-project',
+              projectSlug: 'local',
+              cwd: tmp,
+              portableProjectId: 'prj_other',
+              resourceId: 'git.example/other/repo',
+            },
+          },
+        },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_unavailable',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a legacy session is never promoted into a portable project on reattach', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-legacy',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-legacy',
+        eventId: 'evt-portable-reattach-legacy-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-reattach-legacy',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Same thread, same checkout, portable admission — still refuses: the
+      // thread carries no server-owned portable consent, and reattach skips
+      // recordStarted, so accepting would leave an unmarked session
+      // executing portable turns.
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-legacy',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-reattach-legacy',
+            tmp,
+          ),
+        },
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_unavailable',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a metadata-dropping adapter cannot erase the authoritative stamp on reattach', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const admission = {
+        ...admittedFor('portable-reattach-stamp', tmp),
+        recheck: vi.fn(async () => {}),
+      };
+      const first = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-stamp',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admission,
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      );
+      if (first.status !== 'accepted') throw new Error(first.message);
+      // The adapter reconstructs its binding WITHOUT the marker (and without
+      // the project): the service's own stamp earlier in the history is the
+      // authoritative proof, and the reattach still accepts. No-regression
+      // lock (accepted before this change too): metadata-dropping adapters
+      // must never brick an exactly-bound reattach.
+      const at = new Date().toISOString();
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-stamp',
+        eventId: 'evt-portable-reattach-stamp-started',
+        createdAt: at,
+        method: 'session.started',
+        sessionId: 'portable-reattach-stamp',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-reattach-stamp',
+        eventId: 'evt-portable-reattach-stamp-configured',
+        createdAt: at,
+        method: 'session.configured',
+        sessionId: 'portable-reattach-stamp',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      const reattached = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-reattach-stamp',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admission },
+      );
+      if (reattached.status !== 'accepted') throw new Error(reattached.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      expect(admission.recheck).toHaveBeenCalled();
+    });
+
+    test('cold recovery refuses a marked session before any engine spawn, cursor preserved', async () => {
+      claude.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        return {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: input.modelId,
+          cwd: input.cwd,
+          resumeCursor: 'cursor-1',
+          createdAt: now,
+          updatedAt: now,
+        };
+      });
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cold',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-cold', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Boot: a FRESH service over the SAME durable store, with a FRESH
+      // adapter holding no live engines — the restored session is dormant.
+      const coldClaude = new FakeAdapter('claude');
+      const cold = new RawOrchestrationService({
+        adapterRegistry: createRegistry([coldClaude]),
+        eventBus: new EventBus(),
+        eventStore,
+        listProjects: () => configuredProjects,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      // The interrupted-turn / auto-dispatch shape: a plain turn with no
+      // admission context. No adapter start, adopt, or turn may run for the
+      // marked portable session.
+      await expect(
+        cold.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-cold', input: 'hello' },
+          },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toThrow(
+        'This portable task cannot continue without a current execution offer',
+      );
+      expect(coldClaude.startSession).not.toHaveBeenCalled();
+      expect(coldClaude.sendTurn).not.toHaveBeenCalled();
+      if (coldClaude.adoptSession)
+        expect(coldClaude.adoptSession).not.toHaveBeenCalled();
+      // The persisted record and resumeCursor survive untouched: the session
+      // stays dormant and re-routable under a future admission, never
+      // quarantined or closed.
+      const row = eventStore.readSessionByThread('portable-cold');
+      expect(row?.resumeCursor).toBe('cursor-1');
+      expect(row?.status).not.toBe('closed');
+      expect(row?.status).not.toBe('dead');
+      // Legacy control: an unmarked dormant session materializes on the
+      // cold service and its turn flows.
+      const legacyStarted = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cold-legacy',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacyStarted.status !== 'accepted')
+        throw new Error(legacyStarted.message);
+      await cold.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-cold-legacy', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('deletion retires the cached marker; a recreated thread id starts clean', async () => {
+      // The default fake registers its sessions (the cwd-echo overrides in
+      // the association tests above deliberately do not, so stop resolution
+      // would not find them); cwd is irrelevant to this lifecycle test.
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const consent = {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      };
+      const marked = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cache-reuse',
+            provider: 'bedrock',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-cache-reuse', tmp),
+          portableExecutionConsent: consent,
+        },
+      );
+      if (marked.status !== 'accepted') throw new Error(marked.message);
+      expect(
+        service.persistedPortableConsentOfThread('portable-cache-reuse'),
+      ).toEqual(consent);
+      // Ownership is established by a binding event carrying metadata.userId.
+      eventStore.appendEvent({
+        provider: 'bedrock',
+        threadId: 'portable-cache-reuse',
+        eventId: 'evt-portable-cache-reuse-owner',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-cache-reuse',
+        metadata: { userId: 'owner-user' },
+      } as CanonicalRuntimeEvent);
+      // Stop retires live state through the canonical teardown seam; the
+      // store drop removes the durable history. Either alone must not leave
+      // a stale positive behind for the recreated id.
+      await service.dispatchWithReceipt(
+        { type: 'stopSession', threadId: 'portable-cache-reuse' },
+        { userId: 'owner-user' },
+      );
+      eventStore.deleteThread('portable-cache-reuse');
+      // THE regression assertion: without cache retirement in the teardown
+      // seam this still returns the dead session's positive.
+      expect(
+        service.persistedPortableConsentOfThread('portable-cache-reuse'),
+      ).toBeUndefined();
+      // A same-id legacy recreation is independently refused by the
+      // immutable conversation-lineage guard (fail-closed at an orthogonal
+      // seam, never a wrong accept), so ordinary flow is proven on a fresh
+      // id instead: a legacy start records a clean verdict and its
+      // admission-less turn flows.
+      const legacy = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cache-reuse-legacy',
+            provider: 'bedrock',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (legacy.status !== 'accepted') throw new Error(legacy.message);
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-cache-reuse-legacy', input: 'hello' },
+        },
+        undefined,
+        undefined,
+      );
+      expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+    });
   });
 
   test('public start metadata cannot author conversation or Environment ownership', async () => {
