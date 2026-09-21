@@ -1014,6 +1014,62 @@ describe('DelegationLauncher', () => {
     );
   });
 
+  test('a removed explicit resource does not fall back to the remaining default', async () => {
+    const removedResource = 'https://git.example.test/docs.git';
+    projectIdentity = singleRepoIdentity();
+    projectIdentity.identity.repos.push({
+      kind: 'git',
+      id: removedResource,
+      canonicalRemote: removedResource,
+      label: 'docs',
+    });
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const props = {
+      isOpen: true,
+      apiBase: 'http://station.test',
+      projectSlug: 'station',
+      initialPrompt: 'Use the resource I selected',
+      onClose: vi.fn(),
+      onDelegated: vi.fn(),
+    };
+    const { rerender } = render(<DelegationLauncher {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: removedResource },
+    });
+    projectIdentity = singleRepoIdentity();
+    rerender(<DelegationLauncher {...props} />);
+    expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Project resource') as HTMLSelectElement).value,
+    ).toBe(removedResource);
+    fireEvent.change(screen.getByLabelText('Project resource'), {
+      target: { value: 'https://git.example.test/station.git' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    expect(mutateAsync.mock.calls[0][0].input.target.workspace.resourceId).toBe(
+      'https://git.example.test/station.git',
+    );
+  });
+
   test('a declared execution-root resource is preselected for a peer', async () => {
     projectIdentity = {
       ...singleRepoIdentity(),
@@ -1339,6 +1395,48 @@ describe('DelegationLauncher', () => {
     );
     expect(retryIdentity).toHaveBeenCalledOnce();
   });
+
+  test.each(['loading', 'failed', 'missing id'])(
+    'blocks cached portable identity while the selected Project is %s',
+    (state) => {
+      projectLoading = state === 'loading';
+      projectFailure = state === 'failed';
+      if (state === 'missing id') projectId = undefined;
+      peerCredentials = [
+        {
+          environmentId: 'env-peer-b',
+          apiBase: 'https://box-b.example.test',
+          scope: 'orchestration:read orchestration:operate',
+          label: 'box-b',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ];
+      render(
+        <DelegationLauncher
+          isOpen
+          apiBase="http://station.test"
+          projectSlug="station"
+          initialPrompt="Keep this draft"
+          onClose={vi.fn()}
+          onDelegated={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+      fireEvent.change(screen.getByLabelText('Station'), {
+        target: { value: 'env-peer-b' },
+      });
+      expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
+        'disabled',
+        true,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+      expect(mutateAsync).not.toHaveBeenCalled();
+      expect((screen.getByLabelText('Task') as HTMLTextAreaElement).value).toBe(
+        'Keep this draft',
+      );
+    },
+  );
 
   test('a same-slug recreated Project blocks dispatch on the stale incarnation and never sends the old portable id', () => {
     // Same Home, same slug, NEW local incarnation: the cached identity still

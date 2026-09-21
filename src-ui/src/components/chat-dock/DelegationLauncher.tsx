@@ -221,9 +221,8 @@ export function DelegationLauncher({
   // refreshes. Missing inventory must never substitute the current machine.
   const [chosenEnvironmentId, setEnvironmentId] = useState<string | null>(null);
   const environmentId = chosenEnvironmentId ?? configuredEnvironmentId;
-  // Explicit portable resource choice; null follows the declared default or
-  // the sole unambiguous repo. A stale explicit id (identity changed
-  // underneath) falls back to the default rather than a guess.
+  // Only an unset choice follows the default. An unavailable explicit choice
+  // stays selected until the user chooses a replacement.
   const [chosenResourceId, setChosenResourceId] = useState<string | null>(null);
   // Set when Home/authority went stale across the submit await: the draft,
   // Project, resource and machine choice are kept; nothing is redispatched.
@@ -303,11 +302,12 @@ export function DelegationLauncher({
   const defaultResourceId =
     declaredDefaultResourceId ??
     (identityResources.length === 1 ? identityResources[0].id : null);
-  const resourceId =
-    chosenResourceId &&
-    identityResources.some((resource) => resource.id === chosenResourceId)
-      ? chosenResourceId
-      : defaultResourceId;
+  const resourceId = chosenResourceId ?? defaultResourceId;
+  const resourceAvailable = identityResources.some(
+    (resource) => resource.id === resourceId,
+  );
+  const resourceChoiceUnavailable =
+    chosenResourceId !== null && !resourceAvailable;
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
@@ -400,13 +400,18 @@ export function DelegationLauncher({
   const portableResourceChoiceRequired =
     portablePlacement &&
     identityLoaded &&
-    identityResources.length > 1 &&
-    !resourceId;
+    ((identityResources.length > 1 && !resourceId) ||
+      resourceChoiceUnavailable);
+  const portableProjectUnavailable =
+    portablePlacement && (!projectLoaded || !project?.id);
+  const portableProjectInvalid =
+    portableProjectUnavailable && (projectFailed || projectLoaded);
   const portableReady =
     portablePlacement &&
+    !portableProjectUnavailable &&
     identityLoaded &&
     Boolean(portableProjectId) &&
-    Boolean(resourceId);
+    resourceAvailable;
   // Defense-in-depth over the SDK key/response binding: cached success data
   // (or a hook caller that did not pass expectedProjectId) could still name
   // a previous incarnation of the SAME slug. The selected Project record is
@@ -657,15 +662,21 @@ export function DelegationLauncher({
               </button>
             </div>
           )}
-          {projectDefaultsUnavailable && (
+          {(projectDefaultsUnavailable || portableProjectUnavailable) && (
             <p
               className="delegation-launcher__hint"
-              role={projectFailed ? 'alert' : 'status'}
+              role={
+                projectFailed || portableProjectInvalid ? 'alert' : 'status'
+              }
             >
-              {projectFailed
-                ? 'Project execution defaults could not be loaded.'
-                : 'Checking Project execution defaults before choosing a Station.'}
-              {projectFailed && (
+              {portableProjectUnavailable
+                ? portableProjectInvalid
+                  ? 'Project details could not be verified. Retry before placing this task.'
+                  : 'Checking Project details before placing this task.'
+                : projectFailed
+                  ? 'Project execution defaults could not be loaded.'
+                  : 'Checking Project execution defaults before choosing a Station.'}
+              {(projectFailed || portableProjectInvalid) && (
                 <Button
                   variant="link"
                   size="sm"
@@ -760,7 +771,7 @@ export function DelegationLauncher({
           )}
           {portablePlacement &&
             identityLoaded &&
-            identityResources.length > 1 && (
+            (identityResources.length > 1 || resourceChoiceUnavailable) && (
               <label className="delegation-launcher__resource">
                 Project resource
                 <select
@@ -771,6 +782,11 @@ export function DelegationLauncher({
                   }
                 >
                   <option value="">Choose a resource…</option>
+                  {resourceChoiceUnavailable && (
+                    <option value={chosenResourceId!} disabled>
+                      Selected resource is no longer available
+                    </option>
+                  )}
                   {identityResources.map((resource) => (
                     <option key={resource.id} value={resource.id}>
                       {resource.name}
