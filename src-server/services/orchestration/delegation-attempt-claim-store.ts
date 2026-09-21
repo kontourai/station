@@ -70,7 +70,7 @@ const STORE_VERSION = 2 as const;
  * capacity is REFUSED (never evicted). See the module docblock: no
  * production retention protocol is claimed here.
  */
-export const DELEGATION_ATTEMPT_CLAIM_CAPACITY = 1024;
+const DELEGATION_ATTEMPT_CLAIM_CAPACITY = 1024;
 
 export type DelegationAttemptClaimState =
   /**
