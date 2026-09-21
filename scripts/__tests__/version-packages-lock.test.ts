@@ -202,31 +202,28 @@ test('managed version pipeline repairs stale pnpm locks offline without pnpm on 
   expect(failure?.stderr).toContain('. dependencies.fixture-a.specifier');
   expect(failure?.stderr).toContain('packages/b devDependencies.fixture-a');
 
-  let frozenFailure: { stdout?: string } | undefined;
-  try {
-    execFileSync(
-      invocation.command,
-      [
-        ...invocation.args,
-        'install',
-        '--lockfile-only',
-        '--ignore-scripts',
-        '--frozen-lockfile',
-        '--offline',
-        '--store-dir',
-        join(root, 'store'),
-      ],
-      {
-        cwd: root,
-        encoding: 'utf8',
-        windowsHide: true,
-        env,
-      },
-    );
-  } catch (error) {
-    frozenFailure = error as { stdout?: string };
-  }
-  expect(frozenFailure?.stdout).toContain('ERR_PNPM_OUTDATED_LOCKFILE');
+  const frozenFailure = spawnSync(
+    invocation.command,
+    [
+      ...invocation.args,
+      'install',
+      '--lockfile-only',
+      '--ignore-scripts',
+      '--frozen-lockfile',
+      '--offline',
+      '--store-dir',
+      join(root, 'store'),
+    ],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+      argv0: invocation.argv0,
+      env,
+    },
+  );
+  expect(frozenFailure.status).not.toBe(0);
+  expect(frozenFailure.stdout).toContain('ERR_PNPM_OUTDATED_LOCKFILE');
   repair();
   expect(runGate(root)).toContain('Lockfile sync gate:');
 });

@@ -1,5 +1,11 @@
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { pnpmInvocation } from '../dependency-lifecycle.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './owned-process.mjs';
 import { readPnpmDependencyGraph } from './pnpm-dependency-graph.mjs';
 
 const SEVERITIES = ['info', 'low', 'moderate', 'high', 'critical'];
@@ -96,32 +102,81 @@ export function normalizePnpmAudit(raw, graph, importer, productionOnly) {
   };
 }
 
-export function runPnpmAudit(root) {
+export async function runPnpmAudit(root) {
   const invocation = pnpmInvocation({ cwd: root });
-  return new Promise((resolve, reject) => {
-    execFile(
-      invocation.command,
-      [...invocation.args, 'audit', '--json'],
-      {
-        cwd: root,
-        windowsHide: true,
-        encoding: 'utf8',
-        timeout: 240_000,
-        maxBuffer: 50 * 1024 * 1024,
-      },
-      (error, stdout) => {
-        if (error && (error.killed || error.signal || error.code !== 1))
-          return reject(
-            new Error(`pnpm audit operational failure: ${error.message}`),
-          );
-        try {
-          resolve(JSON.parse(stdout));
-        } catch {
-          reject(new Error('pnpm audit did not return valid JSON'));
-        }
-      },
-    );
+  const execution = executeOwnedCommand(
+    invocation.command,
+    [...invocation.args, 'audit', '--json'],
+    spawn,
+    'pnpm audit',
+    {
+      cwd: root,
+      argv0: invocation.argv0,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  let rejectBoundary;
+  const boundary = new Promise((_, reject) => {
+    rejectBoundary = reject;
   });
+  const capture = captureOwnedProcessOutput(execution, {
+    maxBytes: 50 * 1024 * 1024,
+    onOverflow: () =>
+      rejectBoundary(new Error('pnpm audit output exceeded its bound')),
+  });
+  const timer = setTimeout(
+    () =>
+      rejectBoundary(new Error('pnpm audit exceeded its 240000ms deadline')),
+    240_000,
+  );
+  let completion;
+  const failures = [];
+  try {
+    completion = await Promise.race([execution.completion, boundary]);
+    if (
+      completion.error ||
+      completion.signal ||
+      ![0, 1].includes(completion.status)
+    )
+      throw new Error(
+        `pnpm audit operational failure: ${completion.signal ? `signal ${completion.signal}` : `exit ${completion.status}`}`,
+        { cause: completion.error },
+      );
+  } catch (error) {
+    failures.push(error);
+  } finally {
+    clearTimeout(timer);
+    try {
+      const retired = await terminateSuiteExecution(execution, {
+        waitForSuiteSettlement,
+        terminationGraceMs: 5_000,
+        terminationForceMs: 5_000,
+        processLabel: 'pnpm audit',
+      });
+      if (!retired.settled || retired.errors.length)
+        failures.push(
+          new Error('pnpm audit cleanup did not settle its process tree', {
+            cause: retired.errors,
+          }),
+        );
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  const output = capture.finish();
+  if (output.truncated || output.invalidUtf8)
+    failures.push(
+      new Error('pnpm audit returned oversized or invalid UTF-8 output'),
+    );
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, 'pnpm audit failed');
+  try {
+    return JSON.parse(output.stdout.text);
+  } catch {
+    throw new Error('pnpm audit did not return valid JSON');
+  }
 }
 
 export async function collectPnpmAudits(

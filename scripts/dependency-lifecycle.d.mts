@@ -24,13 +24,14 @@ export function pnpmInvocation(options?: {
       encoding: 'utf8';
       timeout: number;
       windowsHide: true;
+      argv0?: string;
     },
   ) => string;
-}): { command: string; args: string[] };
+}): { command: string; args: string[]; argv0?: string };
 export function pnpmCommand(
   args: string[],
   cwd?: string,
-  invocation?: { command: string; args: string[] },
+  invocation?: { command: string; args: string[]; argv0?: string },
 ): void;
 export function refreshLock(options?: { cwd?: string }): void;
 export function preflightInstalledLifecycle(
@@ -50,7 +51,26 @@ export function stageLifecyclePrebuilds(
   options?: { cwd?: string },
 ): void;
 export function verify(options?: { cwd?: string }): unknown;
-export function install(options?: { developer?: boolean }): void;
+export function install(
+  options?: { developer?: boolean },
+  execution?: {
+    root: string;
+    nodePath: string;
+    pnpmInvocation: typeof pnpmInvocation;
+    command: (
+      command: string,
+      args: string[],
+      options?: { cwd?: string },
+    ) => unknown;
+    check: typeof check;
+    pnpmCommand: typeof pnpmCommand;
+    stageLifecyclePrebuilds: typeof stageLifecyclePrebuilds;
+    runApprovedHooks: typeof runApprovedHooks;
+    stationOwnedHooks: () => unknown;
+    verify: typeof verify;
+    generateBuildInputs: () => unknown;
+  },
+): unknown;
 export function propose(options?: { cwd?: string }): unknown;
 export function describeFailure(
   error: unknown,
