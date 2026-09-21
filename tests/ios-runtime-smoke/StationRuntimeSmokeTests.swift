@@ -74,10 +74,9 @@ final class StationRuntimeSmokeTests: XCTestCase {
             closeNav.waitForExistence(timeout: 5),
             "Drawer close control missing. Accessibility hierarchy:\n\(app.debugDescription)"
         )
-        closeNav.tap()
         XCTAssertTrue(
-            settings.waitForNonExistence(timeout: 5),
-            "Drawer did not close after proving the Settings route."
+            dismissDrawer(closeNav, untilGone: settings),
+            "Drawer did not close after proving the Settings route. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
 
@@ -163,6 +162,25 @@ final class StationRuntimeSmokeTests: XCTestCase {
     /// The source is re-tapped at most `maxTaps` times, and only while it is
     /// still hittable — once the surface has advanced past it, the target alone
     /// decides. That bounds this to a recovery rather than a tap loop.
+    // UIKit gesture acknowledgement does not prove a WKWebView DOM click.
+    // Match the existing bounded opening-action recovery: at most two taps,
+    // only while the close control is hittable, with the same real outcome.
+    // Attempt activities remain in xcresult; a recovery is not first-tap proof.
+    private func dismissDrawer(
+        _ close: XCUIElement,
+        untilGone target: XCUIElement
+    ) -> Bool {
+        for attempt in 1...2 {
+            if !target.exists { return true }
+            guard close.exists && close.isHittable else { return !target.exists }
+            XCTContext.runActivity(named: "Drawer close attempt \(attempt)") { _ in
+                close.tap()
+            }
+            if target.waitForNonExistence(timeout: 5) { return true }
+        }
+        return !target.exists
+    }
+
     private func tap(
         _ source: XCUIElement,
         until target: XCUIElement,
