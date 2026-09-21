@@ -225,7 +225,11 @@ export function createBrowserPionConnection(input: {
           if (!created.localDescription || !isOwned() || !ice.isCurrent())
             throw new Error('browser_offer_unavailable');
           const offerSdp = created.localDescription.sdp;
-          const connectionId = crypto.randomUUID();
+          // Connection proof nonces require secure-context Web Crypto.
+          // Refuse unsupported clients before submitting an offer.
+          const connectionId = globalThis.crypto?.randomUUID?.();
+          if (!connectionId)
+            throw new Error('browser_relay_secure_context_required');
           const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
           const opened = await raceOwnedLifetime(
             broker.open({ clientId: connectionId, nonce, offerSdp }, lifetime),

@@ -683,3 +683,32 @@ test('default browser fetch retains its global receiver', async () => {
     vi.unstubAllGlobals();
   }
 });
+
+test('missing secure-context UUID refuses before broker submission and closes peer', async () => {
+  const { keys, trust, trustRecord } = await trustFixture();
+  const broker = brokerStub(trust, keys, ANSWER);
+  const peer = fakePeer(OFFER, []);
+  const connection = createBrowserPionConnection({
+    broker: broker as never,
+    applicationOrigin: 'https://app.example',
+    trustRecord,
+    trustStore: { isCurrent: async () => true },
+    ice: iceProvider() as never,
+    createPeer: () => peer as never,
+  });
+  const originalCrypto = globalThis.crypto;
+  vi.stubGlobal('crypto', {
+    subtle: originalCrypto.subtle,
+    getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+  });
+  try {
+    await expect(
+      connection.connect(new AbortController().signal),
+    ).rejects.toThrow('browser_relay_secure_context_required');
+    expect(broker.open).not.toHaveBeenCalled();
+    expect(peer.close).toHaveBeenCalledOnce();
+  } finally {
+    connection.close();
+    vi.unstubAllGlobals();
+  }
+});
