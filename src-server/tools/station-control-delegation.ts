@@ -29,6 +29,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
+import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
   isSessionLifecycleStateStopped,
@@ -772,29 +773,86 @@ const DELEGATED_FIXED_DETAILS: Record<string, string> = {
  * The lifecycle fold deliberately classifies a budget-killed turn as
  * `runtime_error` first (its message is always non-empty), so the
  * attribution alone cannot distinguish an idle expiry from an absolute one
- * — the terminal `runtime.error` event's code is read for that, newest
- * first, and only an allowlisted budget code maps to a reason WITH detail
- * (host-synthesized fixed text, never the event message). Otherwise the
- * attribution kind maps to a bare code plus a synthesized fixed detail for
- * the service-fixed kinds; `runtime_error` and unrecognized kinds carry no
- * detail at all, so unknown provider errors stay a redacted generic and a
- * sentinel secret or private path in the raw message can never cross the
- * delegation seam.
+ * — the CURRENT terminal event's code is read for that (newest terminal
+ * event first, scoped to the latest turn by identity, never the newest
+ * budget code anywhere in history), and only an allowlisted budget code
+ * maps to a reason WITH detail (host-synthesized fixed text, never the
+ * event message). A clean `turn.completed` — and a `completed` lifecycle —
+ * ends the story with no reason even when older budget errors linger.
+ * Otherwise the attribution kind maps to a bare code plus a synthesized
+ * fixed detail for the service-fixed kinds; `runtime_error` and
+ * unrecognized kinds carry no detail at all, so unknown provider errors
+ * stay a redacted generic and a sentinel secret or private path in the raw
+ * message can never cross the delegation seam.
  */
+/**
+ * Whether an event can carry the CURRENT terminal outcome for the reason
+ * seam. Session-scoped/retriable nonterminal `runtime.error`s are skipped
+ * with the canonical predicate shared with the stall watchdog — a codex
+ * deferred retry is not proof the turn is over, so it must not mask the
+ * genuine terminal behind it nor pose as one itself.
+ */
+function isDelegationTerminalEvent(event: Record<string, unknown>): boolean {
+  if (
+    event.method === 'turn.completed' ||
+    event.method === 'turn.aborted' ||
+    event.method === 'session.exited'
+  ) {
+    return true;
+  }
+  if (event.method !== 'runtime.error' && event.method !== 'runtime_error') {
+    return false;
+  }
+  return !isDeferredRetriableTurnError({
+    method: 'runtime.error',
+    provider:
+      typeof event.provider === 'string'
+        ? (event.provider as EngineId)
+        : undefined,
+    retriable:
+      typeof event.retriable === 'boolean' ? event.retriable : undefined,
+  });
+}
+
 export function delegatedTaskReason(
   session: Record<string, unknown>,
   events: Array<Record<string, unknown>> = [],
 ): DelegatedTaskReason | undefined {
-  const terminalCode = [...events]
-    .reverse()
-    .find(
-      (event) =>
-        (event.method === 'runtime.error' ||
-          event.method === 'runtime_error') &&
-        typeof event.code === 'string' &&
-        event.code,
-    )?.code as string | undefined;
+  // A clean success carries no reason: an older turn's budget code must
+  // never label it (root review 00:40 — observable wrong status, not style).
+  if (session.lifecycleState === 'completed') return undefined;
+  const reversed = [...events].reverse();
+  // The CURRENT outcome is the newest terminal event, not the newest budget
+  // code anywhere in history: a prior budget failure followed by a newer
+  // turn's terminal (or a still-running turn) must not reuse the old code.
+  const terminal = reversed.find(isDelegationTerminalEvent);
+  if (!terminal) return undefined;
+  // A clean completion ends the story even when older errors linger.
+  if (terminal.method === 'turn.completed') return undefined;
+  const terminalCode =
+    (terminal.method === 'runtime.error' ||
+      terminal.method === 'runtime_error') &&
+    typeof terminal.code === 'string' &&
+    terminal.code
+      ? (terminal.code as string)
+      : undefined;
   if (terminalCode && DELEGATED_BUDGET_REASONS[terminalCode]) {
+    // Scope the budget code to the latest turn: a budget error from a
+    // superseded turn (older than the newest turn.started, different turn
+    // id) is history, not the current outcome. When the start event aged
+    // out of the window there is nothing to scope against, so the newest
+    // terminal stands on its own (honest bounded behavior, documented on
+    // `delegatedTurnSupervision`).
+    const newestStartTurnId = reversed.find(
+      (event) => event.method === 'turn.started',
+    )?.turnId;
+    if (
+      typeof newestStartTurnId === 'string' &&
+      typeof terminal.turnId === 'string' &&
+      newestStartTurnId !== terminal.turnId
+    ) {
+      return undefined;
+    }
     return { ...DELEGATED_BUDGET_REASONS[terminalCode] };
   }
   const attribution =

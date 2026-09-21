@@ -345,6 +345,105 @@ describe('delegation supervision projection (#2269)', () => {
     expect(snapshot.supervision).toBeUndefined();
   });
 
+  test('a superseded turn budget never labels a later running turn', () => {
+    // Root review 00:40: the reason used to scan the newest budget code
+    // anywhere in history, so turn-1's idle expiry labeled turn-2 while it
+    // was still running. The code is now scoped to the latest turn.
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: observingSession('turn-2'),
+        events: [
+          turnStartedEvent('turn-1', museDeclaration('turn-1')),
+          {
+            method: 'runtime.error',
+            turnId: 'turn-1',
+            createdAt: '2026-09-20T22:30:01.000Z',
+            code: 'muse-turn-idle-timeout',
+            message: 'Muse turn was idle for 1800000ms and was terminated.',
+            retriable: false,
+          },
+          turnStartedEvent('turn-2', museDeclaration('turn-2')),
+        ],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.reason).toBeUndefined();
+    expect(snapshot.status).toBe('running');
+  });
+
+  test('a clean completion ends the story even with an older budget error', () => {
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: {
+          threadId: 'task:supervision-1',
+          lifecycleState: 'completed',
+          status: 'ready',
+        },
+        events: [
+          turnStartedEvent('turn-1', museDeclaration('turn-1')),
+          {
+            method: 'runtime.error',
+            turnId: 'turn-1',
+            createdAt: '2026-09-20T22:30:01.000Z',
+            code: 'muse-turn-timeout',
+            message: 'Muse did not finish the turn within 7200000ms.',
+            retriable: false,
+          },
+          {
+            method: 'turn.started',
+            turnId: 'turn-2',
+            createdAt: '2026-09-20T23:00:00.000Z',
+          },
+          {
+            method: 'turn.completed',
+            turnId: 'turn-2',
+            createdAt: '2026-09-20T23:01:00.000Z',
+            finishReason: 'stop',
+          },
+        ],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.reason).toBeUndefined();
+  });
+
+  test('a newer different failure masks the older budget code', () => {
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: {
+          ...observingSession('turn-2'),
+          lifecycleState: 'failed',
+          terminalAttribution: { kind: 'runtime_error' },
+        },
+        events: [
+          turnStartedEvent('turn-1', museDeclaration('turn-1')),
+          {
+            method: 'runtime.error',
+            turnId: 'turn-1',
+            createdAt: '2026-09-20T22:30:01.000Z',
+            code: 'muse-turn-idle-timeout',
+            message: 'Muse turn was idle for 1800000ms and was terminated.',
+            retriable: false,
+          },
+          turnStartedEvent('turn-2', museDeclaration('turn-2')),
+          {
+            method: 'runtime.error',
+            turnId: 'turn-2',
+            createdAt: '2026-09-20T23:30:01.000Z',
+            code: 'muse-exit-without-terminal',
+            message: 'Muse exited before reporting a terminal result.',
+            retriable: false,
+          },
+        ],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.reason).toEqual({ code: 'runtime_error' });
+  });
+
   test('the declaration is matched by observed turn id, not by latest start', () => {
     // A newer turn.started without a declaration must not shadow the
     // observed turn's own declaration: the match is by turnId identity.
