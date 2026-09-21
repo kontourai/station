@@ -258,12 +258,22 @@ export async function browserBrokerTamperProof() {
       };
     },
   };
+  let remoteDescriptionAttempted = false;
   const owner = api.createBrowserPionConnection({
     broker,
     applicationOrigin: lab.input.applicationOrigin,
     trustRecord: window.stationConnectionTrustRecord,
     trustStore: window.stationConnectionTrustStore,
     ice,
+    createPeer(configuration) {
+      const peer = new RTCPeerConnection(configuration);
+      const acceptRemote = peer.setRemoteDescription.bind(peer);
+      peer.setRemoteDescription = (...args) => {
+        remoteDescriptionAttempted = true;
+        return acceptRemote(...args);
+      };
+      return peer;
+    },
   });
   let refused = '';
   try {
@@ -278,6 +288,7 @@ export async function browserBrokerTamperProof() {
   return {
     tampered: tamperState.tampered,
     tamperedRefused: refused.length > 0,
+    remoteDescriptionAttempted,
     refusal: refused,
   };
 }

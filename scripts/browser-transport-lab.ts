@@ -1147,6 +1147,7 @@ try {
     );
     assert.equal(tamper.tampered, true, 'Tamper must alter a real answer');
     assert.equal(tamper.tamperedRefused, true, tamper.refusal);
+    assert.equal(tamper.remoteDescriptionAttempted, false);
     assert.match(tamper.refusal, /proof|refused|invalid/i);
     // The admitted Station-side peer actually selected relay transport:
     // read the live candidate pair now, not an early null snapshot.
@@ -1208,8 +1209,11 @@ try {
     await lab.withdraw();
     await assert.rejects(
       page.evaluate(browserBrokerReadStatus),
-      /broker_request_refused_401/,
+      // With the last lease withdrawn, CORS can hide the error response.
+      /broker_request_refused_401|TypeError: Failed to fetch/,
     );
+    // This independent HTTP control proves the exact backend refusal, so an
+    // unrelated network failure cannot satisfy the withdrawal check.
     await assert.rejects(lab.readLease(), /broker_request_refused_401/);
     brokerJourney = {
       ...(brokerJourney as Record<string, unknown>),
@@ -1341,20 +1345,32 @@ try {
     stationTurnTransport: peerAdapter === 'pion' ? 'tcp' : 'udp',
     captureBytes: captured.length,
     turnImage: TURN_IMAGE,
-    checks: [
-      'TURN relay selected at both peers',
-      'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
-      'Station signing identity restored from its private home before proof issuance',
-      'tampered proof refused before accepting the connection description',
-      'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
-      'browser-native DTLS connected',
-      applicationPion
-        ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
-        : 'application content echoed through encrypted data channel',
-      'fresh browser and peer reconnect using the same approved Station certificate',
-      'unapproved signaling fingerprint refused',
-      'substituted endpoint fails DTLS fingerprint verification',
-    ],
+    checks: selfHostedBroker
+      ? [
+          'separate broker CLI process serves metadata and signaling',
+          'actual browser CORS and routing-credential refusal',
+          'production Pion and browser transport carry authenticated Station application traffic',
+          'TURN relay candidates selected at both ends',
+          'broker lease renewed while application traffic continues',
+          'fresh peer reconnect preserves the approved Device and account continuation',
+          'tampered broker proof rejected before setRemoteDescription',
+          'cross-tab Device trust revocation refuses new admission',
+          'withdrawn routing credential refused by browser and exact HTTP control',
+        ]
+      : [
+          'TURN relay selected at both peers',
+          'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
+          'Station signing identity restored from its private home before proof issuance',
+          'tampered proof refused before accepting the connection description',
+          'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
+          'browser-native DTLS connected',
+          applicationPion
+            ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
+            : 'application content echoed through encrypted data channel',
+          'fresh browser and peer reconnect using the same approved Station certificate',
+          'unapproved signaling fingerprint refused',
+          'substituted endpoint fails DTLS fingerprint verification',
+        ],
     selfHostedBroker: brokerJourney ?? { status: 'not-run' },
     fullBroker: selfHostedBroker ? 'lab-composition' : 'not-implemented',
     productionKeyAdmission: 'not-implemented',
