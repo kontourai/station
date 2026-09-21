@@ -4,9 +4,9 @@ import { parseWorkspaceLayoutPaneId } from '@kontourai/station-contracts/workspa
 import {
   usePersonalLayoutsQuery,
   useProjectLayoutsQuery,
-  useProjectsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef } from 'react';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 
 /**
  * One reporter's batch: the surface ids it answers for and the titles it
@@ -97,7 +97,7 @@ function ProjectLayoutTitles({
   surfaceIds: readonly string[];
   onResolved: LayoutPaneTitleReport;
 }) {
-  const projects = useProjectsQuery();
+  const projects = useScopedProjectsQuery();
   const slug = useMemo(() => {
     const matches = (
       (projects.data ?? []) as readonly ProjectMetadata[]

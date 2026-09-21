@@ -9,7 +9,6 @@ import {
   useIntegrationsQuery,
   useMaterializeEngineAgentMutation,
   useModelConnectionsQuery,
-  useProjectsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -26,6 +25,7 @@ import {
 } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useAIEnrich } from '../../hooks/useAIEnrich';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
@@ -332,7 +332,7 @@ export function useAgentsViewModel({
     );
   }, [allAgents, search]);
 
-  const { data: knownProjects = [] } = useProjectsQuery() as {
+  const { data: knownProjects = [] } = useScopedProjectsQuery() as {
     data?: Array<{ slug: string }>;
   };
   // archive#3843: the rail's one fixing verb names the machine an engine would be

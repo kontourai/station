@@ -9,6 +9,15 @@ import type { AgentFormData } from '../views/agent-editor/types';
 
 let projects: any[] = [];
 
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectsQuery: () => ({
     data: projects,

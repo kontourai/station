@@ -3,10 +3,10 @@ import {
   WORKSPACE_BOARD_PANE_DESCRIPTOR,
 } from '@kontourai/station-board-pane/workspace-board-pane';
 import type { ProjectMetadata } from '@kontourai/station-contracts';
-import { useProjectsQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
 import { describeReadFailure, ErrorState, Skeleton } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { selectClientWorkspacePaneRenderer } from '../workspace-panes/workspacePaneRendererSelection';
 import { BoardWorkspacePane } from './board/BoardWorkspacePane';
 
@@ -47,7 +47,7 @@ export function ConsoleBoardView({
     isError,
     error,
     refetch,
-  } = useProjectsQuery();
+  } = useScopedProjectsQuery();
   const project = (projects as ProjectMetadata[]).find(
     (candidate) => candidate.slug === projectSlug,
   );

@@ -5,10 +5,10 @@ import {
   useKitLayoutQuery,
   useKitRegistryQuery,
   useProjectLayoutsQuery,
-  useProjectsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
 
@@ -83,7 +83,8 @@ export function KitCatalog() {
     error: projectionError,
     isLoading: projectionLoading,
   } = useKitLayoutQuery(selected?.contributionRef);
-  const { data: projects, isLoading: projectsLoading } = useProjectsQuery();
+  const { data: projects, isLoading: projectsLoading } =
+    useScopedProjectsQuery();
   const {
     data: projectLayouts,
     error: projectLayoutsError,

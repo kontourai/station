@@ -9,7 +9,6 @@ import {
   useKnowledgeStatusQuery,
   useProjectConversationsQuery,
   useProjectLayoutsQuery,
-  useProjectQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { useMemo, useReducer, useState } from 'react';
@@ -20,6 +19,7 @@ import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { useScopedProjectQuery } from '../contexts/ProjectsContext';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
@@ -56,7 +56,7 @@ export function ProjectPage({ slug }: { slug: string }) {
     isError: isProjectError,
     error: projectError,
     refetch: refetchProject,
-  } = useProjectQuery(slug);
+  } = useScopedProjectQuery(slug);
   const [projectRetrySeq, bumpProjectRetry] = useReducer(
     (n: number) => n + 1,
     0,

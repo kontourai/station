@@ -24,7 +24,7 @@ Serving points at the same database and provisions nothing:
 
 Connector and routing credentials are separate 256-bit secrets. Every request must match the credential direction, Station, enrollment, routing generation, and configured Origin. Browser preflight admits only an active configured Origin and the three required headers. Provisioning leaves a Station `offline`; an authenticated connector registration makes the current routing generation `online` for 30 seconds. `online` describes recent connector registration, not application readiness or permission. Registration is the presence heartbeat; lease renewal is separate. A composed supervisor must refresh both.
 
-This tranche provisions one operator-owned routing credential for one Station and browser Origin. It is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector lifecycle library below consumes this routing scope; its Pion and Station runtime composition remains separate. The broker cannot mint or replace independently approved connection-signing trust.
+This tranche provisions one operator-owned routing credential for one Station and browser Origin. It is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume this routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 
@@ -32,9 +32,13 @@ The service binds only to loopback. TLS termination, reverse-proxy hardening, pu
 
 ## Connector lifecycle library
 
-`SelfHostedBrokerClient` fixes one configured broker origin and refuses redirects, oversized responses, and response fields outside the v1 contract. `SelfHostedBrokerConnector` registers, renews by revision, polls at most 32 offers, answers once, and withdraws. Before reading or answering it requires a caller-owned current `ApprovedStationConnectionTrust` for the exact Station and enrollment, and rechecks that descriptor around asynchronous answer construction.
+`SelfHostedBrokerClient` fixes one configured broker origin and refuses redirects, oversized responses, and response fields outside the v1 contract. `SelfHostedBrokerConnector` serializes registration and renewal separately from one bounded offer-admission loop, so an in-flight peer handshake does not starve lease maintenance. It rechecks current Station/enrollment signing trust around asynchronous answer construction. Withdrawal retires both lanes, including compensation after an unconfirmed registration reply.
 
-This library does not launch a connector, integrate `StationRuntime`, open WebRTC, distribute routing credentials, enroll a Device, or approve a signing key. Its answer callback remains an uncomposed capability until the Pion adapter has a reviewed production owner.
+`createSelfHostedBrokerPionRuntime` composes that connector with the production Pion adapter and the protected application channel. It captures the exact trusted descriptor per peer, verifies the issued proof, bounds peer ownership, and gates application frames against current trust. Cleanup distinguishes an operational cancellation from confirmed process/file retirement. `StationRuntimeOptions.selfHostedBrokerConnector` is explicit opt-in and requires `virtualApplication`; startup waits for protected application activation, and broker cleanup participates in ordinary runtime shutdown without stranding the other services.
+
+The dedicated `@kontourai/station-connect/self-hosted-browser` entry point supplies the corresponding browser signaling, verified peer and encrypted Fetch transport. Its caller owns independently approved signing trust, routing-credential custody, ICE configuration, Device credentials and account continuations. It does not install a second SDK resolver or silently fall back to HTTP. See the [connection package](../../packages/connect/README.md) and the [free broker lab](local-collaboration-lab.md#separate-self-hosted-broker-and-production-browser-consumer).
+
+This composition does not distribute routing credentials, approve a new client signing key, enroll a Device, or grant account/Project access. Normal operator configuration and user-facing connection setup must supply those owners; fresh relay-only guest enrollment is not proven by the lab's approved fixture Device.
 
 ## HTTP control contract
 
@@ -60,5 +64,5 @@ current revision so a restarted connector can resume the existing valid lease;
 expired or withdrawn credentials require deliberate reprovisioning. Withdrawal
 retires local pending work even when its reply is lost. Provisional answer
 resources must provide bounded cleanup on publication failure or trust retirement.
-Successful application-channel ownership belongs to the future Station/Pion
+Successful application-channel ownership belongs to the Station/Pion
 composition. Broker withdrawal is not account or Device revocation.
