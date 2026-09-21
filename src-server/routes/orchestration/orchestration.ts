@@ -438,6 +438,9 @@ export const delegateTaskSchema = z.object({
    */
   attemptId: z
     .string()
+    // 128 = 1 + 127 from the charset regex below. The explicit .max() keeps
+    // the bound machine-visible to the seam walker (regex length is not).
+    .max(128)
     .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/)
     .optional(),
 });

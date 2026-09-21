@@ -113,6 +113,8 @@ describe('public handshake capability flags (station#1095)', () => {
       sessionEventWindow: true,
       scopedPairing: true,
       fleetInference: true,
+      portableExecutionOffers: true,
+      delegationAttemptClaims: true,
     });
   });
 
@@ -139,6 +141,8 @@ describe('public handshake capability flags (station#1095)', () => {
       sessionEventWindow: true,
       scopedPairing: true,
       fleetInference: true,
+      portableExecutionOffers: true,
+      delegationAttemptClaims: true,
     });
     for (const buildIdentityField of [
       'build',

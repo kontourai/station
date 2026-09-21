@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { ApplicationChannel } from '@kontourai/station-connect/application-channel';
 import { startPionApplicationAdapter } from '../../src-server/services/connections/pion-application-adapter.js';
 export async function startPionFixture(input: {
@@ -15,6 +15,10 @@ export async function startPionFixture(input: {
 }) {
   if (input.offer.type !== 'offer')
     throw new Error('Pion fixture requires an offer');
+  // A missing build must be diagnosed as a missing build, not as a missing
+  // cert file: the binary check runs before any cert/key file read.
+  if (!existsSync(input.executable))
+    throw new Error('Build the Pion fixture before running --peer=pion');
   return await startPionApplicationAdapter({
     executable: input.executable,
     profile: input.application ? 'application' : 'diagnosticEcho',

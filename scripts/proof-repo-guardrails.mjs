@@ -5151,7 +5151,10 @@ const projectSettingsView = readRequiredSource(
 if (projectSettingsView.includes('fetch(')) {
   errors.push('ProjectSettingsView must not issue raw fetch() calls.');
 }
-if (!projectSettingsView.includes('useProjectQuery')) {
+if (
+  !projectSettingsView.includes('useProjectQuery') &&
+  !projectSettingsView.includes('useScopedProjectQuery')
+) {
   errors.push('ProjectSettingsView must use shared SDK project hooks.');
 }
 for (const requiredImport of [

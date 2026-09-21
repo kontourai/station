@@ -748,6 +748,15 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
+    // Establish the persistence prerequisite before rotating. Verification
+    // renders before the async persister writes; rotating immediately can
+    // legitimately retire A before any shelf was created, which reads as a
+    // missing shelf under load.
+    await waitFor(() =>
+      expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
+        true,
+      ),
+    );
     const callsBefore = harness.observationCalls.length;
 
     // Same endpoint, same row, new credential through the REAL Connections
