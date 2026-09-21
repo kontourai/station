@@ -1093,7 +1093,8 @@ function classifySnapshot(
 }
 
 export async function waitOnDelegatedTask(input: {
-  apiBase: string;
+  /** Required only when the default `observe` is used; injected observers ignore it. */
+  apiBase?: string;
   taskId: string;
   environmentId?: string;
   timeoutMs: number;
@@ -1105,8 +1106,13 @@ export async function waitOnDelegatedTask(input: {
   const signal = deps.signal;
   const observe =
     deps.observe ??
-    ((budgetMs: number) =>
-      observeDelegatedTask(
+    ((budgetMs: number) => {
+      if (!input.apiBase) {
+        throw new Error(
+          'apiBase is required when no observe override is injected.',
+        );
+      }
+      return observeDelegatedTask(
         input.apiBase,
         input.taskId,
         input.environmentId
@@ -1116,7 +1122,8 @@ export async function waitOnDelegatedTask(input: {
         // read cannot silently outwait the deadline (explicit timeoutMs wins
         // over the host default — see sdk/client/http.ts).
         { timeoutMs: budgetMs },
-      ));
+      );
+    });
   const sleep =
     deps.sleep ??
     ((ms: number) => {
