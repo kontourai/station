@@ -2839,6 +2839,7 @@ describe('OrchestrationService', () => {
         cwd,
         portableProjectId: 'prj_shared',
         resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
       },
     });
 
@@ -2901,6 +2902,7 @@ describe('OrchestrationService', () => {
               cwd: tmp,
               portableProjectId: 'prj_shared',
               resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
             },
           },
         },
@@ -3068,6 +3070,7 @@ describe('OrchestrationService', () => {
           portableExecutionConsent: {
             portableProjectId: 'prj_shared',
             resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
           },
         },
       );
@@ -3101,6 +3104,171 @@ describe('OrchestrationService', () => {
       if (reattached.status !== 'accepted') throw new Error(reattached.message);
       expect(claude.startSession).toHaveBeenCalledTimes(1);
       expect(admission.recheck).toHaveBeenCalled();
+    });
+
+    test('a portable-marked source refuses handoff before any marker or provider effect', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-src',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-handoff-src', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      const request = {
+        agentId: 'agent-b',
+        environmentId: 'environment-a',
+        connectionId: 'claude',
+        idempotencyKey: 'portable-handoff-a',
+        messageDigest: 'message-a',
+      };
+      await expect(
+        service.prepareConversationHandoff(
+          'portable-handoff-src',
+          personalReadAuthority('other-user'),
+          request,
+        ),
+      ).rejects.toThrow('not found');
+      let refusal: unknown;
+      try {
+        await service.prepareConversationHandoff(
+          'portable-handoff-src',
+          INTERNAL_SESSION_READ_SCOPE,
+          request,
+        );
+      } catch (error) {
+        refusal = error;
+      }
+      expect(refusal).toBeInstanceOf(ReceiverExecutionRefusal);
+      expect(refusal).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      // No marker was reserved: the original history is intact and a status
+      // read finds nothing — and no child/provider invocation ran.
+      await expect(
+        service.readConversationHandoffStatus(
+          'portable-handoff-src',
+          request.idempotencyKey,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toBeNull();
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a pre-reserved handoff child of a portable source refuses its start before the adapter', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-pre',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-handoff-pre', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // A marker reserved before the guard (or before offer withdrawal)
+      // must still fail closed at the child start — never execute as an
+      // unmarked legacy session.
+      eventStore.reserveConversationHandoff({
+        conversationId: 'portable-handoff-pre',
+        predecessorSessionId: 'portable-handoff-pre',
+        sessionId: 'portable-handoff-pre:child',
+        idempotencyKey: 'portable-handoff-pre-key',
+        targetAgentId: 'agent-b',
+        targetEnvironmentId: 'environment-a',
+        messageDigest: 'message-a',
+        createdAt: new Date().toISOString(),
+      });
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-pre:child',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('ordinary legacy control: an unmarked source still reserves its handoff', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const root = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'legacy-handoff-src',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (root.status !== 'accepted') throw new Error(root.message);
+      eventStore.appendEvent({
+        eventId: 'legacy-handoff-src-complete',
+        provider: 'claude',
+        threadId: 'legacy-handoff-src',
+        sessionId: 'legacy-handoff-src',
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-24T01:00:00.000Z',
+      } as CanonicalRuntimeEvent);
+      const prepared = await service.prepareConversationHandoff(
+        'legacy-handoff-src',
+        INTERNAL_SESSION_READ_SCOPE,
+        {
+          agentId: 'agent-b',
+          environmentId: 'environment-a',
+          connectionId: 'claude',
+          idempotencyKey: 'legacy-handoff-a',
+          messageDigest: 'message-a',
+        },
+      );
+      expect(prepared.marker.predecessorSessionId).toBe('legacy-handoff-src');
+      expect(typeof prepared.marker.sessionId).toBe('string');
     });
 
     test('a rebind that lands while the reattach is queued refuses', async () => {
@@ -3162,6 +3330,7 @@ describe('OrchestrationService', () => {
               cwd: tmp,
               portableProjectId: 'prj_shared',
               resourceId: 'git.example/acme/repo',
+              localProjectId: 'local-project-1',
             },
           },
         },
@@ -3206,6 +3375,7 @@ describe('OrchestrationService', () => {
           portableExecutionConsent: {
             portableProjectId: 'prj_shared',
             resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
           },
         },
       );
@@ -3263,6 +3433,7 @@ describe('OrchestrationService', () => {
       const consent = {
         portableProjectId: 'prj_shared',
         resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
       };
       const started = await service.startSessionInternal(
         {
@@ -3390,6 +3561,7 @@ describe('OrchestrationService', () => {
           portableExecutionConsent: {
             portableProjectId: 'prj_shared',
             resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
           },
         },
       );
@@ -3497,6 +3669,7 @@ describe('OrchestrationService', () => {
           portableExecutionConsent: {
             portableProjectId: 'prj_shared',
             resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
           },
         },
       );
@@ -3522,6 +3695,7 @@ describe('OrchestrationService', () => {
                 cwd: tmp,
                 portableProjectId: 'prj_other',
                 resourceId: 'git.example/other/repo',
+                localProjectId: 'local-project-1',
               },
             },
           },
@@ -3609,6 +3783,7 @@ describe('OrchestrationService', () => {
           portableExecutionConsent: {
             portableProjectId: 'prj_shared',
             resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
           },
         },
       );
@@ -3646,6 +3821,7 @@ describe('OrchestrationService', () => {
               cwd: tmp,
               portableProjectId: 'prj_other',
               resourceId: 'git.example/other/repo',
+              localProjectId: 'local-project-1',
             },
           },
         },
@@ -3757,6 +3933,7 @@ describe('OrchestrationService', () => {
           portableExecutionConsent: {
             portableProjectId: 'prj_shared',
             resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
           },
         },
       );
@@ -3834,6 +4011,7 @@ describe('OrchestrationService', () => {
           portableExecutionConsent: {
             portableProjectId: 'prj_shared',
             resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
           },
         },
       );
@@ -3901,6 +4079,399 @@ describe('OrchestrationService', () => {
       expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
     });
 
+    test('a pre-incarnation marker fails closed stale on a turn, retaining history', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-legacy-marker',
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // A marker minted before the ORIGINAL-incarnation field existed:
+      // the association cannot be proven, so the turn fails closed with
+      // the named stale outcome — never silently upgraded — with no
+      // provider effect.
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'portable-legacy-marker',
+        eventId: 'evt-portable-legacy-marker',
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: 'portable-legacy-marker',
+        metadata: {
+          userId: 'owner-user',
+          [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+          },
+        },
+      } as CanonicalRuntimeEvent);
+      const refused = await service
+        .dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-legacy-marker', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: admittedFor(
+              'portable-legacy-marker',
+              tmp,
+            ),
+          },
+        )
+        .catch((error) => error);
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_consent_stale',
+      });
+      expect(refused.outcome).toBeUndefined();
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // History is retained: the session still reads back.
+      const reread = await service.readSession('portable-legacy-marker');
+      expect(reread?.session.threadId).toBe('portable-legacy-marker');
+    });
+
+    test('a replaced incarnation refuses unavailable even with a fresh admission', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-replaced',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-replaced', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Same path, successor Project record: the persisted incarnation no
+      // longer matches the freshly admitted ORIGINAL — a different
+      // association hiding under the same checkout refuses.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-replaced', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {},
+              admitted: {
+                threadId: 'portable-replaced',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_shared',
+                resourceId: 'git.example/acme/repo',
+                localProjectId: 'local-project-9',
+              },
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: 'receiver_execution_unavailable',
+      });
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    });
+
+    test('a withdrawal during turn preparation refuses cleanly, never indeterminate', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-mid-prep',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-mid-prep', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // The mint-time recheck passes; the offer dies during the turn's
+      // own preparation awaits (native-memory/model-selector). The
+      // post-preparation recheck refuses BEFORE the provider effect —
+      // and the refusal keeps its closed code instead of converting to
+      // an indeterminate claim the provider may have started.
+      let rechecks = 0;
+      const refused = await service
+        .dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: 'portable-mid-prep', input: 'hello' },
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {
+                rechecks += 1;
+                if (rechecks > 1)
+                  throw new ReceiverExecutionRefusal(
+                    'receiver_execution_not_offered',
+                    'This Station does not currently offer execution for the requested Project resource.',
+                  );
+              },
+              admitted: {
+                threadId: 'portable-mid-prep',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_shared',
+                resourceId: 'git.example/acme/repo',
+                localProjectId: 'local-project-1',
+              },
+            },
+          },
+        )
+        .catch((error) => error);
+      expect(rechecks).toBeGreaterThanOrEqual(2);
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      expect(refused.outcome).toBeUndefined();
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // The refusal retires only its own dispatch row: a subsequent
+      // EXPLICIT continuation with a fresh admission dispatches and turns
+      // normally — the thread is not bricked and no engine start was ever
+      // claimed for the refused work.
+      await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-mid-prep', input: 'hello again' },
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor('portable-mid-prep', tmp),
+        },
+      );
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a refusal-shaped adapter error after invocation retains uncertainty and blocks redispatch', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const threadId = 'portable-post-invocation';
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(threadId, tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      let effects = 0;
+      claude.sendTurn.mockImplementationOnce(async () => {
+        effects += 1;
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_not_offered',
+          'refusal after invocation',
+        );
+      });
+      const send = (clientTurnId: string) =>
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: 'perform the action',
+              clientTurnId,
+            },
+          },
+          undefined,
+          { receiverExecutionAdmission: admittedFor(threadId, tmp) },
+        );
+      await expect(send('original-portable-action')).rejects.toMatchObject({
+        code: 'foreground_message_indeterminate',
+      });
+      expect(effects).toBe(1);
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+      ).toEqual({ kind: 'available', active: true });
+      await expect(send('new-portable-action')).rejects.toBeDefined();
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a portable request answer runs only under a fresh admission', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-respond',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-respond', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Positive control: the admitted answer reaches the adapter.
+      await service.dispatchWithReceipt(
+        {
+          type: 'respondToRequest',
+          threadId: 'portable-respond',
+          requestId: 'request-1',
+          decision: 'accept',
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor('portable-respond', tmp),
+        },
+      );
+      expect(claude.respondToRequest).toHaveBeenCalledWith(
+        'portable-respond',
+        'request-1',
+        'accept',
+      );
+      // Withdrawal between mint and the response effect refuses with no
+      // adapter call.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'respondToRequest',
+            threadId: 'portable-respond',
+            requestId: 'request-2',
+            decision: 'accept',
+          },
+          undefined,
+          {
+            receiverExecutionAdmission: {
+              recheck: async () => {
+                throw new ReceiverExecutionRefusal(
+                  'receiver_execution_not_offered',
+                  'This Station does not currently offer execution for the requested Project resource.',
+                );
+              },
+              admitted: {
+                threadId: 'portable-respond',
+                projectSlug: 'local',
+                cwd: tmp,
+                portableProjectId: 'prj_shared',
+                resourceId: 'git.example/acme/repo',
+                localProjectId: 'local-project-1',
+              },
+            },
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+      expect(claude.respondToRequest).toHaveBeenCalledTimes(1);
+      // No admission at all on the marked thread refuses the same way.
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'respondToRequest',
+            threadId: 'portable-respond',
+            requestId: 'request-3',
+            decision: 'accept',
+          },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+      expect(claude.respondToRequest).toHaveBeenCalledTimes(1);
+    });
+
+    test('cold recovery under a fresh admission materializes and turns', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-cold-admitted',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-cold-admitted',
+            tmp,
+          ),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // Boot: a FRESH service over the SAME durable store, with a FRESH
+      // adapter holding no live engines — the restored session is dormant.
+      const coldClaude = new FakeAdapter('claude');
+      const cold = new RawOrchestrationService({
+        adapterRegistry: createRegistry([coldClaude]),
+        eventBus: new EventBus(),
+        eventStore,
+        listProjects: () => configuredProjects,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      // The fresh admission authorizes the spawn it needs: the engine
+      // materializes and the turn flows.
+      await cold.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'portable-cold-admitted', input: 'hello' },
+        },
+        undefined,
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-cold-admitted',
+            tmp,
+          ),
+        },
+      );
+      expect(coldClaude.startSession).toHaveBeenCalledTimes(1);
+      expect(coldClaude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
     test('deletion retires the cached marker; a recreated thread id starts clean', async () => {
       // The default fake registers its sessions (the cwd-echo overrides in
       // the association tests above deliberately do not, so stop resolution
@@ -3909,6 +4480,7 @@ describe('OrchestrationService', () => {
       const consent = {
         portableProjectId: 'prj_shared',
         resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
       };
       const marked = await service.startSessionInternal(
         {
@@ -16633,6 +17205,95 @@ describe('OrchestrationService', () => {
     expect(eventStore.readSessions()).toEqual([]);
   });
 
+  test('oversized provider output cannot fail another active turn and later terminals still settle', async () => {
+    const events = new AsyncEventQueue<CanonicalRuntimeEvent>(16);
+    (claude as any).events = events;
+    const isolated = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    isolated.initialize();
+    try {
+      for (const threadId of ['oversized-owner', 'unrelated-owner']) {
+        await isolated.dispatch({
+          type: 'startSession',
+          input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
+        });
+        events.push({
+          eventId: `start-${threadId}`,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.started',
+          turnId: `turn-${threadId}`,
+        });
+        await vi.waitFor(async () =>
+          expect(await isolated.readSession(threadId)).toMatchObject({
+            session: { lifecycleState: 'running' },
+          }),
+        );
+      }
+      events.push({
+        eventId: 'oversized-result',
+        provider: 'claude',
+        threadId: 'oversized-owner',
+        createdAt: new Date().toISOString(),
+        method: 'tool.completed',
+        turnId: 'turn-oversized-owner',
+        toolCallId: 'huge-tool',
+        itemId: 'huge-tool',
+        toolName: 'read_file',
+        status: 'success',
+        output: 'x'.repeat(100000),
+      });
+      await vi.waitFor(() =>
+        expect(
+          eventStore
+            .listEvents('unrelated-owner')
+            .some(
+              (entry) =>
+                entry.payload.method === 'runtime.warning' &&
+                entry.payload.code === 'adapter-event-stream-interrupted',
+            ),
+        ).toBe(true),
+      );
+      const unrelatedWarning = eventStore
+        .listEvents('unrelated-owner')
+        .find((entry) => entry.payload.method === 'runtime.warning');
+      expect(JSON.stringify(unrelatedWarning?.payload)).not.toContain(
+        'oversized-owner',
+      );
+      for (const threadId of ['oversized-owner', 'unrelated-owner']) {
+        expect(await isolated.readSession(threadId)).toMatchObject({
+          session: { lifecycleState: 'running' },
+        });
+        expect(
+          eventStore
+            .listEvents(threadId)
+            .some((entry) => entry.payload.method === 'runtime.error'),
+        ).toBe(false);
+        events.push({
+          eventId: `complete-${threadId}`,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.completed',
+          turnId: `turn-${threadId}`,
+        });
+        await vi.waitFor(async () =>
+          expect(await isolated.readSession(threadId)).toMatchObject({
+            session: { lifecycleState: 'completed' },
+          }),
+        );
+      }
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      await isolated.shutdown();
+    }
+  });
+
   test('restarts adapter event consumption after a bounded queue overflow', async () => {
     const events = new AsyncEventQueue<CanonicalRuntimeEvent>(1);
     (claude as any).events = events;
@@ -16676,8 +17337,8 @@ describe('OrchestrationService', () => {
       eventStore
         .listEvents('overflow-thread')
         .map((event) => event.payload)
-        .find((event) => event.method === 'runtime.error'),
-    ).toMatchObject({ retriable: true });
+        .find((event) => event.method === 'runtime.warning'),
+    ).toMatchObject({ code: 'adapter-event-stream-interrupted' });
 
     expect(events.push(runtimeEvent('after-overflow'))).toBe(true);
     await vi.waitFor(() =>
@@ -16756,8 +17417,10 @@ describe('OrchestrationService', () => {
     const contentionError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .find((event) => event.method === 'runtime.error');
-    expect(contentionError).toMatchObject({ retriable: true });
+      .find((event) => event.method === 'runtime.warning');
+    expect(contentionError).toMatchObject({
+      code: 'adapter-event-stream-interrupted',
+    });
     expect((contentionError as { message?: string })?.message).toContain(
       'Orchestration event store is locked (orchestration.sqlite)',
     );
@@ -16787,19 +17450,19 @@ describe('OrchestrationService', () => {
         eventStore
           .listEvents('store-busy-thread')
           .map((event) => event.payload)
-          .filter((event) => event.method === 'runtime.error'),
+          .filter((event) => event.method === 'runtime.warning'),
       ).toHaveLength(2),
     );
     const errcodeOnlyError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .filter((event) => event.method === 'runtime.error')
+      .filter((event) => event.method === 'runtime.warning')
       .at(-1);
     expect((errcodeOnlyError as { message?: string })?.message).toContain(
       'Orchestration event store is locked (orchestration.sqlite)',
     );
 
-    // Control: a non-BUSY stream failure keeps the agent-connection wording.
+    // Raw stream errors stay in operator logs, not every affected transcript.
     vi.spyOn(eventStore, 'listSessionProjectionEvents').mockImplementationOnce(
       () => {
         throw new Error('adapter stream exploded');
@@ -16811,16 +17474,19 @@ describe('OrchestrationService', () => {
         eventStore
           .listEvents('store-busy-thread')
           .map((event) => event.payload)
-          .filter((event) => event.method === 'runtime.error'),
+          .filter((event) => event.method === 'runtime.warning'),
       ).toHaveLength(3),
     );
     const genericError = eventStore
       .listEvents('store-busy-thread')
       .map((event) => event.payload)
-      .filter((event) => event.method === 'runtime.error')
+      .filter((event) => event.method === 'runtime.warning')
       .at(-1);
-    expect((genericError as { message?: string })?.message).toBe(
-      'Agent connection error: adapter stream exploded',
+    expect((genericError as { message?: string })?.message).toContain(
+      'Agent event observation was interrupted.',
+    );
+    expect(JSON.stringify(genericError)).not.toContain(
+      'adapter stream exploded',
     );
     await isolated.shutdown();
   });
@@ -16871,7 +17537,7 @@ describe('OrchestrationService', () => {
         .spyOn(eventStore, 'appendEvent')
         .mockImplementation((event) => {
           if (
-            event.method === 'runtime.error' &&
+            event.method === 'runtime.warning' &&
             event.threadId === 'surfacing-blocked-thread'
           ) {
             throw Object.assign(new Error('database is locked'), {
@@ -16906,13 +17572,13 @@ describe('OrchestrationService', () => {
           eventStore
             .listEvents('surfacing-healthy-thread')
             .map((event) => event.payload)
-            .filter((event) => event.method === 'runtime.error'),
+            .filter((event) => event.method === 'runtime.warning'),
         ).toHaveLength(1),
       );
       const healthyError = eventStore
         .listEvents('surfacing-healthy-thread')
         .map((event) => event.payload)
-        .find((event) => event.method === 'runtime.error');
+        .find((event) => event.method === 'runtime.warning');
       expect((healthyError as { message?: string })?.message).toContain(
         'Orchestration event store is locked (orchestration.sqlite)',
       );

@@ -182,9 +182,12 @@ export function FirstRunHomeChapter() {
   // ERROR, so a status query that fails lets the run open rather than
   // stranding it, which is the RT-02 failure mode.
   const { isFetching: systemStatusUnconfirmed } = useSystemStatus();
-  // Whether this run has a disclosure to make. The SAME query the standalone
-  // modal reads (React Query dedupes on the key), so the two cannot disagree
-  // about whether there is anything outstanding. `data` is only read for the
+  // Whether this run has a disclosure to make. The recovery gate's
+  // standalone modal reads through its own identity-scoped key (a
+  // same-origin rotation must commit pending, never the previous
+  // authority's inventory), so the two are separate requests that can
+  // briefly disagree mid-transition — and converge on the same server
+  // answer. `data` is only read for the
   // inventory revision a dismissal is recorded against.
   const {
     settled: disclosureSettled,

@@ -984,10 +984,26 @@ export function createOrchestrationRoutes(
       input: DelegatedTaskEventsRequest,
     ) => Promise<unknown>;
     continueDelegatedTask?: (
-      input: ContinueDelegatedTaskRequest,
+      input: ContinueDelegatedTaskRequest & {
+        /**
+         * #484 continuation: the trusted route-bound portable mint
+         * factory, composed by the continue route. Server-only; never
+         * public JSON.
+         */
+        authorizeReceiverExecution?: (workspace: {
+          portableProjectId: string;
+          resourceId: string;
+        }) => Promise<ReceiverExecutionAdmission>;
+      },
     ) => Promise<unknown>;
     respondToDelegatedTaskRequest?: (
-      input: RespondToDelegatedTaskRequest,
+      input: RespondToDelegatedTaskRequest & {
+        /** Same trusted mint factory as continue. */
+        authorizeReceiverExecution?: (workspace: {
+          portableProjectId: string;
+          resourceId: string;
+        }) => Promise<ReceiverExecutionAdmission>;
+      },
     ) => Promise<unknown>;
     interruptDelegatedTask?: (
       input: InterruptDelegatedTaskRequest,
@@ -1803,6 +1819,26 @@ export function createOrchestrationRoutes(
           },
           403,
         );
+      // #484 continuation: a portable refusal raised INSIDE the
+      // provider-effect path arrives wrapped (the dispatch error carries
+      // the closed code, never raw internals) — answer the same exact
+      // 403 rather than degrading it into a 400.
+      const wrappedCode = errorCode(error);
+      if (
+        wrappedCode &&
+        Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, wrappedCode)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              RECEIVER_EXECUTION_REFUSAL_COPY[
+                wrappedCode as ReceiverExecutionRefusal['code']
+              ],
+            code: wrappedCode,
+          },
+          403,
+        );
       return c.json(
         {
           success: false,
@@ -1936,23 +1972,61 @@ export function createOrchestrationRoutes(
       }
       try {
         const { principal, userId } = resolveActorPrincipal(deps, c);
+        // #484 continuation: the trusted route-bound mint factory for a
+        // portable follow-up — captured before any await, bound to the
+        // CURRENT request credential. The tool mints through it ONLY when
+        // this Station is the actual local executor of a marked portable
+        // thread (from that thread's OWN persisted marker, never body
+        // ids); a forwarding sender never invokes it. Server-only: a
+        // function cannot cross public JSON, and the follow-up body
+        // carries no portable ids at all — so no new public intent or
+        // capability negotiation was needed: the receiver distinguishes
+        // portable from legacy purely by its own persisted marker, and a
+        // forged or omitted intent cannot bypass the marker's guard.
+        const authorizeReceiverExecution = deps.authorizeReceiverExecution
+          ? (workspace: { portableProjectId: string; resourceId: string }) =>
+              deps.authorizeReceiverExecution!(
+                workspace,
+                () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+              )
+          : undefined;
         const data = await deps.continueDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),
           userId,
           principal,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
+          // No-onward-hop + sender authority, from the verified
+          // credential — never body/userId. The follow-up body carries
+          // no portable signal, so both ride every follow-up: the tool
+          // enforces the hop guard and the post-resolution currency
+          // probe before any outbound forward.
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          isRequestAuthorityCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
         return c.json({ success: true, data });
       } catch (error) {
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.
-        if (error instanceof ReceiverExecutionRefusal)
+        // Same wrapped-code mapping as the create path.
+        const portableRefusal =
+          error instanceof ReceiverExecutionRefusal
+            ? error.code
+            : (() => {
+                const wrappedCode = errorCode(error);
+                return wrappedCode &&
+                  Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, wrappedCode)
+                  ? (wrappedCode as ReceiverExecutionRefusal['code'])
+                  : undefined;
+              })();
+        if (portableRefusal)
           return c.json(
             {
               success: false,
-              error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
-              code: error.code,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[portableRefusal],
+              code: portableRefusal,
             },
             403,
           );
@@ -1973,22 +2047,46 @@ export function createOrchestrationRoutes(
       }
       try {
         const { principal, userId } = resolveActorPrincipal(deps, c);
+        // Same trusted mint factory as the continue route.
+        const authorizeReceiverExecution = deps.authorizeReceiverExecution
+          ? (workspace: { portableProjectId: string; resourceId: string }) =>
+              deps.authorizeReceiverExecution!(
+                workspace,
+                () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+              )
+          : undefined;
         const data = await deps.respondToDelegatedTaskRequest({
           ...getBody(c),
           taskId: param(c, 'taskId'),
           userId,
           principal,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
+          // Same verified-caller composition as the continue route.
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          isRequestAuthorityCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
         return c.json({ success: true, data });
       } catch (error) {
         // #484 phase A: same 403 mapping as the create and continue paths.
-        if (error instanceof ReceiverExecutionRefusal)
+        // Same wrapped-code mapping as the create path.
+        const portableRefusal =
+          error instanceof ReceiverExecutionRefusal
+            ? error.code
+            : (() => {
+                const wrappedCode = errorCode(error);
+                return wrappedCode &&
+                  Object.hasOwn(RECEIVER_EXECUTION_REFUSAL_COPY, wrappedCode)
+                  ? (wrappedCode as ReceiverExecutionRefusal['code'])
+                  : undefined;
+              })();
+        if (portableRefusal)
           return c.json(
             {
               success: false,
-              error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
-              code: error.code,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[portableRefusal],
+              code: portableRefusal,
             },
             403,
           );

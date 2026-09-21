@@ -111,6 +111,22 @@ export interface ProjectReadQueryConfig<T> extends QueryConfig<T> {
   requestScope?: ApiRequestScope;
   /** Fail closed when the host has not established a current authority scope. */
   requireRequestScope?: boolean;
+  /**
+   * #481 stable data identity, distinct from ephemeral request liveness.
+   * When a non-empty durable id is supplied (the UI passes its verified
+   * authority namespace), the QUERY KEY uses it instead of the live
+   * `authorityKey` segment — which embeds the per-tab activation epoch and
+   * credential generation and therefore can never match a reloaded tab's
+   * persisted snapshot. The WIRE scope is untouched: dispatch and body-read
+   * guards still run against the live captured scope, and `isCurrent`/SDK
+   * authority equality are not weakened. Reads and the reorder mutation MUST
+   * pass the same durable id for one authority, or they address different
+   * entries (safe, but split). Post-repair freshness stays owned by
+   * invalidation (`useInvalidateCachesOnConnectionSwitch` keys on
+   * credential state), not by key churn. Omitted/empty ⇒ legacy live-key
+   * behavior, byte-for-byte.
+   */
+  durableAuthorityId?: string;
 }
 
 /**
@@ -119,11 +135,35 @@ export interface ProjectReadQueryConfig<T> extends QueryConfig<T> {
  * entry no reader watches. Scalar segments only — react-query hashes them
  * structurally, so the same authority always resolves to the same entry.
  */
-function scopedProjectsListKey(requestScope: {
-  apiBase: string;
-  authorityKey: string;
-}): (string | number)[] {
-  return ['projects', 'list', requestScope.apiBase, requestScope.authorityKey];
+function scopedProjectsListKey(
+  requestScope: {
+    apiBase: string;
+    authorityKey: string;
+  },
+  durableAuthorityId?: string,
+): (string | number)[] {
+  return [
+    'projects',
+    'list',
+    requestScope.apiBase,
+    stableAuthoritySegment(requestScope.authorityKey, durableAuthorityId),
+  ];
+}
+
+/**
+ * The key segment that names WHOSE data this is. A live `authorityKey`
+ * (per-tab epoch, credential generation) is correct for dispatch guards and
+ * useless for durable identity; a verified durable id survives reloads.
+ * An empty id can never become a segment — that would merge every authority
+ * into one entry — so it falls back to the live key.
+ */
+function stableAuthoritySegment(
+  authorityKey: string,
+  durableAuthorityId: string | undefined,
+): string {
+  return typeof durableAuthorityId === 'string' && durableAuthorityId.length > 0
+    ? durableAuthorityId
+    : authorityKey;
 }
 
 /** Snapshot of a validated request scope; never retains caller-owned objects. */
@@ -147,7 +187,7 @@ export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
   const queryKey = unavailable
     ? ['projects', 'list', 'unavailable']
     : scoped
-      ? scopedProjectsListKey(requestScope)
+      ? scopedProjectsListKey(requestScope, config?.durableAuthorityId)
       : ['projects'];
   return useApiQuery(
     queryKey,
@@ -183,7 +223,10 @@ export function useProjectQuery(
           slug,
           'detail',
           requestScope.apiBase,
-          requestScope.authorityKey,
+          stableAuthoritySegment(
+            requestScope.authorityKey,
+            config?.durableAuthorityId,
+          ),
         ]
       : ['projects', slug];
   return useApiQuery(
@@ -635,6 +678,13 @@ export interface ReorderProjectsInput {
   requestScope?: ApiRequestScope;
   /** Fail closed when no current authority scope is captured. */
   requireRequestScope?: boolean;
+  /**
+   * #481 stable data identity for the optimistic/rollback/settle cache key.
+   * MUST equal the `durableAuthorityId` the list reader used for this
+   * authority, or the reorder addresses a different entry than the reader
+   * watches. The request itself still travels on the live `requestScope`.
+   */
+  durableAuthorityId?: string;
 }
 
 export type ReorderProjectsVariables = string[] | ReorderProjectsInput;
@@ -642,15 +692,26 @@ export type ReorderProjectsVariables = string[] | ReorderProjectsInput;
 interface CapturedReorder {
   order: string[];
   scope: CapturedProjectScope | undefined;
+  durableAuthorityId: string | undefined;
 }
 
 function captureReorderInput(
   variables: ReorderProjectsVariables,
 ): CapturedReorder {
-  if (Array.isArray(variables)) return { order: variables, scope: undefined };
+  if (Array.isArray(variables))
+    return {
+      order: variables,
+      scope: undefined,
+      durableAuthorityId: undefined,
+    };
   return {
     order: variables.order,
     scope: captureProjectScope(variables.requestScope),
+    durableAuthorityId:
+      typeof variables.durableAuthorityId === 'string' &&
+      variables.durableAuthorityId.length > 0
+        ? variables.durableAuthorityId
+        : undefined,
   };
 }
 
@@ -683,6 +744,13 @@ function captureReorderVariables<TVariables extends ReorderProjectsVariables>(
   // Pin the fail-closed contract: unsetting it on the caller's object
   // mid-flight must not enable an ambient fallback.
   if (input.requireRequestScope === true) captured.requireRequestScope = true;
+  // Pin the stable key the same way: unsetting or swapping the durable id
+  // mid-flight must not retarget the optimistic write/rollback/settle.
+  if (
+    typeof input.durableAuthorityId === 'string' &&
+    input.durableAuthorityId.length > 0
+  )
+    captured.durableAuthorityId = input.durableAuthorityId;
   const scope = captureProjectScope(input.requestScope);
   if (scope) captured.requestScope = scope;
   return captured as TVariables;
@@ -818,7 +886,8 @@ export function useReorderProjectsMutation<
       return reorderProjectsRaw(apiBase, order);
     },
     onMutate: async (variables: TVariables) => {
-      const { order, scope } = captureReorderInput(variables);
+      const { order, scope, durableAuthorityId } =
+        captureReorderInput(variables);
       // Same guarded object-shape assertion as `mutationFn` above.
       const required =
         !Array.isArray(variables) &&
@@ -827,7 +896,7 @@ export function useReorderProjectsMutation<
       // not touch any home's cache.
       if (required && !scope) throw new StationRequestAuthorityError();
       const cacheKey: (string | number)[] = scope
-        ? scopedProjectsListKey(scope)
+        ? scopedProjectsListKey(scope, durableAuthorityId)
         : ['projects'];
       if (scope) {
         await queryClient.cancelQueries({ queryKey: cacheKey });

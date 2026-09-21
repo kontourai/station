@@ -76,6 +76,7 @@ function admissionStub(
     ...ids,
     admittedProject: {
       slug: 'local',
+      localProjectId: 'local-project-1',
       workingDirectory: '/fixture/checkout',
       resourcePath: '/fixture/checkout',
     },
@@ -412,6 +413,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
     expect(startMetadata[PORTABLE_EXECUTION_CONSENT_METADATA_KEY]).toEqual({
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
     });
     // The admission is ALSO threaded into the service internal options, so
     // the provider-effect path rechecks it adjacent to the actual adapter
@@ -428,10 +430,12 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       cwd: '/fixture/checkout',
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
     });
     expect(startInternal?.portableExecutionConsent).toEqual({
       portableProjectId: 'prj_shared',
       resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-project-1',
     });
     const turnInternal = (
       dispatchWithReceipt.mock.calls as unknown as Array<
@@ -652,6 +656,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             resourceId: 'git.example/acme/repo',
             admittedProject: {
               slug: 'local',
+              localProjectId: 'local-project-1',
               workingDirectory: '/fixture/checkout',
               resourcePath: '/fixture/checkout',
             },
@@ -1302,6 +1307,391 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           identifyDevice,
         ),
       ).toBeUndefined();
+    });
+  });
+
+  describe('POST /delegations/:taskId/continue|respond — portable follow-up factory (#484 continuation)', () => {
+    test('continue composes the mint factory (never a minted admission) and maps a wrapped refusal code to 403', async () => {
+      const continueDelegatedTask = vi.fn().mockResolvedValue({
+        taskId: 'task:1',
+        status: 'dispatched',
+      });
+      const authorizeReceiverExecution = vi
+        .fn()
+        .mockResolvedValue(admissionStub());
+      const isRequestPrincipalCurrent = vi.fn(() => true);
+      const app = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          continueDelegatedTask,
+          authorizeReceiverExecution,
+          isRequestPrincipalCurrent,
+        }),
+      );
+      const res = await app.request('/delegations/task:1/continue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'One more thing' }),
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+      // The route mints NOTHING eagerly — the follow-up body carries no
+      // portable ids at all, so there is nothing to mint for here. The
+      // tool mints on the executing receiver from the thread's own
+      // persisted marker.
+      expect(authorizeReceiverExecution).not.toHaveBeenCalled();
+      const input = continueDelegatedTask.mock.calls[0]![0] as Record<
+        string,
+        unknown
+      >;
+      expect(typeof input.authorizeReceiverExecution).toBe('function');
+      // The factory mints through the owner with the request-bound
+      // currency probe when the executor invokes it.
+      await (
+        input.authorizeReceiverExecution as (workspace: {
+          portableProjectId: string;
+          resourceId: string;
+        }) => Promise<unknown>
+      )({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      });
+      expect(authorizeReceiverExecution).toHaveBeenCalledTimes(1);
+      expect(authorizeReceiverExecution.mock.calls[0]![0]).toEqual({
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      });
+      expect(typeof authorizeReceiverExecution.mock.calls[0]![1]).toBe(
+        'function',
+      );
+    });
+
+    test('continue maps an effect-path (wrapped) stale refusal to the exact 403', async () => {
+      const continueDelegatedTask = vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(
+            new Error(
+              'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+            ),
+            { code: 'receiver_execution_consent_stale' },
+          ),
+        );
+      const app = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          continueDelegatedTask,
+          authorizeReceiverExecution: vi.fn(),
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const res = await app.request('/delegations/task:1/continue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'One more thing' }),
+      });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({
+        success: false,
+        error:
+          'The original Project identity of this portable task cannot be verified. Start a new portable execution.',
+        code: 'receiver_execution_consent_stale',
+      });
+      expect(continueDelegatedTask).toHaveBeenCalledTimes(1);
+    });
+
+    describe('follow-up forwarding guards — REAL route → tool composition', () => {
+      const PEER_API = 'https://peer.example';
+      const PEER_ENV = 'env-peer';
+      const peerPosts: Array<{ url: string; body: unknown }> = [];
+      const fetchCalls: string[] = [];
+      let unwrapFetch: (() => void) | undefined;
+      let revokeOnCredentialRead = false;
+      let current = true;
+
+      const ok = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      beforeEach(() => {
+        peerPosts.length = 0;
+        fetchCalls.length = 0;
+        revokeOnCredentialRead = false;
+        current = true;
+        const inner = globalThis.fetch;
+        const wrapped: typeof fetch = (async (
+          input: Parameters<typeof fetch>[0],
+          init?: Parameters<typeof fetch>[1],
+        ) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const method =
+            init && typeof init === 'object' && 'method' in init
+              ? String((init as { method?: unknown }).method ?? 'GET')
+              : 'GET';
+          fetchCalls.push(`${method} ${url}`);
+          if (
+            !url.startsWith(PEER_API) &&
+            url.endsWith('/.well-known/station/v1')
+          ) {
+            return ok({ environmentId: 'env-self', capabilities: {} });
+          }
+          if (
+            !url.startsWith(PEER_API) &&
+            url.includes('/api/environments/ssh')
+          ) {
+            return ok({ success: true, data: [] });
+          }
+          if (url.includes(`/api/environments/peers/${PEER_ENV}/credential`)) {
+            if (revokeOnCredentialRead) current = false;
+            return ok({
+              success: true,
+              data: {
+                environmentId: PEER_ENV,
+                apiBase: PEER_API,
+                scope: 'peer',
+                credential: 'peer-cred-1',
+                label: 'peer',
+              },
+            });
+          }
+          if (url.startsWith(PEER_API)) {
+            try {
+              peerPosts.push({
+                url,
+                body: JSON.parse(
+                  String((init as { body?: unknown })?.body ?? '{}'),
+                ),
+              });
+            } catch {
+              peerPosts.push({ url, body: undefined });
+            }
+            return ok({
+              success: true,
+              data: { taskId: 'task:remote', status: 'dispatched' },
+            });
+          }
+          throw new Error(`Unexpected request: ${url}`);
+        }) as never;
+        vi.stubGlobal('fetch', wrapped);
+        unwrapFetch = () => {
+          vi.stubGlobal('fetch', inner as never);
+        };
+      });
+
+      afterEach(() => {
+        unwrapFetch?.();
+        unwrapFetch = undefined;
+      });
+
+      async function realContinue(input: any): Promise<unknown> {
+        const { continueDelegatedTask } = await import(
+          '../../../tools/station-control-delegation.js'
+        );
+        return continueDelegatedTask(input, undefined);
+      }
+
+      async function realRespond(input: any): Promise<unknown> {
+        const { respondToDelegatedTaskRequest } = await import(
+          '../../../tools/station-control-delegation.js'
+        );
+        return respondToDelegatedTaskRequest(input, undefined);
+      }
+
+      function followUpApp(options: {
+        continueDelegatedTask?: (input: any) => Promise<unknown>;
+        respondToDelegatedTaskRequest?: (input: any) => Promise<unknown>;
+        inboundDeviceKind?: 'device' | 'delegation';
+        resolvePrincipal?: (c: any) => { id: string };
+      }) {
+        return createOrchestrationRoutes(
+          {} as never,
+          baseDeps({
+            continueDelegatedTask:
+              options.continueDelegatedTask ?? realContinue,
+            respondToDelegatedTaskRequest:
+              options.respondToDelegatedTaskRequest ?? realRespond,
+            isRequestPrincipalCurrent: () => current,
+            ...(options.inboundDeviceKind
+              ? { resolveInboundDeviceKind: () => options.inboundDeviceKind }
+              : {}),
+            ...(options.resolvePrincipal
+              ? { resolvePrincipal: options.resolvePrincipal }
+              : {}),
+          }),
+        );
+      }
+
+      test.each(['continue', 'respond'] as const)(
+        'a delegation peer with local-operator person binding cannot third-hop a %s: 403, no outbound POST',
+        async (kind) => {
+          const app = followUpApp({
+            inboundDeviceKind: 'delegation',
+            // The enrolled peer's credential carries a person binding naming
+            // the local operator — display identity must never override the
+            // verified device kind into a forward.
+            resolvePrincipal: () => ({ id: 'human:local:operator' }),
+          });
+          const path =
+            kind === 'continue'
+              ? '/delegations/task:1/continue'
+              : '/delegations/task:1/respond';
+          const body =
+            kind === 'continue'
+              ? {
+                  message: 'One more thing',
+                  environmentId: PEER_ENV,
+                }
+              : {
+                  requestId: 'request-1',
+                  decision: 'accept',
+                  environmentId: PEER_ENV,
+                };
+          const res = await app.request(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          expect(res.status).toBe(403);
+          expect(await res.json()).toMatchObject({
+            success: false,
+            code: 'receiver_execution_forwarding_refused',
+          });
+          // No outbound POST: the third host was never touched.
+          expect(peerPosts).toHaveLength(0);
+          expect(fetchCalls.some((call) => call.includes(PEER_API))).toBe(
+            false,
+          );
+        },
+      );
+
+      test.each(['continue', 'respond'] as const)(
+        'a sender revocation during resolution refuses a %s before any outbound POST',
+        async (kind) => {
+          // Revocation lands while the target resolves (the credential read
+          // flips it): the post-resolution currency probe refuses.
+          revokeOnCredentialRead = true;
+          const app = followUpApp({});
+          const path =
+            kind === 'continue'
+              ? '/delegations/task:1/continue'
+              : '/delegations/task:1/respond';
+          const body =
+            kind === 'continue'
+              ? {
+                  message: 'One more thing',
+                  environmentId: PEER_ENV,
+                }
+              : {
+                  requestId: 'request-1',
+                  decision: 'accept',
+                  environmentId: PEER_ENV,
+                };
+          const res = await app.request(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          expect(res.status).toBe(403);
+          expect(await res.json()).toMatchObject({
+            success: false,
+            code: 'receiver_execution_authority_changed',
+          });
+          expect(peerPosts).toHaveLength(0);
+          expect(fetchCalls.some((call) => call.includes(PEER_API))).toBe(
+            false,
+          );
+        },
+      );
+
+      test.each(['continue', 'respond'] as const)(
+        'an ordinary operator %s still forwards to the saved peer (legacy flow preserved)',
+        async (kind) => {
+          const app = followUpApp({});
+          const path =
+            kind === 'continue'
+              ? '/delegations/task:1/continue'
+              : '/delegations/task:1/respond';
+          const body =
+            kind === 'continue'
+              ? {
+                  message: 'One more thing',
+                  environmentId: PEER_ENV,
+                }
+              : {
+                  requestId: 'request-1',
+                  decision: 'accept',
+                  environmentId: PEER_ENV,
+                };
+          const res = await app.request(path, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          expect(res.status, await res.clone().text()).toBe(200);
+          expect(peerPosts).toHaveLength(1);
+        },
+      );
+    });
+
+    test('respond composes the mint factory and maps a wrapped refusal code to 403', async () => {
+      const respondToDelegatedTaskRequest = vi.fn().mockResolvedValue({
+        taskId: 'task:1',
+        requestId: 'request-1',
+        status: 'resolved',
+      });
+      const authorizeReceiverExecution = vi
+        .fn()
+        .mockResolvedValue(admissionStub());
+      const app = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          respondToDelegatedTaskRequest,
+          authorizeReceiverExecution,
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const res = await app.request('/delegations/task:1/respond', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: 'request-1', decision: 'accept' }),
+      });
+      expect(res.status, await res.clone().text()).toBe(200);
+      expect(authorizeReceiverExecution).not.toHaveBeenCalled();
+      const input = respondToDelegatedTaskRequest.mock.calls[0]![0] as Record<
+        string,
+        unknown
+      >;
+      expect(typeof input.authorizeReceiverExecution).toBe('function');
+
+      // A wrapped effect-path refusal keeps its exact 403 on respond too.
+      const refusing = vi.fn().mockRejectedValue(
+        Object.assign(
+          new Error('The offered Project resource is unavailable.'),
+          {
+            code: 'receiver_execution_unavailable',
+          },
+        ),
+      );
+      const refusingApp = createOrchestrationRoutes(
+        {} as never,
+        baseDeps({
+          respondToDelegatedTaskRequest: refusing,
+          authorizeReceiverExecution: vi.fn(),
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const refused = await refusingApp.request('/delegations/task:1/respond', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: 'request-1', decision: 'accept' }),
+      });
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({
+        success: false,
+        error: 'The offered Project resource is unavailable.',
+        code: 'receiver_execution_unavailable',
+      });
     });
   });
 });

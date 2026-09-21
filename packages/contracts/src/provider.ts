@@ -150,9 +150,43 @@ export const ENVIRONMENT_ID_RESERVED_METADATA_KEY = 'environmentId';
  * delegation dispatch, through `startSessionInternal`'s
  * `portableExecutionConsent` internal-only option, which re-stamps this
  * key into `metadata` AFTER the reserved-key strip runs.
+ *
+ * #484 continuation: the marker ALSO carries the ORIGINAL receiver-local
+ * Project incarnation (`localProjectId` — the receiver Project record id
+ * the admission was captured against). Two fields plus cwd/slug cannot
+ * recognize a removed/recreated Project at the same path: the effect
+ * guards compare the persisted incarnation against the freshly admitted
+ * one, so a same-path replacement refuses instead of executing. Markers
+ * minted before this field existed fail closed (they cannot prove their
+ * association) and require a new explicit execution — they are never
+ * silently upgraded. See `PortableExecutionConsentMarker`.
  */
 export const PORTABLE_EXECUTION_CONSENT_METADATA_KEY =
   'portableExecutionConsent';
+
+/**
+ * #484 continuation: the server-issued portable consent marker shape,
+ * owned HERE next to the reserved key so public callers can neither forge
+ * it (the reserved-key strip removes it from every start input; only the
+ * internal-only consent re-stamp writes it) nor clear it by omission
+ * (reads are off persisted events, never the request).
+ *
+ * - `portableProjectId` / `resourceId`: the admitted portable consent
+ *   identity (the operator's offered association).
+ * - `localProjectId`: the ORIGINAL receiver-local Project incarnation —
+ *   the receiver Project record id the admission was captured against.
+ *   A recreated Project at the same path mints a new record id, so the
+ *   persisted incarnation proves the thread's history consented to THIS
+ *   incarnation, not a same-path successor.
+ *
+ * Additive and closed: readers MUST treat a marker missing `localProjectId`
+ * as unprovable (fail closed), never as consent to the current incarnation.
+ */
+export interface PortableExecutionConsentMarker {
+  readonly portableProjectId: string;
+  readonly resourceId: string;
+  readonly localProjectId: string;
+}
 /** Immutable Agent presentation copied into session start/configuration metadata. */
 export const SESSION_AGENT_DISPLAY_NAME_METADATA_KEY = 'agentName';
 export const SESSION_AGENT_ICON_METADATA_KEY = 'agentIcon';
