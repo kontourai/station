@@ -264,9 +264,7 @@ describe('project guest administration over the production composition', () => {
         getProjectHomeDir: () => homeDir,
         loadAppConfig: async () => ({ ...appConfig }),
         mutateAppConfig: async (
-          mutate: (
-            current: Record<string, unknown>,
-          ) => Record<string, unknown>,
+          mutate: (current: Record<string, unknown>) => Record<string, unknown>,
         ) => {
           appConfig = { ...appConfig, ...mutate({ ...appConfig }) };
           return { ...appConfig };
@@ -994,7 +992,10 @@ describe('project guest administration over the production composition', () => {
     const deviceId = h.security.devicePairing.identifyDevice(credential)?.id;
     expect(deviceId).toBeTruthy();
 
-    const access = await h.request('/api/projects/revoke-delay/access', guest());
+    const access = await h.request(
+      '/api/projects/revoke-delay/access',
+      guest(),
+    );
     expect(access.status).toBe(200);
     const invited = await h.request(
       '/api/projects/revoke-delay/access/invitations',
@@ -1041,7 +1042,10 @@ describe('project guest administration over the production composition', () => {
       'Logout Delay',
     );
 
-    const access = await h.request('/api/projects/logout-delay/access', guest());
+    const access = await h.request(
+      '/api/projects/logout-delay/access',
+      guest(),
+    );
     expect(access.status).toBe(200);
     const invited = await h.request(
       '/api/projects/logout-delay/access/invitations',

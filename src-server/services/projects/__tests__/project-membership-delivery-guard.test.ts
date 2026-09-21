@@ -302,9 +302,9 @@ describe('guest-administration delivery guards', () => {
     // Project itself still reads (viewer retains `view`).
     const fresh = await h.app.request('/api/projects/example/access');
     expect(fresh.status).toBe(403);
-    expect(
-      (await fresh.json()) as unknown,
-    ).toEqual({ error: { code: 'project_access_forbidden' } });
+    expect((await fresh.json()) as unknown).toEqual({
+      error: { code: 'project_access_forbidden' },
+    });
   });
 
   test('delayed consumption: invitation created while valid releases no token bytes after same-principal demotion', async () => {
