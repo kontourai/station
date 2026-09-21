@@ -1,4 +1,5 @@
 import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
+import { raceOwnedLifetime } from './browserTransportWait.js';
 
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_RESPONSE_CHUNKS = 1024;
@@ -36,19 +37,28 @@ function canonicalOrigin(value: string, label: string) {
     url.search ||
     url.hash ||
     url.username ||
-    url.password ||
-    url.protocol !== 'https:'
+    url.password
   )
     throw new Error(`${label}_invalid`);
-  return url.origin;
+  if (url.protocol === 'https:') return url.origin;
+  // Approved self-hosted contract: plain HTTP only for loopback (local free profile).
+  if (url.protocol === 'http:') {
+    const host = url.hostname.toLowerCase();
+    if (
+      host === '127.0.0.1' ||
+      host === 'localhost' ||
+      host === '[::1]' ||
+      host === '::1'
+    )
+      return url.origin;
+  }
+  throw new Error(`${label}_invalid`);
 }
 function exact(value: unknown, keys: readonly string[]) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('broker_response_invalid');
   const record = value as Record<string, unknown>;
-  if (
-    Object.keys(record).sort().join(',') !== [...keys].sort().join(',')
-  )
+  if (Object.keys(record).sort().join(',') !== [...keys].sort().join(','))
     throw new Error('broker_response_invalid');
   return record;
 }
@@ -70,7 +80,11 @@ function validScope(value: SelfHostedBrokerScopeV1, browserOrigin: string) {
     throw new Error('broker_scope_invalid');
   return Object.freeze(copy);
 }
-async function boundedJson(response: Response, signal: AbortSignal) {
+async function boundedJson(
+  response: Response,
+  signal: AbortSignal,
+  onCancelResponse: () => void,
+) {
   if (response.redirected || !response.body)
     throw new Error('broker_response_invalid');
   const reader = response.body.getReader();
@@ -81,7 +95,7 @@ async function boundedJson(response: Response, signal: AbortSignal) {
   try {
     while (true) {
       signal.throwIfAborted();
-      const item = await reader.read();
+      const item = await raceOwnedLifetime(reader.read(), signal);
       if (item.done) {
         complete = true;
         break;
@@ -94,7 +108,12 @@ async function boundedJson(response: Response, signal: AbortSignal) {
       output.set(item.value, total - item.value.byteLength);
     }
   } finally {
-    if (!complete) void reader.cancel().catch(() => {});
+    // Stalled-reader safety: a caller abort or oversize body must cancel the
+    // underlying reader so no stream stays pinned open.
+    if (!complete) {
+      onCancelResponse();
+      void reader.cancel().catch(() => {});
+    }
     reader.releaseLock();
   }
   signal.throwIfAborted();
@@ -116,6 +135,7 @@ export class SelfHostedBrokerBrowserClient {
   readonly #credentials: BrowserRoutingCredentialProvider;
   readonly #request: typeof fetch;
   readonly #now: () => number;
+  readonly #onCancelResponse: () => void;
 
   constructor(input: {
     brokerOrigin: string;
@@ -124,16 +144,28 @@ export class SelfHostedBrokerBrowserClient {
     credentials: BrowserRoutingCredentialProvider;
     request?: typeof fetch;
     now?: () => number;
+    onCancelResponse?: () => void;
   }) {
     this.#brokerOrigin = canonicalOrigin(input.brokerOrigin, 'broker_origin');
     this.#browserOrigin = canonicalOrigin(
       input.browserOrigin,
       'broker_browser_origin',
     );
+    // Bind to the actual browser origin via location: never trust a caller
+    // supplied string when a real location is available. Missing location is
+    // not a fabricated browser identity — construction without location uses
+    // the caller value, but any present location.origin must match exactly.
+    const actual = (globalThis as { location?: { origin?: unknown } }).location
+      ?.origin;
+    if (typeof actual === 'string' && actual !== this.#browserOrigin)
+      throw new Error('broker_browser_origin_invalid');
     this.#scope = validScope(input.scope, this.#browserOrigin);
+    // Freeze scalar/provider references at construction: later mutation of
+    // the input object cannot re-point this client.
     this.#credentials = input.credentials;
     this.#request = input.request ?? fetch;
     this.#now = input.now ?? Date.now;
+    this.#onCancelResponse = input.onCancelResponse ?? (() => {});
   }
 
   get scope(): Readonly<SelfHostedBrokerScopeV1> {
@@ -146,44 +178,69 @@ export class SelfHostedBrokerBrowserClient {
     signal: AbortSignal,
   ) {
     signal.throwIfAborted();
+    // Freeze the credential snapshot used for this attempt; lifetime is tied
+    // to exactly this snapshot and rechecked before AND after every await.
     const credential = this.#credentials.capture();
+    const credentialId = credential.id;
+    const credentialSecret = credential.secret;
+    const credentialIsCurrent = credential.isCurrent.bind(credential);
     if (
-      !SAFE_ID.test(credential.id) ||
-      !OPAQUE.test(credential.secret) ||
-      credential.isCurrent() !== true
+      !SAFE_ID.test(credentialId) ||
+      !OPAQUE.test(credentialSecret) ||
+      credentialIsCurrent() !== true
     )
       throw new Error('broker_credential_unavailable');
-    const bounded = AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
-    const response = await this.#request(
-      `${this.#brokerOrigin}/broker/v1${path}`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${credential.secret}`,
-          'Content-Type': 'application/json',
-          'X-Broker-Credential-Id': credential.id,
-        },
-        body: JSON.stringify({ ...body, scope: this.#scope }),
-        redirect: 'error',
-        credentials: 'omit',
-        signal: bounded,
-      },
+    // Owned bounded composition: manual deadline, no AbortSignal.any fallback
+    // that could silently drop the protocol bound on old runtimes.
+    const owned = new AbortController();
+    if (signal.aborted) owned.abort(signal.reason ?? new Error('cancelled'));
+    const onParent = () => owned.abort(signal.reason ?? new Error('cancelled'));
+    signal.addEventListener('abort', onParent, { once: true });
+    const timer = setTimeout(
+      () => owned.abort(new Error('browser_transport_timeout')),
+      15_000,
     );
-    if (credential.isCurrent() !== true)
-      throw new Error('broker_credential_unavailable');
-    const value = await boundedJson(response, bounded);
-    if (credential.isCurrent() !== true)
-      throw new Error('broker_credential_unavailable');
-    if (!response.ok)
-      throw new Error(`broker_request_refused_${response.status}`);
-    return value;
+    const bounded = owned.signal;
+    try {
+      const response = await this.#request(
+        `${this.#brokerOrigin}/broker/v1${path}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${credentialSecret}`,
+            'Content-Type': 'application/json',
+            'X-Broker-Credential-Id': credentialId,
+          },
+          body: JSON.stringify({ ...body, scope: this.#scope }),
+          redirect: 'error',
+          credentials: 'omit',
+          signal: bounded,
+        },
+      );
+      if (credentialIsCurrent() !== true)
+        throw new Error('broker_credential_unavailable');
+      const value = await boundedJson(
+        response,
+        bounded,
+        this.#onCancelResponse,
+      );
+      if (credentialIsCurrent() !== true)
+        throw new Error('broker_credential_unavailable');
+      if (!response.ok)
+        throw new Error(`broker_request_refused_${response.status}`);
+      return value;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onParent);
+    }
   }
 
   async status(signal: AbortSignal) {
-    const value = exact(
-      await this.#post('/stations/status', {}, signal),
-      ['state', 'routingGeneration', 'expiresAt'],
-    );
+    const value = exact(await this.#post('/stations/status', {}, signal), [
+      'state',
+      'routingGeneration',
+      'expiresAt',
+    ]);
     if (
       (value.state !== 'online' && value.state !== 'offline') ||
       value.routingGeneration !== this.#scope.routingGeneration ||
@@ -259,4 +316,3 @@ export class SelfHostedBrokerBrowserClient {
     } as const;
   }
 }
-

@@ -12,7 +12,9 @@ import {
   browserApplicationChannel,
 } from './applicationChannel.js';
 import {
+  composeOwnedSignal,
   delayBrowserTransport,
+  raceOwnedLifetime,
   waitForBrowserTransport as waitFor,
 } from './browserTransportWait.js';
 import {
@@ -65,7 +67,7 @@ function cloneIce(value: RTCConfiguration): RTCConfiguration {
 export function createBrowserPionConnection(input: {
   broker: SelfHostedBrokerBrowserClient;
   applicationOrigin: string;
-  applicationChannelLabel: string;
+  applicationChannelLabel?: string;
   trustRecord: DeviceConnectionTrustRecord;
   trustStore: BrowserConnectionTrustStore;
   ice: BrowserIceProvider;
@@ -73,18 +75,26 @@ export function createBrowserPionConnection(input: {
   now?: () => number;
 }) {
   const applicationOrigin = new URL(input.applicationOrigin).origin;
+  const channelLabel =
+    input.applicationChannelLabel ?? 'station-application-v1';
   if (
     applicationOrigin !== input.applicationOrigin ||
-    !input.applicationChannelLabel ||
-    input.applicationChannelLabel.length > 128
+    !channelLabel ||
+    channelLabel.length > 128
   )
     throw new Error('browser_transport_configuration_invalid');
+  // Freeze scalar/provider references and credential snapshots at construction.
+  const broker = input.broker;
+  const trustStore = input.trustStore;
+  const iceProvider = input.ice;
   const trustRecord = structuredClone(input.trustRecord);
   const trust = copyStationConnectionTrust(trustRecord.trust);
+  const brokerStationId = broker.scope.stationId;
+  const brokerEnrollmentId = broker.scope.enrollmentId;
   if (
     trustRecord.status !== 'approved' ||
-    trust.stationId !== input.broker.scope.stationId ||
-    trust.enrollmentId !== input.broker.scope.enrollmentId
+    trust.stationId !== brokerStationId ||
+    trust.enrollmentId !== brokerEnrollmentId
   )
     throw new Error('browser_transport_trust_invalid');
   const createPeer =
@@ -92,6 +102,7 @@ export function createBrowserPionConnection(input: {
     ((configuration: RTCConfiguration) => new RTCPeerConnection(configuration));
   const now = input.now ?? Date.now;
   let generation = 0;
+  let attemptController: AbortController | null = null;
   let current:
     | {
         snapshot: BrowserPionConnectionSnapshot;
@@ -103,147 +114,292 @@ export function createBrowserPionConnection(input: {
     | undefined;
 
   const closeCurrent = () => {
+    generation += 1;
+    // Abort the owned per-attempt lifetime: pending offer/digest/trust/broker
+    // waits race this signal and the caller returns promptly.
+    attemptController?.abort(new Error('browser_transport_stale'));
+    attemptController = null;
     if (!current) return;
     current.alive = false;
-    current.peer.close();
+    try {
+      current.peer.close();
+    } catch {
+      /* already closed */
+    }
     current = undefined;
   };
   const snapshotCurrent = async (snapshot: BrowserPionConnectionSnapshot) => {
     const owner = current;
-    return Boolean(
-      owner?.alive &&
-        owner.snapshot === snapshot &&
-        owner.ice.isCurrent() &&
-        owner.peer.connectionState === 'connected' &&
-        (await input.trustStore.isCurrent(trustRecord)),
-    );
+    if (
+      !owner?.alive ||
+      owner.snapshot !== snapshot ||
+      !owner.ice.isCurrent() ||
+      owner.peer.connectionState !== 'connected'
+    )
+      return false;
+    const trusted = await trustStore.isCurrent(trustRecord);
+    // Recheck ICE + peer state AFTER the async trust hop too.
+    if (
+      !trusted ||
+      current !== owner ||
+      !owner.alive ||
+      owner.snapshot !== snapshot ||
+      !owner.ice.isCurrent() ||
+      owner.peer.connectionState !== 'connected'
+    )
+      return false;
+    return true;
   };
 
   const connect = async (signal: AbortSignal) => {
     closeCurrent();
     signal.throwIfAborted();
-    const ice = input.ice.capture();
-    if (!ice.isCurrent()) throw new Error('browser_ice_configuration_stale');
-    const peer = createPeer(cloneIce(ice.configuration));
-    const attemptGeneration = ++generation;
-    let alive = true;
-    const retire = () => {
-      alive = false;
-      peer.close();
+    // Per-attempt owned lifetime linked with caller + 30s deadline.
+    const owned = new AbortController();
+    attemptController = owned;
+    const onCaller = () => owned.abort(signal.reason ?? new Error('cancelled'));
+    signal.addEventListener('abort', onCaller, { once: true });
+    const deadline = setTimeout(
+      () => owned.abort(new Error('browser_transport_timeout')),
+      30_000,
+    );
+    const lifetime = owned.signal;
+    const disposeAttempt = (stale: boolean) => {
+      clearTimeout(deadline);
+      signal.removeEventListener('abort', onCaller);
+      if (!stale && attemptController === owned) attemptController = null;
     };
-    const combined = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
-    const bootstrap = peer.createDataChannel(input.applicationChannelLabel, {
-      ordered: true,
-    });
+    const attemptGeneration = ++generation;
+    const isOwned = () =>
+      attemptController === owned && attemptGeneration === generation;
+    let peer: RTCPeerConnection | undefined;
     try {
-      const gathering = waitFor(combined, (finish, fail) => {
-        const changed = () => {
-          if (peer.iceGatheringState === 'complete') finish();
-        };
-        peer.addEventListener('icegatheringstatechange', changed);
-        peer.addEventListener('connectionstatechange', fail);
-        return () => {
-          peer.removeEventListener('icegatheringstatechange', changed);
-          peer.removeEventListener('connectionstatechange', fail);
-        };
-      });
-      await peer.setLocalDescription(await peer.createOffer());
-      if (peer.iceGatheringState !== 'complete') await gathering;
-      if (!peer.localDescription || !alive || !ice.isCurrent())
-        throw new Error('browser_offer_unavailable');
-      const offerSdp = peer.localDescription.sdp;
-      const connectionId = crypto.randomUUID();
-      const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
-      const opened = await input.broker.open(
-        { clientId: connectionId, nonce, offerSdp },
-        combined,
-      );
-      let answer:
-        | Extract<BrokerBrowserAnswer, { kind: 'answered' }>
-        | undefined;
-      while (!answer) {
-        if (!alive || !ice.isCurrent())
-          throw new Error('browser_transport_stale');
-        if (!(await input.trustStore.isCurrent(trustRecord)))
-          throw new Error('browser_transport_trust_retired');
-        const value = await input.broker.read(
-          { clientId: connectionId, nonce },
-          combined,
-        );
-        if (value.expiresAt !== opened.expiresAt)
-          throw new Error('broker_response_invalid');
-        if (value.kind === 'answered') answer = value;
-        else {
-          if (now() + 100 >= opened.expiresAt)
-            throw new Error('broker_answer_expired');
-          await delayBrowserTransport(combined, 100);
+      const ice = iceProvider.capture();
+      if (!ice.isCurrent()) throw new Error('browser_ice_configuration_stale');
+      const iceAtCapture = ice;
+      const created = createPeer(cloneIce(ice.configuration));
+      peer = created;
+      const retire = () => {
+        try {
+          created.close();
+        } catch {
+          /* already closed */
+        }
+      };
+      const onRetire = () => retire();
+      lifetime.addEventListener('abort', onRetire, { once: true });
+      try {
+        const bootstrap = created.createDataChannel(channelLabel, {
+          ordered: true,
+        });
+        try {
+          // Offer first; gathering wait is owned by this attempt.
+          const offer = await raceOwnedLifetime(
+            created.createOffer(),
+            lifetime,
+          );
+          await raceOwnedLifetime(created.setLocalDescription(offer), lifetime);
+          if (!isOwned()) throw new Error('browser_transport_stale');
+          // Always await the owned wait; gathering handler only finishes on
+          // complete. connectionstatechange never fails on connecting/connected.
+          const gathering = waitFor(lifetime, (finish, fail) => {
+            const onGathering = () => {
+              if (created.iceGatheringState === 'complete') finish();
+            };
+            const onState = () => {
+              if (created.connectionState === 'failed') fail();
+            };
+            created.addEventListener('icegatheringstatechange', onGathering);
+            created.addEventListener('connectionstatechange', onState);
+            onGathering();
+            onState();
+            return () => {
+              created.removeEventListener(
+                'icegatheringstatechange',
+                onGathering,
+              );
+              created.removeEventListener('connectionstatechange', onState);
+            };
+          });
+          await gathering;
+          if (!created.localDescription || !isOwned() || !ice.isCurrent())
+            throw new Error('browser_offer_unavailable');
+          const offerSdp = created.localDescription.sdp;
+          const connectionId = crypto.randomUUID();
+          const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
+          const opened = await raceOwnedLifetime(
+            broker.open({ clientId: connectionId, nonce, offerSdp }, lifetime),
+            lifetime,
+          );
+          let answer:
+            | Extract<BrokerBrowserAnswer, { kind: 'answered' }>
+            | undefined;
+          while (!answer) {
+            if (!isOwned() || !ice.isCurrent())
+              throw new Error('browser_transport_stale');
+            if (
+              !(await raceOwnedLifetime(
+                trustStore.isCurrent(trustRecord),
+                lifetime,
+              ))
+            )
+              throw new Error('browser_transport_trust_retired');
+            if (!isOwned()) throw new Error('browser_transport_stale');
+            const value = await raceOwnedLifetime(
+              broker.read({ clientId: connectionId, nonce }, lifetime),
+              lifetime,
+            );
+            if (value.expiresAt !== opened.expiresAt)
+              throw new Error('broker_response_invalid');
+            if (value.kind === 'answered') answer = value;
+            else {
+              if (now() + 100 >= opened.expiresAt)
+                throw new Error('broker_answer_expired');
+              const composed = composeOwnedSignal(lifetime, 5_000);
+              try {
+                await delayBrowserTransport(composed.signal, 100);
+              } finally {
+                composed.dispose();
+              }
+            }
+          }
+          const binding: StationConnectionProofBinding = {
+            stationId: trust.stationId,
+            enrollmentId: trust.enrollmentId,
+            generation: trust.generation,
+            connectionId,
+            clientNonce: nonce,
+            clientFingerprint: fingerprints(offerSdp),
+            stationFingerprint: fingerprints(answer.answerSdp),
+            offerSha256: await raceOwnedLifetime(
+              connectionDescriptionDigest(offerSdp),
+              lifetime,
+            ),
+            answerSha256: await raceOwnedLifetime(
+              connectionDescriptionDigest(answer.answerSdp),
+              lifetime,
+            ),
+          };
+          if (!isOwned() || !ice.isCurrent())
+            throw new Error('browser_transport_stale');
+          if (
+            !(await raceOwnedLifetime(
+              trustStore.isCurrent(trustRecord),
+              lifetime,
+            ))
+          )
+            throw new Error('browser_transport_trust_retired');
+          let proofCurrent = true;
+          const verifier = createStationConnectionProofVerifier({
+            trust,
+            expected: binding,
+            isCurrent: () => proofCurrent && isOwned() && ice.isCurrent(),
+          });
+          await raceOwnedLifetime(
+            verifier.verifyAndConsume(answer.stationProof),
+            lifetime,
+          );
+          if (
+            !(await raceOwnedLifetime(
+              trustStore.isCurrent(trustRecord),
+              lifetime,
+            ))
+          )
+            throw new Error('browser_transport_trust_retired');
+          verifier.assertStillCurrent();
+          if (!isOwned() || !ice.isCurrent())
+            throw new Error('browser_transport_stale');
+          await raceOwnedLifetime(
+            created.setRemoteDescription({
+              type: 'answer',
+              sdp: answer.answerSdp,
+            }),
+            lifetime,
+          );
+          if (
+            !(await raceOwnedLifetime(
+              trustStore.isCurrent(trustRecord),
+              lifetime,
+            )) ||
+            !ice.isCurrent()
+          )
+            throw new Error('browser_transport_authority_retired');
+          verifier.assertStillCurrent();
+          if (!isOwned()) throw new Error('browser_transport_stale');
+          await waitFor(lifetime, (finish, fail) => {
+            const changed = () => {
+              if (created.connectionState === 'connected') finish();
+              else if (['failed', 'closed'].includes(created.connectionState))
+                fail();
+            };
+            created.addEventListener('connectionstatechange', changed);
+            changed();
+            return () =>
+              created.removeEventListener('connectionstatechange', changed);
+          });
+          await waitFor(lifetime, (finish, fail) => {
+            const openedChannel = () => finish();
+            bootstrap.addEventListener('open', openedChannel);
+            bootstrap.addEventListener('close', fail);
+            bootstrap.addEventListener('error', fail);
+            if (bootstrap.readyState === 'open') finish();
+            return () => {
+              bootstrap.removeEventListener('open', openedChannel);
+              bootstrap.removeEventListener('close', fail);
+              bootstrap.removeEventListener('error', fail);
+            };
+          });
+          bootstrap.close();
+          proofCurrent = false;
+          if (!isOwned() || !iceAtCapture.isCurrent())
+            throw new Error('browser_transport_stale');
+          if (
+            !(await raceOwnedLifetime(
+              trustStore.isCurrent(trustRecord),
+              lifetime,
+            ))
+          )
+            throw new Error('browser_transport_trust_retired');
+          const snapshot = Object.freeze({
+            generation: attemptGeneration,
+            connectionId,
+            stationId: trust.stationId,
+            applicationOrigin,
+          });
+          if (!isOwned()) {
+            retire();
+            throw new Error('browser_transport_stale');
+          }
+          current = {
+            snapshot,
+            peer: created,
+            ice,
+            alive: true,
+            openChannels: 0,
+          };
+          peer = undefined;
+          disposeAttempt(false);
+          return snapshot;
+        } catch (error) {
+          try {
+            bootstrap.close();
+          } catch {
+            /* already closed */
+          }
+          throw error;
+        }
+      } finally {
+        lifetime.removeEventListener('abort', onRetire);
+      }
+    } catch (error) {
+      if (peer) {
+        try {
+          peer.close();
+        } catch {
+          /* already closed */
         }
       }
-      const binding: StationConnectionProofBinding = {
-        stationId: trust.stationId,
-        enrollmentId: trust.enrollmentId,
-        generation: trust.generation,
-        connectionId,
-        clientNonce: nonce,
-        clientFingerprint: fingerprints(offerSdp),
-        stationFingerprint: fingerprints(answer.answerSdp),
-        offerSha256: await connectionDescriptionDigest(offerSdp),
-        answerSha256: await connectionDescriptionDigest(answer.answerSdp),
-      };
-      let proofCurrent = true;
-      const verifier = createStationConnectionProofVerifier({
-        trust,
-        expected: binding,
-        isCurrent: () =>
-          proofCurrent &&
-          alive &&
-          ice.isCurrent() &&
-          attemptGeneration === generation,
-      });
-      await verifier.verifyAndConsume(answer.stationProof);
-      if (!(await input.trustStore.isCurrent(trustRecord)))
-        throw new Error('browser_transport_trust_retired');
-      verifier.assertStillCurrent();
-      await peer.setRemoteDescription({
-        type: 'answer',
-        sdp: answer.answerSdp,
-      });
-      if (!(await input.trustStore.isCurrent(trustRecord)) || !ice.isCurrent())
-        throw new Error('browser_transport_authority_retired');
-      verifier.assertStillCurrent();
-      await waitFor(combined, (finish, fail) => {
-        const changed = () => {
-          if (peer.connectionState === 'connected') finish();
-          else if (['failed', 'closed'].includes(peer.connectionState)) fail();
-        };
-        peer.addEventListener('connectionstatechange', changed);
-        changed();
-        return () => peer.removeEventListener('connectionstatechange', changed);
-      });
-      await waitFor(combined, (finish, fail) => {
-        const openedChannel = () => finish();
-        bootstrap.addEventListener('open', openedChannel);
-        bootstrap.addEventListener('close', fail);
-        bootstrap.addEventListener('error', fail);
-        if (bootstrap.readyState === 'open') finish();
-        return () => {
-          bootstrap.removeEventListener('open', openedChannel);
-          bootstrap.removeEventListener('close', fail);
-          bootstrap.removeEventListener('error', fail);
-        };
-      });
-      bootstrap.close();
-      proofCurrent = false;
-      const snapshot = Object.freeze({
-        generation: attemptGeneration,
-        connectionId,
-        stationId: trust.stationId,
-        applicationOrigin,
-      });
-      current = { snapshot, peer, ice, alive: true, openChannels: 0 };
-      return snapshot;
-    } catch (error) {
-      retire();
+      disposeAttempt(true);
       throw error;
     }
   };
@@ -253,48 +409,63 @@ export function createBrowserPionConnection(input: {
     signal: AbortSignal,
   ): Promise<ApplicationChannel> => {
     const owner = current;
-    if (
-      !owner ||
-      owner.snapshot !== snapshot ||
-      !(await snapshotCurrent(snapshot)) ||
-      owner.openChannels >= MAX_OPEN_CHANNELS
-    )
+    if (!owner || owner.snapshot !== snapshot || !owner.alive)
       throw new Error('browser_transport_stale');
-    const channel = owner.peer.createDataChannel(
-      input.applicationChannelLabel,
-      {
-        ordered: true,
-      },
-    );
+    if (owner.openChannels >= MAX_OPEN_CHANNELS)
+      throw new Error('browser_transport_channel_cap');
+    // Whole reservation-through-open wrapped in try/finally; release once only.
     owner.openChannels += 1;
-    let released = false;
+    let reserved = true;
     const release = () => {
-      if (released) return;
-      released = true;
+      if (!reserved) return;
+      reserved = false;
       owner.openChannels -= 1;
     };
-    channel.addEventListener('close', release, { once: true });
-    channel.addEventListener('error', release, { once: true });
+    let channel: RTCDataChannel | undefined;
+    let published = false;
     try {
+      if (!(await snapshotCurrent(snapshot)))
+        throw new Error('browser_transport_stale');
+      const ownerNow = current;
+      if (ownerNow !== owner || !owner.alive)
+        throw new Error('browser_transport_stale');
+      // createDataChannel itself can throw — still inside try so the
+      // reservation is released and no channel leaks.
+      channel = owner.peer.createDataChannel(channelLabel, {
+        ordered: true,
+      });
+      channel.addEventListener('close', release, { once: true });
+      channel.addEventListener('error', release, { once: true });
       await waitFor(signal, (finish, fail) => {
         const ready = () => finish();
-        channel.addEventListener('open', ready);
-        channel.addEventListener('close', fail);
-        channel.addEventListener('error', fail);
-        if (channel.readyState === 'open') finish();
+        channel!.addEventListener('open', ready);
+        channel!.addEventListener('close', fail);
+        channel!.addEventListener('error', fail);
+        if (channel!.readyState === 'open') finish();
         return () => {
-          channel.removeEventListener('open', ready);
-          channel.removeEventListener('close', fail);
-          channel.removeEventListener('error', fail);
+          channel!.removeEventListener('open', ready);
+          channel!.removeEventListener('close', fail);
+          channel!.removeEventListener('error', fail);
         };
       });
       if (!(await snapshotCurrent(snapshot)))
         throw new Error('browser_transport_stale');
-      return browserApplicationChannel(channel);
+      const leased = channel;
+      // Reservation converts to an open lease: the close/error listeners own
+      // the single release from here on; finally must not double-release.
+      published = true;
+      return browserApplicationChannel(leased as unknown as RTCDataChannel);
     } catch (error) {
-      release();
-      channel.close();
+      if (channel) {
+        try {
+          channel.close();
+        } catch {
+          /* already closed */
+        }
+      }
       throw error;
+    } finally {
+      if (!published) release();
     }
   };
 

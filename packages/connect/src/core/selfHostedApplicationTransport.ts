@@ -1,6 +1,6 @@
 import {
-  createApplicationChannelFetch,
   type ApplicationChannelTarget,
+  createApplicationChannelFetch,
 } from './applicationChannel.js';
 import type {
   BrowserPionConnectionSnapshot,
@@ -21,8 +21,16 @@ export function createSelfHostedApplicationTransport(input: {
 } {
   if (new URL(input.applicationOrigin).origin !== input.applicationOrigin)
     throw new Error('Canonical Station application origin required');
+  if (input.snapshot.applicationOrigin !== input.applicationOrigin)
+    throw new Error('Station browser transport origin mismatch');
+  // Owned bounded composition without AbortSignal.any: manual link to caller.
   const lifetime = new AbortController();
-  const signal = AbortSignal.any([input.signal, lifetime.signal]);
+  const parent = input.signal;
+  if (parent.aborted) lifetime.abort(parent.reason ?? new Error('cancelled'));
+  const onParent = () =>
+    lifetime.abort(parent.reason ?? new Error('cancelled'));
+  parent.addEventListener('abort', onParent, { once: true });
+  const signal = lifetime.signal;
   let current = true;
   const transport = createApplicationChannelFetch({
     origin: input.applicationOrigin,
@@ -44,8 +52,8 @@ export function createSelfHostedApplicationTransport(input: {
     close() {
       if (!current) return;
       current = false;
-      lifetime.abort();
+      lifetime.abort(new Error('Station browser transport retired'));
+      parent.removeEventListener('abort', onParent);
     },
   });
 }
-
