@@ -339,6 +339,11 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: homeConnection.apiBase }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: homeConnection.apiBase,
+    authorityKey: 'app-home-route:test-authority',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => ({ defaultModel: 'codex-mini' }),

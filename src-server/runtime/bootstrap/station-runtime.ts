@@ -3844,6 +3844,7 @@ export class StationRuntime {
       projectTaskRoomRuntime,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
+      projectSharedTasks: this.projectMembership?.sharedTasks,
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,

@@ -722,13 +722,16 @@ const VERBS: Record<string, VerbSpec> = {
       'layouts',
       'identity',
       'prepare-identity',
+      'execution-root',
       'attach',
     ],
     detail: [
       'station projects identity <slug> [--station=<source>] > project-identity.json',
       'station projects prepare-identity <slug> [--station=<source>]',
+      'station projects execution-root <slug> (--repo-id=<resource-id> --path=<relative-path>|--clear) [--station=<target>]',
       'station projects attach <local-slug> --identity-file=<file> --name=<name> --station=<destination> [--target-workspace=<destination-path>]',
       'identity reads an existing portable snapshot; prepare-identity explicitly creates a missing identity. Neither exports local paths or grants.',
+      'execution-root selects or clears a repo-relative execution directory under an exact identity guard. It does not bind a checkout or grant compute.',
       'attach requires an explicit destination (--station or --api-base). Omit --target-workspace for a Project with no local checkout; the destination validates any supplied path.',
 
       'station projects layouts <available|list|get|create|update|delete|from-plugin> ...',

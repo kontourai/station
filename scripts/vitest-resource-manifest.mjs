@@ -124,6 +124,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
+  // Runs the source CLI twice against one private SQLite root to prove init recovery.
+  'scripts/__tests__/self-hosted-broker-cli.test.ts',
+  // Races two real worker-owned SQLite connections at one lease CAS barrier.
+  'src-server/services/connections/__tests__/self-hosted-broker-service.test.ts',
   // Launches real descendant trees and verifies signal/early-exit cleanup.
   'scripts/__tests__/dev-desktop-process.test.ts',
   // Real framework signal handlers run in bounded, isolated child processes.
@@ -331,6 +335,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `execFileSync` to prove the manifest derives real revision/branch values
   // — same shape as `content-integrity-gate.test.ts` below.
   'scripts/__tests__/desktop-build-manifest.test.ts',
+  // The execution-offers real-auth integration builds one throwaway git
+  // checkout per setup via bounded single-shot `git` children (init/config/
+  // commit/remote), the same shape as the desktop-build-manifest fixture.
+  'src-server/runtime/routes/__tests__/runtime-routes-project-contribution-auth.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.
@@ -757,6 +765,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // toolbar control x-offsets across connection states).
   'src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx',
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
+  // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved

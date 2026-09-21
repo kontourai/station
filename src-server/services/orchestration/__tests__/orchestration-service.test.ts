@@ -11568,7 +11568,7 @@ describe('OrchestrationService', () => {
   });
 
   describe('destination Project bindings at the actual engine start', () => {
-    async function fixture(bind = true) {
+    async function fixture(bind = true, executionRoot?: string) {
       const home = join(tmp, 'binding-home');
       const oldPath = join(tmp, 'old-checkout');
       const boundPath = join(tmp, 'bound-checkout');
@@ -11590,6 +11590,21 @@ describe('OrchestrationService', () => {
       await storage.createProject(project);
       const manifests = new ProjectManifestStore(home, storage);
       await manifests.ensureProjectManifest(project);
+      if (executionRoot) {
+        const path = manifests.manifestPath(project.slug);
+        const record = JSON.parse(readFileSync(path, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        const repos = record.repos as Array<{ id: string }>;
+        writeFileSync(
+          path,
+          JSON.stringify({
+            ...record,
+            executionRoot: { repoId: repos[0]?.id, path: executionRoot },
+          }),
+        );
+      }
       const manifest = manifests.readProjectManifest(project.slug);
       if (!manifest) throw new Error('fixture did not create its manifest');
       const bindings = new ProjectBindingsStore(home);
@@ -11634,6 +11649,17 @@ describe('OrchestrationService', () => {
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
         expect.objectContaining({ cwd: boundPath }),
+      );
+    });
+
+    test('starts the engine in the portable repo-relative directory on the destination binding', async () => {
+      const relativeRoot = join('apps', 'web');
+      const { engine, start, boundPath } = await fixture(true, relativeRoot);
+      const expected = join(boundPath, relativeRoot);
+      mkdirSync(expected, { recursive: true });
+      await start();
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: realpathSync(expected) }),
       );
     });
 

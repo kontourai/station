@@ -1,6 +1,7 @@
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   DEVICE_PAIRING_PROTOCOL_VERSION,
+  type DeviceAccountBindingCandidate,
   type DevicePairingAccessRequestResponse,
   type DevicePairingExchangeResponse,
   type DevicePairingOffer,
@@ -375,6 +376,10 @@ export function requestDevicePairing(input: {
 export function requestCurrentStationAccess(input: {
   endpoint: string;
   deviceName: string;
+  /** Fresh correlation selected by a caller that must not supersede an old Device. */
+  clientInstanceId?: string;
+  /** Server-enforced intent: confirmation may create only an account-bound Device. */
+  requireAccountBinding?: true;
   /**
    * Explicit `Origin` header value. Browser callers omit this — the browser
    * sets `Origin` itself and forbids scripts from overriding it. Non-browser
@@ -389,8 +394,11 @@ export function requestCurrentStationAccess(input: {
     input.endpoint,
     PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
     {
-      clientInstanceId: pairingClientInstanceIdForOrigin(input.endpoint),
+      clientInstanceId:
+        input.clientInstanceId ??
+        pairingClientInstanceIdForOrigin(input.endpoint),
       deviceName: input.deviceName,
+      requireAccountBinding: input.requireAccountBinding,
     },
     'same-origin',
     input.origin ? { Origin: input.origin } : undefined,
@@ -474,6 +482,12 @@ export interface PendingPairingExchange {
   expectedEnvironmentId?: string;
   browserSession: boolean;
   requestKind: 'code' | 'direct';
+  /** Exact correlation sent in the request; never identity or authority. */
+  clientInstanceId?: string;
+  /** Server-derived account identity required by immutable guest intent. */
+  requiredAccountBinding?: DeviceAccountBindingCandidate;
+  /** Server acknowledgment that exchange cannot mint a personal Device. */
+  requireAccountBinding?: true;
   /** Exact saved Station row that owns this request once it leaves the chooser. */
   targetConnectionId?: string;
   /** Snapshot of that row's user-facing label, retained across active-host changes. */
@@ -589,6 +603,20 @@ export function loadPendingExchange(
       typeof parsed.requestId !== 'string' ||
       typeof parsed.expiresAt !== 'number' ||
       typeof parsed.browserSession !== 'boolean' ||
+      (parsed.clientInstanceId !== undefined &&
+        !CLIENT_INSTANCE_ID_PATTERN.test(parsed.clientInstanceId)) ||
+      (parsed.requiredAccountBinding !== undefined &&
+        (!parsed.requiredAccountBinding ||
+          typeof parsed.requiredAccountBinding !== 'object' ||
+          typeof parsed.requiredAccountBinding.issuer !== 'string' ||
+          typeof parsed.requiredAccountBinding.subject !== 'string' ||
+          typeof parsed.requiredAccountBinding.displayName !== 'string')) ||
+      (parsed.requireAccountBinding !== undefined &&
+        parsed.requireAccountBinding !== true) ||
+      (parsed.requireAccountBinding === true) !==
+        (parsed.requiredAccountBinding !== undefined) ||
+      (parsed.requireAccountBinding === true) !==
+        (parsed.clientInstanceId !== undefined) ||
       (parsed.requestKind !== 'code' && parsed.requestKind !== 'direct') ||
       (parsed.expectedEnvironmentId !== undefined &&
         typeof parsed.expectedEnvironmentId !== 'string') ||
