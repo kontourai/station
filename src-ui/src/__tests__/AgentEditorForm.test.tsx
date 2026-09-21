@@ -10,6 +10,15 @@ import type { AgentFormData } from '../views/agent-editor/types';
 let agentConnections: any[] = [];
 const modelConnections: any[] = [];
 
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'ui-scope-test-authority',
+    isCurrent: () => true,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: agentConnections }),
   useModelConnectionsQuery: () => ({ data: modelConnections }),

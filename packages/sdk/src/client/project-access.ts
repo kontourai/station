@@ -100,29 +100,45 @@ export async function getProjectAccess(
   );
 }
 
+/**
+ * Caller-captured mutation intent for the cookie-replacement race: the
+ * principal id the acting page was rendered for. The server compares it
+ * against freshly authenticated authority before committing and refuses on
+ * mismatch — a client claim that grants nothing. Omit it only on call paths
+ * that never cross an HttpOnly-cookie authority boundary (the operator
+ * console keeps working unchanged).
+ */
+export interface ProjectAccessMutationIntent {
+  expectedActor?: string;
+}
+
 export type ProjectAccessCommand =
   | { kind: 'enable'; localProjectId: string }
-  | {
+  | ({
       kind: 'invite';
       scope: ProjectMembershipScope;
       email: string | null;
       role: Exclude<ProjectMemberRole, 'owner'>;
       expiresAt: string;
-    }
-  | {
+    } & ProjectAccessMutationIntent)
+  | ({
       kind: 'revoke-invitation';
       scope: ProjectMembershipScope;
       invitationId: string;
-    }
-  | {
+    } & ProjectAccessMutationIntent)
+  | ({
       kind: 'change-member';
       scope: ProjectMembershipScope;
       principalId: string;
       revision: number;
       role: Exclude<ProjectMemberRole, 'owner'>;
       status: 'active' | 'revoked';
-    }
-  | { kind: 'transfer'; scope: ProjectMembershipScope; recipientId: string };
+    } & ProjectAccessMutationIntent)
+  | ({
+      kind: 'transfer';
+      scope: ProjectMembershipScope;
+      recipientId: string;
+    } & ProjectAccessMutationIntent);
 export type ProjectAccessCommandResult =
   | { kind: 'enabled'; view: ProjectAccessAdministrationView }
   | { kind: 'invited'; invitation: ProjectInvitationView; token: string }
@@ -148,8 +164,18 @@ export async function changeProjectAccess(
           : kind === 'transfer'
             ? '/transfer'
             : `/invitations/${encodeURIComponent((command as Extract<ProjectAccessCommand, { kind: 'revoke-invitation' }>).invitationId)}/revoke`;
+  // The revoke leaf previously carried only the Project scope; the
+  // caller-captured actor precondition rides along wherever present, so a
+  // stale page cannot revoke as a substituted principal either.
   const body =
-    command.kind === 'revoke-invitation' ? { scope: command.scope } : data;
+    command.kind === 'revoke-invitation'
+      ? {
+          scope: command.scope,
+          ...(command.expectedActor === undefined
+            ? {}
+            : { expectedActor: command.expectedActor }),
+        }
+      : data;
   const result = await unwrapProjectResponse<unknown>(
     await mutateJson(
       `${apiBase}/api/projects/${encodeURIComponent(slug)}/access${suffix}`,

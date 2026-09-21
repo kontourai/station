@@ -401,3 +401,44 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     ]);
   });
 });
+
+describe('broker cleanup and the Station home lease', () => {
+  test('slow broker retirement does not block ordinary cleanup or release the home early', async () => {
+    const { runtime, log, release } = shutdownDouble();
+    const lifetime = new AbortController();
+    runtime.virtualApplicationLifetime = lifetime;
+    let finish!: () => void;
+    runtime.selfHostedBroker = {
+      shutdown: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    };
+    const stopped = runtime.shutdown();
+    await letShutdownRunToQuiescence();
+    expect(lifetime.signal.aborted).toBe(true);
+    expect(log).toContain('event-store-closed');
+    expect(release).not.toHaveBeenCalled();
+    finish();
+    await stopped;
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  test('a broker-only cleanup failure is reported and retains home ownership', async () => {
+    const { runtime, log, release } = shutdownDouble();
+    const failure = new Error('broker cleanup unconfirmed');
+    const broker = {
+      shutdown: vi.fn(async () => {
+        throw failure;
+      }),
+    };
+    runtime.selfHostedBroker = broker;
+    await expect(runtime.shutdown()).rejects.toBe(failure);
+    expect(log).toContain('event-store-closed');
+    expect(runtime.configLoader.dispose).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+    expect(runtime.selfHostedBroker).toBe(broker);
+  });
+});

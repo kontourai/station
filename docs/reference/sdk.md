@@ -1091,6 +1091,16 @@ its mutations capture that scope before asynchronous work. Do not persist
 administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.
 
+Cookie-authenticated callers (the guest administration journey) additionally
+pass `expectedActor` on the invite, invitation-revoke, member-change, and
+transfer commands: the principal id the acting page was rendered for. The
+server compares it against freshly authenticated authority before committing
+and refuses with `forbidden` on mismatch, so a page whose HttpOnly cookies
+were replaced in another window cannot commit its stale intent as the new
+principal. The field is optional; omitting it preserves existing operator
+behavior. It grants nothing — it is a comparison against authenticated
+authority, never authority granted by a client claim.
+
 `@kontourai/station-sdk/account-authentication` exports
 `getAccountAuthentication(apiBase)`, `getAccountSession(apiBase, { signal? })` and
 `runAccountOperation(apiBase, endpoint, body, invitation?)`. These use the fixed

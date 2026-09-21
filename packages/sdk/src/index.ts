@@ -621,6 +621,8 @@ export {
   type RemoteEnvironmentSessions,
   type RemoteEnvironmentUnavailable,
   type RemoteSessionsResult,
+  type ReorderProjectsInput,
+  type ReorderProjectsVariables,
   type ResolvedOpenSshHost,
   reconnectACPConnection,
   recordFirstRunDecision,

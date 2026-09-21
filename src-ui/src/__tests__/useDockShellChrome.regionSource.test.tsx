@@ -31,6 +31,12 @@ const harness = vi.hoisted(() => ({
   collapseMaximizedDock: vi.fn(),
 }));
 
+// This fragment has no active connection; scoped Project reads stay disabled.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     isDockOpen: harness.isDockOpen,

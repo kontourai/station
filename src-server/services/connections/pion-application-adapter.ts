@@ -220,23 +220,54 @@ export async function startPionApplicationAdapter(
   let shutdown: Promise<void> | undefined;
   let stdout = () => '';
   let aborted = () => {};
+  let abortFailure: Error | undefined;
   let lifetime: ReturnType<typeof setTimeout> | undefined;
+  // Adapter-owned cleanup receipt: resolves once resource cleanup
+  // (process termination, temp custody, handle release) is confirmed and
+  // rejects only on actual cleanup failure. `close()` may additionally reject
+  // with an operational failure (abort, lifetime expiry, process exit) even
+  // after cleanup completed — callers must join this receipt instead of
+  // guessing cleanup state from error strings.
+  let markCleanupDone!: () => void;
+  let markCleanupFailed!: (error: unknown) => void;
+  const cleanupComplete: Promise<void> = new Promise<void>(
+    (resolve, reject) => {
+      markCleanupDone = resolve;
+      markCleanupFailed = reject;
+    },
+  );
+  // Handled here so an unobserved operational shutdown never surfaces as an
+  // unhandled rejection; awaiting the receipt still observes the outcome.
+  cleanupComplete.then(undefined, () => {});
+  let cleanupSettled = false;
   const close = () =>
     (shutdown ??= (async () => {
       input.signal.removeEventListener('abort', aborted);
       clearTimeout(lifetime);
-      ipc?.close();
-      await dependencies.terminate(child, {
-        graceMs: 2_000,
-        killConfirmMs: 3_000,
-      });
-      ipc?.finish();
-      if (input.profile === 'application' && stdout() !== '')
-        throw new Error('pion_application_content_diagnostic_boundary');
-      await dependencies.removeTemp(directory);
-      if (existsSync(directory))
-        throw new Error('pion_temp_cleanup_incomplete');
-      owned.release();
+      try {
+        ipc?.close();
+        await dependencies.terminate(child, {
+          graceMs: 2_000,
+          killConfirmMs: 3_000,
+        });
+        ipc?.finish();
+        if (input.profile === 'application' && stdout() !== '')
+          throw new Error('pion_application_content_diagnostic_boundary');
+        await dependencies.removeTemp(directory);
+        if (existsSync(directory))
+          throw new Error('pion_temp_cleanup_incomplete');
+        owned.release();
+      } catch (error) {
+        if (!cleanupSettled) {
+          cleanupSettled = true;
+          markCleanupFailed(error);
+        }
+        throw error;
+      }
+      if (!cleanupSettled) {
+        cleanupSettled = true;
+        markCleanupDone();
+      }
       if (failure) throw failure;
     })());
   const fail = (error: Error) => {
@@ -269,7 +300,12 @@ export async function startPionApplicationAdapter(
     await close().catch(() => {});
     throw error;
   }
-  aborted = () => fail(new Error('pion_application_aborted'));
+  aborted = () => {
+    abortFailure = new Error('pion_application_aborted', {
+      cause: input.signal.reason,
+    });
+    fail(abortFailure);
+  };
   input.signal.addEventListener('abort', aborted, { once: true });
   lifetime = setTimeout(
     () => fail(new Error('pion_application_lifetime_expired')),
@@ -342,6 +378,7 @@ export async function startPionApplicationAdapter(
                 ? diagnosticMessages(directory)
                 : [],
             close,
+            cleanupComplete,
           };
         }
       } catch (error) {
@@ -354,11 +391,27 @@ export async function startPionApplicationAdapter(
   } catch (error) {
     try {
       await close();
-    } catch (cleanup) {
-      throw new AggregateError(
-        [error, cleanup],
-        'pion_adapter_startup_cleanup_failed',
-      );
+    } catch (closeFailure) {
+      try {
+        await cleanupComplete;
+      } catch (cleanup) {
+        throw new AggregateError(
+          [error, cleanup],
+          'pion_adapter_startup_cleanup_failed',
+        );
+      }
+      // Resource cleanup succeeded. Only our own abort notification may be
+      // collapsed into the caller's exact cancellation reason; an unrelated
+      // operational error must remain visible.
+      if (
+        closeFailure !== error &&
+        !(closeFailure === abortFailure && error === input.signal.reason)
+      ) {
+        throw new AggregateError(
+          [error, closeFailure],
+          'pion_adapter_startup_failed',
+        );
+      }
     }
     throw error;
   }

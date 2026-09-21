@@ -35,6 +35,29 @@ function runtimeFixture() {
 }
 
 describe('StationRuntime virtual application publication', () => {
+  test('starts the opt-in broker after application activation and stops it before ingress retirement', async () => {
+    const fixture = runtimeFixture();
+    const start = vi.fn(async () => {});
+    const shutdown = vi.fn(async () => {
+      expect(fixture.ready()?.signal.aborted).toBe(false);
+    });
+    Object.assign(fixture.runtime, {
+      selfHostedBrokerConfiguration: {
+        create: (application: VirtualApplication) => {
+          expect(application).toBe(fixture.ready());
+          return { start, shutdown };
+        },
+      },
+    });
+    const initialized = fixture.runtime.initialize();
+    expect(start).not.toHaveBeenCalled();
+    fixture.finish();
+    await initialized;
+    expect(start).toHaveBeenCalledOnce();
+    await fixture.runtime.shutdown();
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(fixture.ready()?.signal.aborted).toBe(true);
+  });
   test('publishes only after bootstrap resolves and revokes on shutdown', async () => {
     const fixture = runtimeFixture();
     const initialized = fixture.runtime.initialize();

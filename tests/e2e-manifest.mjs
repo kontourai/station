@@ -1573,6 +1573,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/project-guest-admin-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Project guest administration acceptance',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real isolated Station and synthetic one-host operator/guest browsers prove the invited-admin People and access journey: admin inspection, manual single-use invitation creation and cancellation, read-only Device explanation after an operator rescope, read+operate restore, and honest self-demotion. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+    exceptions: [],
+  },
+  {
     path: 'tests/interactive-workspace-performance-bridge.spec.ts',
     bucket: 'smoke-live',
     surface: 'Interactive workspace performance reference bridge',

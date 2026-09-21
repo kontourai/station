@@ -1,4 +1,4 @@
-import { useProjectsQuery } from '@kontourai/station-sdk';
+import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { AgentEditorIdentityFields } from './AgentEditorIdentityFields';
 import { AgentEditorProjectOwnership } from './AgentEditorProjectOwnership';
 import type { AgentEditorFormProps } from './types';
@@ -9,7 +9,7 @@ type BasicTabProps = Pick<
 >;
 
 export function AgentEditorBasicTab(props: BasicTabProps) {
-  const { data: projects = [] } = useProjectsQuery() as {
+  const { data: projects = [] } = useScopedProjectsQuery() as {
     data?: Array<{ slug: string; name: string }>;
   };
 

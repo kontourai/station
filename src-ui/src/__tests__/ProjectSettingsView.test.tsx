@@ -36,8 +36,14 @@ const navigationMocks = vi.hoisted(() => ({
   showSurface: vi.fn(),
 }));
 
-vi.mock('../contexts/ApiBaseContext', () => ({
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useApiBase: () => ({ apiBase: 'http://localhost:3141' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://localhost:3141',
+    authorityKey: 'project-settings-test-authority',
+    isCurrent: () => true,
+  }),
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({

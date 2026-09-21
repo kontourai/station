@@ -97,11 +97,18 @@ vi.mock('../../components/chat-dock/ChatDock', () => ({
     <p data-testid="ambient-chat-occupant">Chat pane</p>
   ),
 }));
-vi.mock('../../contexts/ApiBaseContext', () => ({
+vi.mock('../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useApiBase: () => ({ apiBase: 'http://test.local' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://test.local',
+    authorityKey: 'layout-pane-test-authority',
+    isCurrent: () => true,
+  }),
 }));
 // The dock has NO project: `useProject` answers nothing for every slug.
-vi.mock('../../contexts/ProjectsContext', () => ({
+vi.mock('../../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useProjects: () => ({
     projects: [],
     isLoading: false,
