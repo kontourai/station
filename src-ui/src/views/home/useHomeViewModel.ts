@@ -3,7 +3,6 @@ import {
   useConversationInventoryQuery,
   useModelPickerCatalogQuery,
   useOrchestrationSessionsQuery,
-  useProjectsQuery,
   useRemoteSessionsQuery,
   useTasksQuery,
 } from '@kontourai/station-sdk';
@@ -14,6 +13,7 @@ import {
   openChatsStore,
   useOpenWorkChats,
 } from '../../contexts/open-chats-store';
+import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
@@ -32,7 +32,7 @@ export type HomeViewNavigation = Extract<
 >;
 
 interface HomeWorkData {
-  projects: NonNullable<ReturnType<typeof useProjectsQuery>['data']>;
+  projects: NonNullable<ReturnType<typeof useScopedProjectsQuery>['data']>;
   /**
    * The agent catalog, exposed because Home's rows draw an agent icon and
    * that icon must resolve against the SAME catalog the rows' labels were
@@ -58,7 +58,7 @@ interface HomeWorkData {
 }
 
 function useHomeWorkData(): HomeWorkData {
-  const projectsQuery = useProjectsQuery();
+  const projectsQuery = useScopedProjectsQuery();
   const projects = projectsQuery.data ?? [];
   const sessions = useOrchestrationSessionsQuery();
   const inventory = useConversationInventoryQuery();

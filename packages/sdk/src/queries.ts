@@ -756,6 +756,8 @@ export {
   type ModelConnectionMutationInput,
   type ModelConnectionSmokeInput,
   type ProjectReadQueryConfig,
+  type ReorderProjectsInput,
+  type ReorderProjectsVariables,
   shouldRetryLayoutCatalog,
   shouldRetryProjectLayout,
   useAgentConnectionCatalogQuery,

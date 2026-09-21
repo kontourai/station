@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import type { LayoutMetadata } from '@kontourai/station-contracts/layout';
 import type { ProjectMetadata } from '@kontourai/station-contracts/project';
 import type { WorkspacePaneInstance } from '@kontourai/station-sdk';

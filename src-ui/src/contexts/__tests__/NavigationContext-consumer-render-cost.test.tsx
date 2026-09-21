@@ -26,6 +26,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const rowRenders = vi.hoisted(() => ({ count: 0 }));
 
+vi.mock('../ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'sidebar-render-cost-authority',
+    isCurrent: () => true,
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectLayoutsQuery: () => ({ data: undefined }),
   useBoardAvailabilityQuery: () => ({ data: undefined }),

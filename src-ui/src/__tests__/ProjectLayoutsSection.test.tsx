@@ -101,6 +101,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3141' }),
+  useHostRequestAuthorityScope: () => null,
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({

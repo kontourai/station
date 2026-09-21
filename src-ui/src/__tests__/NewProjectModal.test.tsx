@@ -136,8 +136,14 @@ vi.mock('@kontourai/station-sdk', () => ({
   StationHttpError,
 }));
 
-vi.mock('../contexts/ApiBaseContext', () => ({
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useApiBase: () => ({ apiBase: 'http://localhost:3000' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://localhost:3000',
+    authorityKey: 'new-project-test-authority',
+    isCurrent: () => true,
+  }),
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({

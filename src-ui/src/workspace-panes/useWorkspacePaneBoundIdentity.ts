@@ -2,11 +2,9 @@ import type {
   LayoutMetadata,
   ProjectMetadata,
 } from '@kontourai/station-contracts';
-import {
-  useProjectLayoutsQuery,
-  useProjectsQuery,
-} from '@kontourai/station-sdk';
+import { useProjectLayoutsQuery } from '@kontourai/station-sdk';
 import type { WorkspacePaneInstance } from '@kontourai/station-sdk/workspace-pane';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 
 type ResolutionReason = 'missing' | 'ambiguous';
 
@@ -82,7 +80,7 @@ export function useWorkspacePaneBoundIdentity(
   instance: WorkspacePaneInstance,
   needsLayout: boolean,
 ): WorkspacePaneBoundIdentity {
-  const projectsQuery = useProjectsQuery();
+  const projectsQuery = useScopedProjectsQuery();
   const projectId = instance.boundContext?.projectId;
   const projects = (projectsQuery.data ?? []) as readonly ProjectMetadata[];
   const project = projectId ? exactMatch(projects, projectId) : 'missing';
