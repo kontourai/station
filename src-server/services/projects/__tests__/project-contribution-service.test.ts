@@ -11,7 +11,9 @@ import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ProjectBindingsStore } from '../project-binding-store.js';
 import {
   ProjectContributionService,
+  portableConsentOfStartedMetadata,
   receiverAdmittedCwd,
+  requirePortableIncarnationMatch,
 } from '../project-contribution-service.js';
 import {
   ProjectManifestStore,
@@ -656,6 +658,52 @@ describe('ProjectContributionService', () => {
     expect(admission.resourceId).toBe(QUERY.resourceId);
   });
 
+  test('the admission captures the ORIGINAL local Project incarnation', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    // The receiver Project record id the admission was captured against
+    // — the incarnation the persisted marker and the effect guards
+    // compare, so a same-path successor cannot inherit this admission.
+    expect(admission.admittedProject.localProjectId).toBe('local-id');
+  });
+
+  test('admission recheck refuses a same-path Project replacement (new record id)', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      verifiedAt: Date.parse('2026-09-20T11:00:00.000Z'),
+    });
+    const admission = await f.service.authorizeReceiverExecution(
+      QUERY,
+      () => true,
+    );
+    expect(admission.admittedProject.localProjectId).toBe('local-id');
+    // The Project is removed and recreated at the SAME path and slug: a
+    // new record id. The offer still names the portable association, but
+    // the admission was captured for a DIFFERENT incarnation.
+    f.setProject({
+      id: 'local-id-2',
+      slug: 'local',
+      name: 'Local',
+      createdAt: '',
+      updatedAt: '',
+      workingDirectory: '/fixture/checkout',
+      hasWorkingDirectory: true,
+      layoutCount: 0,
+      hasKnowledge: false,
+    });
+    await expect(admission.recheck()).rejects.toMatchObject({
+      code: 'receiver_execution_unavailable',
+    });
+  });
+
   test('admission refuses an unoffered resource and a present-but-unoffered binding', async () => {
     const f = fixture({ bound: true, verifiedAt: 1000 });
     await expect(
@@ -1112,5 +1160,84 @@ describe('ProjectContributionService', () => {
         () => true,
       ),
     ).rejects.toMatchObject({ code: 'receiver_execution_not_offered' });
+  });
+});
+
+describe('portable consent incarnation readers (#484 continuation)', () => {
+  const KEY = 'portableExecutionConsent';
+  const threeField = {
+    [KEY]: {
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-id',
+    },
+  };
+  const twoField = {
+    [KEY]: {
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    },
+  };
+
+  test('the reader retains old markers for explicit refusal and current markers for admission', () => {
+    expect(portableConsentOfStartedMetadata(twoField)).toEqual({
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+    });
+    expect(portableConsentOfStartedMetadata(threeField)).toEqual({
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-id',
+    });
+    expect(portableConsentOfStartedMetadata(undefined)).toBeUndefined();
+  });
+
+  test('the incarnation match proves the exact association or fails closed', () => {
+    const admitted = {
+      portableProjectId: 'prj_shared',
+      resourceId: 'git.example/acme/repo',
+      localProjectId: 'local-id',
+    };
+    // Exact match passes.
+    expect(() =>
+      requirePortableIncarnationMatch(admitted, {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-id',
+      }),
+    ).not.toThrow();
+    // Absent consent is never promoted: unavailable, not stale.
+    expect(() => requirePortableIncarnationMatch(admitted, undefined)).toThrow(
+      expect.objectContaining({ code: 'receiver_execution_unavailable' }),
+    );
+    // A different association is never mapped: unavailable.
+    expect(() =>
+      requirePortableIncarnationMatch(admitted, {
+        portableProjectId: 'prj_other',
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-id',
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'receiver_execution_unavailable' }),
+    );
+    // A pre-incarnation marker fails closed stale, never upgraded.
+    expect(() =>
+      requirePortableIncarnationMatch(admitted, {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'receiver_execution_consent_stale' }),
+    );
+    // A same-path successor incarnation refuses unavailable.
+    expect(() =>
+      requirePortableIncarnationMatch(admitted, {
+        portableProjectId: 'prj_shared',
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-id-2',
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'receiver_execution_unavailable' }),
+    );
   });
 });
