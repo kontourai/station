@@ -3,6 +3,7 @@ import type { ProjectMemberAction } from '@kontourai/station-contracts/project-m
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import { useProjectQuery, useProjectsQuery } from '@kontourai/station-sdk';
 import { type ReactNode } from 'react';
+import { useHostRequestAuthorityScope } from './ApiBaseContext';
 
 export interface ProjectMetadata {
   version?: 'station.member-project/v1';
@@ -58,8 +59,9 @@ export function useProjects(): {
    */
   isConfirmedLoaded: boolean;
 } {
+  const requestScope = useHostRequestAuthorityScope();
   const { data, isLoading, isSuccess, isError, isPlaceholderData } =
-    useProjectsQuery();
+    useProjectsQuery({ requestScope, requireRequestScope: true });
   return {
     projects: data ?? [],
     isLoading,
@@ -79,7 +81,12 @@ export function useProject(slug: string): {
   project: ProjectConfig | undefined;
   isLoading: boolean;
 } {
-  const { data, isLoading } = useProjectQuery(slug, { enabled: !!slug });
+  const requestScope = useHostRequestAuthorityScope();
+  const { data, isLoading } = useProjectQuery(slug, {
+    enabled: !!slug,
+    requestScope,
+    requireRequestScope: true,
+  });
   return { project: data, isLoading };
 }
 

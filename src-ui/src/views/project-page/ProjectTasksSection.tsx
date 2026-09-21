@@ -25,6 +25,7 @@ import { describeReadFailure, Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
+import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
 
 /** Human-readable label for a claim actor (roadmap archive#584, part of epic
  * archive#580, S4) — used by both the local-task guard and the provider-item badge. */
@@ -98,11 +99,13 @@ function externalProviderItems(
 
 export function ProjectTasksSection({
   slug,
+  projectId,
   projectWorkingDirectory,
   gitStatus,
   agents,
 }: {
   slug: string;
+  projectId?: string;
   projectWorkingDirectory?: string;
   gitStatus?: GitStatusResult | null;
   agents?: string[];
@@ -654,6 +657,14 @@ export function ProjectTasksSection({
                   <dd>{selectedTask.agentId ?? 'Unavailable'}</dd>
                 </div>
               </dl>
+              <ProjectTaskSharingControl
+                slug={slug}
+                projectId={projectId}
+                task={{
+                  id: selectedTask.id,
+                  createdAt: selectedTask.createdAt,
+                }}
+              />
               <div className="project-page__relation-timeline">
                 {links.length === 0 ? (
                   <div className="project-page__task-empty">

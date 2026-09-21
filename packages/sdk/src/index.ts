@@ -601,6 +601,7 @@ export {
   type PluginSettingField,
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
+  type ProjectReadQueryConfig,
   type ProviderCommandDescriptor,
   type ProviderWorkItem,
   peerCredentialQueries,

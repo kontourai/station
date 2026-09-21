@@ -2781,6 +2781,7 @@ attachment requires an explicit destination.
 ```sh
 station projects prepare-identity website --station=laptop > project-identity.json
 station projects attach website-server --identity-file=project-identity.json --name=Website --station=server --target-workspace='~/src/website'
+station projects execution-root website-server --repo-id=github.com/example/website --path=apps/web --station=server
 ```
 
 `prepare-identity` explicitly prepares a missing identity and prints its portable
@@ -2795,3 +2796,10 @@ path quoted so the invoking shell leaves its interpretation to that Station.
 Omit `--target-workspace` for a Project with no local checkout. An existing
 conflicting Project is refused; an exact replay can return the existing
 association. Membership and compute contributions require their separate grants.
+
+`execution-root` first reads the current portable identity and then submits that
+exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
+`--path` to select a directory, or `--clear` to remove the selection. The named
+resource must already be declared, but it may be unbound on this Station;
+configuration never clones, binds, or grants compute. An unchanged request is
+idempotent and does not advance the identity timestamp.
