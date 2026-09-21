@@ -1468,6 +1468,61 @@ describe('useActiveChatTranscript', () => {
     });
     vi.unstubAllGlobals();
   });
+
+  test('decorates a retained live answer after transcript merging', async () => {
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'retained-turn', prompt: 'Q' }),
+        event('e2', 'turn.completed', {
+          turnId: 'retained-turn',
+          outputText: 'A',
+        }),
+      ],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: [
+              {
+                turnId: 'retained-turn',
+                changedFiles: {
+                  status: 'available',
+                  files: [{ status: 'modified', path: 'src/app.ts' }],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', {
+        ...baseSession,
+        messages: [
+          {
+            id: 'retained-answer',
+            role: 'assistant',
+            content: 'A',
+            turnId: 'retained-turn',
+          },
+        ],
+      } as ChatSession),
+    );
+
+    await waitFor(() =>
+      expect(result.current.messages.at(-1)?.changedFiles).toMatchObject({
+        files: [{ path: 'src/app.ts' }],
+      }),
+    );
+  });
 });
 
 // the live failure card is an ordinary

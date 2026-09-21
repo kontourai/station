@@ -4,7 +4,10 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
-import { handleOrchestrationEvent } from './eventHandlers';
+import {
+  handleOrchestrationEvent,
+  settleSemanticDeliveryBuffer,
+} from './eventHandlers';
 import {
   recordReplayConnection,
   recordReplaySnapshot,
@@ -120,6 +123,9 @@ export function ensureOrchestrationEventStream(
         setStreamConnectionState(apiBase, 'caught-up');
         recordReplayConnection(apiBase, 'caught-up');
       } else if (raw.event === 'orchestration:snapshot') {
+        // A replacement snapshot already contains every durable delta. Reveal
+        // locally held text first, then let the snapshot become authoritative.
+        settleSemanticDeliveryBuffer(apiBase);
         // A snapshot always replaces local state — adopt its cursor
         // unconditionally rather than gating it through `admit`.
         cursor.adopt(raw.id);
@@ -168,6 +174,8 @@ export function ensureOrchestrationEventStream(
     // scheduled to reconnect. Both streams then replay and apply the same
     // orchestration events.
     onError: () => {
+      // Do not leave the last partial answer invisible during retry/backoff.
+      settleSemanticDeliveryBuffer(apiBase, false);
       receiving = false;
       if (setStreamConnectionState(apiBase, 'interrupted'))
         recordReplayConnection(apiBase, 'interrupted');
@@ -185,6 +193,10 @@ export function ensureOrchestrationEventStream(
     // immediately after invoking this callback, so the stream never even
     // reaches the wake-registry registration below.
     onTerminal: () => {
+      // fetchSSE invokes onError first. Cancel its deferred transient flush:
+      // a terminal 401/403 means authority was lost, so hidden content is
+      // discarded rather than projected into a later replacement owner.
+      settleSemanticDeliveryBuffer(apiBase, true);
       recordReplayConnection(apiBase, 'closed');
       setStreamConnectionState(apiBase, 'closed');
       authenticatedStream.close();

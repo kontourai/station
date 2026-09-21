@@ -87,6 +87,7 @@ function runtimeEvent(value: unknown, elided = false): boolean {
       'outcome',
       'toolName',
       'toolCallId',
+      'purpose',
       'from',
       'to',
     ].every((key) => optionalText(value[key]))
@@ -355,6 +356,14 @@ export function tapeValidationError(
   if (!initialChat(value.initialChat)) return 'Invalid initial chat state.';
   if (value.initialHistory !== undefined && !history(value.initialHistory))
     return 'Invalid initial history state.';
+  if (
+    value.presentation !== undefined &&
+    (!record(value.presentation) ||
+      !['token', 'smooth', 'buffered'].includes(
+        value.presentation.answerDelivery as string,
+      ))
+  )
+    return 'Invalid recording presentation.';
   if (
     !(
       value.coverage === undefined ||

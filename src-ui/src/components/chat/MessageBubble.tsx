@@ -43,6 +43,10 @@ const loadConnectedAnswerBasisAffordance = () =>
   }));
 
 const loadTurnActionsMenu = () => import('./TurnActionsMenu');
+const loadCheckpointRestoreButton = () =>
+  import('./CheckpointRestoreButton').then((module) => ({
+    default: module.CheckpointRestoreButton,
+  }));
 const loadUserMessageActionsMenu = () =>
   import('./TurnActionsMenu').then((module) => ({
     default: module.UserMessageActionsMenu,
@@ -528,6 +532,19 @@ function MessageBubbleComponent({
                         : 'The turn’s checkpoint pair could not be compared.'}
             </p>
           )}
+          {msg.changedFiles.status === 'available' &&
+            msg.turnId &&
+            answerSessionId &&
+            !replaying && (
+              <LazyBoundary
+                load={loadCheckpointRestoreButton}
+                pending={null}
+                componentProps={{
+                  sessionId: answerSessionId,
+                  turnId: msg.turnId,
+                }}
+              />
+            )}
         </details>
       )}
 

@@ -840,49 +840,54 @@ async function acquireCompletionLock({ context, directory, lifetime }) {
     // the decision to become a distinct host-wide completion waiter so two
     // arrivals cannot both observe a spare slot. This mutex never mutates a
     // sibling request lease: ownership remains with each waiting process.
-    let queueLockOwned = acquireLeaseDirectory(queueLock, {
-      owner: lifetime.getLease().owner,
-      heartbeatAt: context.now(),
-      state: 'completion_queue',
-    });
-    if (
-      !queueLockOwned &&
-      cleanStaleDirectory(queueLock, {
-        now: context.now(),
-        staleMs: context.staleMs,
-      })
-    ) {
-      queueLockOwned = acquireLeaseDirectory(queueLock, {
+    // Once this request has reserved a waiter slot, it must not contend for
+    // the mutex again on every heartbeat: doing so lets early FIFO waiters
+    // starve a later request that needs to observe the cap and reject.
+    if (lifetime.getLease().completionQueueReserved !== true) {
+      let queueLockOwned = acquireLeaseDirectory(queueLock, {
         owner: lifetime.getLease().owner,
         heartbeatAt: context.now(),
         state: 'completion_queue',
       });
-    }
-    if (queueLockOwned) {
-      try {
-        if (
-          completionWaiterCount(context.root, ownKey, {
-            now: context.now(),
-            staleMs: context.staleMs,
-          }) >= MAX_COMPLETION_WAITERS
-        ) {
-          return { acquired: false, rejected: true, deadlineExpired: false };
-        }
-        lifetime.setLease({
-          ...lifetime.getLease(),
-          state: 'queued',
-          weight: context.lane.weight,
-          phase: undefined,
-          queueReason: COMPLETION_QUEUE_REASON,
-          completionQueueReserved: true,
+      if (
+        !queueLockOwned &&
+        cleanStaleDirectory(queueLock, {
+          now: context.now(),
+          staleMs: context.staleMs,
+        })
+      ) {
+        queueLockOwned = acquireLeaseDirectory(queueLock, {
+          owner: lifetime.getLease().owner,
           heartbeatAt: context.now(),
+          state: 'completion_queue',
         });
-        if (lifetime.ownershipLost())
-          throw new Error(
-            'verification ownership lost while awaiting completion',
-          );
-      } finally {
-        removeOwnedDirectory(queueLock, lifetime.getLease().owner);
+      }
+      if (queueLockOwned) {
+        try {
+          if (
+            completionWaiterCount(context.root, ownKey, {
+              now: context.now(),
+              staleMs: context.staleMs,
+            }) >= MAX_COMPLETION_WAITERS
+          ) {
+            return { acquired: false, rejected: true, deadlineExpired: false };
+          }
+          lifetime.setLease({
+            ...lifetime.getLease(),
+            state: 'queued',
+            weight: context.lane.weight,
+            phase: undefined,
+            queueReason: COMPLETION_QUEUE_REASON,
+            completionQueueReserved: true,
+            heartbeatAt: context.now(),
+          });
+          if (lifetime.ownershipLost())
+            throw new Error(
+              'verification ownership lost while awaiting completion',
+            );
+        } finally {
+          removeOwnedDirectory(queueLock, lifetime.getLease().owner);
+        }
       }
     }
 

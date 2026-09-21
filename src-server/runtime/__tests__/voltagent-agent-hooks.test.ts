@@ -1,7 +1,11 @@
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { simulateReadableStream } from 'ai';
+import { MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mapStationAgentStreamEvent } from '../../providers/adapters/station-agent-adapter.js';
 import { makeUnattendedGrantResolver } from '../../services/agents/unattended-grant-resolver.js';
 import {
   principalKey,
@@ -12,10 +16,12 @@ import { BuiltinScheduler } from '../../services/scheduling/builtin-scheduler.js
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
 import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
 import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
+import { runWithNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   createVoltAgentLifecycleHooks,
   normalizeVoltAgentToolErrors,
   toVoltAgentTool,
+  VoltAgentFramework,
 } from '../frameworks/voltagent-adapter.js';
 import { createScheduledTurnAdapter } from '../routes/runtime-route-support.js';
 import { normalizeLoadedMCPTools } from '../tools/mcp-tool-names.js';
@@ -41,6 +47,190 @@ function toolOptions(callId: string) {
 }
 
 describe('VoltAgent lifecycle hooks', () => {
+  it('carries decorated purpose through real framework execution, relay and durable projection', async () => {
+    let releaseExecution!: () => void;
+    const executionHeld = new Promise<void>((resolve) => {
+      releaseExecution = resolve;
+    });
+    const executed = vi.fn(async () => {
+      await executionHeld;
+      return 'contents';
+    });
+    const tool = {
+      name: 'read_file',
+      description: 'Read a project file',
+      parameters: { type: 'object', properties: { path: { type: 'string' } } },
+      execute: executed,
+    } as any;
+    const beforeToolCall = vi.fn().mockResolvedValue(true);
+    let modelCall = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: (modelCall++ === 0
+            ? [
+                {
+                  type: 'tool-call' as const,
+                  toolCallId: 'shared-call',
+                  toolName: 'read_file',
+                  input: JSON.stringify({
+                    path: 'README.md',
+                    __station_tool_purpose: 'Inspect project documentation',
+                  }),
+                },
+                {
+                  type: 'finish' as const,
+                  finishReason: {
+                    unified: 'tool-calls' as const,
+                    raw: 'tool_calls',
+                  },
+                  usage: {
+                    inputTokens: {
+                      total: 1,
+                      noCache: 1,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                    },
+                    outputTokens: { total: 1, text: 0, reasoning: 0 },
+                  },
+                },
+              ]
+            : [
+                { type: 'text-start' as const, id: 'answer' },
+                {
+                  type: 'text-delta' as const,
+                  id: 'answer',
+                  delta: 'Done.',
+                },
+                { type: 'text-end' as const, id: 'answer' },
+                {
+                  type: 'finish' as const,
+                  finishReason: { unified: 'stop' as const, raw: 'stop' },
+                  usage: {
+                    inputTokens: {
+                      total: 1,
+                      noCache: 1,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                    },
+                    outputTokens: { total: 1, text: 1, reasoning: 0 },
+                  },
+                },
+              ]) as any,
+        }),
+      }),
+    });
+    const agent = await new VoltAgentFramework().createTempAgent({
+      name: 'assistant',
+      instructions: 'Use tools.',
+      model,
+      tools: [tool],
+      hooks: { beforeToolCall },
+    });
+    const cleanups: Array<() => void> = [];
+    const companion = {
+      onClose: (cleanup: () => void) => cleanups.push(cleanup),
+    } as any;
+    const published: any[] = [];
+    const map = (event: Record<string, unknown>) =>
+      mapStationAgentStreamEvent({
+        event,
+        threadId: 'session-purpose',
+        turnId: 'turn-purpose',
+        publish: (value) => published.push(value),
+        pendingIdlessToolCalls: [],
+      });
+
+    await runWithNativeForegroundRelay(companion, async () => {
+      const result = await agent.streamText('Inspect docs', {
+        conversationId: 'session-purpose',
+        userId: 'user-1',
+      });
+      const consume = (async () => {
+        for await (const event of result.fullStream) {
+          map(event as Record<string, unknown>);
+        }
+      })();
+      await vi.waitFor(() => expect(executed).toHaveBeenCalledTimes(1));
+      expect(published).toContainEqual(
+        expect.objectContaining({
+          method: 'tool.started',
+          arguments: { path: 'README.md' },
+          purpose: 'Inspect project documentation',
+        }),
+      );
+      releaseExecution();
+      await consume;
+    });
+
+    expect(model.doStreamCalls[0]?.tools?.[0]).toMatchObject({
+      type: 'function',
+      name: 'read_file',
+      inputSchema: {
+        properties: {
+          __station_tool_purpose: { type: 'string', maxLength: 240 },
+        },
+      },
+    });
+
+    expect(beforeToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolArgs: { path: 'README.md' },
+        purpose: 'Inspect project documentation',
+      }),
+      expect.anything(),
+    );
+    expect(executed).toHaveBeenCalledWith(
+      { path: 'README.md' },
+      expect.anything(),
+    );
+    expect(published).toContainEqual(
+      expect.objectContaining({
+        method: 'tool.completed',
+        purpose: 'Inspect project documentation',
+      }),
+    );
+    const projected = projectRuntimeEventsToMessages([
+      {
+        eventId: 'turn-start',
+        provider: 'station-agent',
+        threadId: 'session-purpose',
+        turnId: 'turn-purpose',
+        createdAt: '2026-09-20T00:00:00Z',
+        method: 'turn.started',
+        prompt: 'Inspect docs',
+      } as any,
+      ...published,
+    ]);
+    expect(projected.flatMap((message) => message.parts)).toContainEqual(
+      expect.objectContaining({
+        toolName: 'read_file',
+        args: { path: 'README.md' },
+        purpose: 'Inspect project documentation',
+      }),
+    );
+    cleanups.forEach((cleanup) => cleanup());
+    const afterClose: any[] = [];
+    await runWithNativeForegroundRelay(companion, async () => {
+      mapStationAgentStreamEvent({
+        event: {
+          type: 'tool-call',
+          toolCallId: 'shared-call',
+          toolName: 'provider_tool',
+          input: { __station_tool_purpose: 'provider argument' },
+        },
+        threadId: 'session-purpose',
+        turnId: 'turn-after-close',
+        publish: (value) => afterClose.push(value),
+        pendingIdlessToolCalls: [],
+      });
+    });
+    expect(afterClose[0]).toMatchObject({
+      arguments: { __station_tool_purpose: 'provider argument' },
+    });
+    expect(afterClose[0].purpose).toBeUndefined();
+  });
+
   it('surfaces the real denial reason in the ToolDeniedError, not the delegated-child wording (station#1834)', async () => {
     const reason =
       "Tool 'lookup' requires approval, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent). Add the tool to the agent's tools.autoApprove list to grant it for unattended runs.";

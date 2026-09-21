@@ -283,6 +283,17 @@ export interface OrchestrationDelegationContext {
 }
 
 /**
+ * Server-issued provenance for the input that created or currently drives a
+ * conversation. Absent means Station cannot prove a supported origin.
+ * Client UI source hints and reported device surfaces never populate this.
+ */
+export type OrchestrationInputOrigin = {
+  kind: 'delegation';
+  taskId: string;
+  title?: string;
+};
+
+/**
  * WHICH arm decided a session's open requests cannot be answered here, kept
  * so a misfiring one is distinguishable ever after: `past_resume` (the
  * session's own folded state says the work cannot pick up again) vs
@@ -628,6 +639,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    */
   displayTitle?: string;
   delegation?: OrchestrationDelegationContext;
+  /** Closed, server-derived input provenance; unknown origins stay absent. */
+  inputOrigin?: OrchestrationInputOrigin;
   /**
    * Latest model Station itself requested/configured, from
    * session.configured/turn.started metadata. archive#1182: despite the
@@ -987,6 +1000,14 @@ export interface ConversationListItem {
     forkedFrom?: ConversationForkProvenance;
     forkedTo: ConversationForkProvenance[];
   };
+  /**
+   * Server-derived admission for exposing this row's metadata in another
+   * conversation. Hosted/shared deployments remain refused until their
+   * destination visibility contract can prove the exposure is permitted.
+   */
+  referenceEligibility?:
+    | { eligible: true; visibility: 'personal-private' }
+    | { eligible: false; reason: 'destination-visibility-unavailable' };
 }
 
 /**

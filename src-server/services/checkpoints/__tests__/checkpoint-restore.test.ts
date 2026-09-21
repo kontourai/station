@@ -17,7 +17,23 @@ async function temp(name: string) {
   dirs.push(dir);
   return dir;
 }
+
+async function restore(
+  service: CheckpointRestoreService,
+  input: { threadId: string; turnId: string; phase: 'baseline' | 'settle' },
+) {
+  const preview = await service.preview({ ...input, ownerKey: 'owner-1' });
+  return service.restore({
+    threadId: input.threadId,
+    turnId: input.turnId,
+    previewId: preview.previewId,
+    expectedCurrentTreeSha: preview.currentTreeSha,
+    ownerKey: 'owner-1',
+    confirmed: true,
+  });
+}
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
@@ -74,19 +90,16 @@ describe('CheckpointRestoreService', () => {
     await writeFile(join(repo, 'later-untracked.txt'), 'remove me');
     await writeFile(join(repo, 'ignored.txt'), 'preserve me');
     const service = new CheckpointRestoreService(index, refs, home);
-    const secondInstance = new CheckpointRestoreService(index, refs, home);
     const request = {
       threadId: 'thread-1',
       turnId: 'turn-1',
       phase: 'settle',
-      confirmed: true,
     } as const;
-    const [first, concurrent] = await Promise.all([
-      service.restore(request),
-      secondInstance.restore(request),
-    ]);
+    const first = await restore(service, request);
     expect(first.restored).toBe(true);
-    expect(concurrent).toMatchObject({ id: first.id, restored: false });
+    await expect(
+      execGit(['cat-file', '-e', `${first.recoveryRef}^{tree}`], { cwd: repo }),
+    ).resolves.toBeDefined();
     expect(await readFile(join(repo, 'tracked.txt'), 'utf-8')).toBe(
       'checkpoint bytes',
     );
@@ -107,34 +120,32 @@ describe('CheckpointRestoreService', () => {
         await execGit(['write-tree'], { cwd: repo, encoding: 'utf-8' })
       ).stdout.trim(),
     ).toBe(staged);
-    const second = await service.restore({
+    const second = await restore(service, {
       threadId: 'thread-1',
       turnId: 'turn-1',
       phase: 'settle',
-      confirmed: true,
     });
     expect(second).toMatchObject({
-      id: first.id,
       restored: false,
       treeSha: checkpoint.treeSha,
     });
     const audit = JSON.parse(
       await readFile(join(home, 'checkpoint-restores.json'), 'utf-8'),
     );
-    expect(audit.events).toHaveLength(1);
-    expect(secondInstance.listEvents('thread-1')).toEqual(audit.events);
-    expect(secondInstance.listEvents('other-thread')).toEqual([]);
+    expect(audit.events).toHaveLength(2);
+    expect(service.listEvents('thread-1')).toEqual(audit.events);
+    expect(service.listEvents('other-thread')).toEqual([]);
   });
 
   test('fails closed for missing, failed, pruned, and mismatched checkpoint identity', async () => {
     const { home, refs, index } = await fixture();
     const service = new CheckpointRestoreService(index, refs, home);
     await expect(
-      service.restore({
+      service.preview({
         threadId: 'other-thread',
         turnId: 'turn-1',
         phase: 'settle',
-        confirmed: true,
+        ownerKey: 'owner-1',
       }),
     ).rejects.toMatchObject({ reason: 'checkpoint_missing' });
     index.recordTurnPhase('thread-failed', 'turn-failed', () => ({
@@ -145,11 +156,11 @@ describe('CheckpointRestoreService', () => {
       },
     }));
     await expect(
-      service.restore({
+      service.preview({
         threadId: 'thread-failed',
         turnId: 'turn-failed',
         phase: 'settle',
-        confirmed: true,
+        ownerKey: 'owner-1',
       }),
     ).rejects.toMatchObject({ reason: 'checkpoint_failed' });
     const pruned = new CheckpointRestoreService(
@@ -158,11 +169,11 @@ describe('CheckpointRestoreService', () => {
       home,
     );
     await expect(
-      pruned.restore({
+      pruned.preview({
         threadId: 'thread-1',
         turnId: 'turn-1',
         phase: 'settle',
-        confirmed: true,
+        ownerKey: 'owner-1',
       }),
     ).rejects.toMatchObject({ reason: 'checkpoint_pruned' });
     const mismatch = new CheckpointRestoreService(
@@ -182,11 +193,11 @@ describe('CheckpointRestoreService', () => {
       home,
     );
     await expect(
-      mismatch.restore({
+      mismatch.preview({
         threadId: 'thread-1',
         turnId: 'turn-1',
         phase: 'settle',
-        confirmed: true,
+        ownerKey: 'owner-1',
       }),
     ).rejects.toMatchObject({ reason: 'checkpoint_identity_mismatch' });
   });
@@ -197,15 +208,91 @@ describe('CheckpointRestoreService', () => {
     const service = new CheckpointRestoreService(index, refs, home, {
       acquireLock: acquire,
     });
-    await service.restore({
+    await restore(service, {
       threadId: 'thread-1',
       turnId: 'turn-1',
       phase: 'settle',
-      confirmed: true,
     });
     expect(RESTORE_LOCK_TIMEOUT_MS).toBeGreaterThan(10_000);
     expect(acquire).toHaveBeenCalledWith(expect.any(String), {
       timeoutMs: RESTORE_LOCK_TIMEOUT_MS,
     });
+  });
+
+  test('binds one-use preview to owner and exact current tree', async () => {
+    const { repo, home, refs, index } = await fixture();
+    const service = new CheckpointRestoreService(index, refs, home);
+    const preview = await service.preview({
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      phase: 'settle',
+      ownerKey: 'owner-1',
+    });
+    await writeFile(join(repo, 'tracked.txt'), 'intervening edit');
+    await expect(
+      service.restore({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        previewId: preview.previewId,
+        expectedCurrentTreeSha: preview.currentTreeSha,
+        ownerKey: 'owner-1',
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ reason: 'workspace_changed' });
+    await expect(
+      service.restore({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        previewId: preview.previewId,
+        expectedCurrentTreeSha: preview.currentTreeSha,
+        ownerKey: 'owner-1',
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ reason: 'preview_invalid' });
+  });
+
+  test('refuses a preview presented by a different owner', async () => {
+    const { home, refs, index } = await fixture();
+    const service = new CheckpointRestoreService(index, refs, home);
+    const preview = await service.preview({
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      phase: 'settle',
+      ownerKey: 'owner-1',
+    });
+
+    await expect(
+      service.restore({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        previewId: preview.previewId,
+        expectedCurrentTreeSha: preview.currentTreeSha,
+        ownerKey: 'owner-2',
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ reason: 'preview_invalid' });
+  });
+
+  test('refuses a preview after its advertised expiry', async () => {
+    const { home, refs, index } = await fixture();
+    const service = new CheckpointRestoreService(index, refs, home);
+    const preview = await service.preview({
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      phase: 'settle',
+      ownerKey: 'owner-1',
+    });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse(preview.expiresAt));
+
+    await expect(
+      service.restore({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        previewId: preview.previewId,
+        expectedCurrentTreeSha: preview.currentTreeSha,
+        ownerKey: 'owner-1',
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ reason: 'preview_invalid' });
   });
 });

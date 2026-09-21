@@ -1,4 +1,5 @@
 import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationInputOrigin } from '@kontourai/station-contracts/orchestration';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
@@ -22,6 +23,7 @@ interface ChatDockActiveIdentityProps {
    * the header then names none rather than inventing one.
    */
   modelLabel?: string | null;
+  inputOrigin?: OrchestrationInputOrigin;
   onClose: (id: string) => void;
 }
 
@@ -52,6 +54,7 @@ export function ChatDockActiveIdentity({
   modelLabel,
   originLabel,
   originProvider,
+  inputOrigin,
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
@@ -137,6 +140,18 @@ export function ChatDockActiveIdentity({
           >
             {originLabel && <AgentIcon agent={iconSubject} size={18} />}
             {engineTrail}
+          </span>
+        )}
+        {inputOrigin && (
+          <span
+            className="chat-dock__active-identity-engine"
+            title={
+              inputOrigin.title
+                ? `Driven from delegated task: ${inputOrigin.title}`
+                : `Driven from delegated task ${inputOrigin.taskId}`
+            }
+          >
+            Driven from delegation
           </span>
         )}
       </div>

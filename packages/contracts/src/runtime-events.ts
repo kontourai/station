@@ -473,6 +473,8 @@ export interface ToolStartedEvent extends CanonicalRuntimeEventBase {
   toolCallId: string;
   toolName: string;
   arguments?: unknown;
+  /** Bounded, untrusted model-stated intent; never approval evidence. */
+  purpose?: string;
 }
 
 export interface ToolProgressEvent extends CanonicalRuntimeEventBase {
@@ -520,6 +522,7 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   itemId: string;
   toolCallId: string;
   toolName: string;
+  purpose?: string;
   /**
    * The observed outcome of the call.
    *
@@ -598,6 +601,7 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   title: string;
   description?: string;
   payload?: Record<string, unknown>;
+  purpose?: string;
 }
 
 export interface RequestResolvedEvent extends CanonicalRuntimeEventBase {

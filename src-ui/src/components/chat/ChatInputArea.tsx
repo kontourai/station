@@ -38,15 +38,20 @@ import {
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
 import { ArrowDownGlyph } from '../icons/Glyph';
-import { ModelSelectorAutocomplete } from '../ModelSelector';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
-import { ComposerAttachmentStrip } from './ComposerAttachmentStrip';
-import { FileAttachmentInput } from './FileAttachmentInput';
-import { SlashCommandSelector } from './SlashCommandSelector';
+import {
+  appendComposerSessionReference,
+  composerDisplayValue,
+  composerMentionWireLength,
+  insertComposerMention,
+  mentionQueryAt,
+  parseComposerTokens,
+  reconcileComposerDisplay,
+  sessionReferenceBlockReason,
+} from './composer-mentions';
 import './chat.css';
-import { ModelCatalogUnavailableState } from '../session/ModelCatalogUnavailableState';
-import { SkeletonList } from '../state';
+import { SkeletonBlock, SkeletonList } from '../state';
 
 const SessionModelPicker = React.lazy(() =>
   import('../session/SessionModelPicker').then((module) => ({
@@ -63,6 +68,47 @@ const PortableDraftsMenu = React.lazy(() =>
 const AcpSessionModeChip = React.lazy(() =>
   import('../badges/AcpSessionModeChip').then((module) => ({
     default: module.AcpSessionModeChip,
+  })),
+);
+
+const FileMentionAutocomplete = React.lazy(() =>
+  import('./FileMentionAutocomplete').then((module) => ({
+    default: module.FileMentionAutocomplete,
+  })),
+);
+const SessionReferencePicker = React.lazy(() =>
+  import('./SessionReferencePicker').then((module) => ({
+    default: module.SessionReferencePicker,
+  })),
+);
+const ComposerAttachmentStrip = React.lazy(() =>
+  import('./ComposerAttachmentStrip').then((module) => ({
+    default: module.ComposerAttachmentStrip,
+  })),
+);
+const FileAttachmentInput = React.lazy(() =>
+  import('./FileAttachmentInput').then((module) => ({
+    default: module.FileAttachmentInput,
+  })),
+);
+const SlashCommandSelector = React.lazy(() =>
+  import('./SlashCommandSelector').then((module) => ({
+    default: module.SlashCommandSelector,
+  })),
+);
+const ModelCatalogUnavailableState = React.lazy(() =>
+  import('../session/ModelCatalogUnavailableState').then((module) => ({
+    default: module.ModelCatalogUnavailableState,
+  })),
+);
+const ModelSelectorAutocomplete = React.lazy(() =>
+  import('../ModelSelector').then((module) => ({
+    default: module.ModelSelectorAutocomplete,
+  })),
+);
+const ComposerMentionChips = React.lazy(() =>
+  import('./ComposerMentionChips').then((module) => ({
+    default: module.ComposerMentionChips,
   })),
 );
 
@@ -83,11 +129,19 @@ interface ChatInputAreaProps {
    * (archive#727 3). Not otherwise read by this component.
    */
   sessionId?: string;
+  activeConversationId?: string;
   // Input state
   hasQuotedContext?: boolean;
   draftText?: string;
   quoteContext?: readonly SavedAnswerQuote[];
   input: string;
+  workingDirectory?: string | null;
+  mentionRequestScope?: {
+    apiBase: string;
+    authorityKey: string;
+    isCurrent: () => boolean;
+  };
+  mentionAuthority?: string | null;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   // Status
@@ -216,7 +270,11 @@ interface ChatInputAreaProps {
 
 export function ChatInputArea({
   sessionId,
+  activeConversationId,
   input,
+  workingDirectory,
+  mentionRequestScope,
+  mentionAuthority,
   hasQuotedContext = false,
   draftText,
   quoteContext,
@@ -299,10 +357,50 @@ export function ChatInputArea({
   onStartNewChat,
 }: ChatInputAreaProps) {
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
+  const [sessionReferencesOpen, setSessionReferencesOpen] = useState(false);
+  const draggedSessionReference = useRef<{
+    id: string;
+    title: string;
+    projectSlug?: string;
+    ownerKey: string;
+  } | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<{
+    start: number;
+    end: number;
+    query: string;
+  } | null>(null);
+  const mentionListboxId = React.useId();
+  const [mentionActiveDescendant, setMentionActiveDescendant] = useState<
+    string | undefined
+  >();
+  const mentionKeyboardController = useRef<
+    ((key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean) | null
+  >(null);
+  const mentionGeneration = useRef(0);
   const isComposing = useRef(false);
   // Anchors the model picker popover to its trigger on desktop (archive#999).
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const visualViewport = useMobileVisualViewport();
+  const isMobile = useIsMobile();
+  const sessionReferenceOwnerKey = JSON.stringify([
+    sessionId ?? '',
+    mentionAuthority ?? '',
+    mentionRequestScope?.apiBase ?? '',
+    mentionRequestScope?.authorityKey ?? '',
+  ]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these identities fence stale mention offsets even though the effect only clears local state.
+  useEffect(() => {
+    mentionGeneration.current += 1;
+    setMentionQuery(null);
+    draggedSessionReference.current = null;
+    setSessionReferencesOpen(false);
+  }, [
+    sessionId,
+    workingDirectory,
+    mentionAuthority,
+    mentionRequestScope?.apiBase,
+    mentionRequestScope?.authorityKey,
+  ]);
   const isOverride = currentModelSource === 'session override';
   const effectiveModelId = currentModel || agentDefaultModel;
   const effectiveModelInfo = availableModels.find(
@@ -357,26 +455,38 @@ export function ChatInputArea({
     .filter(Boolean)
     .join(' ');
   const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
-  const isMobile = useIsMobile();
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : turnInFlight
       ? busyFollowUp === 'steer'
-        ? 'Steer this turn… (Enter steers; Queue waits)'
+        ? isMobile
+          ? 'Steer this turn…'
+          : 'Steer this turn… (Enter steers; Queue waits)'
         : 'Queue a follow-up…'
-      : isMobile
-        ? 'Type a message...'
-        : 'Type a message... (Enter to send, Shift+Enter for new line)';
+      : workingDirectory && mentionRequestScope
+        ? 'Type a message — @ files, / for commands…'
+        : 'Type a message — / for commands…';
+  const composerTokens = parseComposerTokens(input);
+  const displayInput = composerDisplayValue(input, composerTokens);
 
   // archive#2807: the draft's size against the same limit every server
   // turn-starting schema derives from (chatSchema AND the orchestration
   // seam this composer actually posts to). A courtesy check only — the
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
-  const overLimitBy = (draftText ?? input).length - CHAT_INPUT_MAX_CHARS;
+  const overLimitBy =
+    (draftText === undefined
+      ? composerMentionWireLength(input, composerTokens)
+      : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
+  const mentionAutocompleteAvailable = Boolean(
+    workingDirectory && mentionRequestScope,
+  );
+  const mentionAutocompleteOpen = Boolean(
+    mentionQuery && mentionAutocompleteAvailable,
+  );
 
   useLayoutEffect(() => {
     // Value changes are a resize trigger even though the measurement reads DOM.
@@ -425,7 +535,11 @@ export function ChatInputArea({
                 />
               </div>
             ) : (
-              <ModelCatalogUnavailableState stale={modelsStale} />
+              <React.Suspense
+                fallback={<SkeletonBlock label="Model options" />}
+              >
+                <ModelCatalogUnavailableState stale={modelsStale} />
+              </React.Suspense>
             )
           ) : (
             <React.Suspense
@@ -561,41 +675,126 @@ export function ChatInputArea({
           className="chat-input__textarea-wrapper"
           aria-label="Message composer"
         >
-          <ComposerAttachmentStrip
-            attachments={attachments}
-            stages={attachmentStages}
-            onRemove={onRemoveAttachment}
-            onRetry={onRetryAttachmentStage}
-            onCancel={onCancelAttachmentStage}
-            onReplaceFile={onReplaceAttachmentFile}
-          />
+          {(attachments.length > 0 || attachmentStages.length > 0) && (
+            <React.Suspense
+              fallback={<SkeletonBlock label="Attachment controls" />}
+            >
+              <ComposerAttachmentStrip
+                attachments={attachments}
+                stages={attachmentStages}
+                onRemove={onRemoveAttachment}
+                onRetry={onRetryAttachmentStage}
+                onCancel={onCancelAttachmentStage}
+                onReplaceFile={onReplaceAttachmentFile}
+              />
+            </React.Suspense>
+          )}
+          {composerTokens.length > 0 && (
+            <React.Suspense
+              fallback={
+                <button type="button" disabled aria-label="Loading attachments">
+                  Attach
+                </button>
+              }
+            >
+              <ComposerMentionChips
+                value={input}
+                onChange={(next) => {
+                  onInputChange(next);
+                  updateFromInput(next);
+                }}
+                onFocusInput={() => textareaRef.current?.focus()}
+                tokens={composerTokens}
+              />
+            </React.Suspense>
+          )}
+          {mentionQuery && workingDirectory && mentionRequestScope && (
+            <div>
+              <React.Suspense
+                fallback={
+                  <div className="file-mention-picker__status">
+                    Finding files…
+                  </div>
+                }
+              >
+                <FileMentionAutocomplete
+                  workingDirectory={workingDirectory}
+                  requestScope={mentionRequestScope}
+                  query={mentionQuery.query}
+                  listboxId={mentionListboxId}
+                  keyboardController={mentionKeyboardController}
+                  onActiveDescendantChange={setMentionActiveDescendant}
+                  onSelect={(entry) => {
+                    const generation = mentionGeneration.current;
+                    const next = insertComposerMention(
+                      input,
+                      mentionQuery.start,
+                      mentionQuery.end,
+                      {
+                        label: entry.name,
+                        path: entry.path,
+                        workspace: workingDirectory,
+                        authority: mentionAuthority ?? '',
+                        type: entry.type,
+                      },
+                    );
+                    onInputChange(next);
+                    updateFromInput(next);
+                    setMentionQuery(null);
+                    requestAnimationFrame(() => {
+                      if (mentionGeneration.current !== generation) return;
+                      const textarea = textareaRef.current;
+                      if (!textarea) return;
+                      textarea.focus();
+                      const cursor = mentionQuery.start + entry.name.length + 2;
+                      textarea.setSelectionRange(cursor, cursor);
+                    });
+                  }}
+                />
+              </React.Suspense>
+            </div>
+          )}
           {modelQuery !== null && input.startsWith('/model ') && (
-            <ModelSelectorAutocomplete
-              query={modelQuery}
-              models={availableModels.map((m) => ({
-                ...m,
-                originalId: m.originalId || m.id,
-              }))}
-              currentModel={currentModel}
-              agentDefaultModel={agentDefaultModel}
-              anchorRef={textareaRef}
-              onSelect={onModelSelect}
-              onClose={onModelClose}
-            />
+            <React.Suspense fallback={null}>
+              <ModelSelectorAutocomplete
+                query={modelQuery}
+                models={availableModels.map((m) => ({
+                  ...m,
+                  originalId: m.originalId || m.id,
+                }))}
+                currentModel={currentModel}
+                agentDefaultModel={agentDefaultModel}
+                anchorRef={textareaRef}
+                onSelect={onModelSelect}
+                onClose={onModelClose}
+              />
+            </React.Suspense>
           )}
           {commandQuery !== null && (
-            <SlashCommandSelector
-              query={commandQuery}
-              commands={slashCommands}
-              anchorRef={textareaRef}
-              onSelect={onCommandSelect}
-              onClose={onCommandClose}
-            />
+            <React.Suspense fallback={null}>
+              <SlashCommandSelector
+                query={commandQuery}
+                commands={slashCommands}
+                anchorRef={textareaRef}
+                onSelect={onCommandSelect}
+                onClose={onCommandClose}
+              />
+            </React.Suspense>
           )}
           <textarea
             ref={textareaRef}
+            aria-autocomplete={
+              mentionAutocompleteAvailable ? 'list' : undefined
+            }
+            aria-haspopup={mentionAutocompleteAvailable ? 'listbox' : undefined}
+            aria-controls={
+              mentionAutocompleteOpen ? mentionListboxId : undefined
+            }
+            aria-activedescendant={
+              mentionAutocompleteOpen ? mentionActiveDescendant : undefined
+            }
             placeholder={placeholder}
-            value={input}
+            value={displayInput}
             disabled={disabled}
             tabIndex={0}
             onFocus={() => {
@@ -607,8 +806,15 @@ export function ChatInputArea({
               closeAll();
             }}
             onChange={(e) => {
-              onInputChange(e.target.value);
-              updateFromInput(e.target.value);
+              const next = reconcileComposerDisplay(input, e.target.value);
+              onInputChange(next);
+              updateFromInput(next);
+              const cursor = e.target.selectionStart ?? e.target.value.length;
+              const trigger =
+                workingDirectory && mentionRequestScope
+                  ? mentionQueryAt(next, cursor)
+                  : null;
+              setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
             }}
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
@@ -616,8 +822,86 @@ export function ChatInputArea({
               event.preventDefault();
               void selectAttachmentFiles(files);
             }}
+            onDragOver={(event) => {
+              if (
+                !event.dataTransfer.types.includes(
+                  'application/x-station-conversation-reference',
+                )
+              )
+                return;
+              const conversationId = event.dataTransfer.getData(
+                'application/x-station-conversation-reference',
+              );
+              const candidate =
+                draggedSessionReference.current?.id === conversationId &&
+                draggedSessionReference.current.ownerKey ===
+                  sessionReferenceOwnerKey
+                  ? draggedSessionReference.current
+                  : null;
+              if (
+                (!conversationId || candidate) &&
+                !sessionReferenceBlockReason({
+                  value: input,
+                  conversationId: conversationId || '__dragged__',
+                  activeConversationId,
+                  authority: mentionAuthority,
+                  isCurrent: mentionRequestScope?.isCurrent,
+                })
+              )
+                event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const conversationId = event.dataTransfer.getData(
+                'application/x-station-conversation-reference',
+              );
+              if (!conversationId) return;
+              event.preventDefault();
+              const candidate =
+                draggedSessionReference.current?.id === conversationId &&
+                draggedSessionReference.current.ownerKey ===
+                  sessionReferenceOwnerKey
+                  ? draggedSessionReference.current
+                  : null;
+              draggedSessionReference.current = null;
+              if (!candidate) return;
+              const reason = sessionReferenceBlockReason({
+                value: input,
+                conversationId,
+                activeConversationId,
+                authority: mentionAuthority,
+                isCurrent: mentionRequestScope?.isCurrent,
+              });
+              if (reason) return;
+              const next = appendComposerSessionReference(input, {
+                label: candidate.title || 'Conversation',
+                conversationId,
+                projectSlug: candidate.projectSlug,
+                authority: mentionAuthority!,
+              });
+              onInputChange(next);
+              updateFromInput(next);
+              setSessionReferencesOpen(false);
+              textareaRef.current?.focus();
+            }}
             onKeyDown={async (e) => {
+              if (isComposing.current || isComposingKeyEvent(e)) return;
               if (e.defaultPrevented) return;
+
+              if (
+                mentionQuery &&
+                (e.key === 'ArrowDown' ||
+                  e.key === 'ArrowUp' ||
+                  (e.key === 'Enter' && !e.shiftKey))
+              ) {
+                const handled =
+                  mentionKeyboardController.current?.(
+                    e.key as 'ArrowDown' | 'ArrowUp' | 'Enter',
+                  ) ?? false;
+                if (handled || e.key !== 'Enter') {
+                  e.preventDefault();
+                  return;
+                }
+              }
 
               if (isPortableDraftShortcut(e)) {
                 e.preventDefault();
@@ -626,11 +910,57 @@ export function ChatInputArea({
               }
 
               if (
+                !e.shiftKey &&
+                e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+              ) {
+                const cursor = e.currentTarget.selectionStart;
+                const adjacentMention = composerTokens.find((mention) => {
+                  if (e.key === 'Backspace')
+                    return cursor === mention.displayEnd;
+                  if (e.key === 'Delete')
+                    return cursor === mention.displayStart;
+                  if (e.key === 'ArrowLeft')
+                    return (
+                      cursor > mention.displayStart &&
+                      cursor <= mention.displayEnd
+                    );
+                  if (e.key === 'ArrowRight')
+                    return (
+                      cursor >= mention.displayStart &&
+                      cursor < mention.displayEnd
+                    );
+                  return false;
+                });
+                if (adjacentMention) {
+                  e.preventDefault();
+                  if (e.key === 'Backspace' || e.key === 'Delete') {
+                    const next = `${input.slice(0, adjacentMention.canonicalStart)}${input.slice(adjacentMention.canonicalEnd)}`;
+                    onInputChange(next);
+                    updateFromInput(next);
+                  }
+                  const nextCursor =
+                    e.key === 'ArrowRight'
+                      ? adjacentMention.displayEnd
+                      : adjacentMention.displayStart;
+                  requestAnimationFrame(() =>
+                    textareaRef.current?.setSelectionRange(
+                      nextCursor,
+                      nextCursor,
+                    ),
+                  );
+                  return;
+                }
+              }
+
+              if (
                 e.key === 'Escape' &&
-                (commandQuery !== null || modelQuery !== null)
+                (commandQuery !== null ||
+                  modelQuery !== null ||
+                  mentionQuery !== null)
               ) {
                 e.preventDefault();
                 closeAll();
+                setMentionQuery(null);
                 return;
               }
 
@@ -648,12 +978,7 @@ export function ChatInputArea({
                 return;
               }
 
-              if (
-                e.key === 'Enter' &&
-                !e.shiftKey &&
-                !isComposing.current &&
-                !isComposingKeyEvent(e)
-              ) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
@@ -671,12 +996,13 @@ export function ChatInputArea({
             onCompositionEnd={() => {
               isComposing.current = false;
             }}
-            style={{
-              fontSize: `${fontSize}px`,
-              flex: 1,
-              resize: 'none',
-              minHeight: 0,
-            }}
+            style={
+              {
+                '--composer-font-size': `${fontSize}px`,
+                resize: 'none',
+                minHeight: 0,
+              } as React.CSSProperties
+            }
           />
           {isOverLimit && (
             <div className="chat-input__attachment-error" role="alert">
@@ -705,20 +1031,31 @@ export function ChatInputArea({
           )}
         </fieldset>
         <div className="chat-controls-row">
-          {secondaryActions && <ComposerActionsMenu {...secondaryActions} />}
-          <FileAttachmentInput
-            attachments={attachments}
-            onFilesSelected={selectAttachmentFiles}
-            onRemove={onRemoveAttachment}
-            onClearAll={onClearAttachments}
-            disabled={
-              disabled ||
-              isSending ||
-              (!modelSupportsAttachments && !fileAttachmentsSupported)
-            }
-            supportsImages={modelSupportsAttachments}
-            supportsFiles={fileAttachmentsSupported}
-          />
+          {secondaryActions && (
+            <ComposerActionsMenu
+              {...secondaryActions}
+              onOpenConversationReference={
+                mentionAuthority && mentionRequestScope?.isCurrent() === true
+                  ? () => setSessionReferencesOpen(true)
+                  : undefined
+              }
+            />
+          )}
+          <React.Suspense fallback={null}>
+            <FileAttachmentInput
+              attachments={attachments}
+              onFilesSelected={selectAttachmentFiles}
+              onRemove={onRemoveAttachment}
+              onClearAll={onClearAttachments}
+              disabled={
+                disabled ||
+                isSending ||
+                (!modelSupportsAttachments && !fileAttachmentsSupported)
+              }
+              supportsImages={modelSupportsAttachments}
+              supportsFiles={fileAttachmentsSupported}
+            />
+          </React.Suspense>
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}
@@ -883,6 +1220,28 @@ export function ChatInputArea({
             </button>
           )}
         </div>
+        {sessionReferencesOpen && (
+          <React.Suspense
+            fallback={<SkeletonBlock label="Conversation reference picker" />}
+          >
+            <SessionReferencePicker
+              value={input}
+              activeConversationId={activeConversationId}
+              authority={mentionAuthority}
+              requestScope={mentionRequestScope}
+              onChange={(next) => {
+                onInputChange(next);
+                updateFromInput(next);
+              }}
+              onClose={() => setSessionReferencesOpen(false)}
+              onCandidateDragged={(candidate) =>
+                (draggedSessionReference.current = candidate
+                  ? { ...candidate, ownerKey: sessionReferenceOwnerKey }
+                  : null)
+              }
+            />
+          </React.Suspense>
+        )}
       </div>
     </div>
   );

@@ -155,7 +155,7 @@ test.describe('Orchestration Execution Settings', () => {
     await dismissSetupLauncher(page);
     await openChatRegion(page);
 
-    await page.getByPlaceholder('Type a message...').fill('Inspect the repo');
+    await page.getByPlaceholder(/^Type a message/).fill('Inspect the repo');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     await expect.poll(() => executionRequests.length).toBe(1);

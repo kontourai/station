@@ -209,14 +209,14 @@ export async function profileJourney(
         cpu.profile.nodes.map((node) => node.callFrame.url),
       )) {
         if (
-          !url.startsWith(new URL(page.url()).origin + '/assets/') ||
+          !url.startsWith(`${new URL(page.url()).origin}/assets/`) ||
           !/\/[-\w.]+\.js$/.test(url)
         )
           continue;
-        const name = new URL(url).pathname.split('/').at(-1)! + '.map';
+        const name = `${new URL(url).pathname.split('/').at(-1)!}.map`;
         const path = join(mapsDirectory, name);
         if (!existsSync(path)) {
-          const response = await page.request.get(url + '.map');
+          const response = await page.request.get(`${url}.map`);
           if (
             !response.ok() ||
             !response.headers()['content-type']?.includes('json')

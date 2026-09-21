@@ -85,6 +85,7 @@ export function createElicitationCallback(
         tool,
         toolDescription: request.toolDescription,
         toolArgs: request.toolArgs,
+        purpose: request.purpose,
       } as unknown as any);
 
       // Wait for user approval
@@ -101,6 +102,7 @@ export function createElicitationCallback(
           title: toolMapping?.original || toolName,
           tool,
           toolName,
+          purpose: request.purpose,
         },
       });
     }

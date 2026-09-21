@@ -2143,3 +2143,26 @@ it('retains the invocation name when an imported result supplies the generic fal
     output: 'contents',
   });
 });
+
+it('retains stated tool purpose through durable projection', () => {
+  const messages = projectRuntimeEventsToMessages([
+    ev({ method: 'turn.started', turnId: 'purpose-turn', prompt: 'inspect' }),
+    ev({
+      method: 'tool.started',
+      turnId: 'purpose-turn',
+      toolCallId: 'purpose-call',
+      toolName: 'read_file',
+      arguments: { path: 'README.md' },
+      purpose: 'Inspect project documentation',
+    }),
+  ]);
+  expect(
+    messages
+      .flatMap((message) => message.parts)
+      .find((part) => part.toolCallId === 'purpose-call'),
+  ).toMatchObject({
+    toolName: 'read_file',
+    purpose: 'Inspect project documentation',
+    args: { path: 'README.md' },
+  });
+});

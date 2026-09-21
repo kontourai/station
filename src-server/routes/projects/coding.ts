@@ -134,15 +134,23 @@ export function createCodingRoutes(
     }
   });
 
-  app.get('/files/search', (c) => {
+  app.get('/files/search', async (c) => {
     codingOps.add(1, { operation: 'search' });
     try {
       const dir = validatePath(c.req.query('path'));
       const query = c.req.query('query');
-      if (!query)
+      if (query === undefined)
         return c.json({ success: false, error: 'query required' }, 400);
-      const data = fileTreeService.searchFiles(dir, query);
-      return c.json({ success: true, data });
+      const requestedMax = Number(c.req.query('maxResults') ?? 50);
+      const maxResults = Number.isInteger(requestedMax)
+        ? Math.min(Math.max(requestedMax, 1), 201)
+        : 50;
+      const result = await fileTreeService.searchFiles(dir, query, maxResults);
+      return c.json({
+        success: true,
+        data: result.entries,
+        scanTruncated: result.scanTruncated,
+      });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 400);
     }

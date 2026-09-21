@@ -190,21 +190,25 @@ export function ImageInspector({
           Actual size
         </Button>
         <Button
+          className="image-inspector__zoom-step"
           disabled={!ready || scale <= minimum}
           onClick={() => zoom(scale / 1.25)}
           aria-label="Zoom out"
+          title="Zoom out"
         >
-          Zoom out
+          <span aria-hidden="true">−</span>
         </Button>
         <output aria-label="Image zoom level">
           {ready ? `${Math.round(scale * 100)}%` : '—'}
         </output>
         <Button
+          className="image-inspector__zoom-step"
           disabled={!ready || scale >= 8}
           onClick={() => zoom(scale * 1.25)}
           aria-label="Zoom in"
+          title="Zoom in"
         >
-          Zoom in
+          <span aria-hidden="true">+</span>
         </Button>
       </fieldset>
       {/* A scrollable image region needs keyboard focus for pan and zoom. */}
@@ -291,7 +295,12 @@ export function ImageInspector({
         )}
       </section>
       <p className="image-inspector__hint">
-        Drag to pan. Pinch or Alt+scroll to zoom. Home fits the image.
+        <span className="image-inspector__hint-mobile">
+          Pinch to zoom. Drag to pan.
+        </span>
+        <span className="image-inspector__hint-desktop">
+          Drag to pan. Alt+scroll to zoom. Home fits the image.
+        </span>
       </p>
     </section>
   );

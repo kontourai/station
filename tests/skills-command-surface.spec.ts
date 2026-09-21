@@ -174,7 +174,7 @@ test.describe('Skill commands', () => {
     ).toBeVisible({ timeout: 20_000 });
     await openChatWithAgent(page, CHAT_AGENT_NAME);
 
-    const composer = page.getByPlaceholder('Type a message...');
+    const composer = page.getByPlaceholder(/^Type a message/);
     await composer.click();
     await composer.pressSequentially('/');
 

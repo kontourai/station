@@ -1,3 +1,8 @@
+import {
+  canSessionLifecycleStateResume,
+  foldedSessionLifecycleState,
+  isSessionLifecycleStateTerminal,
+} from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import {
   interruptOrchestrationTurn,
@@ -35,23 +40,31 @@ export function DelegatedTaskCoordinator({
   onTaskChanged: () => void;
 }) {
   const task = tasks[0];
-  const [input, setInput] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const taskKey = `${apiBase}\u0000${task.threadId}`;
+  const input = drafts[taskKey] ?? '';
 
   const sendTurn = useMutation({
-    mutationFn: () =>
+    mutationFn: (turn: { apiBase: string; threadId: string; text: string }) =>
       sendOrchestrationTurn({
-        threadId: task.threadId,
-        text: input,
-        apiBase,
+        threadId: turn.threadId,
+        text: turn.text,
+        apiBase: turn.apiBase,
       }),
-    onSuccess: () => {
-      setInput('');
+    onSuccess: (_result, turn) => {
+      setDrafts((current) => {
+        const key = `${turn.apiBase}\u0000${turn.threadId}`;
+        if (current[key] !== turn.text) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
       onTaskChanged();
     },
   });
   const stopTask = useMutation({
-    mutationFn: () =>
-      interruptOrchestrationTurn({ threadId: task.threadId, apiBase }),
+    mutationFn: (target: { apiBase: string; threadId: string }) =>
+      interruptOrchestrationTurn(target),
     onSuccess: onTaskChanged,
   });
 
@@ -66,6 +79,12 @@ export function DelegatedTaskCoordinator({
   const state = sessionStatusWord(task);
   const isStreaming = isStreamingSession(task);
   const isTerminal = isTerminalSession(task);
+  const canResume = !isSessionLifecycleStateTerminal(
+    foldedSessionLifecycleState(task.lifecycleState),
+  );
+  const canResumeSameWork = canSessionLifecycleStateResume(
+    foldedSessionLifecycleState(task.lifecycleState),
+  );
   // archive#1781: `needsReview` is the raw fold, and since archive#1791 it
   // stays true forever for a session nothing can answer. `liveReview` is the
   // one that may drive an affordance; `needsReview` still drives the copy,
@@ -90,12 +109,22 @@ export function DelegatedTaskCoordinator({
   // exists to remove, and with the View task fallback suppressed too.
   const unanswerableNotice =
     needsReview && !isTerminal && isUnanswerable ? answerability.notice : null;
-  const liveReview = needsReview && !isTerminal && !isUnanswerable;
+  const liveReview = needsReview && canResumeSameWork && !isUnanswerable;
   const environment =
     task.delegation?.environmentName ??
     displayEnvironment(task.delegation?.environmentId);
   const isPeerActivityRecord = task.delegation?.environmentKind === 'peer';
-  const mutationError = sendTurn.error ?? stopTask.error;
+  const sendTargetsTask =
+    sendTurn.variables?.apiBase === apiBase &&
+    sendTurn.variables?.threadId === task.threadId;
+  const stopTargetsTask =
+    stopTask.variables?.apiBase === apiBase &&
+    stopTask.variables?.threadId === task.threadId;
+  const sendPending = sendTurn.isPending && sendTargetsTask;
+  const stopPending = stopTask.isPending && stopTargetsTask;
+  const mutationError =
+    (sendTargetsTask ? sendTurn.error : null) ??
+    (stopTargetsTask ? stopTask.error : null);
 
   return (
     <section
@@ -168,26 +197,36 @@ export function DelegatedTaskCoordinator({
           suppressing the composer for it left the card with no way to act at
           all. Sending still round-trips and fails loudly server-side —
           enforcement stays there, never here. */}
-      {!isPeerActivityRecord && !liveReview && !isStreaming && !isTerminal && (
+      {!isPeerActivityRecord && !liveReview && !isStreaming && canResume && (
         <form
           className="sessions-coordinator__compose"
           onSubmit={(event) => {
             event.preventDefault();
-            if (input.trim() && !sendTurn.isPending) sendTurn.mutate();
+            if (input.trim() && !sendPending)
+              sendTurn.mutate({
+                apiBase,
+                threadId: task.threadId,
+                text: input,
+              });
           }}
         >
           <input
             aria-label="Direct worker follow-up"
             placeholder="Give the next instruction…"
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) =>
+              setDrafts((current) => ({
+                ...current,
+                [taskKey]: event.target.value,
+              }))
+            }
           />
           <Button
             type="submit"
             variant="primary"
-            disabled={!input.trim() || sendTurn.isPending}
+            disabled={!input.trim() || sendPending}
           >
-            {sendTurn.isPending ? 'Sending…' : 'Send follow-up'}
+            {sendPending ? 'Sending…' : 'Send follow-up'}
           </Button>
         </form>
       )}
@@ -201,10 +240,12 @@ export function DelegatedTaskCoordinator({
         {!isPeerActivityRecord && isStreaming && !isTerminal && (
           <Button
             variant="danger-outline"
-            disabled={stopTask.isPending}
-            onClick={() => stopTask.mutate()}
+            disabled={stopPending}
+            onClick={() =>
+              stopTask.mutate({ apiBase, threadId: task.threadId })
+            }
           >
-            {stopTask.isPending ? 'Stopping…' : 'Stop active task'}
+            {stopPending ? 'Stopping…' : 'Stop active task'}
           </Button>
         )}
         {/* archive#1781: navigation stays available for an unanswerable
