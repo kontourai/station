@@ -1563,6 +1563,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/client-authority-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Client authority / Projects',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#481 live browser qualification of the credential-bound /api/auth/authority gate through the REAL main.tsx/PlatformSessionGate/ApiBaseProvider/AuthorityQueryProvider stack: an isolated Station per home, the normal single-use ui-bootstrap pairing ceremony, boot to Project data through the real observation (no loop), reload that restores the same validated identity shelf while re-observing, revoked-device reload landing on the repair surface with the supported request-access repair, and two real homes with colliding Project slugs switched through the real connections modal with a sampled no-wrong-home sentinel. Owner approvals use the supported pairing-confirm handshake with each host operator credential; this is personal operator/client qualification, not shared-human or native acceptance.',
+    exceptions: [],
+  },
+  {
     path: 'tests/project-guest-shared-task-live.spec.ts',
     bucket: 'smoke-live',
     surface: 'Project guest shared Task acceptance',

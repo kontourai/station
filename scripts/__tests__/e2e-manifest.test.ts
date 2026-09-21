@@ -167,6 +167,7 @@ describe('e2e manifest', () => {
       'tests/knowledge-onboarding-smoke.spec.ts',
       'tests/task-workspace.spec.ts',
       'tests/project-task-room-collaboration.spec.ts',
+      'tests/client-authority-live.spec.ts',
       'tests/project-guest-shared-task-live.spec.ts',
       'tests/project-guest-admin-live.spec.ts',
       'tests/interactive-workspace-performance-bridge.spec.ts',
