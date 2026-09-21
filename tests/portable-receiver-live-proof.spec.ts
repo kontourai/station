@@ -277,7 +277,6 @@ interface ProofFixture {
   receiverInstanceId: string;
   controllerOperator: string;
   receiverOperator: string;
-  controllerLocalCredential: string;
   receiverLocalCredential: string;
   controllerEnv: NodeJS.ProcessEnv;
   receiverEnv: NodeJS.ProcessEnv;
@@ -416,7 +415,7 @@ async function buildFixture(): Promise<ProofFixture> {
       if (booted) await booted.stop();
     },
   });
-  const receiverTempHome = await receiverBoot;
+  await receiverBoot;
   const receiverHome = instanceHome(process.cwd(), receiverInstanceId);
   const receiver: LiveStation = {
     api: `http://127.0.0.1:${receiverPorts.serverPort}`,
@@ -434,11 +433,6 @@ async function buildFixture(): Promise<ProofFixture> {
 
   const controllerOperator = readE2EOperatorCredential(controllerLive.home);
   const receiverOperator = readE2EOperatorCredential(receiverHome);
-  const controllerLocalCredential = await mintLocalOperatorCredential(
-    controllerLive.home,
-    controllerLive.api,
-    controllerLive.ui,
-  );
   const receiverLocalCredential = await mintLocalOperatorCredential(
     receiverHome,
     receiver.api,
@@ -629,8 +623,9 @@ async function buildFixture(): Promise<ProofFixture> {
   );
   // The materialize route answers 200, or 202 while runtime activation is
   // pending reconciliation — both are its contractual success statuses.
-  expect([200, 202]).toContain(materialized.status);
-  expect(materialized.status, JSON.stringify(materialized.payload)).toBeLessThan(300);
+  expect([200, 202], JSON.stringify(materialized.payload)).toContain(
+    materialized.status,
+  );
   const museAgentSlug = (
     (materialized.payload as JsonRecord).data as JsonRecord
   ).slug as string;
@@ -654,7 +649,6 @@ async function buildFixture(): Promise<ProofFixture> {
     receiverInstanceId,
     controllerOperator,
     receiverOperator,
-    controllerLocalCredential,
     receiverLocalCredential,
     controllerEnv,
     receiverEnv,
@@ -680,6 +674,7 @@ async function buildFixture(): Promise<ProofFixture> {
 // runtime and root is registered BEFORE the await that creates it.
 // ---------------------------------------------------------------------------
 
+// biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo.
 test.afterEach(({}, testInfo) => {
   if (testInfo.status !== testInfo.expectedStatus) anyTestFailed = true;
 });
