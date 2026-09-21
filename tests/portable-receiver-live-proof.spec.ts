@@ -103,6 +103,9 @@ const ownedCleanups: Array<{ label: string; run: () => Promise<unknown> }> = [];
 let anyTestFailed = false;
 let setupError: Error | undefined;
 let fixture: ProofFixture | undefined;
+// The completed portable task id from the continuation test, reused by
+// the post-withdrawal continuation refusal below (serial suite order).
+let continuedTaskId: string | undefined;
 let evidenceDestination: string | undefined;
 /** Incremental, non-secret run metadata — written even on partial setup. */
 const runInfo: Record<string, unknown> = {};
@@ -293,7 +296,7 @@ interface ProofFixture {
   delegationScope: string;
   peerDeviceId: string;
   offerConfig: JsonRecord;
-  museExecLaunches: () => Promise<Array<{ cwd: string; args: string }>>;
+  museExecLaunches: () => Promise<Array<{ cwd: string; argv: string[] }>>;
 }
 
 async function buildFixture(): Promise<ProofFixture> {
@@ -312,8 +315,13 @@ async function buildFixture(): Promise<ProofFixture> {
     join(receiverCheckout, ...EXECUTION_ROOT_PATH.split('/')),
   );
 
-  // Muse launch observation shim: append-only JSONL of {cwd, args}, then exec
-  // the REAL muse binary. Read-only observation; the provider path is intact.
+  // Muse launch observation shim: append-only JSONL of {cwd, argv}, then
+  // exec the REAL muse binary. Read-only observation; the provider path is
+  // intact. The record is serialized by node (JSON.stringify of the exact
+  // cwd + argv array), never by shell interpolation — quotes, spaces, and
+  // newlines in continuation args cannot corrupt it. One bounded record
+  // per launch (64 args, 1024 chars each); this file's ONLY writer is this
+  // shim, so every line is an owned launch record and parses strictly.
   const museResolved = await run('sh', ['-c', 'command -v muse']);
   const museRealBinary = museResolved.stdout.trim();
   if (!museRealBinary)
@@ -328,7 +336,7 @@ async function buildFixture(): Promise<ProofFixture> {
     shimPath,
     [
       '#!/bin/sh',
-      `printf '%s\\n' "{\\"cwd\\":\\"$PWD\\",\\"args\\":\\"$*\\"}" >> '${museLaunchLog}'`,
+      `STATION_MUSE_LAUNCH_LOG='${museLaunchLog}' node -e 'const fs=require("node:fs");fs.appendFileSync(process.env.STATION_MUSE_LAUNCH_LOG,JSON.stringify({cwd:process.cwd(),argv:process.argv.slice(1,65).map((a)=>String(a).slice(0,1024))})+"\\n");' -- "$@"`,
       `exec '${museRealBinary}' "$@"`,
       '',
     ].join('\n'),
@@ -615,30 +623,87 @@ async function buildFixture(): Promise<ProofFixture> {
   expect(savedPeer.status, JSON.stringify(savedPeer.payload)).toBe(201);
 
   // --- Receiver: materialize the muse engine's agent (canonical path).
+  // The materialize route answers 200/201 once applied, or 202 while
+  // runtime activation is still pending reconciliation ("the durable write
+  // has landed and the runtime has NOT caught up yet"). Delegating on a
+  // 202 races activation: the first delegate failed with a generic 400
+  // twice on cold boots, then passed identically once reconciled — the
+  // harness had awaited the materialize RESPONSE, not the activation. So
+  // a 202 here gates on the served catalog instead: GET /api/agents/:slug
+  // names `catalogState: 'reconciling'` mid-refresh, and its absence with
+  // a 200 means the runtime has caught up with the durable write. A READ
+  // gate only — re-POSTing is not a probe (every POST re-marks the
+  // mutation pending and answers 202 again). Bounded; a timeout fails
+  // loudly as a missing prerequisite, never a silent pass.
   const materialized = await api(
     receiver.api,
     'POST',
     '/agents/materialize-engine',
     { body: { engineId: 'muse' }, headers: operatorHeaders(receiverOperator) },
   );
-  // The materialize route answers 200, or 202 while runtime activation is
-  // pending reconciliation — both are its contractual success statuses.
-  expect([200, 202], JSON.stringify(materialized.payload)).toContain(
+  expect([200, 201, 202], JSON.stringify(materialized.payload)).toContain(
     materialized.status,
   );
   const museAgentSlug = (
     (materialized.payload as JsonRecord).data as JsonRecord
   ).slug as string;
   expect(museAgentSlug).toBeTruthy();
+  if (materialized.status === 202) {
+    await poll(
+      'the materialized muse agent to serve stably',
+      60_000,
+      async () => {
+        const served = await api(
+          receiver.api,
+          'GET',
+          `/api/agents/${encodeURIComponent(museAgentSlug)}`,
+          { headers: operatorHeaders(receiverOperator) },
+        );
+        if (served.status !== 200) return false;
+        const body = served.payload as JsonRecord;
+        if (body?.success !== true) return false;
+        if ((body as JsonRecord).catalogState === 'reconciling') return false;
+        return (
+          ((body.data as JsonRecord | undefined)?.slug as
+            | string
+            | undefined) === museAgentSlug
+        );
+      },
+    );
+  }
 
   const museExecLaunches = async () => {
     if (!existsSync(museLaunchLog)) return [];
     const lines = (await readFile(museLaunchLog, 'utf8'))
       .split('\n')
       .filter((line) => line.trim().length > 0);
-    return lines
-      .map((line) => JSON.parse(line) as { cwd: string; args: string })
-      .filter((entry) => entry.args.includes('exec'));
+    // Strict oracle: the ONLY writer of this file is the observation shim
+    // above, so EVERY line is an owned launch record. A malformed line is
+    // a test failure, never skipped — skipping would let negative
+    // no-effect counts miss actual launches hiding in torn records.
+    const launches: Array<{ cwd: string; argv: string[] }> = [];
+    for (const line of lines) {
+      let entry: unknown;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        throw new Error(`malformed muse launch record: ${line.slice(0, 200)}`);
+      }
+      if (
+        typeof entry !== 'object' ||
+        entry === null ||
+        typeof (entry as { cwd?: unknown }).cwd !== 'string' ||
+        !Array.isArray((entry as { argv?: unknown }).argv) ||
+        !(entry as { argv: unknown[] }).argv.every(
+          (arg) => typeof arg === 'string',
+        )
+      ) {
+        throw new Error(`malformed muse launch record: ${line.slice(0, 200)}`);
+      }
+      const record = entry as { cwd: string; argv: string[] };
+      if (record.argv[0] === 'exec') launches.push(record);
+    }
+    return launches;
   };
 
   return {
@@ -931,22 +996,24 @@ test.describe
       // ACTUAL launch observation: exactly ONE new muse exec, spawned INSIDE
       // the receiver's nested execution root, carrying THIS turn's unique
       // token and the echo provider flag in its argv — the launch identity of
-      // the current turn, not a stale matching line.
+      // the current turn, matched on parsed argv elements only.
       await poll('the muse exec launch observation', 120_000, async () => {
         const launches = await current.museExecLaunches();
         return launches.some(
           (entry) =>
             entry.cwd === current.receiverExecutionRoot &&
-            entry.args.includes(turnToken),
+            entry.argv.some((arg) => arg.includes(turnToken)),
         );
       });
       const launchesAfter = await current.museExecLaunches();
       const turnLaunches = launchesAfter.slice(baseline.launches);
       expect(turnLaunches.length).toBe(1);
       expect(turnLaunches[0]!.cwd).toBe(current.receiverExecutionRoot);
-      expect(turnLaunches[0]!.args).toContain('--provider');
-      expect(turnLaunches[0]!.args).toContain('echo');
-      expect(turnLaunches[0]!.args).toContain(turnToken);
+      expect(turnLaunches[0]!.argv).toContain('--provider');
+      expect(turnLaunches[0]!.argv).toContain('echo');
+      expect(turnLaunches[0]!.argv.some((arg) => arg.includes(turnToken))).toBe(
+        true,
+      );
 
       // PROVIDER output, read from the authoritative receiver conversation.
       const readReceiverSnapshot = async () => {
@@ -1049,6 +1116,122 @@ test.describe
       ).toBe('completed');
       console.log(
         `[portable-proof] controller convergence samples for ${taskId}: ${JSON.stringify(convergence)}`,
+      );
+    });
+
+    test('continues a portable task under a fresh offer admission on the receiver', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const firstToken = `portable-proof-first-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      const delegated = await delegateFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+        `Return this token unchanged: ${firstToken}`,
+      );
+      expect(delegated.status, JSON.stringify(delegated.payload)).toBe(200);
+      const taskId = ((delegated.payload as JsonRecord).data as JsonRecord)
+        .taskId as string;
+      expect(taskId).toBeTruthy();
+      // The first turn completes on the receiver before the follow-up.
+      await poll(
+        'the first delegated turn to complete on the receiver',
+        240_000,
+        async () => {
+          const observed = await api(
+            current.receiver.api,
+            'GET',
+            `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
+            { headers: operatorHeaders(current.delegationCredential) },
+          );
+          const data = (observed.payload as JsonRecord)?.data as
+            | JsonRecord
+            | undefined;
+          return (
+            observed.status === 200 &&
+            (data?.status === 'completed' || data?.status === 'failed')
+          );
+        },
+      );
+      continuedTaskId = taskId;
+
+      // The follow-up goes through the CONTROLLER (saved peer credential)
+      // to the receiver's continue route, which mints a FRESH admission
+      // from the thread's own persisted marker — the body carries no
+      // portable ids at all.
+      const followToken = `portable-proof-continue-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+      const continued = await api(
+        current.controller.api,
+        'POST',
+        `/api/orchestration/delegations/${encodeURIComponent(taskId)}/continue`,
+        {
+          body: {
+            message: `Return this token unchanged: ${followToken}`,
+            environmentId: current.receiverEnvironmentId,
+          },
+          headers: operatorHeaders(current.controllerOperator),
+        },
+      );
+      expect(continued.status, JSON.stringify(continued.payload)).toBe(200);
+
+      // ACTUAL launch observation: the follow-up spawns a muse exec
+      // INSIDE the receiver's nested execution root, carrying the
+      // follow-up token. Token-scoped (not count-scoped), matched on the
+      // strictly parsed launch records only — no regex fallback across
+      // raw text, no skipped records.
+      const followUpLaunch = async () => {
+        const launches = await current.museExecLaunches();
+        return launches.find(
+          (entry) =>
+            entry.cwd === current.receiverExecutionRoot &&
+            entry.argv.some((arg) => arg.includes(followToken)),
+        );
+      };
+      await poll(
+        'the follow-up muse exec launch observation',
+        120_000,
+        async () => (await followUpLaunch()) !== undefined,
+      );
+      const observed = await followUpLaunch();
+      expect(
+        observed,
+        'no launch record names the follow-up token in the receiver execution root',
+      ).toBeTruthy();
+      expect(observed!.cwd).toBe(current.receiverExecutionRoot);
+      expect(observed!.argv.some((arg) => arg.includes(followToken))).toBe(
+        true,
+      );
+
+      // PROVIDER output for the follow-up, from the receiver conversation.
+      await poll(
+        'the follow-up turn to complete on the receiver',
+        240_000,
+        async () => {
+          const events = await api(
+            current.receiver.api,
+            'GET',
+            `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
+            { headers: operatorHeaders(current.delegationCredential) },
+          );
+          return (
+            events.status === 200 &&
+            JSON.stringify(events.payload).includes(followToken)
+          );
+        },
+      );
+      const events = await api(
+        current.receiver.api,
+        'GET',
+        `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
+        { headers: operatorHeaders(current.delegationCredential) },
+      );
+      expect(events.status, JSON.stringify(events.payload)).toBe(200);
+      expect(JSON.stringify(events.payload)).toMatch(
+        new RegExp(`echo:[\\s\\S]*${followToken}`),
       );
     });
 
@@ -1264,6 +1447,40 @@ test.describe
       const refused = await delegateFromController(
         current,
         delegationTarget(current) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+      await assertNoProviderEffect(current, baseline);
+    });
+
+    test('refuses a portable continue after the operator withdraws the offer', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      expect(
+        continuedTaskId,
+        'the continuation test must complete a portable task first',
+      ).toBeTruthy();
+      const baseline = await captureEffectBaseline(current);
+      // The offer is withdrawn (previous test). The follow-up reaches the
+      // receiver over the real peer hop, the receiver's fresh mint finds
+      // no current offer, and the controller relays the receiver's own
+      // closed refusal — same code and 403, never a bare 4xx — with no
+      // provider effect.
+      const refused = await api(
+        current.controller.api,
+        'POST',
+        `/api/orchestration/delegations/${encodeURIComponent(continuedTaskId!)}/continue`,
+        {
+          body: {
+            message: 'follow-up after withdrawal',
+            environmentId: current.receiverEnvironmentId,
+          },
+          headers: operatorHeaders(current.controllerOperator),
+        },
       );
       expectPortableRefusal(
         refused,

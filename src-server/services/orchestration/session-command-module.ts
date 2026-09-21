@@ -18,6 +18,7 @@ import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
   ReceiverExecutionRefusal,
+  requirePortableIncarnationMatch,
 } from '../projects/project-contribution-service.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
@@ -99,6 +100,13 @@ export interface ReceiverExecutionEffectAdmission {
     readonly cwd: string;
     readonly portableProjectId: string;
     readonly resourceId: string;
+    /**
+     * #484 continuation: the ORIGINAL receiver-local Project incarnation
+     * the provider effect must run as. Compared against the persisted
+     * consent marker's incarnation, so a same-path Project replacement
+     * refuses instead of executing.
+     */
+    readonly localProjectId: string;
   };
 }
 
@@ -142,6 +150,7 @@ export type SessionCommandInternalOptions = {
   portableExecutionConsent?: {
     portableProjectId: string;
     resourceId: string;
+    localProjectId: string;
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
@@ -190,15 +199,11 @@ function verifyReceiverReattachEffect(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
     );
-  if (
-    !persistedConsent ||
-    persistedConsent.portableProjectId !== admitted.portableProjectId ||
-    persistedConsent.resourceId !== admitted.resourceId
-  )
-    throw new ReceiverExecutionRefusal(
-      'receiver_execution_unavailable',
-      'The offered Project resource is unavailable.',
-    );
+  // #484 continuation: the EXISTING session's own persisted association
+  // must prove the exact admitted identity AND incarnation — stale for a
+  // pre-incarnation marker, unavailable for a replaced one. Never promoted
+  // by cwd alone.
+  requirePortableIncarnationMatch(admitted, persistedConsent);
   const metaProject = startedMeta?.projectSlug;
   if (metaProject !== undefined && metaProject !== admitted.projectSlug)
     throw new ReceiverExecutionRefusal(
@@ -209,7 +214,9 @@ function verifyReceiverReattachEffect(
   if (
     statedConsent &&
     (statedConsent.portableProjectId !== admitted.portableProjectId ||
-      statedConsent.resourceId !== admitted.resourceId)
+      statedConsent.resourceId !== admitted.resourceId ||
+      (statedConsent.localProjectId !== undefined &&
+        statedConsent.localProjectId !== admitted.localProjectId))
   )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_unavailable',
