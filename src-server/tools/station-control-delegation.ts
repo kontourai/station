@@ -237,6 +237,8 @@ export interface DelegateTaskInput {
    * non-device caller (operator, internal) and on ordinary devices.
    */
   inboundDeviceKind?: 'device' | 'delegation';
+  /** Trusted request closure; never accepted from public JSON. */
+  isRequestAuthorityCurrent?: () => boolean;
 }
 
 type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
@@ -3277,6 +3279,15 @@ export async function delegateTask(
       selectedTarget,
       input.target,
     );
+    // Target discovery and capability probes awaited above. Recheck the
+    // sending request before its stored peer credential can cause an effect.
+    // postCanonical reaches fetch without another asynchronous preparation.
+    if (portableIntent && input.isRequestAuthorityCurrent?.() !== true) {
+      throw new ReceiverExecutionRefusal(
+        'receiver_execution_authority_changed',
+        'Portable execution authority changed before forwarding.',
+      );
+    }
     const remoteHandle = await postCanonical<DelegatedTaskHandle>(
       selectedTarget,
       '/api/orchestration/delegations',

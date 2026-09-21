@@ -1385,7 +1385,9 @@ arriving from a peer cannot be forwarded onward with the receiver's saved peer
 credentials.
 
 Named 403 outcomes are `receiver_execution_not_offered`,
-`receiver_execution_unavailable`, and `receiver_execution_forwarding_refused`.
+`receiver_execution_unavailable`, `receiver_execution_forwarding_refused`, and
+`receiver_execution_authority_changed`. The sender rechecks its own request
+authority after peer discovery and immediately before forwarding.
 An older receiver without the capability and direct SSH portable dispatch are
 refused; neither substitutes a directory or local execution. Ordinary existing
 non-portable requests retain their current behavior.

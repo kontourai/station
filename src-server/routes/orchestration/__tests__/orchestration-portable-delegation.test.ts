@@ -314,6 +314,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         target: PORTABLE_TARGET,
         userId: 'u',
         readAuthority: { userId: 'u', mode: 'local' },
+        isRequestAuthorityCurrent: () => true,
       } as never,
       undefined,
     );
@@ -722,6 +723,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       senderOffer?: ReturnType<typeof vi.fn>;
       inboundDeviceKind?: 'device' | 'delegation';
       resolvePrincipal?: (c: any) => { id: string };
+      authorityCurrent?: () => boolean;
     }) {
       return createOrchestrationRoutes(
         {} as never,
@@ -731,7 +733,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           ...(options.senderOffer
             ? { authorizeReceiverExecution: options.senderOffer }
             : {}),
-          isRequestPrincipalCurrent: () => true,
+          isRequestPrincipalCurrent: options.authorityCurrent ?? (() => true),
           ...(options.inboundDeviceKind
             ? { resolveInboundDeviceKind: () => options.inboundDeviceKind }
             : {}),
@@ -759,6 +761,30 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
         body: JSON.stringify({ prompt: 'Ship it', target }),
       }) as Promise<Response>;
     }
+
+    test('a controller credential revoked during the peer handshake cannot dispatch work', async () => {
+      let current = true;
+      const senderOffer = vi.fn(async () => admissionStub());
+      peerHandshake = () => {
+        current = false;
+        return {
+          environmentId: PEER_ENV,
+          capabilities: { portableExecutionOffers: true },
+        };
+      };
+      const app = compositionApp({
+        service: undefined,
+        senderOffer,
+        authorityCurrent: () => current,
+      });
+      const response = await postDelegations(app, PEER_PORTABLE_TARGET);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        code: 'receiver_execution_authority_changed',
+      });
+      expect(peerPosts).toHaveLength(0);
+      expect(senderOffer).not.toHaveBeenCalled();
+    });
 
     test('a controller with NO local offer forwards the exact portable intent; the sender admission is never minted', async () => {
       const senderOffer = vi.fn(async () => admissionStub());

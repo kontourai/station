@@ -47,7 +47,8 @@ export class ReceiverExecutionRefusal extends Error {
     readonly code:
       | 'receiver_execution_not_offered'
       | 'receiver_execution_unavailable'
-      | 'receiver_execution_forwarding_refused',
+      | 'receiver_execution_forwarding_refused'
+      | 'receiver_execution_authority_changed',
     message: string,
   ) {
     super(message);

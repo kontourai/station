@@ -623,6 +623,8 @@ interface DelegateTaskRequest {
    * body, userId, or metadata. Present only for portable intents.
    */
   inboundDeviceKind?: 'device' | 'delegation';
+  /** Server-bound sender authority, checked again before forwarding. */
+  isRequestAuthorityCurrent?: () => boolean;
 }
 
 const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
@@ -633,6 +635,8 @@ const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
     'This Station does not currently offer execution for the requested Project resource.',
   receiver_execution_unavailable:
     'The offered Project resource is unavailable.',
+  receiver_execution_authority_changed:
+    'Portable execution authority changed before forwarding.',
   receiver_execution_forwarding_refused:
     'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
 };
@@ -1759,6 +1763,8 @@ export function createOrchestrationRoutes(
           ? {
               authorizeReceiverExecution,
               inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+              isRequestAuthorityCurrent: () =>
+                deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
             }
           : {}),
       });
