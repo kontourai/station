@@ -58,8 +58,8 @@
 import { useConnections } from '@kontourai/station-connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useContext,
   useLayoutEffect,
   useMemo,
@@ -193,7 +193,10 @@ export function RecoveryQueryBoundary({
       identityKey,
       requestScope:
         requestScopeApiBase && requestScopeAuthorityKey
-          ? { apiBase: requestScopeApiBase, authorityKey: requestScopeAuthorityKey }
+          ? {
+              apiBase: requestScopeApiBase,
+              authorityKey: requestScopeAuthorityKey,
+            }
           : null,
     }),
     [apiBase, identityKey, requestScopeApiBase, requestScopeAuthorityKey],

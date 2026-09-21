@@ -128,8 +128,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   return {
     ...actual,
     authenticatedFetch: async (input: unknown) => answerConfig(String(input)),
-    getJson: async (url: string, opts?: unknown) =>
-      answerConfig(url, opts),
+    getJson: async (url: string, opts?: unknown) => answerConfig(url, opts),
   };
 });
 

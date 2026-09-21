@@ -240,7 +240,12 @@ export interface UsageTelemetryDisclosureState {
  * recovery decision.
  */
 export function recoveryDisclosureKey(apiBase: string, identityKey: string) {
-  return ['usage-telemetry-disclosure', 'recovery', apiBase, identityKey] as const;
+  return [
+    'usage-telemetry-disclosure',
+    'recovery',
+    apiBase,
+    identityKey,
+  ] as const;
 }
 
 export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureState {
@@ -265,9 +270,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         ? getJson(`${scope.apiBase}/api/usage-telemetry/disclosure`, {
             signal,
             timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-            ...(scope.requestScope
-              ? { requestScope: scope.requestScope }
-              : {}),
+            ...(scope.requestScope ? { requestScope: scope.requestScope } : {}),
           }).then(responseData)
         : authenticatedFetch(`${apiBase}/api/usage-telemetry/disclosure`, {
             signal,
@@ -595,9 +598,7 @@ function useUsageTelemetryDecision(
         'PUT',
         {
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-          ...(target.requestScope
-            ? { requestScope: target.requestScope }
-            : {}),
+          ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
         { telemetryEnabled: target.next },
       );
@@ -617,9 +618,7 @@ function useUsageTelemetryDecision(
         'POST',
         {
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-          ...(target.requestScope
-            ? { requestScope: target.requestScope }
-            : {}),
+          ...(target.requestScope ? { requestScope: target.requestScope } : {}),
         },
       );
       return responseData(response);
@@ -637,9 +636,9 @@ function useUsageTelemetryDecision(
   // The server's own precedence (`config ?? STATION_TELEMETRY_ENABLED ??
   // true`), rebuilt over the FRESHER read of its first link. The `?? true` is
   // the same last link of that chain, for a peer too old to report the field.
-  const config = (
-    scoped ? recoveryConfig.data : protectedConfig.data
-  ) as { telemetryEnabled?: boolean } | undefined;
+  const config = (scoped ? recoveryConfig.data : protectedConfig.data) as
+    | { telemetryEnabled?: boolean }
+    | undefined;
   const configEnabled = config?.telemetryEnabled;
   const enabled = configEnabled ?? data?.telemetryEnabled ?? true;
   const busy = scoped
