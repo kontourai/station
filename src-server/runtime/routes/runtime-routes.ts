@@ -67,6 +67,7 @@ import {
   pairingScopeIncludes,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
@@ -842,6 +843,27 @@ export {
   type CurrentRuntimeRequestPrincipalSecurity,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
+
+/**
+ * Production `projectDefaultEnvironment` composition for foreground routes
+ * (#480/#1964 placement). Returns the saved Project default VERBATIM —
+ * including a paired-peer id or a dangling id — and only maps a missing or
+ * non-saved configuration to `current`. Existence is NOT checked here on
+ * purpose: the old SSH-only check silently turned a valid paired-peer
+ * default AND a dangling default into local execution. The canonical target
+ * resolver downstream validates the saved ref (or raises a named
+ * unavailable outcome); it never executes locally for a saved intent.
+ */
+export function resolveProjectDefaultEnvironmentRef(
+  projectService: {
+    getProject(slug: string): { defaultEnvironment?: EnvironmentRef };
+  },
+  projectSlug: string,
+): EnvironmentRef {
+  const configured = projectService.getProject(projectSlug).defaultEnvironment;
+  if (configured?.kind !== 'saved') return { kind: 'current' };
+  return configured;
+}
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -2843,18 +2865,11 @@ export function configureRuntimeRoutes(
           idempotencyKey,
           authority,
         ),
-      projectDefaultEnvironment: (projectSlug) => {
-        const configured =
-          context.projectService.getProject(projectSlug).defaultEnvironment;
-        if (configured?.kind !== 'saved') return { kind: 'current' };
-        const exists = context.sshEnvironmentService
-          .list()
-          .some(
-            (environment) =>
-              environment.profile.environmentId === configured.id,
-          );
-        return exists ? configured : { kind: 'current' };
-      },
+      projectDefaultEnvironment: (projectSlug) =>
+        resolveProjectDefaultEnvironmentRef(
+          context.projectService,
+          projectSlug,
+        ),
       continueForegroundMessage: (input) =>
         continueExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
