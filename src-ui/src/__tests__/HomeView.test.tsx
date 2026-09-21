@@ -45,20 +45,12 @@ const authorityRef = vi.hoisted(() => ({
 }));
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => authorityRef.current,
 }));
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
-}));
-
-// Home's built-in workspace pane reads host request authority through the app
-// shell's connection provider. This suite owns Home behavior, not connection
-// selection, so keep that incidental scope settled at the provider's empty
-// pre-connection value.
-vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://station.test' }),
-  useHostRequestAuthorityScope: () => undefined,
 }));
 
 import { HomeView } from '../views/HomeView';
