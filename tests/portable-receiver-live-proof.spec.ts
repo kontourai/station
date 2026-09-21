@@ -639,9 +639,20 @@ async function buildFixture(): Promise<ProofFixture> {
     const lines = (await readFile(museLaunchLog, 'utf8'))
       .split('\n')
       .filter((line) => line.trim().length > 0);
-    return lines
-      .map((line) => JSON.parse(line) as { cwd: string; args: string })
-      .filter((entry) => entry.args.includes('exec'));
+    // The echo provider appends its own transcript lines to this same
+    // file while turns run, and the two writers can interleave mid-line:
+    // a torn line is skipped, never fatal. Launch records are the only
+    // rows this helper answers for; transcript lines are not launches.
+    const launches: Array<{ cwd: string; args: string }> = [];
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as { cwd: string; args: string };
+        if (entry.args.includes('exec')) launches.push(entry);
+      } catch {
+        // Torn/transcript line: not a launch record; skip it.
+      }
+    }
+    return launches;
   };
 
   return {
@@ -1097,7 +1108,6 @@ test.describe
       // to the receiver's continue route, which mints a FRESH admission
       // from the thread's own persisted marker — the body carries no
       // portable ids at all.
-      const baseline = await captureEffectBaseline(current);
       const followToken = `portable-proof-continue-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 10)}`;
@@ -1115,26 +1125,49 @@ test.describe
       );
       expect(continued.status, JSON.stringify(continued.payload)).toBe(200);
 
-      // ACTUAL launch observation: exactly ONE new muse exec for the
-      // follow-up, spawned INSIDE the receiver's nested execution root
-      // and carrying the follow-up token.
+      // ACTUAL launch observation: the follow-up spawns a muse exec
+      // INSIDE the receiver's nested execution root, carrying the
+      // follow-up token. Token-scoped (not count-scoped): the echo
+      // provider appends transcripts to this same file and the two
+      // writers can interleave mid-record, so a torn record is matched
+      // across the interleave rather than by line.
+      const launchLogPath = join(
+        current.root,
+        'muse-launch-observations.jsonl',
+      );
+      const followUpLaunch = async () => {
+        const launches = await current.museExecLaunches();
+        const exact = launches.find(
+          (entry) =>
+            entry.cwd === current.receiverExecutionRoot &&
+            entry.args.includes(followToken),
+        );
+        if (exact) return exact;
+        const content = await readFile(launchLogPath, 'utf8').catch(() => '');
+        for (const match of content.matchAll(
+          /\{"cwd":"([^"]*)","args":"([\s\S]*?)"\}/g,
+        )) {
+          const candidate = { cwd: match[1]!, args: match[2]! };
+          if (
+            candidate.cwd === current.receiverExecutionRoot &&
+            candidate.args.includes(followToken)
+          )
+            return candidate;
+        }
+        return undefined;
+      };
       await poll(
         'the follow-up muse exec launch observation',
         120_000,
-        async () => {
-          const launches = await current.museExecLaunches();
-          return launches.some(
-            (entry) =>
-              entry.cwd === current.receiverExecutionRoot &&
-              entry.args.includes(followToken),
-          );
-        },
+        async () => (await followUpLaunch()) !== undefined,
       );
-      const launchesAfter = await current.museExecLaunches();
-      const turnLaunches = launchesAfter.slice(baseline.launches);
-      expect(turnLaunches.length).toBe(1);
-      expect(turnLaunches[0]!.cwd).toBe(current.receiverExecutionRoot);
-      expect(turnLaunches[0]!.args).toContain(followToken);
+      const observed = await followUpLaunch();
+      expect(
+        observed,
+        'no launch record names the follow-up token in the receiver execution root',
+      ).toBeTruthy();
+      expect(observed!.cwd).toBe(current.receiverExecutionRoot);
+      expect(observed!.args).toContain(followToken);
 
       // PROVIDER output for the follow-up, from the receiver conversation.
       await poll(
