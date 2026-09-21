@@ -1,4 +1,9 @@
-import { envelopeErrorMessage, readJsonBody, StationHttpError } from './http';
+import {
+  envelopeErrorCode,
+  envelopeErrorMessage,
+  readJsonBody,
+  StationHttpError,
+} from './http';
 
 export interface ProjectEnvelope<T> {
   success: boolean;
@@ -19,7 +24,10 @@ export interface ProjectEnvelope<T> {
  *
  * A non-2xx throws `StationHttpError`, so a consumer can branch on the STATUS
  * (`LayoutView`'s 404 not-found state, `RouteViewBoundary`'s authority
- * classification) instead of sniffing the message text for 'not found'.
+ * classification) instead of sniffing the message text for 'not found'. The
+ * envelope's machine `code` rides along on the error for the cases where one
+ * status names several outcomes (a verified not-prepared Project identity vs.
+ * a removed Project) — again by status+code, never by message text.
  */
 export async function unwrapProjectResponse<T = any>(
   response: Response,
@@ -35,6 +43,7 @@ export async function unwrapProjectResponse<T = any>(
         result,
         defaultError ?? `Request failed with HTTP ${response.status}`,
       ),
+      { code: envelopeErrorCode(result) },
     );
   }
   if (!result?.success) {

@@ -24,6 +24,14 @@ import {
   StationRequestAuthorityError,
 } from '../client/http';
 import { getProjectIdentity } from '../client/project-identity';
+
+/** Re-exported at the domain boundary so placement surfaces share one classifier. */
+export {
+  isProjectIdentityNotPrepared,
+  type ProjectIdentityReadFailure,
+  projectIdentityReadFailure,
+} from '../client/project-identity';
+
 import {
   applyProjectLayout,
   bindProjectResource,

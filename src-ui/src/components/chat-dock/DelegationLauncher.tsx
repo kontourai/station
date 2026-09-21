@@ -3,6 +3,8 @@ import type { ProjectIdentityView } from '@kontourai/station-contracts/project-i
 import {
   type DelegatedTaskHandle,
   type DelegationTargetOption,
+  isApiRequestScope,
+  projectIdentityReadFailure,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
   usePeerCredentialsQuery,
@@ -81,32 +83,47 @@ export const PORTABLE_IDENTITY_UNAVAILABLE_NOTICE =
   'This Project\u2019s placement details couldn\u2019t be loaded.';
 export const PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE =
   'Retry when ready \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
+/**
+ * Conditional setup help for an UNVERIFIED 404 only (#480 review): the read
+ * may mean "never prepared", but it equally means an old Station without
+ * the identity endpoint, a proxy 404, or a removed Project — so this offers
+ * the prepare command as a possibility, never as the diagnosis.
+ */
+export const PORTABLE_IDENTITY_MAYBE_UNPREPARED_HINT =
+  'If this Project has simply never had an identity prepared on this Station, `station projects prepare-identity <slug>` creates one \u2014 then retry.';
 export const PORTABLE_OFFER_UNVERIFIED_NOTICE =
   'Offer not verified from here \u2014 the selected Station confirms whether it currently offers this Project resource when the task is submitted.';
 export const PORTABLE_AUTHORITY_STALE_NOTICE =
   'Station access changed before the task could start. The draft is kept; choose the Station again and retry.';
 
 /**
- * Verified identity-read outcome (#480 review). Only a 404 from the
- * identity read is a VERIFIED not-prepared Project — the server confirmed
- * no identity record exists, so prepare guidance is honest. A 401/403 is
- * an authorization denial, and anything else (timeout, 5xx, malformed
- * body) is an unavailable read: both refuse visibly with retry and never
- * invent absence or readiness. Branches on the transport status the
- * Station sent, never on message text.
+ * Placement-surface view of the SDK's discriminated identity-read outcome
+ * (#480 review). Only the SDK's `not-prepared` — a 404 carrying the
+ * `project_identity_not_prepared` wire code, i.e. the server found the
+ * Project and holds no identity record — is a VERIFIED missing identity
+ * with prepare guidance. An unverified 404 (old server, proxy, removed
+ * Project), a denial, and every other failure refuse visibly with retry
+ * and never invent absence or readiness. Branches on transport status +
+ * machine code, never on message text.
  */
 export type ProjectIdentityFailureKind = 'missing' | 'denied' | 'unavailable';
 
 export function projectIdentityFailureKind(
   error: unknown,
 ): ProjectIdentityFailureKind {
-  const status =
-    typeof error === 'object' && error !== null
-      ? (error as { status?: unknown }).status
-      : undefined;
-  if (status === 404) return 'missing';
-  if (status === 401 || status === 403) return 'denied';
+  const failure = projectIdentityReadFailure(error);
+  if (failure === 'not-prepared') return 'missing';
+  if (failure === 'denied') return 'denied';
   return 'unavailable';
+}
+
+/**
+ * A 404 that verifies nothing — an old Station without the identity
+ * endpoint, a proxy 404, a non-JSON 404 body, or a removed Project. Gets
+ * retry plus conditional setup help, never an absence claim.
+ */
+export function isUnverifiedIdentityNotFound(error: unknown): boolean {
+  return projectIdentityReadFailure(error) === 'not-found-unverified';
 }
 
 type PlacementResource = {
@@ -379,6 +396,9 @@ export function DelegationLauncher({
   const portableIdentityMissing = identityFailureKind === 'missing';
   const portableIdentityDenied = identityFailureKind === 'denied';
   const portableIdentityUnavailable = identityFailureKind === 'unavailable';
+  // Unverified 404 only: conditional setup help without claiming absence.
+  const identityMaybeUnprepared =
+    portableIdentityFailure && isUnverifiedIdentityNotFound(identityError);
   const portableResourceMissing =
     portablePlacement && identityLoaded && identityResources.length === 0;
   const portableResourceChoiceRequired =
@@ -426,7 +446,19 @@ export function DelegationLauncher({
     // Capture every intent scalar BEFORE the await: a late Home/authority
     // switch must refuse the dispatch, never redirect it, and a stale
     // response after the await must not open a result for the new scope.
+    // apiBase + requestScope are frozen as immutable PER-INVOCATION values
+    // (scalars only — never the isCurrent function or any credential) and
+    // passed through the SDK transport's authority guards, so a rotation
+    // across the awaits refuses instead of dispatching the old intent under
+    // new credentials, and a late hook re-render cannot redirect it.
     const capturedScope = requestScope;
+    const invocationScope = isApiRequestScope(capturedScope)
+      ? {
+          apiBase: capturedScope.apiBase,
+          authorityKey: capturedScope.authorityKey,
+        }
+      : undefined;
+    const invocationApiBase = invocationScope?.apiBase ?? apiBase;
     const capturedPrompt = prompt.trim();
     const capturedEnvironmentId = environmentId;
     const capturedTargetId = selectedTarget.id;
@@ -448,17 +480,23 @@ export function DelegationLauncher({
     }
     try {
       const task = await mutation.mutateAsync({
-        prompt: capturedPrompt,
-        target: {
-          environment:
-            capturedEnvironmentId === 'current'
-              ? { kind: 'current' }
-              : { kind: 'saved', id: toEnvironmentId(capturedEnvironmentId) },
-          agent: capturedTargetId,
-          ...(capturedModel ? { model: { override: capturedModel } } : {}),
-          ...(capturedWorkspace ? { workspace: capturedWorkspace } : {}),
+        input: {
+          prompt: capturedPrompt,
+          target: {
+            environment:
+              capturedEnvironmentId === 'current'
+                ? { kind: 'current' }
+                : { kind: 'saved', id: toEnvironmentId(capturedEnvironmentId) },
+            agent: capturedTargetId,
+            ...(capturedModel ? { model: { override: capturedModel } } : {}),
+            ...(capturedWorkspace ? { workspace: capturedWorkspace } : {}),
+          },
+          ...(capturedParentTaskId
+            ? { parentTaskId: capturedParentTaskId }
+            : {}),
         },
-        ...(capturedParentTaskId ? { parentTaskId: capturedParentTaskId } : {}),
+        apiBase: invocationApiBase,
+        ...(invocationScope ? { requestScope: invocationScope } : {}),
       });
       if (capturedScope?.isCurrent() === false) {
         // The dispatch already happened under the captured authority; the
@@ -681,6 +719,11 @@ export function DelegationLauncher({
               <span className="delegation-launcher__hint">
                 {PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE}
               </span>
+              {identityMaybeUnprepared && (
+                <span className="delegation-launcher__hint">
+                  {PORTABLE_IDENTITY_MAYBE_UNPREPARED_HINT}
+                </span>
+              )}
               <button type="button" onClick={() => void retryIdentity()}>
                 Retry Project identity
               </button>
