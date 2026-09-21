@@ -100,7 +100,10 @@ import type { SessionInventoryAppReadModule } from '../../services/orchestration
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
-import { ReceiverExecutionRefusal } from '../../services/projects/project-contribution-service.js';
+import {
+  RECEIVER_EXECUTION_REFUSAL_COPY,
+  ReceiverExecutionRefusal,
+} from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
 import {
@@ -626,20 +629,6 @@ interface DelegateTaskRequest {
   /** Server-bound sender authority, checked again before forwarding. */
   isRequestAuthorityCurrent?: () => boolean;
 }
-
-const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
-  ReceiverExecutionRefusal['code'],
-  string
-> = {
-  receiver_execution_not_offered:
-    'This Station does not currently offer execution for the requested Project resource.',
-  receiver_execution_unavailable:
-    'The offered Project resource is unavailable.',
-  receiver_execution_authority_changed:
-    'Portable execution authority changed before forwarding.',
-  receiver_execution_forwarding_refused:
-    'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
-};
 
 interface ForegroundMessageRequest {
   expectedInputRequest?: AttentionRequestReference;

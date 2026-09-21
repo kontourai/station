@@ -56,6 +56,28 @@ export class ReceiverExecutionRefusal extends Error {
   }
 }
 
+/**
+ * The fixed operator-actionable copy for each refusal code, owned HERE next
+ * to the codes so every emitter — the local delegation route and the
+ * controller's peer-hop translator — answers with byte-identical wording.
+ * The peer hop must never relay a receiver's raw `error` text (station peer
+ * review: raw peer text is attacker-adjacent surface); it selects from this
+ * map by the KNOWN code only.
+ */
+export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
+  ReceiverExecutionRefusal['code'],
+  string
+> = {
+  receiver_execution_not_offered:
+    'This Station does not currently offer execution for the requested Project resource.',
+  receiver_execution_unavailable:
+    'The offered Project resource is unavailable.',
+  receiver_execution_authority_changed:
+    'Portable execution authority changed before forwarding.',
+  receiver_execution_forwarding_refused:
+    'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
+};
+
 /** The server-minted portable consent identity stamped on a session binding. */
 export interface PortableExecutionConsentIdentity {
   portableProjectId: string;

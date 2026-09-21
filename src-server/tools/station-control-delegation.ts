@@ -77,6 +77,7 @@ import {
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
+  RECEIVER_EXECUTION_REFUSAL_COPY,
   type ReceiverExecutionAdmission,
   ReceiverExecutionRefusal,
 } from '../services/projects/project-contribution-service.js';
@@ -876,6 +877,107 @@ async function postCanonical<T>(
   );
   if (!payload.success || payload.data === undefined) {
     throw new Error(payload.error || unavailableMessage);
+  }
+  return payload.data;
+}
+
+/** Error envelopes the runtime auth boundary and the delegation route emit. */
+interface PeerPortableErrorEnvelope {
+  success?: boolean;
+  error?: string | { code?: string };
+  code?: string;
+  data?: unknown;
+}
+
+/**
+ * #484 peer-hop refusal translation. A KNOWN receiver portable refusal must
+ * arrive at the operator as the SAME refusal — same closed code, same fixed
+ * copy, same 403 — instead of degrading into a plain `Error`/400 that reads
+ * as a generic server fault. A peer 401 or a known `insufficient_scope` is
+ * an AUTHORITY fact about the saved peer credential, so it becomes the
+ * actionable `receiver_execution_authority_changed` refusal (403 at this
+ * Station) without relaying raw peer text or minting a misleading
+ * controller-local 401. Anything else — 5xx, malformed bodies, transport
+ * failures — is deliberately NOT translated: an unknown failure must never
+ * be laundered into an authorization outcome.
+ */
+function peerPortableRefusalFor(
+  status: number,
+  payload: PeerPortableErrorEnvelope | null,
+): ReceiverExecutionRefusal | undefined {
+  if (status === 401) {
+    return new ReceiverExecutionRefusal(
+      'receiver_execution_authority_changed',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+    );
+  }
+  if (status !== 403) return undefined;
+  const code = payload?.code;
+  if (typeof code === 'string' && code in RECEIVER_EXECUTION_REFUSAL_COPY) {
+    return new ReceiverExecutionRefusal(
+      code as ReceiverExecutionRefusal['code'],
+      RECEIVER_EXECUTION_REFUSAL_COPY[code as ReceiverExecutionRefusal['code']],
+    );
+  }
+  const nested =
+    typeof payload?.error === 'object' && payload.error !== null
+      ? payload.error.code
+      : undefined;
+  if (nested === 'insufficient_scope') {
+    return new ReceiverExecutionRefusal(
+      'receiver_execution_authority_changed',
+      RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
+    );
+  }
+  return undefined;
+}
+
+/**
+ * The portable peer dispatch's own poster: identical wire behavior to
+ * {@link postCanonical} for success, but on a non-2xx it consults
+ * {@link peerPortableRefusalFor} BEFORE falling back to the plain-error
+ * path, so a receiver's closed portable refusal keeps its code and 403 at
+ * this Station. Non-portable delegation keeps `postCanonical` byte-for-byte.
+ */
+async function postPeerPortableDelegation<T>(
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  path: string,
+  body: unknown,
+  unavailableMessage: string,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${target.apiBase}${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(target.requestOptions?.headers ?? {}),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(unavailableMessage);
+  }
+  let payload: (ApiEnvelope<T> & PeerPortableErrorEnvelope) | null;
+  try {
+    payload = (await response.json()) as ApiEnvelope<T> &
+      PeerPortableErrorEnvelope;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const refusal = peerPortableRefusalFor(response.status, payload);
+    if (refusal) throw refusal;
+    throw new Error(
+      (typeof payload?.error === 'string' && payload.error) ||
+        unavailableMessage,
+    );
+  }
+  if (!payload?.success || payload.data === undefined) {
+    throw new Error(
+      (typeof payload?.error === 'string' && payload.error) ||
+        unavailableMessage,
+    );
   }
   return payload.data;
 }
@@ -3288,16 +3390,31 @@ export async function delegateTask(
         'Portable execution authority changed before forwarding.',
       );
     }
-    const remoteHandle = await postCanonical<DelegatedTaskHandle>(
-      selectedTarget,
-      '/api/orchestration/delegations',
-      {
-        prompt: input.prompt,
-        target: { ...pinnedTarget, environment: { kind: 'current' } },
-        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-      },
-      'The selected Station could not start the delegated task',
-    );
+    // Portable dispatch through the translating poster: a receiver's closed
+    // portable refusal keeps its code/403 at this Station; a peer 401 or
+    // insufficient_scope becomes the actionable authority-changed refusal.
+    // Non-portable peer dispatch below keeps the plain postCanonical path.
+    const remoteHandle = portableIntent
+      ? await postPeerPortableDelegation<DelegatedTaskHandle>(
+          selectedTarget,
+          '/api/orchestration/delegations',
+          {
+            prompt: input.prompt,
+            target: { ...pinnedTarget, environment: { kind: 'current' } },
+            ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+          },
+          'The selected Station could not start the delegated task',
+        )
+      : await postCanonical<DelegatedTaskHandle>(
+          selectedTarget,
+          '/api/orchestration/delegations',
+          {
+            prompt: input.prompt,
+            target: { ...pinnedTarget, environment: { kind: 'current' } },
+            ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+          },
+          'The selected Station could not start the delegated task',
+        );
     const handle =
       selectedTarget.kind === 'peer'
         ? normalizeDelegatedIdentity(remoteHandle)

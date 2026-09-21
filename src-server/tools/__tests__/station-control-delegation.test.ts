@@ -3442,7 +3442,9 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
         (caught: unknown) => caught,
       );
       expect(error).toBeInstanceOf(Error);
-      expect((error as { name?: string }).name).toBe('ReceiverExecutionRefusal');
+      expect((error as { name?: string }).name).toBe(
+        'ReceiverExecutionRefusal',
+      );
       expect((error as { code?: string }).code).toBe(
         'receiver_execution_not_offered',
       );
@@ -3459,7 +3461,9 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
       const error = await delegateTask(portableInput()).catch(
         (caught: unknown) => caught,
       );
-      expect((error as { name?: string }).name).toBe('ReceiverExecutionRefusal');
+      expect((error as { name?: string }).name).toBe(
+        'ReceiverExecutionRefusal',
+      );
       expect((error as { code?: string }).code).toBe(
         'receiver_execution_authority_changed',
       );
@@ -3476,7 +3480,9 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
       const error = await delegateTask(portableInput()).catch(
         (caught: unknown) => caught,
       );
-      expect((error as { name?: string }).name).toBe('ReceiverExecutionRefusal');
+      expect((error as { name?: string }).name).toBe(
+        'ReceiverExecutionRefusal',
+      );
       expect((error as { code?: string }).code).toBe(
         'receiver_execution_authority_changed',
       );
