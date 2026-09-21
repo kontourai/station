@@ -11,7 +11,7 @@ import {
   useModelPickerCatalogQuery,
   useProjectLayoutQuery,
 } from '@kontourai/station-sdk';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   buildNewChatModalViewModel,
   buildNewChatModelOverrideKey,
@@ -112,6 +112,30 @@ export function acpCatalogModelOptions(
 }
 
 /**
+ * Keep the new-chat picker converging while the server calls its own agents
+ * read reconciling. The enriched list serves its last stable snapshot during
+ * post-write reconciliation, and this surface fetches once per mount with a
+ * multi-minute cache: without a refresh, a just-created agent can miss the
+ * picker for the whole cache lifetime even though the server converges
+ * seconds later. Each reconciling response re-arms exactly one delayed
+ * refetch; a stable read (or unmount) stops the loop, so a wedged server
+ * costs one lightweight read per second only while the picker is open.
+ */
+export function useReconcilingCatalogRefresh(
+  catalogState: string | undefined,
+  data: unknown,
+  refetch: () => void,
+  delayMs = 1000,
+): void {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `data` is an identity trigger, not a read — each reconciling response must re-arm exactly one delayed refetch or polling stops after the first fire.
+  useEffect(() => {
+    if (catalogState !== 'reconciling') return;
+    const timer = setTimeout(() => refetch(), delayMs);
+    return () => clearTimeout(timer);
+  }, [catalogState, data, refetch, delayMs]);
+}
+
+/**
  * Station's model inventory can retain cached catalogs for connections that
  * are disabled or unhealthy. Only a ready, enabled model connection is a
  * launchable provider; keep this predicate aligned with the active composer.
@@ -158,6 +182,11 @@ export function useNewChatSelectionModel({
     }));
   const appConfig = useConfig();
   const agentCatalog = useAgentsQuery();
+  useReconcilingCatalogRefresh(
+    agentCatalog.catalogState,
+    agentCatalog.data,
+    agentCatalog.refetch,
+  );
   const projectCatalog = useScopedProjectsQuery();
   const qualifiedAgents = useMemo(
     () =>
