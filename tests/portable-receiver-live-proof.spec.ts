@@ -33,36 +33,38 @@ import {
 /**
  * #484/#106 — an ACTUAL two-independent-Station portable-execution proof.
  *
- * Two real server processes are booted from this checkout's source: a
- * CONTROLLER (the delegating Station) and a RECEIVER (the executing Station),
- * each in its own isolated home under its own STATION_ROOT with non-default
- * ports. Nothing here is an in-process Hono app, a spy, or a fixture
- * credential minted by the test: pairing runs the receiver's real offer →
- * request → operator-approval → exchange HTTP ceremony (kind `delegation`),
- * the resulting peer credential is saved through the controller's real
- * outbound peer-credential API, the receiver's offer is configured through
- * the real operator API `PUT /api/project-contributions/offer`, and the
- * delegation goes through the controller's real
+ * Two real server processes are booted from this checkout's committed source:
+ * a CONTROLLER (the delegating Station) and a RECEIVER (the executing
+ * Station), each in its own isolated home under its own STATION_ROOT with
+ * non-default ports. Nothing here is an in-process Hono app, a spy, or a
+ * fixture credential minted by the test: pairing runs the receiver's real
+ * offer → request → operator-approval → exchange HTTP ceremony (kind
+ * `delegation`), the resulting peer credential is saved through the
+ * controller's real outbound peer-credential API, the receiver's offer is
+ * configured through the real operator API `PUT /api/project-contributions/
+ * offer`, and the delegation goes through the controller's real
  * `POST /api/orchestration/delegations` with `workspace.kind =
  * 'project-portable'`.
  *
+ * THE CONTROLLER HOLDS NO OFFER. Per the controller/receiver admission
+ * split, only the receiver admits the portable intent, so every refusal
+ * below is exercised through the real peer hop and asserted by the typed
+ * refusal CODE (`receiver_execution_*`) and exact status — never a bare 4xx.
+ *
  * The ONLY modeled component is the model behind the turn: the receiver's
  * muse engine runs `STATION_E2E_MUSE_PROVIDER=echo`, muse's own key-less
- * provider (the same seam `agents-new-muse-echo-turn.spec.ts` uses). Echo
- * output (`echo: <token>`) proves the PROVIDER executed; it cannot prove the
- * OS working directory, so the provider output is kept strictly separate
- * from (a) the DECLARED receipt (`handle.resolution.environmentId` +
- * resolved `workspace.cwd`) and (b) an ACTUAL launch observation: a read-only
- * PATH shim records the argv and cwd of every muse process launch and then
- * `exec`s the real binary, so the provider's own behavior is untouched.
+ * provider. Echo output (`echo: <unique token>`) proves the PROVIDER
+ * executed; it cannot prove the OS working directory, so the provider output
+ * is kept strictly separate from (a) the DECLARED receipt
+ * (`handle.resolution.environmentId` + resolved `workspace.cwd`) and (b) an
+ * ACTUAL launch observation: a read-only PATH shim records the argv and cwd
+ * of every muse process launch and then `exec`s the real binary. Launches
+ * are counted per request (deltas), with the current turn's unique token in
+ * the argv tying an observation to THIS turn.
  *
- * Operator credentials are read ONLY from each fixture's isolated home
- * (`<home>/security/environment.json`), never from the operator's real home,
- * and the receiver's operator secret is never shared with the controller or
- * the peer credential. The join under proof is portable identity (manifest id
- * + canonical git remote of a LOCAL fake remote — no network checkout), with
- * the receiver using a different slug, a different local path, and a nested
- * execution root, so a same-slug/default-cwd coincidence cannot satisfy it.
+ * Operator credentials are read ONLY from each fixture's isolated home,
+ * never from the operator's real home, and the receiver's operator secret is
+ * never shared with the controller or the peer credential.
  *
  * Unsupported-peer (old receiver without `portableExecutionOffers`) is
  * deliberately NOT VERIFIED here: it needs a genuinely older receiver build,
@@ -87,13 +89,24 @@ const RECEIVER_SLUG = 'receiver-local-alias';
 const CONTROLLER_SLUG = 'portable-source';
 const EXECUTION_ROOT_PATH = 'service/inner';
 
-const createdTempRoots: string[] = [];
-let fixture: ProofFixture | undefined;
-let setupError: Error | undefined;
+const KNOWN_PORTABLE_REFUSAL_CODES = [
+  'receiver_execution_not_offered',
+  'receiver_execution_unavailable',
+  'receiver_execution_authority_changed',
+  'receiver_execution_forwarding_refused',
+] as const;
+type PortableRefusalCode = (typeof KNOWN_PORTABLE_REFUSAL_CODES)[number];
 
-interface JsonRecord {
-  [key: string]: unknown;
-}
+// --- Guaranteed teardown state (registered BEFORE any await) --------------
+const ownedRoots: string[] = [];
+const ownedCleanups: Array<{ label: string; run: () => Promise<unknown> }> = [];
+let anyTestFailed = false;
+let setupError: Error | undefined;
+let fixture: ProofFixture | undefined;
+let evidenceDestination: string | undefined;
+/** Incremental, non-secret run metadata — written even on partial setup. */
+const runInfo: Record<string, unknown> = {};
+const ownedLogs: Array<{ label: string; path: string }> = [];
 
 async function run(
   file: string,
@@ -221,7 +234,6 @@ function stationEnvironment(root: string, extra: NodeJS.ProcessEnv = {}) {
     STATION_LOG_LEVEL: 'error',
     OTEL_SDK_DISABLED: 'true',
     AWS_EC2_METADATA_DISABLED: 'true',
-    // muse must resolve on PATH for the receiver's readiness probe and turns.
     PATH: `${NODE_BIN}${delimiter}${lab.PATH ?? process.env.PATH ?? ''}`,
     ...extra,
   };
@@ -231,7 +243,6 @@ async function createFixtureCheckout(
   directory: string,
   remote: string,
   innerDirs: string[] = [],
-  extraRemote?: string,
 ) {
   mkdirSync(directory, { recursive: true });
   await run('git', ['init', '--initial-branch', 'main'], { cwd: directory });
@@ -242,10 +253,6 @@ async function createFixtureCheckout(
     cwd: directory,
   });
   await run('git', ['remote', 'add', 'origin', remote], { cwd: directory });
-  if (extraRemote)
-    await run('git', ['remote', 'add', 'other', extraRemote], {
-      cwd: directory,
-    });
   let nested = directory;
   for (const segment of innerDirs) {
     nested = join(nested, segment);
@@ -258,17 +265,23 @@ async function createFixtureCheckout(
   });
 }
 
+interface JsonRecord {
+  [key: string]: unknown;
+}
+
 interface ProofFixture {
   root: string;
   controller: LiveStation;
   receiver: LiveStation;
   receiverHome: string;
   receiverInstanceId: string;
-  receiverStop: () => Promise<unknown>;
   controllerOperator: string;
   receiverOperator: string;
+  controllerLocalCredential: string;
+  receiverLocalCredential: string;
   controllerEnv: NodeJS.ProcessEnv;
   receiverEnv: NodeJS.ProcessEnv;
+  controllerHome: string;
   receiverCheckout: string;
   receiverExecutionRoot: string;
   identity: JsonRecord;
@@ -281,21 +294,13 @@ interface ProofFixture {
   delegationScope: string;
   peerDeviceId: string;
   offerConfig: JsonRecord;
-  controllerProjectId: string;
-  controllerOfferConfig: JsonRecord;
-  /** The receiver's OWN local-operator credential, minted through the real
-   * ui-bootstrap ceremony (the only HTTP caller that binds
-   * `isBoundRuntimeLocalOperator` for the offer leaf). Read from the
-   * fixture's Set-Cookie, never from the user's home. */
-  receiverLocalCredential: string;
-  controllerLocalCredential: string;
-  museLaunchLog: string;
   museExecLaunches: () => Promise<Array<{ cwd: string; args: string }>>;
 }
 
 async function buildFixture(): Promise<ProofFixture> {
   const root = mkdtempSync(join(tmpdir(), 'portable-receiver-proof-'));
-  createdTempRoots.push(root);
+  // Register the root the moment it exists, before anything can fail.
+  ownedRoots.push(root);
 
   const controllerCheckout = join(root, 'controller', CONTROLLER_SLUG);
   const receiverCheckout = join(root, 'receiver', 'checkout-elsewhere');
@@ -357,19 +362,40 @@ async function buildFixture(): Promise<ProofFixture> {
     STATION_E2E_MUSE_PROVIDER: 'echo',
     // Presence-only fixture credential: muse's readiness derivation requires
     // a credential to EXIST, and the echo provider never uses it (no key,
-    // no network). This is a synthetic value inside the fixture environment,
-    // never the operator's real key.
+    // no network). Synthetic value inside the fixture environment only.
     META_API_KEY: 'e2e-echo-fixture-presence-only-key',
     PATH: `${shimDir}${delimiter}${NODE_BIN}${delimiter}${
       (controllerEnv.PATH as string) ?? ''
     }`,
   });
 
-  await startStation(controllerLive, true, {
+  // START the boot, register its cleanup BEFORE awaiting, then await — so a
+  // partial or failed boot still gets a stop attempt in the guaranteed
+  // afterAll lifecycle.
+  ownedLogs.push(
+    { label: 'controller-station', path: join(root, 'controller-station.log') },
+    { label: 'receiver-station', path: join(root, 'receiver-station.log') },
+    {
+      label: 'muse-launch-observations',
+      path: join(root, 'muse-launch-observations.jsonl'),
+    },
+  );
+  const controllerBoot = startStation(controllerLive, true, {
     environment: controllerEnv,
     logFile: join(root, 'controller-station.log'),
   });
-  const receiverTempHome = await startTempHomeInstance({
+  ownedCleanups.push({
+    label: `controller ${controllerLive.instance}`,
+    run: () => stopStation(controllerLive, { environment: controllerEnv }),
+  });
+  await controllerBoot;
+  runInfo.controller = {
+    instance: controllerLive.instance,
+    api: controllerLive.api,
+    ui: controllerLive.ui,
+  };
+
+  const receiverBoot = startTempHomeInstance({
     root: process.cwd(),
     instance: receiverInstanceId,
     serverPort: receiverPorts.serverPort,
@@ -381,6 +407,16 @@ async function buildFixture(): Promise<ProofFixture> {
     // booted with the launcher's own throwaway home, not a `--base` home.
     home: undefined as unknown as string,
   });
+  ownedCleanups.push({
+    label: `receiver ${receiverInstanceId}`,
+    run: async () => {
+      const booted = (await receiverBoot.catch(() => null)) as {
+        stop: () => Promise<unknown>;
+      } | null;
+      if (booted) await booted.stop();
+    },
+  });
+  const receiverTempHome = await receiverBoot;
   const receiverHome = instanceHome(process.cwd(), receiverInstanceId);
   const receiver: LiveStation = {
     api: `http://127.0.0.1:${receiverPorts.serverPort}`,
@@ -390,13 +426,19 @@ async function buildFixture(): Promise<ProofFixture> {
     ui: `http://127.0.0.1:${receiverPorts.uiPort}`,
     uiPort: receiverPorts.uiPort,
   };
-  const receiverStop = () => receiverTempHome.stop();
+  runInfo.receiver = {
+    instance: receiverInstanceId,
+    api: receiver.api,
+    ui: receiver.ui,
+  };
 
   const controllerOperator = readE2EOperatorCredential(controllerLive.home);
   const receiverOperator = readE2EOperatorCredential(receiverHome);
-
-  // The receiver's OWN local-operator identity over HTTP (see
-  // mintLocalOperatorCredential).
+  const controllerLocalCredential = await mintLocalOperatorCredential(
+    controllerLive.home,
+    controllerLive.api,
+    controllerLive.ui,
+  );
   const receiverLocalCredential = await mintLocalOperatorCredential(
     receiverHome,
     receiver.api,
@@ -404,17 +446,9 @@ async function buildFixture(): Promise<ProofFixture> {
   );
   expect(receiverLocalCredential).not.toBe(receiverOperator);
 
-  // --- Controller side: real Project with the fixture portable identity ----
-  // The controller ALSO binds its own local-operator identity through the
-  // ui-bootstrap ceremony: as composed in #484 phase A, the POST
-  // /api/orchestration/delegations route captures the portable admission on
-  // the SENDING station too, so the controller must hold its own operator
-  // offer for the same resource before it may forward the intent.
-  const controllerLocalCredential = await mintLocalOperatorCredential(
-    controllerLive.home,
-    controllerLive.api,
-    controllerLive.ui,
-  );
+  // --- Controller side: real Project with the fixture portable identity.
+  // NO controller offer: the controller/receiver split means only the
+  // receiver admits, and the harness asserts that absence below.
   const created = await api(controllerLive.api, 'POST', '/api/projects', {
     body: {
       name: 'Portable Source',
@@ -423,10 +457,7 @@ async function buildFixture(): Promise<ProofFixture> {
     },
     headers: operatorHeaders(controllerOperator),
   });
-  expect(created.status, JSON.stringify(created.payload)).toBeLessThan(400);
-  const controllerProjectId = (
-    (created.payload as JsonRecord).data as JsonRecord
-  ).id as string;
+  expect(created.status, JSON.stringify(created.payload)).toBe(201);
   const prepared = await api(
     controllerLive.api,
     'POST',
@@ -436,38 +467,18 @@ async function buildFixture(): Promise<ProofFixture> {
   expect(prepared.status, JSON.stringify(prepared.payload)).toBe(200);
   const identityView = (prepared.payload as JsonRecord).data as JsonRecord;
   const identity = identityView.identity as JsonRecord;
+  // Inspect the PREPARE result: the portable id and the primary resource
+  // must be real before anything downstream can be trusted.
+  expect(typeof identity.id).toBe('string');
+  expect((identity.id as string).length).toBeGreaterThan(0);
   const repos = identity.repos as Array<JsonRecord>;
   expect(repos.length).toBe(1);
   const resourceId = repos[0]!.id as string;
   expect(resourceId).toBe(FIXTURE_REMOTE_CANONICAL);
 
-  // The SENDING station's own offer (same portable identity, its own local
-  // Project) — configured through the same real operator API.
-  const controllerOffered = await api(
-    controllerLive.api,
-    'PUT',
-    '/api/project-contributions/offer',
-    {
-      body: {
-        portableProjectId: identity.id,
-        localProjectId: controllerProjectId,
-        resourceId,
-        expected: null,
-        enabled: true,
-      },
-      headers: operatorHeaders(controllerLocalCredential),
-    },
-  );
-  expect(
-    controllerOffered.status,
-    JSON.stringify(controllerOffered.payload),
-  ).toBe(200);
-  const controllerOfferConfig = (controllerOffered.payload as JsonRecord)
-    .data as JsonRecord;
-
   // --- Receiver side: SAME portable identity, DIFFERENT slug and local path,
   // attached through the real attach API (which verifies the checkout's git
-  // remote against the identity's canonical remote) -------------------------
+  // remote against the identity's canonical remote).
   const attached = await api(receiver.api, 'POST', '/api/projects/attach', {
     body: {
       name: 'Receiver Local Alias',
@@ -498,7 +509,7 @@ async function buildFixture(): Promise<ProofFixture> {
   );
   expect(rooted.status, JSON.stringify(rooted.payload)).toBe(200);
 
-  // --- Receiver offer through the REAL operator API ------------------------
+  // --- Receiver offer through the REAL operator API (the ONLY offer).
   const receiverIdentity = await api(
     receiver.api,
     'GET',
@@ -524,7 +535,7 @@ async function buildFixture(): Promise<ProofFixture> {
   expect(offered.status, JSON.stringify(offered.payload)).toBe(200);
   const offerConfig = (offered.payload as JsonRecord).data as JsonRecord;
 
-  // --- Receiver pairing ceremony (kind delegation), entirely over HTTP -----
+  // --- Receiver pairing ceremony (kind delegation), entirely over HTTP.
   const scope = pairingScopePresetString('delegation');
   const offer = await api(receiver.api, 'POST', '/api/pairing/offers', {
     body: { endpoint: receiver.api, scope, kind: 'delegation' },
@@ -578,12 +589,11 @@ async function buildFixture(): Promise<ProofFixture> {
     ?.id as string;
   expect(delegationCredential).toBeTruthy();
   expect(peerDeviceId).toBeTruthy();
-
-  // The paired credential is a DELEGATION device credential, not the
-  // receiver's operator secret, and it must NOT be able to act as operator.
+  // The paired credential is a DELEGATION device credential, never the
+  // receiver's operator secret.
   expect(delegationCredential).not.toBe(receiverOperator);
 
-  // --- Receiver public handshake: capability + environment identity --------
+  // --- Receiver public handshake: capability + environment identity.
   const handshake = await api(receiver.api, 'GET', '/.well-known/station/v1');
   expect(handshake.status).toBe(200);
   const handshakeData = handshake.payload as JsonRecord;
@@ -592,7 +602,7 @@ async function buildFixture(): Promise<ProofFixture> {
   const capabilities = handshakeData.capabilities as JsonRecord;
   expect(capabilities.portableExecutionOffers).toBe(true);
 
-  // --- Controller: save the outbound peer credential through its REAL API --
+  // --- Controller: save the outbound peer credential through its REAL API.
   const savedPeer = await api(
     controllerLive.api,
     'POST',
@@ -610,17 +620,17 @@ async function buildFixture(): Promise<ProofFixture> {
   );
   expect(savedPeer.status, JSON.stringify(savedPeer.payload)).toBe(201);
 
-  // --- Receiver: materialize the muse engine's agent (canonical path) ------
+  // --- Receiver: materialize the muse engine's agent (canonical path).
   const materialized = await api(
     receiver.api,
     'POST',
     '/agents/materialize-engine',
     { body: { engineId: 'muse' }, headers: operatorHeaders(receiverOperator) },
   );
-  expect(
-    materialized.status,
-    JSON.stringify(materialized.payload),
-  ).toBeLessThan(400);
+  // The materialize route answers 200, or 202 while runtime activation is
+  // pending reconciliation — both are its contractual success statuses.
+  expect([200, 202]).toContain(materialized.status);
+  expect(materialized.status, JSON.stringify(materialized.payload)).toBeLessThan(300);
   const museAgentSlug = (
     (materialized.payload as JsonRecord).data as JsonRecord
   ).slug as string;
@@ -628,7 +638,6 @@ async function buildFixture(): Promise<ProofFixture> {
 
   const museExecLaunches = async () => {
     if (!existsSync(museLaunchLog)) return [];
-    const { readFile } = await import('node:fs/promises');
     const lines = (await readFile(museLaunchLog, 'utf8'))
       .split('\n')
       .filter((line) => line.trim().length > 0);
@@ -643,11 +652,13 @@ async function buildFixture(): Promise<ProofFixture> {
     receiver,
     receiverHome,
     receiverInstanceId,
-    receiverStop,
     controllerOperator,
     receiverOperator,
+    controllerLocalCredential,
+    receiverLocalCredential,
     controllerEnv,
     receiverEnv,
+    controllerHome: controllerLive.home,
     receiverCheckout,
     receiverExecutionRoot,
     identity,
@@ -660,14 +671,103 @@ async function buildFixture(): Promise<ProofFixture> {
     delegationScope: scope,
     peerDeviceId,
     offerConfig,
-    controllerProjectId,
-    controllerOfferConfig,
-    receiverLocalCredential,
-    controllerLocalCredential,
-    museLaunchLog,
     museExecLaunches,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Guaranteed lifecycle: afterAll runs even when tests fail; every owned
+// runtime and root is registered BEFORE the await that creates it.
+// ---------------------------------------------------------------------------
+
+test.afterEach(({}, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) anyTestFailed = true;
+});
+
+test.afterAll(async () => {
+  // 1. Stop every owned runtime in reverse registration order, remembering
+  // which stops did not confirm.
+  const unconfirmed: string[] = [];
+  let stopError: unknown;
+  for (const cleanup of [...ownedCleanups].reverse()) {
+    try {
+      await cleanup.run();
+    } catch (error) {
+      stopError = error;
+      unconfirmed.push(cleanup.label);
+    }
+  }
+  // 2. Independently confirm no owned listener remains: probe each recorded
+  // port and expect the connection to be refused.
+  const liveStations = [fixture?.controller, fixture?.receiver].filter(
+    (live): live is LiveStation => Boolean(live),
+  );
+  for (const live of liveStations) {
+    try {
+      await fetch(
+        `http://127.0.0.1:${live.serverPort}/.well-known/station/v1`,
+        {
+          signal: AbortSignal.timeout(2_000),
+        },
+      );
+      unconfirmed.push(`port ${live.serverPort} still accepting`);
+    } catch {
+      // refused/timed out = stopped
+    }
+  }
+  // 3. Preserve evidence UNTIL every owned process stop is confirmed — and
+  // whenever any test failed. Only non-secret artifacts: station logs, the
+  // muse launch observation ledger, and non-secret run metadata (ports,
+  // ids). Fixture homes (credentials, key material) are never copied.
+  if (anyTestFailed || setupError || unconfirmed.length > 0 || stopError) {
+    try {
+      mkdirSync(ARTIFACT_DIR, { recursive: true });
+      const stamp = `${String(runInfo.receiver ? (runInfo.receiver as JsonRecord).instance : 'partial-setup')}-${Date.now()}`;
+      evidenceDestination = join(ARTIFACT_DIR, stamp);
+      mkdirSync(evidenceDestination, { recursive: true });
+      for (const log of ownedLogs) {
+        if (existsSync(log.path))
+          cpSync(log.path, join(evidenceDestination, `${log.label}.log`));
+      }
+      writeFileSync(
+        join(evidenceDestination, 'run-meta.json'),
+        JSON.stringify(
+          {
+            outcome: setupError
+              ? 'setup-failure'
+              : anyTestFailed
+                ? 'test-failure'
+                : 'cleanup-unconfirmed',
+            unconfirmed,
+            controllerHasOffer: null,
+            ...runInfo,
+          },
+          null,
+          2,
+        ),
+      );
+    } catch (copyError) {
+      console.error('evidence preservation failed', copyError);
+    }
+  }
+  // 4. Remove temporary roots ONLY when every stop confirmed and no test
+  // failed. Never touch anything outside this run's mkdtemp roots.
+  if (!anyTestFailed && unconfirmed.length === 0 && !stopError) {
+    for (const root of ownedRoots)
+      rmSync(root, { recursive: true, force: true });
+  }
+  ownedCleanups.length = 0;
+  const preserveNote =
+    evidenceDestination ??
+    ownedRoots[ownedRoots.length - 1] ??
+    'unknown location';
+  fixture = undefined;
+  if (stopError || unconfirmed.length > 0)
+    throw new Error(
+      `Failed to stop an owned fixture runtime (${unconfirmed.join(', ') || 'unknown'}); diagnostic homes preserved at ${preserveNote}`,
+      { cause: stopError },
+    );
+});
 
 function delegationTarget(
   fixture: ProofFixture,
@@ -695,13 +795,13 @@ function delegationTarget(
 async function delegateFromController(
   fixture: ProofFixture,
   target: JsonRecord,
+  prompt = 'portable proof negative control',
 ): Promise<ApiResult> {
   // The controller intermittently refuses with a bounded, self-described
   // retry window right after any config mutation ("Agent catalog is
-  // refreshing…"). Only THIS exact refusal is retried, and nothing has been
-  // dispatched when it appears (HTTP 400, no handle), so no effect is
-  // ambiguous. The REFUSALS under proof must surface their real codes, so a
-  // persistent catalog state fails the test rather than masking it.
+  // refreshing…"). Only THIS exact pre-effect refusal is retried (HTTP 400,
+  // no handle, nothing dispatched), and the retry budget is bounded and
+  // documented; a dispatch that already returned a handle is NEVER retried.
   const deadline = Date.now() + 60_000;
   for (;;) {
     const delegated = await api(
@@ -709,10 +809,7 @@ async function delegateFromController(
       'POST',
       '/api/orchestration/delegations',
       {
-        body: {
-          prompt: 'Return this token unchanged: portable-proof-token',
-          target,
-        },
+        body: { prompt, target },
         headers: operatorHeaders(fixture.controllerOperator),
       },
     );
@@ -730,521 +827,498 @@ async function delegateFromController(
   }
 }
 
-/** Terminal-absence oracles on the RECEIVER: no new muse launch, no usage row. */
+/** Assert the EXACT typed refusal contract on the wire. */
+function expectPortableRefusal(
+  refused: ApiResult,
+  code: PortableRefusalCode,
+  message: string,
+): void {
+  expect(refused.status, JSON.stringify(refused.payload)).toBe(403);
+  expect((refused.payload as JsonRecord).code).toBe(code);
+  expect((refused.payload as JsonRecord).error).toBe(message);
+}
+
+/** Captured per-request no-effect oracle: launch delta + usage delta. */
+interface EffectBaseline {
+  launches: number;
+  usageByModel: JsonRecord;
+}
+
+async function captureEffectBaseline(
+  fixture: ProofFixture,
+): Promise<EffectBaseline> {
+  const usage = await api(fixture.receiver.api, 'GET', '/api/analytics/usage', {
+    headers: operatorHeaders(fixture.receiverLocalCredential),
+  });
+  expect(usage.status, JSON.stringify(usage.payload)).toBe(200);
+  const stats = ((usage.payload as JsonRecord).data ?? {}) as JsonRecord;
+  return {
+    launches: (await fixture.museExecLaunches()).length,
+    usageByModel: (stats.byModel ?? {}) as JsonRecord,
+  };
+}
+
 async function assertNoProviderEffect(
   fixture: ProofFixture,
-  launchesBefore: number,
-) {
+  baseline: EffectBaseline,
+): Promise<void> {
   const launches = await fixture.museExecLaunches();
   expect(
-    launches.length,
-    `muse exec launched ${launches.length - launchesBefore} time(s) after a refusal`,
-  ).toBe(launchesBefore);
+    launches.length - baseline.launches,
+    'muse exec launched after a refusal',
+  ).toBe(0);
+  // Captured DELTA of the receiver's model usage counters: identical before
+  // and after the refusal. (Lifetime emptiness is NOT the oracle; the turn
+  // in the positive test may legitimately create rows.)
   const usage = await api(fixture.receiver.api, 'GET', '/api/analytics/usage', {
     headers: operatorHeaders(fixture.receiverLocalCredential),
   });
   expect(usage.status).toBe(200);
   const stats = ((usage.payload as JsonRecord).data ?? {}) as JsonRecord;
-  const byModel = (stats.byModel ?? {}) as JsonRecord;
-  const museModels = Object.keys(byModel).filter((model) =>
-    model.toLowerCase().includes('muse'),
-  );
-  expect(
-    museModels,
-    `receiver reported model usage for ${museModels.join(', ')} after a refusal`,
-  ).toEqual([]);
+  expect((stats.byModel ?? {}) as JsonRecord).toEqual(baseline.usageByModel);
 }
 
 test.describe
   .serial('portable receiver live proof (#484/#106)', () => {
-    test.describe
-      .serial('setup', () => {
-        test('boots two independent Stations and wires the real offer chain', async () => {
-          test.setTimeout(600_000);
-          try {
-            fixture = await buildFixture();
-          } catch (error) {
-            setupError = error as Error;
-            throw error;
-          }
-          // The proof's identity join precondition: both Stations can read the
-          // SAME portable id from their own, differently-named, differently-located
-          // checkouts.
-          expect(fixture.portableProjectId).toBeTruthy();
-          expect(fixture.receiverCheckout).not.toContain(CONTROLLER_SLUG);
-          expect(
-            fixture.museAgentSlug,
-            'the receiver did not materialize a muse agent; a host that cannot run muse cannot prove this journey',
-          ).toBeTruthy();
-        });
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
+    test.beforeAll(async ({}, testInfo) => {
+      // Two Station boots plus the full offer/pairing chain exceed the
+      // default 30s hook timeout; the setup gets its own explicit budget.
+      testInfo.setTimeout(600_000);
+      try {
+        fixture = await buildFixture();
+      } catch (error) {
+        setupError = error as Error;
+        throw error;
+      }
+      // The controller MUST NOT hold an offer: the controller/receiver split
+      // means sender-side admission would mask receiver refusals. Read the
+      // controller's fixture config and assert the contribution scope absent.
+      const controllerConfig = JSON.parse(
+        await readFile(
+          join(fixture.controllerHome, 'config', 'app.json'),
+          'utf8',
+        ),
+      ) as JsonRecord;
+      expect(controllerConfig.contribution ?? null).toBeNull();
+    });
+
+    test('delegates a project-portable turn and completes it on the receiver via the echo provider', async () => {
+      test.setTimeout(600_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      const turnToken = `portable-proof-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+
+      const delegated = await delegateFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+        `Return this token unchanged: ${turnToken}`,
+      );
+      expect(delegated.status, JSON.stringify(delegated.payload)).toBe(200);
+      const handle = (delegated.payload as JsonRecord).data as JsonRecord;
+      const resolution = handle.resolution as JsonRecord;
+      const taskId = handle.taskId as string;
+      expect(taskId).toBeTruthy();
+
+      // DECLARED receipt: the receiver's own environment resolved it. (The
+      // handle is the RECEIVER's projection of the task, so its environment
+      // names the receiver by id; `kind` is the receiver's self-view.)
+      expect(handle.environment).toMatchObject({
+        id: current.receiverEnvironmentId,
       });
+      expect(resolution.environmentId).toBe(current.receiverEnvironmentId);
+      const workspace = resolution.workspace as JsonRecord;
+      expect(workspace?.cwd).toBe(current.receiverExecutionRoot);
 
-    test.describe
-      .serial('portable execution over the real wire', () => {
-        test('delegates a project-portable turn and completes it on the receiver via the echo provider', async () => {
-          test.setTimeout(300_000);
-          test.fixme(setupError !== undefined, 'setup failed');
-          const current = fixture!;
-          const launchesBefore = (await current.museExecLaunches()).length;
+      // ACTUAL launch observation: exactly ONE new muse exec, spawned INSIDE
+      // the receiver's nested execution root, carrying THIS turn's unique
+      // token and the echo provider flag in its argv — the launch identity of
+      // the current turn, not a stale matching line.
+      await poll('the muse exec launch observation', 120_000, async () => {
+        const launches = await current.museExecLaunches();
+        return launches.some(
+          (entry) =>
+            entry.cwd === current.receiverExecutionRoot &&
+            entry.args.includes(turnToken),
+        );
+      });
+      const launchesAfter = await current.museExecLaunches();
+      const turnLaunches = launchesAfter.slice(baseline.launches);
+      expect(turnLaunches.length).toBe(1);
+      expect(turnLaunches[0]!.cwd).toBe(current.receiverExecutionRoot);
+      expect(turnLaunches[0]!.args).toContain('--provider');
+      expect(turnLaunches[0]!.args).toContain('echo');
+      expect(turnLaunches[0]!.args).toContain(turnToken);
 
-          // The controller refuses with a bounded, self-described retry window
-          // right after any agent mutation ("Agent catalog is refreshing…").
-          // Only THIS exact refusal is retried, and nothing has been dispatched
-          // when it appears (HTTP 400, no handle), so no effect is ambiguous.
-          const delegated = await delegateFromController(
-            current,
-            delegationTarget(current) as unknown as JsonRecord,
+      // PROVIDER output, read from the authoritative receiver conversation.
+      const readReceiverSnapshot = async () => {
+        const observed = await api(
+          current.receiver.api,
+          'GET',
+          `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
+          { headers: operatorHeaders(current.delegationCredential) },
+        );
+        return {
+          status: observed.status,
+          data: (observed.payload as JsonRecord)?.data as
+            | JsonRecord
+            | undefined,
+          error: (observed.payload as JsonRecord)?.error,
+        };
+      };
+      await poll(
+        'the delegated turn to complete on the receiver',
+        240_000,
+        async () => {
+          const data = await readReceiverSnapshot();
+          return (
+            data.status === 200 &&
+            (data.data?.status === 'completed' ||
+              data.data?.status === 'failed')
           );
-          expect(delegated.status, JSON.stringify(delegated.payload)).toBe(200);
-          const handle = (delegated.payload as JsonRecord).data as JsonRecord;
-          const resolution = handle.resolution as JsonRecord;
+        },
+      );
+      const receiverSnapshot = await readReceiverSnapshot();
+      expect(receiverSnapshot.status, JSON.stringify(receiverSnapshot)).toBe(
+        200,
+      );
+      expect(receiverSnapshot.data?.status).toBe('completed');
+      expect(receiverSnapshot.data?.provider).toBe('muse');
+      expect(receiverSnapshot.data?.projectSlug).toBe(RECEIVER_SLUG);
 
-          // DECLARED receipt: the receiver's own environment resolved it. (The
-          // handle is the RECEIVER's projection of the task, so its environment
-          // names the receiver by id; `kind` is the receiver's self-view. The
-          // controller's peer dispatch is recorded separately in Activity.)
-          expect(handle.environment).toMatchObject({
-            id: current.receiverEnvironmentId,
+      const events = await api(
+        current.receiver.api,
+        'GET',
+        `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
+        { headers: operatorHeaders(current.delegationCredential) },
+      );
+      expect(events.status, JSON.stringify(events.payload)).toBe(200);
+      const eventText = JSON.stringify(events.payload);
+      expect(
+        eventText,
+        'the receiver conversation never recorded the echo provider answer; the echo output is kept separate from the declared receipt and the launch observation',
+      ).toMatch(new RegExp(`echo:[\\s\\S]*${turnToken}`));
+
+      // Controller convergence, with the exact lag samples preserved as
+      // evidence (see the artifact report for the investigated cause).
+      const convergence: Array<Record<string, unknown>> = [];
+      let controllerSnapshot:
+        | Awaited<ReturnType<typeof readControllerSnapshot>>
+        | undefined;
+      const readControllerSnapshot = async (): Promise<{
+        status: number;
+        data: JsonRecord | undefined;
+        error: unknown;
+      }> => {
+        const observed = await api(
+          current.controller.api,
+          'GET',
+          `/api/orchestration/delegations/${encodeURIComponent(taskId)}?environmentId=${encodeURIComponent(current.receiverEnvironmentId)}`,
+          { headers: operatorHeaders(current.controllerOperator) },
+        );
+        return {
+          status: observed.status,
+          data: (observed.payload as JsonRecord)?.data as
+            | JsonRecord
+            | undefined,
+          error: (observed.payload as JsonRecord)?.error,
+        };
+      };
+      await poll('the controller snapshot to converge', 300_000, async () => {
+        controllerSnapshot = await readControllerSnapshot();
+        if (
+          controllerSnapshot.status !== 200 ||
+          (controllerSnapshot.data?.status !== 'completed' &&
+            controllerSnapshot.data?.status !== 'failed')
+        )
+          convergence.push({
+            at: new Date().toISOString(),
+            taskId,
+            environmentId: current.receiverEnvironmentId,
+            via: 'controller',
+            status: controllerSnapshot.status,
+            error: controllerSnapshot.error,
           });
-          expect(resolution.environmentId).toBe(current.receiverEnvironmentId);
-          const workspace = resolution.workspace as JsonRecord;
-          expect(workspace?.cwd).toBe(current.receiverExecutionRoot);
+        return (
+          controllerSnapshot.status === 200 &&
+          (controllerSnapshot.data?.status === 'completed' ||
+            controllerSnapshot.data?.status === 'failed')
+        );
+      });
+      expect(
+        controllerSnapshot?.data?.status,
+        `the controller snapshot never converged; lag samples: ${JSON.stringify(convergence)}`,
+      ).toBe('completed');
+      console.log(
+        `[portable-proof] controller convergence samples for ${taskId}: ${JSON.stringify(convergence)}`,
+      );
+    });
 
-          // ACTUAL launch observation: the muse process was spawned INSIDE the
-          // receiver's nested execution root (different machine-role path, nested
-          // subdir — not the compat default cwd).
-          await poll('the muse exec launch observation', 120_000, async () => {
-            const launches = await current.museExecLaunches();
-            return launches.some(
-              (entry) => entry.cwd === current.receiverExecutionRoot,
-            );
-          });
-          const launches = await current.museExecLaunches();
-          const execLaunch = launches.at(-1)!;
-          expect(execLaunch.cwd).toBe(current.receiverExecutionRoot);
-
-          // PROVIDER output: poll the RECEIVER (authoritative conversation owner,
-          // read with the saved peer credential) to a terminal state, then allow
-          // the controller's own snapshot read to converge. Read-only polls; no
-          // effect is retried.
-          const taskId = handle.taskId as string;
-          const readReceiverSnapshot = async () => {
-            const observed = await api(
-              current.receiver.api,
-              'GET',
-              `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
-              { headers: operatorHeaders(current.delegationCredential) },
-            );
-            return {
-              status: observed.status,
-              data: (observed.payload as JsonRecord)?.data as
-                | JsonRecord
-                | undefined,
-              error: (observed.payload as JsonRecord)?.error,
-            };
-          };
-          const readControllerSnapshot = async () => {
-            const observed = await api(
-              current.controller.api,
-              'GET',
-              `/api/orchestration/delegations/${encodeURIComponent(taskId)}?environmentId=${encodeURIComponent(current.receiverEnvironmentId)}`,
-              { headers: operatorHeaders(current.controllerOperator) },
-            );
-            return {
-              status: observed.status,
-              data: (observed.payload as JsonRecord)?.data as
-                | JsonRecord
-                | undefined,
-              error: (observed.payload as JsonRecord)?.error,
-            };
-          };
-          const convergence: Array<Record<string, unknown>> = [];
-          await poll(
-            'the delegated turn to complete on the receiver',
-            240_000,
-            async () => {
-              const data = await readReceiverSnapshot();
-              if (
-                data.status !== 200 ||
-                (data.data?.status !== 'completed' &&
-                  data.data?.status !== 'failed')
-              )
-                convergence.push({
-                  at: new Date().toISOString(),
-                  via: 'receiver',
-                  status: data.status,
-                  error: data.error,
-                });
-              return (
-                data.status === 200 &&
-                (data.data?.status === 'completed' ||
-                  data.data?.status === 'failed')
-              );
-            },
-          );
-          const receiverSnapshot = await readReceiverSnapshot();
-          expect(
-            receiverSnapshot.data?.status,
-            JSON.stringify(convergence.slice(-5)),
-          ).toBe('completed');
-          expect(receiverSnapshot.data?.provider).toBe('muse');
-          expect(receiverSnapshot.data?.projectSlug).toBe(RECEIVER_SLUG);
-
-          // The controller's own snapshot read must converge to the same
-          // terminal state for the operator. If it lags, that lag is evidence,
-          // not something the harness papers over.
-          let controllerSnapshot:
-            | Awaited<ReturnType<typeof readControllerSnapshot>>
-            | undefined;
-          await poll(
-            'the controller snapshot to converge',
-            300_000,
-            async () => {
-              controllerSnapshot = await readControllerSnapshot();
-              if (
-                controllerSnapshot.status !== 200 ||
-                (controllerSnapshot.data?.status !== 'completed' &&
-                  controllerSnapshot.data?.status !== 'failed')
-              )
-                convergence.push({
-                  at: new Date().toISOString(),
-                  via: 'controller',
-                  status: controllerSnapshot.status,
-                  error: controllerSnapshot.error,
-                });
-              return (
-                controllerSnapshot.status === 200 &&
-                (controllerSnapshot.data?.status === 'completed' ||
-                  controllerSnapshot.data?.status === 'failed')
-              );
-            },
-          );
-          expect(
-            controllerSnapshot?.data?.status,
-            `the controller snapshot never converged; last samples: ${JSON.stringify(convergence.slice(-5))}`,
-          ).toBe('completed');
-
-          const events = await api(
-            current.receiver.api,
-            'GET',
-            `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
-            { headers: operatorHeaders(current.delegationCredential) },
-          );
-          expect(events.status, JSON.stringify(events.payload)).toBe(200);
-          const eventText = JSON.stringify(events.payload);
-          expect(
-            eventText,
-            'the receiver conversation never recorded the echo provider answer; the echo output is kept separate from the declared receipt and the launch observation',
-          ).toMatch(/echo:[\s\S]*portable-proof-token/);
-
-          // No extra muse launches beyond the single observed turn.
-          const launchesAfter = await current.museExecLaunches();
-          expect(launchesAfter.length).toBe(launchesBefore + 1);
-        });
-
-        test('refuses an undeclared resource before any provider effect', async () => {
-          test.fixme(setupError !== undefined, 'setup failed');
-          const current = fixture!;
-          const launchesBefore = (await current.museExecLaunches()).length;
-          // A resource the offer never declared: the SENDING station's own
-          // admission refuses pre-wire with the not-offered refusal — nothing is
-          // dispatched, and the receiver never sees the intent.
-          const refused = await delegateFromController(
-            current,
-            delegationTarget(current, {
+    test('refuses an undeclared resource at the receiver, over the real peer hop', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      // The controller holds NO offer, so nothing sender-side can pre-refuse:
+      // the wrong-resource intent reaches the RECEIVER, whose offer does not
+      // declare the second resource.
+      const refused = await delegateFromController(
+        current,
+        delegationTarget(current, {
+          resourceId: OTHER_REMOTE_CANONICAL,
+        }) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+      // The same intent refused DIRECTLY at the receiver answers identically —
+      // proving the controller relayed the receiver's own closed refusal.
+      const direct = await api(
+        current.receiver.api,
+        'POST',
+        '/api/orchestration/delegations',
+        {
+          body: {
+            prompt: 'direct receiver check',
+            target: delegationTarget(current, {
               resourceId: OTHER_REMOTE_CANONICAL,
             }) as unknown as JsonRecord,
-          );
-          expect(refused.status, JSON.stringify(refused.payload)).toBe(403);
-          expect((refused.payload as JsonRecord).error).toBe(
-            'This Station does not currently offer execution for the requested Project resource.',
-          );
-          await assertNoProviderEffect(current, launchesBefore);
-        });
+          },
+          headers: operatorHeaders(current.delegationCredential),
+        },
+      );
+      expectPortableRefusal(
+        direct,
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+      await assertNoProviderEffect(current, baseline);
+    });
 
-        test('refuses an unknown portable project identity', async () => {
-          test.fixme(setupError !== undefined, 'setup failed');
-          const current = fixture!;
-          const launchesBefore = (await current.museExecLaunches()).length;
-          const refused = await delegateFromController(
-            current,
-            delegationTarget(current, {
-              portableProjectId: 'portable-id-never-offered',
-            }) as unknown as JsonRecord,
-          );
-          expect(refused.status, JSON.stringify(refused.payload)).toBe(403);
-          expect((refused.payload as JsonRecord).error).toBe(
-            'This Station does not currently offer execution for the requested Project resource.',
-          );
-          await assertNoProviderEffect(current, launchesBefore);
-        });
+    test('refuses an unknown portable project identity at the receiver', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      const refused = await delegateFromController(
+        current,
+        delegationTarget(current, {
+          portableProjectId: 'portable-id-never-offered',
+        }) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+      await assertNoProviderEffect(current, baseline);
+    });
 
-        test('joins on portable identity, not slug: an equal slug with a different identity cannot be offered', async () => {
-          test.fixme(setupError !== undefined, 'setup failed');
-          const current = fixture!;
-          // A receiver-local project with the CONTROLLER's slug but a different
-          // checkout (different remote, therefore a different manifest id). If
-          // slug were the join, offering it under the controller's portable id
-          // would have to succeed.
-          const sameSlugCheckout = join(
-            current.root,
-            'receiver',
-            CONTROLLER_SLUG,
-          );
-          await createFixtureCheckout(sameSlugCheckout, OTHER_REMOTE);
-          const created = await api(
-            current.receiver.api,
-            'POST',
-            '/api/projects',
-            {
-              body: {
-                name: 'Same slug, different identity',
-                slug: CONTROLLER_SLUG,
-                workingDirectory: sameSlugCheckout,
-              },
-              headers: operatorHeaders(current.receiverOperator),
-            },
-          );
-          expect(created.status, JSON.stringify(created.payload)).toBeLessThan(
-            400,
-          );
-          await api(
-            current.receiver.api,
-            'POST',
-            `/api/projects/${CONTROLLER_SLUG}/identity/prepare`,
-            { headers: operatorHeaders(current.receiverOperator) },
-          );
-          const otherIdentity = await api(
-            current.receiver.api,
-            'GET',
-            `/api/projects/${CONTROLLER_SLUG}/identity`,
-            { headers: operatorHeaders(current.receiverOperator) },
-          );
-          expect(otherIdentity.status).toBe(200);
-          const otherId = (
-            ((otherIdentity.payload as JsonRecord).data as JsonRecord)
-              .identity as JsonRecord
-          ).id as string;
-          expect(otherId).not.toBe(current.portableProjectId);
-
-          const refusedOffer = await api(
-            current.receiver.api,
-            'PUT',
-            '/api/project-contributions/offer',
-            {
-              body: {
-                portableProjectId: current.portableProjectId,
-                localProjectId: (
-                  (created.payload as JsonRecord).data as JsonRecord
-                ).id,
-                resourceId: OTHER_REMOTE_CANONICAL,
-                expected: null,
-                enabled: true,
-              },
-              headers: operatorHeaders(current.receiverLocalCredential),
-            },
-          );
-          expect(refusedOffer.status).toBe(404);
-          expect((refusedOffer.payload as JsonRecord).error).toBe(
-            'Project contribution is unavailable.',
-          );
-        });
-
-        test('refuses when the saved environment does not match the receiver handshake', async () => {
-          test.fixme(setupError !== undefined, 'setup failed');
-          const current = fixture!;
-          const launchesBefore = (await current.museExecLaunches()).length;
-          // A peer credential saved under an environmentId the receiver will not
-          // confirm back: the controller's portable pre-wire check must refuse
-          // locally, before any dispatch.
-          const misnamed = await api(
-            current.controller.api,
-            'POST',
-            '/api/environments/peers',
-            {
-              body: {
-                environmentId: 'portable-proof-wrong-environment',
-                apiBase: current.receiver.api,
-                credential: current.delegationCredential,
-                scope: current.delegationScope,
-                label: 'Portable proof misnamed environment',
-              },
-              headers: operatorHeaders(current.controllerOperator),
-            },
-          );
-          expect(misnamed.status).toBe(201);
-          const refused = await delegateFromController(
-            current,
-            delegationTarget(current, {
-              environmentId: 'portable-proof-wrong-environment',
-            }) as unknown as JsonRecord,
-          );
-          expect(refused.status, JSON.stringify(refused.payload)).toBe(403);
-          expect((refused.payload as JsonRecord).error).toBe(
-            'The selected Station did not confirm portable execution support for this environment.',
-          );
-          await api(
-            current.controller.api,
-            'DELETE',
-            '/api/environments/peers/portable-proof-wrong-environment',
-            { headers: operatorHeaders(current.controllerOperator) },
-          );
-          await assertNoProviderEffect(current, launchesBefore);
-        });
-
-        test('refuses after the operator withdraws the offer', async () => {
-          test.fixme(setupError !== undefined, 'setup failed');
-          const current = fixture!;
-          const launchesBefore = (await current.museExecLaunches()).length;
-          const withdrawn = await api(
-            current.receiver.api,
-            'PUT',
-            '/api/project-contributions/offer',
-            {
-              body: {
-                portableProjectId: current.portableProjectId,
-                localProjectId: current.receiverLocalProjectId,
-                resourceId: current.resourceId,
-                expected: current.offerConfig,
-                enabled: false,
-              },
-              headers: operatorHeaders(current.receiverLocalCredential),
-            },
-          );
-          expect(withdrawn.status, JSON.stringify(withdrawn.payload)).toBe(200);
-          const refused = await delegateFromController(
-            current,
-            delegationTarget(current) as unknown as JsonRecord,
-          );
-          // NOTE the observed contract: the RECEIVER refuses 403 with this exact
-          // message, but `postCanonical` rethrows the peer's refusal as a plain
-          // error, so the CONTROLLER surfaces it as 400 with the message intact.
-          // The harness asserts the exact refusal message and a 4xx status, and
-          // records the 400-vs-403 mapping as a server finding rather than
-          // weakening the refusal proof.
-          expect([400, 403]).toContain(refused.status);
-          expect((refused.payload as JsonRecord).error).toBe(
-            'This Station does not currently offer execution for the requested Project resource.',
-          );
-          await assertNoProviderEffect(current, launchesBefore);
-        });
-
-        test('stops honoring a revoked peer credential before any provider effect', async () => {
-          test.fixme(setupError !== undefined, 'setup failed');
-          const current = fixture!;
-          const launchesBefore = (await current.museExecLaunches()).length;
-          const revoked = await api(
-            current.receiver.api,
-            'DELETE',
-            `/api/pairing/devices/${encodeURIComponent(current.peerDeviceId)}`,
-            { headers: operatorHeaders(current.receiverOperator) },
-          );
-          expect(revoked.status, JSON.stringify(revoked.payload)).toBeLessThan(
-            400,
-          );
-
-          // The SAME credential is refused by the receiver on the contribution
-          // query it was previously authorized for.
-          const query = await api(
-            current.receiver.api,
-            'POST',
-            '/api/project-contributions/query',
-            {
-              body: {
-                portableProjectId: current.portableProjectId,
-                resourceId: current.resourceId,
-              },
-              headers: operatorHeaders(current.delegationCredential),
-            },
-          );
-          expect(query.status).toBe(401);
-
-          // And the controller can no longer drive the delegation.
-          const refused = await delegateFromController(
-            current,
-            delegationTarget(current) as unknown as JsonRecord,
-          );
-          expect(
-            refused.status,
-            JSON.stringify(refused.payload),
-          ).toBeGreaterThanOrEqual(400);
-          await assertNoProviderEffect(current, launchesBefore);
-        });
+    test('joins on portable identity, not slug: an equal slug with a different identity cannot be offered', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      // A receiver-local project with the CONTROLLER's slug but a different
+      // checkout (different remote, therefore a different manifest id). If
+      // slug were the join, offering it under the controller's portable id
+      // would have to succeed.
+      const sameSlugCheckout = join(current.root, 'receiver', CONTROLLER_SLUG);
+      await createFixtureCheckout(sameSlugCheckout, OTHER_REMOTE);
+      const created = await api(current.receiver.api, 'POST', '/api/projects', {
+        body: {
+          name: 'Same slug, different identity',
+          slug: CONTROLLER_SLUG,
+          workingDirectory: sameSlugCheckout,
+        },
+        headers: operatorHeaders(current.receiverOperator),
       });
+      expect(created.status, JSON.stringify(created.payload)).toBe(201);
+      const prepared = await api(
+        current.receiver.api,
+        'POST',
+        `/api/projects/${CONTROLLER_SLUG}/identity/prepare`,
+        { headers: operatorHeaders(current.receiverOperator) },
+      );
+      expect(prepared.status, JSON.stringify(prepared.payload)).toBe(200);
+      const otherIdentityView = (prepared.payload as JsonRecord)
+        .data as JsonRecord;
+      const otherId = (otherIdentityView.identity as JsonRecord).id as string;
+      expect(otherId).not.toBe(current.portableProjectId);
+      const otherProjectId = (
+        (created.payload as JsonRecord).data as JsonRecord
+      ).id as string;
 
-    test.describe
-      .serial('teardown', () => {
-        // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
-        test('stops both Stations and preserves evidence on failure', async ({}, testInfo) => {
-          test.setTimeout(180_000);
-          const failures = testInfo.status !== testInfo.expectedStatus;
-          let stopError: unknown;
-          if (fixture) {
-            try {
-              if (fixture.receiverStop) await fixture.receiverStop();
-            } catch (error) {
-              stopError = error;
-            }
-            try {
-              await stopStation(fixture.controller, {
-                environment: fixture.controllerEnv,
-              });
-            } catch (error) {
-              stopError = error;
-            }
-          }
-          // Preserve diagnostics until every owned process is proven stopped.
-          if (fixture && (failures || stopError)) {
-            try {
-              mkdirSync(ARTIFACT_DIR, { recursive: true });
-              const stamp = `${fixture.receiverInstanceId}-${Date.now()}`;
-              const destination = join(ARTIFACT_DIR, stamp);
-              mkdirSync(destination, { recursive: true });
-              for (const name of [
-                'controller-station.log',
-                'receiver-station.log',
-                'muse-launch-observations.jsonl',
-              ]) {
-                const source = join(fixture.root, name);
-                if (existsSync(source)) cpSync(source, join(destination, name));
-              }
-              cpSync(
-                join(fixture.root, 'controller'),
-                join(destination, 'controller'),
-                { recursive: true },
-              );
-              cpSync(
-                join(fixture.root, 'receiver'),
-                join(destination, 'receiver'),
-                { recursive: true },
-              );
-              writeFileSync(
-                join(destination, 'run-meta.json'),
-                JSON.stringify(
-                  {
-                    receiverInstanceId: fixture.receiverInstanceId,
-                    receiver: fixture.receiver,
-                    controller: fixture.controller,
-                    portableProjectId: fixture.portableProjectId,
-                    receiverEnvironmentId: fixture.receiverEnvironmentId,
-                    museAgentSlug: fixture.museAgentSlug,
-                  },
-                  null,
-                  2,
-                ),
-              );
-            } catch (copyError) {
-              console.error('evidence preservation failed', copyError);
-            }
-          } else if (fixture && !stopError) {
-            rmSync(fixture.root, { recursive: true, force: true });
-          }
-          if (stopError)
-            throw new Error(
-              'Failed to stop an owned fixture Station; diagnostic home preserved',
-              { cause: stopError },
-            );
-          fixture = undefined;
-        });
+      const refusedOffer = await api(
+        current.receiver.api,
+        'PUT',
+        '/api/project-contributions/offer',
+        {
+          body: {
+            portableProjectId: current.portableProjectId,
+            localProjectId: otherProjectId,
+            resourceId: OTHER_REMOTE_CANONICAL,
+            expected: null,
+            enabled: true,
+          },
+          headers: operatorHeaders(current.receiverLocalCredential),
+        },
+      );
+      expect(refusedOffer.status, JSON.stringify(refusedOffer.payload)).toBe(
+        404,
+      );
+      expect((refusedOffer.payload as JsonRecord).error).toBe(
+        'Project contribution is unavailable.',
+      );
+    });
+
+    test('refuses when the saved environment does not match the receiver handshake', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      // A peer credential saved under an environmentId the receiver will not
+      // confirm back: the controller's portable pre-wire check must refuse
+      // locally, before any dispatch.
+      const misnamed = await api(
+        current.controller.api,
+        'POST',
+        '/api/environments/peers',
+        {
+          body: {
+            environmentId: 'portable-proof-wrong-environment',
+            apiBase: current.receiver.api,
+            credential: current.delegationCredential,
+            scope: current.delegationScope,
+            label: 'Portable proof misnamed environment',
+          },
+          headers: operatorHeaders(current.controllerOperator),
+        },
+      );
+      expect(misnamed.status, JSON.stringify(misnamed.payload)).toBe(201);
+      const refused = await delegateFromController(
+        current,
+        delegationTarget(current, {
+          environmentId: 'portable-proof-wrong-environment',
+        }) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+      const removed = await api(
+        current.controller.api,
+        'DELETE',
+        '/api/environments/peers/portable-proof-wrong-environment',
+        { headers: operatorHeaders(current.controllerOperator) },
+      );
+      expect(removed.status, JSON.stringify(removed.payload)).toBe(200);
+      await assertNoProviderEffect(current, baseline);
+    });
+
+    test('refuses with the unavailable code when the receiver checkout drifts off the offered resource', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      // Drift the receiver checkout away from the offered canonical remote
+      // (fixture-local mutation only). The offer is still on, the association
+      // is unchanged, but the resource can no longer verify as bound — the
+      // receiver must refuse with the unavailable code, never re-target.
+      await run('git', ['remote', 'remove', 'origin'], {
+        cwd: current.receiverCheckout,
       });
+      const refused = await delegateFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_unavailable',
+        'The offered Project resource is unavailable.',
+      );
+      await assertNoProviderEffect(current, baseline);
+    });
+
+    test('refuses after the operator withdraws the offer', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      const withdrawn = await api(
+        current.receiver.api,
+        'PUT',
+        '/api/project-contributions/offer',
+        {
+          body: {
+            portableProjectId: current.portableProjectId,
+            localProjectId: current.receiverLocalProjectId,
+            resourceId: current.resourceId,
+            expected: current.offerConfig,
+            enabled: false,
+          },
+          headers: operatorHeaders(current.receiverLocalCredential),
+        },
+      );
+      expect(withdrawn.status, JSON.stringify(withdrawn.payload)).toBe(200);
+      const refused = await delegateFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_not_offered',
+        'This Station does not currently offer execution for the requested Project resource.',
+      );
+      await assertNoProviderEffect(current, baseline);
+    });
+
+    test('stops honoring a revoked peer credential with the typed authority refusal', async () => {
+      test.setTimeout(120_000);
+      test.fixme(setupError !== undefined, 'setup failed');
+      const current = fixture!;
+      const baseline = await captureEffectBaseline(current);
+      const revoked = await api(
+        current.receiver.api,
+        'DELETE',
+        `/api/pairing/devices/${encodeURIComponent(current.peerDeviceId)}`,
+        { headers: operatorHeaders(current.receiverOperator) },
+      );
+      expect(revoked.status, JSON.stringify(revoked.payload)).toBe(200);
+
+      // The SAME credential is refused by the receiver on the contribution
+      // query it was previously authorized for — exact 401.
+      const query = await api(
+        current.receiver.api,
+        'POST',
+        '/api/project-contributions/query',
+        {
+          body: {
+            portableProjectId: current.portableProjectId,
+            resourceId: current.resourceId,
+          },
+          headers: operatorHeaders(current.delegationCredential),
+        },
+      );
+      expect(query.status, JSON.stringify(query.payload)).toBe(401);
+
+      // And the controller turns the peer's authority failure into the
+      // actionable typed refusal — never a controller-local 401, never relayed
+      // peer text, never a plain 400.
+      const refused = await delegateFromController(
+        current,
+        delegationTarget(current) as unknown as JsonRecord,
+      );
+      expectPortableRefusal(
+        refused,
+        'receiver_execution_authority_changed',
+        'Portable execution authority changed before forwarding.',
+      );
+      await assertNoProviderEffect(current, baseline);
+    });
   });
