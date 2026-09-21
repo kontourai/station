@@ -153,20 +153,6 @@ async function main() {
     await runtime.initialize();
     let shuttingDown = false;
 
-    // Emit a single structured readiness line for a supervising parent process
-    // (the desktop spawner) once every listener is bound. No-op unless the
-    // supervisor opted in with STATION_STDOUT_HANDSHAKE=1.
-    if (
-      !writeReadinessHandshake(
-        process.stdout,
-        port,
-        host,
-        process.env.STATION_STDOUT_HANDSHAKE === '1',
-      )
-    ) {
-      stdoutBrokenPipe = true;
-    }
-
     // The read side of archive#1903: a self-update that never confirmed the
     // new server was healthy used to leave no trace at all past a log line
     // from a process that had already exited. A no-op for anything other
@@ -226,6 +212,22 @@ async function main() {
         void gracefulShutdown?.('uncaughtException');
       },
     });
+
+    // A supervisor may stop us immediately after readiness. Install all
+    // shutdown handlers before publishing that ownership handoff.
+    // Emit a single structured readiness line for a supervising parent process
+    // (the desktop spawner) once every listener is bound. No-op unless the
+    // supervisor opted in with STATION_STDOUT_HANDSHAKE=1.
+    if (
+      !writeReadinessHandshake(
+        process.stdout,
+        port,
+        host,
+        process.env.STATION_STDOUT_HANDSHAKE === '1',
+      )
+    ) {
+      stdoutBrokenPipe = true;
+    }
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);
