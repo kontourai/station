@@ -1,7 +1,7 @@
 /** Private fixture supervisor. The ordinary Station retains all application authority. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
   constants,
@@ -329,6 +329,7 @@ export async function remoteRelayRun(
   mkdirSync(temp, { mode: 0o700 });
   const dotenv = join(config.runRoot, 'launch.env');
   writePrivate(dotenv, '');
+  const bootId = randomUUID();
   const execution = executeOwnedCommand(
     process.execPath,
     ['--import', 'tsx', join(repo, 'src-server/index.ts')],
@@ -355,6 +356,7 @@ export async function remoteRelayRun(
         PORT: String(config.stationPort),
         STATION_INSTANCE: 'remote-relay-fixture',
         STATION_INSTANCE_ID: 'remote-relay-fixture',
+        STATION_BOOT_ID: bootId,
         STATION_BUILD_SHA: identity.sourceSha,
         STATION_STDOUT_HANDSHAKE: '1',
         STATION_SUPERVISOR_PID: String(process.pid),
@@ -446,7 +448,7 @@ export async function remoteRelayRun(
         ready = true;
         clearTimeout(timer);
         process.stdout.write(
-          `${JSON.stringify({ event: 'remote-relay-ready', port: config.stationPort, stationId: descriptor.stationId, supervisorPid: process.pid, ...identity })}\n`,
+          `${JSON.stringify({ event: 'remote-relay-ready', port: config.stationPort, stationId: descriptor.stationId, supervisorPid: process.pid, bootId, ...identity })}\n`,
         );
       } catch {
         stop(1);

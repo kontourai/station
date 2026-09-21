@@ -330,11 +330,13 @@ try {
     identity &&
       typeof identity === 'object' &&
       'sha' in identity &&
-      'instanceId' in identity,
+      'instanceId' in identity &&
+      'bootId' in identity,
     'Invalid runtime identity',
   );
   assert.equal(identity.sha, descriptor.sourceSha);
   assert.equal(identity.instanceId, 'remote-relay-fixture');
+  assert.equal(identity.bootId, remote.provenance.bootId);
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
