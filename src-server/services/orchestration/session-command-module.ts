@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { resolve as resolveFilesystemPath } from 'node:path';
 import type {
   OrchestrationCommandReceipt,
   OrchestrationStartSessionInput,
@@ -10,6 +11,8 @@ import type {
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { expandTilde } from '../../utils/paths.js';
+import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
@@ -145,6 +148,36 @@ type ExistingSession = {
   adapter?: ProviderAdapterShape;
   session?: ProviderSession;
 };
+
+/**
+ * #484 phase A follow-up: a portable start that reattaches to an ALREADY
+ * RUNNING thread (a caller-supplied task id colliding with another live
+ * session, same owner or not) SKIPS `adapter.startSession` entirely — so the
+ * start-effect admission never runs. The reattach must still prove the
+ * EXISTING runtime session IS the admitted workspace: its actual `cwd`
+ * (the runtime fact, not the new input's coordinate) must equal the
+ * server-minted admitted directory, and its thread must be the admitted
+ * one. A session that cannot name its directory cannot prove it is the
+ * admitted checkout, so a missing cwd refuses too. Legacy reattaches
+ * (no admitted coordinate) are unaffected.
+ */
+function verifyReceiverReattachEffect(
+  admitted: NonNullable<ReceiverExecutionEffectAdmission['admitted']>,
+  existingSession: ProviderSession | undefined,
+): void {
+  const actualCwd =
+    existingSession?.cwd === undefined
+      ? undefined
+      : resolveFilesystemPath(expandTilde(existingSession.cwd));
+  if (
+    existingSession?.threadId !== admitted.threadId ||
+    actualCwd !== admitted.cwd
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_unavailable',
+      'The offered Project resource is unavailable.',
+    );
+}
 
 /**
  * Private composition root. Each capability owns a coherent concern; no
@@ -500,6 +533,22 @@ export function createSessionCommandModule(
             adapter: existing.adapter,
             session: existing.session,
           });
+          // #484 phase A follow-up: the reattach effect runs the SAME
+          // admission the fresh-start effect runs — a withdrawn offer or
+          // lost binding that lands while this command was queued refuses
+          // here instead of attaching to a session it no longer
+          // authorizes. The admitted coordinate is snapshotted BEFORE the
+          // recheck await; the EXISTING runtime session (not the new
+          // input) is then verified against that snapshot, so a
+          // colliding task id can never silently inherit another
+          // checkout's engine.
+          const reattachAdmission = internal?.receiverExecutionAdmission;
+          const reattachAdmitted = reattachAdmission?.admitted
+            ? { ...reattachAdmission.admitted }
+            : undefined;
+          await reattachAdmission?.recheck();
+          if (reattachAdmitted)
+            verifyReceiverReattachEffect(reattachAdmitted, existing.session);
           await deps.bindings.bind(input, internal);
           const persisted = persist(receipt, 'persist-accepted');
           const publicSession = deps.publicSession(existing.session);
