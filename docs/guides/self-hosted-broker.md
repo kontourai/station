@@ -66,3 +66,87 @@ retires local pending work even when its reply is lost. Provisional answer
 resources must provide bounded cleanup on publication failure or trust retirement.
 Successful application-channel ownership belongs to the Station/Pion
 composition. Broker withdrawal is not account or Device revocation.
+
+
+## Configure a Station connector
+
+From a source checkout on a POSIX server, opt in with
+`STATION_BROKER_CONFIG_FILE=/absolute/private/connector.json` when starting
+Station normally. With the variable unset, no broker connector is created.
+Direct and local connections do not require this configuration.
+
+Initialize the selected Station home offline first:
+
+```sh
+npm run connector:identity -- /absolute/station-home
+```
+
+This command takes the existing home maintenance lease, refuses an active
+home, and initializes the Station identity and connection-signing key. Repeating
+it preserves the existing identity. Its output contains only the public trust
+descriptor and key thumbprint. Deliver that public trust through an independently
+trusted channel; the broker cannot approve it for a client.
+
+Use the descriptor's Station and enrollment IDs to provision the broker with
+`broker:self-hosted init` as above. Routing generation and signing generation
+are independent. Keep the credential bundle private; give the browser only its
+routing credential, never the connector credential or Station operator key.
+
+Build the Pion executable using the [transport lab guide](local-collaboration-lab.md).
+Provide a TURN endpoint and DTLS certificate/private key. The local lab supplies
+free isolated TURN infrastructure for testing; it does not install a service.
+For a manually operated connector, create the certificate in a private directory:
+
+```sh
+umask 077
+mkdir -p /absolute/private/connector
+openssl ecparam -genkey -name prime256v1 -out /absolute/private/connector/key.pem
+openssl req -new -x509 -key /absolute/private/connector/key.pem \
+  -out /absolute/private/connector/cert.pem -days 90 -subj /CN=station-connector
+```
+
+Write `/absolute/private/connector.json` as a private `0600` file:
+
+```json
+{
+  "version": "station-self-hosted-connector/v1",
+  "brokerOrigin": "https://broker.example",
+  "applicationOrigin": "https://station.example",
+  "credentialsPath": "/absolute/private/broker-credentials.json",
+  "pionExecutable": "/absolute/bin/station-pion-peer",
+  "certificatePath": "/absolute/private/connector/cert.pem",
+  "privateKeyPath": "/absolute/private/connector/key.pem",
+  "turn": {
+    "url": "turns:turn.example:5349?transport=tcp",
+    "username": "configured-turn-user",
+    "password": "replace-with-private-turn-credential"
+  },
+  "maxPeers": 8,
+  "maxPeerLifetimeMs": 300000
+}
+```
+
+`applicationOrigin` is the canonical application target used by the client and
+account proofs. It is not inferred from the broker or browser Origin. Existing
+origin policy, Device grants and account-provider configuration must separately
+admit the browser. No CORS, membership or authentication permission is added by
+the connector. `maxPeers` and `maxPeerLifetimeMs` are independently optional with
+the defaults shown; heartbeat, renewal and offer polling use 5s, 10s and 1s.
+
+The config, credential bundle and certificate/key files must be bounded regular
+files in private owner-held directories, with no symlinks or hardlinks. The
+executable must be owned by the current user or root, executable, and not writable
+by a group or others. Windows connector custody is currently unsupported and
+refused. Invalid configuration fails startup using closed error codes.
+
+Station awaits connector registration during startup. Shutdown withdraws the
+registration and joins peer cleanup before releasing the home lease. A changed
+signing key retires already admitted peers; client trust approval remains an
+independent operation. Withdrawn routing credentials require deliberate
+reprovisioning as described above.
+
+This source configuration does not complete browser profile UI, fresh relay-only
+Device enrollment, native packaging or managed service operations. Existing
+Device/account prerequisites still apply. The separate-process transport lab
+qualifies the transport composition; normal operator entrypoint acceptance is
+recorded separately.

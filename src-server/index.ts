@@ -29,6 +29,7 @@ import {
   resolveRuntimePort,
 } from './runtime/bootstrap/runtime-port.js';
 import { createRuntimeProcessLifecycle } from './runtime/bootstrap/runtime-process-lifecycle.js';
+import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
@@ -118,12 +119,22 @@ async function main() {
     port = await allocateFreePortBlock(host);
   }
 
+  const connector = loadSelfHostedBrokerConnectorConfig({
+    homeDir: projectHomeDir,
+  });
+
   const runtime = new StationRuntime({
     projectHomeDir,
     port,
     host: configuredHost,
     logger,
     buildProvenanceSnapshot,
+    ...(connector
+      ? {
+          virtualApplication: connector.virtualApplication,
+          selfHostedBrokerConnector: connector.selfHostedBrokerConnector,
+        }
+      : {}),
   });
 
   let stdoutBrokenPipe = false;
