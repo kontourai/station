@@ -2061,10 +2061,13 @@ export function createOrchestrationRoutes(
   // Authority: the CURRENT verified delegation-kind device grant with the
   // orchestration operate scope — the exact grant the claim is keyed by.
   // A non-delegation caller (operator, personal device, internal token) or
-  // a revoked/rotated grant is refused with NO data. The projection is the
-  // bounded closed shape only — never a prompt, path, digest, transcript,
+  // a revoked/rotated grant is refused with NO data — the SAME current grant
+  // is re-resolved AFTER the store read, so a revocation landing mid-lookup
+  // is still refused. The projection is the bounded closed shape only —
+  // never a prompt, path, digest, transcript,
   // or provider output — and `none` is explicitly NOT permission to resend:
-  // absence observed now does not fence a delayed original request.
+  // absence observed now does not fence a delayed original request. A store
+  // fault answers a fixed 503 with no exception text.
   app.get('/delegations/attempts/:attemptId', async (c) => {
     if (!deps.lookupDelegationAttempt) {
       return c.json(
@@ -2093,9 +2096,30 @@ export function createOrchestrationRoutes(
         attemptId,
         callerDeviceId: caller.id,
       });
+      // TOCTOU close: the grant above was live BEFORE the store read.
+      // Re-resolve the SAME current grant before disclosing anything — a
+      // revocation or rotation that landed mid-lookup is refused with the
+      // closed caller shape and no task/turn, never the read result.
+      const current = deps.resolveInboundDelegationDevice?.(c);
+      if (!current || current.id !== caller.id) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Attempt lookup requires a current verified delegation peer grant.',
+            code: 'delegation_attempt_caller_unsupported',
+          },
+          403,
+        );
+      }
       return c.json({ success: true, data });
-    } catch (error) {
-      return c.json({ success: false, error: errorMessage(error) }, 400);
+    } catch {
+      // Fixed safe copy: a store/IO fault answers unavailable with NO
+      // exception text — the closed projection never carries fault internals.
+      return c.json(
+        { success: false, error: 'Attempt lookup is temporarily unavailable' },
+        503,
+      );
     }
   });
 

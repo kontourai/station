@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -74,9 +75,12 @@ import {
  * through the controller's real peer forward, concurrent/redelivered same-key
  * requests join instead of executing again, mismatched intent conflicts, and
  * the authorized exact-attempt lookup (SAME receiver peer credential, never
- * an operator credential) resolves the lost ACK to the actual task AND the
- * real initial turn — with wrong-grant, operator, and revoked-grant lookups
- * disclosing nothing. There is no controller-side lookup in this slice, so
+ * an operator credential) resolves a GENUINELY lost ACK — a controlled
+ * loopback proxy forwards the create once, observes the upstream 200, then
+ * destroys the client connection unsent, so the test knows only the attempt
+ * id and recovers the actual task AND the real initial turn via lookup
+ * alone — with wrong-grant, operator, and revoked-grant lookups disclosing
+ * nothing. There is no controller-side lookup in this slice, so
  * the lookup assertions address the receiver directly; frontend/controller
  * tracking of the projection remains next-slice work.
  */
@@ -874,34 +878,16 @@ async function delegateFromController(
   target: JsonRecord,
   prompt = 'portable proof negative control',
 ): Promise<ApiResult> {
-  // The controller intermittently refuses with a bounded, self-described
-  // retry window right after any config mutation ("Agent catalog is
-  // refreshing…"). Only THIS exact pre-effect refusal is retried (HTTP 400,
-  // no handle, nothing dispatched), and the retry budget is bounded and
-  // documented; a dispatch that already returned a handle is NEVER retried.
-  const deadline = Date.now() + 60_000;
-  for (;;) {
-    const delegated = await api(
-      fixture.controller.api,
-      'POST',
-      '/api/orchestration/delegations',
-      {
-        body: { prompt, target },
-        headers: operatorHeaders(fixture.controllerOperator),
-      },
-    );
-    if (
-      delegated.status === 400 &&
-      String((delegated.payload as JsonRecord)?.error ?? '').includes(
-        'Agent catalog is refreshing',
-      ) &&
-      Date.now() < deadline
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-      continue;
-    }
-    return delegated;
-  }
+  // ONE POST per invocation — never an automatic dispatch retry. Readiness
+  // is the fixture's read-only served-catalog gate in buildFixture (the
+  // materialized agent serves stably before any test dispatches), not a
+  // retry loop here: a catalog-refresh 400 fails loudly as an unmet
+  // prerequisite. Callers that intentionally send duplicates (redelivery,
+  // race) issue each request explicitly.
+  return api(fixture.controller.api, 'POST', '/api/orchestration/delegations', {
+    body: { prompt, target },
+    headers: operatorHeaders(fixture.controllerOperator),
+  });
 }
 
 /** Assert the EXACT typed refusal contract on the wire. */
@@ -925,33 +911,15 @@ async function delegateAttemptFromController(
   attemptId: string,
   prompt: string,
 ): Promise<ApiResult> {
-  // Same bounded pre-effect retry as delegateFromController: only the exact
-  // catalog-refresh refusal (HTTP 400, no handle, nothing dispatched) is
-  // retried. A 409 duplicate outcome is never retried — the receiver has
-  // already joined or refused the key.
-  const deadline = Date.now() + 60_000;
-  for (;;) {
-    const delegated = await api(
-      fixture.controller.api,
-      'POST',
-      '/api/orchestration/delegations',
-      {
-        body: { prompt, target, attemptId },
-        headers: operatorHeaders(fixture.controllerOperator),
-      },
-    );
-    if (
-      delegated.status === 400 &&
-      String((delegated.payload as JsonRecord)?.error ?? '').includes(
-        'Agent catalog is refreshing',
-      ) &&
-      Date.now() < deadline
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-      continue;
-    }
-    return delegated;
-  }
+  // ONE POST per invocation — never an automatic dispatch retry (a 409
+  // duplicate outcome is an answer, not a failure, and is never re-sent by
+  // this helper). Readiness is the fixture's read-only served-catalog gate
+  // in buildFixture. Callers that intentionally send duplicates (redelivery,
+  // the race test) issue each request explicitly.
+  return api(fixture.controller.api, 'POST', '/api/orchestration/delegations', {
+    body: { prompt, target, attemptId },
+    headers: operatorHeaders(fixture.controllerOperator),
+  });
 }
 
 /**
@@ -973,6 +941,128 @@ async function lookupAttemptOnReceiver(
     `/api/orchestration/delegations/attempts/${encodeURIComponent(attemptId)}`,
     { headers: operatorHeaders(credential) },
   );
+}
+
+/**
+ * TRUE lost acknowledgement: forwards exactly ONE POST to the controller's
+ * real delegations route, waits for the upstream answer, then destroys the
+ * client connection WITHOUT sending any response bytes when the forward
+ * produced the 200 dispatch answer — the client observes a socket error and
+ * never learns the task handle, while the claim executed exactly once
+ * upstream. A non-200 upstream answer is relayed verbatim (and reported) so
+ * a missing prerequisite still fails loudly with its real cause instead of
+ * masquerading as a lost ACK. The proxy owns an ephemeral loopback port,
+ * serves the single request, and is closed before returning — no owned
+ * listener outlives the call.
+ */
+async function postAttemptThroughLostAckProxy(
+  fixture: ProofFixture,
+  target: JsonRecord,
+  attemptId: string,
+  prompt: string,
+): Promise<{
+  forwards: number;
+  upstreamStatus: number;
+  clientThrew: boolean;
+  relayed: unknown;
+}> {
+  const upstreamBase = fixture.controller.api;
+  const operatorHeader = operatorHeaders(fixture.controllerOperator);
+  let forwards = 0;
+  let upstreamStatus = 0;
+  const server = createServer((req, res) => {
+    forwards += 1;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk) => chunks.push(chunk as Buffer));
+    req.on('end', () => {
+      void (async () => {
+        try {
+          const upstream = await fetch(
+            `${upstreamBase}/api/orchestration/delegations`,
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                authorization: operatorHeader.Authorization ?? '',
+              },
+              body: Buffer.concat(chunks).toString('utf8'),
+              signal: AbortSignal.timeout(20_000),
+            },
+          );
+          upstreamStatus = upstream.status;
+          const text = await upstream.text();
+          if (upstream.status === 200) {
+            // The forward executed exactly once upstream; the ACK is lost
+            // on the wire — the client gets a socket error, never the 200.
+            req.socket.destroy();
+            return;
+          }
+          res.writeHead(upstream.status, {
+            'content-type': 'application/json',
+          });
+          res.end(text);
+        } catch {
+          if (!res.writableEnded) {
+            res.writeHead(502, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ proxyError: 'upstream unreachable' }));
+          }
+        }
+      })();
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('lost-ACK proxy did not bind a loopback port');
+  let clientThrew = false;
+  let relayed: unknown = null;
+  try {
+    relayed = await api(
+      `http://127.0.0.1:${address.port}`,
+      'POST',
+      '/api/orchestration/delegations',
+      {
+        body: { prompt, target, attemptId },
+        headers: operatorHeaders(fixture.controllerOperator),
+      },
+    );
+  } catch {
+    clientThrew = true;
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+  return { forwards, upstreamStatus, clientThrew, relayed };
+}
+
+/**
+ * Resolve an attempt SOLELY from its known id: poll the authorized lookup
+ * until it reports `accepted` with the real task AND initial turn. The
+ * claim may still be preparing while the first turn starts, so a single
+ * immediate read is not the oracle — convergence to accepted is.
+ */
+async function pollLookupAccepted(
+  fixture: ProofFixture,
+  attemptId: string,
+): Promise<JsonRecord> {
+  let view: JsonRecord | undefined;
+  await poll('the lost-ACK lookup to accept', 240_000, async () => {
+    const lookedUp = await lookupAttemptOnReceiver(
+      fixture,
+      attemptId,
+      fixture.delegationCredential,
+    );
+    if (lookedUp.status !== 200) return false;
+    const data = (lookedUp.payload as JsonRecord).data as
+      | JsonRecord
+      | undefined;
+    if (data?.state !== 'accepted') return false;
+    view = data;
+    return true;
+  });
+  if (!view) throw new Error('the lost-ACK lookup never accepted');
+  return view;
 }
 
 /** Collect turnIds from durable turn.started evidence inside an events payload. */
@@ -1331,7 +1421,7 @@ test.describe
       );
     });
 
-    test('claims an opt-in attempt through the controller peer forward and resolves the lost ACK to the exact task and turn', async () => {
+    test('a lost create acknowledgement resolves to the exact task and turn via lookup alone', async () => {
       test.setTimeout(600_000);
       test.fixme(setupError !== undefined, 'setup failed');
       const current = fixture!;
@@ -1342,21 +1432,42 @@ test.describe
         .slice(2, 10)}`;
       const prompt = `Return this token unchanged: ${turnToken}`;
 
-      const delegated = await delegateAttemptFromController(
+      // GENUINE response loss: ONE POST is forwarded to the controller's real
+      // peer forward and executes there (the proxy observed the upstream
+      // 200); the 200 response never reaches this client (socket destroyed),
+      // so from here on the test knows ONLY the attempt id it chose — the
+      // create response is never observed, never parsed, never asserted.
+      const loss = await postAttemptThroughLostAckProxy(
         current,
         delegationTarget(current) as unknown as JsonRecord,
         attemptId,
         prompt,
       );
-      expect(delegated.status, JSON.stringify(delegated.payload)).toBe(200);
-      const handle = (delegated.payload as JsonRecord).data as JsonRecord;
-      const taskId = handle.taskId as string;
+      expect(loss.forwards).toBe(1);
+      expect(
+        loss.clientThrew,
+        `expected the ACK to be lost; upstream answered ${loss.upstreamStatus} with ${JSON.stringify(loss.relayed)}`,
+      ).toBe(true);
+      expect(loss.upstreamStatus).toBe(200);
+
+      // Resolve SOLELY from the known attempt id: the authorized lookup
+      // converges to accepted with the ACTUAL task AND the real initial
+      // turn — no re-POST, no second effect.
+      const view = await pollLookupAccepted(current, attemptId);
+      expect(view.attemptId).toBe(attemptId);
+      const taskId = view.taskId as string;
       expect(taskId).toBeTruthy();
+      const turnId = view.turnId as string;
+      expect(typeof turnId).toBe('string');
+      expect(turnId.length).toBeGreaterThan(0);
+      // Session creation is not turn acceptance: the accepted turn id is the
+      // real provider turn, not the task/session handle.
+      expect(turnId).not.toBe(taskId);
 
       // ACTUAL launch observation: exactly ONE new muse exec, spawned INSIDE
       // the receiver's nested execution root, carrying THIS turn's unique
       // token — the opt-in create reached the actual receiver over the real
-      // peer forward and executed there.
+      // peer forward and executed there exactly once despite the lost ACK.
       await poll(
         'the claimed muse exec launch observation',
         120_000,
@@ -1372,58 +1483,68 @@ test.describe
       const launchesAfterCreate = await current.museExecLaunches();
       expect(launchesAfterCreate.length - baseline.launches).toBe(1);
 
-      // The turn completes on the receiver (echo provider output proves the
-      // provider executed; the launch observation above proves where).
+      // The turn reaches a terminal state on the receiver; the FINAL
+      // assertion requires completed (not merely terminal) with the exact
+      // requested echo output — the poll below admits `failed` only as a
+      // transient read, never as the verdict. The observed snapshot rides
+      // the failure message (test output only, never a committed artifact).
+      const readReceiverSnapshot = async () => {
+        const observed = await api(
+          current.receiver.api,
+          'GET',
+          `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
+          { headers: operatorHeaders(current.delegationCredential) },
+        );
+        return {
+          status: observed.status,
+          data: (observed.payload as JsonRecord)?.data as
+            | JsonRecord
+            | undefined,
+          raw: observed.payload,
+        };
+      };
       await poll(
         'the claimed turn to complete on the receiver',
         240_000,
         async () => {
-          const observed = await api(
-            current.receiver.api,
-            'GET',
-            `/api/orchestration/delegations/${encodeURIComponent(taskId)}`,
-            { headers: operatorHeaders(current.delegationCredential) },
-          );
-          const data = (observed.payload as JsonRecord)?.data as
-            | JsonRecord
-            | undefined;
+          const snapshot = await readReceiverSnapshot();
           return (
-            observed.status === 200 &&
-            (data?.status === 'completed' || data?.status === 'failed')
+            snapshot.status === 200 &&
+            (snapshot.data?.status === 'completed' ||
+              snapshot.data?.status === 'failed')
           );
         },
       );
-
-      // Authorized exact-attempt lookup: accepted with the ACTUAL task AND
-      // the real initial turn — this is the projection a lost acknowledgement
-      // resolves to, without re-POSTing.
-      const lookedUp = await lookupAttemptOnReceiver(
-        current,
-        attemptId,
-        current.delegationCredential,
+      const receiverSnapshot = await readReceiverSnapshot();
+      expect(receiverSnapshot.status, JSON.stringify(receiverSnapshot)).toBe(
+        200,
       );
-      expect(lookedUp.status, JSON.stringify(lookedUp.payload)).toBe(200);
-      const view = (lookedUp.payload as JsonRecord).data as JsonRecord;
-      expect(view.attemptId).toBe(attemptId);
-      expect(view.state).toBe('accepted');
-      expect(view.taskId).toBe(taskId);
-      const turnId = view.turnId as string;
-      expect(typeof turnId).toBe('string');
-      expect(turnId.length).toBeGreaterThan(0);
-      // Session creation is not turn acceptance: the accepted turn id is the
-      // real provider turn, not the task/session handle.
-      expect(turnId).not.toBe(taskId);
+      expect(
+        receiverSnapshot.data,
+        `the claimed turn did not complete: ${JSON.stringify(receiverSnapshot)}`,
+      ).toMatchObject({ status: 'completed' });
 
       // ...and it names a turn the receiver durably evidenced: the lookup's
-      // turnId must appear in the conversation's turn.started evidence.
-      const events = await api(
+      // turnId must appear in the conversation's turn.started evidence — and
+      // the free echo fixture's EXACT requested output must be present in the
+      // conversation, proving the provider executed the requested prompt.
+      // (Failure detail rides the assertion message: test output only.)
+      const claimedEvents = await api(
         current.receiver.api,
         'GET',
         `/api/orchestration/delegations/${encodeURIComponent(taskId)}/events`,
         { headers: operatorHeaders(current.delegationCredential) },
       );
-      expect(events.status, JSON.stringify(events.payload)).toBe(200);
-      const evidencedTurns = collectTurnStartedIds(events.payload);
+      expect(claimedEvents.status, JSON.stringify(claimedEvents.payload)).toBe(
+        200,
+      );
+      expect(
+        JSON.stringify(claimedEvents.payload),
+        'the receiver conversation never recorded the exact requested echo output',
+      ).toMatch(new RegExp(`echo:[\\s\\S]*${turnToken}`));
+      // The lookup's turnId must appear in the conversation's turn.started
+      // evidence (reusing the events payload asserted above).
+      const evidencedTurns = collectTurnStartedIds(claimedEvents.payload);
       expect(
         evidencedTurns,
         'the accepted turn id is not in the receiver turn evidence',
@@ -1557,6 +1678,27 @@ test.describe
         state: 'accepted',
         taskId: winnerTaskId,
       });
+      // Exactly ONE initial turn for the whole race — launch counts alone
+      // cannot prove this (the provider may reuse a process), so the durable
+      // turn.started evidence is the oracle: one distinct turn id, and it is
+      // the turn the accepted lookup names.
+      const raceEvents = await api(
+        current.receiver.api,
+        'GET',
+        `/api/orchestration/delegations/${encodeURIComponent(winnerTaskId)}/events`,
+        { headers: operatorHeaders(current.delegationCredential) },
+      );
+      expect(raceEvents.status, JSON.stringify(raceEvents.payload)).toBe(200);
+      const racedTurns = [
+        ...new Set(collectTurnStartedIds(raceEvents.payload)),
+      ];
+      expect(
+        racedTurns,
+        `the race started ${racedTurns.length} distinct turns, not one`,
+      ).toHaveLength(1);
+      expect(((lookedUp.payload as JsonRecord).data as JsonRecord).turnId).toBe(
+        racedTurns[0],
+      );
     });
 
     test('mismatched intent under the same attempt key conflicts without effect', async () => {

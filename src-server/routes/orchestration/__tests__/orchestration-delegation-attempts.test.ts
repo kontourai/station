@@ -382,4 +382,88 @@ describe('GET /delegations/attempts/:attemptId — authorized exact lookup (#485
     const res = await app.request('/delegations/attempts/attempt-9');
     expect(res.status).toBe(503);
   });
+
+  test('a store fault answers a fixed safe copy: no IO text, no handle', async () => {
+    const app = lookupApp({
+      lookupDelegationAttempt: vi
+        .fn()
+        .mockRejectedValue(
+          new Error('SQLITE_IOERR: read failed at /secret/station-store.db'),
+        ),
+    });
+    const res = await app.request('/delegations/attempts/attempt-9');
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.error).toBe('Attempt lookup is temporarily unavailable');
+    const text = JSON.stringify(body);
+    expect(text).not.toContain('SQLITE');
+    expect(text).not.toContain('secret');
+    expect(text).not.toContain('station-store');
+    expect(body.taskId).toBeUndefined();
+    expect(body.turnId).toBeUndefined();
+  });
+
+  test('the SAME grant is rechecked after the store read: success resolves it twice', async () => {
+    const resolveInboundDelegationDevice = vi.fn(() => ({
+      id: 'dev-verified-1',
+    }));
+    const app = lookupApp({ resolveInboundDelegationDevice });
+    const res = await app.request('/delegations/attempts/attempt-9');
+    expect(res.status).toBe(200);
+    // Once before the store read (to key it), once after (to disclose it).
+    expect(resolveInboundDelegationDevice).toHaveBeenCalledTimes(2);
+  });
+
+  test('a revocation landing mid-lookup is refused with NO DATA', async () => {
+    const lookupDelegationAttempt = vi.fn(async () => ({
+      attemptId: 'attempt-9',
+      state: 'accepted' as const,
+      taskId: 'task:real-1',
+      turnId: 'turn:real-1',
+    }));
+    // Live at request start, gone after the store read: the read result
+    // must never reach the revoked caller.
+    const resolveInboundDelegationDevice = vi
+      .fn()
+      .mockReturnValueOnce({ id: 'dev-verified-1' })
+      .mockReturnValueOnce(undefined);
+    const app = lookupApp({
+      lookupDelegationAttempt,
+      resolveInboundDelegationDevice,
+    });
+    const res = await app.request('/delegations/attempts/attempt-9');
+    expect(lookupDelegationAttempt).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.code).toBe('delegation_attempt_caller_unsupported');
+    const text = JSON.stringify(body);
+    expect(text).not.toContain('task:real-1');
+    expect(text).not.toContain('turn:real-1');
+  });
+
+  test('a grant rotation landing mid-lookup is refused with NO DATA', async () => {
+    const lookupDelegationAttempt = vi.fn(async () => ({
+      attemptId: 'attempt-9',
+      state: 'accepted' as const,
+      taskId: 'task:real-1',
+      turnId: 'turn:real-1',
+    }));
+    // A DIFFERENT live grant after the read is still not the grant the
+    // claim is keyed by: refused, never the read result.
+    const resolveInboundDelegationDevice = vi
+      .fn()
+      .mockReturnValueOnce({ id: 'dev-verified-1' })
+      .mockReturnValueOnce({ id: 'dev-verified-2' });
+    const app = lookupApp({
+      lookupDelegationAttempt,
+      resolveInboundDelegationDevice,
+    });
+    const res = await app.request('/delegations/attempts/attempt-9');
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.code).toBe('delegation_attempt_caller_unsupported');
+    const text = JSON.stringify(body);
+    expect(text).not.toContain('task:real-1');
+    expect(text).not.toContain('turn:real-1');
+  });
 });

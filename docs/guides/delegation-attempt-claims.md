@@ -23,9 +23,12 @@ behavior is byte-identical to before. With it:
 `GET /api/orchestration/delegations/attempts/:attemptId`, served by the
 actual executing receiver only, requires the CURRENT verified delegation
 peer grant the claim is keyed by (same grant, live id match). Everyone else
-is refused with no data. The projection is closed — state, the reserved
-task reference, and (when accepted) the initial turn id. Never a prompt,
-path, digest, transcript, or provider output. SDK: `lookupDelegationAttempt`.
+is refused with no data. The grant is re-resolved AFTER the store read, so
+a revocation landing mid-lookup is still refused; a store fault answers a
+fixed 503 with no exception text. The projection is closed — state, the
+reserved task reference, and (when accepted) the initial turn id. Never a
+prompt, path, digest, transcript, or provider output. SDK:
+`lookupDelegationAttempt`.
 
 ## State meanings
 
