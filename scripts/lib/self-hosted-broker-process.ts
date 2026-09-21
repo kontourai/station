@@ -163,7 +163,6 @@ export async function startSelfHostedBrokerProcess(
       );
     });
     const brokerOrigin = `http://127.0.0.1:${port}`;
-    const routing = { ...record.bundle.routing };
     const readLease = async () => {
       const response = await fetch(
         `${brokerOrigin}/broker/v1/stations/status`,
