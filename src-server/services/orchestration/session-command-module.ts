@@ -12,13 +12,13 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
-import {
-  portableConsentOfStartedMetadata,
-  type PortableExecutionConsentIdentity,
-  ReceiverExecutionRefusal,
-} from '../projects/project-contribution-service.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
+import {
+  type PortableExecutionConsentIdentity,
+  portableConsentOfStartedMetadata,
+  ReceiverExecutionRefusal,
+} from '../projects/project-contribution-service.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
 import {
@@ -567,7 +567,10 @@ export function createSessionCommandModule(
             ? { ...reattachAdmission.admitted }
             : undefined;
           const portableBinding = deps.launchPolicy.persistedPortableBinding;
-          if (!reattachAdmitted && portableBinding?.consentOfThread(input.threadId))
+          if (
+            !reattachAdmitted &&
+            portableBinding?.consentOfThread(input.threadId)
+          )
             throw new ReceiverExecutionRefusal(
               'receiver_execution_not_offered',
               'This portable task cannot continue without a current execution offer for its Project resource.',

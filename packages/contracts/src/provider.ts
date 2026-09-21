@@ -151,7 +151,8 @@ export const ENVIRONMENT_ID_RESERVED_METADATA_KEY = 'environmentId';
  * `portableExecutionConsent` internal-only option, which re-stamps this
  * key into `metadata` AFTER the reserved-key strip runs.
  */
-export const PORTABLE_EXECUTION_CONSENT_METADATA_KEY = 'portableExecutionConsent';
+export const PORTABLE_EXECUTION_CONSENT_METADATA_KEY =
+  'portableExecutionConsent';
 /** Immutable Agent presentation copied into session start/configuration metadata. */
 export const SESSION_AGENT_DISPLAY_NAME_METADATA_KEY = 'agentName';
 export const SESSION_AGENT_ICON_METADATA_KEY = 'agentIcon';

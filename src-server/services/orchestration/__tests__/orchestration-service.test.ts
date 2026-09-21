@@ -2737,10 +2737,7 @@ describe('OrchestrationService', () => {
           },
           undefined,
           {
-            receiverExecutionAdmission: admittedFor(
-              'some-other-thread',
-              tmp,
-            ),
+            receiverExecutionAdmission: admittedFor('some-other-thread', tmp),
           },
         ),
       ).rejects.toThrow('The offered Project resource is unavailable.');
@@ -2875,8 +2872,7 @@ describe('OrchestrationService', () => {
         { userId: 'owner-user' },
         { receiverExecutionAdmission: admission },
       );
-      if (reattached.status !== 'accepted')
-        throw new Error(reattached.message);
+      if (reattached.status !== 'accepted') throw new Error(reattached.message);
       expect(claude.startSession).toHaveBeenCalledTimes(1);
       expect(admission.recheck).toHaveBeenCalled();
     });
@@ -3014,7 +3010,12 @@ describe('OrchestrationService', () => {
           input: { threadId: 'portable-actual-session', input: 'hello' },
         },
         undefined,
-        { receiverExecutionAdmission: admittedFor('portable-actual-session', tmp) },
+        {
+          receiverExecutionAdmission: admittedFor(
+            'portable-actual-session',
+            tmp,
+          ),
+        },
       );
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
     });
@@ -3068,9 +3069,9 @@ describe('OrchestrationService', () => {
             | undefined
         )?.metadata?.[PORTABLE_EXECUTION_CONSENT_METADATA_KEY],
       ).toEqual(consent);
-      expect(service.persistedPortableConsentOfThread('portable-recovery')).toEqual(
-        consent,
-      );
+      expect(
+        service.persistedPortableConsentOfThread('portable-recovery'),
+      ).toEqual(consent);
       // The interrupted-turn / dispatch-recovery shape: a plain sendTurn
       // with no admission context. The adapter must never run for the
       // marked portable session.
@@ -3571,8 +3572,7 @@ describe('OrchestrationService', () => {
         { userId: 'owner-user' },
         { receiverExecutionAdmission: admission },
       );
-      if (reattached.status !== 'accepted')
-        throw new Error(reattached.message);
+      if (reattached.status !== 'accepted') throw new Error(reattached.message);
       expect(claude.startSession).toHaveBeenCalledTimes(1);
       expect(admission.recheck).toHaveBeenCalled();
     });

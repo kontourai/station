@@ -187,14 +187,14 @@ import {
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
 import {
+  type PortableExecutionConsentIdentity,
+  portableConsentOfStartedMetadata,
+  ReceiverExecutionRefusal,
+} from '../projects/project-contribution-service.js';
+import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
-import {
-  portableConsentOfStartedMetadata,
-  type PortableExecutionConsentIdentity,
-  ReceiverExecutionRefusal,
-} from '../projects/project-contribution-service.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
@@ -922,9 +922,7 @@ function verifyReceiverStartEffect(
   const admitted = admission?.admitted;
   if (!admitted) return;
   const actualCwd =
-    actual.cwd === undefined
-      ? undefined
-      : resolve(expandTilde(actual.cwd));
+    actual.cwd === undefined ? undefined : resolve(expandTilde(actual.cwd));
   if (
     actual.threadId !== admitted.threadId ||
     actualCwd !== admitted.cwd ||
@@ -983,7 +981,10 @@ function verifyReceiverTurnEffect(
     actualSession?.cwd === undefined
       ? undefined
       : resolve(expandTilde(actualSession.cwd));
-  if (actualSession?.threadId !== admitted.threadId || actualCwd !== admitted.cwd)
+  if (
+    actualSession?.threadId !== admitted.threadId ||
+    actualCwd !== admitted.cwd
+  )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
@@ -998,10 +999,7 @@ function verifyReceiverTurnEffect(
       'The offered Project resource is unavailable.',
     );
   const metaProject = startedMeta?.projectSlug;
-  if (
-    metaProject !== undefined &&
-    metaProject !== admitted.projectSlug
-  )
+  if (metaProject !== undefined && metaProject !== admitted.projectSlug)
     throw new ReceiverExecutionRefusal(
       'receiver_execution_unavailable',
       'The offered Project resource is unavailable.',
@@ -4644,15 +4642,17 @@ export class OrchestrationService {
                     .then(() =>
                       verifyReceiverStartEffect(
                         admittedSnapshot
-                          ? { admitted: admittedSnapshot, recheck: startAdmission.recheck }
+                          ? {
+                              admitted: admittedSnapshot,
+                              recheck: startAdmission.recheck,
+                            }
                           : undefined,
                         {
                           threadId: input.threadId,
                           cwd: input.cwd,
                           projectSlug: input.metadata?.projectSlug,
                           consent: portableConsentOfStartedMetadata(
-                            input.metadata &&
-                              typeof input.metadata === 'object'
+                            input.metadata && typeof input.metadata === 'object'
                               ? (input.metadata as Record<string, unknown>)
                               : undefined,
                           ),
@@ -5630,8 +5630,9 @@ export class OrchestrationService {
                     return turnAdmission
                       .recheck()
                       .then(() => {
-                        const live =
-                          this.sessionReadModel.get(turnInput.threadId);
+                        const live = this.sessionReadModel.get(
+                          turnInput.threadId,
+                        );
                         const persisted =
                           live ??
                           this.options.eventStore?.readSessionByThread(

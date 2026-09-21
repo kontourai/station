@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
@@ -17,7 +18,6 @@ import type {
 import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
-import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { ForegroundInvocationAdmission } from '../../services/orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 

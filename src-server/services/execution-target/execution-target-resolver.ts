@@ -340,7 +340,9 @@ async function resolveWorkspace(
     // the wrong repository. `workingDirectory` remains the last-resort
     // fallback only for admissions minted before the exact path existed.
     const exactCwd =
-      project?.executionRoot ?? project?.resourcePath ?? project?.workingDirectory;
+      project?.executionRoot ??
+      project?.resourcePath ??
+      project?.workingDirectory;
     if (!project || !exactCwd) {
       throw new Error(
         'The offered Project resource is unavailable for portable execution',
