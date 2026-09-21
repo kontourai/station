@@ -27,34 +27,132 @@ import {
  * seeds an authenticated store: every protected read must pass through the
  * real credential-bound `GET /api/auth/authority` observation.
  *
- * Proven (one serial scenario over isolated homes):
+ * One serial scenario over isolated homes:
  *   1. Ordinary boot reaches usable Home/Project data through the real
  *      authority endpoint with no observation loop (bounded observation
  *      reads after a single pairing navigation).
  *   2. Reload restores the SAME validated identity's Project data from the
  *      durable per-authority shelf while STILL re-observing authority live.
+ *      EVERY fresh Project-producing path (`/api/projects` AND the SDK boot
+ *      seed `GET /api/boot`, whose `sections.projects` writes the
+ *      `['projects']` cache entry — `packages/sdk/src/boot.ts
+ *      BOOT_SEED_KEYS`) is held behind a gate until after the fresh 200
+ *      authority observation plus the rendered row, so a rendered row can
+ *      only come from the shelf; the persisted blob under the exact
+ *      authority key must itself contain the Project entry. Gates are
+ *      released and unrouted even on assertion failure.
  *   3. A revoked device credential does not leave the prior protected view
  *      active: reload lands on the repair surface with no Project rows, and
  *      the supported request-access → owner-approval → exchange flow repairs
  *      the browser back to the same home's data.
- *   4. Two real Stations with colliding Project slugs but distinct names:
- *      the second home is added through the real connections modal
- *      (address → request access → owner approval → exchange), switching
- *      through real user-facing controls shows only the active home's rows,
- *      and no wrong-home Project row appears at any sampled point during
- *      switches or reloads.
+ *   4. Two real Stations with colliding Project slugs but distinct names.
+ *      The CANONICAL intended journey is asserted without compensation:
+ *      Add → the manager STAYS OPEN with the row's Request access control →
+ *      Back returns to the row list. On the current build the manager
+ *      unmounts right after Add (the known-changing-connection regression);
+ *      that is retained as a real red, and the journey is only run to
+ *      completion after the root-supplied source fix.
  *
- * The owner approvals in (3) and (4) are the SUPPORTED operator act
- * (confirming a pairing request on the host with the host's operator
- * credential, exactly the handshake device-pairing specs prove). No
- * operator credential is ever supplied to a collaborator UI, and this is
- * personal operator/client qualification — not shared-human or native
- * acceptance.
+ * Diagnostic separation in (4): the browser-initiated CROSS-ORIGIN pairing
+ * refusal (HTTP 403 `origin_forbidden` from
+ * `isTrustedBrowserPairingOrigin`, src-server/runtime/routes/runtime-routes.ts)
+ * is a REAL transport refusal, never counted as successful browser pairing.
+ * The second home's credential is obtained through the SUPPORTED device
+ * handshake (`pairBrowserDevice`: access-request → owner confirm → exchange)
+ * and entered through the row's own manual-credential editor — a real DEVICE
+ * credential, never an operator credential, never seeded storage. Only that
+ * credential-entry path is used to qualify two-home isolation.
+ *
+ * Wrong-home evidence: a Node-retained recorder (context binding + init
+ * script) samples each document's connection chip label, verifying state,
+ * and which Project names are rendered; samples survive navigations and are
+ * reduced ONLY from the actual activation boundary (first post-click sample
+ * naming the newly active home), so old-home observations before a switch
+ * are never false positives. The reduction is self-proven in-test against a
+ * known wrong-home injection and refuses vacuous windows (no boundary, no
+ * positive states). Screenshots are taken only after a positive settled
+ * check (no loading treatment, current connection named by the toolbar
+ * chip); a surface that cannot settle stays red.
  */
 
 const PROJECT_SLUG = 'authority-collision';
 const PROJECT_NAME_A = 'Alpha home authority collision';
 const PROJECT_NAME_B = 'Bravo home authority collision';
+const CHIP_TEST_ID = 'app-toolbar-connection';
+
+/** One retained observation, serializable across the exposure binding. */
+interface ConnectionSample {
+  /** ms epoch of the sample. */
+  time: number;
+  /** performance.timeOrigin of the document that produced the sample. */
+  documentId: number;
+  /** Visible connection chip text (state + identity). */
+  chip: string;
+  /** Whether a verifying skeleton / authority pending treatment is shown. */
+  verifying: boolean;
+  /** Whether PROJECT_NAME_A is rendered anywhere in the document. */
+  alphaProject: boolean;
+  /** Whether PROJECT_NAME_B is rendered anywhere in the document. */
+  bravoProject: boolean;
+}
+
+/**
+ * Whether a sample renders a row for `name` (body flags) or names it on the
+ * connection chip.
+ */
+function sampleNamesProject(sample: ConnectionSample, name: string): boolean {
+  if (sample.chip.includes(name)) return true;
+  if (name === PROJECT_NAME_A) return sample.alphaProject;
+  if (name === PROJECT_NAME_B) return sample.bravoProject;
+  return false;
+}
+
+/**
+ * Index of the first sample at/after `afterTime` satisfying `boundaryOf` —
+ * the ACTIVATION boundary (first observation of the newly active
+ * connection), so pre-switch observations of the old home can never enter
+ * the window.
+ */
+function activationBoundaryIndex(
+  samples: ConnectionSample[],
+  boundaryOf: (sample: ConnectionSample) => boolean,
+  afterTime: number,
+): number {
+  return samples.findIndex(
+    (sample) => sample.time >= afterTime && boundaryOf(sample),
+  );
+}
+
+/**
+ * Wrong-home reduction over the ACTIVATION window. Refuses to pass
+ * vacuously: the boundary must exist, the window must contain positive
+ * observations of the newly active home's Project, and any sample in the
+ * window naming `wrongName` is a leak. Pre-boundary samples (the old
+ * home's own rows) are excluded by the boundary, never by text filtering.
+ */
+function reduceActivationWindow(
+  samples: ConnectionSample[],
+  boundaryOf: (sample: ConnectionSample) => boolean,
+  activeProjectSeen: (sample: ConnectionSample) => boolean,
+  wrongName: string,
+  afterTime: number,
+): { boundary: number; window: ConnectionSample[]; leaks: ConnectionSample[] } {
+  const boundary = activationBoundaryIndex(samples, boundaryOf, afterTime);
+  if (boundary < 0)
+    throw new Error(
+      'no recorded sample crosses the activation boundary after the switch click',
+    );
+  const window = samples.slice(boundary);
+  const positives = window.filter((sample) => activeProjectSeen(sample));
+  if (positives.length === 0)
+    throw new Error(
+      "the recorder never observed the activated home's Project after activation — the window is not proven (no vacuous pass)",
+    );
+  const leaks = window.filter((sample) =>
+    sampleNamesProject(sample, wrongName),
+  );
+  return { boundary, window, leaks };
+}
 
 /** Live stations owned for the whole serial scenario. */
 const stations: Record<'alpha' | 'bravo', LiveStation | null> = {
@@ -207,67 +305,98 @@ test.describe
       ).toBeVisible({ timeout: 45_000 });
     }
 
-    /**
-     * Wrong-home sentinel: samples the visible document text on an interval
-     * while a switch or reload is in flight, so a transient wrong-home
-     * Project row is caught even if it never survives until settlement.
-     * Installed as an init script so it survives the reloads it guards;
-     * arming/disarming is a per-document flag.
-     */
-    async function installWrongHomeSentinel(page: Page): Promise<void> {
-      await page.addInitScript(() => {
-        const globalWindow = window as Window & {
-          __clientAuthoritySentinel?: { samples: string[]; timer: number };
-        };
-        globalWindow.__clientAuthoritySentinel = { samples: [], timer: 0 };
-        globalWindow.__clientAuthoritySentinel.timer = window.setInterval(
-          () => {
-            const sentinel = globalWindow.__clientAuthoritySentinel;
-            if (!sentinel) return;
-            sentinel.samples.push(document.body.innerText);
-            if (sentinel.samples.length > 600) sentinel.samples.shift();
-          },
-          150,
-        );
-      });
+    async function connectionChipLabel(page: Page): Promise<string> {
+      return (
+        (await page.getByTestId(CHIP_TEST_ID).getAttribute('aria-label')) ?? ''
+      );
     }
 
-    async function startWrongHomeSentinel(page: Page): Promise<void> {
-      await page.evaluate(() => {
-        const globalWindow = window as Window & {
-          __clientAuthoritySentinel?: { samples: string[]; timer: number };
-        };
-        globalWindow.__clientAuthoritySentinel = { samples: [], timer: 0 };
-        globalWindow.__clientAuthoritySentinel.timer = window.setInterval(
-          () => {
-            const sentinel = globalWindow.__clientAuthoritySentinel;
-            if (!sentinel) return;
-            sentinel.samples.push(document.body.innerText);
-            if (sentinel.samples.length > 600) sentinel.samples.shift();
-          },
-          150,
-        );
-      });
-    }
-
-    /** Stops the sentinel and returns how many samples showed `wrongName`. */
-    async function stopWrongHomeSentinel(
+    async function pollChipLabel(
       page: Page,
-      wrongName: string,
-    ): Promise<number> {
-      return page.evaluate((name) => {
+      assertion: 'contains' | 'notContains',
+      label: string,
+    ) {
+      const poll = expect.poll(() => connectionChipLabel(page), {
+        timeout: 30_000,
+      });
+      if (assertion === 'contains') await poll.toContain(label);
+      else await poll.not.toContain(label);
+    }
+
+    /**
+     * Positive settled-capture gate: no loading treatment anywhere (the
+     * canonical settle helper), AND the toolbar chip positively names the
+     * expected current connection. A surface that cannot settle stays red
+     * BEFORE any capture is taken.
+     */
+    async function expectSettledActiveSurface(
+      page: Page,
+      activeLabel: string | null,
+    ) {
+      const reason = await settlePageReason(page, 45_000);
+      expect(
+        reason,
+        `the surface must settle (no overlay/skeleton) before capture: ${reason ?? 'ok'}`,
+      ).toBeNull();
+      if (activeLabel !== null)
+        await pollChipLabel(page, 'contains', activeLabel);
+    }
+
+    /**
+     * Node-retained wrong-home recorder: samples are pushed to the TEST
+     * process through a context binding, so navigation and reload can never
+     * erase them (the per-document init script only (re)starts the
+     * interval; the buffer lives in Node). The recorder is armed once per
+     * context, before the first page exists.
+     */
+    async function installSampleRecorder(
+      context: BrowserContext,
+    ): Promise<ConnectionSample[]> {
+      const samples: ConnectionSample[] = [];
+      await context.exposeBinding(
+        '__clientAuthoritySample',
+        async (_source, sample: ConnectionSample) => {
+          samples.push(sample);
+        },
+      );
+      await context.addInitScript(() => {
         const globalWindow = window as Window & {
-          __clientAuthoritySentinel?: { samples: string[]; timer: number };
+          __clientAuthoritySample?: (sample: unknown) => Promise<void>;
+          __clientAuthorityRecorderTimer?: number;
         };
-        const sentinel = globalWindow.__clientAuthoritySentinel;
-        if (!sentinel) throw new Error('wrong-home sentinel was not armed');
-        window.clearInterval(sentinel.timer);
-        const offending = sentinel.samples.filter((text) =>
-          text.includes(name),
+        if (globalWindow.__clientAuthorityRecorderTimer !== undefined) return;
+        const documentId = performance.timeOrigin;
+        const record = () => {
+          void globalWindow.__clientAuthoritySample?.({
+            time: Date.now(),
+            documentId,
+            chip:
+              document.querySelector('[data-testid="app-toolbar-connection"]')
+                ?.textContent ?? '',
+            verifying:
+              document.querySelector('[role="status"][aria-busy="true"]') !==
+                null ||
+              document.querySelector('.skeleton') !== null ||
+              document.querySelector('.fs-screen') !== null,
+            alphaProject: document.body.innerText.includes(
+              'Alpha home authority collision',
+            ),
+            bravoProject: document.body.innerText.includes(
+              'Bravo home authority collision',
+            ),
+          });
+        };
+        globalWindow.__clientAuthorityRecorderTimer = window.setInterval(
+          record,
+          100,
         );
-        globalWindow.__clientAuthoritySentinel = undefined;
-        return offending.length;
-      }, wrongName);
+        window.addEventListener('pagehide', () => {
+          window.clearInterval(globalWindow.__clientAuthorityRecorderTimer);
+          globalWindow.__clientAuthorityRecorderTimer = undefined;
+          record();
+        });
+      });
+      return samples;
     }
 
     /**
@@ -313,6 +442,50 @@ test.describe
       expect(reason, 'the paired boot must settle to real content').toBeNull();
     }
 
+    /**
+     * Reads the persisted shelf blob stored under the exact per-authority
+     * key in IndexedDB (`station-query-cache`/`cache`). Returns the raw
+     * stored string, or null when the key is absent.
+     */
+    async function readPersistedShelf(
+      page: Page,
+    ): Promise<{ key: string; value: string | null }> {
+      return page.evaluate(async () => {
+        if (typeof indexedDB === 'undefined') return { key: '', value: null };
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open('station-query-cache');
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => resolve(request.result);
+        });
+        try {
+          const store = database
+            .transaction('cache', 'readonly')
+            .objectStore('cache');
+          const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+            const request = store.getAllKeys();
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+          const namespaced = keys
+            .map(String)
+            .filter((name) => name.startsWith('station-query-cache-v1::'));
+          if (namespaced.length === 0) return { key: '', value: null };
+          const key = namespaced[namespaced.length - 1]!;
+          const value = await new Promise<string | undefined>(
+            (resolve, reject) => {
+              const request = store.get(key);
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () =>
+                resolve(request.result as string | undefined);
+            },
+          );
+          return { key, value: value ?? null };
+        } finally {
+          database.close();
+        }
+      });
+    }
+
     test('boot reaches Home/Project data through the real authority endpoint with no loop', async ({
       browser,
     }, testInfo) => {
@@ -348,6 +521,7 @@ test.describe
 
       await page.goto(`${alpha.ui}/projects/${PROJECT_SLUG}`);
       await expectProjectRowVisible(page, PROJECT_NAME_A);
+      await expectSettledActiveSurface(page, null);
 
       // Evidence: the verified dark wide boot.
       await page.screenshot({
@@ -360,85 +534,83 @@ test.describe
       const page = openContexts[0]!.pages()[0]!;
       const authorityReads = observeAuthorityReads(page);
 
-      // Controlled delayed read: the /api/projects LIST is held behind a
-      // gate across the reload. Everything the page renders before the gate
-      // opens therefore comes from the durable shelf, not from a fresh
-      // network read. The gate holds the REAL response (route.continue) —
-      // no fixture answer, no offline bypass of verification.
-      let releaseProjectReads: () => void = () => {};
-      let projectReadsHeld = 0;
-      const projectReadsGate = new Promise<void>((resolve) => {
-        releaseProjectReads = resolve;
+      // Controlled delayed reads: EVERY fresh Project-producing path is
+      // held behind gates across the reload — the /api/projects list AND
+      // the SDK boot seed (GET /api/boot, whose sections.projects writes
+      // the ['projects'] cache entry; see packages/sdk/src/boot.ts
+      // BOOT_SEED_KEYS). Everything the page renders before both gates
+      // open therefore comes from the durable shelf, not from any fresh
+      // network read. The gates hold the REAL responses (route.continue) —
+      // no fixture answer, no offline bypass — and the authority endpoint
+      // stays live. Release and unroute happen even on assertion failure.
+      let releaseGates: () => void = () => {};
+      const gates = new Promise<void>((resolve) => {
+        releaseGates = resolve;
       });
       await page.route(
-        (url) => new URL(url).pathname === '/api/projects',
+        (url) => url.pathname === '/api/projects',
         async (route) => {
-          projectReadsHeld += 1;
-          await projectReadsGate;
+          await gates;
           await route.continue();
         },
       );
-
-      const authorityObserved = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === '/api/auth/authority' &&
-          response.status() === 200,
-        { timeout: 60_000 },
+      await page.route(
+        (url) => url.pathname === '/api/boot',
+        async (route) => {
+          await gates;
+          await route.continue();
+        },
       );
-      await page.reload();
-      await authorityObserved;
+      try {
+        const authorityObserved = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/auth/authority' &&
+            response.status() === 200,
+          { timeout: 60_000 },
+        );
+        await page.reload();
+        await authorityObserved;
 
-      // The SAME validated identity's Project row must render from the
-      // restored shelf while the fresh /api/projects read is still held
-      // (or not needed), AFTER the fresh successful authority observation.
-      await expect(
-        page.getByRole('navigation').getByText(PROJECT_NAME_A).first(),
-        'the restored shelf must render the same identity Project data behind a held fresh read',
-      ).toBeVisible({ timeout: 45_000 });
-      releaseProjectReads();
-      await expect(
-        page.getByRole('navigation').getByText(PROJECT_NAME_A).first(),
-      ).toBeVisible({ timeout: 15_000 });
-      expect(projectReadsHeld).toBeLessThanOrEqual(1);
+        // The SAME validated identity's Project row must render from the
+        // restored shelf while BOTH fresh Project-producing paths are still
+        // held, AFTER the fresh successful authority observation.
+        await expect(
+          page.getByRole('navigation').getByText(PROJECT_NAME_A).first(),
+          'the restored shelf must render the same identity Project data behind held fresh reads',
+        ).toBeVisible({ timeout: 45_000 });
+
+        // Discriminator on the persisted state itself: a REAL Project entry
+        // must exist under the exact per-authority key. With persistence
+        // disabled or the shelf removed, this assertion (and the held-read
+        // rendering above) goes red — the pass is not reachable from a
+        // boot-seed or fresh-fetch path alone.
+        const shelf = await readPersistedShelf(page);
+        expect(
+          shelf.key,
+          'a per-authority persistence key must exist (station-query-cache-v1::<namespace>)',
+        ).not.toBe('');
+        expect(
+          shelf.value,
+          `the shelf under ${shelf.key} must contain stored data`,
+        ).not.toBeNull();
+        expect(
+          shelf.value,
+          'the persisted shelf under the exact authority key must contain the Project entry',
+        ).toContain(PROJECT_NAME_A);
+
+        await expect(
+          page.getByRole('navigation').getByText(PROJECT_NAME_A).first(),
+        ).toBeVisible({ timeout: 15_000 });
+      } finally {
+        releaseGates();
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+      }
 
       // Reload MUST re-observe (staleTime 0 / refetchOnMount always), not
       // silently trust the restored shelf.
       expect(
         authorityReads.length,
         'reload must issue a fresh /api/auth/authority observation',
-      ).toBeGreaterThanOrEqual(1);
-
-      // The durable shelf is per-authority namespaced inside the shared
-      // IndexedDB database (`station-query-cache`/`cache`, keyed by
-      // `authorityPersistenceKey`): a namespaced key exists, and it is not
-      // the quarantined legacy singleton key.
-      const storageKeys = await page.evaluate(async () => {
-        if (typeof indexedDB === 'undefined') return [];
-        const database = await new Promise<IDBDatabase>((resolve, reject) => {
-          const request = indexedDB.open('station-query-cache');
-          request.onerror = () => reject(request.error);
-          request.onsuccess = () => resolve(request.result);
-        });
-        try {
-          const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
-            const transaction = database
-              .transaction('cache', 'readonly')
-              .objectStore('cache')
-              .getAllKeys();
-            transaction.onerror = () => reject(transaction.error);
-            transaction.onsuccess = () => resolve(transaction.result);
-          });
-          return keys.map(String);
-        } finally {
-          database.close();
-        }
-      });
-      const namespaced = storageKeys.filter((name) =>
-        name.startsWith('station-query-cache-v1::'),
-      );
-      expect(
-        namespaced.length,
-        `expected a per-authority persistence shelf among ${JSON.stringify(storageKeys)}`,
       ).toBeGreaterThanOrEqual(1);
     });
 
@@ -500,13 +672,14 @@ test.describe
       // The pending-exchange poll completes the pairing and the app boots
       // back into the same home's protected data.
       await expectProjectRowVisible(page, PROJECT_NAME_A);
+      await expectSettledActiveSurface(page, null);
       await page.screenshot({
         path: testInfo.outputPath('client-authority-repaired-after-revoke.png'),
         fullPage: true,
       });
     });
 
-    test('two homes with colliding Project slugs switch through real controls with no wrong-home rows', async ({
+    test('two homes with colliding Project slugs: canonical modal continuity, real refusal diagnostic, credential-entry isolation', async ({
       browser,
     }, testInfo) => {
       const alpha = stations.alpha!;
@@ -515,16 +688,12 @@ test.describe
       // row is new here.
       await createHomeProject(bravo, PROJECT_NAME_B);
 
-      // A fresh browser profile pairs with alpha through the normal
-      // bootstrap ceremony, then adds bravo through the real connections
-      // modal. The page always stays on the alpha UI origin: a connection
-      // switch changes the authority the app talks to, never the page.
       const context = await browser.newContext({ colorScheme: 'dark' });
       openContexts.push(context);
+      // The recorder is bound to the CONTEXT before the page exists, so its
+      // Node-side buffer survives every navigation and reload below.
+      const samples = await installSampleRecorder(context);
       const page = await context.newPage();
-      // The wrong-home sentinel survives navigations (init script); each
-      // segment arms/stops around the switch or reload it guards.
-      await installWrongHomeSentinel(page);
       await pairBrowser(page, {
         root: process.cwd(),
         instance: alpha.instance,
@@ -537,7 +706,7 @@ test.describe
 
       // Real user-facing connection controls: the toolbar's connection
       // chip opens the connections manager.
-      await page.getByTestId('app-toolbar-connection').click();
+      await page.getByTestId(CHIP_TEST_ID).click();
       const dialog = page.getByRole('dialog');
       await dialog
         .getByRole('button', { name: 'Add a Station address' })
@@ -547,34 +716,35 @@ test.describe
         .getByLabel('Station address')
         .fill(`http://127.0.0.1:${bravo.serverPort}`);
       await dialog.getByRole('button', { name: 'Add', exact: true }).click();
-      // Saving the address closes the manager; reopen it and try the
-      // browser-initiated request-access journey for the saved bravo row.
-      await page
-        .getByRole('dialog')
-        .waitFor({ state: 'detached', timeout: 30_000 })
-        .catch(() => {});
-      await page.getByTestId('app-toolbar-connection').click();
-      const savedDialog = page.getByRole('dialog');
-      await savedDialog
+
+      // CANONICAL CONTINUITY (no compensation, no alternative states): the
+      // manager must stay open on the row list and offer the row's own
+      // Request access control. On the current build the whole children
+      // subtree (including this modal flow) unmounts right after Add —
+      // the known changing-connection regression — and this assertion
+      // retains that red. Do not reopen; the journey resumes only after
+      // the root-supplied source fix.
+      await expect(
+        dialog.getByRole('button', { name: 'Request access to Bravo home' }),
+        'the connections manager must stay open with the row Request access control after Add',
+      ).toBeVisible({ timeout: 30_000 });
+      await dialog
         .getByRole('button', { name: 'Request access to Bravo home' })
         .click();
       // The request-access journey confirms with its own dialog (device
-      // name prefilled from the browser).
+      // name prefilled from the browser), and Back must return to the row
+      // list — the continuity the hosted regression named.
       await page
         .getByRole('dialog')
         .getByRole('button', { name: 'Request access', exact: true })
         .click();
 
-      // DIAGNOSTIC (retained, not skipped): this profile — a plain browser
-      // on one machine with two plain-HTTP loopback origins — CANNOT
-      // complete the browser-initiated cross-origin pairing: bravo's own
-      // anti-CSRF guard refuses every cross-site fetch (HTTP 403
-      // `origin_forbidden` from
-      // src-server/runtime/routes/runtime-routes.ts isTrustedBrowserPairingOrigin,
-      // which only accepts same-origin or native-shell requests), and the
-      // UI names the refusal verbatim. That refusal is real product
-      // behavior under this transport, captured here as the two-home
-      // red/diagnostic rather than routed around silently.
+      // REAL TRANSPORT REFUSAL, retained as a diagnostic — this is NOT
+      // successful browser pairing: bravo refuses every browser-initiated
+      // cross-site fetch (HTTP 403 `origin_forbidden`,
+      // isTrustedBrowserPairingOrigin,
+      // src-server/runtime/routes/runtime-routes.ts), and the UI names the
+      // refusal verbatim.
       await expect(
         page.getByText(
           'This Station does not allow access requests from this app address.',
@@ -587,94 +757,76 @@ test.describe
         ),
         fullPage: true,
       });
+      // Back continuity: the refusal view must hand back to the journey.
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect(
+        dialog.getByRole('button', { name: 'Request access to Bravo home' }),
+        'Back must return to the row list',
+      ).toBeVisible({ timeout: 30_000 });
 
-      // Named diagnostic transport for the REST of the two-home journey:
-      // the credential is obtained through the SUPPORTED device handshake
-      // (pairBrowserDevice: access-request → operator confirm → exchange,
-      // the same handshake the device-pairing specs prove) and entered
-      // through the row's own manual-credential editor — a real DEVICE
-      // credential, never an operator credential, never seeded storage.
-      await page
-        .getByRole('button', { name: 'Back', exact: true })
-        .click()
-        .catch(() => {});
+      // Named diagnostic transport (NOT browser pairing): the credential
+      // comes from the SUPPORTED device handshake (pairBrowserDevice:
+      // access-request → owner confirm → exchange, the handshake the
+      // device-pairing specs prove) and is entered through the row's own
+      // manual-credential editor — a real DEVICE credential, never an
+      // operator credential, never seeded storage.
       const bravoDevice = await pairBrowserDevice(
         bravo,
         readE2EOperatorCredential(bravo.home),
         'Client authority live browser',
       );
-      await savedDialog
+      await dialog
         .getByRole('button', { name: 'More actions for Bravo home' })
         .click();
-      await savedDialog
+      await dialog
         .getByRole('menu', { name: 'Actions for Bravo home' })
         .getByRole('menuitem', { name: 'Edit Station' })
         .click();
-      await savedDialog
+      await dialog
         .getByLabel('Station access credential')
         .fill(bravoDevice.credential);
-      await savedDialog
-        .getByRole('button', { name: 'Save', exact: true })
-        .click();
-      await expect(
-        savedDialog.getByRole('button', { name: 'Select Bravo home' }),
-      )
-        .toBeVisible({ timeout: 45_000 })
-        .catch(async () => {
-          // Saving a credential with a single non-active connection can
-          // activate it directly and close the manager — then the app is
-          // already on bravo (asserted below via its Project rows).
-        });
+      await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 
-      // Switch to bravo through the modal's own select control (when the
-      // manager is still open; the already-activated path above skips it).
-      const selectBravo = savedDialog.getByRole('button', {
-        name: 'Select Bravo home',
-      });
-      const stillOpen = await selectBravo.isVisible().catch(() => false);
-      if (stillOpen) {
-        await startWrongHomeSentinel(page);
-        await selectBravo.click();
-        await page
-          .getByRole('dialog')
-          .waitFor({ state: 'detached', timeout: 45_000 })
-          .catch(() => {});
-      } else {
-        await startWrongHomeSentinel(page);
-      }
-      await page.goto(`${alpha.ui}/projects/${PROJECT_SLUG}`);
-      await expectProjectRowVisible(page, PROJECT_NAME_B);
-      // Positive activation proof, independent of Project rows: the
-      // toolbar chip names the Station the app is talking to.
-      await expect
-        .poll(
-          async () =>
-            await page
-              .getByTestId('app-toolbar-connection')
-              .getAttribute('aria-label'),
-          { timeout: 30_000 },
-        )
-        .toContain('Bravo home');
-      const wrongWhileSwitchToBravo = await stopWrongHomeSentinel(
-        page,
-        PROJECT_NAME_A,
-      );
-      expect(
-        wrongWhileSwitchToBravo,
-        'alpha rows must never render while bravo is active',
-      ).toBe(0);
+      // Canonical activation: the row's own select control.
+      const switchClickTime = Date.now();
+      await dialog.getByRole('button', { name: 'Select Bravo home' }).click();
+      await expect(
+        page.getByRole('main').getByText(PROJECT_NAME_B).first(),
+        'bravo must become the active authority after Select',
+      ).toBeVisible({ timeout: 45_000 });
+      await pollChipLabel(page, 'contains', 'Bravo home');
       await expect(
         page.getByRole('main').getByText(PROJECT_NAME_A),
       ).toHaveCount(0);
 
-      // Evidence: bravo verified, dark, wide.
+      // Wrong-home reduction over the ACTIVATION window only: samples are
+      // retained in Node across the whole journey; the window starts at the
+      // first post-click sample naming bravo, so alpha's own pre-switch
+      // rows can never be false positives.
+      const bravoWindow = reduceActivationWindow(
+        samples,
+        (sample) => sample.chip.includes('Bravo home'),
+        (sample) => sample.bravoProject,
+        'Alpha home authority collision',
+        switchClickTime,
+      );
+      expect(
+        bravoWindow.leaks,
+        `alpha rows must never render while bravo is active (window of ${bravoWindow.window.length} samples)`,
+      ).toEqual([]);
+
+      // Evidence: bravo verified, dark, wide — captured only after the
+      // positive settled/active gate.
+      await expectSettledActiveSurface(page, 'Bravo home');
       await page.screenshot({
         path: testInfo.outputPath('client-authority-bravo-switch-dark.png'),
         fullPage: true,
       });
 
       // Narrow light variant of the same verified bravo surface: the app
-      // theme is the persisted device-settings preference.
+      // theme is the persisted device-settings preference. The capture is
+      // gated the same way; a washed-out overlay/skeleton surface stays
+      // red instead of being captured.
       await page.setViewportSize({ width: 390, height: 844 });
       await page.evaluate(() => {
         localStorage.setItem(
@@ -682,59 +834,130 @@ test.describe
           JSON.stringify({ version: 2, values: { theme: 'light' } }),
         );
       });
-      await startWrongHomeSentinel(page);
+      const narrowReloadTime = Date.now();
       await page.reload();
       await expectProjectRowVisible(page, PROJECT_NAME_B);
-      const wrongAfterNarrowReload = await stopWrongHomeSentinel(
-        page,
-        PROJECT_NAME_A,
+      const narrowWindow = reduceActivationWindow(
+        samples,
+        (sample) => sample.chip.includes('Bravo home'),
+        (sample) => sample.bravoProject,
+        'Alpha home authority collision',
+        narrowReloadTime,
       );
       expect(
-        wrongAfterNarrowReload,
-        'reload on bravo must never show alpha rows',
-      ).toBe(0);
+        narrowWindow.leaks,
+        `reload on bravo must never show alpha rows (window of ${narrowWindow.window.length} samples)`,
+      ).toEqual([]);
+      await expectSettledActiveSurface(page, 'Bravo home');
       await page.screenshot({
         path: testInfo.outputPath('client-authority-bravo-narrow-light.png'),
         fullPage: true,
       });
 
       // Switch back to alpha through the same real controls: open the
-      // modal, select the non-bravo row, and confirm only alpha's rows
-      // render — during the switch (sentinel) and after settlement.
+      // manager (a fresh canonical user action, not a workaround), select
+      // the alpha row, and reduce the activation window for alpha.
       await page.setViewportSize({ width: 1280, height: 800 });
-      await page.getByTestId('app-toolbar-connection').click();
+      await page.getByTestId(CHIP_TEST_ID).click();
       const switchBackDialog = page.getByRole('dialog');
       const alphaSelect = switchBackDialog
         .getByRole('button', { name: /^Select (?!Bravo)/ })
         .first();
       await expect(alphaSelect).toBeVisible({ timeout: 30_000 });
-      await startWrongHomeSentinel(page);
+      const switchBackTime = Date.now();
       await alphaSelect.click();
-      await switchBackDialog
-        .waitFor({ state: 'detached', timeout: 45_000 })
-        .catch(() => {});
-      await page.goto(`${alpha.ui}/projects/${PROJECT_SLUG}`);
-      await expectProjectRowVisible(page, PROJECT_NAME_A);
-      await expect
-        .poll(
-          async () =>
-            await page
-              .getByTestId('app-toolbar-connection')
-              .getAttribute('aria-label'),
-          { timeout: 30_000 },
-        )
-        .not.toContain('Bravo home');
-      const wrongWhileSwitchBack = await stopWrongHomeSentinel(
-        page,
-        PROJECT_NAME_B,
+      await expect(
+        page.getByRole('main').getByText(PROJECT_NAME_A).first(),
+        'alpha must become the active authority after switching back',
+      ).toBeVisible({ timeout: 45_000 });
+      await pollChipLabel(page, 'notContains', 'Bravo home');
+      const alphaWindow = reduceActivationWindow(
+        samples,
+        (sample) =>
+          sample.chip.length > 0 && !sample.chip.includes('Bravo home'),
+        (sample) => sample.alphaProject,
+        'Bravo home authority collision',
+        switchBackTime,
       );
       expect(
-        wrongWhileSwitchBack,
-        'bravo rows must never render while alpha is active',
-      ).toBe(0);
+        alphaWindow.leaks,
+        `bravo rows must never render while alpha is active (window of ${alphaWindow.window.length} samples)`,
+      ).toEqual([]);
       await expect(
         page.getByRole('main').getByText(PROJECT_NAME_B),
       ).toHaveCount(0);
+
+      // Oracle power proof (Node-side, no browser): the reduction must
+      // flag a KNOWN wrong-home injection inside the window, must NOT flag
+      // the same observation BEFORE the boundary (old home is not a leak),
+      // and must refuse vacuous windows (no boundary / no positive states).
+      const synthetic: ConnectionSample[] = [
+        {
+          time: switchClickTime - 1000,
+          documentId: 1,
+          chip: 'Connected · Default',
+          verifying: false,
+          alphaProject: true,
+          bravoProject: false,
+        },
+        {
+          time: switchClickTime + 1000,
+          documentId: 1,
+          chip: 'Connected · Bravo home',
+          verifying: false,
+          alphaProject: true,
+          bravoProject: true,
+        },
+        {
+          time: switchClickTime + 2000,
+          documentId: 1,
+          chip: 'Connected · Bravo home',
+          verifying: false,
+          alphaProject: false,
+          bravoProject: true,
+        },
+      ];
+      expect(
+        reduceActivationWindow(
+          synthetic,
+          (sample) => sample.chip.includes('Bravo home'),
+          (sample) => sample.bravoProject,
+          'Alpha home authority collision',
+          switchClickTime,
+        ).leaks,
+        'the oracle must flag a known wrong-home row inside the activation window',
+      ).toHaveLength(1);
+      expect(
+        () =>
+          reduceActivationWindow(
+            synthetic.slice(0, 1),
+            (sample) => sample.chip.includes('Bravo home'),
+            (sample) => sample.bravoProject,
+            'Alpha home authority collision',
+            switchClickTime,
+          ),
+        'the oracle must refuse a window with no activation boundary',
+      ).toThrow();
+      expect(
+        () =>
+          reduceActivationWindow(
+            [
+              {
+                time: switchClickTime + 1000,
+                documentId: 1,
+                chip: 'Connected · Bravo home',
+                verifying: true,
+                alphaProject: false,
+                bravoProject: false,
+              },
+            ],
+            (sample) => sample.chip.includes('Bravo home'),
+            (sample) => sample.bravoProject,
+            'Alpha home authority collision',
+            switchClickTime,
+          ),
+        'the oracle must refuse a window with no positive observation of the active home',
+      ).toThrow();
 
       // Evidence retention for the caller (optional, mirroring the guest
       // acceptance suite's pattern).
