@@ -6318,8 +6318,8 @@ export class OrchestrationService {
             severity: 'warning',
             code: 'adapter-event-stream-interrupted',
             message: storeContention
-              ? `Orchestration event store is locked (orchestration.sqlite): another Station process may be using this Station home. ${message}`
-              : `Agent connection error: ${message}`,
+              ? 'Orchestration event store is locked (orchestration.sqlite): another Station process may be using this Station home. Station is reconnecting to the event stream.'
+              : 'Agent event observation was interrupted. Station is reconnecting; this warning does not report turn completion or failure.',
           });
         } catch (surfacingError) {
           this.options.logger.warn(

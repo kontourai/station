@@ -15524,6 +15524,12 @@ describe('OrchestrationService', () => {
             ),
         ).toBe(true),
       );
+      const unrelatedWarning = eventStore
+        .listEvents('unrelated-owner')
+        .find((entry) => entry.payload.method === 'runtime.warning');
+      expect(JSON.stringify(unrelatedWarning?.payload)).not.toContain(
+        'oversized-owner',
+      );
       for (const threadId of ['oversized-owner', 'unrelated-owner']) {
         expect(await isolated.readSession(threadId)).toMatchObject({
           session: { lifecycleState: 'running' },
@@ -15721,7 +15727,7 @@ describe('OrchestrationService', () => {
       'Orchestration event store is locked (orchestration.sqlite)',
     );
 
-    // Control: a non-BUSY stream failure keeps the agent-connection wording.
+    // Raw stream errors stay in operator logs, not every affected transcript.
     vi.spyOn(eventStore, 'listSessionProjectionEvents').mockImplementationOnce(
       () => {
         throw new Error('adapter stream exploded');
@@ -15741,8 +15747,11 @@ describe('OrchestrationService', () => {
       .map((event) => event.payload)
       .filter((event) => event.method === 'runtime.warning')
       .at(-1);
-    expect((genericError as { message?: string })?.message).toBe(
-      'Agent connection error: adapter stream exploded',
+    expect((genericError as { message?: string })?.message).toContain(
+      'Agent event observation was interrupted.',
+    );
+    expect(JSON.stringify(genericError)).not.toContain(
+      'adapter stream exploded',
     );
     await isolated.shutdown();
   });
