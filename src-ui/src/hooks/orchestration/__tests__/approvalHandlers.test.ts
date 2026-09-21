@@ -67,6 +67,21 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     expect(toast.toolPreview).toBe('touch /tmp/ask-settings-probe');
   });
 
+  test('keeps actual identity and arguments beside optional stated purpose', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: 'Bash',
+        toolPurpose: 'Check the repository status',
+        toolInput: { command: 'git status' },
+      }),
+    );
+    expect(approvalToast()).toMatchObject({
+      toolName: 'Bash',
+      toolPreview: 'Why: Check the repository status · git status',
+    });
+  });
+
   test('names the tool in the standing-grant label', () => {
     handleRequestOpenedEvent(
       'http://localhost:1',

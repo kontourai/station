@@ -367,5 +367,56 @@ describe.runIf(process.platform !== 'win32')(
         f.service.close();
       }
     });
+    test('control and admission lanes are independent with bounded admission', async () => {
+      const f = fixture();
+      try {
+        let releasePoll!: () => void;
+        const entered = new Promise<void>((resolve) => {
+          releasePoll = () => resolve(undefined);
+        });
+        let enteredResolve!: () => void;
+        const started = new Promise<void>((resolve) => {
+          enteredResolve = resolve;
+        });
+        const connector = new SelfHostedBrokerConnector(
+          scope,
+          new SelfHostedBrokerClient(
+            'https://broker.example',
+            scope,
+            f.credentials.connector,
+            f.request,
+            () => 1_000,
+          ),
+          { current: () => descriptor, isCurrent: () => true },
+          async (_offer, _trust, signal) => {
+            enteredResolve();
+            await entered;
+            signal.throwIfAborted();
+            return {
+              answerSdp: 'answer',
+              stationProof: 'p',
+              dispose: async () => {},
+            };
+          },
+        );
+        f.service.open(scope, f.credentials.routing, {
+          clientId: 'client-lane0001',
+          nonce: 'nonce-lane00001',
+          offerSdp: 'offer',
+        });
+        const caller = new AbortController().signal;
+        await connector.register(caller);
+        const poll = connector.poll(caller);
+        await started;
+        expect((await connector.renew(caller)).revision).toBe(1);
+        await expect(connector.poll(caller)).rejects.toThrow(
+          'broker_connector_busy',
+        );
+        releasePoll();
+        await expect(poll).resolves.toEqual({ observed: 1, answered: 1 });
+      } finally {
+        f.service.close();
+      }
+    });
   },
 );

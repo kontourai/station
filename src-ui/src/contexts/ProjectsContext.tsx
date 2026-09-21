@@ -65,6 +65,52 @@ export function useScopedProjectQuery(
   });
 }
 
+/**
+ * App-owned Project read config: the caller shapes query behavior, while the
+ * request scope itself is NEVER caller-supplied — it is always captured from
+ * the host authority. A missing/stale scope therefore fails closed (disabled
+ * query, `unavailable` key) instead of falling back to ambient
+ * `_getApiBase()` reads, which is the multi-home isolation contract for
+ * Project list/detail in `src-ui` (#481 slice A).
+ */
+type AppProjectReadConfig<T> = Omit<
+  ProjectReadQueryConfig<T>,
+  'requestScope' | 'requireRequestScope'
+>;
+
+/**
+ * Canonical app-owner Project LIST read. Returns the full typed query result
+ * (data/isLoading/isError/refetch/…) — callers that need more than the
+ * `useProjects()` projection use this instead of the SDK hook directly, so
+ * every Project list read in the app shares one scope capture.
+ */
+export function useScopedProjectsQuery(
+  config?: AppProjectReadConfig<ProjectMetadata[]>,
+) {
+  const requestScope = useHostRequestAuthorityScope();
+  return useProjectsQuery({
+    ...config,
+    requestScope,
+    requireRequestScope: true,
+  });
+}
+
+/**
+ * Canonical app-owner Project DETAIL read. Same scope contract as
+ * {@link useScopedProjectsQuery}; `enabled` continues to require a slug.
+ */
+export function useScopedProjectQuery(
+  slug: string,
+  config?: AppProjectReadConfig<ProjectConfig>,
+) {
+  const requestScope = useHostRequestAuthorityScope();
+  return useProjectQuery(slug, {
+    ...config,
+    requestScope,
+    requireRequestScope: true,
+  });
+}
+
 export interface ProjectMetadata {
   version?: 'station.member-project/v1';
   kind?: 'member-project';

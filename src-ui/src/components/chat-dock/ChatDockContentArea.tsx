@@ -18,6 +18,7 @@ const loadConversationHistory = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  workingDirectory?: string | null;
   /**
    * station#3213: the serving Station's own record of this chat, correlated
    * once in `useChatDockViewModel`. `null` when the dock is showing a chat the
@@ -86,6 +87,7 @@ interface ChatDockContentAreaProps {
 
 function ChatDockContentAreaImpl({
   activeSession,
+  workingDirectory,
   activeOrchestrationSession,
   activeOrchestrationSessionRead,
   onRetryOrchestrationSessions,
@@ -205,6 +207,7 @@ function ChatDockContentAreaImpl({
         {activeSession ? (
           <ChatDockBody
             activeSession={activeSession}
+            workingDirectory={workingDirectory}
             activeOrchestrationSession={activeOrchestrationSession}
             activeOrchestrationSessionRead={activeOrchestrationSessionRead}
             onRetryOrchestrationSessions={onRetryOrchestrationSessions}

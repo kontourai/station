@@ -57,6 +57,25 @@ function argsText(): string | null | undefined {
 }
 
 describe('ToolCallDisplay result rendering (station#3507)', () => {
+  test('keeps actual tool identity and status visible beside bounded stated purpose', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'call-purpose',
+          toolName: 'delete_file',
+          purpose: 'Remove the obsolete generated file',
+          state: 'error',
+        }}
+      />,
+    );
+    expect(screen.getByText(/delete/i)).toBeTruthy();
+    expect(
+      screen.getByText('Why: Remove the obsolete generated file'),
+    ).toBeTruthy();
+    expect(screen.getByText('Failed')).toBeTruthy();
+  });
+
   test('live path: an object result renders as pretty-printed JSON', () => {
     const structuredResult = [{ type: 'text', text: 'total 24' }];
     render(

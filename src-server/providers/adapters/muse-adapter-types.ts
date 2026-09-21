@@ -140,10 +140,29 @@ export interface MuseActiveTurn {
   stdoutOverflowed: boolean;
   terminationPromise?: Promise<boolean>;
   /**
-   * Per-turn deadline. Cleared only when the slot is freed, so a child that
-   * emits `run_terminal` and then wedges is still killed and reaped.
+   * #2269: two per-turn deadlines, both cleared only when the slot is freed,
+   * so a child that emits `run_terminal` and then wedges is still killed
+   * and reaped.
+   *
+   * - `totalTimeoutHandle`: absolute budget from turn start; armed once,
+   *   never rescheduled by activity or approval.
+   * - `idleTimeoutHandle`: full silence window with no verified protocol
+   *   activity; rescheduled by `noteVerifiedActivity` alone.
    */
-  timeoutHandle?: ReturnType<typeof setTimeout>;
+  totalTimeoutHandle?: ReturnType<typeof setTimeout>;
+  idleTimeoutHandle?: ReturnType<typeof setTimeout>;
+  /** Resolved idle window for this turn (server-owned config). */
+  idleLimitMs: number;
+  /** Resolved absolute budget for this turn (server-owned config). */
+  totalLimitMs: number;
+  /** Wall-clock of the last verified protocol activity (turn start initially). */
+  lastProgressAt: number;
+  /**
+   * Tool-result ids already counted as liveness, oldest-first, bounded by
+   * `MUSE_SEEN_TOOL_CALL_IDS_MAX`. A replayed receipt is still published
+   * (the transcript is a fact) but never reschedules idle.
+   */
+  seenToolCallIds: string[];
 }
 
 export interface MuseSessionRecord {

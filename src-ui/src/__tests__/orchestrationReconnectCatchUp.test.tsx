@@ -9,9 +9,9 @@
  * real thing: the real `activeChatsStore`, the real live-event handlers that
  * build the pre-drop streaming shell, the real `applyOrchestrationSnapshot`,
  * the real `useDerivedSessions` derivation the dock reads through, and the
- * real `useActiveChatTranscript` projection. Only the SDK's window fetch (the
- * server) and `rehydrateChatSession` (a /messages read this path never
- * performs for a Station-owned thread) are stubbed.
+ * real `useActiveChatTranscript` projection. Only the SDK transport/window
+ * fetch (the server) and `rehydrateChatSession` (a /messages read this path
+ * never performs for a Station-owned thread) are stubbed.
  */
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
@@ -20,6 +20,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const fetchCapability = vi.fn();
 const fetchWindow = vi.fn();
 const fetchLegacyWindow = vi.fn();
+const streamTransport = vi.hoisted(() => ({
+  onMessage: undefined as
+    | ((raw: { event: string; data: string; id?: string }) => void)
+    | undefined,
+  onError: undefined as ((error: unknown) => void) | undefined,
+  onTerminal: undefined as (() => void) | undefined,
+  close: vi.fn(),
+}));
 const fetchCheckpoints = vi.fn(
   async (..._args: unknown[]) =>
     new Response(JSON.stringify({ success: true, data: [] }), {
@@ -45,6 +53,19 @@ const fetchCheckpoints = vi.fn(
  * screen — against the path production actually takes.
  */
 vi.mock('@kontourai/station-sdk', async () => ({
+  fetchSSE: (_url: string, options: Record<string, unknown>) => {
+    streamTransport.onMessage =
+      options.onMessage as typeof streamTransport.onMessage;
+    streamTransport.onError = options.onError as typeof streamTransport.onError;
+    streamTransport.onTerminal =
+      options.onTerminal as typeof streamTransport.onTerminal;
+    return {
+      close: streamTransport.close,
+      signal: new AbortController().signal,
+      completed: Promise.resolve(),
+      retry: vi.fn(),
+    };
+  },
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   claimSessionEventWindowCapabilityRecovery: () => false,
@@ -78,13 +99,17 @@ vi.mock('../hooks/orchestration/rehydrateChatSession', () => ({
 }));
 
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { settleSemanticDeliveryBuffer } from '../hooks/orchestration/eventHandlers';
 import { applyOrchestrationSnapshot } from '../hooks/orchestration/snapshotHandlers';
 import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const API = 'http://station.test';
+const BUFFERED_RECONNECT_API = 'http://station-buffered-reconnect.test';
 const THREAD = 'thread-1';
 const TURN = 'open-turn';
 
@@ -165,12 +190,124 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
   beforeEach(() => {
     fetchCapability.mockReset().mockResolvedValue(true);
     fetchWindow.mockReset();
+    streamTransport.onMessage = undefined;
+    streamTransport.onError = undefined;
+    streamTransport.onTerminal = undefined;
+    streamTransport.close.mockClear();
     clearChats();
   });
 
   afterEach(() => {
+    streamTransport.onTerminal?.();
     cleanup();
     clearChats();
+    deviceSettingsStore.reset('featureSettings');
+  });
+
+  test('a held delta reconciles through the reconnect snapshot/history exactly once', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 4,
+      hasMore: false,
+      events: [
+        event(2, 'turn.started', { turnId: TURN, prompt: 'Reconnect' }),
+        event(3, 'content.text-delta', {
+          turnId: TURN,
+          itemId: 'text',
+          delta: 'Delivered once.',
+        }),
+      ],
+    });
+
+    const featureSettings = deviceSettingsStore.get('featureSettings');
+    deviceSettingsStore.set('featureSettings', {
+      ...featureSettings,
+      smoothReveal: false,
+      bufferedDelivery: true,
+    });
+    activeChatsStore.initChat(THREAD, {
+      agentSlug: 'agent-one',
+      agentName: 'Agent One',
+      title: 'Session',
+    });
+    ensureOrchestrationEventStream(BUFFERED_RECONNECT_API);
+    const send = streamTransport.onMessage!;
+    const snapshot = JSON.stringify({
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: THREAD,
+          status: 'running',
+          hasActiveTurn: true,
+        },
+      ],
+    });
+    send({ event: 'orchestration:snapshot', data: snapshot, id: '1' });
+    const { result } = renderHook(() => useDockTranscript());
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+
+    send({
+      event: 'orchestration:event',
+      id: '2',
+      data: JSON.stringify({
+        event: {
+          method: 'session.started',
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: '2026-08-19T00:00:02.000Z',
+        },
+      }),
+    });
+    await vi.dynamicImportSettled();
+    send({
+      event: 'orchestration:event',
+      id: '3',
+      data: JSON.stringify({
+        event: {
+          method: 'content.text-delta',
+          provider: 'claude',
+          threadId: THREAD,
+          turnId: TURN,
+          itemId: 'text',
+          delta: 'Delivered once.',
+          createdAt: '2026-08-19T00:00:03.000Z',
+        },
+      }),
+    });
+    expect(
+      activeChatsStore.getSnapshot()[THREAD]?.streamingMessage,
+    ).toBeUndefined();
+
+    await act(async () => {
+      streamTransport.onError?.(new Error('transient disconnect'));
+      send({ event: 'orchestration:snapshot', data: snapshot, id: '4' });
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        result.current.messages.filter(
+          (message) => message.content === 'Delivered once.',
+        ),
+      ).toHaveLength(1),
+    );
+
+    // The reconnect snapshot synchronously drained the presentation buffer
+    // before replacing the local shell. A second drain is therefore inert.
+    settleSemanticDeliveryBuffer(BUFFERED_RECONNECT_API);
+    expect(
+      activeChatsStore.getSnapshot()[THREAD]?.streamingMessage,
+    ).toBeUndefined();
+    expect(
+      result.current.messages.filter(
+        (message) => message.content === 'Delivered once.',
+      ),
+    ).toHaveLength(1);
   });
 
   test('a turn still open at reconnect shows the text that streamed during the gap', async () => {

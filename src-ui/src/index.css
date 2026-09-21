@@ -4549,6 +4549,15 @@ button.tool-call__line:hover {
   white-space: nowrap;
 }
 
+.tool-call__purpose {
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tool-call__chevron {
   flex-shrink: 0;
   opacity: 0.5;
@@ -4983,11 +4992,21 @@ button.tool-call__line:hover {
 .chat-input__textarea-wrapper {
   position: relative;
   flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
   min-width: 0;
   display: flex;
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.chat-input__textarea-wrapper > textarea {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 
 /* archive#729: the mic sits inside the controls row, grouped with Send at the
@@ -5114,7 +5133,7 @@ button.tool-call__line:hover {
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--text-lg);
+  font-size: var(--composer-font-size, var(--text-lg));
   resize: none;
   min-height: 48px;
   max-height: 160px;
@@ -6255,6 +6274,31 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
        shared geometry token honest for dock offsets and fixed overlays. */
     --app-toolbar-height: 52px;
+  }
+
+  /* Mobile Safari zooms the whole page when an editable control below 16px
+     receives focus. Keep browser/user pinch zoom enabled and prevent only
+     that focus-triggered jump. Attribute/not selectors intentionally outrank
+     compact component classes without an !important override. */
+  :is(
+    input:not([type]),
+    input[type="text"],
+    input[type="search"],
+    input[type="email"],
+    input[type="password"],
+    input[type="url"],
+    input[type="tel"],
+    input[type="number"],
+    textarea:not([readonly]),
+    select:not([multiple])
+  ) {
+    font-size: 16px;
+  }
+
+  /* Chat text size is user-configurable from 10–24px. Preserve larger choices
+     while applying the iOS focus floor only on phone-sized/short touch views. */
+  .chat-input textarea {
+    font-size: max(16px, var(--composer-font-size, var(--text-lg)));
   }
 
   /* The collapsed chat dock renders as a bottom bar on mobile. At the desktop
@@ -9442,7 +9486,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    its saved Half/Full preference. The keyboard may leave only ~150 CSS pixels:
    preserve the header and a single-line composer instead of clipping Send. */
 @media (max-height: 540px) and (pointer: coarse) {
-  .app__main > .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
+  .app__main .chat-dock--bottom:not(.is-collapsed):not(.is-dragging) {
     top: calc(var(--chat-visual-viewport-top, 0px) + var(--safe-top));
     bottom: auto;
     height: calc(
@@ -9459,49 +9503,112 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   /* This short-window chat fills the work area just like a maximized dock.
      Passive notices yield to its input; explicit system blockers retain
      BannerHost's higher layer and their repair controls. */
-  .app__main:has(> .chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
+  .app__main:has(.chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
   > .banner-host:not(.banner-host--critical-chrome) {
     z-index: var(--layer-notice);
   }
 
-  .app__main > .chat-dock--bottom .chat-input {
+  .app__main .chat-dock--bottom .chat-input {
+    position: relative;
+    z-index: 1;
     flex-shrink: 0;
+    background: var(--bg-secondary);
     padding-bottom: max(
       0px,
       calc(var(--safe-bottom) - var(--chat-visual-viewport-bottom, 0px))
     );
   }
 
-  .app__main > .chat-dock--bottom .chat-input__capsule {
+  .app__main .chat-dock--bottom .chat-input__capsule {
     flex-direction: row;
     align-items: flex-end;
   }
 
-  .app__main > .chat-dock--bottom .chat-input textarea {
+  .app__main .chat-dock--bottom .chat-input textarea {
     max-height: max(44px, calc(1lh + 20px));
     padding: 10px 12px;
   }
 
-  .app__main > .chat-dock--bottom .chat-messages {
+  .app__main .chat-dock--bottom .chat-messages {
     padding-block: 0;
   }
 
   /* A passive connection label does not need a 44px interaction row. Keep
      the message visible while preserving the composer's available height;
      a connection-repair button retains the standard touch target. */
-  .app__main > .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+  .app__main .chat-dock--bottom .chat-stream-status:not(:has(button)) {
     min-height: 0;
     padding: 0 8px;
     line-height: 1.2;
+    pointer-events: none;
   }
 
   /* Editing gets the limited height. Blurring the textarea restores the
      model/agent selectors; input and Send keep their full touch targets. */
   .app__main
-    > .chat-dock--bottom
+    .chat-dock--bottom
     .chat-input:has(textarea:focus)
     > .chat-input__meta {
     display: none;
+  }
+}
+
+/* A short browser viewport can retain a fine primary pointer in automation or
+   desktop responsive mode. Keep the session rail above the capsule and make a
+   passive reconnect label observational, so neither can steal the model and
+   approval controls' hit area. */
+@media (max-width: 600px) and (max-height: 600px) {
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"]) {
+    flex: 0 0 auto;
+    min-height: 0;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > h3,
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > p:last-child {
+    display: none;
+  }
+
+  .chat-messages--empty
+    .empty-state:not([data-testid="chat-empty-state-unconfigured"])
+    > h3
+    + p {
+    max-width: 100%;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--text-sm);
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app__main .chat-dock--bottom .chat-input {
+    position: relative;
+    z-index: 3;
+    flex: 0 0 auto;
+    min-height: max-content;
+    background: var(--bg-secondary);
+  }
+
+  .app__main .chat-dock--bottom .chat-input__meta {
+    position: relative;
+    z-index: 2;
+    background: var(--bg-secondary);
+  }
+
+  .app__main .chat-dock--bottom .chat-input textarea {
+    flex: 0 0 auto;
+    height: 44px;
+    max-height: 44px;
+  }
+
+  .app__main .chat-dock--bottom .chat-stream-status:not(:has(button)) {
+    pointer-events: none;
   }
 }
 

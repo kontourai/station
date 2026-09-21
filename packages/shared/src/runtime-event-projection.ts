@@ -525,6 +525,7 @@ export function projectRuntimeEventsToMessages(
         if (existing) {
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
+          if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
           break;
         }
@@ -533,6 +534,7 @@ export function projectRuntimeEventsToMessages(
           toolCallId: ev.toolCallId,
           toolName: ev.toolName,
           args: ev.arguments,
+          purpose: ev.purpose,
           state: 'call',
         };
         toolsByCallId.set(ev.toolCallId, part);
@@ -640,6 +642,14 @@ export function projectRuntimeEventsToMessages(
           if (text !== undefined) existing.result = text;
           else if (existing === superseded) delete existing.result;
           existing.isError = isError;
+          if (ev.purpose !== undefined) {
+            existing.purpose = ev.purpose;
+            if (existing.args && typeof existing.args === 'object') {
+              const { __station_tool_purpose: _purpose, ...clean } =
+                existing.args;
+              existing.args = clean;
+            }
+          }
           // Overrides any earlier call-time approvalStatus (e.g. an
           // optimistic 'auto-approved') — Station's own policy can deny a
           // call the client believed pre-approved, and this is the
@@ -697,6 +707,7 @@ export function projectRuntimeEventsToMessages(
             toolCallId: ev.toolCallId,
             sourceEventId: ev.eventId,
             toolName: ev.toolName,
+            purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
             ...(ev.outputReceipt?.truncated

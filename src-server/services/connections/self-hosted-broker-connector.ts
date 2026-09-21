@@ -13,7 +13,10 @@ type Answer = {
 export class SelfHostedBrokerConnector {
   #revision = 0;
   #state: 'new' | 'registered' | 'withdrawn' = 'new';
-  #busy = false;
+  // CONTROL lane serializes register+renew (CAS-safe); ADMISSION lane bounds
+  // one poll at a time so a 32-answer poll never starves the 30s presence.
+  #controlBusy = false;
+  #admissionBusy = false;
   readonly #lifetime = new AbortController();
   readonly #scope: Readonly<SelfHostedBrokerScopeV1>;
   constructor(
@@ -43,21 +46,34 @@ export class SelfHostedBrokerConnector {
           : 'broker_connector_not_registered',
       );
   }
-  async #run<T>(
+  async #runControl<T>(
     caller: AbortSignal,
     operation: (signal: AbortSignal) => Promise<T>,
   ) {
     this.#notWithdrawn();
-    if (this.#busy) throw new Error('broker_connector_busy');
-    this.#busy = true;
+    if (this.#controlBusy) throw new Error('broker_connector_busy');
+    this.#controlBusy = true;
     try {
       return await operation(AbortSignal.any([caller, this.#lifetime.signal]));
     } finally {
-      this.#busy = false;
+      this.#controlBusy = false;
+    }
+  }
+  async #runAdmission<T>(
+    caller: AbortSignal,
+    operation: (signal: AbortSignal) => Promise<T>,
+  ) {
+    this.#notWithdrawn();
+    if (this.#admissionBusy) throw new Error('broker_connector_busy');
+    this.#admissionBusy = true;
+    try {
+      return await operation(AbortSignal.any([caller, this.#lifetime.signal]));
+    } finally {
+      this.#admissionBusy = false;
     }
   }
   async register(signal: AbortSignal) {
-    return this.#run(signal, async (current) => {
+    return this.#runControl(signal, async (current) => {
       current.throwIfAborted();
       const result = await this.client.register(current);
       current.throwIfAborted();
@@ -67,7 +83,7 @@ export class SelfHostedBrokerConnector {
     });
   }
   async renew(signal: AbortSignal) {
-    return this.#run(signal, async (current) => {
+    return this.#runControl(signal, async (current) => {
       this.#active();
       const result = await this.client.renew(this.#revision, current);
       current.throwIfAborted();
@@ -92,7 +108,7 @@ export class SelfHostedBrokerConnector {
     }
   }
   async poll(signal: AbortSignal) {
-    return this.#run(signal, async (currentSignal) => {
+    return this.#runAdmission(signal, async (currentSignal) => {
       this.#active();
       const descriptor = this.trust.current();
       if (
@@ -138,7 +154,31 @@ export class SelfHostedBrokerConnector {
     });
   }
   async withdraw(signal: AbortSignal) {
-    this.#active();
+    // Idempotent compensating withdrawal: allowed from new (lost register
+    // reply) or registered; retires local admission immediately so late
+    // results cannot revive state. Never queues behind lane flags.
+    if (this.#state === 'withdrawn') {
+      signal.throwIfAborted();
+      await this.client.withdraw(signal);
+      signal.throwIfAborted();
+      return;
+    }
+    if (this.#state !== 'registered') {
+      // Compensating withdrawal after a lost register reply: still attempt
+      // the remote withdraw, then retire locally even if it fails (the
+      // caller preserves the cleanup failure).
+      this.#state = 'withdrawn';
+      this.#lifetime.abort(new Error('broker_connector_withdrawn'));
+      signal.throwIfAborted();
+      try {
+        await this.client.withdraw(signal);
+        signal.throwIfAborted();
+      } catch (error) {
+        signal.throwIfAborted();
+        throw error;
+      }
+      return;
+    }
     this.#state = 'withdrawn';
     this.#lifetime.abort(new Error('broker_connector_withdrawn'));
     signal.throwIfAborted();

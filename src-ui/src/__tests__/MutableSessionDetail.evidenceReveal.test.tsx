@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -169,5 +169,39 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     expect(document.activeElement).not.toBe(
       screen.getByTestId('session-evidence-region'),
     );
+  });
+});
+
+describe('MutableSessionDetail error hand-off', () => {
+  test('appends a redacted reviewable draft without sending', () => {
+    Object.assign(detailState, {
+      input: 'Keep my draft',
+      hideGenericCompose: false,
+      isStreaming: false,
+      sendTurn: {
+        isPending: false,
+        error: Object.assign(new Error('failed'), {
+          context: { authorization: 'Bearer secret-value' },
+        }),
+        mutate: vi.fn(),
+      },
+    });
+    detailState.setInput.mockClear();
+    renderDetail();
+    fireEvent.click(screen.getByRole('button', { name: 'Ask agent to help' }));
+    const update = detailState.setInput.mock.calls[0][0];
+    const next = update('Keep my draft');
+    expect(next).toContain('Keep my draft\n\nHelp me diagnose');
+    expect(next).not.toContain('secret-value');
+    expect(detailState.sendTurn.mutate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Send input to session')).toBeTruthy();
+  });
+
+  test('does not offer hand-off when the composer is hidden', () => {
+    Object.assign(detailState, { hideGenericCompose: true });
+    renderDetail();
+    expect(
+      screen.queryByRole('button', { name: 'Ask agent to help' }),
+    ).toBeNull();
   });
 });

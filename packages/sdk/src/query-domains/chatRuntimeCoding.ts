@@ -91,6 +91,42 @@ export async function fetchCodingFiles(
   return result.data ?? [];
 }
 
+export interface CodingFileMentionCandidates {
+  entries: CodingFileEntry[];
+  partial: boolean;
+}
+
+const FILE_MENTION_LOOKUP_LIMIT = 200;
+
+/** Bounded, request-fresh metadata lookup for composer file mentions. */
+export async function fetchCodingFileMentionCandidates(
+  workingDir: string,
+  query: string,
+  requestScope: ApiRequestScope & { isCurrent: () => boolean },
+  signal?: AbortSignal,
+): Promise<CodingFileMentionCandidates> {
+  const resolvedApiBase = await resolveApiBase(requestScope.apiBase);
+  const response = await getJson(
+    `${resolvedApiBase}/api/coding/files/search?path=${encodeURIComponent(workingDir)}&query=${encodeURIComponent(query)}&maxResults=${FILE_MENTION_LOOKUP_LIMIT + 1}`,
+    { signal, requestScope },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: CodingFileEntry[];
+    scanTruncated?: boolean;
+    error?: string;
+  };
+  if (!result.success)
+    throw new Error(apiErrorMessage(result, 'Failed to load file mentions'));
+  const source = result.data ?? [];
+  return {
+    entries: source.slice(0, FILE_MENTION_LOOKUP_LIMIT),
+    partial:
+      result.scanTruncated === true ||
+      source.length > FILE_MENTION_LOOKUP_LIMIT,
+  };
+}
+
 export async function fetchCodingDiff(
   workingDir: string,
   apiBase?: string,
@@ -219,6 +255,30 @@ export function useCodingFilesQuery(
   );
 }
 
+export function useCodingFileMentionCandidatesQuery(
+  workingDir: string | undefined,
+  query: string,
+  requestScope?: ApiRequestScope & { isCurrent: () => boolean },
+) {
+  return useApiQuery(
+    [
+      'coding-file-mentions',
+      requestScope?.apiBase ?? '',
+      requestScope?.authorityKey ?? '',
+      workingDir ?? '',
+      query,
+    ],
+    (signal) =>
+      fetchCodingFileMentionCandidates(
+        workingDir!,
+        query,
+        requestScope!,
+        signal,
+      ),
+    { enabled: !!workingDir && !!requestScope, staleTime: 0, gcTime: 0 },
+  );
+}
+
 export function useCodingDiffQuery(
   workingDir: string | undefined,
   apiBase?: string,
@@ -298,4 +358,8 @@ export function useDeleteCodingFileMutation(
 }
 
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import {
+  type ApiRequestScope,
+  authenticatedFetch,
+  getJson,
+} from '../client/http';

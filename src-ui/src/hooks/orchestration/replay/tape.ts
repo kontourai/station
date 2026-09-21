@@ -28,6 +28,10 @@ export interface SessionTape {
   initialChat?: Partial<ChatUIState>;
   initialHistory?: ReplayHistoryState;
   coverage?: 'server-events' | 'client-capture';
+  /** Device presentation active at capture start; replay still steps canonical events. */
+  presentation?: {
+    answerDelivery: 'token' | 'smooth' | 'buffered';
+  };
   stoppedReason?: string;
   redacted?: boolean;
 }

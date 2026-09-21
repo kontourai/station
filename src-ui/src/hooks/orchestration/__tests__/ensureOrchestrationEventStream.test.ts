@@ -10,6 +10,7 @@ const handleOrchestrationEvent = vi.fn();
 vi.mock('../eventHandlers', () => ({
   handleOrchestrationEvent: (...args: unknown[]) =>
     handleOrchestrationEvent(...args),
+  settleSemanticDeliveryBuffer: vi.fn(),
 }));
 
 const mocks = vi.hoisted(() => ({

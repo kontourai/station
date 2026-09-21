@@ -577,13 +577,26 @@ export function useComposerAttachments(options: {
   }, [options.stages, replaceStages, owned, currentStages]);
 
   const hasStages = options.stages.length > 0;
+  const hasRetryableStage = options.stages.some(
+    (stage) => stage.state === 'retryable',
+  );
+  const hasUnavailableStage = options.stages.some(
+    (stage) => stage.state === 'failed' || stage.state === 'cancelled',
+  );
+  const hasInFlightStage = options.stages.some(
+    (stage) => stage.state === 'queued' || stage.state === 'uploading',
+  );
   const sendBlockedReason = !hasStages
     ? undefined
     : options.stages.some((stage) => stage.state === 'accepted')
       ? 'An attachment was accepted with its prior message. Wait for that turn before sending again.'
-      : options.stages.some((stage) => stage.state !== 'complete')
-        ? 'Wait until every selected file finishes staging before sending.'
-        : undefined;
+      : hasRetryableStage
+        ? 'Retry or remove every attachment marked for retry before sending.'
+        : hasUnavailableStage
+          ? 'Choose the file again or remove it before sending.'
+          : hasInFlightStage
+            ? 'Wait until every selected file finishes staging before sending.'
+            : undefined;
 
   return {
     error,

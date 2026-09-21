@@ -24,6 +24,9 @@ interface TranscriptVirtualizerProps<Row extends VirtualTranscriptRow> {
   readonly anchorVersion?: number;
   /** Stable transcript-row key requested by a route or palette result. */
   readonly revealRowId?: string;
+  /** Owner-confirmed reader row and viewport offset to restore. */
+  readonly restoreAnchor?: { key: string; offset: number };
+  readonly restoreAnchorVersion?: number;
 }
 
 const ESTIMATED_ROW_HEIGHT: Record<string, number> = {
@@ -44,6 +47,8 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   followTail = false,
   anchorVersion = 0,
   revealRowId,
+  restoreAnchor,
+  restoreAnchorVersion,
 }: TranscriptVirtualizerProps<Row>) {
   const [scrollReady, setScrollReady] = useState(false);
   const spacerRef = useRef<HTMLDivElement>(null);
@@ -166,6 +171,77 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     virtualizerRef.current.scrollToIndex(index, { align: 'center' });
     revealedRowRef.current = revealRowId;
   }, [revealRowId, rows]);
+
+  const restoreAnchorKey = restoreAnchor?.key;
+  const restoreAnchorOffset = restoreAnchor?.offset;
+  const restoreAnchorIndex = restoreAnchorKey
+    ? rows.findIndex((row) => row.id === restoreAnchorKey)
+    : -1;
+  useLayoutEffect(() => {
+    void restoreAnchorVersion;
+    if (!restoreAnchorKey || restoreAnchorOffset === undefined) return;
+    const index = restoreAnchorIndex;
+    const element = scrollElement.current;
+    if (index < 0 || !element) return;
+    virtualAnchorRef.current = {
+      id: restoreAnchorKey,
+      index,
+      offset: restoreAnchorOffset,
+    };
+    let correctionFrame: number | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    let mutationObserver: MutationObserver | undefined;
+    const reconcile = () => {
+      const node = [
+        ...element.querySelectorAll<HTMLElement>('[data-transcript-row]'),
+      ].find(
+        (candidate) => candidate.dataset.transcriptRow === restoreAnchorKey,
+      );
+      if (!node) {
+        virtualizerRef.current.scrollToIndex(index, { align: 'start' });
+        return;
+      }
+      const delta =
+        node.getBoundingClientRect().top -
+        element.getBoundingClientRect().top -
+        restoreAnchorOffset;
+      if (Math.abs(delta) <= 0.5) return;
+      const offset = element.scrollTop + delta;
+      virtualizerRef.current.scrollToOffset(offset);
+      element.scrollTop = offset;
+    };
+    const schedule = () => {
+      if (correctionFrame !== undefined) cancelAnimationFrame(correctionFrame);
+      correctionFrame = requestAnimationFrame(reconcile);
+    };
+    const observeRows = () => {
+      if (!resizeObserver) return;
+      for (const node of element.querySelectorAll<HTMLElement>(
+        '[data-transcript-row]',
+      ))
+        resizeObserver.observe(node);
+    };
+    resizeObserver = new ResizeObserver(schedule);
+    mutationObserver = new MutationObserver(() => {
+      observeRows();
+      schedule();
+    });
+    mutationObserver.observe(element, { childList: true, subtree: true });
+    observeRows();
+    virtualizerRef.current.scrollToIndex(index, { align: 'start' });
+    schedule();
+    return () => {
+      if (correctionFrame !== undefined) cancelAnimationFrame(correctionFrame);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [
+    restoreAnchorIndex,
+    restoreAnchorKey,
+    restoreAnchorOffset,
+    restoreAnchorVersion,
+    scrollElement,
+  ]);
 
   // Capture only on the owner-confirmed reader gesture. Measurement and
   // programmatic corrections also dispatch native scroll events; listening

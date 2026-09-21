@@ -25,6 +25,8 @@ export interface FeatureSettings {
   mobilePairingEnabled: boolean;
   /** Reveal streamed assistant text at a steady paint cadence on this device. */
   smoothReveal?: boolean;
+  /** Hold assistant deltas on this device until the next semantic boundary. */
+  bufferedDelivery?: boolean;
   /** Per-category foreground notification sounds for this device. */
   notificationSounds: NotificationSoundPreferences;
 }

@@ -82,6 +82,7 @@ export type ChatContentPart = {
   sourceEventId?: string;
   // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
   toolName?: string;
+  purpose?: string;
   server?: string;
   originalName?: string;
   args?: any;
@@ -454,6 +455,8 @@ export type ChatUIState = {
 export type ActiveChatsMap = Record<string, ChatUIState>;
 
 export type ChatReplayState = {
+  /** User-facing history reader; absent for developer replay debugging. */
+  mode?: 'timeline';
   elapsedMs?: number;
   connectionPhase?:
     | 'unknown'

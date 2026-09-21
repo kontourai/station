@@ -5,6 +5,7 @@ import type {
   SessionTurnBoundaryClaim,
 } from './session-turn-boundary.js';
 import { createInMemorySessionTurnBoundaryAuthority } from './session-turn-boundary.js';
+import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 
 type ThreadState = {
   activeTurnIds: Set<string>;
@@ -44,9 +45,25 @@ export class SessionExecutionCoordinator {
 
   constructor(
     private readonly boundaries: SessionTurnBoundaryAuthority = createInMemorySessionTurnBoundaryAuthority(),
+    private readonly workspaces = new WorkspaceExecutionBarrier(),
   ) {}
 
   async runTurnStart<T>(
+    threadId: string,
+    operation: (claim: SessionTurnBoundaryClaim) => Promise<T>,
+    workspaceKey?: string,
+  ): Promise<T> {
+    if (workspaceKey)
+      return this.workspaces.runTurnStart(
+        workspaceKey,
+        threadId,
+        () => this.runThreadTurnStart(threadId, operation),
+        () => this.hasActiveTurn(threadId),
+      );
+    return this.runThreadTurnStart(threadId, operation);
+  }
+
+  private async runThreadTurnStart<T>(
     threadId: string,
     operation: (claim: SessionTurnBoundaryClaim) => Promise<T>,
   ): Promise<T> {
@@ -80,6 +97,13 @@ export class SessionExecutionCoordinator {
       owned?.claim.notInvoked();
       this.releaseTurnStart(threadId);
     }
+  }
+
+  runWorkspaceExclusive<T>(
+    workspaceKey: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.workspaces.runExclusive(workspaceKey, operation);
   }
 
   async runLifecycleTransition<T>(
@@ -153,6 +177,7 @@ export class SessionExecutionCoordinator {
       return;
     }
     const state = this.state(event.threadId);
+    this.workspaces.releaseThread(event.threadId);
     if ('turnId' in event && typeof event.turnId === 'string') {
       state.activeTurnIds.delete(event.turnId);
       if (state.turnStartActive) {

@@ -77,6 +77,65 @@ function child(directory: string, application = false) {
 }
 
 describe('production Pion application adapter ownership', () => {
+  test('startup cancellation preserves the caller reason after confirmed cleanup', async () => {
+    const caller = new AbortController();
+    const reason = new Error('caller retired admission');
+    let directory = '';
+    const released = vi.fn();
+    const dependencies = {
+      ...base,
+      createTemp: async (label: string) => {
+        directory = await createStationTempDir(label);
+        retained.add(directory);
+        return directory;
+      },
+      spawn: ((_command: string, _args: string[], options: { cwd: string }) => {
+        const proc = child(options.cwd);
+        queueMicrotask(() => caller.abort(reason));
+        return { proc, release: released };
+      }) as typeof spawnOwnedChild,
+      terminate: vi.fn(async () => {}),
+    };
+    await expect(
+      startPionApplicationAdapter(
+        input({ signal: caller.signal }),
+        dependencies,
+      ),
+    ).rejects.toBe(reason);
+    expect(released).toHaveBeenCalledOnce();
+    expect(existsSync(directory)).toBe(false);
+  });
+
+  test('startup cancellation retains an actual cleanup failure', async () => {
+    const caller = new AbortController();
+    const reason = new Error('caller retired admission');
+    const cleanup = new Error('termination unconfirmed');
+    const released = vi.fn();
+    const dependencies = {
+      ...base,
+      createTemp: async (label: string) => {
+        const directory = await createStationTempDir(label);
+        retained.add(directory);
+        return directory;
+      },
+      spawn: ((_command: string, _args: string[], options: { cwd: string }) => {
+        const proc = child(options.cwd);
+        queueMicrotask(() => caller.abort(reason));
+        return { proc, release: released };
+      }) as typeof spawnOwnedChild,
+      terminate: vi.fn(async () => {
+        throw cleanup;
+      }),
+    };
+    await expect(
+      startPionApplicationAdapter(
+        input({ signal: caller.signal }),
+        dependencies,
+      ),
+    ).rejects.toMatchObject({ errors: [reason, cleanup] });
+    expect(released).not.toHaveBeenCalled();
+  });
+
   test('child environment omits Station, account, provider and model secrets', () => {
     expect(
       pionProcessEnvironment({

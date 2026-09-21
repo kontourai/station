@@ -1,3 +1,6 @@
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFile, mkdir } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
@@ -77,6 +80,400 @@ async function openComposer(
   });
   return textarea;
 }
+
+test('ChatDock sends scoped file and conversation references while preserving the saved quote across reload', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockChatShell(page);
+  await installMockOrchestrationSse(page);
+  const threadId = 'thread-reference-dispatch';
+  const storeId = 'station:reference-dispatch';
+  const quote = {
+    version: 1,
+    sessionId: 'source-session',
+    turnId: 'source-turn',
+    messageId: 'source-message',
+    revision: 'a'.repeat(64),
+    excerpt: 'Quoted context stays separate.',
+  };
+  await page.route('**/api/coding/files/search**', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [{ name: 'alpha.ts', path: 'src/alpha.ts', type: 'file' }],
+        scanTruncated: false,
+      }),
+    ),
+  );
+  await page.route(/\/api\/conversations(?:\?.*)?$/, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: {
+          items: [
+            {
+              id: threadId,
+              source: 'runtime',
+              agentSlug: 'station',
+              provider: 'bedrock',
+              model: 'model-selected',
+              projectSlug: 'default',
+              title: 'Reference dispatch',
+              createdAt: '2026-09-20T00:02:00.000Z',
+              updatedAt: '2026-09-20T00:03:00.000Z',
+              messageCount: 0,
+              mutable: true,
+              answerability: { answerable: true },
+              referenceEligibility: {
+                eligible: true,
+                visibility: 'personal-private',
+              },
+            },
+            {
+              id: 'earlier-conversation',
+              source: 'runtime',
+              agentSlug: 'station',
+              projectSlug: 'other-project',
+              title: 'Earlier work',
+              createdAt: '2026-09-20T00:00:00.000Z',
+              updatedAt: '2026-09-20T00:01:00.000Z',
+              messageCount: 2,
+              mutable: false,
+              answerability: { answerable: true },
+              referenceEligibility: {
+                eligible: true,
+                visibility: 'personal-private',
+              },
+            },
+          ],
+          hasMore: false,
+        },
+      }),
+    ),
+  );
+  // Persisted tabs are reconciled against the owning agent's durable catalog
+  // during reload. Keep that catalog consistent with the global inventory.
+  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            id: threadId,
+            title: 'Reference dispatch',
+            agentSlug: 'station',
+            updatedAt: '2026-09-20T00:03:00.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  const quoteSourceText = `**${quote.excerpt}**`;
+  const quoteTurns = buildLongSessionTurns({
+    threadId,
+    turnCount: 1,
+    replyText: () => quoteSourceText,
+  });
+  await mockRuntimeConversation(page, {
+    id: threadId,
+    agentSlug: 'station',
+    title: 'Reference dispatch',
+    provider: 'bedrock',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => quoteTurns,
+  });
+  let quoteMessageId = '';
+  await page.route(
+    `**/api/orchestration/sessions/${threadId}/turns/turn-0/quote-source`,
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            version: 1,
+            sessionId: threadId,
+            turnId: 'turn-0',
+            messageId: quoteMessageId,
+            text: quoteSourceText,
+            revision: quote.revision,
+          },
+        }),
+      ),
+  );
+  await page.route(
+    new RegExp(`/api/conversations/${threadId}(?:\\?.*)?$`),
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            id: threadId,
+            agentSlug: 'station',
+            projectSlug: 'default',
+            title: 'Reference dispatch',
+          },
+        }),
+      ),
+  );
+  await page.route(
+    `**/api/conversations/${threadId}/acknowledgement`,
+    (route) => route.fulfill(json({ success: true })),
+  );
+  await page.route(
+    new RegExp(
+      `/api/orchestration/sessions/${encodeURIComponent(storeId)}/checkpoints(?:\\?.*)?$`,
+    ),
+    (route) => route.fulfill(json({ success: true, data: [] })),
+  );
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId,
+            provider: 'bedrock',
+            model: 'model-selected',
+            cwd: '/repo/project',
+            projectSlug: 'default',
+            assignedAgentSlug: 'station',
+            status: 'ready',
+            lifecycleState: 'idle',
+            createdAt: '2026-09-20T00:02:00.000Z',
+            updatedAt: '2026-09-20T00:03:00.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 2,
+          },
+        ],
+      }),
+    ),
+  );
+  let dispatched: Record<string, unknown> | undefined;
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill(
+      json(
+        foregroundMessageReceiptEnvelope({
+          conversationId: threadId,
+          agent: 'agent:station',
+        }),
+      ),
+    );
+  });
+  await seedActiveChats(
+    page,
+    [
+      {
+        sessionId: storeId,
+        conversationId: threadId,
+        agentSlug: 'station',
+        projectSlug: 'default',
+        projectName: 'Default',
+        cwd: '/repo/project',
+        model: 'model-selected',
+        title: 'Reference dispatch',
+        provider: 'bedrock',
+        orchestrationSessionStarted: true,
+      },
+    ],
+    { preserveExisting: true },
+  );
+  await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
+  await dismissSetupLauncher(page);
+  await page.getByRole('button', { name: /^Switch task/ }).click();
+  const taskSwitcher = page.getByRole('dialog', { name: 'Switch task' });
+  await taskSwitcher
+    .getByRole('button', { name: 'Reference dispatch, default' })
+    .click();
+  const answer = page.getByText(quote.excerpt, { exact: true });
+  await expect(answer).toBeVisible();
+  const quoteSource = answer.locator(
+    'xpath=ancestor-or-self::*[@data-quote-source-message]',
+  );
+  quoteMessageId = (await quoteSource.getAttribute(
+    'data-quote-source-message',
+  ))!;
+  const answerBox = (await answer.boundingBox())!;
+  await page.mouse.move(answerBox.x + 1, answerBox.y + answerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    answerBox.x + answerBox.width - 1,
+    answerBox.y + answerBox.height / 2,
+    { steps: 8 },
+  );
+  await page.mouse.up();
+  await page.getByRole('button', { name: 'Quote in reply' }).click();
+  const composer = page.locator('textarea[placeholder*="Type a message"]');
+  const activeDraftId = await page
+    .getByRole('log', { name: 'Conversation transcript' })
+    .getAttribute('data-chat-session-id');
+  expect(activeDraftId).toBeTruthy();
+  await expect(
+    page.getByRole('region', { name: 'Quoted context' }),
+  ).toContainText(quote.excerpt);
+  await composer.fill('Review @alpha');
+  await expect(page.getByRole('option', { name: /alpha\.ts/ })).toBeVisible();
+  await page.getByRole('option', { name: /alpha\.ts/ }).click();
+  await page.getByRole('button', { name: 'Composer actions' }).click();
+  await page.getByRole('menuitem', { name: 'Reference conversation…' }).click();
+  const referenceOption = page.getByRole('option', { name: /Earlier work/ });
+  await expect(referenceOption).toBeVisible();
+  expect(
+    (await referenceOption.boundingBox())?.height ?? 0,
+  ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(
+    await page
+      .locator('.session-reference-picker__list')
+      .evaluate((element) => getComputedStyle(element).position),
+  ).toBe('static');
+  await referenceOption.dragTo(composer);
+  await expect(
+    page.getByRole('dialog', { name: 'Reference a conversation' }),
+  ).toBeHidden();
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue('Review @alpha.ts @Earlier work ');
+  await expect
+    .poll(() =>
+      page.evaluate((draftId) => {
+        const stored = JSON.parse(
+          localStorage.getItem('station:chat-drafts:v1') ?? '{}',
+        );
+        const draft = stored.sessions?.[draftId];
+        return {
+          hasFileReference:
+            typeof draft?.text === 'string' && draft.text.includes('@[m:'),
+          hasConversationReference:
+            typeof draft?.text === 'string' && draft.text.includes('@[r:'),
+          hasQuote:
+            draft?.quotes?.[0]?.excerpt === 'Quoted context stays separate.',
+        };
+      }, activeDraftId!),
+    )
+    .toEqual({
+      hasFileReference: true,
+      hasConversationReference: true,
+      hasQuote: true,
+    });
+  const preReloadIdentity = await page.evaluate(() => ({
+    url: window.location.href,
+    activeChats: JSON.parse(sessionStorage.getItem('activeChats') ?? '[]'),
+  }));
+  await page.reload();
+  await dismissSetupLauncher(page);
+  const postReloadIdentity = await page.evaluate(() => {
+    return {
+      url: window.location.href,
+      activeChats: JSON.parse(sessionStorage.getItem('activeChats') ?? '[]'),
+    };
+  });
+  expect(new URL(preReloadIdentity.url).searchParams.get('chat')).toBe(
+    threadId,
+  );
+  expect(new URL(postReloadIdentity.url).searchParams.get('chat')).toBe(
+    threadId,
+  );
+  expect(postReloadIdentity.activeChats).toEqual(preReloadIdentity.activeChats);
+  expect(
+    await page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .getAttribute('data-chat-session-id'),
+  ).toBe(activeDraftId);
+  const restoredComposer = page.locator(
+    'textarea[placeholder*="Type a message"]',
+  );
+  await expect(restoredComposer).toHaveValue('Review @alpha.ts @Earlier work ');
+  await expect(
+    page.getByRole('region', { name: 'Quoted context' }),
+  ).toContainText(quote.excerpt);
+  const evidenceRoot = join(process.cwd(), '.kontourai', 'chat-563');
+  await mkdir(evidenceRoot, { recursive: true });
+  const transcript = page.getByRole('log', {
+    name: 'Conversation transcript',
+  });
+  const renderedAnswer = transcript.getByText(quote.excerpt, { exact: true });
+  await expect(renderedAnswer).toBeVisible();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const theme of ['dark', 'light'] as const) {
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      await expect(renderedAnswer).toBeVisible();
+      expect(await contrastRatio(renderedAnswer)).toBeGreaterThanOrEqual(4.5);
+
+      const wrapper = page.getByRole('group', { name: 'Message composer' });
+      const wrapperBox = (await wrapper.boundingBox())!;
+      const textareaBox = (await restoredComposer.boundingBox())!;
+      expect(Math.abs(wrapperBox.x - textareaBox.x)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(wrapperBox.width - textareaBox.width),
+      ).toBeLessThanOrEqual(1);
+      const chips = page.getByRole('list', { name: 'Composer references' });
+      const chipsBox = (await chips.boundingBox())!;
+      expect(chipsBox.y + chipsBox.height).toBeLessThanOrEqual(textareaBox.y);
+      for (const chip of await chips.getByRole('button').all()) {
+        const chipBox = (await chip.boundingBox())!;
+        expect(chipBox.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+        expect(
+          await chip.evaluate((element) => {
+            const probe = document.createElement('span');
+            probe.style.background = 'var(--bg-tertiary)';
+            probe.style.border = '1px solid var(--border-primary)';
+            document.body.append(probe);
+            const actual = getComputedStyle(element);
+            const canonical = getComputedStyle(probe);
+            const result = {
+              backgroundIsCanonical:
+                actual.backgroundColor === canonical.backgroundColor,
+              borderIsCanonical:
+                actual.borderTopColor === canonical.borderTopColor &&
+                actual.borderTopStyle === 'solid' &&
+                actual.borderTopWidth === '1px',
+              padding: `${actual.paddingTop} ${actual.paddingRight} ${actual.paddingBottom} ${actual.paddingLeft}`,
+              borderRadius: actual.borderRadius,
+            };
+            probe.remove();
+            return result;
+          }),
+        ).toEqual({
+          backgroundIsCanonical: true,
+          borderIsCanonical: true,
+          padding: '4px 9px 4px 9px',
+          borderRadius: '999px',
+        });
+      }
+
+      const screenshotName = `conversation-reference-dispatch-${width}-${theme}.png`;
+      await page.screenshot({
+        path: testInfo.outputPath(screenshotName),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      await copyFile(
+        testInfo.outputPath(screenshotName),
+        join(evidenceRoot, screenshotName),
+      );
+    }
+  }
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(() => dispatched).toBeTruthy();
+  const input = String(dispatched?.message ?? '');
+  expect(input).toContain('@"');
+  expect(input).toContain('src/alpha.ts');
+  expect(input).toContain(
+    '[Earlier work](/activity?session=earlier-conversation)',
+  );
+  expect(input).toContain('Quoted context stays separate.');
+  expect(input.indexOf('[Earlier work]')).toBeLessThan(
+    input.indexOf('[Quoted answer]'),
+  );
+});
 
 test('virtualizes a long real transcript while preserving reader controls on mobile', async ({
   page,
@@ -964,7 +1361,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
-  expect(new URL(page.url()).searchParams.get('maximize')).toBeNull();
+  expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
   await expect(textarea).toHaveValue('return to this draft');
   // Primary project context stays directly reachable beside conversation switching.
   await expect(
@@ -1262,7 +1659,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Activity', 'Collapse chat']) {
+  for (const name of ['New chat', 'Collapse chat']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -1529,7 +1926,7 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Activity', 'Collapse chat']) {
+  for (const name of ['New chat', 'Collapse chat']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -1670,13 +2067,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of [
-      'New chat',
-      'Activity',
-      'Conversation history',
-      'Open conversation',
-      'Chat settings',
-    ]) {
+    for (const name of ['New chat', 'Chats', 'Chat settings']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -1840,7 +2231,7 @@ for (const viewport of [
 ]) {
   test(`stacks the composer and contains the session-actions strip at ${viewport.width}x${viewport.height}`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(20_000);
     await page.setViewportSize(viewport);
     await mockChatShell(page);
@@ -1885,8 +2276,10 @@ for (const viewport of [
     const controls = page.locator('.chat-controls-row');
     const controlsBox = await controls.boundingBox();
     expect(controlsBox).not.toBeNull();
+    // The capsule's rounded paint box overlaps the action row by at most its
+    // 8px inner gutter; the controls themselves must still own their centers.
     expect(controlsBox!.y).toBeGreaterThanOrEqual(
-      textareaBox!.y + textareaBox!.height - 2,
+      textareaBox!.y + textareaBox!.height - 8,
     );
     expect(controlsBox!.x).toBeGreaterThanOrEqual(0);
     expect(controlsBox!.x + controlsBox!.width).toBeLessThanOrEqual(
@@ -1894,20 +2287,72 @@ for (const viewport of [
     );
     const modelButton = page.locator('.chat-input__model-btn');
     await expect(modelButton).toBeVisible();
-    await expect(modelButton).toHaveText('Selected Test Model');
     await expect(modelButton.locator('.chat-input__model-name')).toHaveText(
       'Selected Test Model',
     );
     await expect(modelButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(
+      await modelButton.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        );
+        return hit === button || button.contains(hit);
+      }),
+    ).toBe(true);
+    const reconnectStatus = page.locator('.chat-stream-status');
+    await expect(reconnectStatus).toContainText('Reconnecting live updates');
+    const reconnectBox = await reconnectStatus.boundingBox();
+    const composerBox = await page.locator('.chat-input').boundingBox();
+    expect(reconnectBox).not.toBeNull();
+    expect(composerBox).not.toBeNull();
+    expect(reconnectBox!.y + reconnectBox!.height).toBeLessThanOrEqual(
+      composerBox!.y,
+    );
+    if (viewport.width === 320) {
+      const readyEmptyState = page.locator(
+        '.chat-messages--empty .empty-state:not([data-testid="chat-empty-state-unconfigured"])',
+      );
+      const readyHint = readyEmptyState.locator('h3 + p');
+      await expect(readyHint).toHaveText(
+        'Type a message below to chat with Claude',
+      );
+      await expect(readyEmptyState.locator('p:last-child')).toBeHidden();
+      expect(
+        await readyHint.evaluate(
+          (hint) => hint.scrollWidth <= hint.clientWidth,
+        ),
+      ).toBe(true);
+      const screenshotName = 'short-composer-reconnect-visible.png';
+      await page.screenshot({
+        path: testInfo.outputPath(screenshotName),
+        animations: 'disabled',
+      });
+      await testInfo.attach('short-composer-reconnect-visible', {
+        path: testInfo.outputPath(screenshotName),
+        contentType: 'image/png',
+      });
+      const evidenceRoot = join(
+        process.cwd(),
+        '.kontourai',
+        'chat-563',
+        basename(process.env.STATION_E2E_OUTPUT_DIR ?? 'manual'),
+      );
+      mkdirSync(evidenceRoot, { recursive: true });
+      copyFileSync(
+        testInfo.outputPath(screenshotName),
+        join(evidenceRoot, screenshotName),
+      );
+    }
     const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
       'Agent: Claude. Send a message before changing Agent.',
     );
     await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
-    await expect(agentButton).toHaveText('Claude');
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
       'Claude',
     );
@@ -2342,8 +2787,25 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
       }),
     ),
   );
-  await openComposer(page, true, 'station');
-  await page.locator('.chat-input__model-btn').first().click();
+  const textarea = await openComposer(page, true, 'station');
+  const activeComposer = textarea.locator(
+    'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
+  );
+  const modelButton = activeComposer.locator('.chat-input__model-btn');
+  const modelButtonBox = await modelButton.boundingBox();
+  expect(modelButtonBox).not.toBeNull();
+  expect(modelButtonBox!.y).toBeGreaterThanOrEqual(0);
+  expect(modelButtonBox!.y + modelButtonBox!.height).toBeLessThanOrEqual(540);
+  const modelHit = await modelButton.evaluate((button) => {
+    const box = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      box.left + box.width / 2,
+      box.top + box.height / 2,
+    );
+    return hit === button || button.contains(hit);
+  });
+  expect(modelHit).toBe(true);
+  await modelButton.click();
 
   const picker = page.getByRole('dialog', { name: 'Choose model' });
   const providerRail = picker.getByRole('group', { name: 'Providers' });
@@ -2824,18 +3286,27 @@ for (const width of [320, 390, 1280]) {
       const draftsBox = (await drafts.boundingBox())!;
       expect(draftsBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
 
-      const agent = page.getByRole('button', { name: /^Agent: Claude/ });
-      const model = page.getByRole('button', {
+      const activeComposer = textarea.locator(
+        'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " chat-input ")][1]',
+      );
+      const agent = activeComposer.getByRole('button', {
+        name: /^Agent: Claude/,
+      });
+      const model = activeComposer.getByRole('button', {
         name: /^Model: Claude — Selected Test Model/,
       });
-      await expect(agent).toHaveText('Claude');
+      await expect(agent.locator('.chat-input__agent-name')).toHaveText(
+        'Claude',
+      );
       await expect(agent).toHaveCSS('opacity', '1');
-      await expect(model).toHaveText('Selected Test Model');
+      await expect(model.locator('.chat-input__model-name')).toHaveText(
+        'Selected Test Model',
+      );
       await expect(model).toHaveAttribute(
         'title',
         /^Model: Claude — Selected Test Model/,
       );
-      const rail = page.locator('.chat-input__meta');
+      const rail = activeComposer.locator('.chat-input__meta');
       const bounds = (await rail.boundingBox())!;
       const approval = page.getByRole('button', { name: /^Approval mode:/ });
       for (const control of [agent, model, approval]) {

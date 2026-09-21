@@ -45,6 +45,7 @@ const authorityRef = vi.hoisted(() => ({
 }));
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => authorityRef.current,
 }));
 

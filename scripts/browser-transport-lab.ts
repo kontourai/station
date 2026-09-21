@@ -40,6 +40,16 @@ import {
 } from './lib/browser-application-account.mjs';
 import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
 import {
+  browserBrokerAdmitApplicationTransport,
+  browserBrokerAdoptApplicationTransport,
+  browserBrokerConnect,
+  browserBrokerConnectionId,
+  browserBrokerProbeOrigin,
+  browserBrokerReadStatus,
+  browserBrokerReconnect,
+  browserBrokerTamperProof,
+} from './lib/browser-self-hosted-broker.mjs';
+import {
   browserAccept,
   browserChannelOpen,
   browserConnectionContext,
@@ -59,8 +69,9 @@ import {
 } from './lib/local-collaboration-process.mjs';
 import { startRelayAccountStation } from './lib/local-collaboration-relay-account.js';
 import { nodeApplicationChannel } from './lib/node-application-channel.js';
+import { startSelfHostedBrokerLab } from './lib/self-hosted-broker-lab.js';
 
-// Transport evaluation only. No Station/account/provider API is enabled here.
+// Isolated transport evaluation; the opt-in account mode uses a real Station.
 const TURN_IMAGE =
   'coturn/coturn@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3';
 const args = process.argv.slice(2);
@@ -76,6 +87,7 @@ if (
         '--fail-after-create',
         '--application-protocol',
         '--application-accounts',
+        '--self-hosted-broker',
       ].includes(arg),
   ) ||
   args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
@@ -85,6 +97,14 @@ if (
     'Use --browser-turn=udp or --browser-turn=tcp and optional --keep',
   );
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
+const selfHostedBroker = args.includes('--self-hosted-broker');
+if (
+  selfHostedBroker &&
+  (peerAdapter !== 'pion' || !args.includes('--application-accounts'))
+)
+  throw new Error(
+    '--self-hosted-broker requires --peer=pion --application-accounts',
+  );
 if (
   args.includes('--application-protocol') &&
   args.includes('--application-accounts')
@@ -93,6 +113,7 @@ if (
 let accountStation:
   | Awaited<ReturnType<typeof startRelayAccountStation>>
   | undefined;
+let brokerLab: Awaited<ReturnType<typeof startSelfHostedBrokerLab>> | undefined;
 let accountReport: Record<string, unknown> | undefined;
 let applicationProtocol:
   | { status: string; requestMarker: string; responseBytes: number }
@@ -557,6 +578,12 @@ try {
     import {authenticatedFetch, setClientCredentialResolver, StationHttpError} from '@kontourai/station-sdk/client';
     import {ApplicationSessionClient, createApplicationSessionKey} from '@kontourai/station-sdk/application-session';
     window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver, StationHttpError, ApplicationSessionClient, createApplicationSessionKey};
+    ${
+      selfHostedBroker
+        ? `import {SelfHostedBrokerBrowserClient, createBrowserPionConnection, createSelfHostedApplicationTransport} from './packages/connect/src/core/selfHostedBrowser.ts';
+    window.stationSelfHostedBroker = {SelfHostedBrokerBrowserClient, createBrowserPionConnection, createSelfHostedApplicationTransport};`
+        : ''
+    }
   `,
       resolveDir: process.cwd(),
     },
@@ -672,37 +699,136 @@ try {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(`http://127.0.0.1:${address.port}`);
-  const good = await exchange(page, approved, approved.fingerprint);
+  let brokerJourney: Record<string, unknown> | undefined;
+  let brokerLeaseBefore = 0;
+  let brokerReconnectAdapterIndex = 0;
+  let brokerReconnectForJourney:
+    | { previous: string | undefined; connectionId: string }
+    | undefined;
+  if (selfHostedBroker) {
+    assert(accountStation?.station.openApplicationChannel);
+    assert(relay);
+    // The admitted Device trust is identical to the legacy path: read from
+    // the same independently approved store, never minted by the broker.
+    await page.evaluate(browserSetConnectionTrust, {
+      trust: connectionTrust,
+      approvedKeyId: await stationConnectionSigningKeyId(connectionTrust),
+    });
+    const pageOrigin = `http://127.0.0.1:${address.port}`;
+    brokerLab = await startSelfHostedBrokerLab({
+      directory: root,
+      browserOrigin: pageOrigin,
+      applicationOrigin: accountStation.station.base,
+      stationId: connectionTrust.stationId,
+      enrollmentId: connectionTrust.enrollmentId,
+      heartbeatMs: 5_000,
+      renewMs: 10_000,
+      pollMs: 1_000,
+      executable: pionExecutable,
+      certificatePem: readFileSync(approved.cert, 'utf8'),
+      privateKeyPem: readFileSync(approved.key, 'utf8'),
+      turn: {
+        url: `turn:127.0.0.1:${relay.port}?transport=tcp`,
+        username,
+        password,
+      },
+      trust: {
+        current: () => connectionTrust,
+        // Exact descriptor semantics against the real key owner: identity
+        // comparison against a cloned/reopened descriptor refuses every
+        // peer, so compare station, enrollment, and generation exactly.
+        isCurrent: (value) =>
+          value?.stationId === connectionTrust.stationId &&
+          value?.enrollmentId === connectionTrust.enrollmentId &&
+          value?.generation === connectionTrust.generation &&
+          value.signingKey.kty === connectionTrust.signingKey.kty &&
+          value.signingKey.crv === connectionTrust.signingKey.crv &&
+          value.signingKey.x === connectionTrust.signingKey.x &&
+          value.signingKey.y === connectionTrust.signingKey.y,
+      },
+      // Explicit fixture accepted binding: the issuer admission callback
+      // requires the admitted set, so admit the exact connectionId before
+      // issue and retire it after, as the direct fixture does. The proof
+      // check itself is never disabled.
+      issuer: {
+        issue: async (binding: { connectionId: string }) => {
+          admittedConnections.add(binding.connectionId);
+          try {
+            return await (
+              proofIssuer as unknown as {
+                issue(b: unknown): Promise<string>;
+              }
+            ).issue(binding);
+          } finally {
+            admittedConnections.delete(binding.connectionId);
+          }
+        },
+      },
+      openApplicationChannel: () =>
+        accountStation!.station.openApplicationChannel!(),
+      signal: abort.signal,
+    });
+    // Browser TURN/UDP uses the direct UDP allocation; the recording relay
+    // forward is TCP-only for the Station-side Pion peer. Never aim browser
+    // UDP at the TCP recording relay port.
+    const brokerBrowserPort =
+      browserTransport === 'udp' ? turnUdpPort : relay.port;
+    assert(brokerBrowserPort);
+    const connected = await bounded(
+      page.evaluate(browserBrokerConnect, {
+        brokerOrigin: brokerLab.brokerOrigin,
+        scope: brokerLab.scope,
+        routingId: brokerLab.routing.id,
+        routingSecret: brokerLab.routing.secret,
+        applicationOrigin: accountStation.station.base,
+        port: brokerBrowserPort,
+        username,
+        password,
+        transport: browserTransport,
+      }),
+      'broker Pion connect',
+    );
+    assert.match(connected.connectionId, /^[a-f0-9-]{36}$/);
+    await page.evaluate(browserBrokerAdmitApplicationTransport);
+    brokerLeaseBefore = (await brokerLab.readLease()).expiresAt;
+    assert(brokerLab.adapterMetadata.length > 0);
+  }
+  const good = selfHostedBroker
+    ? undefined
+    : await exchange(page, approved, approved.fingerprint);
   const applicationPion =
     peerAdapter === 'pion' &&
     (args.includes('--application-protocol') ||
       args.includes('--application-accounts'));
   const marker = `private-station-content-${randomBytes(32).toString('hex')}`;
-  if (!applicationPion) {
-    await page.waitForFunction(browserChannelOpen, undefined, {
-      timeout: 20000,
-    });
-    await page.evaluate(browserSend, marker);
-    await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
-    assert.deepEqual(good.messages, [marker]);
+  if (!selfHostedBroker) {
+    assert(good);
+    if (!applicationPion) {
+      await page.waitForFunction(browserChannelOpen, undefined, {
+        timeout: 20000,
+      });
+      await page.evaluate(browserSend, marker);
+      await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
+      assert.deepEqual(good.messages, [marker]);
+    }
+    let pair = good.peer.getSelectedCandidatePair();
+    const pairDeadline = Date.now() + 10_000;
+    while (!pair && Date.now() < pairDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      pair = good.peer.getSelectedCandidatePair();
+    }
+    assert.equal(pair?.local.type, 'relay');
+    assert.equal(pair?.remote.type, 'relay');
+    const browserStats = await page.evaluate(readBrowserStats);
+    assert(browserStats.some((entry) => entry.dtlsState === 'connected'));
+    assert(
+      browserStats.some(
+        (entry) =>
+          entry.type === 'certificate' &&
+          entry.fingerprint === approved.fingerprint,
+      ),
+    );
   }
-  let pair = good.peer.getSelectedCandidatePair();
-  const pairDeadline = Date.now() + 10_000;
-  while (!pair && Date.now() < pairDeadline) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    pair = good.peer.getSelectedCandidatePair();
-  }
-  assert.equal(pair?.local.type, 'relay');
-  assert.equal(pair?.remote.type, 'relay');
-  const browserStats = await page.evaluate(readBrowserStats);
-  assert(browserStats.some((entry) => entry.dtlsState === 'connected'));
-  assert(
-    browserStats.some(
-      (entry) =>
-        entry.type === 'certificate' &&
-        entry.fingerprint === approved.fingerprint,
-    ),
-  );
   if (args.includes('--application-protocol')) {
     applicationProtocol = await bounded(
       page.evaluate(browserCheckApplicationChannel),
@@ -902,6 +1028,31 @@ try {
       200,
       'Restored membership proves Device revocation is independent',
     );
+    // Reconnect BEFORE Device revocation: the fresh transport must serve a
+    // permitted read while the Device is still admitted. The fixture SDK
+    // credential resolver is re-pointed at the new transport with the
+    // current Device credential; no relogin with the bootstrap grant.
+    if (selfHostedBroker) {
+      assert(brokerLab);
+      const reconnected = await bounded(
+        page.evaluate(browserBrokerReconnect),
+        'broker reconnect',
+      );
+      assert.notEqual(reconnected.connectionId, reconnected.previous);
+      await page.evaluate(browserBrokerAdmitApplicationTransport);
+      await page.evaluate(browserBrokerAdoptApplicationTransport);
+      assert.equal(
+        (
+          await page.evaluate(browserApplicationAccountRequest, {
+            path: '/api/projects/relay-shared',
+          })
+        ).status,
+        200,
+        'Fresh broker peer restores the permitted Project read',
+      );
+      brokerReconnectForJourney = reconnected;
+      brokerReconnectAdapterIndex = brokerLab.adapterMetadata.length - 1;
+    }
     await accountStation.revokeDevice();
     assert.equal(
       (
@@ -943,79 +1094,213 @@ try {
       { mode: 0o600 },
     );
   }
-  await context.close();
-  await good.peer.close();
+  if (selfHostedBroker) {
+    assert(brokerLab);
+    assert(accountStation);
+    const lab = brokerLab;
+    // Actual broker CORS from the admitted page origin: the browser emits
+    // Origin itself; no forbidden Origin header is ever set. The non-simple
+    // POST triggers the real browser preflight; the incoming OPTIONS and
+    // its ACAO are observed at the owned Node broker listener.
+    const cors = await bounded(
+      page.evaluate(browserBrokerProbeOrigin, {
+        brokerOrigin: lab.brokerOrigin,
+        scope: lab.scope,
+        routingId: lab.routing.id,
+        routingSecret: lab.routing.secret,
+      }),
+      'broker CORS and credential refusal',
+    );
+    assert.equal(cors.pageOrigin, `http://127.0.0.1:${address.port}`);
+    assert.equal(cors.status, 200);
+    assert.equal((cors.statusBody as { state: string }).state, 'online');
+    // The browser's successful cross-origin fetch is the CORS control. This
+    // separate protocol probe checks the actual broker's preflight response.
+    const observedPreflight = await lab.preflight();
+    assert.equal(observedPreflight.status, 204);
+    assert.equal(observedPreflight.allowOrigin, cors.pageOrigin);
+    assert.equal(cors.wrongStatus, 401);
+    assert.equal(
+      (cors.wrongBody as { error: string }).error,
+      'broker_credential_refused',
+    );
+    // Heartbeat + lease renewal: the Station-side runtime already renewed at
+    // least once during the account journey, so the lease expiry observed
+    // after the journey must extend past the pre-journey observation.
+    let leaseAfter = (await lab.readLease()).expiresAt;
+    const renewDeadline = Date.now() + 30_000;
+    while (leaseAfter <= brokerLeaseBefore && Date.now() < renewDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      leaseAfter = (await lab.readLease()).expiresAt;
+    }
+    assert(
+      leaseAfter > brokerLeaseBefore,
+      'Broker lease renewal must extend the observed expiry',
+    );
+    assert.equal((await lab.readLease()).state, 'online');
+    // Answer/proof tamper refused by the real production consumer before
+    // any SDP is accepted: the wrapper fetched the REAL answer and altered
+    // ONLY the proof.
+    const tamper = await bounded(
+      page.evaluate(browserBrokerTamperProof),
+      'broker proof tamper refusal',
+    );
+    assert.equal(tamper.tampered, true, 'Tamper must alter a real answer');
+    assert.equal(tamper.tamperedRefused, true, tamper.refusal);
+    assert.equal(tamper.remoteDescriptionAttempted, false);
+    assert.match(tamper.refusal, /proof|refused|invalid/i);
+    // The admitted Station-side peer actually selected relay transport:
+    // read the live candidate pair now, not an early null snapshot.
+    assert(lab.adapterMetadata.length > 0);
+    const observedAdapter = lab.adapterMetadata[brokerReconnectAdapterIndex]!;
+    let selectedPair = observedAdapter.pair();
+    const pairDeadline = Date.now() + 10_000;
+    while (
+      (!selectedPair ||
+        selectedPair.local.type !== 'relay' ||
+        selectedPair.remote.type !== 'relay') &&
+      Date.now() < pairDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      selectedPair = observedAdapter.pair();
+    }
+    assert.equal(selectedPair?.local.type, 'relay');
+    assert.equal(selectedPair?.remote.type, 'relay');
+    pionProvenance = observedAdapter.provenance;
+    assert(brokerReconnectForJourney);
+    const reconnected = brokerReconnectForJourney;
+    brokerJourney = {
+      status: 'passed',
+      connectionId: reconnected.connectionId,
+      leaseRenewed: leaseAfter > brokerLeaseBefore,
+      cors: {
+        status: cors.status,
+        allowOrigin: cors.allowOrigin,
+        preflight: observedPreflight.status,
+        preflightAllowOrigin: observedPreflight.allowOrigin,
+        wrongStatus: cors.wrongStatus,
+      },
+      proofTamperRefused: tamper.tamperedRefused,
+      proofTamperObserved: tamper.tampered,
+      adapterPeersObserved: lab.adapterMetadata.length,
+      adapterRelaySelected: selectedPair,
+      scope:
+        'same Station/enrollment plus browser origin; separate routing and connector credentials',
+    };
+    // Trust retirement refusal: revoke the admitted Device trust in the SAME
+    // profile (a fresh context has isolated storage and no trust to revoke),
+    // then require the next broker admission to refuse before SDP acceptance.
+    const brokerRevokePage = await context.newPage();
+    try {
+      await brokerRevokePage.goto(`http://127.0.0.1:${address.port}`);
+      await brokerRevokePage.evaluate(
+        browserRevokeConnectionTrust,
+        connectionTrust.stationId,
+      );
+      await assert.rejects(
+        page.evaluate(browserBrokerReconnect),
+        /trust_retired|authority_retired/,
+      );
+      assert.equal(await page.evaluate(browserBrokerConnectionId), undefined);
+    } finally {
+      await brokerRevokePage.close();
+    }
+    // Connector withdrawal retires the lease: routing status must refuse.
+    await lab.withdraw();
+    await assert.rejects(
+      page.evaluate(browserBrokerReadStatus),
+      // With the last lease withdrawn, CORS can hide the error response.
+      /broker_request_refused_401|TypeError: Failed to fetch/,
+    );
+    // This independent HTTP control proves the exact backend refusal, so an
+    // unrelated network failure cannot satisfy the withdrawal check.
+    await assert.rejects(lab.readLease(), /broker_request_refused_401/);
+    brokerJourney = {
+      ...(brokerJourney as Record<string, unknown>),
+      trustRetirementRefused: true,
+      withdrawOffline: true,
+    };
+    await context.close();
+    await lab.stop();
+    brokerLab = undefined;
+  } else {
+    await context.close();
+    assert(good);
+    await good.peer.close();
+  }
 
-  const reconnectContext = await browser.newContext();
-  const reconnectPage = await reconnectContext.newPage();
-  await reconnectPage.goto(`http://127.0.0.1:${address.port}`);
-  const reconnected = await exchange(
-    reconnectPage,
-    approved,
-    approved.fingerprint,
-  );
-  if (!applicationPion) {
-    await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
+  if (!selfHostedBroker) {
+    const reconnectContext = await browser.newContext();
+    const reconnectPage = await reconnectContext.newPage();
+    await reconnectPage.goto(`http://127.0.0.1:${address.port}`);
+    const reconnected = await exchange(
+      reconnectPage,
+      approved,
+      approved.fingerprint,
+    );
+    if (!applicationPion) {
+      await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
+        timeout: 20000,
+      });
+      await reconnectPage.evaluate(browserSend, marker);
+      await reconnectPage.waitForFunction(browserReceived, marker, {
+        timeout: 10000,
+      });
+      assert.deepEqual(reconnected.messages, [marker]);
+    }
+    let reconnectPair = reconnected.peer.getSelectedCandidatePair();
+    const reconnectPairDeadline = Date.now() + 10_000;
+    while (!reconnectPair && Date.now() < reconnectPairDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      reconnectPair = reconnected.peer.getSelectedCandidatePair();
+    }
+    assert.equal(reconnectPair?.local.type, 'relay');
+    assert.equal(reconnectPair?.remote.type, 'relay');
+    await reconnectContext.close();
+    await reconnected.peer.close();
+
+    const revokedContext = await browser.newContext();
+    const revokedPage = await revokedContext.newPage();
+    await revokedPage.goto(`http://127.0.0.1:${address.port}`);
+    const revokedPeer = await exchange(
+      revokedPage,
+      approved,
+      approved.fingerprint,
+      false,
+      true,
+    );
+    assert.equal(await revokedPage.evaluate(browserChannelOpen), false);
+    assert.deepEqual(revokedPeer.messages, []);
+    await revokedPeer.peer.close();
+    await revokedContext.close();
+
+    const replacementContext = await browser.newContext();
+    const replacementPage = await replacementContext.newPage();
+    await replacementPage.goto(`http://127.0.0.1:${address.port}`);
+    await assert.rejects(
+      exchange(replacementPage, substituted, approved.fingerprint),
+      /station_fingerprint_not_approved/,
+    );
+    await replacementContext.close();
+
+    const hostileContext = await browser.newContext();
+    const hostilePage = await hostileContext.newPage();
+    await hostilePage.goto(`http://127.0.0.1:${address.port}`);
+    const hostile = await exchange(
+      hostilePage,
+      substituted,
+      approved.fingerprint,
+      true,
+    );
+    await hostilePage.waitForFunction(browserFailed, undefined, {
       timeout: 20000,
     });
-    await reconnectPage.evaluate(browserSend, marker);
-    await reconnectPage.waitForFunction(browserReceived, marker, {
-      timeout: 10000,
-    });
-    assert.deepEqual(reconnected.messages, [marker]);
+    const hostileStats = await hostilePage.evaluate(readBrowserStats);
+    assert(hostileStats.some((entry) => entry.dtlsState === 'failed'));
+    assert.deepEqual(hostile.messages, []);
+    await hostileContext.close();
+    await hostile.peer.close();
   }
-  let reconnectPair = reconnected.peer.getSelectedCandidatePair();
-  const reconnectPairDeadline = Date.now() + 10_000;
-  while (!reconnectPair && Date.now() < reconnectPairDeadline) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    reconnectPair = reconnected.peer.getSelectedCandidatePair();
-  }
-  assert.equal(reconnectPair?.local.type, 'relay');
-  assert.equal(reconnectPair?.remote.type, 'relay');
-  await reconnectContext.close();
-  await reconnected.peer.close();
-
-  const revokedContext = await browser.newContext();
-  const revokedPage = await revokedContext.newPage();
-  await revokedPage.goto(`http://127.0.0.1:${address.port}`);
-  const revokedPeer = await exchange(
-    revokedPage,
-    approved,
-    approved.fingerprint,
-    false,
-    true,
-  );
-  assert.equal(await revokedPage.evaluate(browserChannelOpen), false);
-  assert.deepEqual(revokedPeer.messages, []);
-  await revokedPeer.peer.close();
-  await revokedContext.close();
-
-  const replacementContext = await browser.newContext();
-  const replacementPage = await replacementContext.newPage();
-  await replacementPage.goto(`http://127.0.0.1:${address.port}`);
-  await assert.rejects(
-    exchange(replacementPage, substituted, approved.fingerprint),
-    /station_fingerprint_not_approved/,
-  );
-  await replacementContext.close();
-
-  const hostileContext = await browser.newContext();
-  const hostilePage = await hostileContext.newPage();
-  await hostilePage.goto(`http://127.0.0.1:${address.port}`);
-  const hostile = await exchange(
-    hostilePage,
-    substituted,
-    approved.fingerprint,
-    true,
-  );
-  await hostilePage.waitForFunction(browserFailed, undefined, {
-    timeout: 20000,
-  });
-  const hostileStats = await hostilePage.evaluate(readBrowserStats);
-  assert(hostileStats.some((entry) => entry.dtlsState === 'failed'));
-  assert.deepEqual(hostile.messages, []);
-  await hostileContext.close();
-  await hostile.peer.close();
   await relay.close();
   const captured = readFileSync(relay.capturePath);
   assert(
@@ -1060,21 +1345,34 @@ try {
     stationTurnTransport: peerAdapter === 'pion' ? 'tcp' : 'udp',
     captureBytes: captured.length,
     turnImage: TURN_IMAGE,
-    checks: [
-      'TURN relay selected at both peers',
-      'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
-      'Station signing identity restored from its private home before proof issuance',
-      'tampered proof refused before accepting the connection description',
-      'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
-      'browser-native DTLS connected',
-      applicationPion
-        ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
-        : 'application content echoed through encrypted data channel',
-      'fresh browser and peer reconnect using the same approved Station certificate',
-      'unapproved signaling fingerprint refused',
-      'substituted endpoint fails DTLS fingerprint verification',
-    ],
-    fullBroker: 'not-implemented',
+    checks: selfHostedBroker
+      ? [
+          'separate broker CLI process serves metadata and signaling',
+          'actual browser CORS and routing-credential refusal',
+          'production Pion and browser transport carry authenticated Station application traffic',
+          'TURN relay candidates selected at both ends',
+          'broker lease renewed while application traffic continues',
+          'fresh peer reconnect preserves the approved Device and account continuation',
+          'tampered broker proof rejected before setRemoteDescription',
+          'cross-tab Device trust revocation refuses new admission',
+          'withdrawn routing credential refused by browser and exact HTTP control',
+        ]
+      : [
+          'TURN relay selected at both peers',
+          'Station-signed exact client, generation and SDP proof verified and consumed in the browser',
+          'Station signing identity restored from its private home before proof issuance',
+          'tampered proof refused before accepting the connection description',
+          'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
+          'browser-native DTLS connected',
+          applicationPion
+            ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
+            : 'application content echoed through encrypted data channel',
+          'fresh browser and peer reconnect using the same approved Station certificate',
+          'unapproved signaling fingerprint refused',
+          'substituted endpoint fails DTLS fingerprint verification',
+        ],
+    selfHostedBroker: brokerJourney ?? { status: 'not-run' },
+    fullBroker: selfHostedBroker ? 'lab-composition' : 'not-implemented',
     productionKeyAdmission: 'not-implemented',
   };
 } catch (error) {
@@ -1101,6 +1399,7 @@ try {
   }
   for (const cleanup of [
     () => (browser ? bounded(browser.close(), 'browser cleanup') : undefined),
+    () => brokerLab?.stop(),
     () => accountStation?.stop(),
     () => relay?.close(),
     cleanupContainer,

@@ -59,9 +59,9 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import type { AppConfig, NavigationView } from '../types';
 import {
   ANSWER_DELIVERY_OPTIONS,
+  type AnswerDeliveryMode,
   answerDeliveryModeOf,
-  isAnswerDeliveryMode,
-  smoothRevealForAnswerDelivery,
+  settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
 import { AccentColorPicker } from './settings/AccentColorPicker';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
@@ -1415,27 +1415,26 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="device"
                       projectOverride={projectOverride}
                     />
-                    {/* #585 / #2144 slice 6 item B: one control naming BOTH
-                  outcomes, over the same `featureSettings.smoothReveal`
-                  boolean the two "Smooth answer reveal" toggles wrote. The
-                  in-chat gear panel renders the same options from the same
-                  mapping module. */}
+                    {/* #585: one control names all device-local delivery
+                  outcomes. The in-chat gear panel renders the same options
+                  from the same mapping module. */}
                     <PageRow
                       {...settingsRow('smooth-answer-reveal')}
-                      description="How streamed answer text appears on this device. Either way the same text arrives at the same time; only its pacing on screen differs."
+                      description="How this device displays streamed answer text: immediately, at a steady pace, or in larger updates at action boundaries."
                       control={
                         <select
                           className="editor-select"
                           aria-label={settingsRow('smooth-answer-reveal').title}
                           value={answerDeliveryModeOf(
                             featureSettings?.smoothReveal,
+                            featureSettings?.bufferedDelivery,
                           )}
                           onChange={(event) => {
-                            const mode = event.target.value;
-                            if (!isAnswerDeliveryMode(mode)) return;
+                            const mode = event.target
+                              .value as AnswerDeliveryMode;
                             setDeviceSetting('featureSettings', {
                               ...featureSettings,
-                              smoothReveal: smoothRevealForAnswerDelivery(mode),
+                              ...settingsForAnswerDelivery(mode),
                             });
                           }}
                         >

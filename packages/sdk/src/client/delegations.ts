@@ -331,6 +331,37 @@ export interface DelegatedTaskSnapshot {
   pendingRequest?: DelegatedTaskPendingRequest;
   canInterrupt: boolean;
   resumable: boolean;
+  /**
+   * #2269: effective per-turn supervision for the current turn, when the
+   * serving Station's owning adapter declared a finite budget. Absent is
+   * honest unknown — never a synthesized deadline.
+   */
+  supervision?: DelegatedTaskTurnSupervision;
+  /** #2269: the serving Station's typed terminal attribution, when any. */
+  reason?: DelegatedTaskReason;
+  /** #2269: lifecycle transition reason the serving Station folded, if any. */
+  transitionReason?: string;
+}
+
+/**
+ * #2269: server-forwarded per-turn supervision (mirrors the server's
+ * `DelegatedTurnSupervision`; this SDK is a typed carrier, not a deriver).
+ */
+export interface DelegatedTaskTurnSupervision {
+  provider: string;
+  turnId: string;
+  deadlineAt: string;
+  elapsedMs: number;
+  remainingMs: number;
+  idleLimitMs: number;
+  totalLimitMs: number;
+  lastProgressEventAt?: string;
+}
+
+/** #2269: server-forwarded typed reason (mirrors `DelegatedTaskReason`). */
+export interface DelegatedTaskReason {
+  code: string;
+  detail?: string;
 }
 
 /**

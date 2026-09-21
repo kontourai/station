@@ -191,7 +191,7 @@ test.describe('Agents readiness board', () => {
       .getByRole('button', { name: new RegExp(runnable.name) })
       .first()
       .click();
-    await expect(page.getByPlaceholder('Type a message...')).toBeVisible({
+    await expect(page.getByPlaceholder(/^Type a message/)).toBeVisible({
       timeout: 20_000,
     });
   });

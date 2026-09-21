@@ -2093,7 +2093,7 @@ station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baselin
 | `prune` | Removes a thread's checkpoint refs and reflogs (and the index/archive records naming it). Requires `--thread=<id>` or `--all`. `--gc` additionally runs `git gc --prune=now --quiet` in each affected repo so the space is actually freed, not just eligible for the next `gc.reflogExpire` window. |
 | `history` | Lists recorded checkpoint-restore events for one thread from `checkpoint-restores.json`. |
 | `retention` | Lists recorded checkpoint-retention sweep events for one thread from `checkpoint-retention.json`. |
-| `restore` | Destructive — requires `--confirm`. POSTs to `/api/orchestration/sessions/:threadId/checkpoints/:turnId/restore` on a **running** Station (`--api-base`, defaulting through the selected channel runtime resolver) to restore a session to an earlier turn's `baseline` (pre-turn) or `settle` (post-turn, the default) checkpoint. |
+| `restore` | Destructive — requires `--confirm`. The CLI first creates a short-lived restore preview, displays the exact changed paths, target tree, and current tree, then confirms that exact preview against the same running Station. The server refuses expired, reused, owner-mismatched, session/turn-mismatched, or current-tree-mismatched previews. It restores the earlier turn's `baseline` (pre-turn) or `settle` (post-turn, the default) checkpoint only while the workspace has no active or starting local turn. |
 
 `--json` on every action prints one JSON document instead of the
 human-readable form.
@@ -2104,6 +2104,11 @@ station checkpoints prune --thread=abc123 --gc
 station checkpoints prune --all --gc
 station checkpoints restore --thread=abc123 --turn=turn-7 --confirm
 ```
+
+Restore changes workspace files only. It does not rewind conversation history
+or external tool effects. A failed or indeterminate response must be inspected
+before retrying; Station does not treat response loss as confirmation that the
+workspace was unchanged.
 
 Checkpoint capture itself only runs when the `workspaceCheckpoints` setting
 is on (off by default) — `status` reporting no threads does not mean the

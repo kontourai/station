@@ -575,6 +575,13 @@ test.describe('Settings', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    const filter = page.getByRole('textbox', { name: 'Filter settings' });
+    await expect(filter).toHaveCSS('font-size', '16px');
+    await filter.focus();
+    await filter.fill('theme');
+    await filter.blur();
+    await expect(filter).toHaveCSS('font-size', '16px');
+    await filter.fill('');
     const nav = page.locator('.settings__section-nav');
     const overflowX = await nav.evaluate(
       (el) => getComputedStyle(el).overflowX,

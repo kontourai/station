@@ -6,6 +6,8 @@ import {
 export { publishHistoryForCapture } from './capture-tap';
 
 import { activeChatsStore } from '../../../contexts/active-chats-store';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { answerDeliveryModeOf } from '../../../utils/answerDelivery';
 import type {
   OrchestrationEvent,
   OrchestrationSnapshotPayload,
@@ -85,6 +87,12 @@ export function startReplayCapture(
     events: [],
     frames: [],
     coverage: 'client-capture',
+    presentation: {
+      answerDelivery: answerDeliveryModeOf(
+        deviceSettingsStore.get('featureSettings').smoothReveal,
+        deviceSettingsStore.get('featureSettings').bufferedDelivery,
+      ),
+    },
     initialChat,
     initialHistory: currentReplayCaptureHistory(
       apiBase,
