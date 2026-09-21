@@ -28,10 +28,10 @@ const DEFAULT_OPERATION_SETTLE_MS = 5_000;
 function withCleanupCause(primary: unknown, cleanup: unknown): unknown {
   if (cleanup === undefined || cleanup === primary) return primary;
   if (primary instanceof Error) {
-    const combined = new Error(primary.message, { cause: cleanup });
-    combined.name = primary.name;
-    if (primary.stack !== undefined) combined.stack = primary.stack;
-    return combined;
+    // Preserve the original primary object (including its own `cause`) and
+    // the cleanup object: AggregateError keeps both by identity and reuses
+    // the primary message so callers still match on it.
+    return new AggregateError([primary, cleanup], primary.message);
   }
   // A non-Error primary cannot carry a `cause`, so dropping the cleanup
   // would lose the compensation failure. Retain both explicitly.
@@ -210,9 +210,11 @@ export class SelfHostedBrokerRuntime {
         // The shared memoized withdrawal below joins the same promise, so
         // rethrow the combined start error instead of masking it as success.
         if (withdrawFailed) {
-          const startCause =
-            startError instanceof Error ? startError.cause : undefined;
-          if (withdrawError !== startCause)
+          const alreadyCombined =
+            (startError instanceof AggregateError &&
+              startError.errors.includes(withdrawError)) ||
+            (startError instanceof Error && startError.cause === withdrawError);
+          if (!alreadyCombined)
             throw withCleanupCause(startError, withdrawError);
         }
         throw startError;
@@ -249,16 +251,9 @@ export class SelfHostedBrokerRuntime {
   }
   #isCleanAbortCancellation(error: unknown): boolean {
     if (!this.#abort.signal.aborted) return false;
-    const reason = this.#abort.signal.reason;
-    if (error === reason) return true;
-    // Defensive: a connector may reject with an equal-valued shutdown error
-    // instead of the exact reason instance.
-    return (
-      error instanceof Error &&
-      reason instanceof Error &&
-      error.message === reason.message &&
-      error.message === 'broker_runtime_shutdown'
-    );
+    // Identity only: a distinct Error object with the same message is a real
+    // failure, not a clean cancellation.
+    return error === this.#abort.signal.reason;
   }
   #retireAutomatically(): void {
     // A background failure retires the registration immediately instead of
@@ -290,7 +285,7 @@ export class SelfHostedBrokerRuntime {
           throw new Error('broker_runtime_withdraw_unconfirmed', {
             cause: error,
           });
-        throw error;
+        throw await this.#settledRejectionOr(operation, error);
       }
     })());
   }
@@ -306,8 +301,23 @@ export class SelfHostedBrokerRuntime {
         this.#operationSettleMs,
       );
       if (!settled) throw new Error(unsettledCode, { cause: error });
-      throw error;
+      throw await this.#settledRejectionOr(operation, error);
     }
+  }
+  // The operation has settled: if it rejected with an unexpected error
+  // (a different object from the race abort reason), preserve that actual
+  // failure instead of swallowing it behind the abort. A clean resolution
+  // keeps the owned abort reason (no false cleanup success).
+  async #settledRejectionOr(
+    operation: Promise<unknown>,
+    raceError: unknown,
+  ): Promise<unknown> {
+    try {
+      await operation;
+    } catch (actual) {
+      if (actual !== raceError) throw actual;
+    }
+    throw raceError;
   }
   #sleep(): Promise<void> {
     const owned = this.#abort.signal;
