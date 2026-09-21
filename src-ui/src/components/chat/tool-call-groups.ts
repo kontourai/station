@@ -34,6 +34,7 @@ import {
   type ToolCallLike,
   type ToolCallRun,
 } from './tool-call-runs';
+import { toolDisplayView } from './tool-display-view';
 
 export type { ContentPartBlock, ToolCallKind, ToolCallLike };
 export { classifyToolName, isToolCallPart };
@@ -56,16 +57,7 @@ const KIND_NOUNS: Record<ToolCallKind, KindNouns> = {
 const KIND_ORDER: ToolCallKind[] = ['read', 'write', 'exec', 'search', 'other'];
 
 function toolNameOf(part: ToolCallLike): string {
-  if (part.toolName) return part.toolName;
-  if (part.name) return part.name;
-  if (
-    part.type &&
-    part.type !== 'tool-invocation' &&
-    part.type.startsWith('tool-')
-  ) {
-    return part.type.slice('tool-'.length);
-  }
-  return '';
+  return toolDisplayView(part).toolName;
 }
 
 interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
@@ -137,7 +129,7 @@ function classifyCall<P extends ToolCallLike>(
 ): ClassifiedToolCall<P> {
   const toolName = toolNameOf(part);
   const kind = classifyToolName(toolName);
-  const args = part.args ?? part.input;
+  const args = toolDisplayView(part).args;
   const phase = toolCallPhase(part);
   const inProgress = phase === 'running';
   const unresolved = part.state === 'unresolved';
@@ -148,8 +140,7 @@ function classifyCall<P extends ToolCallLike>(
   const cancelled =
     (part.cancelled === true || part.state === 'cancelled') && !denied;
   const failed =
-    (Boolean(part.error || part.errorText) || part.state === 'error') &&
-    !denied;
+    (Boolean(toolDisplayView(part).error) || part.state === 'error') && !denied;
   const label = callLabel(kind, toolName, args, phase);
   return {
     part,

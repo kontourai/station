@@ -1,7 +1,8 @@
 # Session tape replay
 
-Status: debugger implementation. Original replay: #1935; event-to-render
-debugging and shared-device streaming: #1958. Future conversation controls: #563.
+Status: debugger and read-only execution-timeline implementation. Original
+replay: #1935; event-to-render debugging and shared-device streaming: #1958;
+conversation controls: #563 / #342.
 
 A replay is a normal dock chat under a **synthetic store key**. Recorded
 canonical events are rewritten onto that id and folded through
@@ -151,11 +152,29 @@ instead. Engines without a live channel, and any send that carries
 attachments, still queue. There is no persistent follow-up-mode setting;
 steer is the default whenever the engine can.
 
+## User-facing execution timeline
+
+Chat actions' **Conversation history** action loads the selected execution in
+the same bounded 100-event archive pages and opens it under a synthetic replay
+identity. User-turn landmarks come from the validated tape, not mounted DOM;
+click, pointer drag, previous/next controls, and ordinary button keyboard
+activation seek by destroy-and-refold. The ordinary transcript renderer stays
+in use, while the debugger transport is replaced by a small historical-state
+bar. Forms, sends, approvals, feedback, Task actions, and live queue draining
+remain fenced by replay membership.
+
+The conversation event window supplies the authoritative execution lineage.
+The timeline loads each selected execution through its bounded archive and
+shows the 16 MiB / 20,000-event stop only when reached. Returning closes the
+synthetic replay and restores the source chat and its saved reader offset; its
+draft and live identity were never changed. Forking is explicit and enabled only after a recorded
+`turn.completed`; it passes the original durable session and turn identity to
+the existing fork flow. It never uses the synthetic replay id as lineage and
+does not restore workspace state.
+
 ## Follow-ups
 
 - station-control `replay_session` open/step/observe.
 - Seeking checkpoints only if measured prefix folding warrants their retained
   memory cost. The browser suite measures a mounted 20,000-event seek.
-- User-facing read-only “view as of turn N”, return to latest, and explicit
-  fork/continue can reuse this foundation. Workspace rollback is a separate
-  action. These controls remain future work under #563.
+- Workspace rollback remains a separate action.

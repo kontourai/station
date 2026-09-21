@@ -1186,6 +1186,10 @@ describe('orchestration-session-state', () => {
         parentTaskId: 'parent-task',
         mode: 'isolated-child',
       },
+      inputOrigin: {
+        kind: 'delegation',
+        taskId: 'task-worker-1',
+      },
     });
   });
 
@@ -1233,6 +1237,10 @@ describe('orchestration-session-state', () => {
       environmentId: 'env-current',
       targetKind: 'agent',
       targetId: 'reviewer',
+    });
+    expect(summary.inputOrigin).toEqual({
+      kind: 'delegation',
+      taskId: 'task:local',
     });
   });
 

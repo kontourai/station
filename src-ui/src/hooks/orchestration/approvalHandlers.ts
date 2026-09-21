@@ -4,6 +4,7 @@ import {
   toolRequestFromPayload,
   toolRequestPreviewFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
+import { toolPurposeView } from '../../components/chat/tool-display-view';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
 import { isReplayThread } from './replay/replay-registry';
@@ -54,6 +55,11 @@ export function handleRequestOpenedEvent(
   const { toolName: payloadToolName } = toolRequestFromPayload(event.payload);
   const displayName = toolRequestDisplayName(payloadToolName);
   const toolName = String(displayName || event.title || 'Tool request');
+  const purpose = toolPurposeView(event) ?? toolPurposeView(event.payload);
+  const preview = toolRequestPreviewFromPayload(event.payload);
+  const toolPreview = [purpose ? `Why: ${purpose}` : '', preview]
+    .filter(Boolean)
+    .join(' · ');
   // Only name the tool in the grant label when the payload actually reported
   // one. The `event.title` fallback is adapter display text — for Codex it is
   // the literal shell command — and "Allow <a whole command line> for this
@@ -66,7 +72,7 @@ export function handleRequestOpenedEvent(
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
     toolName,
-    toolPreview: toolRequestPreviewFromPayload(event.payload),
+    ...(toolPreview ? { toolPreview } : {}),
     agentName,
     conversationTitle: chat.title,
     actions: [

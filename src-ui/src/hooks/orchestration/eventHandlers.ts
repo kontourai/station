@@ -2,6 +2,7 @@ import type { OrchestrationConversationStreamBinding } from '@kontourai/station-
 import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   handleRequestOpenedEvent,
   handleRequestResolvedEvent,
@@ -45,6 +46,39 @@ import {
 import type { OrchestrationEvent } from './types';
 import { handleTokenUsageUpdatedEvent } from './usageHandlers';
 
+let semanticDelivery:
+  | import('./semanticDeliveryBuffer').SemanticDeliveryBuffer
+  | undefined;
+let semanticDeliveryLoading = false;
+function bufferedDeliveryEnabled() {
+  return deviceSettingsStore.get('featureSettings').bufferedDelivery;
+}
+
+function loadSemanticDelivery(): void {
+  if (!bufferedDeliveryEnabled() || semanticDelivery || semanticDeliveryLoading)
+    return;
+  semanticDeliveryLoading = true;
+  void import('./semanticDeliveryBuffer').then(
+    ({ createDeviceSemanticDeliveryBuffer }) => {
+      semanticDeliveryLoading = false;
+      if (!bufferedDeliveryEnabled() || semanticDelivery) return;
+      semanticDelivery = createDeviceSemanticDeliveryBuffer(
+        dispatchProjectedOrchestrationEvent,
+      );
+    },
+    () => (semanticDeliveryLoading = false),
+  );
+}
+
+/** Flush device-local presentation state before a stream replacement/stop. */
+export function settleSemanticDeliveryBuffer(
+  apiBase: string,
+  terminal?: boolean,
+): void {
+  if (terminal === undefined) semanticDelivery?.flushApiBase(apiBase);
+  else semanticDelivery?.interruptApiBase(apiBase, terminal);
+}
+
 export function handleOrchestrationEvent(
   apiBase: string,
   event: OrchestrationEvent,
@@ -87,10 +121,28 @@ export function handleOrchestrationEvent(
   // immediately for the high-frequency content.*-delta cases and returns the
   // identical state reference (no store notify) for every other no-op, so
   // this costs nothing for chats that never touch background tasks.
-  if (!isReplayThread(event.threadId)) {
+  const replayThread = isReplayThread(event.threadId);
+  if (!replayThread) {
     backgroundTasksStore.ingest(event);
   }
 
+  if (replayThread) {
+    dispatchProjectedOrchestrationEvent(apiBase, event, provenance);
+    return;
+  }
+  if (bufferedDeliveryEnabled()) {
+    if (semanticDelivery)
+      return semanticDelivery.offer(event, apiBase, provenance);
+    loadSemanticDelivery();
+  }
+  dispatchProjectedOrchestrationEvent(apiBase, event, provenance);
+}
+
+function dispatchProjectedOrchestrationEvent(
+  apiBase: string,
+  event: OrchestrationEvent,
+  provenance?: unknown,
+) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 

@@ -14,6 +14,7 @@ import {
   listAgentConversations,
   listConversationInventory,
 } from '../client/conversations';
+import type { ApiRequestScope } from '../client/http';
 import {
   type MutationOptions,
   PERSISTED_QUERY_GC_TIME_MS,
@@ -295,7 +296,12 @@ export async function fetchAgentConversationPage(
  */
 export async function fetchConversationInventory(
   apiBase?: string,
-  options?: { cursor?: string; limit?: number; signal?: AbortSignal },
+  options?: {
+    cursor?: string;
+    limit?: number;
+    signal?: AbortSignal;
+    requestScope?: ApiRequestScope;
+  },
 ): Promise<{
   items: ConversationListItem[];
   hasMore: boolean;
@@ -309,6 +315,7 @@ export async function fetchConversationInventory(
     limit: options?.limit ?? 100,
     ...(options?.cursor ? { cursor: options.cursor } : {}),
     ...(options?.signal ? { signal: options.signal } : {}),
+    ...(options?.requestScope ? { requestScope: options.requestScope } : {}),
   })) as {
     items: ConversationListItem[];
     hasMore: boolean;

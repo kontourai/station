@@ -2432,6 +2432,15 @@ export function createGlobalConversationRoutes(
           eventStore?.readConversationForkProvenance(item.id);
         return {
           ...item,
+          referenceEligibility: hosted
+            ? {
+                eligible: false as const,
+                reason: 'destination-visibility-unavailable' as const,
+              }
+            : {
+                eligible: true as const,
+                visibility: 'personal-private' as const,
+              },
           ...(acknowledgedAt ? { acknowledgedAt } : {}),
           ...(forkProvenance ? { forkProvenance } : {}),
         };

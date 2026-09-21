@@ -16,10 +16,14 @@ import {
   useActiveChatState,
 } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useProject } from '../../contexts/ProjectsContext';
 import { useACPConnections } from '../../hooks/useACPConnections';
 import { useCreateChatSession } from '../../hooks/useActiveChatSessions';
 import { useChatInput } from '../../hooks/useChatInput';
@@ -33,6 +37,7 @@ import {
 } from '../../utils/ownerAttribution';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { ChatMessageList } from '../chat/ChatMessageList';
+import { durableMentionAuthority } from '../chat/composer-mentions';
 import { shouldBindPanelProjectContext } from './project-context-binding';
 
 interface ACPChatPanelProps {
@@ -125,12 +130,22 @@ export function ACPChatPanel({
   isActive = true,
 }: ACPChatPanelProps) {
   const { apiBase } = useApiBase();
+  const mentionRequestScope = useHostRequestAuthorityScope();
   const visualViewport = useMobileVisualViewport();
   const agents = useAgents();
   const createSession = useCreateChatSession();
   const { updateChat } = useActiveChatActions();
   const { user } = useAuth();
-  const { activeConnection } = useConnections();
+  const { activeConnection, captureCredentialEvidence } = useConnections();
+  const mentionCredentialEvidence = captureCredentialEvidence();
+  const mentionAuthority = mentionCredentialEvidence
+    ? durableMentionAuthority({
+        apiBase: mentionCredentialEvidence.origin,
+        connectionId: mentionCredentialEvidence.connectionId,
+        authorityGeneration: mentionCredentialEvidence.authorityGeneration,
+        credentialState: mentionCredentialEvidence.credentialState,
+      })
+    : null;
   const owner = useMemo(
     () =>
       ownerAttributionFromStation(
@@ -161,6 +176,9 @@ export function ACPChatPanel({
   });
 
   const activeSession = useActiveChatState(sessionId);
+  const { project: sessionProject } = useProject(
+    activeSession?.projectSlug ?? projectSlug ?? '',
+  );
   // Agent app connection default for the approval-mode chip (archive#727
   //) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
@@ -233,6 +251,9 @@ export function ACPChatPanel({
     conversationId: activeSession?.conversationId,
     availableModels: [],
     attachmentCapabilities,
+    workingDirectory: sessionProject?.workingDirectory,
+    mentionRequestScope,
+    mentionAuthority,
     // archive#1294: suppress the generic error toast
     // only while this tab is the one actually on screen.
     isChatVisible: isActive,
@@ -284,6 +305,9 @@ export function ACPChatPanel({
         disabled={false}
         isSending={activeSession.status === 'sending'}
         turnInFlight={isTurnInFlight(activeSession)}
+        workingDirectory={sessionProject?.workingDirectory}
+        mentionRequestScope={mentionRequestScope}
+        mentionAuthority={mentionAuthority}
         busyFollowUp={
           isTurnInFlight(activeSession) &&
           sessionAdapterSupportsSteering(

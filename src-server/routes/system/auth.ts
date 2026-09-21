@@ -6,7 +6,12 @@ import {
   getUserDirectoryProvider,
   getUserIdentityProvider,
 } from '../../providers/registries/registry.js';
-import { isBoundLocalGrantMintedOperator } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  isBoundLocalGrantMintedOperator,
+} from '../../security/runtime-request-security.js';
+import { AuthorityObservationRejected } from '../../services/identity/authority-observation.js';
+import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { authOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import { errorMessage, param } from '../schemas/schemas.js';
@@ -46,7 +51,27 @@ async function resolveUser(): Promise<UserIdentity> {
 
 // ── Routes ─────────────────────────────────────────────
 
-export function createAuthRoutes() {
+/**
+ * Wiring for `GET /api/auth/authority` (#481 groundwork). Everything is
+ * injected from `configureRuntimeRoutes` so the observation reads the SAME
+ * auth boundary facts and resolves through the SAME canonical principal
+ * owner as every orchestration route — never a parallel derivation. Without
+ * the wiring the route is not registered at all (fail closed), so a bare
+ * `createAuthRoutes()` (tests, `/status` probes) can never answer an
+ * unwired observation.
+ */
+export interface AuthRoutesAuthorityObservationDeps {
+  resolveRequestPrincipal: (context: {
+    env: unknown;
+    req: { raw: Request; header(name: string): string | undefined };
+  }) => import('@kontourai/station-contracts/principal').PrincipalRef;
+  security: import('../../services/identity/authority-observation.js').AuthorityObservationSecurity;
+  deploymentAuthentication?: import('../../services/identity/authority-observation.js').AuthorityObservationDeploymentAuthentication;
+}
+
+export function createAuthRoutes(
+  authorityObservation?: AuthRoutesAuthorityObservationDeps,
+) {
   const app = new Hono();
 
   app.get('/status', async (c) => {
@@ -76,6 +101,76 @@ export function createAuthRoutes() {
       eligible: isBoundLocalGrantMintedOperator(c.req.raw),
     }),
   );
+
+  // #481 groundwork: the closed, credential-bound authority observation.
+  // Flows the SAME runtime auth middleware as every protected route (bearer,
+  // device-session cookie, native continuation) and resolves through the
+  // canonical principal owner injected above. Authorization-neutral: it
+  // describes the caller's authority, grants nothing, and contains no
+  // credential material. Captured once, then published ONLY through the
+  // delivery guard, which revalidates FRESH facts (credential currency,
+  // device binding, grant, home identity, re-`authenticate`d account
+  // session — not the cached per-request result) before the first body byte
+  // and before every queued chunk; drift fails closed with the boundary's
+  // own codes, never a stale observation. A bare `c.json` after capture is
+  // NOT a release guard — the body can sit queued while authority changes.
+  if (authorityObservation) {
+    app.get('/authority', async (c) => {
+      const {
+        captureAuthorityObservation,
+        guardAuthorityObservationResponse,
+        revalidateAuthorityObservation,
+      } = await import('../../services/identity/authority-observation.js');
+      const revalidateInput = async (
+        captured: import('../../services/identity/authority-observation.js').CapturedAuthorityObservation,
+      ): Promise<void> =>
+        revalidateAuthorityObservation({
+          request: c.req.raw,
+          captured,
+          security: authorityObservation.security,
+          deploymentAuthentication:
+            authorityObservation.deploymentAuthentication,
+        });
+      try {
+        const captured = await captureAuthorityObservation({
+          context: { env: c.env, req: c.req },
+          request: c.req.raw,
+          runtimePrincipal: getRuntimeAuthenticatedRequestPrincipal(c.req.raw),
+          security: authorityObservation.security,
+          deploymentAuthentication:
+            authorityObservation.deploymentAuthentication,
+          resolveRequestPrincipal: authorityObservation.resolveRequestPrincipal,
+        });
+        const response = c.json(captured.envelope);
+        response.headers.set('Cache-Control', 'no-store');
+        return await guardAuthorityObservationResponse(response, () =>
+          revalidateInput(captured),
+        );
+      } catch (error) {
+        // Early refusals carry the same `no-store` as the guarded body:
+        // a fail-closed error must never become a cacheable response.
+        if (error instanceof AuthorityObservationRejected) {
+          return Response.json(
+            { error: { code: error.code } },
+            {
+              status: error.status,
+              headers: { 'Cache-Control': 'no-store' },
+            },
+          );
+        }
+        if (error instanceof PrincipalUnresolvedError) {
+          return Response.json(
+            { error: { code: 'authentication_required' } },
+            {
+              status: 401,
+              headers: { 'Cache-Control': 'no-store' },
+            },
+          );
+        }
+        throw error;
+      }
+    });
+  }
 
   app.post('/renew', async (c) => {
     authOps.add(1, { operation: 'renew' });

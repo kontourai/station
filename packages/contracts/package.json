@@ -43,6 +43,7 @@
     "./attention": "./src/attention.ts",
     "./action-operation": "./src/action-operation.ts",
     "./auth": "./src/auth.ts",
+    "./authority-observation": "./src/authority-observation.ts",
     "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
     "./catalog": "./src/catalog.ts",

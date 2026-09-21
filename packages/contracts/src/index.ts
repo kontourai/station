@@ -10,6 +10,7 @@ export * from './answer-narrative-binding.js';
 export * from './attachment-staging.js';
 export * from './attention.js';
 export * from './auth.js';
+export * from './authority-observation.js';
 export * from './board.js';
 export * from './catalog.js';
 export * from './channel-assurance.js';

@@ -41,7 +41,10 @@ vi.mock('@kontourai/station-sdk', async () => ({
     .readEnvelopeOrThrow,
 }));
 vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({ activeConnection: null }),
+  useConnections: () => ({
+    activeConnection: null,
+    captureCredentialEvidence: () => undefined,
+  }),
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
@@ -50,6 +53,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('../contexts/NavigationContext', () => {

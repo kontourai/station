@@ -343,6 +343,7 @@ export interface ChatSession {
   liveUsage?: ChatLiveUsage;
   /** Synthetic event-replay chat; absent on ordinary sessions. */
   replay?: {
+    mode?: 'timeline';
     elapsedMs?: number;
     connectionPhase?:
       | 'unknown'
