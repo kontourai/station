@@ -3106,6 +3106,164 @@ describe('OrchestrationService', () => {
       expect(admission.recheck).toHaveBeenCalled();
     });
 
+    test('a portable-marked source refuses handoff before any marker or provider effect', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-src',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-handoff-src', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      const request = {
+        agentId: 'agent-b',
+        environmentId: 'environment-a',
+        connectionId: 'claude',
+        idempotencyKey: 'portable-handoff-a',
+        messageDigest: 'message-a',
+      };
+      let refusal: unknown;
+      try {
+        await service.prepareConversationHandoff(
+          'portable-handoff-src',
+          INTERNAL_SESSION_READ_SCOPE,
+          request,
+        );
+      } catch (error) {
+        refusal = error;
+      }
+      expect(refusal).toBeInstanceOf(ReceiverExecutionRefusal);
+      expect(refusal).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      // No marker was reserved: the original history is intact and a status
+      // read finds nothing — and no child/provider invocation ran.
+      await expect(
+        service.readConversationHandoffStatus(
+          'portable-handoff-src',
+          request.idempotencyKey,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toBeNull();
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a pre-reserved handoff child of a portable source refuses its start before the adapter', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const started = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-pre',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {
+          receiverExecutionAdmission: admittedFor('portable-handoff-pre', tmp),
+          portableExecutionConsent: {
+            portableProjectId: 'prj_shared',
+            resourceId: 'git.example/acme/repo',
+            localProjectId: 'local-project-1',
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      // A marker reserved before the guard (or before offer withdrawal)
+      // must still fail closed at the child start — never execute as an
+      // unmarked legacy session.
+      eventStore.reserveConversationHandoff({
+        conversationId: 'portable-handoff-pre',
+        predecessorSessionId: 'portable-handoff-pre',
+        sessionId: 'portable-handoff-pre:child',
+        idempotencyKey: 'portable-handoff-pre-key',
+        targetAgentId: 'agent-b',
+        targetEnvironmentId: 'environment-a',
+        messageDigest: 'message-a',
+        createdAt: new Date().toISOString(),
+      });
+      const refused = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'portable-handoff-pre:child',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      expect(refused.status).toBe('failed');
+      expect(refused).toMatchObject({
+        code: 'receiver_execution_not_offered',
+      });
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('ordinary legacy control: an unmarked source still reserves its handoff', async () => {
+      configuredProjects.push({ slug: 'local', workingDirectory: tmp });
+      const root = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'legacy-handoff-src',
+            provider: 'claude',
+            cwd: tmp,
+            metadata: { projectSlug: 'local' },
+          },
+        },
+        { userId: 'owner-user' },
+        {},
+      );
+      if (root.status !== 'accepted') throw new Error(root.message);
+      eventStore.appendEvent({
+        eventId: 'legacy-handoff-src-complete',
+        provider: 'claude',
+        threadId: 'legacy-handoff-src',
+        sessionId: 'legacy-handoff-src',
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-24T01:00:00.000Z',
+      } as CanonicalRuntimeEvent);
+      const prepared = await service.prepareConversationHandoff(
+        'legacy-handoff-src',
+        INTERNAL_SESSION_READ_SCOPE,
+        {
+          agentId: 'agent-b',
+          environmentId: 'environment-a',
+          connectionId: 'claude',
+          idempotencyKey: 'legacy-handoff-a',
+          messageDigest: 'message-a',
+        },
+      );
+      expect(prepared.marker.predecessorSessionId).toBe('legacy-handoff-src');
+      expect(typeof prepared.marker.sessionId).toBe('string');
+    });
+
     test('a rebind that lands while the reattach is queued refuses', async () => {
       claude.startSession.mockImplementation(async (input) => {
         const now = new Date().toISOString();

@@ -3691,6 +3691,18 @@ export class OrchestrationService {
     },
   ): ReturnType<ConversationLineage['prepareConversationHandoff']> {
     this.initialize();
+    // #484 correction: an explicit Agent/engine handoff carries no portable
+    // offer admission, so a portable-marked source cannot hand off without
+    // executing after a withdrawn offer. Refuse BEFORE the lineage reserves
+    // any marker — the original history and marker stay intact, and the
+    // refusal carries the same closed portable code as every other
+    // unadmitted effect. Unmarked legacy conversations pass through.
+    const sourceConsent =
+      this.persistedPortableConsentOfThread(conversationId) ??
+      this.persistedPortableConsentOfThread(
+        this.currentConversationSessionId(conversationId),
+      );
+    if (sourceConsent) throw portableRefusalForUnadmittedThread(sourceConsent);
     return this.conversationLineage.prepareConversationHandoff(
       conversationId,
       authority,
@@ -4553,6 +4565,26 @@ export class OrchestrationService {
             this.latestStartedMetadataOfThread(threadId),
         },
         prepareStart: async (input, context, internal, adapter) => {
+          // #484 correction: a handoff-reserved child of a portable-marked
+          // predecessor starts with no portable admission (the handoff seam
+          // carries none), so it refuses here — before cwd resolution and
+          // the adapter — instead of executing as an unmarked legacy
+          // session after a withdrawn offer. Portable continuation children
+          // carry a receiver admission and never match this shape;
+          // ordinary legacy handoffs have no marked predecessor.
+          if (!internal?.receiverExecutionAdmission) {
+            const handoffMarker =
+              this.conversationLineage.reservedConversationHandoff(
+                input.threadId,
+              );
+            const predecessorConsent = handoffMarker
+              ? this.persistedPortableConsentOfThread(
+                  handoffMarker.predecessorSessionId,
+                )
+              : undefined;
+            if (predecessorConsent)
+              throw portableRefusalForUnadmittedThread(predecessorConsent);
+          }
           if (!internal?.skipModelOptionSupportCheck) {
             const unsupported = unsupportedModelOptionKeys(
               adapter.provider,
