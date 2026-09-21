@@ -10,9 +10,9 @@ import {
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import {
   ANSWER_DELIVERY_OPTIONS,
+  type AnswerDeliveryMode,
   answerDeliveryModeOf,
-  isAnswerDeliveryMode,
-  smoothRevealForAnswerDelivery,
+  settingsForAnswerDelivery,
 } from '../../utils/answerDelivery';
 import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
@@ -132,9 +132,8 @@ export function ChatSettingsPanel({
         </div>
       </fieldset>
 
-      {/* #585 / #2144 slice 6 item B: the same two named options as the
-          Settings Appearance row, over the same boolean and the same
-          mapping module — the two surfaces cannot drift. */}
+      {/* #585: the same three named options and device-local mapping as the
+          Settings Chat row, so the two surfaces cannot drift. */}
       <div className="chat-settings-modal__section">
         <label
           className="chat-settings-modal__label"
@@ -145,14 +144,16 @@ export function ChatSettingsPanel({
         <select
           id={answerDeliveryId}
           className="editor-select"
-          value={answerDeliveryModeOf(featureSettings.smoothReveal)}
+          value={answerDeliveryModeOf(
+            featureSettings.smoothReveal,
+            featureSettings.bufferedDelivery,
+          )}
           aria-describedby="chat-settings-answer-delivery-hint"
           onChange={(event) => {
-            const mode = event.target.value;
-            if (!isAnswerDeliveryMode(mode)) return;
+            const mode = event.target.value as AnswerDeliveryMode;
             setDeviceSetting('featureSettings', {
               ...featureSettings,
-              smoothReveal: smoothRevealForAnswerDelivery(mode),
+              ...settingsForAnswerDelivery(mode),
             });
           }}
         >
@@ -166,8 +167,8 @@ export function ChatSettingsPanel({
           id="chat-settings-answer-delivery-hint"
           className="chat-settings-modal__hint"
         >
-          Either way the same text arrives at the same time; only its pacing on
-          screen differs
+          Choose immediate text, steady reveal, or larger updates at tools,
+          approvals, completion, and other action boundaries
         </p>
       </div>
 

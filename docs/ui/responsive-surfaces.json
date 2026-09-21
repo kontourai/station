@@ -62,6 +62,12 @@
       "evidence": "tests/mobile-chat-composer.spec.ts 320/390px overflow menu containment, 44px menuitems, Escape dismissal with trigger focus return"
     },
     {
+      "path": "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/MobileTaskSwitcherAnswerability.test.tsx and tests/mobile-chat-composer.spec.ts cover the lazy phone-sheet loading acknowledgement, close action, and shared responsive surface containment"
+    },
+    {
       "path": "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
       "strategy": "covered",
       "evidence": "tests/mobile-chat-composer.spec.ts"

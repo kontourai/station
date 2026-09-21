@@ -439,6 +439,7 @@ type StoredChat = {
   providerOptions?: Record<string, unknown>;
   projectSlug?: string;
   projectName?: string;
+  cwd?: string;
   currentModeId?: string;
   orchestrationSessionStarted?: boolean;
   orchestrationStatus?: string;
@@ -453,10 +454,16 @@ type StoredChat = {
 export async function seedActiveChats(
   page: Page,
   chats: StoredChat[],
+  options: { preserveExisting?: boolean } = {},
 ): Promise<void> {
-  await page.addInitScript((items) => {
-    sessionStorage.setItem('activeChats', JSON.stringify(items));
-  }, chats);
+  await page.addInitScript(
+    ({ items, preserveExisting }) => {
+      if (preserveExisting && sessionStorage.getItem('activeChats') !== null)
+        return;
+      sessionStorage.setItem('activeChats', JSON.stringify(items));
+    },
+    { items: chats, preserveExisting: options.preserveExisting === true },
+  );
 }
 
 export async function installMockOrchestrationSse(page: Page): Promise<void> {

@@ -1570,9 +1570,9 @@
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  background: var(--bg-tertiary);
 }
 
 .project-page__task-sharing p {

@@ -116,6 +116,10 @@ describe('native output declaration', () => {
     { file: {} },
     { file: { path: 'result.txt' }, pullRequest: {} },
     { file: { path: 'result.txt' }, unexpected: true },
+    {
+      file: { path: 'result.txt' },
+      __station_tool_purpose: 'must stay invalid',
+    },
   ])(
     'refuses malformed Volt declaration input before callbacks or capacity admission',
     async (malformed) => {

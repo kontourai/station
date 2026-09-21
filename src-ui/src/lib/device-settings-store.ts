@@ -258,6 +258,7 @@ const COMPOSITE_BOOLEAN_FIELDS: Readonly<Record<string, readonly string[]>> = {
     'voiceS2SEnabled',
     'mobilePairingEnabled',
     'smoothReveal',
+    'bufferedDelivery',
   ],
   inboxSections: ['snoozed', 'earlier'],
   sidebarSections: [

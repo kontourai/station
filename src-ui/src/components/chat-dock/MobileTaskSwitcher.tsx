@@ -22,7 +22,7 @@ import {
 } from '../../views/home/work-item-open-policy';
 import { registerDialogHistory } from '../dialog-history';
 import { ResponsiveDialogCloseButton } from '../ResponsiveDialogSurface';
-import { Empty } from '../state';
+import { Empty, ErrorState, SkeletonList } from '../state';
 import {
   InboxGroupList,
   type InboxGroupListProps,
@@ -78,6 +78,9 @@ export function MobileTaskSwitcher({
   onOpenBackgroundTasks,
   now,
   agents,
+  pending = false,
+  loadError = false,
+  onRetryLoad,
 }: {
   open: boolean;
   mode?: MobileTaskSwitcherMode;
@@ -123,6 +126,10 @@ export function MobileTaskSwitcher({
    * not drift into different row anatomy. Omitted renders no icons.
    */
   agents?: InboxGroupListProps['agents'];
+  /** True until every read contributing rows has settled. */
+  pending?: boolean;
+  loadError?: boolean;
+  onRetryLoad?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const openMembership = useMemo(
@@ -301,13 +308,43 @@ export function MobileTaskSwitcher({
               {`Background tasks (${backgroundTaskCount ?? 0})`}
             </button>
           )}
-          {visibleGroups.length === 0 && (
+          {loadError && visibleGroups.length === 0 ? (
+            <ErrorState
+              variant="compact"
+              title="Unable to load chats and tasks"
+              action={
+                onRetryLoad ? (
+                  <button type="button" onClick={onRetryLoad}>
+                    Retry
+                  </button>
+                ) : undefined
+              }
+            />
+          ) : pending ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label="Loading chats and tasks"
+            >
+              <SkeletonList count={3} />
+            </div>
+          ) : visibleGroups.length === 0 ? (
             <Empty
               variant="compact"
               label={
                 isActivity ? 'Nothing running right now.' : 'No chats yet.'
               }
             />
+          ) : null}
+          {loadError && visibleGroups.length > 0 && (
+            <p role="status">
+              Some chats may be out of date.{' '}
+              {onRetryLoad && (
+                <button type="button" onClick={onRetryLoad}>
+                  Retry
+                </button>
+              )}
+            </p>
           )}
           {/* kontourai/station#3312: rows/groups are the shared inbox
               anatomy (`ChatDockInboxRows.tsx`) — same richness as the

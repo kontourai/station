@@ -1071,6 +1071,11 @@ export {
   usePinBoardWidget,
   useUnpinBoardWidget,
 } from './query-domains/board.js';
+export type { CodingFileMentionCandidates } from './query-domains/chatRuntimeCoding.js';
+export {
+  fetchCodingFileMentionCandidates,
+  useCodingFileMentionCandidatesQuery,
+} from './query-domains/chatRuntimeCoding.js';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,

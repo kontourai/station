@@ -129,7 +129,7 @@ async function sendTurnAndExpectEcho(
   token: string,
   overallTimeoutMs = 120_000,
 ): Promise<void> {
-  const composer = page.getByPlaceholder('Type a message...');
+  const composer = page.getByPlaceholder(/^Type a message/);
   await composer.fill(prompt);
   await composer.press('Enter');
 

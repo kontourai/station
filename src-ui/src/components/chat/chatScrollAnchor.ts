@@ -3,6 +3,13 @@ export interface ChatScrollAnchor {
   offset: number;
 }
 
+export const CHAT_READER_RESTORE_EVENT = 'station:chat-reader-restore';
+
+export interface ChatReaderRestoreRequest {
+  anchor?: ChatScrollAnchor;
+  scrollTop: number;
+}
+
 const MESSAGE_SELECTOR = '[data-chat-message-key]';
 
 export function captureChatScrollAnchor(

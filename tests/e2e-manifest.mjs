@@ -311,11 +311,15 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
     'tests/project-architecture.spec.ts':
       'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
+    'tests/buffered-answer-delivery.spec.ts':
+      'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
   parallelSafe: [
+    'tests/buffered-answer-delivery.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/sidebar-file-intake.spec.ts',
+    'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
@@ -335,7 +339,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/project-architecture.spec.ts',
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
-    'tests/mobile-chat-composer.spec.ts',
     'tests/chat-replay.spec.ts',
     'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
@@ -385,6 +388,11 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
+    'tests/conversation-timeline.spec.ts',
+    // Retains the short-viewport composer acceptance screenshot beside the
+    // conversation timeline evidence under .kontourai/chat-563.
+    'tests/mobile-chat-composer.spec.ts',
     // E2E regression lane: every one of these seeds and reads LIVE
     // Station state (agents, skills, model connections) through the
     // authenticated API, because the claim under test is that the surface
@@ -696,6 +704,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/composer-file-mentions.spec.ts',
+    bucket: 'product',
+    surface: 'Chat composer',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Browser component harness for composer typing, keyboard file/folder selection, compact chips, draft preservation across mounted chat switches, and mobile-width layout. Real dispatch is covered separately.',
+    exceptions: [],
+  },
+  {
     path: 'tests/attention-file-replies.spec.ts',
     bucket: 'product',
     surface: 'Attention input replies',
@@ -910,6 +928,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Replay runtime, history, connection, timing, tool, error and multi-turn scenarios through the real mobile transcript, with frame-bound screenshots and loading animation evidence.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/conversation-timeline.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Read-only multi-execution conversation history uses canonical replay, preserves the live draft, and returns through the explicit fork and latest-state controls.',
     exceptions: [],
   },
   {
@@ -1316,6 +1344,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted orchestration chat flow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/buffered-answer-delivery.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#585 device-local buffered answer delivery: real preference selection, canonical live event injection, semantic boundary reveal, and mid-turn disable flush.',
     exceptions: [],
   },
   {

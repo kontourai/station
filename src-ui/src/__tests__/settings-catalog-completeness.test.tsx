@@ -1908,7 +1908,10 @@ describe('settings catalog completeness', () => {
       fireEvent.change(select, { target: { value: 'smooth' } });
       expect(setDeviceSetting).toHaveBeenCalledWith(
         'featureSettings',
-        expect.objectContaining({ smoothReveal: true }),
+        expect.objectContaining({
+          smoothReveal: true,
+          bufferedDelivery: false,
+        }),
       );
 
       setDeviceSetting.mockClear();
@@ -1922,7 +1925,10 @@ describe('settings catalog completeness', () => {
       fireEvent.change(reopened, { target: { value: 'token' } });
       expect(setDeviceSetting).toHaveBeenCalledWith(
         'featureSettings',
-        expect.objectContaining({ smoothReveal: false }),
+        expect.objectContaining({
+          smoothReveal: false,
+          bufferedDelivery: false,
+        }),
       );
       second.unmount();
     });

@@ -102,3 +102,12 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^wire-shape-secret-0123456789abcdef$''']
 paths = ['''(^|/)src-server/routes/environments/__tests__/peer-credential-routes\.test\.ts$''']
+
+[[allowlists]]
+# Exact synthetic sentinel AND owning test only; other values in the same
+# file remain scanned, including the original commit in full-history scans.
+description = "Synthetic secret sentinel proving delegation snapshots exclude raw engine errors"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^sk-sentinel-secret-9f8e7d6c5b4a$''']
+paths = ['''(^|/)src-server/tools/__tests__/station-control-delegation\.supervision\.test\.ts$''']

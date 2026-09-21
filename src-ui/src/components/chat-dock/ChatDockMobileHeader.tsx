@@ -8,6 +8,7 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
+import { MobileSheetPending } from './MobileSheetPending';
 
 const loadChatDockMobileOverflowSheet = () =>
   import('./ChatDockMobileOverflowSheet').then((module) => ({
@@ -18,8 +19,10 @@ export interface ChatDockMobileOverflowActions {
   onOpenConversation: () => void;
   onToggleHistory: () => void;
   onOpenChatSettings: () => void;
+  onOpenConversationHistory?: () => void;
   onOpenProject: (() => void) | null;
   openProjectName: string | null;
+  inputOriginLabel?: string;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
   sessionInventory?: {
@@ -223,7 +226,13 @@ export function ChatDockMobileHeader({
       {isOverflowOpen && (
         <LazyBoundary
           load={loadChatDockMobileOverflowSheet}
-          pending={null}
+          pending={
+            <MobileSheetPending
+              label="Chat actions"
+              onClose={() => setIsOverflowOpen(false)}
+              returnFocusTarget={chatActionsTriggerRef.current}
+            />
+          }
           componentProps={{
             overflow,
             projectScope,

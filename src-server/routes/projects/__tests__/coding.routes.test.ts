@@ -41,6 +41,15 @@ describe('Coding Routes', () => {
     expect(res.status).toBe(400);
   });
 
+  test('GET /files/search preserves the data array and adds scan metadata', async () => {
+    const app = createCodingRoutes(new FileTreeService());
+    const body = await json(
+      await app.request('/files/search?path=/tmp&query=&maxResults=2'),
+    );
+    expect(Array.isArray(body.data)).toBe(true);
+    expect(typeof body.scanTruncated).toBe('boolean');
+  });
+
   test('GET /files/content returns 400 without path', async () => {
     const app = createCodingRoutes(new FileTreeService());
     const res = await app.request('/files/content');

@@ -1,4 +1,6 @@
+import { Button } from '../Button';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
+import { ErrorState } from '../state';
 
 /**
  * Mutation-error surface for the session detail page — a genuine failure
@@ -16,11 +18,13 @@ export function SessionDetailErrors({
   stopTaskError,
   sendTurnError,
   respondError,
+  onDraftSendError,
 }: {
   failureText: string | null;
   stopTaskError: unknown;
   sendTurnError: unknown;
   respondError: unknown;
+  onDraftSendError?: () => void;
 }) {
   return (
     <div className="sessions-detail__errors">
@@ -33,11 +37,20 @@ export function SessionDetailErrors({
         </p>
       ) : null}
       {sendTurnError ? (
-        <p className="sessions-detail__error" role="alert">
-          {sendTurnError instanceof Error
-            ? sendTurnError.message
-            : 'Unable to continue this task'}
-        </p>
+        <ErrorState
+          variant="compact"
+          title="Unable to continue this task"
+          description={
+            sendTurnError instanceof Error ? sendTurnError.message : undefined
+          }
+          action={
+            onDraftSendError ? (
+              <Button variant="secondary" onClick={onDraftSendError}>
+                Ask agent to help
+              </Button>
+            ) : undefined
+          }
+        />
       ) : null}
       {respondError ? (
         <p className="sessions-detail__error" role="alert">

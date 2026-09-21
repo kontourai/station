@@ -34,6 +34,13 @@ import { navigationStore } from '../contexts/navigation-store';
 
 const BOUNDARY_MARKER = 'boundary-dialogs-chunk';
 
+vi.mock('@kontourai/station-connect', () => ({
+  useConnections: () => ({
+    activeConnection: { id: 'test', name: 'Test Station' },
+    captureCredentialEvidence: () => undefined,
+  }),
+}));
+
 // Stands in for the real chunk so its presence in the tree is observable
 // without mounting two dialogs' worth of graph. Mocking it does not weaken the
 // assertion: the subject is whether the dock RENDERS this subtree, not what

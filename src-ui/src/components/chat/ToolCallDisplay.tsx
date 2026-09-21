@@ -20,6 +20,7 @@ import {
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
+import { toolDisplayView } from './tool-display-view';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -35,6 +36,7 @@ export interface ToolCallData {
   toolName?: string;
   server?: string;
   originalName?: string;
+  purpose?: string;
   args?: any;
   input?: any;
   result?: any;
@@ -107,15 +109,12 @@ function ToolCallDisplayComponent({
   // entrance rather than a replaying one.
   const revealClass = useRevealOnce(id ? `tool:${id}` : undefined);
   const server = toolCall.server;
-  const toolName =
-    toolCall.toolName ||
-    toolCall.name ||
-    toolCall.type?.replace('tool-', '') ||
-    '';
+  const display = toolDisplayView(toolCall);
+  const toolName = display.toolName;
   const originalName = toolCall.originalName;
-  const args = toolCall.args ?? toolCall.input;
-  const result = toolCall.result ?? toolCall.output;
-  const error = toolCall.error ?? toolCall.errorText;
+  const args = display.args;
+  const result = display.result;
+  const error = display.error;
   const cancelled = toolCall.cancelled || toolCall.state === 'cancelled';
   // station#1558: a call whose SESSION ended before any result arrived. Both
   // write paths stamp the same state — `runtime-event-projection.ts` on
@@ -126,6 +125,7 @@ function ToolCallDisplayComponent({
   const state = toolCall.state;
   const progressMessage = toolCall.progressMessage;
   const outputTruncated = toolCall.outputTruncated === true;
+  const purpose = display.purpose;
 
   const failed = Boolean(error) || state === 'error';
   const awaitingApproval = isToolCallAwaitingApproval(toolCall);
@@ -163,6 +163,7 @@ function ToolCallDisplayComponent({
         <Glyph />
       </span>
       <span className="tool-call__label">{label}</span>
+      {purpose && <span className="tool-call__purpose">Why: {purpose}</span>}
       {running && <span className="tool-call__pulse" aria-hidden="true" />}
       {failed &&
         approvalStatus !== 'policy-denied' &&

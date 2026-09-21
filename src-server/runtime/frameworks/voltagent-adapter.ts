@@ -72,6 +72,11 @@ import {
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
 import { createVoltAgentManagedModel } from './framework-model-factory.js';
+import {
+  extractToolPurpose,
+  rememberToolPurpose,
+  toolSchemaWithPurpose,
+} from './tool-purpose.js';
 
 // ── Result bundle from agent creation ──────────────────
 
@@ -430,8 +435,31 @@ export function appendObservedToolDenials(
   })();
 }
 
+async function* bindVoltAgentToolPurposes(
+  source: AsyncIterable<IStreamChunk>,
+  purposeEnabledToolNames: ReadonlySet<string>,
+): AsyncGenerator<IStreamChunk> {
+  for await (const chunk of source) {
+    if (
+      chunk.type === 'tool-call' &&
+      typeof chunk.toolCallId === 'string' &&
+      typeof chunk.toolName === 'string' &&
+      purposeEnabledToolNames.has(chunk.toolName)
+    ) {
+      const purposeful = extractToolPurpose(chunk.input);
+      rememberToolPurpose(chunk.toolCallId, purposeful.purpose);
+      yield { ...chunk, input: purposeful.input };
+      continue;
+    }
+    yield chunk;
+  }
+}
+
 class VoltAgentWrapper implements IAgent {
-  constructor(private inner: Agent) {}
+  constructor(
+    private inner: Agent,
+    private purposeEnabledToolNames: ReadonlySet<string> = new Set(),
+  ) {}
 
   get id() {
     return this.inner.name;
@@ -481,7 +509,10 @@ class VoltAgentWrapper implements IAgent {
     return {
       fullStream: appendObservedToolDenials(
         normalizeVoltAgentToolErrors(
-          result.fullStream as AsyncIterable<IStreamChunk>,
+          bindVoltAgentToolPurposes(
+            result.fullStream as AsyncIterable<IStreamChunk>,
+            this.purposeEnabledToolNames,
+          ),
         ),
         observedDenials,
       ),
@@ -515,6 +546,7 @@ const nativeVoltExecuteWrappers = new WeakMap<
   object,
   { original: unknown; wrapped: unknown }
 >();
+const purposeEnabledVoltTools = new WeakSet<object>();
 
 /**
  * VoltAgent-specific framework adapter.
@@ -586,12 +618,16 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
   // `createTool`'s *type* requires a zod schema, but the runtime `Tool`
   // constructor stores `parameters` verbatim and AI SDK accepts a `jsonSchema()`
   // schema as `inputSchema` — so cast past the zod-only signature.
-  const parameters = jsonSchema(
-    (tool.parameters as Record<string, unknown>) ?? {
-      type: 'object',
-      properties: {},
-    },
-  ) as never;
+  const sourceParameters = (tool.parameters as Record<string, unknown>) ?? {
+    type: 'object',
+    properties: {},
+  };
+  const purposeParameters =
+    tool.name === NATIVE_OUTPUT_DECLARATION_TOOL
+      ? sourceParameters
+      : toolSchemaWithPurpose(sourceParameters);
+  const purposeEnabled = purposeParameters !== sourceParameters;
+  const parameters = jsonSchema(purposeParameters as any) as never;
   const execute =
     typeof tool.execute === 'function'
       ? async (
@@ -612,14 +648,17 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
               result,
             );
           }
+          const purposeful = purposeEnabled
+            ? extractToolPurpose(input)
+            : { input };
           const result = await runWithCurrentNativeOutputCall(
             options?.toolContext?.callId,
-            () => tool.execute!(input, options),
+            () => tool.execute!(purposeful.input, options),
           );
           return result;
         }
       : undefined;
-  return copyLoadedMCPToolProvenance(
+  const adapted = copyLoadedMCPToolProvenance(
     tool,
     createTool({
       id: tool.id,
@@ -629,6 +668,8 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
       ...(execute ? { execute: execute as never } : {}),
     }) as unknown as Tool<any>,
   );
+  if (purposeEnabled) purposeEnabledVoltTools.add(adapted);
+  return adapted;
 }
 
 type PendingVoltAgentToolCall = {
@@ -690,10 +731,14 @@ export function createVoltAgentLifecycleHooks(
         (context.context.get('toolCallCount') as number) || 0;
       context.context.set('toolCallCount', currentCount + 1);
       const toolCallId = options?.toolContext?.callId || '';
+      const purposeful = purposeEnabledVoltTools.has(tool)
+        ? extractToolPurpose(args)
+        : { input: args, purpose: undefined };
       const toolCall: ToolCallContext = {
         toolName: tool.name,
         toolCallId,
-        toolArgs: args,
+        toolArgs: purposeful.input,
+        purpose: purposeful.purpose,
         ...(getLoadedMCPToolProvenance(tool)
           ? {
               mcp: Object.freeze({
@@ -703,6 +748,7 @@ export function createVoltAgentLifecycleHooks(
             }
           : {}),
       };
+      rememberToolPurpose(toolCallId, purposeful.purpose);
       const invocation = voltAgentInvocationContext(
         slug,
         context as typeof context & { traceId?: string },
@@ -936,6 +982,12 @@ export class VoltAgentFramework {
     const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks);
 
     // Build agent
+    const normalizedTools = tools.map(toVoltAgentTool);
+    const purposeEnabledToolNames = new Set(
+      normalizedTools
+        .filter((tool) => purposeEnabledVoltTools.has(tool))
+        .map((tool) => tool.name),
+    );
     const agent = new Agent({
       name: slug,
       instructions: opts.processedPrompt,
@@ -943,7 +995,7 @@ export class VoltAgentFramework {
       memory,
       // Normalize to real VoltAgent Tools so builtin/hand-rolled tools (plain
       // objects) actually forward to the model; MCP/VoltAgent tools pass through.
-      tools: tools.map(toVoltAgentTool),
+      tools: normalizedTools,
       hooks,
       ...(spec.guardrails && {
         temperature: spec.guardrails.temperature,
@@ -965,7 +1017,7 @@ export class VoltAgentFramework {
     });
 
     return {
-      agent: new VoltAgentWrapper(agent),
+      agent: new VoltAgentWrapper(agent, purposeEnabledToolNames),
       tools: tools as ITool[],
       memoryAdapter: opts.memoryAdapter,
       fixedTokens,
@@ -1051,13 +1103,19 @@ export class VoltAgentFramework {
     // the model with no prior context while the UI showed a full transcript.
     // Wired exactly as `createAgent` does, prompt-only view included, so the
     // `[CHAT_ERROR]` marker stays out of the model's reads but still renders.
+    const normalizedTools = (opts.tools || []).map(toVoltAgentTool);
+    const purposeEnabledToolNames = new Set(
+      normalizedTools
+        .filter((tool) => purposeEnabledVoltTools.has(tool))
+        .map((tool) => tool.name),
+    );
     const agent = new Agent({
       name: opts.name,
       instructions: opts.instructions,
       model: opts.model,
       // Temp/default agents bypass persisted-agent loading, but must still
       // register hand-rolled Station tools as real Volt tools.
-      tools: (opts.tools || []).map(toVoltAgentTool),
+      tools: normalizedTools,
       maxSteps: opts.maxSteps,
       // archive#1834: temp agents used to get NO lifecycle hooks, so the
       // default agent (and every scheduler//invoke/CLI call riding it)
@@ -1084,7 +1142,7 @@ export class VoltAgentFramework {
           }
         : {}),
     });
-    return new VoltAgentWrapper(agent);
+    return new VoltAgentWrapper(agent, purposeEnabledToolNames);
   }
 
   async shutdown(): Promise<void> {

@@ -98,6 +98,55 @@ on `reason === 'resource_posture'`, or subscribing to `job.refused`, will stop
 receiving them. `scheduler_concurrency_limit` is the only deferral reason the
 built-in scheduler now emits.
 
+## Delegation turn supervision (#2269)
+
+A delegated task's current turn carries two distinct, finite bounds. Both
+are PER TURN — a follow-up turn gets its own budget; nothing here promises
+an aggregate limit across a whole task or conversation.
+
+| Bound | Owner | Semantics | Muse default |
+|---|---|---|---|
+| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity, and the absolute total still bounds the turn. | 30 min |
+| Total (absolute budget) | Owning adapter | Fixed wall-clock ceiling from turn start. Activity, approval, and progress never move it (`muse-turn-timeout`, unchanged string). An explicit positive finite `turnTimeoutMs` remains an absolute total override — never reinterpreted as idle. | 2 h |
+
+Both bounds fail closed: absent, zero, negative, NaN, infinite, or above the
+24 h cap resolves to the documented default, never to "no bound". No
+request, child, or user metadata can choose or extend either bound. On the
+current Muse wire a truly silent long tool call is indistinguishable from a
+stuck turn (no `tool.started`/approval evidence exists to report), so the
+idle copy must say no progress was *observed* — never that the turn is
+stalled or confirmed working.
+
+The shared 3-minute stall watchdog (`TurnStallWatchdog` /
+`TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
+no progress was *observed* — quiet providers (notably long Muse tool calls,
+which emit no `tool.started`) may be working quietly, and the marker must
+never be rendered as proof of a stall.
+
+Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
+`snapshotFor` → `DelegatedTaskSnapshot`
+`supervision`/`reason`/`transitionReason`; `station delegate status`):
+
+- Supervision facts are forwarded from the owning adapter's own
+  `turn.started` declaration (matched to the live watchdog observation by
+  `turnId` identity, and dropped when the declaration's provider disagrees
+  with the session's own projected provider). A stale prior turn's facts
+  and a malformed declaration are dropped. The status event window is
+  bounded, so a very long turn's start event can age out — that reads as
+  honest unknown, never a repaired policy. Adapters without a declared hard
+  budget omit supervision: consumers render "no declared budget", never a
+  deadline derived from RPC timeouts or metadata.
+- `reason` is allowlisted and re-synthesized, never forwarded as-is. The
+  lifecycle fold classifies a budget-killed turn as `runtime_error` first
+  (its message is always non-empty), so the terminal `runtime.error`
+  event's code is read to keep idle (`muse-turn-idle-timeout`) distinct from
+  absolute (`muse-turn-timeout`) expiry; only those known budget codes keep
+  a detail, and it is host-authored fixed text. Unknown provider errors
+  stay a redacted generic code with no detail; raw event messages,
+  attribution details, and provider logs are never forwarded.
+- `transitionReason` crosses only when it names the
+  `SessionTransitionReason` vocabulary; anything else is dropped.
+
 ## Compatibility
 
 `conversation-pull-request-links` defines exact provider, host, repository, and
