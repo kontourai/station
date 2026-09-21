@@ -1849,9 +1849,9 @@ describe('provider-plan quota terminal notice (#2265)', () => {
       detail:
         'The engine reported an error: The provider plan quota was exhausted; the engine refused the turn.',
     });
-    expect(
-      JSON.stringify(projection.terminalAttribution),
-    ).not.toContain('example.invalid');
+    expect(JSON.stringify(projection.terminalAttribution)).not.toContain(
+      'example.invalid',
+    );
   });
 
   test('an unrelated runtime error keeps the existing generic notice', () => {

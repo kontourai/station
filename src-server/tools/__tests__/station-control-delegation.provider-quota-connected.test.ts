@@ -6,21 +6,23 @@ import {
   type PromptResponse,
   RequestError,
 } from '@agentclientprotocol/sdk';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import {
   observeDelegatedTask,
   observeDelegatedTaskEvents,
 } from '@kontourai/station-sdk/client';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { afterEach, describe, expect, test } from 'vitest';
-import type { ACPProcessOptions } from '../../services/acp/acp-process.js';
-import type { ACPProcess } from '../../services/acp/acp-process.js';
+import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
+import type {
+  ACPProcess,
+  ACPProcessOptions,
+} from '../../services/acp/acp-process.js';
 import {
   normalizeCanonicalRuntimeEventLifecycle,
   projectSessionLifecycle,
   turnIdentityAnchorForEvents,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
 import {
   projectDelegatedTaskEvent,
   snapshotFor,
@@ -116,7 +118,10 @@ async function nextEvent(
   const result = await Promise.race([
     iterator.next(),
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 2000),
+      setTimeout(
+        () => reject(new Error(`Timed out waiting for ${label}`)),
+        2000,
+      ),
     ),
   ]);
   if (result.done || !result.value) {
@@ -168,10 +173,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
         metadata: { connectionId: 'kiro' },
       });
       const sessionStarted = await nextEvent(iterator, 'session.started');
-      const sessionConfigured = await nextEvent(
-        iterator,
-        'session.configured',
-      );
+      const sessionConfigured = await nextEvent(iterator, 'session.configured');
       const turn = await adapter.sendTurn({
         threadId,
         input: 'do the thing',

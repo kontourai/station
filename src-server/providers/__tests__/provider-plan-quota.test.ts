@@ -198,7 +198,9 @@ describe('provider-plan-quota classifier (#2265)', () => {
 
   test('a non-finite protocol code is not a protocol error: stays generic', () => {
     for (const code of [Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(classifyProviderQuotaFailure(requestError(OBSERVED_SHAPE, code))).toBeUndefined();
+      expect(
+        classifyProviderQuotaFailure(requestError(OBSERVED_SHAPE, code)),
+      ).toBeUndefined();
     }
   });
 
