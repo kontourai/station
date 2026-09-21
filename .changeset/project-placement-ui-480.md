@@ -1,5 +1,6 @@
 ---
 '@kontourai/station-sdk': minor
+'@kontourai/station-contracts': minor
 ---
 
 Add `useProjectIdentityQuery(slug, config)` — the scoped React read for a
