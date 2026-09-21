@@ -138,13 +138,13 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
     expect(isRequestPrincipalCurrent).toHaveBeenCalled();
   });
 
-  test('a refusal from delegateTask maps to an exact 403 WITH its distinct code', async () => {
+  test('a refusal maps to an exact safe code without serializing internal diagnostics', async () => {
     const delegateTask = vi
       .fn()
       .mockRejectedValue(
         new ReceiverExecutionRefusal(
           'receiver_execution_not_offered',
-          'This Station does not currently offer execution for the requested Project resource.',
+          'Internal diagnostic containing /private/customer/checkout and a secret placeholder',
         ),
       );
     const app = createOrchestrationRoutes(
@@ -163,7 +163,8 @@ describe('POST /delegations — portable execution admission (#484 phase A)', ()
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({
       success: false,
-      error: /does not currently offer execution/,
+      error:
+        'This Station does not currently offer execution for the requested Project resource.',
       code: 'receiver_execution_not_offered',
     });
     expect(delegateTask).toHaveBeenCalledTimes(1);

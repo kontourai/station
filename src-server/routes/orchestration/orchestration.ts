@@ -625,6 +625,18 @@ interface DelegateTaskRequest {
   inboundDeviceKind?: 'device' | 'delegation';
 }
 
+const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
+  ReceiverExecutionRefusal['code'],
+  string
+> = {
+  receiver_execution_not_offered:
+    'This Station does not currently offer execution for the requested Project resource.',
+  receiver_execution_unavailable:
+    'The offered Project resource is unavailable.',
+  receiver_execution_forwarding_refused:
+    'A portable execution that arrived from a peer Station cannot be forwarded to another Station.',
+};
+
 interface ForegroundMessageRequest {
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
@@ -1754,7 +1766,11 @@ export function createOrchestrationRoutes(
     } catch (error) {
       if (error instanceof ReceiverExecutionRefusal)
         return c.json(
-          { success: false, error: error.message, code: error.code },
+          {
+            success: false,
+            error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+            code: error.code,
+          },
           403,
         );
       return c.json(
@@ -1903,7 +1919,11 @@ export function createOrchestrationRoutes(
         // current offer admission is a 403, like the create-path refusal.
         if (error instanceof ReceiverExecutionRefusal)
           return c.json(
-            { success: false, error: error.message, code: error.code },
+            {
+              success: false,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+              code: error.code,
+            },
             403,
           );
         return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -1935,7 +1955,11 @@ export function createOrchestrationRoutes(
         // #484 phase A: same 403 mapping as the create and continue paths.
         if (error instanceof ReceiverExecutionRefusal)
           return c.json(
-            { success: false, error: error.message, code: error.code },
+            {
+              success: false,
+              error: RECEIVER_EXECUTION_REFUSAL_COPY[error.code],
+              code: error.code,
+            },
             403,
           );
         return c.json({ success: false, error: errorMessage(error) }, 400);
