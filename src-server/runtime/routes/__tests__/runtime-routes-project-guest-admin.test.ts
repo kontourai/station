@@ -87,6 +87,7 @@ const ORIGIN = 'https://station.example.test';
 const STATION_ID = 'guest-admin-fixture';
 const PROVIDER_ISSUER = `urn:station:${STATION_ID}`;
 const GUEST_SUBJECT = 'guest-person';
+const PEER_SUBJECT = 'peer-person';
 const GUEST_GRANT = 'orchestration:read orchestration:operate';
 const operatorApproval = { kind: 'presented-credential' } as const;
 
@@ -111,7 +112,7 @@ function writeProviderModule(homeDirectory: string): string {
 const revoked = new Set();
 function subjectOf(request) {
   const cookie = request.headers.get('cookie') ?? '';
-  const match = cookie.match(/fixture_account=(owner|guest)/);
+  const match = cookie.match(/fixture_account=(owner|guest|peer)/);
   return match ? match[1] + '-person' : null;
 }
 export async function createStationAuthenticationProvider(host) {
@@ -323,7 +324,11 @@ describe('project guest administration over the production composition', () => {
     });
 
     /** Pair an account-bound device with an EXPLICIT scope string. */
-    const pairAccountBound = (name: string, scope: string) => {
+    const pairAccountBound = (
+      name: string,
+      scope: string,
+      subject: string = GUEST_SUBJECT,
+    ) => {
       const pairing = security.devicePairing;
       const offer = pairing.createOffer({ endpoint: ORIGIN, scope });
       const pending = pairing.requestPairing({
@@ -334,7 +339,7 @@ describe('project guest administration over the production composition', () => {
         source: 'same-origin',
         accountCandidate: {
           issuer: PROVIDER_ISSUER,
-          subject: GUEST_SUBJECT,
+          subject,
           displayName: 'Guest Person',
         },
         accountCandidateSessionId: 'candidate-proof',
@@ -346,7 +351,7 @@ describe('project guest administration over the production composition', () => {
         {
           principalId: deploymentAccountPrincipal(
             PROVIDER_ISSUER,
-            GUEST_SUBJECT,
+            subject,
             'Guest Person',
           ).id,
           kind: 'account',
@@ -358,16 +363,18 @@ describe('project guest administration over the production composition', () => {
         requestId: pending.requestId,
       });
     };
-    const guestHeaders = (credential: string) => (extra?: RequestInit) => ({
-      ...extra,
-      headers: {
-        ...(extra?.headers ?? {}),
-        Authorization: `Bearer ${credential}`,
-        Cookie: 'fixture_account=guest',
-        // Cookie-authenticated mutations require a trusted origin.
-        Origin: ORIGIN,
-      },
-    });
+    const guestHeaders =
+      (credential: string, accountCookie = 'fixture_account=guest') =>
+      (extra?: RequestInit) => ({
+        ...extra,
+        headers: {
+          ...(extra?.headers ?? {}),
+          Authorization: `Bearer ${credential}`,
+          Cookie: accountCookie,
+          // Cookie-authenticated mutations require a trusted origin.
+          Origin: ORIGIN,
+        },
+      });
 
     /**
      * Owner (local operator console) enables sharing and invites the
@@ -1090,5 +1097,171 @@ describe('project guest administration over the production composition', () => {
     expect(
       (await h.request('/api/projects/logout-delay/access', guest())).status,
     ).toBe(401);
+  });
+
+  test('substituted account credentials cannot commit a stale page intent: exact denial, zero effects', async () => {
+    // The concrete UI race: a page rendered as A has both HttpOnly cookies
+    // replaced by B in another window between its authority read and its
+    // POST. B is independently an admin of the same Project with its own
+    // bound read+operate device — the substitution is validly authenticated
+    // as B, so only the caller-captured expected actor can stop A's stale
+    // intent from committing as B. No client authority key can observe
+    // HttpOnly cookie replacement; the comparison below is server-enforced
+    // against freshly authenticated authority, never authority granted by
+    // the client claim.
+    const h = await setup();
+    const { scope, guest } = await h.shareWithGuestAdmin('actor', 'Actor');
+    const guestId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    ).id;
+    const peerId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      PEER_SUBJECT,
+      'Guest Person',
+    ).id;
+
+    // A second independent admin: owner invites the peer account, which
+    // accepts over the real route and pairs its own bound device.
+    const invitedPeer = await h.request(
+      '/api/projects/actor/access/invitations',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          email: null,
+          role: 'admin',
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+      }),
+    );
+    expect(invitedPeer.status, await invitedPeer.clone().text()).toBe(200);
+    const peerToken = (
+      await readJson<{ data: { token: string } }>(invitedPeer)
+    ).data.token;
+    const peerPairing = h.pairAccountBound('actor-peer', GUEST_GRANT, PEER_SUBJECT);
+    const peer = h.guestHeaders(peerPairing.credential, 'fixture_account=peer');
+    const peerAccepted = await h.request(
+      '/api/account-auth/accept-invitation',
+      peer({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: peerToken }),
+      }),
+    );
+    expect(peerAccepted.status, await peerAccepted.clone().text()).toBe(200);
+
+    // A's captured page state: the exact scope and acting principal from a
+    // successful administration read, plus the current member revisions.
+    const readView = async () =>
+      readJson<{
+        data: {
+          scope: unknown;
+          actingPrincipal: { id: string };
+          members: { principal: { id: string }; revision: number }[];
+          invitations: unknown[];
+        };
+      }>(await h.request('/api/projects/actor/access', guest()));
+    const before = (await readView()).data;
+    expect(before.actingPrincipal.id).toBe(guestId);
+
+    const inviteBody = (expectedActor: string) =>
+      JSON.stringify({
+        scope,
+        email: null,
+        role: 'viewer',
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        expectedActor,
+      });
+
+    // B's credentials submit A's captured actor: exact denial, and the
+    // denial body carries no token bytes.
+    const substituted = await h.request(
+      '/api/projects/actor/access/invitations',
+      peer({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: inviteBody(guestId),
+      }),
+    );
+    expect(substituted.status).toBe(403);
+    expect(await substituted.clone().json()).toEqual({
+      error: { code: 'project_access_forbidden' },
+    });
+    expect(await substituted.text()).not.toContain('token');
+
+    // Zero committed effects: the invitation inventory and every member
+    // revision read back unchanged through A's own authority.
+    const afterInvite = (await readView()).data;
+    expect(afterInvite.invitations).toEqual(before.invitations);
+    expect(afterInvite.members).toEqual(before.members);
+
+    // Same substitution against the member-mutation leaf: exact denial and
+    // the target revision untouched.
+    const substitutedChange = await h.request(
+      '/api/projects/actor/access/members',
+      peer({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          principalId: peerId,
+          revision: 1,
+          role: 'viewer',
+          status: 'active',
+          expectedActor: guestId,
+        }),
+      }),
+    );
+    expect(substitutedChange.status).toBe(403);
+    expect(await substitutedChange.json()).toEqual({
+      error: { code: 'project_access_forbidden' },
+    });
+    const afterChange = (await readView()).data;
+    expect(afterChange.members).toEqual(before.members);
+
+    // Positive control, same person: B's own captured actor commits, then
+    // B revokes its own invitation — the precondition never blocks the
+    // principal it was rendered for.
+    const ownInvite = await h.request(
+      '/api/projects/actor/access/invitations',
+      peer({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: inviteBody(peerId),
+      }),
+    );
+    expect(ownInvite.status, await ownInvite.clone().text()).toBe(200);
+    const ownInvitation = (
+      await readJson<{ data: { invitation: { id: string } } }>(ownInvite)
+    ).data.invitation;
+    const ownRevoke = await h.request(
+      `/api/projects/actor/access/invitations/${ownInvitation.id}/revoke`,
+      peer({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope, expectedActor: peerId }),
+      }),
+    );
+    expect(ownRevoke.status, await ownRevoke.clone().text()).toBe(200);
+
+    // Operator compatibility: existing callers that omit the precondition
+    // keep working unchanged.
+    const legacyInvite = await h.request(
+      '/api/projects/actor/access/invitations',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+      }),
+    );
+    expect(legacyInvite.status, await legacyInvite.clone().text()).toBe(200);
   });
 });
