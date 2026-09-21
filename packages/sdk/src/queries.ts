@@ -160,6 +160,7 @@ export {
   createVoiceSession,
   type DelegatedTaskHandle,
   type DelegateOrchestrationTaskInvocation,
+  type DelegateOrchestrationTaskMutationVariables,
   type DelegateTaskInput,
   type DelegationOptions,
   type DelegationOptionsInput,

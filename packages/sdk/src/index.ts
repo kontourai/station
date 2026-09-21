@@ -425,6 +425,7 @@ export {
   credentialRecoveryQueryKey,
   type DelegatedTaskHandle,
   type DelegateOrchestrationTaskInvocation,
+  type DelegateOrchestrationTaskMutationVariables,
   type DelegateTaskInput,
   type DelegationOptions,
   type DelegationOptionsInput,
