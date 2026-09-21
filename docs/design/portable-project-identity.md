@@ -1398,7 +1398,12 @@ collaborator, grant Project membership, or complete restricted shared-person
 execution. Portable sessions persist their server-issued association; currently
 continuation and recovery without a fresh admission are refused before provider
 effects. Fresh continuation admission, durable attempts, cancellation and
-reconnect reconciliation remain separate work. Consult the live issues for
+reconnect reconciliation remain separate work. A resource binding can supply
+its checked directory without a legacy Project working directory. The receiver
+retains its Project and Station workspace-isolation policy: portable worktree
+execution currently refuses before provisioning or provider effects instead of
+silently selecting a shared checkout. Admission-backed worktree provisioning
+remains required work in #483/#484. Consult the live issues for
 qualification evidence; API and service tests do not prove two physical machines
 or independent people.
 

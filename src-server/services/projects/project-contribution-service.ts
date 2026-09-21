@@ -606,9 +606,16 @@ export class ProjectContributionService {
     // Both join the freshness baseline below.
     let projectIsolation: WorkspaceIsolationMode | undefined;
     try {
-      projectIsolation = this.deps.source.projectRevision(
+      const record = this.deps.source.projectRevision(
         association.project.slug,
-      ).value?.defaultWorkspaceIsolation;
+      ).value;
+      if (
+        !record ||
+        record.id !== association.project.id ||
+        record.slug !== association.project.slug
+      )
+        throw unavailable();
+      projectIsolation = record.defaultWorkspaceIsolation;
     } catch {
       throw unavailable();
     }
@@ -721,9 +728,16 @@ export class ProjectContributionService {
     let currentProjectIsolation: WorkspaceIsolationMode | undefined;
     let policyReadable = true;
     try {
-      currentProjectIsolation = this.deps.source.projectRevision(
+      const record = this.deps.source.projectRevision(
         association.project.slug,
-      ).value?.defaultWorkspaceIsolation;
+      ).value;
+      if (
+        !record ||
+        record.id !== captured.projectId ||
+        record.slug !== captured.projectSlug
+      )
+        throw unavailable();
+      currentProjectIsolation = record.defaultWorkspaceIsolation;
     } catch {
       policyReadable = false;
     }

@@ -53,6 +53,7 @@ function fixture(
     duringMutation?: () => void;
     /** Runs inside the async resolver, BEFORE it settles — the deferred-query seam. */
     duringResolve?: () => void;
+    missingProjectRecord?: boolean;
   } = {},
 ) {
   let config: any = options.offered
@@ -102,7 +103,7 @@ function fixture(
     source: {
       listProjects: () => [project],
       projectRevision: () => ({
-        value: project,
+        value: options.missingProjectRecord ? undefined : project,
         replace: vi.fn(),
         remove: vi.fn(),
         createLayout: vi.fn(),
@@ -534,6 +535,17 @@ describe('ProjectContributionService', () => {
       sourceObservedAt: null,
       execution: [{ bound: false, verifiedAt: null }],
     });
+  });
+
+  test('a missing full Project record is unavailable, not an unset workspace policy', async () => {
+    const f = fixture({
+      offered: true,
+      bound: true,
+      missingProjectRecord: true,
+    });
+    await expect(
+      f.service.authorizeReceiverExecution(QUERY, () => true),
+    ).rejects.toMatchObject({ code: 'receiver_execution_unavailable' });
   });
 
   test('in-place offer withdrawal during the admission capture refuses', async () => {
