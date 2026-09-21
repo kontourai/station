@@ -1,6 +1,5 @@
 ---
 "@kontourai/station-sdk": minor
-"@kontourai/station-connect": minor
 ---
 
 Add captured-actor preconditions for Project access mutations and an explicit,
