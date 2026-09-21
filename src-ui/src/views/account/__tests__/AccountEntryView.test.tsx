@@ -484,7 +484,7 @@ describe('invitation entry through real account SDK requests', () => {
           name: 'Example Project details',
         })
       ).textContent,
-    ).toContain('Available action: View');
+    ).toContain('Shared work is view-only here');
     deviceReady = false;
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     expect(

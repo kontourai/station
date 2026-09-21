@@ -264,7 +264,12 @@ test.describe
         await expect(
           guest.getByRole('heading', { name: 'People and access' }),
         ).toBeVisible({ timeout: 15_000 });
-        await expect(guest.getByText('can submit changes')).toBeVisible();
+        await expect(
+          guest.getByText('People administration: can submit changes'),
+        ).toBeVisible();
+        await expect(
+          guest.getByText('Shared work is view-only here'),
+        ).toBeVisible();
         // The operator-only bootstrap must never render for a guest,
         // even on an error surface: the guest counterpart has no such action.
         await expect(
@@ -277,6 +282,16 @@ test.describe
           `dark capture must not overflow horizontally: ${darkLayout.wide.join(', ')}`,
         ).toBe(false);
         expect(darkLayout.palette).toBeTruthy();
+        // The joined Project/admin surface gets desktop width instead of
+        // the 480px sign-in card; narrow layouts keep the compact card
+        // (asserted on the light capture below).
+        const darkCardWidth = await guest.evaluate(
+          () =>
+            document
+              .querySelector('.account-entry__card')
+              ?.getBoundingClientRect().width ?? 0,
+        );
+        expect(darkCardWidth).toBeGreaterThan(500);
         await capture('guest-admin-wide-dark.png');
 
         // The guest creates a manual single-use link (no mail service) and
@@ -291,9 +306,9 @@ test.describe
         // plus the pending one just created. Only the pending row offers a
         // cancel; afterwards the cancelled row stays listed as revoked,
         // like on the operator surface — history, not a live link.
-        await expect(
-          guest.getByText('Single-use invitation link'),
-        ).toHaveCount(2);
+        await expect(guest.getByText('Single-use invitation link')).toHaveCount(
+          2,
+        );
         await guest.getByRole('button', { name: 'Cancel invitation' }).click();
         await expect(
           guest.getByRole('button', { name: 'Cancel invitation' }),
@@ -330,6 +345,13 @@ test.describe
           'light capture must not overflow horizontally',
         ).toBe(false);
         expect(lightLayout.smallestTarget).toBeGreaterThanOrEqual(44);
+        const lightCardWidth = await guest.evaluate(
+          () =>
+            document
+              .querySelector('.account-entry__card')
+              ?.getBoundingClientRect().width ?? 0,
+        );
+        expect(lightCardWidth).toBeLessThanOrEqual(500);
         await capture('guest-admin-narrow-light.png');
 
         // Operator narrows the SAME browser to read-only: inspection stays,
@@ -369,7 +391,9 @@ test.describe
         await guest
           .getByRole('button', { name: 'Refresh people and access' })
           .click();
-        await expect(guest.getByText('can submit changes')).toBeVisible({
+        await expect(
+          guest.getByText('People administration: can submit changes'),
+        ).toBeVisible({
           timeout: 15_000,
         });
         await guest.getByRole('button', { name: 'Create invitation' }).click();
