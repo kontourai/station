@@ -27,8 +27,9 @@
  * human-output rendering (pinned by `packages/cli/src/__tests__/delegate.test.ts`
  * against a field-identical reason) and the remote-peer forwarding path.
  */
-import { createServer } from 'node:http';
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,18 +41,19 @@ import {
 } from '@agentclientprotocol/sdk';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { Hono } from 'hono';
 import {
   observeDelegatedTask as observeDelegatedTaskClient,
   observeDelegatedTaskEvents as observeDelegatedTaskEventsClient,
 } from '@kontourai/station-sdk/client';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
+import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
+import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import type {
   ACPProcess,
   ACPProcessOptions,
 } from '../../services/acp/acp-process.js';
-import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
-import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -59,7 +61,6 @@ import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
-import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import {
   delegateTask,
   observeDelegatedTask,
@@ -231,7 +232,8 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       throw new Error(`Unexpected request in quota connected test: ${url}`);
     });
 
-    eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));    stubs = [];
+    eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+    stubs = [];
     // The fake lives ONLY at the provider process boundary: the adapter is
     // the real `AcpAdapter`, driven through the same `processFactory` seam
     // the full adapter suite fakes.
@@ -344,6 +346,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
 
     // The persisted terminal row names the failed turn and carries ONLY
     // fixed copy plus bounded details — the raw provider sentence is gone.
+    if (!persisted) throw new Error('quota terminal row not persisted');
     expect(persisted.turnId).toBeTruthy();
     expect(JSON.stringify(persisted)).not.toContain('Usage limit');
     expect(persisted.details).toEqual({
@@ -377,7 +380,11 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
     expect(statusRes.status).toBe(200);
     const statusBody = (await statusRes.json()) as {
       success: boolean;
-      data: Record<string, unknown>;
+      data: {
+        status: string;
+        resumable: boolean;
+        reason?: { code: string; detail?: string } & Record<string, unknown>;
+      };
     };
     expect(statusBody.success).toBe(true);
     const served = statusBody.data;
@@ -506,7 +513,10 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       service,
     );
     await waitFor(
-      () => eventStore.listEvents(handle.taskId).map((event) => event.payload.method),
+      () =>
+        eventStore
+          .listEvents(handle.taskId)
+          .map((event) => event.payload.method),
       (methods) => methods.includes('session.configured'),
     );
     stubs[0].failPrompt(new RequestError(-32603, 'agent crashed badly'));
@@ -518,6 +528,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
           .find((event) => event.method === 'runtime.error'),
       Boolean,
     );
+    if (!persisted) throw new Error('generic terminal row not persisted');
     expect(persisted.code).not.toBe('provider-plan-quota-exhausted');
 
     const app = createOrchestrationRoutes({} as never, {
