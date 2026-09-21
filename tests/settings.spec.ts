@@ -347,30 +347,34 @@ test.describe('Settings', () => {
   // on mount. A stale-closure in the re-sync effect previously left local
   // `config` as `{}` forever, so every field rendered blank even though the
   // server had persisted data (looked like "save doesn't persist" but was
-  // really a read-back failure).
+  // really a read-back failure). This proves the round-trip against REAL
+  // saved server state: write a sentinel through the supported save path
+  // (with causal PUT+GET readback), reload, and assert the field loads it.
+  // No route mock: beforeEach already loaded fresh defaults, and a mock
+  // installed afterwards would only prove the mock is returned.
   test('loads the saved system prompt from the server into the field', async ({
     page,
   }) => {
-    const SENTINEL = 'SENTINEL-READBACK-9c3f-do-not-edit';
-    await page.route('**/config/app', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: {
-            systemPrompt: SENTINEL,
-            defaultChatFontSize: 14,
-            region: '',
-            userId: 'default-user',
-          },
-        }),
-      }),
-    );
-    // Re-load so the mocked config is fetched fresh (beforeEach already loaded).
-    await goToSettings(page);
     await openAgentDefaults(page);
-    await expect(page.locator('#systemPrompt')).toHaveValue(SENTINEL);
+    const original = await page.inputValue('#systemPrompt');
+    const SENTINEL = `SENTINEL-READBACK-9c3f ${Date.now()}`;
+    try {
+      await page.fill('#systemPrompt', SENTINEL);
+      await saveSettingsAndVerifyPersistence(page, SENTINEL);
+      await page.reload();
+      await page.waitForSelector('.settings__section-nav', {
+        timeout: 10_000,
+      });
+      await openAgentDefaults(page);
+      await expect(page.locator('#systemPrompt')).toHaveValue(SENTINEL);
+    } finally {
+      await openAgentDefaults(page);
+      const current = await page.inputValue('#systemPrompt');
+      if (current !== original) {
+        await page.fill('#systemPrompt', original);
+        await saveSettingsAndVerifyPersistence(page, original);
+      }
+    }
   });
 
   test('save persists changes', async ({ page }) => {
