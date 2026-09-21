@@ -1391,7 +1391,7 @@ function peerPortableFollowUpRefusalFor(
  * preserved). The closed status distinction is refusal (typed,
  * fixed-copy, 403 at the route) versus this sentinel (generic, 400).
  */
-export class PeerPortableFollowUpError extends Error {
+class PeerPortableFollowUpError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'PeerPortableFollowUpError';
