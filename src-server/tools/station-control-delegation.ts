@@ -4773,9 +4773,27 @@ export async function delegateTask(
         input.clientOrigin,
         input.principal,
       ),
-      receiverEffectAdmission
-        ? { receiverExecutionAdmission: receiverEffectAdmission }
-        : undefined,
+      {
+        conversationIdentity: {
+          conversationId: sessionId,
+          environmentId: target.environmentId,
+        },
+        resourceAdmissionIntent: 'delegated_background',
+        // #484 phase A: the service rechecks this inside the start-effect
+        // path, adjacent to the adapter invocation, AND verifies the
+        // prepared input against the admitted coordinate.
+        ...(receiverEffectAdmission
+          ? {
+              receiverExecutionAdmission: receiverEffectAdmission,
+              portableExecutionConsent: {
+                portableProjectId:
+                  receiverEffectAdmission.admitted.portableProjectId,
+                resourceId: receiverEffectAdmission.admitted.resourceId,
+                localProjectId: receiverEffectAdmission.admitted.localProjectId,
+              },
+            }
+          : {}),
+      },
     );
     // The dispatch returning means the turn was durably accepted by the
     // adapter (the dedup-hit path returns the SAME already-accepted turn

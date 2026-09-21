@@ -2125,6 +2125,8 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      inboundDeviceKind: undefined,
+      isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2136,6 +2138,9 @@ describe('Orchestration Routes', () => {
       taskId: 'task:2',
       userId: 'bound-user',
     });
+    expect(
+      continueDelegatedTask.mock.calls[0][0].isRequestAuthorityCurrent(),
+    ).toBe(false);
   });
 
   test('POST /delegations rejects direct engine execution before dispatch', async () => {
@@ -2423,6 +2428,8 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', status: 'dispatched' },
     });
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      inboundDeviceKind: undefined,
+      isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2434,6 +2441,9 @@ describe('Orchestration Routes', () => {
       taskId: 'task:1',
       userId: 'bound-user',
     });
+    expect(
+      continueDelegatedTask.mock.calls[0][0].isRequestAuthorityCurrent(),
+    ).toBe(false);
   });
 
   test('POST /delegations/:taskId/continue is unavailable without a bound dep and 400s on rejection', async () => {
@@ -2504,6 +2514,8 @@ describe('Orchestration Routes', () => {
       data: { requestId: 'req-1', decision: 'accept' },
     });
     expect(respondToDelegatedTaskRequest).toHaveBeenCalledWith({
+      inboundDeviceKind: undefined,
+      isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2515,6 +2527,9 @@ describe('Orchestration Routes', () => {
       taskId: 'task:1',
       userId: 'bound-user',
     });
+    expect(
+      respondToDelegatedTaskRequest.mock.calls[0][0].isRequestAuthorityCurrent(),
+    ).toBe(false);
   });
 
   test('POST /delegations/:taskId/respond is unavailable without a bound dep, rejects an invalid decision, and 400s on rejection', async () => {

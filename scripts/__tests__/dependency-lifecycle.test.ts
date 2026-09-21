@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -22,6 +22,8 @@ import {
   describeFailure,
   INERT_INSTALL_TIMEOUT_ENV,
   inertInstallTimeout,
+  install,
+  pnpmCommand,
   pnpmInvocation,
   preflightInstalledLifecycle,
   reportCliFailure,
@@ -1909,6 +1911,7 @@ describe('dependency lifecycle policy', () => {
         spawnSync(cli.command, [...prefix, ...args], {
           cwd: fixtureRoot,
           env,
+          argv0: cli.argv0,
           encoding: 'utf8',
           timeout: 30_000,
           windowsHide: true,
@@ -2021,3 +2024,302 @@ describe('describeFailure surfaces the cause chain', () => {
     expect(lines[0]).toContain('esbuild:bin/esbuild missing after install');
   });
 });
+
+// #2280: a mise-style `pnpm` alias dispatches on its invocation name while
+// living somewhere the installer must never launch from. The canonical driver
+// stays the launched executable; the alias rides along as argv0 only.
+// POSIX-only: argv0 delivery and symlink identity are the behavior under
+// test. Windows shim dispatch is not qualified by this POSIX symlink fixture.
+describe.skipIf(process.platform === 'win32')(
+  'pnpm alias invocation name (#2280)',
+  () => {
+    const PIN = '11.25.0';
+
+    // A tiny multicall shim: refuses any argv0 whose basename is not `pnpm`,
+    // answers --version with the manifest pin, and records install receipt.
+    // Read-only and outside the retired dependency tree.
+    function multicallShim(dir: string) {
+      const shim = join(dir, 'multicall-shim.cjs');
+      writeFileSync(
+        shim,
+        `const fs = require('node:fs');
+const path = require('node:path');
+const PIN = ${JSON.stringify(PIN)};
+const MARKER = process.env.STATION_TEST_PNPM_SHIM_MARKER;
+const name = path.basename(process.argv0 || '');
+if (name !== 'pnpm') {
+  console.error('refusing argv0 ' + JSON.stringify(process.argv0));
+  process.exit(3);
+}
+const args = process.argv.slice(2);
+if (args[0] === '--version') {
+  console.log(PIN);
+  process.exit(0);
+}
+if (args[0] === 'install') {
+  fs.writeFileSync(MARKER, 'argv0=' + process.argv0 + '\\nargs=' + args.join(' '));
+  process.exit(0);
+}
+console.error('unexpected args ' + args.join(' '));
+process.exit(4);
+`,
+      );
+      chmodSync(shim, 0o444);
+      return shim;
+    }
+
+    function aliasFixture() {
+      const fixtureRoot = mkdtempSync(join(tmpdir(), 'station-pnpm-argv0-'));
+      const outside = join(fixtureRoot, 'outside');
+      const bin = join(outside, 'bin');
+      mkdirSync(bin, { recursive: true });
+      // The alias lives outside the fixture install tree: Node itself acts as
+      // the fake binary's dispatcher, so no C compiler is required.
+      const alias = join(bin, 'pnpm');
+      symlinkSync(process.execPath, alias);
+      const shim = multicallShim(outside);
+      writeFileSync(
+        join(fixtureRoot, 'package.json'),
+        JSON.stringify({ packageManager: `pnpm@${PIN}` }),
+      );
+      return { fixtureRoot, outside, bin, alias, shim };
+    }
+
+    // The injected exec seam runs the REAL child: Node (resolved through the
+    // alias symlink) executes the shim script, with options.argv0 preserved so
+    // the OS delivers the invocation name truthfully.
+    type VersionProbe = NonNullable<
+      NonNullable<Parameters<typeof pnpmInvocation>[0]>['exec']
+    >;
+    const dispatchingExec =
+      (shim: string): VersionProbe =>
+      (file, args, options) => {
+        const result = spawnSync(file, [shim, ...args], {
+          ...options,
+          encoding: 'utf8',
+        });
+        if (result.error) throw result.error;
+        if (result.status !== 0)
+          throw new Error(result.stderr || 'shim refused');
+        return result.stdout;
+      };
+
+    it('keeps the canonical driver as the command and the alias as argv0', () => {
+      const f = aliasFixture();
+      try {
+        const invocation = pnpmInvocation({
+          cwd: f.fixtureRoot,
+          env: { PATH: f.bin },
+          node: process.execPath,
+          exec: dispatchingExec(f.shim),
+        });
+        expect(invocation.command).toBe(realpathSync(process.execPath));
+        expect(invocation.args).toEqual([]);
+        expect(invocation.argv0).toBe(f.alias);
+      } finally {
+        rmSync(f.fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('fails the pin probe when argv0 is dropped, as the old resolver did', () => {
+      const f = aliasFixture();
+      try {
+        // Dropping argv0 delivers the executable path as argv[0]: the shim
+        // refuses, so the probe fails exactly as it did before #2280.
+        expect(() =>
+          pnpmInvocation({
+            cwd: f.fixtureRoot,
+            env: { PATH: f.bin },
+            node: process.execPath,
+            exec: (file, args, options) => {
+              const { argv0: _dropped, ...withoutName } = options;
+              return execFileSync(file, [f.shim, ...args], {
+                ...withoutName,
+                encoding: 'utf8',
+              });
+            },
+          }),
+        ).toThrow();
+      } finally {
+        rmSync(f.fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('carries argv0 through the real install caller into the child marker', () => {
+      const f = aliasFixture();
+      const marker = join(f.outside, 'install.marker');
+      const previousMarker = process.env.STATION_TEST_PNPM_SHIM_MARKER;
+      process.env.STATION_TEST_PNPM_SHIM_MARKER = marker;
+      try {
+        const env = { PATH: f.bin };
+        const seam = dispatchingExec(f.shim);
+        const real = pnpmInvocation({
+          cwd: f.fixtureRoot,
+          env,
+          node: process.execPath,
+          exec: seam,
+        });
+        let runtimeContractCalls = 0;
+        install(
+          {},
+          {
+            root: f.fixtureRoot,
+            nodePath: process.execPath,
+            // The REAL invocation plus the shim script argument: the guarded
+            // caller canonicalizes the shim and preserves the argv0 string.
+            pnpmInvocation: (options) => ({
+              ...pnpmInvocation({
+                ...options,
+                env,
+                exec: seam,
+              }),
+              args: [f.shim],
+            }),
+            command: (command, args, options) => {
+              expect(command).toBe(realpathSync(process.execPath));
+              expect(args).toEqual(['scripts/node-runtime-contract.mjs']);
+              expect(options?.cwd).toBe(f.fixtureRoot);
+              runtimeContractCalls += 1;
+            },
+            check: () => ({ entries: [] }),
+            pnpmCommand,
+            stageLifecyclePrebuilds: (allowlist) => {
+              expect(allowlist).toEqual({ entries: [] });
+            },
+            runApprovedHooks: (allowlist) => {
+              expect(allowlist).toEqual({ entries: [] });
+            },
+            stationOwnedHooks: () => {},
+            verify: () => ({ allowlist: {}, purls: [] }),
+            generateBuildInputs: () => {},
+          },
+        );
+        expect(runtimeContractCalls).toBe(1);
+        expect(real.argv0).toBe(f.alias);
+        const receipt = readFileSync(marker, 'utf8');
+        expect(receipt).toContain(`argv0=${f.alias}`);
+        expect(receipt).toContain('args=install --ignore-scripts');
+      } finally {
+        if (previousMarker === undefined)
+          delete process.env.STATION_TEST_PNPM_SHIM_MARKER;
+        else process.env.STATION_TEST_PNPM_SHIM_MARKER = previousMarker;
+        rmSync(f.fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('retires an alias living under root node_modules while the canonical driver still installs', () => {
+      const f = aliasFixture();
+      const marker = join(f.outside, 'install.marker');
+      const previousMarker = process.env.STATION_TEST_PNPM_SHIM_MARKER;
+      process.env.STATION_TEST_PNPM_SHIM_MARKER = marker;
+      try {
+        // The alias points at the EXTERNAL node binary, so its canonical
+        // driver is stable; retirement removes the alias path itself.
+        const modules = join(f.fixtureRoot, 'node_modules');
+        mkdirSync(modules, { recursive: true });
+        const alias = join(modules, 'pnpm');
+        symlinkSync(process.execPath, alias);
+        const env = { PATH: `${modules}${delimiter}${f.bin}` };
+        const seam = dispatchingExec(f.shim);
+        const invocation = pnpmInvocation({
+          cwd: f.fixtureRoot,
+          env,
+          node: process.execPath,
+          exec: seam,
+        });
+        expect(invocation.argv0).toBe(alias);
+        install(
+          {},
+          {
+            root: f.fixtureRoot,
+            nodePath: process.execPath,
+            pnpmInvocation: (options) => ({
+              ...pnpmInvocation({
+                ...options,
+                env,
+                exec: seam,
+              }),
+              args: [f.shim],
+            }),
+            command: (command, args, options) => {
+              expect(command).toBe(realpathSync(process.execPath));
+              expect(args).toEqual(['scripts/node-runtime-contract.mjs']);
+              expect(options?.cwd).toBe(f.fixtureRoot);
+            },
+            check: () => ({ entries: [] }),
+            pnpmCommand,
+            stageLifecyclePrebuilds: (allowlist) => {
+              expect(allowlist).toEqual({ entries: [] });
+            },
+            runApprovedHooks: (allowlist) => {
+              expect(allowlist).toEqual({ entries: [] });
+            },
+            stationOwnedHooks: () => {},
+            verify: () => ({ allowlist: {}, purls: [] }),
+            generateBuildInputs: () => {},
+          },
+        );
+        // Retirement removed the alias, but the install marker proves the
+        // canonical driver still ran with the argv0 string intact.
+        expect(existsSync(alias)).toBe(false);
+        expect(readFileSync(marker, 'utf8')).toContain(`argv0=${alias}`);
+      } finally {
+        if (previousMarker === undefined)
+          delete process.env.STATION_TEST_PNPM_SHIM_MARKER;
+        else process.env.STATION_TEST_PNPM_SHIM_MARKER = previousMarker;
+        rmSync(f.fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses an alias resolving inside root node_modules before the version probe', () => {
+      const f = aliasFixture();
+      try {
+        const modules = join(f.fixtureRoot, 'node_modules');
+        mkdirSync(modules, { recursive: true });
+        // The target lives INSIDE the retired tree: immutable-target guards
+        // must refuse before any version child executes.
+        const inner = join(modules, 'inner-pnpm');
+        writeFileSync(inner, 'must never execute');
+        const alias = join(f.bin, 'pnpm');
+        rmSync(alias, { force: true });
+        symlinkSync(inner, alias);
+        let probed = false;
+        const seam = dispatchingExec(f.shim);
+        expect(() =>
+          pnpmInvocation({
+            cwd: f.fixtureRoot,
+            env: { PATH: f.bin },
+            node: process.execPath,
+            exec: (file, args, options) => {
+              probed = true;
+              return seam(file, args, options);
+            },
+          }),
+        ).toThrow('outside root node_modules');
+        expect(probed).toBe(false);
+      } finally {
+        rmSync(f.fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('still refuses a wrong actual manager pin', () => {
+      const f = aliasFixture();
+      try {
+        writeFileSync(
+          join(f.fixtureRoot, 'package.json'),
+          JSON.stringify({ packageManager: 'pnpm@11.24.0' }),
+        );
+        expect(() =>
+          pnpmInvocation({
+            cwd: f.fixtureRoot,
+            env: { PATH: f.bin },
+            node: process.execPath,
+            exec: dispatchingExec(f.shim),
+          }),
+        ).toThrow('does not match');
+      } finally {
+        rmSync(f.fixtureRoot, { recursive: true, force: true });
+      }
+    });
+  },
+);
