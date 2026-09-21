@@ -465,8 +465,8 @@ boundaries qualify.
 
 Future integration uses actual membership, account, compute and plugin owners;
 missing behavior must not become a successful skipped test. Station-local
-accounts under [#1981](https://github.com/kontourai/station/issues/1981) will
-provide a real account adapter without requiring hosted identity.
+accounts under [#1981](https://github.com/kontourai/station/issues/1981)
+provide the real account adapter without requiring hosted identity.
 
 This fixture does not verify live Tailscale identity, production key admission,
 browser/native trust distribution, internet/NAT reachability, invitation email
