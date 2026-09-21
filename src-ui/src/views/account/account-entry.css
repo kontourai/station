@@ -15,7 +15,7 @@
   background: var(--bg-secondary);
 }
 .account-entry form,
-.account-entry label {
+.account-entry label:not(.cb) {
   display: grid;
   gap: 0.5rem;
 }
@@ -23,7 +23,10 @@
   gap: 1rem;
   margin-block: 1.5rem;
 }
-.account-entry input {
+/* The shared Checkbox owns its own internals: the visually hidden input
+   must stay 1px, and its label stays inline-flex, even inside account
+   forms. Without the guards the rules below restyle both. */
+.account-entry input:not(.cb__input) {
   width: 100%;
   min-height: 44px;
   padding: 0.65rem 0.75rem;
@@ -228,8 +231,8 @@
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.account-entry .project-access__invite label,
-.account-entry .project-access__actions label {
+.account-entry .project-access__invite label:not(.cb),
+.account-entry .project-access__actions label:not(.cb) {
   display: grid;
   gap: 0.35rem;
 }

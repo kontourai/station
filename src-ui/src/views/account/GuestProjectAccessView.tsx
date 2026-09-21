@@ -268,6 +268,16 @@ export function GuestProjectAccessView({
                 ? ' This browser also has read-only approval: even as an admin you could only inspect, until the operator approves collaborator management.'
                 : ''}
             </p>
+            <div className="account-entry__actions">
+              <Button
+                onClick={() => {
+                  setBanner(undefined);
+                  void refreshReads();
+                }}
+              >
+                Refresh people and access
+              </Button>
+            </div>
           </section>
         );
       if (access.error.status === 404) return null;
