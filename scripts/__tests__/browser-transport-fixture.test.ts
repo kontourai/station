@@ -1,6 +1,6 @@
 import { createSocket, type Socket } from 'node:dgram';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -124,7 +124,18 @@ it('refuses a missing Pion binary and an exited child before reporting a ready p
   );
   // Node cannot execute a directory containing only config.json as a module;
   // this deliberately exercises a real failed process, not a timer-only mock.
+  // The adapter reads cert/key content (not paths), so the exited-child case
+  // needs real temp files to reach the spawn stage at all.
+  const certificate = join(root, 'fixture-cert.pem');
+  const key = join(root, 'fixture-key.pem');
+  writeFileSync(certificate, 'fixture certificate');
+  writeFileSync(key, 'fixture key');
   await expect(
-    startPionFixture({ ...input, executable: process.execPath }),
-  ).rejects.toThrow('Pion fixture startup failed');
+    startPionFixture({
+      ...input,
+      executable: process.execPath,
+      certificate,
+      key,
+    }),
+  ).rejects.toThrow('pion_process_exited');
 }, 30000);
