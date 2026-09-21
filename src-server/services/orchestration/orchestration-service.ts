@@ -6881,10 +6881,10 @@ export class OrchestrationService {
         provider: adapter.provider,
         error: message,
       });
-      // Surface the failure instead of going silent: a dead adapter stream would
-      // otherwise leave the active conversation blank with no error. Emit a
-      // runtime.error so it is persisted + published (and rendered inline by the
-      // shared event-to-message projection) for every active affected thread.
+      // A failed event consumer is observation loss, not a provider terminal.
+      // The adapter may still be executing every affected turn. Preserve their
+      // lifecycle and interruption authority while surfacing the warning and
+      // restarting consumption; runtime.error would incorrectly permit retry.
       const affectedThreads = new Set(
         [...this.sessionAdapters]
           .filter(([, owner]) => owner === adapter)
@@ -6895,14 +6895,14 @@ export class OrchestrationService {
         // The surfacing publish writes to the SAME store that may have just
         // thrown BUSY. Under sustained contention it throws inside this
         // catch, which would escape through the fire-and-forget consumption
-        // call and leave the REMAINING threads with no runtime.error at all.
+        // call and leave the REMAINING threads with no warning at all.
         // One thread's failed surfacing must not silence the others.
         //
         // Note what the catch costs when it fires. This event is not a delta,
         // so it flushes that thread's buffered text on its way through the
         // coalescer (archive#3350) and a delivery failure on THAT flush now
         // propagates — landing here, where it is logged as a failure to
-        // surface. The thread then gets no `runtime.error` at all, which is
+        // surface. The thread then gets no warning at all, which is
         // the very message archive#3304 added to name the locked store. It is
         // the accepted cost of letting a synchronous delta failure reach the
         // stream's own recovery rather than being swallowed, and the shape
@@ -6914,12 +6914,12 @@ export class OrchestrationService {
             provider: adapter.provider,
             threadId,
             createdAt: new Date().toISOString(),
-            method: 'runtime.error',
-            severity: 'error',
+            method: 'runtime.warning',
+            severity: 'warning',
+            code: 'adapter-event-stream-interrupted',
             message: storeContention
-              ? `Orchestration event store is locked (orchestration.sqlite): another Station process may be using this Station home. ${message}`
-              : `Agent connection error: ${message}`,
-            retriable: true,
+              ? 'Orchestration event store is locked (orchestration.sqlite): another Station process may be using this Station home. Station is reconnecting to the event stream.'
+              : 'Agent event observation was interrupted. Station is reconnecting; this warning does not report turn completion or failure.',
           });
         } catch (surfacingError) {
           this.options.logger.warn(

@@ -17,6 +17,8 @@
  *   station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--json] (deprecated alias)
  *   station delegate respond <task-id> <request-id> <accept|acceptForSession|decline|cancel> [--on=<environment>] [--json]
  *   station delegate interrupt <task-id> [--on=<environment>] [--json]
+ *   station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>]
+ *     [--interval=<seconds>] [--json]
  *   station delegate targets [--on=<environment>] [--project=<slug> | --project-path=<path>] [--json]
  *
  * `--on=<environment>` is accepted on every sub-verb (not just create/targets,
@@ -31,15 +33,27 @@
  * page returned (`station-task-events:v1:<n>`), never a raw sequence number —
  * see `client/delegations.ts`'s module docblock.
  *
- * Dispatch: the six sub-verb names (`status`, `events`, `continue`,
- * `respond`, `interrupt`, `targets`) are only treated as an action word when
- * `--agent` is not present. `create` is the only verb
+ * Dispatch: the seven sub-verb names (`status`, `events`, `continue`,
+ * `respond`, `interrupt`, `targets`, `wait`) are only treated as an action
+ * word when `--agent` is not present. `create` is the only verb
  * that takes a target flag, so a bare `station delegate --agent=<slug>
  * status ...` prompt (whose text happens to start with a reserved word) is
  * unambiguously a create call, not a mis-dispatch to `delegate status`. A
  * `--agent`-less create call whose prompt's first word is
- * exactly one of the six reserved words is a known, narrow, and disclosed
+ * exactly one of the seven reserved words is a known, narrow, and disclosed
  * ambiguity (the CLI reads it as the sub-verb) — not solved here.
+ *
+ * `wait` (#2264) is OBSERVATION ONLY. It polls the same secret-minimized
+ * status snapshot `status` reads (`observeDelegatedTask`) until the task
+ * reaches an honest outcome or the caller's wait budget expires, and it can
+ * never dispatch another turn: there is no code path from `wait` to
+ * `delegateTask`, `continueDelegatedTask`, `respondToDelegatedTaskRequest`,
+ * or `interruptDelegatedTask`. The caller's wait budget (`--timeout`/
+ * `--interval`) is the CLI's own waiting budget and is entirely separate
+ * from the delegated engine's execution budget (`DelegatedTaskSnapshot`'s
+ * server-forwarded `supervision`): expiring one says nothing about the
+ * other. A wait deadline, Ctrl-C, or a polling failure leaves the delegated
+ * task untouched and running — see `waitOnDelegatedTask` below.
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -74,6 +88,17 @@ import {
   type ResolvedApiBase,
   requirePositional,
 } from './core-api.js';
+import {
+  type DelegateWaitResult,
+  formatDurationMs,
+  formatWaitOutcomeLine,
+  parseWaitSeconds,
+  WAIT_DEFAULT_INTERVAL_SECONDS,
+  WAIT_DEFAULT_TIMEOUT_SECONDS,
+  WAIT_MAX_INTERVAL_SECONDS,
+  WAIT_MAX_TIMEOUT_SECONDS,
+  waitOnDelegatedTask,
+} from './delegate-wait.js';
 import { explainRequestFailure } from './errors.js';
 import {
   executionEnvironment,
@@ -125,6 +150,7 @@ const RESERVED_ACTIONS = new Set([
   'respond',
   'interrupt',
   'targets',
+  'wait',
 ]);
 
 function delegateContinuationCommand(conversationId: string): string {
@@ -346,21 +372,6 @@ function supervisionLines(
       }`,
   ];
   return lines;
-}
-
-/** Compact `90s` / `30m` / `2h` rendering for forwarded millisecond budgets. */
-function formatDurationMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return 'unknown';
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    const rest = seconds % 60;
-    return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const restMinutes = minutes % 60;
-  return restMinutes ? `${hours}h ${restMinutes}m` : `${hours}h`;
 }
 
 function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
@@ -946,6 +957,89 @@ async function runDelegateTargets(
   }
 }
 
+/**
+ * #2264 — `station delegate wait` command seam. The observation loop,
+ * outcome classification, and duration/flag validation live in
+ * `./delegate-wait.ts`; this function owns the CLI seam: argument parsing,
+ * `--on`/environment resolution, SIGINT wiring, and output.
+ *
+ * Ctrl-C is a cooperative observation abort, never a task interrupt: the
+ * handler only flips an AbortSignal that both the wait loop and the
+ * in-flight status read itself observe. The listener is always removed.
+ */
+async function runDelegateWait(
+  apiBase: string,
+  parsed: ParsedCoreArgs,
+  jsonMode: boolean,
+): Promise<void> {
+  const taskId = requirePositional(parsed, 1, 'task id');
+  const environment = executionEnvironment(parsed);
+  const environmentId =
+    environment.kind === 'saved' ? environment.id : undefined;
+  const timeoutSeconds = parseWaitSeconds(
+    parsed,
+    'timeout',
+    WAIT_DEFAULT_TIMEOUT_SECONDS,
+    WAIT_MAX_TIMEOUT_SECONDS,
+  );
+  const intervalSeconds = parseWaitSeconds(
+    parsed,
+    'interval',
+    WAIT_DEFAULT_INTERVAL_SECONDS,
+    WAIT_MAX_INTERVAL_SECONDS,
+  );
+
+  const controller = new AbortController();
+  const onSigint = () => controller.abort();
+  process.on('SIGINT', onSigint);
+  let result: DelegateWaitResult;
+  try {
+    result = await waitOnDelegatedTask({
+      apiBase,
+      taskId,
+      environmentId,
+      timeoutMs: timeoutSeconds * 1000,
+      intervalMs: intervalSeconds * 1000,
+      signal: controller.signal,
+      deps: {
+        onPoll: jsonMode
+          ? undefined
+          : (snapshot, elapsedMs) => {
+              // Progress goes to stderr: stdout stays clean for the final
+              // summary (and stays empty of chatter entirely under --json).
+              process.stderr.write(
+                `Task ${taskId}: ${snapshot.status} (elapsed ${formatDurationMs(elapsedMs)}, Session ${snapshot.currentSessionId})\n`,
+              );
+            },
+      },
+    });
+  } finally {
+    process.removeListener('SIGINT', onSigint);
+  }
+
+  if (jsonMode) {
+    // One clean structured envelope on stdout; no human progress text was
+    // mixed in. `ok` is true only when the task genuinely completed — every
+    // other outcome is readable from `data.outcome` + the exit code.
+    console.log(
+      JSON.stringify({
+        ok: result.outcome === 'completed',
+        kind: 'delegate.wait',
+        data: result,
+      }),
+    );
+  } else {
+    console.log(formatWaitOutcomeLine(result));
+    // The final human rendering reuses `status`'s safe projection (the same
+    // secret-minimized summary, budget/reason lines included) — never raw
+    // provider logs.
+    if (result.lastSnapshot) {
+      console.log(formatStatusSummary(result.lastSnapshot));
+    }
+  }
+  process.exit(result.exitCode);
+}
+
 export async function runDelegateCommand(
   apiBase: string,
   parsed: ParsedCoreArgs,
@@ -999,6 +1093,8 @@ export async function runDelegateCommand(
       return runDelegateInterrupt(apiBase, parsed, jsonMode);
     case 'targets':
       return runDelegateTargets(apiBase, parsed, jsonMode);
+    case 'wait':
+      return runDelegateWait(apiBase, parsed, jsonMode);
     default:
       return runDelegateCreate(apiBase, parsed, jsonMode);
   }

@@ -26,18 +26,8 @@ import type { createStationConnectionProofIssuer } from '../src-server/services/
 import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
 import { bridgeApplicationChannels } from './lib/application-ipc.js';
-import {
-  browserAcceptApplicationInvitation,
-  browserAdoptBoundApplicationDevice,
-  browserApplicationAccountRequest,
-  browserLoginApplicationAccountAgain,
-  browserRejectWrongBoundAccount,
-  browserRenewApplicationAccount,
-  browserRequestBoundApplicationDevice,
-  browserRevokeApplicationContinuation,
-  browserStartApplicationAccount,
-  browserStopApplicationAccount,
-} from './lib/browser-application-account.mjs';
+import { runBrowserAccountScenario } from './lib/browser-account-scenario.js';
+import { browserApplicationAccountRequest } from './lib/browser-application-account.mjs';
 import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
 import {
   browserBrokerAdmitApplicationTransport,
@@ -72,8 +62,8 @@ import { nodeApplicationChannel } from './lib/node-application-channel.js';
 import { startSelfHostedBrokerLab } from './lib/self-hosted-broker-lab.js';
 
 // Isolated transport evaluation; the opt-in account mode uses a real Station.
-const TURN_IMAGE =
-  'coturn/coturn@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3';
+import { createTurnFixture, TURN_FIXTURE_IMAGE } from './lib/turn-fixture.js';
+
 const args = process.argv.slice(2);
 if (
   args.some(
@@ -133,23 +123,15 @@ const interrupt = () =>
 process.once('SIGINT', interrupt);
 process.once('SIGTERM', interrupt);
 let report: Record<string, unknown> | undefined;
-const dockerHost =
-  process.platform === 'win32'
-    ? 'npipe:////./pipe/docker_engine'
-    : 'unix:///var/run/docker.sock';
-const docker = async (args: string[]) => {
-  const result = await runLabCommand(
-    'docker',
-    ['--host', dockerHost, '--config', join(root, 'docker-config'), ...args],
-    root,
-  );
-  return args[0] === 'logs' ? result.stdout + result.stderr : result.stdout;
-};
 const username = 'station-fixture';
 const password = randomBytes(24).toString('hex');
-const containerOwner = randomBytes(16).toString('hex');
-const containerName = `station-turn-${containerOwner}`;
-let containerId: string | undefined;
+const turnFixture = createTurnFixture({
+  directory: root,
+  username,
+  password,
+  signal: abort.signal,
+  failAfterCreate: args.includes('--fail-after-create'),
+});
 let turnUdpPort: number | undefined;
 let turnTcpPort: number | undefined;
 let relay: Awaited<ReturnType<typeof startLabRelay>> | undefined;
@@ -181,45 +163,6 @@ const server = createServer((request, response) => {
     '<!doctype html><title>Station browser transport fixture</title><script src="/connection-proof.js"></script>',
   );
 });
-
-async function cleanupContainer() {
-  // Generation identity is durable before allocation: even a lost create
-  // response cannot strand an unstarted container or justify generic cleanup.
-  const ids = (
-    await docker([
-      'ps',
-      '-a',
-      '--no-trunc',
-      '--filter',
-      `label=station.fixture.owner=${containerOwner}`,
-      '--format',
-      '{{.ID}}',
-    ])
-  )
-    .trim()
-    .split('\n')
-    .filter(Boolean);
-  if (!ids.length) return;
-  assert.equal(ids.length, 1, 'Ambiguous container ownership');
-  const id = ids[0];
-  assert.match(id, /^[a-f0-9]{64}$/);
-  if (containerId) assert.equal(id, containerId);
-  const fact = JSON.parse(
-    await docker(['inspect', '--format', '{{json .}}', id]),
-  );
-  assert.equal(fact.Config.Image, TURN_IMAGE);
-  assert.equal(fact.Name, `/${containerName}`);
-  assert.equal(fact.Config.Labels['station.fixture.owner'], containerOwner);
-  try {
-    writeFileSync(join(root, 'turn.log'), await docker(['logs', id]), {
-      mode: 0o600,
-    });
-  } catch (error) {
-    errors.push(error);
-  }
-  if (fact.State.Running) await docker(['stop', '--time', '3', id]);
-  await docker(['rm', id]);
-}
 
 async function offer(page: Page, port: number) {
   const transport = browserTransport;
@@ -595,79 +538,9 @@ try {
   assert.equal(bundled.outputFiles.length, 1);
   clientProofScript = bundled.outputFiles[0].text;
   stopBundler();
-  writeFileSync(
-    join(root, 'container-owner.json'),
-    JSON.stringify({
-      owner: containerOwner,
-      name: containerName,
-      image: TURN_IMAGE,
-    }),
-    { mode: 0o600, flag: 'wx' },
-  );
-  const created = await docker([
-    'create',
-    '--label',
-    'station.fixture=browser-transport',
-    '--label',
-    `station.fixture.owner=${containerOwner}`,
-    '--name',
-    containerName,
-    '--init',
-    '--read-only',
-    '--tmpfs',
-    '/tmp:rw,noexec,nosuid,size=16m',
-    '--cap-drop',
-    'ALL',
-    '--cap-add',
-    'NET_BIND_SERVICE',
-    '--security-opt',
-    'no-new-privileges',
-    '--pids-limit',
-    '64',
-    '--memory',
-    '128m',
-    '--cpus',
-    '1',
-    '--publish',
-    '127.0.0.1::3478/tcp',
-    '--publish',
-    '127.0.0.1::3478/udp',
-    '--entrypoint',
-    '/bin/sh',
-    TURN_IMAGE,
-    '-c',
-    'exec timeout -s TERM -k 5 120 turnserver "$@"',
-    '--',
-    '-n',
-    '-v',
-    '--log-file=stdout',
-    '--simple-log',
-    '--no-tls',
-    '--relay-threads=1',
-    '--listening-port=3478',
-    '--lt-cred-mech',
-    '--realm=station-fixture.invalid',
-    `--user=${username}:${password}`,
-    '--no-multicast-peers',
-    '--min-port=50000',
-    '--max-port=50031',
-    '--pidfile=/tmp/turn.pid',
-  ]);
-  containerId = created.trim();
-  assert.match(containerId, /^[a-f0-9]{64}$/);
-  if (args.includes('--fail-after-create')) {
-    containerId = undefined;
-    throw new Error('Injected failure after owned container allocation');
-  }
-  abort.signal.throwIfAborted();
-  await docker(['start', containerId]);
-  const published = (await docker(['port', containerId, '3478/tcp'])).trim();
-  assert.match(published, /^127\.0\.0\.1:\d+$/);
-  const turnPort = Number(published.split(':').at(-1));
-  turnTcpPort = turnPort;
-  const publishedUdp = (await docker(['port', containerId, '3478/udp'])).trim();
-  assert.match(publishedUdp, /^127\.0\.0\.1:\d+$/);
-  turnUdpPort = Number(publishedUdp.split(':').at(-1));
+  const turnPorts = await turnFixture.start();
+  turnTcpPort = turnPorts.tcp;
+  turnUdpPort = turnPorts.udp;
   const relayRoot = join(root, 'relay');
   mkdirSync(relayRoot, { mode: 0o700 });
   relay = await startLabRelay(
@@ -838,260 +711,33 @@ try {
     assert(applicationProtocol.responseBytes > 16 * 1024);
   }
   if (accountStation) {
-    let directApplicationAttempts = 0;
-    await page.route(`${accountStation.station.base}/**`, async (route) => {
-      directApplicationAttempts++;
-      await route.abort('blockedbyclient');
-    });
-    const account = await bounded(
-      page.evaluate(browserStartApplicationAccount, accountStation.browser),
-      'encrypted account login',
-    );
-    assert.equal(account.stationId, accountStation.station.stationId);
-    const self = await page.evaluate(browserApplicationAccountRequest, {
-      path: '/api/account-auth/session',
-    });
-    assert.equal(self.status, 200, self.body);
-    assert.equal(JSON.parse(self.body).data.principal.id, account.principalId);
-    const replay = await page.evaluate(browserApplicationAccountRequest, {
-      path: '/api/account-auth/session',
-      replay: true,
-    });
-    assert.equal(replay.status, 401);
-    const accepted = await page.evaluate(browserAcceptApplicationInvitation);
-    assert.equal(accepted.status, 200);
-    assert.equal(accepted.body.data.grantsDeviceAccess, false);
-    await accountStation.verifyMembership(account.principalId);
-    const replacementOffer = await accountStation.createBoundDeviceOffer();
-    const replacementRequest = await page.evaluate(
-      browserRequestBoundApplicationDevice,
-      { offerId: replacementOffer.offerId, proof: replacementOffer.challenge },
-    );
-    assert.equal(replacementRequest.status, 202);
-    await accountStation.confirmBoundDevice(replacementRequest.body.requestId);
-    await page.evaluate(browserRevokeApplicationContinuation);
-    const boundDevice = await accountStation.exchangeBoundDevice(
-      replacementOffer,
-      replacementRequest.body.requestId,
-    );
-    assert.equal(
-      (await page.evaluate(browserAdoptBoundApplicationDevice, boundDevice))
-        .principalId,
-      account.principalId,
-    );
-    assert.equal(await page.evaluate(browserRejectWrongBoundAccount), true);
-    const sharedRead = await page.evaluate(browserApplicationAccountRequest, {
-      path: '/api/projects/relay-shared',
-    });
-    assert.equal(
-      sharedRead.status,
-      200,
-      'Permitted Project is the positive resource control',
-    );
-    assert(sharedRead.body.includes('Relay shared fixture'));
-    const sharedView = JSON.parse(sharedRead.body).data;
-    assert.equal(sharedView.version, 'station.member-project/v1');
-    assert.equal(sharedView.kind, 'member-project');
-    assert.deepEqual(sharedView.actions, ['view']);
-    const memberKeys = new Set([
-      'version',
-      'kind',
-      'id',
-      'slug',
-      'name',
-      'icon',
-      'description',
-      'actions',
-    ]);
-    assert(Object.keys(sharedView).every((key) => memberKeys.has(key)));
-    const catalogue = await page.evaluate(browserApplicationAccountRequest, {
-      path: '/api/projects',
-    });
-    assert.equal(catalogue.status, 200);
-    const memberProjects = JSON.parse(catalogue.body).data;
-    assert.equal(memberProjects.length, 1);
-    assert.equal(memberProjects[0].id, sharedView.id);
-    assert.deepEqual(memberProjects[0].actions, ['view']);
-    assert(Object.keys(memberProjects[0]).every((key) => memberKeys.has(key)));
-    assert(!catalogue.body.includes(accountStation.browser.privateName));
-    const privateRead = await page.evaluate(browserApplicationAccountRequest, {
-      path: '/api/projects/relay-private',
-    });
-    const [bearerOnlyDirect, bearerOnlyVirtual] = await Promise.all([
-      accountStation.readPrivateWithBearerOnlyDirect(),
-      accountStation.readPrivateWithBearerOnlyVirtual(),
-    ]);
-    const privateBoundary = {
-      status: privateRead.status,
-      containsPrivateMarker: privateRead.body.includes(
-        accountStation.browser.privateName,
-      ),
-      path: '/api/projects/relay-private',
-      deviceScope: 'orchestration:read',
-      principalId: account.principalId,
-      bearerOnlyDirect: {
-        status: bearerOnlyDirect.status,
-        containsPrivateMarker: bearerOnlyDirect.body.includes(
-          accountStation.browser.privateName,
-        ),
+    accountReport = await runBrowserAccountScenario(
+      page,
+      accountStation,
+      root,
+      async () => {
+        if (selfHostedBroker) {
+          assert(brokerLab);
+          const reconnected = await bounded(
+            page.evaluate(browserBrokerReconnect),
+            'broker reconnect',
+          );
+          assert.notEqual(reconnected.connectionId, reconnected.previous);
+          await page.evaluate(browserBrokerAdmitApplicationTransport);
+          await page.evaluate(browserBrokerAdoptApplicationTransport);
+          assert.equal(
+            (
+              await page.evaluate(browserApplicationAccountRequest, {
+                path: '/api/projects/relay-shared',
+              })
+            ).status,
+            200,
+            'Fresh broker peer restores the permitted Project read',
+          );
+          brokerReconnectForJourney = reconnected;
+          brokerReconnectAdapterIndex = brokerLab.adapterMetadata.length - 1;
+        }
       },
-      bearerOnlyVirtual: {
-        status: bearerOnlyVirtual.status,
-        containsPrivateMarker: bearerOnlyVirtual.body.includes(
-          accountStation.browser.privateName,
-        ),
-      },
-    };
-    writeFileSync(
-      join(root, 'account-boundary.json'),
-      JSON.stringify(privateBoundary, null, 2),
-      { mode: 0o600 },
-    );
-    const privateRefused =
-      privateRead.status === 404 &&
-      !privateBoundary.containsPrivateMarker &&
-      JSON.parse(privateRead.body).error === 'Project not found' &&
-      bearerOnlyDirect.status === 401 &&
-      !privateBoundary.bearerOnlyDirect.containsPrivateMarker &&
-      bearerOnlyVirtual.status === 401 &&
-      !privateBoundary.bearerOnlyVirtual.containsPrivateMarker;
-    if (!privateRefused)
-      errors.push(
-        new Error(
-          `Unshared Project boundary failed: ${JSON.stringify(privateBoundary)}`,
-        ),
-      );
-    await page.evaluate(browserRenewApplicationAccount);
-    await page.evaluate(browserRevokeApplicationContinuation);
-    assert.equal(
-      (
-        await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/projects/relay-shared',
-        })
-      ).status,
-      401,
-      'Continuation revocation refuses a permitted Project read',
-    );
-    assert.equal(
-      (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
-      account.principalId,
-    );
-    await accountStation.revokeAccount();
-    assert.equal(
-      (
-        await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/projects/relay-shared',
-        })
-      ).status,
-      401,
-      'Provider-session revocation refuses a permitted Project read',
-    );
-    assert.equal(
-      (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
-      account.principalId,
-    );
-    assert.equal(
-      (
-        await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/projects/relay-shared',
-        })
-      ).status,
-      200,
-      'A fresh provider session restores the permitted Project read',
-    );
-    await accountStation.revokeMembership(account.principalId);
-    assert.equal(
-      (
-        await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/projects/relay-shared',
-        })
-      ).status,
-      404,
-      'Membership revocation independently refuses the Project read',
-    );
-    const replacementInvitation = await accountStation.inviteAgain();
-    assert.equal(
-      (
-        await page.evaluate(
-          browserAcceptApplicationInvitation,
-          replacementInvitation,
-        )
-      ).status,
-      200,
-    );
-    assert.equal(
-      (
-        await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/projects/relay-shared',
-        })
-      ).status,
-      200,
-      'Restored membership proves Device revocation is independent',
-    );
-    // Reconnect BEFORE Device revocation: the fresh transport must serve a
-    // permitted read while the Device is still admitted. The fixture SDK
-    // credential resolver is re-pointed at the new transport with the
-    // current Device credential; no relogin with the bootstrap grant.
-    if (selfHostedBroker) {
-      assert(brokerLab);
-      const reconnected = await bounded(
-        page.evaluate(browserBrokerReconnect),
-        'broker reconnect',
-      );
-      assert.notEqual(reconnected.connectionId, reconnected.previous);
-      await page.evaluate(browserBrokerAdmitApplicationTransport);
-      await page.evaluate(browserBrokerAdoptApplicationTransport);
-      assert.equal(
-        (
-          await page.evaluate(browserApplicationAccountRequest, {
-            path: '/api/projects/relay-shared',
-          })
-        ).status,
-        200,
-        'Fresh broker peer restores the permitted Project read',
-      );
-      brokerReconnectForJourney = reconnected;
-      brokerReconnectAdapterIndex = brokerLab.adapterMetadata.length - 1;
-    }
-    await accountStation.revokeDevice();
-    assert.equal(
-      (
-        await page.evaluate(browserApplicationAccountRequest, {
-          path: '/api/projects/relay-shared',
-        })
-      ).status,
-      401,
-    );
-    await page.evaluate(browserStopApplicationAccount);
-    assert.equal(
-      directApplicationAttempts,
-      0,
-      'Account traffic must not bypass the encrypted channel',
-    );
-    accountReport = {
-      status: privateRefused ? 'passed' : 'failed',
-      directApplicationAttempts,
-      stationId: account.stationId,
-      principalId: account.principalId,
-      keyExtractable: account.keyExtractable,
-      scope:
-        'full source Station account, Device and membership APIs; no guest UI or compute',
-      checks: [
-        'encrypted provider login',
-        'account self and proof replay refusal',
-        'invitation acceptance without new Device authority',
-        'operator-observed viewer membership and permitted Project read',
-        'continuation renewal and revocation',
-        'provider-session revocation and stable relogin',
-        'membership revocation and invitation-based restoration',
-        'Device revocation independently refuses a permitted Project read',
-      ],
-      privateProject: privateBoundary,
-    };
-    writeFileSync(
-      join(root, 'account-scenario.json'),
-      JSON.stringify(accountReport, null, 2),
-      { mode: 0o600 },
     );
   }
   if (selfHostedBroker) {
@@ -1313,6 +959,8 @@ try {
       accountStation.browser.password,
       accountStation.browser.credential,
       accountStation.browser.invitation,
+      accountStation.sharedWork.sharedTask.messageMarker,
+      accountStation.sharedWork.sharedTask.documentMarker,
     ])
       assert.equal(captured.includes(Buffer.from(secret)), false);
   }
@@ -1344,7 +992,7 @@ try {
     browserTurnTransport: browserTransport,
     stationTurnTransport: peerAdapter === 'pion' ? 'tcp' : 'udp',
     captureBytes: captured.length,
-    turnImage: TURN_IMAGE,
+    turnImage: TURN_FIXTURE_IMAGE,
     checks: selfHostedBroker
       ? [
           'separate broker CLI process serves metadata and signaling',
@@ -1402,7 +1050,7 @@ try {
     () => brokerLab?.stop(),
     () => accountStation?.stop(),
     () => relay?.close(),
-    cleanupContainer,
+    () => turnFixture.stop(),
   ]) {
     try {
       await cleanup();
