@@ -78,7 +78,8 @@ interface PeerEntry {
   cleanupConfirmed: boolean;
   cleanupError?: unknown;
   operationalError?: unknown;
-  serverCloses: Array<() => void>;
+  serverCloses: Set<() => void>;
+  retireTask?: Promise<void>;
 }
 
 export function createSelfHostedBrokerPionRuntime(
@@ -133,19 +134,27 @@ export function createSelfHostedBrokerPionRuntime(
     };
   }
 
-  function retirePeer(entry: PeerEntry): void {
-    for (const closeServer of entry.serverCloses.splice(0)) {
-      try {
-        closeServer();
-      } catch {
-        // Server closure is best-effort; adapter close below owns cleanup.
+  // Single retirement owner per peer: server handlers are closed exactly
+  // once, then the adapter-owned cleanupComplete receipt settles. Memoized
+  // so duplicate retirePeer calls (trust gates, withdraw, natural
+  // completion) join one close/join task instead of launching duplicates.
+  // Rejects on unconfirmed cleanup; only confirmed peers release capacity.
+  function retireTaskFor(entry: PeerEntry): Promise<void> {
+    entry.retireTask ??= Promise.resolve().then(async () => {
+      for (const closeServer of [...entry.serverCloses]) {
+        entry.serverCloses.delete(closeServer);
+        try {
+          closeServer();
+        } catch {
+          // Server closure is best-effort; adapter close below owns cleanup.
+        }
       }
-    }
-    void (async () => {
       try {
         await entry.adapter.close();
       } catch (error) {
         entry.operationalError ??= error;
+        // Operational aborts may reject close() after resource cleanup
+        // already completed: join the adapter-owned receipt, never guess.
       }
       try {
         await entry.adapter.cleanupComplete;
@@ -153,13 +162,22 @@ export function createSelfHostedBrokerPionRuntime(
         peers.delete(entry.adapter);
       } catch (error) {
         entry.cleanupError = error;
+        throw error;
       }
-    })();
+    });
+    return entry.retireTask;
+  }
+
+  function retirePeer(entry: PeerEntry): void {
+    void retireTaskFor(entry).then(undefined, () => {
+      // Failure evidence stays on the retained entry; never cleared.
+    });
   }
 
   function gateChannelFor(
     entry: PeerEntry,
     raw: ApplicationChannel,
+    onClosed: () => void,
   ): ApplicationChannel {
     const stale = (): boolean => {
       if (!trustOwner.isCurrent(entry.descriptor)) {
@@ -174,18 +192,28 @@ export function createSelfHostedBrokerPionRuntime(
         raw.send(message);
       },
       close(): void {
+        onClosed();
         raw.close();
       },
       subscribe(
         message: (value: unknown) => void,
         closed: () => void,
       ): () => void {
-        return raw.subscribe((value: unknown) => {
-          // Incoming frames gated against THIS peer's captured descriptor:
-          // a rotated trust retires the old peer instead of delivering.
-          if (stale()) return;
-          message(value);
-        }, closed);
+        return raw.subscribe(
+          (value: unknown) => {
+            // Incoming frames gated against THIS peer's captured descriptor:
+            // a rotated trust retires the old peer instead of delivering.
+            if (stale()) return;
+            message(value);
+          },
+          () => {
+            try {
+              onClosed();
+            } finally {
+              closed();
+            }
+          },
+        );
       },
     };
   }
@@ -209,15 +237,7 @@ export function createSelfHostedBrokerPionRuntime(
   }
 
   async function closeAndConfirm(entry: PeerEntry): Promise<void> {
-    try {
-      await entry.adapter.close();
-    } catch (error) {
-      entry.operationalError ??= error;
-      // Operational aborts may reject close() after resource cleanup already
-      // completed: join the adapter-owned receipt instead of guessing.
-    }
-    await entry.adapter.cleanupComplete;
-    entry.cleanupConfirmed = true;
+    await retireTaskFor(entry);
   }
 
   const client = new SelfHostedBrokerClient(brokerOrigin, scope, credential);
@@ -262,16 +282,46 @@ export function createSelfHostedBrokerPionRuntime(
               (pendingEntry?.adapter === current ? pendingEntry : undefined);
             // No entry (should not happen): close without admitting rather
             // than serving ungated.
-            if (!entry) {
+            if (!entry || entry.retireTask) {
               channel.close();
               return;
             }
-            const closeServer = serveApplicationChannel(
-              gateChannelFor(entry, channel),
+            // Closed-channel ownership: the wrapped `closed` below removes
+            // this handler from the set, so only live handlers are retained.
+            // A channel that closes synchronously during subscription never
+            // enters the set, and retire drains each handler exactly once
+            // (Set.delete before invoke defeats reentrant double-close).
+            let closeServer: (() => void) | undefined;
+            let channelClosed = false;
+            const onChannelClosed = () => {
+              channelClosed = true;
+              if (closeServer !== undefined)
+                entry.serverCloses.delete(closeServer);
+            };
+            closeServer = serveApplicationChannel(
+              gateChannelFor(entry, channel, onChannelClosed),
               applicationOrigin,
               gatedFetchFor(entry),
             );
-            entry.serverCloses.push(closeServer);
+            if (channelClosed) {
+              try {
+                closeServer();
+              } catch {
+                // Best-effort; adapter close owns cleanup.
+              }
+              return;
+            }
+            if (entry.serverCloses.size >= 32) {
+              // Bound simultaneous handlers consistently with the adapter
+              // per-peer channel ceiling (32): refuse the newest, never grow.
+              try {
+                closeServer();
+              } catch {
+                // Best-effort; adapter close owns cleanup.
+              }
+              return;
+            }
+            entry.serverCloses.add(closeServer);
           },
           signal,
           maxLifetimeMs: maxPeerLifetimeMs,
@@ -312,7 +362,7 @@ export function createSelfHostedBrokerPionRuntime(
           adapter,
           descriptor: captured,
           cleanupConfirmed: false,
-          serverCloses: [],
+          serverCloses: new Set(),
         };
         pendingEntry = entry;
         peers.set(adapter, entry);
@@ -320,10 +370,11 @@ export function createSelfHostedBrokerPionRuntime(
         releaseClaim();
         // Observe adapter completion so idle-expired peers are reaped and stop
         // poisoning capacity; unconfirmed cleanups retain evidence in place.
+        // Natural completion retires through the same memoized task so
+        // server handlers are drained exactly once, never double-closed.
         void adapter.cleanupComplete.then(
           () => {
-            entry.cleanupConfirmed = true;
-            peers.delete(adapter!);
+            void retireTaskFor(entry).then(undefined, () => {});
           },
           (error: unknown) => {
             entry.cleanupError = error;
@@ -348,14 +399,17 @@ export function createSelfHostedBrokerPionRuntime(
             adapter,
             descriptor: captured,
             cleanupConfirmed: false,
-            serverCloses: [],
+            serverCloses: new Set(),
           };
           try {
             await closeAndConfirm(entry);
           } catch (cleanupError) {
             entry.cleanupError = cleanupError;
             peers.set(adapter, entry);
-            throw error;
+            throw new AggregateError(
+              [error, cleanupError],
+              'broker_runtime_admission_cleanup_failed',
+            );
           }
         }
         throw error;
