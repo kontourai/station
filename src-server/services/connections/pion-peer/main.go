@@ -21,6 +21,10 @@ import (
 type config struct {
 	Offer                                     webrtc.SessionDescription
 	Certificate, Key, URL, Username, Password string
+	ApplicationChannelLabel                   string
+	Profile                                   string
+	ProtocolVersion                           string
+	LifetimeSeconds                           int
 }
 
 func publish(dir, name string, value any) error {
@@ -93,14 +97,51 @@ func run(dir string) error {
 		default:
 		}
 	}
+	var application *applicationBridge
+	var applicationDone <-chan struct{}
+	switch cfg.Profile {
+	case "application":
+		if cfg.ProtocolVersion != "station.application-ipc/v1" || cfg.ApplicationChannelLabel == "" || cfg.LifetimeSeconds < 1 || cfg.LifetimeSeconds > 86400 {
+			return errors.New("invalid application profile")
+		}
+		application = newApplicationBridge(reportFailure)
+		applicationDone = application.done
+		defer application.close()
+	case "diagnosticEcho":
+		if cfg.ProtocolVersion != "station.diagnostic-echo/v1" || cfg.ApplicationChannelLabel != "" {
+			return errors.New("invalid diagnostic profile")
+		}
+	default:
+		return errors.New("unknown peer profile")
+	}
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		stateMu.Lock()
 		defer stateMu.Unlock()
 		if err := publish(dir, "state.json", map[string]any{"state": s.String()}); err != nil {
 			reportFailure(err)
 		}
+		if s == webrtc.PeerConnectionStateConnected {
+			pair, pairErr := pc.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
+			if pairErr == nil && pair != nil {
+				if err := publish(dir, "transport.json", map[string]string{"local": pair.Local.Typ.String(), "remote": pair.Remote.Typ.String()}); err != nil {
+					reportFailure(err)
+				}
+			}
+		}
 	})
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
+		if cfg.Profile == "application" {
+			if dc.Label() == cfg.ApplicationChannelLabel {
+				application.add(dc)
+			} else {
+				_ = dc.Close()
+			}
+			return
+		}
+		if cfg.Profile != "diagnosticEcho" || dc.Label() != "station-lab-v1" {
+			_ = dc.Close()
+			return
+		}
 		dc.OnMessage(func(message webrtc.DataChannelMessage) {
 			if !message.IsString || len(message.Data) > 65536 {
 				_ = dc.Close()
@@ -151,12 +192,25 @@ func run(dir string) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(signals)
+	var lifetime <-chan time.Time
+	if cfg.Profile == "diagnosticEcho" {
+		lifetime = time.After(90 * time.Second)
+	} else {
+		lifetime = time.After(time.Duration(cfg.LifetimeSeconds) * time.Second)
+	}
 	select {
 	case <-signals:
 		return nil
+	case <-applicationDone:
+		select {
+		case err := <-asyncErrors:
+			return err
+		default:
+			return nil
+		}
 	case err := <-asyncErrors:
 		return err
-	case <-time.After(90 * time.Second):
+	case <-lifetime:
 		return errors.New("peer lifetime exceeded")
 	}
 }

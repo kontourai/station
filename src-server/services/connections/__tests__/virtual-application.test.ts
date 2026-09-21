@@ -152,6 +152,21 @@ describe('virtual application ingress', () => {
     expect(handler).toHaveBeenCalledTimes(1);
     owner.stop();
   });
+  test.each([
+    ['GET', '/api/account-auth'],
+    ['GET', '/api/account-auth/session'],
+    ['POST', '/api/account-auth/accept-invitation'],
+  ])(
+    'admits Station-owned account operation %s %s to its ordinary owner',
+    async (method, path) => {
+      const handler = vi.fn(() => new Response(null, { status: 401 }));
+      const { application, owner } = setup(handler);
+      const response = await application.fetch(request(path, { method }));
+      expect(response.status).toBe(401);
+      expect(handler).toHaveBeenCalledTimes(1);
+      owner.stop();
+    },
+  );
   test('never exposes cookie-setting responses to virtual clients', async () => {
     const { application, owner } = setup(
       () =>

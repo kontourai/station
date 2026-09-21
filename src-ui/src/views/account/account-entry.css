@@ -153,8 +153,11 @@
   background: var(--bg-secondary);
 }
 .account-entry__project-list > li > div {
+  display: grid;
   flex: 1 1 14rem;
   min-width: 0;
+  align-content: start;
+  gap: 0.25rem;
 }
 .account-entry__project-list strong {
   overflow-wrap: anywhere;

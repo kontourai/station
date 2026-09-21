@@ -32,7 +32,7 @@ export type HomeViewNavigation = Extract<
 >;
 
 interface HomeWorkData {
-  projects: ReturnType<typeof useProjectsQuery>['data'];
+  projects: NonNullable<ReturnType<typeof useProjectsQuery>['data']>;
   /**
    * The agent catalog, exposed because Home's rows draw an agent icon and
    * that icon must resolve against the SAME catalog the rows' labels were

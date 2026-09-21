@@ -197,13 +197,31 @@ export function isHonestlyAvailableConnectedAgent(
 }
 
 /**
- * The two evidence levels whose default summary states what has been observed — quoting it as an unavailability reason reads as a contradiction
+ * The evidence levels whose default summary states what has been observed —
+ * quoting it as an unavailability reason reads as a contradiction
  * ("Error: A live model or capability catalog is available.").
  */
 function isObservationOnlyEvidenceLevel(
   level: ConnectionEvidenceLevel | undefined,
 ): boolean {
-  return level === 'catalog-ready' || level === 'prerequisite-ready';
+  return (
+    level === 'catalog-ready' ||
+    level === 'prerequisite-ready' ||
+    level === 'smoke-passed'
+  );
+}
+
+/**
+ * Does a fresh passed smoke stand behind this summary? `smoke-passed` is the
+ * one observation-only level whose observation is REAL proof of a chat turn,
+ * so the unproven proof sentence would be false for it — the current status
+ * speaks instead.
+ */
+function isProvenChatEvidence(connection: RuntimeConnectionSummary): boolean {
+  return (
+    connection.readinessLevel === 'smoke-passed' &&
+    !connection.summaryNamesFailure
+  );
 }
 
 /**
@@ -256,7 +274,11 @@ export function externalEngineUnavailable(
       fix: { kind: 'engine-disabled', target: id },
     };
   }
-  if (connection.readinessReason) {
+  // A fresh passed smoke is real proof: neither its passing summary nor the
+  // unproven sentence is truthful for a connection that is CURRENTLY
+  // unavailable. Its current status is what is true now — the switch below
+  // says it, without discarding the proof.
+  if (connection.readinessReason && !isProvenChatEvidence(connection)) {
     return {
       // Replace only a summary that states what the level has observed. A
       // summary naming a failed smoke or check IS the reason; it travels

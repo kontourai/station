@@ -11,7 +11,12 @@ import type {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { _getApiBase, fetchAvailableLayouts } from '../api';
-import { StationHttpError } from '../client/http';
+import {
+  type ApiRequestScope,
+  isApiRequestScope,
+  StationHttpError,
+  StationRequestAuthorityError,
+} from '../client/http';
 import {
   applyProjectLayout,
   bindProjectResource,
@@ -87,25 +92,77 @@ export function layoutCatalogRetryDelay(attemptIndex: number): number {
   ];
 }
 
-export function useProjectsQuery(config?: QueryConfig<any>) {
+export interface ProjectReadQueryConfig<T> extends QueryConfig<T> {
+  requestScope?: ApiRequestScope;
+  /** Fail closed when the host has not established a current authority scope. */
+  requireRequestScope?: boolean;
+}
+
+export function useProjectsQuery(config?: ProjectReadQueryConfig<any>) {
+  const candidate = config?.requestScope;
+  const requestScope = isApiRequestScope(candidate)
+    ? { apiBase: candidate.apiBase, authorityKey: candidate.authorityKey }
+    : undefined;
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? ['projects', 'list', 'unavailable']
+    : scoped
+      ? ['projects', 'list', requestScope.apiBase, requestScope.authorityKey]
+      : ['projects'];
   return useApiQuery(
-    ['projects'],
-    async () => {
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return listProjectViews(requestScope.apiBase, {
+          requestScope,
+          signal,
+        });
       const apiBase = await _getApiBase();
-      return listProjectViews(apiBase);
+      return listProjectViews(apiBase, { signal });
     },
-    config,
+    { ...config, enabled: !unavailable && (config?.enabled ?? true) },
   );
 }
 
-export function useProjectQuery(slug: string, config?: QueryConfig<any>) {
+export function useProjectQuery(
+  slug: string,
+  config?: ProjectReadQueryConfig<any>,
+) {
+  const candidate = config?.requestScope;
+  const requestScope = isApiRequestScope(candidate)
+    ? { apiBase: candidate.apiBase, authorityKey: candidate.authorityKey }
+    : undefined;
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? ['projects', slug, 'unavailable']
+    : scoped
+      ? [
+          'projects',
+          slug,
+          'detail',
+          requestScope.apiBase,
+          requestScope.authorityKey,
+        ]
+      : ['projects', slug];
   return useApiQuery(
-    ['projects', slug],
-    async () => {
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return getProject(requestScope.apiBase, slug, {
+          requestScope,
+          signal,
+        });
       const apiBase = await _getApiBase();
-      return getProject(apiBase, slug);
+      return getProject(apiBase, slug, { signal });
     },
-    { ...config, enabled: !!slug && (config?.enabled ?? true) },
+    {
+      ...config,
+      enabled: !unavailable && !!slug && (config?.enabled ?? true),
+    },
   );
 }
 
@@ -486,6 +543,7 @@ export function useReorderProjectsMutation(
       return reorderProjectsRaw(apiBase, order);
     },
     onMutate: async (order: string[]) => {
+      await queryClient.cancelQueries({ queryKey: ['projects', 'list'] });
       await queryClient.cancelQueries({ queryKey: ['projects'], exact: true });
       const previous = queryClient.getQueryData<any[]>(['projects']);
       if (Array.isArray(previous)) {
@@ -512,6 +570,7 @@ export function useReorderProjectsMutation(
       options?.onSuccess?.(data, order);
     },
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', 'list'] });
       queryClient.invalidateQueries({ queryKey: ['projects'], exact: true });
     },
   });

@@ -21,9 +21,23 @@ import {
 import { chromium, type Page } from '@playwright/test';
 import { build, stop as stopBundler } from 'esbuild';
 import datachannel from 'node-datachannel';
+import { ensureStationHomeSchemaSync } from '../src-server/domain/home-schema-gate.js';
 import type { createStationConnectionProofIssuer } from '../src-server/services/ssh/connection-proof-issuer.js';
 import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
+import { bridgeApplicationChannels } from './lib/application-ipc.js';
+import {
+  browserAcceptApplicationInvitation,
+  browserAdoptBoundApplicationDevice,
+  browserApplicationAccountRequest,
+  browserLoginApplicationAccountAgain,
+  browserRejectWrongBoundAccount,
+  browserRenewApplicationAccount,
+  browserRequestBoundApplicationDevice,
+  browserRevokeApplicationContinuation,
+  browserStartApplicationAccount,
+  browserStopApplicationAccount,
+} from './lib/browser-application-account.mjs';
 import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
 import {
   browserAccept,
@@ -43,6 +57,7 @@ import {
   runLabCommand,
   startLabRelay,
 } from './lib/local-collaboration-process.mjs';
+import { startRelayAccountStation } from './lib/local-collaboration-relay-account.js';
 import { nodeApplicationChannel } from './lib/node-application-channel.js';
 
 // Transport evaluation only. No Station/account/provider API is enabled here.
@@ -60,6 +75,7 @@ if (
         '--peer=node',
         '--fail-after-create',
         '--application-protocol',
+        '--application-accounts',
       ].includes(arg),
   ) ||
   args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
@@ -69,10 +85,15 @@ if (
     'Use --browser-turn=udp or --browser-turn=tcp and optional --keep',
   );
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
-if (args.includes('--application-protocol') && peerAdapter !== 'node')
-  throw new Error(
-    'Application protocol fixture currently qualifies only the Node UDP profile',
-  );
+if (
+  args.includes('--application-protocol') &&
+  args.includes('--application-accounts')
+)
+  throw new Error('Choose one application fixture profile per run');
+let accountStation:
+  | Awaited<ReturnType<typeof startRelayAccountStation>>
+  | undefined;
+let accountReport: Record<string, unknown> | undefined;
 let applicationProtocol:
   | { status: string; requestMarker: string; responseBytes: number }
   | undefined;
@@ -337,6 +358,43 @@ async function exchange(
       turnPort: relay.port,
       username,
       password,
+      signal: abort.signal,
+      ...(args.includes('--application-protocol') || accountStation
+        ? {
+            application: {
+              label: accountStation
+                ? 'station-application-account-fixture'
+                : 'station-application-protocol-fixture',
+              accept(channel) {
+                if (accountStation?.station.openApplicationChannel) {
+                  bridgeApplicationChannels(
+                    channel,
+                    accountStation.station.openApplicationChannel(),
+                    abort.signal,
+                  );
+                } else
+                  serveApplicationChannel(
+                    channel,
+                    'https://fixture-station.invalid',
+                    {
+                      signal: abort.signal,
+                      async fetch(request) {
+                        const marker = await request.text();
+                        assert.match(marker, /^sdk-request-[a-f0-9-]{36}$/);
+                        const address = server.address();
+                        assert(address && typeof address !== 'string');
+                        const origin = `http://127.0.0.1:${address.port}`;
+                        assert.equal(request.headers.get('Origin'), origin);
+                        return new Response(marker.repeat(512), {
+                          headers: { 'X-Fixture-Client-Origin': origin },
+                        });
+                      },
+                    },
+                  );
+              },
+            },
+          }
+        : {}),
     });
     peers.push(fixture.peer);
     if (pionProvenance) assert.deepEqual(fixture.provenance, pionProvenance);
@@ -394,6 +452,22 @@ async function exchange(
     });
   });
   peer.onDataChannel((channel) => {
+    if (channel.getLabel() === 'station-application-account-fixture') {
+      if (!accountStation?.station.openApplicationChannel) {
+        channel.close();
+        return;
+      }
+      try {
+        bridgeApplicationChannels(
+          nodeApplicationChannel(channel),
+          accountStation.station.openApplicationChannel(),
+          abort.signal,
+        );
+      } catch {
+        channel.close();
+      }
+      return;
+    }
     if (channel.getLabel() === 'station-application-protocol-fixture') {
       if (!args.includes('--application-protocol')) {
         channel.close();
@@ -454,7 +528,11 @@ async function exchange(
 }
 
 try {
-  const authorityHome = join(root, 'station-authority');
+  const authorityHome = args.includes('--application-accounts')
+    ? join(root, 'application-station', 'home')
+    : join(root, 'station-authority');
+  if (args.includes('--application-accounts'))
+    ensureStationHomeSchemaSync(authorityHome);
   const environment = new EnvironmentSecurityService({
     homeDir: authorityHome,
   });
@@ -476,8 +554,9 @@ try {
     import {openDeviceConnectionTrustStore} from '@kontourai/station-connect/connection-trust';
     window.stationConnectionProof = {createStationConnectionProofVerifier, connectionDescriptionDigest, newNonce: createStationProofNonce, openDeviceConnectionTrustStore};
     import {createApplicationChannelFetch, browserApplicationChannel} from '@kontourai/station-connect/application-channel';
-    import {authenticatedFetch, setClientCredentialResolver} from '@kontourai/station-sdk/client';
-    window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver};
+    import {authenticatedFetch, setClientCredentialResolver, StationHttpError} from '@kontourai/station-sdk/client';
+    import {ApplicationSessionClient, createApplicationSessionKey} from '@kontourai/station-sdk/application-session';
+    window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver, StationHttpError, ApplicationSessionClient, createApplicationSessionKey};
   `,
       resolveDir: process.cwd(),
     },
@@ -576,18 +655,43 @@ try {
   await once(server, 'listening');
   const address = server.address();
   assert(address && typeof address !== 'string');
+  if (args.includes('--application-accounts'))
+    accountStation = await startRelayAccountStation(
+      root,
+      `http://127.0.0.1:${address.port}`,
+      abort.signal,
+    );
+  if (accountStation)
+    assert.equal(
+      accountStation.station.stationId,
+      connectionTrust.stationId,
+      'Application and transport must be the same Station',
+    );
   browser = await chromium.launch({ headless: true });
   abort.signal.throwIfAborted();
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(`http://127.0.0.1:${address.port}`);
   const good = await exchange(page, approved, approved.fingerprint);
-  await page.waitForFunction(browserChannelOpen, undefined, { timeout: 20000 });
+  const applicationPion =
+    peerAdapter === 'pion' &&
+    (args.includes('--application-protocol') ||
+      args.includes('--application-accounts'));
   const marker = `private-station-content-${randomBytes(32).toString('hex')}`;
-  await page.evaluate(browserSend, marker);
-  await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
-  assert.deepEqual(good.messages, [marker]);
-  const pair = good.peer.getSelectedCandidatePair();
+  if (!applicationPion) {
+    await page.waitForFunction(browserChannelOpen, undefined, {
+      timeout: 20000,
+    });
+    await page.evaluate(browserSend, marker);
+    await page.waitForFunction(browserReceived, marker, { timeout: 10000 });
+    assert.deepEqual(good.messages, [marker]);
+  }
+  let pair = good.peer.getSelectedCandidatePair();
+  const pairDeadline = Date.now() + 10_000;
+  while (!pair && Date.now() < pairDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    pair = good.peer.getSelectedCandidatePair();
+  }
   assert.equal(pair?.local.type, 'relay');
   assert.equal(pair?.remote.type, 'relay');
   const browserStats = await page.evaluate(readBrowserStats);
@@ -607,6 +711,238 @@ try {
     assert.equal(applicationProtocol.status, 'passed');
     assert(applicationProtocol.responseBytes > 16 * 1024);
   }
+  if (accountStation) {
+    let directApplicationAttempts = 0;
+    await page.route(`${accountStation.station.base}/**`, async (route) => {
+      directApplicationAttempts++;
+      await route.abort('blockedbyclient');
+    });
+    const account = await bounded(
+      page.evaluate(browserStartApplicationAccount, accountStation.browser),
+      'encrypted account login',
+    );
+    assert.equal(account.stationId, accountStation.station.stationId);
+    const self = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/account-auth/session',
+    });
+    assert.equal(self.status, 200, self.body);
+    assert.equal(JSON.parse(self.body).data.principal.id, account.principalId);
+    const replay = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/account-auth/session',
+      replay: true,
+    });
+    assert.equal(replay.status, 401);
+    const accepted = await page.evaluate(browserAcceptApplicationInvitation);
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.data.grantsDeviceAccess, false);
+    await accountStation.verifyMembership(account.principalId);
+    const replacementOffer = await accountStation.createBoundDeviceOffer();
+    const replacementRequest = await page.evaluate(
+      browserRequestBoundApplicationDevice,
+      { offerId: replacementOffer.offerId, proof: replacementOffer.challenge },
+    );
+    assert.equal(replacementRequest.status, 202);
+    await accountStation.confirmBoundDevice(replacementRequest.body.requestId);
+    await page.evaluate(browserRevokeApplicationContinuation);
+    const boundDevice = await accountStation.exchangeBoundDevice(
+      replacementOffer,
+      replacementRequest.body.requestId,
+    );
+    assert.equal(
+      (await page.evaluate(browserAdoptBoundApplicationDevice, boundDevice))
+        .principalId,
+      account.principalId,
+    );
+    assert.equal(await page.evaluate(browserRejectWrongBoundAccount), true);
+    const sharedRead = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/projects/relay-shared',
+    });
+    assert.equal(
+      sharedRead.status,
+      200,
+      'Permitted Project is the positive resource control',
+    );
+    assert(sharedRead.body.includes('Relay shared fixture'));
+    const sharedView = JSON.parse(sharedRead.body).data;
+    assert.equal(sharedView.version, 'station.member-project/v1');
+    assert.equal(sharedView.kind, 'member-project');
+    assert.deepEqual(sharedView.actions, ['view']);
+    const memberKeys = new Set([
+      'version',
+      'kind',
+      'id',
+      'slug',
+      'name',
+      'icon',
+      'description',
+      'actions',
+    ]);
+    assert(Object.keys(sharedView).every((key) => memberKeys.has(key)));
+    const catalogue = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/projects',
+    });
+    assert.equal(catalogue.status, 200);
+    const memberProjects = JSON.parse(catalogue.body).data;
+    assert.equal(memberProjects.length, 1);
+    assert.equal(memberProjects[0].id, sharedView.id);
+    assert.deepEqual(memberProjects[0].actions, ['view']);
+    assert(Object.keys(memberProjects[0]).every((key) => memberKeys.has(key)));
+    assert(!catalogue.body.includes(accountStation.browser.privateName));
+    const privateRead = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/projects/relay-private',
+    });
+    const [bearerOnlyDirect, bearerOnlyVirtual] = await Promise.all([
+      accountStation.readPrivateWithBearerOnlyDirect(),
+      accountStation.readPrivateWithBearerOnlyVirtual(),
+    ]);
+    const privateBoundary = {
+      status: privateRead.status,
+      containsPrivateMarker: privateRead.body.includes(
+        accountStation.browser.privateName,
+      ),
+      path: '/api/projects/relay-private',
+      deviceScope: 'orchestration:read',
+      principalId: account.principalId,
+      bearerOnlyDirect: {
+        status: bearerOnlyDirect.status,
+        containsPrivateMarker: bearerOnlyDirect.body.includes(
+          accountStation.browser.privateName,
+        ),
+      },
+      bearerOnlyVirtual: {
+        status: bearerOnlyVirtual.status,
+        containsPrivateMarker: bearerOnlyVirtual.body.includes(
+          accountStation.browser.privateName,
+        ),
+      },
+    };
+    writeFileSync(
+      join(root, 'account-boundary.json'),
+      JSON.stringify(privateBoundary, null, 2),
+      { mode: 0o600 },
+    );
+    const privateRefused =
+      privateRead.status === 404 &&
+      !privateBoundary.containsPrivateMarker &&
+      JSON.parse(privateRead.body).error === 'Project not found' &&
+      bearerOnlyDirect.status === 401 &&
+      !privateBoundary.bearerOnlyDirect.containsPrivateMarker &&
+      bearerOnlyVirtual.status === 401 &&
+      !privateBoundary.bearerOnlyVirtual.containsPrivateMarker;
+    if (!privateRefused)
+      errors.push(
+        new Error(
+          `Unshared Project boundary failed: ${JSON.stringify(privateBoundary)}`,
+        ),
+      );
+    await page.evaluate(browserRenewApplicationAccount);
+    await page.evaluate(browserRevokeApplicationContinuation);
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      401,
+      'Continuation revocation refuses a permitted Project read',
+    );
+    assert.equal(
+      (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
+      account.principalId,
+    );
+    await accountStation.revokeAccount();
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      401,
+      'Provider-session revocation refuses a permitted Project read',
+    );
+    assert.equal(
+      (await page.evaluate(browserLoginApplicationAccountAgain)).principalId,
+      account.principalId,
+    );
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      200,
+      'A fresh provider session restores the permitted Project read',
+    );
+    await accountStation.revokeMembership(account.principalId);
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      404,
+      'Membership revocation independently refuses the Project read',
+    );
+    const replacementInvitation = await accountStation.inviteAgain();
+    assert.equal(
+      (
+        await page.evaluate(
+          browserAcceptApplicationInvitation,
+          replacementInvitation,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      200,
+      'Restored membership proves Device revocation is independent',
+    );
+    await accountStation.revokeDevice();
+    assert.equal(
+      (
+        await page.evaluate(browserApplicationAccountRequest, {
+          path: '/api/projects/relay-shared',
+        })
+      ).status,
+      401,
+    );
+    await page.evaluate(browserStopApplicationAccount);
+    assert.equal(
+      directApplicationAttempts,
+      0,
+      'Account traffic must not bypass the encrypted channel',
+    );
+    accountReport = {
+      status: privateRefused ? 'passed' : 'failed',
+      directApplicationAttempts,
+      stationId: account.stationId,
+      principalId: account.principalId,
+      keyExtractable: account.keyExtractable,
+      scope:
+        'full source Station account, Device and membership APIs; no guest UI or compute',
+      checks: [
+        'encrypted provider login',
+        'account self and proof replay refusal',
+        'invitation acceptance without new Device authority',
+        'operator-observed viewer membership and permitted Project read',
+        'continuation renewal and revocation',
+        'provider-session revocation and stable relogin',
+        'membership revocation and invitation-based restoration',
+        'Device revocation independently refuses a permitted Project read',
+      ],
+      privateProject: privateBoundary,
+    };
+    writeFileSync(
+      join(root, 'account-scenario.json'),
+      JSON.stringify(accountReport, null, 2),
+      { mode: 0o600 },
+    );
+  }
   await context.close();
   await good.peer.close();
 
@@ -618,22 +954,24 @@ try {
     approved,
     approved.fingerprint,
   );
-  await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
-    timeout: 20000,
-  });
-  await reconnectPage.evaluate(browserSend, marker);
-  await reconnectPage.waitForFunction(browserReceived, marker, {
-    timeout: 10000,
-  });
-  assert.deepEqual(reconnected.messages, [marker]);
-  assert.equal(
-    reconnected.peer.getSelectedCandidatePair()?.local.type,
-    'relay',
-  );
-  assert.equal(
-    reconnected.peer.getSelectedCandidatePair()?.remote.type,
-    'relay',
-  );
+  if (!applicationPion) {
+    await reconnectPage.waitForFunction(browserChannelOpen, undefined, {
+      timeout: 20000,
+    });
+    await reconnectPage.evaluate(browserSend, marker);
+    await reconnectPage.waitForFunction(browserReceived, marker, {
+      timeout: 10000,
+    });
+    assert.deepEqual(reconnected.messages, [marker]);
+  }
+  let reconnectPair = reconnected.peer.getSelectedCandidatePair();
+  const reconnectPairDeadline = Date.now() + 10_000;
+  while (!reconnectPair && Date.now() < reconnectPairDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    reconnectPair = reconnected.peer.getSelectedCandidatePair();
+  }
+  assert.equal(reconnectPair?.local.type, 'relay');
+  assert.equal(reconnectPair?.remote.type, 'relay');
   await reconnectContext.close();
   await reconnected.peer.close();
 
@@ -685,6 +1023,14 @@ try {
     'Transport proof requires a nonempty relay capture',
   );
   assert.equal(captured.includes(Buffer.from(marker)), false);
+  if (accountStation) {
+    for (const secret of [
+      accountStation.browser.password,
+      accountStation.browser.credential,
+      accountStation.browser.invitation,
+    ])
+      assert.equal(captured.includes(Buffer.from(secret)), false);
+  }
   if (applicationProtocol)
     assert.equal(
       captured.includes(Buffer.from(applicationProtocol.requestMarker)),
@@ -694,6 +1040,7 @@ try {
   report = {
     scope: 'browser-transport-evaluation',
     status: 'passed',
+    applicationAccounts: accountReport ?? { status: 'not-run' },
     applicationProtocol: applicationProtocol
       ? {
           status: 'passed',
@@ -720,7 +1067,9 @@ try {
       'tampered proof refused before accepting the connection description',
       'Device trust persisted and rechecked after crypto; cross-tab revocation refused before SDP acceptance',
       'browser-native DTLS connected',
-      'application content echoed through encrypted data channel',
+      applicationPion
+        ? 'authenticated SDK application payload crossed the production Pion channel without diagnostic echo'
+        : 'application content echoed through encrypted data channel',
       'fresh browser and peer reconnect using the same approved Station certificate',
       'unapproved signaling fingerprint refused',
       'substituted endpoint fails DTLS fingerprint verification',
@@ -752,6 +1101,7 @@ try {
   }
   for (const cleanup of [
     () => (browser ? bounded(browser.close(), 'browser cleanup') : undefined),
+    () => accountStation?.stop(),
     () => relay?.close(),
     cleanupContainer,
   ]) {
