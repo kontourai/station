@@ -71,12 +71,6 @@ import {
   matchVerifiedRemoteProjectPath,
   resolveExecutionTarget,
 } from '../services/execution-target/execution-target-resolver.js';
-import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
-import {
-  type ForegroundInvocationAdmission,
-  ForegroundInvocationUnavailableError,
-} from '../services/orchestration/foreground-invocation-admission.js';
-import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
 import {
   DelegationAttemptCapacityError,
   DelegationAttemptClaimStore,
@@ -85,6 +79,12 @@ import {
   DelegationAttemptPendingError,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
+import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
+import {
+  type ForegroundInvocationAdmission,
+  ForegroundInvocationUnavailableError,
+} from '../services/orchestration/foreground-invocation-admission.js';
+import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   type PortableExecutionConsentIdentity,
@@ -4217,12 +4217,24 @@ export async function delegateTask(
   // claim after resolution (`bindAdmitted` below), before any provider
   // effect. No lock and no store handle is held across any of the awaits
   // that follow — the store transaction is the short atomic reserve.
-  const attemptClaim: {
-    key: string;
-    ownerToken: string;
-    taskId: string;
-  } | undefined = await (async () => {
+  const attemptClaim:
+    | {
+        key: string;
+        ownerToken: string;
+        taskId: string;
+      }
+    | undefined = await (async () => {
     if (!input.delegationAttemptId) return undefined;
+    // Attempt claims are portable-only (the route refuses any other
+    // topology at its seam): a direct tool caller naming an attempt id on
+    // a non-portable target refuses here, before any claim is reserved —
+    // never reserves-then-crashes at the admission bind below.
+    if (!portableIntent) {
+      throw new ReceiverExecutionRefusal(
+        'delegation_attempt_unsupported',
+        RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
+      );
+    }
     const claimStore = input.delegationAttemptClaimStore;
     const attemptCaller = input.delegationAttemptCaller;
     if (!claimStore || !attemptCaller) {
@@ -4462,9 +4474,9 @@ export async function delegateTask(
           path: resolved.workspace.cwd,
         }
       : undefined;
-  const sessionId = attemptClaim
-    ? attemptClaim.taskId
-    : input.sessionId || `task:${randomUUID()}`;
+    const sessionId = attemptClaim
+      ? attemptClaim.taskId
+      : input.sessionId || `task:${randomUUID()}`;
     const resolvedCwd = resolved.workspace?.cwd;
     // #484 phase A: the server-minted admitted coordinate for the provider
     // effect path — the EXACT admitted cwd (execution root when it selects
@@ -4539,7 +4551,12 @@ export async function delegateTask(
       readAuthority,
     );
     if (session) {
-      assertSessionBinding(session, target, bindingTarget, readAuthority.userId);
+      assertSessionBinding(
+        session,
+        target,
+        bindingTarget,
+        readAuthority.userId,
+      );
     } else {
       // archive#4543 fix: `environmentId` (like `conversationId`) is a
       // RESERVED_ORCHESTRATION_METADATA_KEYS entry — `prepareStart` strips it
@@ -4603,8 +4620,12 @@ export async function delegateTask(
                 ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
                 : {}),
               // archive#1463: record the resolved project join on every Agent.
-              ...(project?.slugJoin ? { projectSlugJoin: project.slugJoin } : {}),
-              ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+              ...(project?.slugJoin
+                ? { projectSlugJoin: project.slugJoin }
+                : {}),
+              ...(input.parentTaskId
+                ? { parentTaskId: input.parentTaskId }
+                : {}),
               ...(input.delegation ? { delegation: input.delegation } : {}),
               ...(readAuthority.userId ? { userId: readAuthority.userId } : {}),
               // #484 phase A: server-minted portable consent marker. The
@@ -4645,7 +4666,8 @@ export async function delegateTask(
                   portableProjectId:
                     receiverEffectAdmission.admitted.portableProjectId,
                   resourceId: receiverEffectAdmission.admitted.resourceId,
-                  localProjectId: receiverEffectAdmission.admitted.localProjectId,
+                  localProjectId:
+                    receiverEffectAdmission.admitted.localProjectId,
                 },
               }
             : {}),

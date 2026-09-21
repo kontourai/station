@@ -117,23 +117,59 @@ const EMPTY_LEDGER: DelegationAttemptClaimLedger = Object.freeze({
   records: Object.freeze({}),
 });
 
-function readLedger(file: string): DelegationAttemptClaimLedger {
-  const stored = readJsonFile<DelegationAttemptClaimLedger | null>(
-    file,
-    null,
-    {
-      maxBytes: 4 * 1024 * 1024,
-      label: 'Delegation attempt claim store',
-    },
+function isWellFormedClaimRecord(
+  key: string,
+  record: unknown,
+): record is DelegationAttemptClaimRecord {
+  if (!record || typeof record !== 'object') return false;
+  const candidate = record as Record<string, unknown>;
+  return (
+    candidate.key === key &&
+    typeof candidate.attemptId === 'string' &&
+    candidate.attemptId.length > 0 &&
+    typeof candidate.callerDeviceId === 'string' &&
+    candidate.callerDeviceId.length > 0 &&
+    typeof candidate.intentDigest === 'string' &&
+    /^[0-9a-f]{64}$/.test(candidate.intentDigest) &&
+    typeof candidate.taskId === 'string' &&
+    candidate.taskId.length > 0 &&
+    (candidate.state === 'reserved' ||
+      candidate.state === 'admitted' ||
+      candidate.state === 'accepted' ||
+      candidate.state === 'refused' ||
+      candidate.state === 'unresolved') &&
+    typeof candidate.createdAt === 'string' &&
+    typeof candidate.updatedAt === 'string'
   );
+}
+
+function readLedger(file: string): DelegationAttemptClaimLedger {
+  const stored = readJsonFile<DelegationAttemptClaimLedger | null>(file, null, {
+    maxBytes: 4 * 1024 * 1024,
+    label: 'Delegation attempt claim store',
+  });
   if (!stored) return EMPTY_LEDGER;
   if (stored.version !== STORE_VERSION) {
     throw new Error(
       `Delegation attempt claim store version ${String(stored.version)} is not supported`,
     );
   }
-  if (!stored.records || typeof stored.records !== 'object') {
+  // Fail closed on malformation: a store whose shape is not exactly the
+  // v1 ledger (array records, or any record with a key mismatch, a
+  // non-digest, or an unknown state) throws rather than forgetting a
+  // claim and permitting a duplicate execution. Corrupt JSON already
+  // throws inside `readJsonFile` (only a missing file falls back).
+  if (
+    !stored.records ||
+    typeof stored.records !== 'object' ||
+    Array.isArray(stored.records)
+  ) {
     throw new Error('Delegation attempt claim store records are malformed');
+  }
+  for (const [key, record] of Object.entries(stored.records)) {
+    if (!isWellFormedClaimRecord(key, record)) {
+      throw new Error('Delegation attempt claim store records are malformed');
+    }
   }
   return stored;
 }
@@ -171,9 +207,7 @@ export interface DelegationAttemptIntent {
 export function delegationAttemptIntentDigest(
   intent: DelegationAttemptIntent,
 ): string {
-  return createHash('sha256')
-    .update(canonicalJson(intent))
-    .digest('hex');
+  return createHash('sha256').update(canonicalJson(intent)).digest('hex');
 }
 
 export type ReserveDelegationAttemptOutcome =
@@ -201,7 +235,10 @@ export interface DelegationAttemptClaimStore {
     ownerToken: string,
     admitted: DelegationAttemptClaimRecord['admitted'],
   ): Promise<OwnerTransitionOutcome>;
-  markAccepted(key: string, ownerToken: string): Promise<OwnerTransitionOutcome>;
+  markAccepted(
+    key: string,
+    ownerToken: string,
+  ): Promise<OwnerTransitionOutcome>;
   markRefused(key: string, ownerToken: string): Promise<OwnerTransitionOutcome>;
   markUnresolved(
     key: string,
@@ -232,7 +269,10 @@ export class FileDelegationAttemptClaimStore
   readonly #beforeCommit?: () => void | Promise<void>;
   readonly #capacity: number;
 
-  constructor(dataDir: string, options: FileDelegationAttemptClaimStoreOptions = {}) {
+  constructor(
+    dataDir: string,
+    options: FileDelegationAttemptClaimStoreOptions = {},
+  ) {
     this.#file = join(dataDir, 'delegation-attempt-claims.json');
     this.#acquireLock = options.acquireLock ?? acquireFileMutationLockAsync;
     this.#beforeCommit = options.beforeCommit;
@@ -244,9 +284,10 @@ export class FileDelegationAttemptClaimStore
   }
 
   async transact<T>(
-    update: (
-      current: DelegationAttemptClaimLedger,
-    ) => { result: T; next?: DelegationAttemptClaimLedger },
+    update: (current: DelegationAttemptClaimLedger) => {
+      result: T;
+      next?: DelegationAttemptClaimLedger;
+    },
   ): Promise<T> {
     const release = await this.#acquireLock(`${this.#file}.mutation`);
     let committed = false;
@@ -284,44 +325,47 @@ export class FileDelegationAttemptClaimStore
     readonly callerDeviceId: string;
     readonly intentDigest: string;
     readonly taskId: string;
-  }  ): Promise<ReserveDelegationAttemptOutcome> {
+  }): Promise<ReserveDelegationAttemptOutcome> {
     return this.transact(
       (
         current,
-      ): { result: ReserveDelegationAttemptOutcome; next?: DelegationAttemptClaimLedger } => {
-      const existing = current.records[input.key];
-      if (existing) {
-        // Same key: identical validated intent joins the existing claim (no
-        // second effect is ever launched from here); a different validated
-        // intent under the same correlation key is a conflict — the first
-        // accepted request owns the key outright.
-        return existing.intentDigest === input.intentDigest
-          ? { result: { kind: 'existing', record: existing } as const }
-          : { result: { kind: 'conflict', record: existing } as const };
-      }
-      // Fail closed at capacity: refuse the NEW claim rather than evict an
-      // unresolved/old key and risk duplicate execution. See module docblock.
-      if (Object.keys(current.records).length >= this.#capacity) {
-        return { result: { kind: 'capacity' } as const };
-      }
-      const now = new Date().toISOString();
-      const record: DelegationAttemptClaimRecord = {
-        key: input.key,
-        attemptId: input.attemptId,
-        callerDeviceId: input.callerDeviceId,
-        intentDigest: input.intentDigest,
-        taskId: input.taskId,
-        state: 'reserved',
-        createdAt: now,
-        updatedAt: now,
-      };
-      return {
-        result: { kind: 'created', ownerToken: randomUUID() } as const,
-        next: {
-          version: STORE_VERSION,
-          records: { ...current.records, [input.key]: record },
-        },
-      };
+      ): {
+        result: ReserveDelegationAttemptOutcome;
+        next?: DelegationAttemptClaimLedger;
+      } => {
+        const existing = current.records[input.key];
+        if (existing) {
+          // Same key: identical validated intent joins the existing claim (no
+          // second effect is ever launched from here); a different validated
+          // intent under the same correlation key is a conflict — the first
+          // accepted request owns the key outright.
+          return existing.intentDigest === input.intentDigest
+            ? { result: { kind: 'existing', record: existing } as const }
+            : { result: { kind: 'conflict', record: existing } as const };
+        }
+        // Fail closed at capacity: refuse the NEW claim rather than evict an
+        // unresolved/old key and risk duplicate execution. See module docblock.
+        if (Object.keys(current.records).length >= this.#capacity) {
+          return { result: { kind: 'capacity' } as const };
+        }
+        const now = new Date().toISOString();
+        const record: DelegationAttemptClaimRecord = {
+          key: input.key,
+          attemptId: input.attemptId,
+          callerDeviceId: input.callerDeviceId,
+          intentDigest: input.intentDigest,
+          taskId: input.taskId,
+          state: 'reserved',
+          createdAt: now,
+          updatedAt: now,
+        };
+        return {
+          result: { kind: 'created', ownerToken: randomUUID() } as const,
+          next: {
+            version: STORE_VERSION,
+            records: { ...current.records, [input.key]: record },
+          },
+        };
       },
     );
   }
@@ -335,22 +379,30 @@ export class FileDelegationAttemptClaimStore
     return this.transact(
       (
         current,
-      ): { result: OwnerTransitionOutcome; next?: DelegationAttemptClaimLedger } => {
-      const record = current.records[key];
-      if (!record) return { result: { kind: 'not-owner' } as const };
-      // The owner token was returned exactly once, at reserve, and is never
-      // persisted — a later mutation by anyone else (or after an owner
-      // crash) is `not-owner`, so the claim stays put and never launches
-      // another effect.
-      if (ownerToken.length === 0 || record.state === 'refused') {
-        return { result: { kind: 'not-owner' } as const };
-      }
-      if (!allowedFrom.includes(record.state)) {
-        return { result: { kind: 'stale' } as const };
-      }
-      apply(record);
-      record.updatedAt = new Date().toISOString();
-      return { result: { kind: 'applied' } as const, next: current };
+      ): {
+        result: OwnerTransitionOutcome;
+        next?: DelegationAttemptClaimLedger;
+      } => {
+        const record = current.records[key];
+        if (!record) return { result: { kind: 'not-owner' } as const };
+        // The owner token is issued EXACTLY once, at reserve, and is threaded
+        // server-internally only (never persisted, never public JSON, never
+        // accepted from any request): a duplicate reserve never receives one —
+        // it joins or throws — so no second owner exists to advance the claim,
+        // and after an owner crash nobody holds one, so the claim stays put.
+        // The token itself is an issuance marker, not a capability secret: the
+        // state machine below (allowedFrom) is what makes re-application go
+        // `stale`. An empty token is rejected as a programming-error guard;
+        // `refused` is terminal for every caller including the owner.
+        if (ownerToken.length === 0 || record.state === 'refused') {
+          return { result: { kind: 'not-owner' } as const };
+        }
+        if (!allowedFrom.includes(record.state)) {
+          return { result: { kind: 'stale' } as const };
+        }
+        apply(record);
+        record.updatedAt = new Date().toISOString();
+        return { result: { kind: 'applied' } as const, next: current };
       },
     );
   }
@@ -415,12 +467,7 @@ export class FileDelegationAttemptClaimStore
  */
 export interface DelegationAttemptProjection {
   readonly attemptId: string;
-  readonly state:
-    | 'none'
-    | 'preparing'
-    | 'accepted'
-    | 'unresolved'
-    | 'refused';
+  readonly state: 'none' | 'preparing' | 'accepted' | 'unresolved' | 'refused';
   /** Present only when `state === 'accepted'`: the real receiver task handle. */
   readonly taskId?: string;
 }

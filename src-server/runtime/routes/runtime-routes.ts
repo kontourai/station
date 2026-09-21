@@ -281,10 +281,6 @@ import {
   resolveInboundDelegationDeviceForRequest,
   resolveInboundDeviceKindForRequest,
 } from '../../security/runtime-request-security.js';
-import {
-  projectDelegationAttemptClaim,
-  type DelegationAttemptClaimStore,
-} from '../../services/orchestration/delegation-attempt-claim-store.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -369,6 +365,10 @@ import type { ActionOperationService } from '../../services/operations/action-op
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  type DelegationAttemptClaimStore,
+  projectDelegationAttemptClaim,
+} from '../../services/orchestration/delegation-attempt-claim-store.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -2806,10 +2806,22 @@ export function configureRuntimeRoutes(
       // paths, digests, transcripts, or provider output; `none` (observed
       // now) is never permission to resend.
       lookupDelegationAttempt: async (input) => {
-        const store: DelegationAttemptClaimStore = context.delegationAttemptClaims;
+        const store: DelegationAttemptClaimStore =
+          context.delegationAttemptClaims;
         const record = await store.read(
           `${input.callerDeviceId}:${input.attemptId}`,
         );
+        // The key is composed from the verified caller inputs, but both
+        // components admit `:` — re-verify the record's own identity fields
+        // so a key-boundary collision across two delegation grants can never
+        // disclose another grant's claim state or task handle.
+        if (
+          !record ||
+          record.callerDeviceId !== input.callerDeviceId ||
+          record.attemptId !== input.attemptId
+        ) {
+          return projectDelegationAttemptClaim(undefined, input.attemptId);
+        }
         return projectDelegationAttemptClaim(record, input.attemptId);
       },
       executeForegroundMessage: (input) =>

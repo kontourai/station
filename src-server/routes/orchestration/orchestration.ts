@@ -113,7 +113,6 @@ import {
   ReceiverExecutionRefusal,
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
-import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
 import {
   orchestrationStreamDuration,
@@ -122,6 +121,7 @@ import {
   orchestrationStreamResumeGap,
   sseOps,
 } from '../../telemetry/metrics.js';
+import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
@@ -1868,7 +1868,8 @@ export function createOrchestrationRoutes(
         return c.json(
           {
             success: false,
-            error: RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
+            error:
+              RECEIVER_EXECUTION_REFUSAL_COPY.delegation_attempt_unsupported,
             code: 'delegation_attempt_unsupported',
           },
           403,
@@ -1883,11 +1884,17 @@ export function createOrchestrationRoutes(
         userId,
         principal,
         clientOrigin,
-        ...(body.attemptId
-          ? { delegationAttemptId: body.attemptId }
-          : {}),
+        ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
+        // The tool keys claims by `deviceId`: project the verified grant's
+        // id explicitly — passing the `{ id }` grant object through would
+        // key every claim under `undefined:` (cross-grant collision) and
+        // lookups keyed by the real id would never hit.
         ...(body.attemptId && delegationAttemptCaller
-          ? { delegationAttemptCaller }
+          ? {
+              delegationAttemptCaller: {
+                deviceId: delegationAttemptCaller.id,
+              },
+            }
           : {}),
         ...(deps.delegationAttemptClaimStore
           ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
@@ -2064,10 +2071,7 @@ export function createOrchestrationRoutes(
     }
     const attemptId = param(c, 'attemptId');
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(attemptId)) {
-      return c.json(
-        { success: false, error: 'Invalid attempt id' },
-        400,
-      );
+      return c.json({ success: false, error: 'Invalid attempt id' }, 400);
     }
     const caller = deps.resolveInboundDelegationDevice?.(c);
     if (!caller) {
@@ -2088,10 +2092,7 @@ export function createOrchestrationRoutes(
       });
       return c.json({ success: true, data });
     } catch (error) {
-      return c.json(
-        { success: false, error: errorMessage(error) },
-        400,
-      );
+      return c.json({ success: false, error: errorMessage(error) }, 400);
     }
   });
 
