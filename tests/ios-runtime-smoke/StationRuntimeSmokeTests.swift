@@ -144,24 +144,6 @@ final class StationRuntimeSmokeTests: XCTestCase {
         )
     }
 
-    /// A tap on a WKWebView control can be delivered and dropped. XCUITest
-    /// reports the button hittable as soon as it is laid out, which is before
-    /// the WebView has attached its handler; the tap then lands on nothing.
-    /// A single `waitForExistence` afterwards can only observe the absence —
-    /// it cannot separate "the handler was not ready" from "this surface never
-    /// opens", and both read as a failing assertion. #1174 recorded that twice
-    /// on changes causally unrelated to the surface under test (a merge plus a
-    /// removed import; an `@ai-sdk/provider-utils` bump), each going green on
-    /// a same-commit re-run.
-    ///
-    /// Re-tapping only while the target is still absent preserves what the
-    /// assertion proves: the caller still fails if the surface genuinely never
-    /// opens, because the final answer is the same existence check. The wait
-    /// between taps is sliced for the reason `waitForElement` documents.
-    ///
-    /// The source is re-tapped at most `maxTaps` times, and only while it is
-    /// still hittable — once the surface has advanced past it, the target alone
-    /// decides. That bounds this to a recovery rather than a tap loop.
     // UIKit gesture acknowledgement does not prove a WKWebView DOM click.
     // Match the existing bounded opening-action recovery: at most two taps,
     // only while the close control is hittable, with the same real outcome.
@@ -181,6 +163,23 @@ final class StationRuntimeSmokeTests: XCTestCase {
         return !target.exists
     }
 
+    /// A native tap can be acknowledged without the intended WebView transition.
+    /// Accessibility hittability is not a receipt that a DOM handler committed.
+    /// A single `waitForExistence` afterwards can only observe the absence —
+    /// it cannot separate "the handler was not ready" from "this surface never
+    /// opens", and both read as a failing assertion. #1174 recorded that twice
+    /// on changes causally unrelated to the surface under test (a merge plus a
+    /// removed import; an `@ai-sdk/provider-utils` bump), each going green on
+    /// a same-commit re-run.
+    ///
+    /// Re-tapping only while the target is still absent preserves what the
+    /// assertion proves: the caller still fails if the surface genuinely never
+    /// opens, because the final answer is the same existence check. The wait
+    /// between taps is sliced for the reason `waitForElement` documents.
+    ///
+    /// The source is re-tapped at most `maxTaps` times, and only while it is
+    /// still hittable — once the surface has advanced past it, the target alone
+    /// decides. That bounds this to a recovery rather than a tap loop.
     private func tap(
         _ source: XCUIElement,
         until target: XCUIElement,
