@@ -136,6 +136,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/runtime-signal-ownership.test.ts',
   // Owns bounded TLS endpoints, OpenSSL children and TCP relay processes.
   'scripts/__tests__/connection-key.test.ts',
+  // Offline identity CLI and OpenSSL connector custody fixtures.
+  'scripts/__tests__/self-hosted-connector-identity.test.ts',
+  // Boots the normal source Station against an owned metadata broker.
+  'scripts/__tests__/self-hosted-connector-startup.test.ts',
+  'src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts',
   'scripts/__tests__/device-connection-trust.test.ts',
   'scripts/__tests__/local-collaboration-lab.test.ts',
   // Owns a UDP relay child and private command-output diagnostics.
