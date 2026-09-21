@@ -110,7 +110,7 @@ test.describe('pr-smoke live chat send', () => {
     authenticatedRequest,
     baseURL,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(120_000);
     if (!baseURL) throw new Error('Playwright baseURL is required');
     const browserHealth = await monitorBrowserHealth(page);
 
@@ -176,13 +176,46 @@ test.describe('pr-smoke live chat send', () => {
     // confusingly) reports `principal_unresolved`, the exact archive#4518 error
     // shape, from a client that never actually lost its credential.
     await statusReady;
-    await page.evaluate(() =>
-      window.dispatchEvent(new Event('station:open-new-chat')),
-    );
     const agentRow = page.locator(
       `.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`,
     );
-    await expect(agentRow).toBeVisible({ timeout: 20_000 });
+    // The picker reads the agents list once per mount over a multi-minute
+    // cache, and the mount fetch can land inside the server's post-seed
+    // reconciliation (the seeded agent is committed but the list still
+    // serves its pre-seed snapshot). A reload is the only client-side
+    // invalidation: it rebuilds the query client, so the reopened picker
+    // reads the converged list. Bounded — a server that never converges
+    // still fails loudly below instead of passing on a stale row.
+    let rowRendered = false;
+    for (let attempt = 0; attempt < 3 && !rowRendered; attempt++) {
+      if (attempt > 0) {
+        await page.reload();
+        await expect(
+          page.getByRole('button', { name: 'Station home' }),
+        ).toBeVisible({ timeout: 20_000 });
+        // Re-establish the same authenticated-settle premise as the first
+        // open: vault hydration reruns on reload (see archive#4518 above).
+        await page.waitForResponse(
+          (response) =>
+            response.url().includes('/api/system/status') &&
+            response.status() === 200,
+          { timeout: 20_000 },
+        );
+      }
+      await page.evaluate(() =>
+        window.dispatchEvent(new Event('station:open-new-chat')),
+      );
+      try {
+        await expect(agentRow).toBeVisible({ timeout: 10_000 });
+        rowRendered = true;
+      } catch {
+        // Stale mount fetch; reload and reopen above.
+      }
+    }
+    expect(
+      rowRendered,
+      `picker never rendered ${agentSlug}; the agents list did not converge after reloads`,
+    ).toBe(true);
     await agentRow.click();
 
     // The picker leaves the dock exactly as the user last set it — expand it
