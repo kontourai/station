@@ -12,6 +12,7 @@ import { buildInfo } from '../../build-info';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityQueryContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import {
   useDeviceSettings,
@@ -191,6 +192,7 @@ function ProjectSidebarImpl() {
   // optimistic write/rollback/settle target THIS authority's list cache and
   // never another home's.
   const hostRequestAuthority = useHostRequestAuthorityScope();
+  const { namespace: durableAuthorityNamespace } = useAuthorityPersistence();
   const reorderProjectsMutation = useReorderProjectsMutation();
   const { rowReorderProps, announcement: reorderAnnouncement } =
     useProjectListReorder(
@@ -200,6 +202,11 @@ function ProjectSidebarImpl() {
           order,
           requestScope: hostRequestAuthority,
           requireRequestScope: true,
+          // MUST equal the list reader's durable id for this authority, or
+          // the optimistic write lands in an entry no reader watches.
+          ...(durableAuthorityNamespace
+            ? { durableAuthorityId: durableAuthorityNamespace }
+            : {}),
         }),
       {
         labelFor: (slug) =>

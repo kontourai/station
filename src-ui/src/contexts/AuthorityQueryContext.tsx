@@ -16,48 +16,65 @@
  *    remainder. A delayed A response can therefore never activate on B —
  *    the namespace commits only from the CURRENT key's data.
  *  - Re-observation is keyed on the live credential facts (`apiBase`,
- *    connection id, credential authority generation, credential state), so
- *    credential transitions and auth/reconnect changes re-verify. The
- *    principal itself is always closed server fact, never cookie contents,
- *    endpoint text, or a profile label.
+ *    connection id, credential authority generation, credential state) AND
+ *    refetched on every activation mount (`staleTime: 0`,
+ *    `refetchOnMount: 'always'`): a cached observation never counts as
+ *    current verification, so A->B->A with a changed A principal re-reads
+ *    instead of reviving the old shelf. The principal itself is always
+ *    closed server fact, never cookie contents, endpoint text, or a profile
+ *    label. (Reconnect without a switch keeps the namespace; the reconnect
+ *    invalidation re-reads DATA under it, and any 401 there drives a
+ *    credential transition, which re-observes.)
  *  - Each verified namespace gets a FRESH `QueryClient` under its own
  *    `PersistQueryClientProvider` with a disjoint IndexedDB key, so two
  *    homes sharing project ids (or one endpoint serving two principals)
- *    can never collide. Switching namespaces retires the old client with
- *    `cancelQueries()` + `unmount()` BEFORE the new tree mounts — see the
- *    `_getApiBase` audit below.
- *  - No observation (old server, offline, unpaired) is explicit
- *    unavailable/unverified persistence, never guessed identity: the last
- *    verified namespace's blob may be RESTORED for reading (status
- *    'unverified') but is never treated as current authorization; with no
- *    remembered namespace the tree runs ephemeral (status 'unavailable') so
- *    first-pairing repair stays usable.
+ *    can never collide. Retirement fires the moment verification lapses
+ *    (not when the next namespace verifies) — see the `_getApiBase` audit.
+ *  - No observation (old server, offline, unpaired, 401) is explicit
+ *    unavailable/unverified status, never guessed identity: stored shelves
+ *    stay on disk verbatim but are NEVER hydrated or shown without a live
+ *    observation — a flag cannot quarantine a blob once mounted children
+ *    can read it. These paths run on a FRESH ephemeral client of their own
+ *    (never the observation bootstrap client), so first-pairing repair
+ *    stays usable with nothing persisted and nothing restored.
  *
  * `_getApiBase` AUDIT (the seam a per-context client alone does not close):
  * legacy SDK query-domain fetchers resolve the module-global origin AT
  * FETCH TIME (`await _getApiBase()` inside the queryFn). A delayed legacy
- * fetcher from a retired client could therefore issue against the NEW
- * global origin after a switch. Integrated guards, in order:
+ * fetcher from a retired client could therefore resolve the NEW global
+ * origin after a switch. Integrated guards, in order:
  *   1. Retirement cancels: `cancelQueries()` on the old client clears
  *      scheduled retries/refetch timers and aborts signal-abiding in-flight
- *      fetches (every `useApiQuery` fetch receives its AbortSignal).
- *   2. `unmount()` detaches the retired cache so late resolutions have no
- *      live observers to notify and no persister still subscribed.
+ *      fetches (every `useApiQuery` fetch receives its AbortSignal, and a
+ *      fetch issued with an already-aborted signal never dispatches, per
+ *      spec — proven by the legacy-pattern integration test, which holds a
+ *      deferred base resolution plus retries open across a real global
+ *      switch and asserts zero post-switch dispatches).
+ *   2. The provider unmount that follows drops all observers and
+ *      unsubscribes the persister. (`QueryClient.unmount` is only a
+ *      focus/online-manager refcount and is deliberately NOT called
+ *      manually — pairing it with the provider's own unmount would
+ *      double-decrement shared-manager subscriptions.)
  *   3. Scoped fetchers (Project read/reorder, search, and every fetcher
  *      that threads `requestScope`) additionally throw
  *      `StationRequestAuthorityError` at dispatch AND at body-read time when
  *      their captured scope no longer matches the live authority.
  *   4. The boot-payload seed below — the one remaining client `_getApiBase`
- *      consumer — seeds ONLY when its captured scope is still current.
- * Residual: an unscoped fetcher that ignores its AbortSignal and already
- * resolved the global origin post-switch could still dispatch one request
- * under the new origin with the live credential. That request authenticates
- * (it carries current authority) but its result lands in a retired,
- * unmounted cache and is discarded — it cannot poison the new authority's
- * cache, which lives in a different client. Cache clears do not cancel
- * dispatched mutations, and root contexts/drafts/queued turns/deep links
- * remain independent later exits — this slice claims query partition only,
- * never full #481.
+ *      consumer — re-checks scope currency AND live-client identity after
+ *      every await before any write, runs only when the verified scope is
+ *      the page's own origin, and can only ever write into the client
+ *      object it verified (a post-switch seed resolves the new origin and
+ *      lands in a retired, persister-unsubscribed cache — a wasted fetch,
+ *      never cross-authority poisoning).
+ * Residual: an unscoped fetcher that ignores its AbortSignal could still
+ * dispatch one request under the new origin with the live credential. That
+ * request authenticates (it carries current authority) but its result lands
+ * in a retired, observerless, persister-unsubscribed cache and is
+ * discarded — it cannot reach the new authority's cache, which lives in a
+ * different client. All `useApiQuery` reads thread their signal by
+ * construction. Cache clears do not cancel dispatched mutations, and root
+ * contexts/drafts/queued turns/deep links remain independent later exits —
+ * this slice claims query partition only, never full #481.
  */
 
 import { useConnections } from '@kontourai/station-connect';
@@ -75,7 +92,6 @@ import {
 import {
   type AsyncStorage,
   PersistQueryClientProvider,
-  persistQueryClientRestore,
 } from '@tanstack/react-query-persist-client';
 import {
   createContext,
@@ -139,25 +155,6 @@ export function useAuthorityPersistence(): AuthorityPersistenceContextValue {
   return useContext(AuthorityPersistenceContext);
 }
 
-/** Non-secret record of the last verified namespace, for offline restore. */
-const LAST_VERIFIED_NAMESPACE_KEY = 'station-authority-last-verified';
-
-function readLastVerifiedNamespace(): string | null {
-  try {
-    return localStorage.getItem(LAST_VERIFIED_NAMESPACE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeLastVerifiedNamespace(namespace: string): void {
-  try {
-    localStorage.setItem(LAST_VERIFIED_NAMESPACE_KEY, namespace);
-  } catch {
-    // Persistence of the pointer is best-effort; the IDB blobs are intact.
-  }
-}
-
 /** A 401 from the observation read: the credential is not authorized. */
 function isUnauthorizedObservationFailure(error: unknown): boolean {
   return (
@@ -188,13 +185,17 @@ function createAuthorityClient(): QueryClient {
 }
 
 /**
- * Retire a replaced authority's client: stop its timers/retries FIRST so no
- * legacy `_getApiBase` fetcher it owns can launch against the new global
- * origin, then detach its cache. See the module audit above.
+ * Retire a replaced authority's client: cancel its scheduled retries,
+ * refetch timers, and signal-abiding in-flight fetches FIRST, so no legacy
+ * `_getApiBase` fetcher it owns can dispatch against the new global origin
+ * (a fetch issued with an already-aborted signal never dispatches, per
+ * spec). Observer teardown and persister unsubscribe belong to the
+ * `PersistQueryClientProvider` unmount that follows — `QueryClient.unmount`
+ * is only a focus/online-manager refcount and must NOT be called manually
+ * alongside a provider unmount. See the module audit above.
  */
 export function retireAuthorityClient(queryClient: QueryClient): void {
   void queryClient.cancelQueries();
-  queryClient.unmount();
 }
 
 export function AuthorityQueryProvider({
@@ -264,8 +265,12 @@ export function AuthorityQueryProvider({
     },
     enabled: observationKey !== null,
     retry: false,
-    staleTime: Number.POSITIVE_INFINITY,
-    refetchOnMount: false,
+    // Live read per activation: a cached observation must never count as
+    // current verification. A->B->A with a changed A principal (or a
+    // revoked/replaced device) must observe the change on return, not revive
+    // the previous shelf from cache.
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
   });
 
@@ -287,22 +292,13 @@ export function AuthorityQueryProvider({
     observationFailed &&
     isUnauthorizedObservationFailure(observationQuery.error);
 
-  const [rememberedNamespace, setRememberedNamespace] = useState<string | null>(
-    () => readLastVerifiedNamespace(),
-  );
-  useEffect(() => {
-    if (verifiedNamespace) {
-      writeLastVerifiedNamespace(verifiedNamespace);
-      setRememberedNamespace(verifiedNamespace);
-    }
-  }, [verifiedNamespace]);
-
   // One live client per verified namespace. Retirement happens the moment
   // this namespace stops being verified (switch starts, credential lapses) —
   // NOT when the next namespace verifies — so a retired client's legacy
-  // `_getApiBase` fetchers can never observe the new global origin during
-  // the switching gap. While unverified the tree shows loading (pending) or
-  // the quarantined paths below (failed); never the old client's data.
+  // `_getApiBase` fetchers are cancelled before they can observe the new
+  // global origin during the switching gap. While unverified the tree shows
+  // loading (pending) or the quarantined paths below (failed); never the
+  // old client's data.
   const [active, setActive] = useState<ActiveAuthorityClient | null>(null);
   const activeRef = useRef<ActiveAuthorityClient | null>(null);
   useEffect(() => {
@@ -328,15 +324,37 @@ export function AuthorityQueryProvider({
 
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched
   // against the live global origin, so it seeds ONLY while the scope that
-  // verified this namespace is still current — a slow seed resolving after
-  // a switch is dropped, never written into the new authority's cache.
-  const seededNamespacesRef = useRef<Set<string>>(new Set());
+  // verified this namespace is still current AND still owns the live
+  // client — every await is followed by a re-check before any cache write,
+  // so a slow seed resolving after a switch is dropped, never written into
+  // the new authority's cache. Additionally the seed runs only when the
+  // verified scope IS the page's own origin: the local-UI session proof is
+  // meaningless for a remote home, which fetches on demand instead.
+  // Seeding is tracked per live client, never in a set that could survive
+  // client replacement and skip a new client's seed.
+  const seededRef = useRef<{
+    namespace: string;
+    client: QueryClient;
+  } | null>(null);
   useEffect(() => {
-    if (!verifiedNamespace || !active || profile.isTauri) return;
+    if (!verifiedNamespace || !active || profile.isTauri || !boundScope) return;
     if (active.namespace !== verifiedNamespace) return;
-    if (seededNamespacesRef.current.has(verifiedNamespace)) return;
+    if (
+      seededRef.current?.namespace === verifiedNamespace &&
+      seededRef.current.client === active.queryClient
+    )
+      return;
+    let sameOrigin = false;
+    try {
+      sameOrigin =
+        new URL(boundScope.apiBase).origin === new URL(localUiApiBase).origin;
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin) return;
     const scopeAtSeed = boundScope;
     const clientAtSeed = active.queryClient;
+    const namespaceAtSeed = verifiedNamespace;
     let cancelled = false;
     void (async () => {
       try {
@@ -347,9 +365,15 @@ export function AuthorityQueryProvider({
         );
         const resolution = await resolveLocalUiSession(localUiApiBase);
         if (cancelled || resolution.kind !== 'authenticated') return;
-        if (scopeAtSeed && !scopeAtSeed.isCurrent()) return;
+        // Post-await re-checks BEFORE any write: the scope must still be
+        // current and this client must still be the live one.
+        if (!scopeAtSeed.isCurrent()) return;
+        if (activeRef.current?.queryClient !== clientAtSeed) return;
         await fetchAndSeedBootPayload(clientAtSeed);
-        seededNamespacesRef.current.add(verifiedNamespace);
+        seededRef.current = {
+          namespace: namespaceAtSeed,
+          client: clientAtSeed,
+        };
       } catch {
         // Best-effort fast path only; ordinary queries fetch on demand.
       }
@@ -375,14 +399,15 @@ export function AuthorityQueryProvider({
   );
 
   // No active connection, or native binding unavailable: nothing to verify
-  // against. Bare children fall through to the nonpersisted bootstrap
-  // client above — ephemeral, so first-pairing repair stays usable.
+  // against. Children run on their OWN fresh ephemeral client — never the
+  // shared observation bootstrap client, whose cache is observation-only —
+  // so first-pairing repair stays usable with no persistence to guess from.
   if (!observationEnabled || !observationKey) {
     return (
       <AuthorityPersistenceContext.Provider
         value={{ status: 'unavailable', namespace: null, observation: null }}
       >
-        {children}
+        <EphemeralTree>{children}</EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -410,38 +435,23 @@ export function AuthorityQueryProvider({
     );
   }
 
-  // Observation failed. A remembered namespace restores its blob for
-  // reading (unverified — never current authorization); otherwise, or on a
-  // 401 that proves the credential is rejected, run ephemeral. Either way
-  // the repair/onboarding surfaces stay mounted.
+  // Observation failed: NEVER hydrate or show a remembered namespace under
+  // unverified current authority — a context flag cannot quarantine a blob
+  // once mounted children can read it. Stored shelves stay on disk verbatim
+  // for the next verified activation; this tree runs on a fresh ephemeral
+  // client (old server, offline, and 401 all land here — a 401 additionally
+  // reports 'unavailable' so repair surfaces know the credential itself was
+  // refused). Either way the repair/onboarding surfaces stay mounted.
   if (observationFailed) {
-    if (!unauthorized && rememberedNamespace) {
-      return (
-        <AuthorityPersistenceContext.Provider
-          value={{
-            status: 'unverified',
-            namespace: rememberedNamespace,
-            observation: null,
-          }}
-        >
-          <EphemeralUnverifiedTree
-            namespace={rememberedNamespace}
-            storage={storage}
-          >
-            {children}
-          </EphemeralUnverifiedTree>
-        </AuthorityPersistenceContext.Provider>
-      );
-    }
-    // Bare `children` with NO query provider of its own: reads fall through
-    // to the nonpersisted bootstrap client above, so nothing persists while
-    // unauthorized and the onboarding/first-pairing repair surfaces keep
-    // working.
     return (
       <AuthorityPersistenceContext.Provider
-        value={{ status: 'unavailable', namespace: null, observation: null }}
+        value={{
+          status: unauthorized ? 'unavailable' : 'unverified',
+          namespace: null,
+          observation: null,
+        }}
       >
-        {children}
+        <EphemeralTree>{children}</EphemeralTree>
       </AuthorityPersistenceContext.Provider>
     );
   }
@@ -458,47 +468,12 @@ export function AuthorityQueryProvider({
 }
 
 /**
- * Offline/old-server path: restore the remembered namespace's blob into an
- * EPHEMERAL client (no persister subscription, so nothing writes back under
- * an unverified identity) for cache-first reading. Mutations are never
- * hydrated — `shouldDehydrateQuery` already excludes them at save time, and
- * no persister here means nothing is saved at all.
+ * Quarantined path: a FRESH nonpersisted client per mount — no persister
+ * subscription (nothing is saved under an unverified identity) and no
+ * restore (no remembered shelf is ever hydrated without a live
+ * observation). Reads fetch live or fail honestly; repair surfaces work.
  */
-function EphemeralUnverifiedTree({
-  children,
-  namespace,
-  storage,
-}: {
-  children: ReactNode;
-  namespace: string;
-  storage?: AsyncStorage<string>;
-}): ReactNode {
+function EphemeralTree({ children }: { children: ReactNode }): ReactNode {
   const [client] = useState(() => createAuthorityClient());
-  const [restored, setRestored] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const options = buildPersistOptions({
-          ...(storage ? { storage } : {}),
-          throttleTime: 0,
-          key: authorityPersistenceKey(namespace),
-        });
-        await persistQueryClientRestore({ queryClient: client, ...options });
-      } catch {
-        // Unverified restore is best-effort; the tree works empty.
-      } finally {
-        if (!cancelled) setRestored(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, namespace, storage]);
-  // Children mount only AFTER the remembered blob lands: without the
-  // provider's `isRestoring` gate, an immediate mount would subscribe to an
-  // empty cache and fetch past the very snapshot this path exists to show.
-  // (The verified path gets the same gate from PersistQueryClientProvider.)
-  if (!restored) return null;
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

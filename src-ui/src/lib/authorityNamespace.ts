@@ -25,12 +25,13 @@
  * `v1` prefix, scopes sorted + deduped) so the same authority always maps to
  * the same storage key regardless of field order on the wire.
  *
- * Offline restore policy: blobs are RETAINED without being treated as
- * current authorization. A stored tuple proves what the cache was saved
- * under, not what the Station currently authorizes — the live observation
- * decides the active namespace on every boot/switch, and a boot with no
- * observation renders persistence as unverified (see
- * `contexts/AuthorityQueryContext.tsx`), never guessed.
+ * Offline restore policy: blobs are RETAINED physically and NEVER hydrated
+ * or shown without a live observation for the current authority. A stored
+ * tuple proves what the cache was saved under, not what the Station
+ * currently authorizes — a context flag cannot quarantine a blob once
+ * mounted children can read it, so a boot with no observation runs on a
+ * fresh ephemeral client (status unverified/unavailable, see
+ * `contexts/AuthorityQueryContext.tsx`), never guessed identity.
  */
 
 import type { AuthorityObservation } from '@kontourai/station-contracts/authority-observation';

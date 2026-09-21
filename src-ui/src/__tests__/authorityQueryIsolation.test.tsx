@@ -2,38 +2,50 @@
  * #481 client authority — integrated adversarial coverage over the REAL
  * provider tree, not helper-only.
  *
- * Mounts `ConnectionsProvider` (real `ConnectionStore`) +
- * `QueryClientProvider` (nonpersisted bootstrap) + `AuthorityQueryProvider`
- * with mocked WIRE data only: the observation endpoint (`fetchObservation`)
- * and the protected project read. Everything between — scope capture,
- * stale-observation rejection, namespace derivation, per-namespace clients,
- * namespaced persist/restore, retirement cancel — is production code.
+ * Mounts the production composition — real `ApiBaseProvider` (real
+ * `ConnectionStore` singleton, real `StationCredentialBridge` committing
+ * the real `_setApiBase` global and installing the real credential
+ * resolver) + nonpersisted bootstrap `QueryClientProvider` +
+ * `AuthorityQueryProvider` — with mocked WIRE data only: the observation
+ * endpoint (`fetchObservation`), the protected project read (probe stub),
+ * and `fetch` itself for the legacy-pattern proof. Everything between —
+ * scope capture, stale-observation rejection, namespace derivation,
+ * per-namespace clients, namespaced persist/restore, retirement cancel —
+ * is production code.
  *
- * The best-effort boot-payload seed is held at `host-unavailable` so no test
- * depends on network; it is orthogonal to authority partition and covered
- * by its own suite.
+ * Each test states its own baseline through the public connections API on
+ * unique origins (the store dedupes by exact URL and the singleton outlives
+ * any one test) and removes its rows afterwards. The best-effort
+ * boot-payload seed is held at `host-unavailable` so no test depends on
+ * network; it is orthogonal to authority partition.
  *
  * @vitest-environment jsdom
  */
 
-import {
-  ConnectionStore,
-  ConnectionsProvider,
-} from '@kontourai/station-connect';
+import { useConnections } from '@kontourai/station-connect';
 import type { AuthorityObservation } from '@kontourai/station-contracts/authority-observation';
+import { _getApiBase } from '@kontourai/station-sdk';
 import {
   QueryClient,
   QueryClientProvider,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiBaseProvider } from '../contexts/ApiBaseContext';
 import {
   AuthorityQueryProvider,
   type FetchAuthorityObservation,
   useAuthorityPersistence,
 } from '../contexts/AuthorityQueryContext';
+import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
   AUTHORITY_CACHE_KEY_PREFIX,
   authorityPersistenceKey,
@@ -46,6 +58,10 @@ import {
 
 vi.mock('../lib/local-ui-bootstrap', () => ({
   resolveLocalUiSession: async () => ({ kind: 'host-unavailable' }),
+}));
+vi.mock('../platform/useBundledServerStatus', () => ({
+  useBundledServerStatus: () => null,
+  restartBundledServer: vi.fn(),
 }));
 
 const OBS_A: AuthorityObservation = {
@@ -64,8 +80,8 @@ const OBS_B: AuthorityObservation = {
     grantedScopes: ['orchestration:read', 'pairing:chat'],
   },
 };
-/** Same endpoint AND same ids as A, but a different principal/grant. */
-const OBS_A2: AuthorityObservation = {
+/** Same home as A, but a changed principal/grant (re-paired identity). */
+const OBS_A_ROTATED: AuthorityObservation = {
   schemaVersion: 'station.authority-observation/v1',
   environmentId: 'env-home-a',
   principal: { kind: 'human', id: 'human:local:carol' },
@@ -75,23 +91,22 @@ const OBS_A2: AuthorityObservation = {
     grantedScopes: ['pairing:chat'],
   },
 };
+/** Same endpoint family as A, different principal/grant. */
+const OBS_A2: AuthorityObservation = {
+  schemaVersion: 'station.authority-observation/v1',
+  environmentId: 'env-home-a',
+  principal: { kind: 'human', id: 'human:local:dave' },
+  grant: {
+    kind: 'device',
+    deviceId: 'device-dave-1',
+    grantedScopes: ['pairing:chat'],
+  },
+};
 
 const NS_A = buildAuthorityNamespace(OBS_A);
 const NS_B = buildAuthorityNamespace(OBS_B);
+const NS_A_ROTATED = buildAuthorityNamespace(OBS_A_ROTATED);
 const NS_A2 = buildAuthorityNamespace(OBS_A2);
-
-function memoryAdapter() {
-  const state: Record<string, string> = {};
-  return {
-    get: (key: string) => state[key] ?? null,
-    set: (key: string, value: string) => {
-      state[key] = value;
-    },
-    remove: (key: string) => {
-      delete state[key];
-    },
-  };
-}
 
 function memoryAsyncStorage() {
   const data = new Map<string, string>();
@@ -126,82 +141,108 @@ const UNAUTHORIZED = new Error(
 type ProjectList = { id: string; home: string }[];
 
 interface Harness {
-  store: ConnectionStore;
-  connections: { id: string; url: string }[];
+  observationPlan: Map<string, () => Promise<AuthorityObservation>>;
   observationCalls: { apiBase: string; authorityKey: string }[];
-  projectFetches: (string | undefined)[];
   projectPlan: Map<string, () => Promise<ProjectList>>;
+  projectFetches: (string | undefined)[];
+  networkUp: boolean;
+  legacyGate: {
+    promise: Promise<unknown>;
+    resolve: (value: unknown) => void;
+  } | null;
+  legacyResolutions: string[];
+  dispatches: { url: string }[];
   asyncStorage: ReturnType<typeof memoryAsyncStorage>;
+  fetchObservation: FetchAuthorityObservation;
+  mountReloadProbe: boolean;
 }
 
-function createHarness(
-  plan: Map<string, () => Promise<AuthorityObservation>>,
-): Harness {
-  const store = new ConnectionStore({
-    storage: memoryAdapter(),
-    credentialStorage: memoryAdapter(),
-    storageKey: `authority-test-${Math.random().toString(36).slice(2)}`,
-  });
-  const connA = store.add('HomeA', 'http://home-a:3141');
-  const connB = store.add('HomeB', 'http://home-b:3141');
-  const harness: Harness = {
-    store,
-    connections: [
-      { id: connA.id, url: connA.url },
-      { id: connB.id, url: connB.url },
-    ],
-    observationCalls: [],
-    projectFetches: [],
-    projectPlan: new Map(),
-    asyncStorage: memoryAsyncStorage(),
-  };
-  return harnessWithPlan(harness, plan);
-}
+let homeCounter = 0;
+const homeUrl = (tag: string): string => {
+  homeCounter += 1;
+  return `http://${tag}-${homeCounter}.test:3141`;
+};
 
-function harnessWithPlan(
-  harness: Harness,
-  plan: Map<string, () => Promise<AuthorityObservation>>,
-): Harness {
-  const fetchObservation: FetchAuthorityObservation = async (request) => {
-    harness.observationCalls.push({
-      apiBase: request.apiBase,
-      authorityKey: request.requestScope?.authorityKey ?? '',
-    });
-    const activeId = harness.store.getActive()?.id;
-    const behavior = (activeId && plan.get(activeId)) ?? plan.get('default');
-    if (!behavior) throw new Error(`no observation plan for ${activeId}`);
-    return behavior();
-  };
-  (
-    harness as Harness & { fetchObservation: FetchAuthorityObservation }
-  ).fetchObservation = fetchObservation;
-  return harness;
-}
-
-function projectListFor(
-  activeId: string | undefined,
-): { id: string; home: string }[] {
-  // SAME project ids under every home — the collision the partition must close.
+function projectListFor(activeId: string | undefined): ProjectList {
+  // SAME project ids under every home — the collision the partition closes.
   return [{ id: 'p1', home: activeId ?? 'none' }];
+}
+
+type ConnectionsApi = ReturnType<typeof useConnections>;
+let connections: ConnectionsApi | undefined;
+
+function ConnectionsProbe() {
+  connections = useConnections();
+  return null;
+}
+
+function createHarness(): Harness {
+  const harness: Harness = {
+    observationPlan: new Map(),
+    observationCalls: [],
+    projectPlan: new Map(),
+    projectFetches: [],
+    networkUp: true,
+    legacyGate: null,
+    legacyResolutions: [],
+    dispatches: [],
+    asyncStorage: memoryAsyncStorage(),
+    mountReloadProbe: false,
+    fetchObservation: async (request) => {
+      harness.observationCalls.push({
+        apiBase: request.apiBase,
+        authorityKey: request.requestScope?.authorityKey ?? '',
+      });
+      // Request-faithful oracle: the wire answers for the PRESENTED
+      // authority (URL + credential scope), never for whichever connection
+      // happens to be live when the deferred resolves. Answering from live
+      // store state here would manufacture exactly the cross-authority
+      // confusion the provider's stale-observation guards exist to refuse.
+      const behavior =
+        harness.observationPlan.get(request.apiBase) ??
+        harness.observationPlan.get('default');
+      if (!behavior)
+        throw new Error(`no observation plan for ${request.apiBase}`);
+      return behavior();
+    },
+  };
+  return harness;
 }
 
 function Probe() {
   const { status, namespace } = useAuthorityPersistence();
   const client = useQueryClient();
+  const harness = (Probe as unknown as { harness: Harness }).harness;
   const projects = useQuery({
     queryKey: ['projects'],
     queryFn: async () => {
-      const harness = (Probe as unknown as { harness: Harness }).harness;
-      const activeId = harness.store.getActive()?.id;
+      const activeId = connections?.activeConnection?.id;
       harness.projectFetches.push(activeId);
       const behavior =
         (activeId && harness.projectPlan.get(activeId)) ??
         harness.projectPlan.get('default');
       if (behavior) return behavior();
+      if (!harness.networkUp) throw new Error('network down');
       return projectListFor(activeId);
     },
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
+  });
+  // Legacy pattern under test (root item 4): resolves the module-global
+  // origin AT FETCH TIME, threads its AbortSignal, retries. Mounted on the
+  // verified client, so retirement must cancel it before it can dispatch.
+  const legacy = useQuery({
+    queryKey: ['legacy-probe'],
+    queryFn: async ({ signal }) => {
+      if (harness.legacyGate) await harness.legacyGate.promise;
+      const base = await _getApiBase();
+      harness.legacyResolutions.push(base);
+      const response = await fetch(`${base}/api/legacy-probe`, { signal });
+      return response.json();
+    },
+    enabled: harness.legacyGate !== null,
+    retry: 3,
+    retryDelay: 1,
   });
   return (
     <div
@@ -213,7 +254,26 @@ function Probe() {
       }
       data-agents={JSON.stringify(client.getQueryData(['agents']) ?? null)}
       data-mutations={String(client.getMutationCache().getAll().length)}
+      data-legacy={legacy.status}
+      data-dispatches={String(harness.dispatches.length)}
     />
+  );
+}
+
+/** The REAL canonical app hook: stable durable key, live wire scope. */
+function ReloadProbe() {
+  const query = useScopedProjectsQuery();
+  return (
+    <div
+      data-testid="reload-probe"
+      data-reload={query.data ? JSON.stringify(query.data) : query.status}
+    >
+      <button
+        data-testid="reload-refetch"
+        type="button"
+        onClick={() => void query.refetch()}
+      />
+    </div>
   );
 }
 
@@ -228,25 +288,21 @@ function renderTree(harness: Harness) {
       },
     },
   });
-  const fetchObservation = (
-    harness as Harness & { fetchObservation: FetchAuthorityObservation }
-  ).fetchObservation;
   return render(
-    <ConnectionsProvider
-      store={harness.store}
-      defaultUrl="http://localhost:3141"
-    >
+    <ApiBaseProvider>
+      <ConnectionsProbe />
       <QueryClientProvider client={bootstrap}>
         <AuthorityQueryProvider
-          fetchObservation={fetchObservation}
+          fetchObservation={harness.fetchObservation}
           storage={harness.asyncStorage.storage}
           localUiApiBase="http://127.0.0.1:9"
           persistThrottleTimeMs={0}
         >
           <Probe />
+          {harness.mountReloadProbe ? <ReloadProbe /> : null}
         </AuthorityQueryProvider>
       </QueryClientProvider>
-    </ConnectionsProvider>,
+    </ApiBaseProvider>,
   );
 }
 
@@ -254,25 +310,93 @@ function probe(): HTMLElement {
   return screen.getByTestId('probe');
 }
 
-beforeEach(() => {
-  localStorage.clear();
+/** Every home this file creates, so afterEach can remove it from the shared singleton. */
+const createdHomeIds: string[] = [];
+
+/**
+ * Add a home WITHOUT activating it (`addConnection` keeps the current
+ * active row), so observation/fetch plans can be installed for its id
+ * BEFORE any switch — no activation churn, no plan-lookup races.
+ */
+async function addHome(
+  tag: string,
+  url?: string,
+): Promise<{ id: string; url: string }> {
+  const home = url ?? homeUrl(tag);
+  let id = '';
+  await act(async () => {
+    id = connections?.addConnection(`Home-${tag}`, home).id ?? '';
+  });
+  if (!id) throw new Error(`no connection for ${home}`);
+  createdHomeIds.push(id);
+  return { id, url: home };
+}
+
+async function switchTo(id: string): Promise<void> {
+  await act(async () => {
+    await connections?.setActiveConnection(id);
+  });
+}
+
+/** Distinct observation for the seeded Default row every test starts on. */
+const OBS_DEFAULT: AuthorityObservation = {
+  schemaVersion: 'station.authority-observation/v1',
+  environmentId: 'env-default-seed',
+  principal: { kind: 'human', id: 'human:local:seed' },
+  grant: { kind: 'operator' },
+};
+
+function stubFetch(
+  handler: (url: string, init?: RequestInit) => Promise<Response>,
+) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: unknown, init?: RequestInit) =>
+      handler(String(input), init),
+    ),
+  );
+}
+
+function listResponse(data: unknown): Response {
+  return new Response(JSON.stringify({ success: true, data }));
+}
+
+// NOTE: no localStorage.clear() here — the shared ConnectionStore
+// singleton persists through it, and wiping its storage mid-file leaves
+// the store with rows but no active pointer. Inter-test isolation comes
+// from the afterEach below (reset + remove created rows).
+
+afterEach(async () => {
+  // Return the shared singleton to its seeded Default and remove every home
+  // this file created, so no test inherits another's rows or credentials.
+  await act(async () => {
+    connections?.resetToDefault();
+    for (const id of createdHomeIds.splice(0)) {
+      connections?.removeCredential(id);
+      connections?.removeConnection(id);
+    }
+  });
+  connections = undefined;
+  vi.unstubAllGlobals();
 });
 
 describe('authority query isolation (real provider tree, mocked wire)', () => {
   it('verifies the first authority with its captured scope and serves its data from a namespaced shelf', async () => {
-    const harness = createHarness(new Map([['default', async () => OBS_A]]));
-    const [connA] = harness.connections;
-    renderTree(harness);
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
 
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
     );
     await waitFor(() =>
-      expect(probe().getAttribute('data-projects')).toContain(connA.id),
+      expect(probe().getAttribute('data-projects')).toContain(idA),
     );
     // The observation read carried the captured, non-secret request scope.
     expect(harness.observationCalls.length).toBeGreaterThan(0);
-    expect(harness.observationCalls[0]?.apiBase).toBe('http://home-a:3141');
     expect(harness.observationCalls[0]?.authorityKey.length).toBeGreaterThan(0);
     expect(probe().getAttribute('data-namespace')).toBe(NS_A);
     await waitFor(() =>
@@ -280,28 +404,27 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
         true,
       ),
     );
+    unmount();
   });
 
   it('two homes sharing project ids never collide; returning restores without refetch', async () => {
-    const harness = createHarness(new Map());
-    const [connA, connB] = harness.connections;
-    const plan = new Map<string, () => Promise<AuthorityObservation>>([
-      [connA.id, async () => OBS_A],
-      [connB.id, async () => OBS_B],
-    ]);
-    harnessWithPlan(harness, plan);
-    renderTree(harness);
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idB, url: urlB } = await addHome('homeb');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, async () => OBS_B);
+    await switchTo(idA);
 
     await waitFor(() =>
-      expect(probe().getAttribute('data-projects')).toContain(connA.id),
+      expect(probe().getAttribute('data-projects')).toContain(idA),
     );
     const fetchesAfterA = harness.projectFetches.length;
 
-    await act(async () => {
-      harness.store.setActive(connB.id);
-    });
+    await switchTo(idB);
     await waitFor(() =>
-      expect(probe().getAttribute('data-projects')).toContain(connB.id),
+      expect(probe().getAttribute('data-projects')).toContain(idB),
     );
     expect(probe().getAttribute('data-namespace')).toBe(NS_B);
     // Disjoint shelves: A's blob survived while B is active.
@@ -316,44 +439,39 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       ),
     );
 
-    await act(async () => {
-      harness.store.setActive(connA.id);
-    });
+    await switchTo(idA);
     await waitFor(() =>
-      expect(probe().getAttribute('data-projects')).toContain(connA.id),
+      expect(probe().getAttribute('data-projects')).toContain(idA),
     );
-    // Restored from A's own blob — no refetch for the return trip.
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
     );
+    // Restored from A's own blob — no refetch for the return trip.
     expect(harness.projectFetches.length).toBe(fetchesAfterA + 1);
+    unmount();
   });
 
-  it('same endpoint, different principals/grants partition (origin is not identity)', async () => {
-    const harness = createHarness(new Map());
-    const [connA] = harness.connections;
-    // NOTE: `ConnectionStore.add` dedupes by exact URL (it activates the
-    // existing row), so the second identity uses the same ORIGIN with a
-    // trivially different endpoint string — the point stands: the
-    // observations, not the endpoint text, decide the namespace.
-    const connA2 = harness.store.add(
-      'HomeA-second-user',
-      'http://home-a:3141/station',
-    );
-    harness.store.setActive(connA.id);
-    const plan = new Map<string, () => Promise<AuthorityObservation>>([
-      [connA.id, async () => OBS_A],
-      [connA2.id, async () => OBS_A2],
-    ]);
-    harnessWithPlan(harness, plan);
-    renderTree(harness);
+  it('same observed home, different principals partition (endpoint text is not identity)', async () => {
+    // NOTE: the store normalizes endpoint paths away, so two rows cannot
+    // share one origin through the product API at all — the closest
+    // expressible case is two endpoints whose CLOSED observations name the
+    // SAME home with DIFFERENT principals/grants. The namespace must still
+    // partition (and endpoint-text exclusion itself is pinned by the
+    // namespace unit tests, which assert origins never enter the tuple).
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idA2, url: urlA2 } = await addHome('homea-second-user');
+    expect(OBS_A.environmentId).toBe(OBS_A2.environmentId);
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlA2, async () => OBS_A2);
+    await switchTo(idA);
 
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
-    await act(async () => {
-      harness.store.setActive(connA2.id);
-    });
+    await switchTo(idA2);
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A2),
     );
@@ -363,71 +481,120 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
         harness.asyncStorage.data.has(authorityPersistenceKey(NS_A2)),
       ).toBe(true),
     );
+    unmount();
   });
 
   it('a late read from the retired authority never paints (delayed fetcher discrimination)', async () => {
-    const harness = createHarness(new Map());
-    const [connA, connB] = harness.connections;
-    const projectsA = deferred<ProjectList>();
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idB, url: urlB } = await addHome('homeb');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, async () => OBS_B);
     // Hold A's FIRST project read open past the switch to B.
-    harness.projectPlan.set(connA.id, () => projectsA.promise);
-    const plan = new Map<string, () => Promise<AuthorityObservation>>([
-      [connA.id, async () => OBS_A],
-      [connB.id, async () => OBS_B],
-    ]);
-    harnessWithPlan(harness, plan);
-    renderTree(harness);
+    const projectsA = deferred<ProjectList>();
+    harness.projectPlan.set(idA, () => projectsA.promise);
+    await switchTo(idA);
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
     );
     expect(probe().getAttribute('data-projects')).toBe('pending');
 
-    await act(async () => {
-      harness.store.setActive(connB.id);
-    });
+    await switchTo(idB);
     await waitFor(() =>
-      expect(probe().getAttribute('data-projects')).toContain(connB.id),
+      expect(probe().getAttribute('data-projects')).toContain(idB),
     );
-    // A's retired read resolves late into a retired, unmounted cache.
+    // A's retired read resolves late into a retired, observerless cache.
     await act(async () => {
-      projectsA.resolve(projectListFor(connA.id));
+      projectsA.resolve(projectListFor(idA));
     });
     await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(probe().getAttribute('data-projects')).toContain(connB.id);
+    expect(probe().getAttribute('data-projects')).toContain(idB);
     expect(probe().getAttribute('data-namespace')).toBe(NS_B);
     // The retired client persisted nothing paintable: either it never
     // wrote, or its shelf holds no project data.
     const nsABlob = harness.asyncStorage.data.get(
       authorityPersistenceKey(NS_A),
     );
-    if (nsABlob !== undefined) expect(nsABlob).not.toContain(connA.id);
+    if (nsABlob !== undefined) expect(nsABlob).not.toContain(idA);
+    unmount();
+  });
+
+  it('a retired legacy fetcher resolving the real global origin late dispatches nothing', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    harness.legacyGate = deferred<unknown>();
+    stubFetch(async (url, init) => {
+      // Spec behavior: an aborted signal rejects BEFORE dispatch.
+      if (init?.signal?.aborted)
+        throw new DOMException('aborted', 'AbortError');
+      harness.dispatches.push({ url });
+      return new Response(JSON.stringify([]));
+    });
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idB, url: urlB } = await addHome('homeb');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, async () => OBS_B);
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    expect(probe().getAttribute('data-legacy')).toBe('pending');
+    expect(harness.dispatches).toHaveLength(0);
+
+    // Switch while the legacy base resolution is still held open. The
+    // bridge commits the new global origin on render; retirement cancels.
+    await switchTo(idB);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+    );
+    expect(await _getApiBase()).toContain('homeb-');
+
+    // Release the held resolution. The retired fetch observes the NEW
+    // global origin (proving the hazard was real)…
+    await act(async () => {
+      harness.legacyGate?.resolve(null);
+    });
+    // …while B's own tree runs the identical query legitimately. Every
+    // parked fetch (Default's, A's, B's own) observes the NEW global origin
+    // — the hazard was real — yet exactly one dispatch, the current
+    // authority's own, may occur: the retired ones' signals aborted at
+    // retirement and never dispatch.
+    await waitFor(() =>
+      expect(probe().getAttribute('data-legacy')).toBe('success'),
+    );
+    expect(harness.legacyResolutions.length).toBeGreaterThanOrEqual(2);
+    expect(
+      harness.legacyResolutions.every((base) => base.includes('homeb-')),
+    ).toBe(true);
+    expect(harness.dispatches).toHaveLength(1);
+    expect(harness.dispatches[0]?.url).toContain('homeb-');
+    unmount();
   });
 
   it('fast A->B->A with a delayed B observation never activates B', async () => {
-    const harness = createHarness(new Map());
-    const [connA, connB] = harness.connections;
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idB, url: urlB } = await addHome('homeb');
     const observationB = deferred<AuthorityObservation>();
-    const plan = new Map<string, () => Promise<AuthorityObservation>>([
-      [connA.id, async () => OBS_A],
-      [connB.id, () => observationB.promise],
-    ]);
-    harnessWithPlan(harness, plan);
-    renderTree(harness);
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    harness.observationPlan.set(urlB, () => observationB.promise);
+    await switchTo(idA);
 
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
-    await act(async () => {
-      harness.store.setActive(connB.id);
-    });
+    await switchTo(idB);
     // B's observation is still in flight — honest loading, not A's data.
     await waitFor(() =>
       expect(screen.queryByText(/Verifying Station authority/i)).not.toBeNull(),
     );
-    await act(async () => {
-      harness.store.setActive(connA.id);
-    });
-    // A's observation is cached under its key: instant re-verify.
+    await switchTo(idA);
+    // A re-verifies with a live read on return.
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
@@ -442,27 +609,79 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_B))).toBe(
       false,
     );
+    unmount();
+  });
+
+  it('A->B->A with a changed A principal re-reads and opens a new shelf (no cached revival)', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    const { id: idB, url: urlB } = await addHome('homeb');
+    let rotated = false;
+    harness.observationPlan.set(urlA, async () =>
+      rotated ? OBS_A_ROTATED : OBS_A,
+    );
+    harness.observationPlan.set(urlB, async () => OBS_B);
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+
+    await switchTo(idB);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_B),
+    );
+    const callsBeforeReturn = harness.observationCalls.length;
+    // A's device is revoked and re-paired as a new identity while on B.
+    rotated = true;
+    await switchTo(idA);
+    // The return trip performs a CURRENT read: new principal, new shelf —
+    // the cached observation never counts as verification.
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A_ROTATED),
+    );
+    expect(probe().getAttribute('data-status')).toBe('verified');
+    expect(harness.observationCalls.length).toBeGreaterThan(callsBeforeReturn);
+    // The previous shelf is retained on disk, untouched by the rotation.
+    expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
+      true,
+    );
+    unmount();
   });
 
   it('revocation re-observes, quarantines persistence, and retains the blob (no silent loss)', async () => {
-    const harness = createHarness(new Map());
-    const [connA] = harness.connections;
+    // The production revocation loop, end to end: a live scoped read gets
+    // a 401 → the SDK reports it through the installed resolver → the
+    // store flips the credential → re-observation fails closed.
+    let listRevoked = false;
+    stubFetch(async (url) => {
+      if (url.endsWith('/api/projects')) {
+        if (listRevoked) return new Response('denied', { status: 401 });
+        return listResponse([{ slug: 'shared-slug', name: 'A' }]);
+      }
+      return new Response('not found', { status: 404 });
+    });
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    harness.mountReloadProbe = true;
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
     let revoked = false;
-    const plan = new Map<string, () => Promise<AuthorityObservation>>([
-      [
-        connA.id,
-        async () => {
-          if (revoked) throw UNAUTHORIZED;
-          return OBS_A;
-        },
-      ],
-      ['default', async () => OBS_A],
-    ]);
-    harnessWithPlan(harness, plan);
-    renderTree(harness);
+    harness.observationPlan.set(urlA, async () => {
+      if (revoked) throw UNAUTHORIZED;
+      return OBS_A;
+    });
+    await switchTo(idA);
 
+    const reloadProbe = () => screen.getByTestId('reload-probe');
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    await waitFor(() =>
+      expect(reloadProbe().getAttribute('data-reload')).toContain(
+        'shared-slug',
+      ),
     );
     await waitFor(() =>
       expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
@@ -470,10 +689,11 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       ),
     );
 
-    // A revocation is a transition on a SAVED credential: install one (which
-    // itself re-observes under a new generation), then reject exactly it.
+    // Install a saved credential (itself a re-observing generation bump),
+    // then have the live read rejected: the 401 travels the real reporting
+    // path, not a direct store poke.
     await act(async () => {
-      harness.store.setCredential(connA.id, 'cred-1');
+      connections?.setCredential(idA, 'cred-1');
     });
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
@@ -482,9 +702,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     expect(observationCallsBefore).toBeGreaterThan(1);
 
     revoked = true;
-    await act(async () => {
-      harness.store.markCredentialRequired(connA.id, 'cred-1');
-    });
+    listRevoked = true;
+    fireEvent.click(screen.getByTestId('reload-refetch'));
     // The credential transition re-drove observation, which failed closed.
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('unavailable'),
@@ -493,63 +712,69 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       observationCallsBefore,
     );
     expect(probe().getAttribute('data-namespace')).toBe('');
-    // The authorized blob is retained verbatim — quarantine, not deletion.
+    // The revoked rows are no longer served…
+    await waitFor(() =>
+      expect(reloadProbe().getAttribute('data-reload')).toBe('error'),
+    );
+    // …and the authorized blob is retained verbatim — quarantine, not deletion.
     expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
       true,
     );
+    unmount();
   });
 
-  it('offline with no observation restores the remembered blob as unverified, never as current', async () => {
-    const harness = createHarness(new Map());
-    const [connA] = harness.connections;
-    const online = new Map<string, () => Promise<AuthorityObservation>>([
-      [connA.id, async () => OBS_A],
-      ['default', async () => OBS_A],
-    ]);
-    harnessWithPlan(harness, online);
-    const { unmount } = renderTree(harness);
+  it('offline with no observation shows zero A rows and retains the blob byte-identical', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const first = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    await waitFor(() =>
+      expect(probe().getAttribute('data-projects')).toContain(idA),
     );
     await waitFor(() =>
       expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
         true,
       ),
     );
-    unmount();
+    const retainedBlob = harness.asyncStorage.data.get(
+      authorityPersistenceKey(NS_A),
+    );
+    expect(retainedBlob).toBeDefined();
+    first.unmount();
 
-    // Cold boot with the wire down: the stored tuple is retained for
-    // reading but explicitly NOT current authorization.
-    const offline = new Map<string, () => Promise<AuthorityObservation>>([
-      [
-        connA.id,
-        async () => {
-          throw new TypeError('fetch failed');
-        },
-      ],
-      [
-        'default',
-        async () => {
-          throw new TypeError('fetch failed');
-        },
-      ],
-    ]);
-    harnessWithPlan(harness, offline);
-    harness.projectFetches.length = 0;
+    // Cold boot with the wire down: the stored tuple must NOT be hydrated
+    // or shown under unverified authority — a flag cannot quarantine a
+    // blob once mounted children can read it. Zero A rows, blob intact.
+    const offline = async () => {
+      throw new TypeError('fetch failed');
+    };
+    harness.observationPlan.set(urlA, offline);
+    harness.observationPlan.set('default', offline);
+    harness.networkUp = false;
     renderTree(harness);
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('unverified'),
     );
-    expect(probe().getAttribute('data-namespace')).toBe(NS_A);
+    expect(probe().getAttribute('data-namespace')).toBe('');
+    // The read fails honestly (no silent stale rows)…
     await waitFor(() =>
-      expect(probe().getAttribute('data-projects')).toContain(connA.id),
+      expect(probe().getAttribute('data-projects')).toBe('error'),
     );
-    // Restored, not fetched: no network read backed this render.
-    expect(harness.projectFetches).toHaveLength(0);
+    expect(probe().getAttribute('data-projects')).not.toContain(idA);
+    expect(probe().getAttribute('data-agents')).toBe('null');
+    expect(harness.asyncStorage.data.get(authorityPersistenceKey(NS_A))).toBe(
+      retainedBlob,
+    );
   });
 
   it('the legacy singleton blob is quarantined: never adopted, never deleted', async () => {
-    const harness = createHarness(new Map([['default', async () => OBS_A]]));
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
     const legacyBlob = JSON.stringify({
       timestamp: Date.now(),
       buster: queryPersistenceBuster(),
@@ -570,7 +795,10 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       },
     });
     harness.asyncStorage.data.set(QUERY_PERSISTENCE_STORAGE_KEY, legacyBlob);
-    renderTree(harness);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
 
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
@@ -581,10 +809,12 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     expect(harness.asyncStorage.data.get(QUERY_PERSISTENCE_STORAGE_KEY)).toBe(
       legacyBlob,
     );
+    unmount();
   });
 
   it('mutations are never hydrated from a stored blob', async () => {
-    const harness = createHarness(new Map([['default', async () => OBS_A]]));
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
     harness.asyncStorage.data.set(
       authorityPersistenceKey(NS_A),
       JSON.stringify({
@@ -621,7 +851,10 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
         },
       }),
     );
-    renderTree(harness);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
 
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('verified'),
@@ -633,26 +866,91 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     expect(harness.projectFetches).toHaveLength(0);
     // …while the queued mutation did not survive the restore.
     expect(probe().getAttribute('data-mutations')).toBe('0');
+    unmount();
   });
 
   it('namespace survives epoch-neutral store churn without refetch or key fork', async () => {
-    const harness = createHarness(new Map([['default', async () => OBS_A]]));
-    const [connA] = harness.connections;
-    renderTree(harness);
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
+
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
-    expect(harness.observationCalls).toHaveLength(1);
+    const callsAfterVerify = harness.observationCalls.length;
 
     await act(async () => {
-      harness.store.update(connA.id, { name: 'Renamed HomeA' });
+      connections?.updateConnection(idA, { name: 'Renamed HomeA' });
     });
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(probe().getAttribute('data-namespace')).toBe(NS_A);
-    expect(harness.observationCalls).toHaveLength(1);
+    expect(harness.observationCalls).toHaveLength(callsAfterVerify);
     const persistKeys = [...harness.asyncStorage.data.keys()].filter((key) =>
       key.startsWith(`${AUTHORITY_CACHE_KEY_PREFIX}::`),
     );
     expect(persistKeys).toHaveLength(1);
+    unmount();
+  });
+
+  it('a real scoped Project read restores across a fresh activation without refetch (stable data identity)', async () => {
+    stubFetch(async (url) => {
+      if (url.endsWith('/api/projects')) {
+        return listResponse([{ slug: 'shared-slug', name: 'A' }]);
+      }
+      return new Response('not found', { status: 404 });
+    });
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    harness.mountReloadProbe = true;
+    const first = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('homea');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
+
+    const reloadProbe = () => screen.getByTestId('reload-probe');
+    await waitFor(() =>
+      expect(reloadProbe().getAttribute('data-reload')).toContain(
+        'shared-slug',
+      ),
+    );
+    // The durable-keyed entry persisted under the authority shelf…
+    await waitFor(() => {
+      const raw = harness.asyncStorage.data.get(authorityPersistenceKey(NS_A));
+      expect(raw).toBeDefined();
+      expect(raw as string).toContain('shared-slug');
+    });
+    const listFetchesAfterSave = (
+      globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.filter(([url]) =>
+      String(url).endsWith('/api/projects'),
+    ).length;
+    // At least the authority's own read happened (the seeded Default row
+    // may have read first under its own shelf — irrelevant here).
+    expect(listFetchesAfterSave).toBeGreaterThanOrEqual(1);
+    first.unmount();
+
+    // Fresh activation (new tab epoch, same connection identity): the live
+    // observation re-reads, but the STABLE data key hits the shelf.
+    const observationCallsBefore = harness.observationCalls.length;
+    renderTree(harness);
+    await waitFor(() =>
+      expect(reloadProbe().getAttribute('data-reload')).toContain(
+        'shared-slug',
+      ),
+    );
+    // Observation re-read (current verification)…
+    expect(harness.observationCalls.length).toBeGreaterThan(
+      observationCallsBefore,
+    );
+    // …while the Project list restored with zero new wire reads.
+    const listFetchesAfterReload = (
+      globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.filter(([url]) =>
+      String(url).endsWith('/api/projects'),
+    ).length;
+    expect(listFetchesAfterReload).toBe(listFetchesAfterSave);
   });
 });

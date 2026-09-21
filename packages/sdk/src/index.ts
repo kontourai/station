@@ -125,6 +125,11 @@ export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions
 export {
+  // `_getApiBase` joins `_setApiBase` here for the #481 client slice's
+  // legacy-pattern integration proof (a retired fetcher resolving the
+  // module-global origin late); product code keeps resolving its own
+  // `apiBase` and never reads this.
+  _getApiBase,
   _setApiBase,
   _setLayoutContext,
   addProjectLayoutFromPlugin,
