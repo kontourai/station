@@ -130,16 +130,11 @@ function isAccountBoundGuestAdminLeaf(path: string, method: string): boolean {
   return isAccountBoundGuestAdminWrite(path, method);
 }
 
-function isAccountBoundGuestAdminWrite(
-  path: string,
-  method: string,
-): boolean {
+function isAccountBoundGuestAdminWrite(path: string, method: string): boolean {
   if (method !== 'POST') return false;
   return (
     /^\/api\/projects\/[^/]+\/access\/invitations$/.test(path) ||
-    /^\/api\/projects\/[^/]+\/access\/invitations\/[^/]+\/revoke$/.test(
-      path,
-    ) ||
+    /^\/api\/projects\/[^/]+\/access\/invitations\/[^/]+\/revoke$/.test(path) ||
     /^\/api\/projects\/[^/]+\/access\/members$/.test(path) ||
     /^\/api\/projects\/[^/]+\/access\/transfer$/.test(path)
   );

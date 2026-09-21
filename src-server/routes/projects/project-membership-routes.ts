@@ -1,6 +1,6 @@
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
-import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import {
   FileStorageConflictError,
   FileStorageNotFoundError,
@@ -99,22 +99,25 @@ export function createProjectMembershipRoutes(
             )
           : data;
       if (!admission) return c.json({ success: true, data: payload });
-      return await guardProjectResponse(c.json({ success: true, data: payload }), async () => {
-        // FRESH per check — resolved anew before the first byte and every
-        // queued chunk, never the mutation-time authority object.
-        const fresh = authority(c.req.raw);
-        return admission.management
-          ? service.currentManagementAdmission(
-              admission.scope,
-              fresh,
-              admission.principalId,
-            )
-          : service.currentScopeAdmission(
-              admission.scope,
-              fresh,
-              admission.principalId,
-            );
-      });
+      return await guardProjectResponse(
+        c.json({ success: true, data: payload }),
+        async () => {
+          // FRESH per check — resolved anew before the first byte and every
+          // queued chunk, never the mutation-time authority object.
+          const fresh = authority(c.req.raw);
+          return admission.management
+            ? service.currentManagementAdmission(
+                admission.scope,
+                fresh,
+                admission.principalId,
+              )
+            : service.currentScopeAdmission(
+                admission.scope,
+                fresh,
+                admission.principalId,
+              );
+        },
+      );
     } catch (error) {
       if (error instanceof ProjectAccessBodyTooLarge)
         return c.json({ error: { code: 'request_body_too_large' } }, 413);
