@@ -19,6 +19,7 @@ import {
 import {
   formatProviderQuotaEventText,
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
+  PROVIDER_PLAN_QUOTA_MESSAGE,
   providerQuotaFactsFromDetails,
 } from '../../providers/provider-plan-quota.js';
 
@@ -350,8 +351,11 @@ function projectTerminalAttribution(options: {
     // civil time with no timezone — repeated verbatim, never computed on.
     // The kind stays `runtime_error`, so the existing Failed/Stopped
     // notice surfaces (SessionsView, Home) render it unchanged. A
-    // quota-coded terminal with forged details falls through to the
-    // generic fixed copy below — never raw provider text.
+    // quota-coded terminal with forged details never falls through to the
+    // generic `message`-echoing copy below — that would surface arbitrary
+    // provider text under a quota classification. It gets this fixed
+    // allowlisted copy instead (see the hostile-message sentinel in the
+    // fold tests). Unrelated errors keep the existing notice byte-for-byte.
     if (options.terminalEvent.code === PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE) {
       const quotaFacts = providerQuotaFactsFromDetails(
         options.terminalEvent.details,
@@ -364,6 +368,12 @@ function projectTerminalAttribution(options: {
             `reset or check the provider plan, then continue explicitly.`,
         };
       }
+      return {
+        kind: 'runtime_error',
+        detail:
+          `${PROVIDER_PLAN_QUOTA_MESSAGE} Wait for the reset or check ` +
+          `the provider plan, then continue explicitly.`,
+      };
     }
     const detail = compactTerminalDetail(
       options.terminalEvent.message,

