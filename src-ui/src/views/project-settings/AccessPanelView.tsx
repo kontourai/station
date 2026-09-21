@@ -45,11 +45,21 @@ export function AccessPanelView({
   busy,
   apply,
   writeDisabledReason,
+  expectedActor,
 }: {
   view: ProjectAccessAdministrationView;
   busy: boolean;
   apply: (command: ProjectAccessCommand) => Promise<ProjectAccessCommandResult>;
   writeDisabledReason?: string;
+  /**
+   * The acting principal this view was rendered for, stamped onto every
+   * command the panel builds so the server can refuse stale intent against
+   * fresh authority (guest HttpOnly-cookie replacement race). The stamp is
+   * captured with the rendered action or the opened confirmation — never
+   * refreshed at submit time. Omit it on paths that never cross that
+   * boundary (the operator console keeps working unchanged).
+   */
+  expectedActor?: string;
 }) {
   const [email, setEmail] = useState('');
   const [restrictEmail, setRestrictEmail] = useState(false);
@@ -63,6 +73,14 @@ export function AccessPanelView({
     command: ProjectAccessCommand;
   }>();
   const { DiscardModal } = useUnsavedGuard(email.trim().length > 0);
+  // Stamp the caller-captured actor onto a freshly built command. The
+  // caller passes the principal the CURRENT render was proven for; because
+  // this runs while building the action (or opening its confirmation), a
+  // later refresh can never move the stamp onto a newer principal.
+  const stamp = (
+    command: Exclude<ProjectAccessCommand, { kind: 'enable' }>,
+  ): ProjectAccessCommand =>
+    expectedActor === undefined ? command : { ...command, expectedActor };
   const actor = view.members.find(
     (member) =>
       member.principal.id === view.actingPrincipal.id &&
@@ -130,14 +148,16 @@ export function AccessPanelView({
               title={readOnly ? writeDisabledReason : undefined}
               value={member.role}
               onChange={(event) =>
-                void submit({
-                  kind: 'change-member',
-                  scope: view.scope,
-                  principalId: member.principal.id,
-                  revision: member.revision,
-                  role: event.target.value as (typeof roles)[number],
-                  status: member.status,
-                })
+                void submit(
+                  stamp({
+                    kind: 'change-member',
+                    scope: view.scope,
+                    principalId: member.principal.id,
+                    revision: member.revision,
+                    role: event.target.value as (typeof roles)[number],
+                    status: member.status,
+                  }),
+                )
               }
             >
               {roles.map((candidate) => (
@@ -161,14 +181,14 @@ export function AccessPanelView({
                     ? 'Revoke Project access?'
                     : 'Restore Project access?',
                 message: `${member.principal.display}'s Project membership will change. Their account and device grants will remain separate.`,
-                command: {
+                command: stamp({
                   kind: 'change-member',
                   scope: view.scope,
                   principalId: member.principal.id,
                   revision: member.revision,
                   role: member.role as (typeof roles)[number],
                   status: member.status === 'active' ? 'revoked' : 'active',
-                },
+                }),
               })
             }
           >
@@ -182,11 +202,11 @@ export function AccessPanelView({
                 setConfirmation({
                   title: 'Transfer Project ownership?',
                   message: `${member.principal.display} will become the owner. You will become a Project admin.`,
-                  command: {
+                  command: stamp({
                     kind: 'transfer',
                     scope: view.scope,
                     recipientId: member.principal.id,
-                  },
+                  }),
                 })
               }
             >
@@ -217,15 +237,17 @@ export function AccessPanelView({
         onSubmit={(event) => {
           event.preventDefault();
           if (view.invitationOrigin)
-            void submit({
-              kind: 'invite',
-              scope: view.scope,
-              email: restrictEmail ? email.trim() : null,
-              role,
-              expiresAt: new Date(
-                Date.now() + 7 * 86400_000 - 60_000,
-              ).toISOString(),
-            });
+            void submit(
+              stamp({
+                kind: 'invite',
+                scope: view.scope,
+                email: restrictEmail ? email.trim() : null,
+                role,
+                expiresAt: new Date(
+                  Date.now() + 7 * 86400_000 - 60_000,
+                ).toISOString(),
+              }),
+            );
         }}
       >
         <h3>Invite a person</h3>
@@ -315,11 +337,13 @@ export function AccessPanelView({
                 disabled={busy || readOnly || !canGrant(invitation.role)}
                 title={readOnly ? writeDisabledReason : undefined}
                 onClick={() =>
-                  void submit({
-                    kind: 'revoke-invitation',
-                    scope: view.scope,
-                    invitationId: invitation.id,
-                  })
+                  void submit(
+                    stamp({
+                      kind: 'revoke-invitation',
+                      scope: view.scope,
+                      invitationId: invitation.id,
+                    }),
+                  )
                 }
               >
                 Cancel invitation

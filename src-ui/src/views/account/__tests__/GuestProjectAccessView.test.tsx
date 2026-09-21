@@ -127,6 +127,14 @@ function stubFetch(stub: Stub) {
   );
 }
 
+const accessKey = [
+  'guest-project-access',
+  apiBase,
+  admin.id,
+  project.id,
+  project.slug,
+] as const;
+
 function mount() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -144,7 +152,7 @@ function mount() {
       />
     </QueryClientProvider>,
   );
-  return { onAccountRequired, onAccessLost };
+  return { client, onAccountRequired, onAccessLost };
 }
 
 vi.mock('../../../components/modals/ConfirmModal', () => ({
@@ -293,6 +301,71 @@ test('a stale revision refuses honestly, refreshes, and never retries the mutati
     await screen.findByText(/Someone else changed Project access first/),
   ).toBeTruthy();
   expect(stub.posts).toHaveLength(1);
+});
+
+test('a confirmation opened under one scope never submits as a newer cached scope', async () => {
+  // The capture seam: a revoke confirmation holds scope A, then a refresh
+  // replaces the cached administration with scope B (same local id/slug,
+  // different station identity) before Confirm. The client must send A's
+  // captured intent — never silently retarget onto B. Server scope/actor
+  // checks stay the authority; this only proves no B mutation is sent.
+  const contributor = humanPrincipal(
+    'deployment',
+    'guest-contributor',
+    'Guest Contributor',
+  );
+  const viewA = adminView({
+    members: [
+      ...adminView().members,
+      {
+        principal: contributor,
+        role: 'contributor',
+        actions: [...PROJECT_MEMBER_ROLES.contributor],
+        status: 'active',
+        revision: 7,
+        grantedBy: owner,
+        updatedAt: at,
+      },
+    ],
+  });
+  let current: ProjectAccessAdministrationView = viewA;
+  const stub: Stub = {
+    posts: [],
+    access: () => envelope(current),
+    observe: () => observation(['orchestration:read', 'orchestration:operate']),
+    mutate: () => envelope({ changed: true }),
+  };
+  stubFetch(stub);
+  const { client } = mount();
+
+  expect(await screen.findByText('Guest Contributor')).toBeTruthy();
+  // Owner has no revoke control; admin self-row revokes first, so the
+  // contributor's control is the last one.
+  const revokes = screen.getAllByRole('button', { name: 'Revoke access' });
+  fireEvent.click(revokes[revokes.length - 1]);
+  await screen.findByRole('button', { name: 'Confirm change' });
+
+  current = {
+    ...viewA,
+    scope: { ...viewA.scope, stationId: 'station-two' },
+  };
+  client.setQueryData(accessKey, current);
+  // Only the station identity changed, so the stale confirmation stays
+  // open; confirming it must still send scope A with actor A.
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Confirm change' }),
+  );
+  await waitFor(() => expect(stub.posts).toHaveLength(1));
+  expect(stub.posts[0].body).toMatchObject({
+    principalId: contributor.id,
+    revision: 7,
+    status: 'revoked',
+    expectedActor: admin.id,
+  });
+  const sentScope = stub.posts[0].body.scope as Record<string, string>;
+  expect(sentScope.stationId).toBe('station-one');
+  expect(sentScope.portableProjectId).toBe('prj_shared');
+  expect(sentScope.localProjectId).toBe('local-one');
 });
 
 test('switching accounts clears the one-time invitation link', async () => {

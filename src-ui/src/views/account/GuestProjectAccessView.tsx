@@ -183,10 +183,15 @@ export function GuestProjectAccessView({
   async function apply(
     command: ProjectAccessCommand,
   ): Promise<ProjectAccessCommandResult> {
-    // Synchronous capture, before any await: the principal and scope this
-    // page rendered, plus the clicked revision. A replaced HttpOnly cookie
-    // cannot move these out from under the POST, and the server compares
-    // the captured actor against fresh authority before committing.
+    // Own-copy synchronously, before any await, and keep the exact
+    // scope/revision/actor the panel captured with the rendered action or
+    // the opened confirmation: a refresh that replaces the cached
+    // administration between opening a confirmation and confirming it must
+    // never retarget that intent onto the newer scope or principal. The
+    // server comparison against fresh authority stays the authority; this
+    // only guarantees the client sends the OLD intent, never a newer one.
+    // The fallback covers unstamped callers only — the panel below always
+    // stamps — and still runs before any await.
     const presented =
       client.getQueryData<ProjectAccessAdministrationView>(accessKey);
     if (!presented)
@@ -197,22 +202,23 @@ export function GuestProjectAccessView({
     // narrowing here keeps the intent stamping exact for the four leaves.
     if (command.kind === 'enable')
       throw new Error('Enabling Project sharing needs the Station operator.');
+    const stamped: ProjectAccessCommand = {
+      ...command,
+      expectedActor: command.expectedActor ?? presented.actingPrincipal.id,
+    };
     try {
       const outcome = await changeProjectAccess(
         apiBase,
         project.slug,
-        {
-          ...command,
-          scope: presented.scope,
-          expectedActor: presented.actingPrincipal.id,
-        },
+        stamped,
         guestOptions(),
       );
       await refreshReads();
       if (
-        command.kind === 'change-member' &&
-        command.principalId === presented.actingPrincipal.id &&
-        (command.role !== 'admin' || command.status !== 'active')
+        stamped.kind === 'change-member' &&
+        stamped.principalId ===
+          (stamped.expectedActor ?? presented.actingPrincipal.id) &&
+        (stamped.role !== 'admin' || stamped.status !== 'active')
       )
         setBanner(
           'You changed your own Project role. This list was refreshed — you can keep reading the Project, but people and invitation changes are unavailable.',
@@ -356,7 +362,7 @@ export function GuestProjectAccessView({
       {banner && <p role="status">{banner}</p>}
       <p role="status" className="account-entry__capability">
         Signed in as <strong>{actor?.principal.display}</strong> · Project role:{' '}
-        <strong>{actor?.role}</strong> · This browser:{' '}
+        <strong>{actor?.role}</strong> · People administration:{' '}
         <strong>
           {writeDisabledReason ? 'view-only' : 'can submit changes'}
         </strong>
@@ -373,6 +379,7 @@ export function GuestProjectAccessView({
         busy={access.isFetching || observation.isFetching}
         apply={apply}
         writeDisabledReason={writeDisabledReason}
+        expectedActor={view.actingPrincipal.id}
       />
       <div className="account-entry__actions">
         <Button
