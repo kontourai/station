@@ -47,7 +47,6 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
-import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
@@ -275,7 +274,6 @@ import {
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-  type RuntimeAuthenticatedRequestPrincipal,
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
@@ -344,11 +342,7 @@ import {
   FileStationSurveyReviewSessionStore,
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
-import {
-  type IdentitySource,
-  TailscaleServeIdentitySource,
-  type VerifiedIdentity,
-} from '../../services/identity/identity-source.js';
+import { identifyIngress } from '../../services/identity/identity-source.js';
 import {
   PrincipalUnresolvedError,
   resolvePrincipal as resolveStationPrincipal,
@@ -495,6 +489,8 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
+import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
   createPersonalHomeAuthorityDatabase,
   HOME_AUTHORITY_DATABASE_ENV,
@@ -983,26 +979,9 @@ export function configureRuntimeRoutes(
   // `home-possession` locality fact alone (a device credential deliberately
   // never carries that fact; see `CredentialLocality`'s docs — a phone is not
   // the operator's own machine, and this path does not grant that authority).
-  const deviceSessionIdentity = (
-    runtimePrincipal: RuntimeAuthenticatedRequestPrincipal | undefined,
-  ): VerifiedIdentity | null => {
-    if (runtimePrincipal?.authority !== 'device-credential') return null;
-    const device = context.environmentSecurityService.identifyDevice(
-      runtimePrincipal.credential,
-    );
-    if (!device) return null;
-    // LOW-1 (station#4518 fix round): a blank/whitespace-only stored device
-    // name is registry corruption, not a reason to throw an untranslated
-    // TypeError out of a principal-resolution seam — fall back to the
-    // (always-present) device id rather than let `''.trim()` mint an empty
-    // `displayName` or a missing `.name` field (a test double's shape) throw
-    // on `.trim()`.
-    return {
-      provider: 'device',
-      subject: device.id,
-      displayName: device.name?.trim() || device.id,
-    };
-  };
+  // The device-session fallback used to live here; it now lives with the
+  // canonical owner (`bootstrap/orchestration-request-principal.ts`), which
+  // carries the derivation rationale above verbatim.
   // station#4075 stage 2: the fail-closed principal resolver, wired at the
   // single production `createOrchestrationRoutes` call site below (the
   // stage-2 probe's finding 2 — this deps literal never wired anything into
@@ -1013,9 +992,10 @@ export function configureRuntimeRoutes(
   // (`classifyRuntimePairedDeviceActivity`, `resolveClientOriginForRequest`)
   // — this resolver adds no third derivation of "who is calling", it
   // composes the existing two into stage 1's `resolvePrincipal` contract.
-  // station#4518: a THIRD ingress fact — `deviceSessionIdentity` above — is
-  // consulted only when Tailscale Serve WhoIs found nothing AND this request
-  // carries no `home-possession` authority fact. `resolvePrincipal`'s own
+  // station#4518: a THIRD ingress fact — the device-session fallback in the
+  // canonical owner — is consulted only when Tailscale Serve WhoIs found
+  // nothing AND this request carries no `home-possession` authority fact.
+  // `resolvePrincipal`'s own
   // precedence is "identity always wins when present" (module docs), so
   // feeding it a device identity unconditionally would have OUTRANKED
   // home-possession — wrong: home-possession means "this credential was
@@ -1117,109 +1097,16 @@ export function configureRuntimeRoutes(
       return false;
     }
   };
-  const resolveOrchestrationRequestPrincipal = memoizePerRequest(
-    (c: {
-      env: unknown;
-      req: { raw: Request; header(name: string): string | undefined };
-    }) => {
-      const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(
-        c.req.raw,
-      );
-      // station#4529 (found building #4537's paired-device journey coverage
-      // on the standard E2E fixture, which authenticates as a verified
-      // operator credential with no home-possession stamp — the exact
-      // "realistic unresolvable shape" the room-principal tests pinned,
-      // which this fix makes resolvable): a VERIFIED operator credential
-      // (`authority === 'operator-credential'`, set by `runtime-http.ts`
-      // only after its auth middleware accepted the bearer — never a second,
-      // independent credential check here) is now ALSO sufficient for
-      // `operatorAuthority`, not just mint-time home-possession. See
-      // `OperatorAuthorityFact`'s doc (`principal-resolver.ts`) for the
-      // rationale: the principal gate closed here was a speed bump, not a
-      // boundary, for a remote holder of the operator secret — see that
-      // doc for what it actually blocked and what this fix newly grants
-      // directly.
-      const operatorAuthority =
-        runtimePrincipal?.locality === 'home-possession'
-          ? { locality: runtimePrincipal.locality }
-          : runtimePrincipal?.authority === 'operator-credential'
-            ? ({ verifiedOperatorCredential: true } as const)
-            : undefined;
-      // Precedence (unchanged shape, now three tiers): WhoIs identity, when
-      // present, always wins (`identifyIngress(c) ?? …`, station#4518 fix
-      // round HIGH-1's reasoning below). Otherwise `operatorAuthority` — now
-      // either verified fact — outranks `deviceSessionIdentity`: an
-      // operator-credential caller collapses to the shared local-operator
-      // principal exactly like a home-possessed one already did, and a
-      // device-credential caller only reaches `deviceSessionIdentity` when
-      // NEITHER stronger fact is present. `operatorAuthority ? null : …`
-      // still does this — a verified operator credential and a
-      // device-credential authority are mutually exclusive per credential
-      // (`resolveCredentialAuthority` returns exactly one), so this is
-      // choosing between disjoint cases, not silently dropping one.
-      const ingressIdentity = identifyIngress(c);
-      const binding =
-        runtimePrincipal?.authority === 'device-credential'
-          ? context.environmentSecurityService.identifyDevice(
-              runtimePrincipal.credential,
-            )?.principalBinding
-          : undefined;
-      if (
-        binding &&
-        (hostedTenantRegistry !== undefined ||
-          (isAccountDeviceBinding(binding)
-            ? ingressIdentity !== null
-            : ingressIdentity &&
-              (ingressIdentity.provider !== binding.provider ||
-                ingressIdentity.subject !== binding.subject)))
-      ) {
-        throw new PrincipalUnresolvedError(
-          'Device person binding conflicts with the current identity or deployment',
-        );
-      }
-      const verifiedPerson = binding
-        ? principalForDeviceBinding(binding)
-        : ingressIdentity
-          ? deploymentHumanPrincipal(
-              ingressIdentity.provider,
-              ingressIdentity.subject,
-              ingressIdentity.subject,
-            )
-          : undefined;
-      const account =
-        context.deploymentAuthentication?.service.resolvePrincipal(
-          c.req.raw,
-          verifiedPerson ? [verifiedPerson] : [],
-        );
-      if (account) return account;
-      return resolveStationPrincipal(
-        (binding && !('kind' in binding)
-          ? {
-              provider: binding.provider,
-              subject: binding.subject,
-              displayName: binding.subject,
-            }
-          : ingressIdentity) ??
-          (operatorAuthority ? null : deviceSessionIdentity(runtimePrincipal)),
-        hostedTenantRegistry !== undefined ? 'hosted' : 'personal',
-        operatorAuthority,
-        // station#4075 stage 2 review round 3: the THIRD hosted outcome —
-        // read via `tenantExecutionContextForRequest`, which reads the
-        // WeakMap `createHostedTenantMiddleware` itself populated after
-        // verifying the host binding + per-boot internal-token attestation
-        // (runtime-tenant-context.ts:101-155) — NEVER re-derived from
-        // `INTERNAL_TENANT_HEADER` (or any other raw header) independently
-        // at this seam. A raw-header read here would let any caller who can
-        // merely SPELL the tenant header mint a tenant attribution the
-        // middleware never verified.
-        tenantExecutionContextForRequest(c.req.raw),
-        // Cosmetic display only (never `id` — see principal-resolver.ts):
-        // reuses the same OS-alias source the removed fallback used to mint
-        // an id from, now confined to a label.
-        { resolveOperatorDisplay: () => getCachedUser().alias },
-      );
-    },
-  );
+  // The canonical principal owner, extracted verbatim to
+  // `bootstrap/orchestration-request-principal.ts` so the authority
+  // observation (#481 groundwork) and any future consumer resolve through
+  // this ONE composition. Same memoization, same failure contract.
+  const resolveOrchestrationRequestPrincipal =
+    createOrchestrationRequestPrincipalResolver({
+      environmentSecurityService: context.environmentSecurityService,
+      deploymentAuthentication: context.deploymentAuthentication?.service,
+      hostedTenantRegistry,
+    });
   const conversationReadAuthorityForContext = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
   ) => {
@@ -1315,94 +1202,14 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     security: runtimeSecurity,
   });
-  context.app.use('*', async (c, next) => {
-    const account = context.deploymentAuthentication?.service.current(
-      c.req.raw,
-    );
-    const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
-    const binding =
-      runtimePrincipal?.authority === 'device-credential'
-        ? context.environmentSecurityService.identifyDevice(
-            runtimePrincipal.credential,
-          )?.principalBinding
-        : undefined;
-    const accountBinding =
-      binding && 'kind' in binding && binding.kind === 'account'
-        ? binding
-        : undefined;
-    const accountOperation =
-      c.req.path === '/api/account-auth' ||
-      c.req.path.startsWith('/api/account-auth/');
-    if (
-      accountBinding &&
-      !accountOperation &&
-      account?.kind !== 'authenticated'
-    ) {
-      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
-      return c.json(
-        { error: { code: 'account_authentication_required' } },
-        401,
-      );
-    }
-    if (account && account.kind !== 'absent') {
-      if (account.kind !== 'authenticated')
-        return c.json(
-          { error: { code: 'account_authentication_invalid' } },
-          401,
-        );
-      const ingress = identifyIngress(c);
-      if (accountBinding && ingress) {
-        return c.json({ error: { code: 'account_identity_conflict' } }, 401);
-      }
-      const people = accountBinding
-        ? [principalForDeviceBinding(accountBinding)]
-        : [ingress, binding]
-            .filter((person) => person !== null && person !== undefined)
-            .map((person) =>
-              principalForDeviceBinding(person as DevicePrincipalBinding),
-            );
-      try {
-        context.deploymentAuthentication!.service.resolvePrincipal(
-          c.req.raw,
-          people,
-        );
-      } catch (error) {
-        if (!(error instanceof PrincipalUnresolvedError)) throw error;
-        return c.json({ error: { code: 'account_identity_conflict' } }, 401);
-      }
-    }
-    if (accountBinding) {
-      const path = c.req.path;
-      if (
-        (path === '/api/projects' || path.startsWith('/api/projects/')) &&
-        c.req.method !== 'GET' &&
-        c.req.method !== 'HEAD'
-      ) {
-        return c.json(
-          { error: { code: 'account_bound_device_route_forbidden' } },
-          403,
-        );
-      }
-      const permitted =
-        path === '/' ||
-        path.startsWith('/assets/') ||
-        path === '/api/projects' ||
-        /^\/api\/projects\/[^/]+$/.test(path) ||
-        /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document))?$/.test(
-          path,
-        ) ||
-        path === '/api/account-auth' ||
-        path.startsWith('/api/account-auth/') ||
-        path === PUBLIC_DEVICE_PAIRING_REQUEST_PATH ||
-        path === PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH;
-      if (!permitted) {
-        return c.json(
-          { error: { code: 'account_bound_device_route_forbidden' } },
-          403,
-        );
-      }
-    }
-    await next();
+  // The account-bound device authority gate, extracted verbatim to
+  // `bootstrap/account-bound-device-gate.ts` so tests exercise the real
+  // middleware rather than a copy. Behavior is unchanged.
+  installAccountBoundDeviceGate(context.app, {
+    identifyDevice: (credential) =>
+      context.environmentSecurityService.identifyDevice(credential),
+    identifyIngress,
+    deploymentAuthentication: context.deploymentAuthentication,
   });
   context.app.route(
     '/api/account-auth/continuations',
@@ -1837,7 +1644,17 @@ export function configureRuntimeRoutes(
     '/api/consent',
     createConsentNativeRoutes({ consentChannel: context.consentChannel }),
   );
-  context.app.route('/api/auth', createAuthRoutes());
+  context.app.route(
+    '/api/auth',
+    createAuthRoutes({
+      // #481 groundwork: the observation resolves through the SAME canonical
+      // principal owner every orchestration route uses — the memoized
+      // closure below — and reads the SAME verified boundary facts.
+      resolveRequestPrincipal: resolveOrchestrationRequestPrincipal,
+      security: context.environmentSecurityService,
+      deploymentAuthentication: context.deploymentAuthentication,
+    }),
+  );
   context.app.route(
     '/api/secret-bindings',
     createSecretBindingRoutes(
@@ -5096,6 +4913,18 @@ function applyPublicCorsHeaders(
   }
 }
 
+// Ingress identity providers, tried in order; the first that recognizes the
+// request wins. Today only the tailnet-WhoIs (Tailscale Serve) source is
+// registered. A future `KontourAccountIdentitySource` (validating a Kontour
+// session token -> provider: 'kontour-account') is registered additively by
+// `INGRESS_IDENTITY_SOURCES` / `identifyIngress` moved to
+// `services/identity/identity-source.ts` (their owning seam) so the
+// canonical principal owner can be extracted out of this module; re-exported
+// here for the existing regression-guard import.
+export {
+  INGRESS_IDENTITY_SOURCES,
+  identifyIngress,
+} from '../../services/identity/identity-source.js';
 /**
  * station#4518 fix round (MED-2): memoizes a per-request derivation, keyed
  * on Request object IDENTITY — the same pattern `roomRequestPrincipals`
@@ -5119,52 +4948,9 @@ function applyPublicCorsHeaders(
  * again, at the same (bounded) cost, rather than remembering a stale
  * refusal.
  */
-export function memoizePerRequest<
-  TContext extends { req: { raw: Request } },
-  TResult,
->(resolve: (context: TContext) => TResult): (context: TContext) => TResult {
-  const cache = new WeakMap<Request, TResult>();
-  return (context: TContext): TResult => {
-    // LOW-A (station#4518 fix round, delta review): `cache.has()`, not an
-    // `undefined` sentinel — this is an EXPORTED generic, so a future
-    // resolver that legitimately RETURNS `undefined` must still be cached,
-    // not silently re-run on every call.
-    if (cache.has(context.req.raw)) return cache.get(context.req.raw)!;
-    const result = resolve(context);
-    cache.set(context.req.raw, result);
-    return result;
-  };
-}
-
-// Ingress identity providers, tried in order; the first that recognizes the
-// request wins. Today only the tailnet-WhoIs (Tailscale Serve) source is
-// registered. A future `KontourAccountIdentitySource` (validating a Kontour
-// session token -> provider: 'kontour-account') is registered additively by
-// appending it here — the pairing/authz boundary below consumes the
-// provider-agnostic `VerifiedIdentity`, so no authz change is required.
-// Exported for the local-mode-invariant regression guard
-// (`src-server/services/identity/__tests__/local-mode-invariant.test.ts`),
-// which asserts against the REAL source list rather than a fixture: a request
-// carrying no ingress-identity credential must yield no identity, so the
-// presence of this list never makes identity mandatory. See
-// `docs/design/identity.md`.
-export const INGRESS_IDENTITY_SOURCES: readonly IdentitySource[] = [
-  new TailscaleServeIdentitySource(),
-];
-
-export function identifyIngress(c: {
-  env: unknown;
-  req: { header: (name: string) => string | undefined };
-}): VerifiedIdentity | null {
-  for (const source of INGRESS_IDENTITY_SOURCES) {
-    const identity = source.identify({
-      environment: c.env,
-      header: (name) => c.req.header(name),
-    });
-    if (identity) return identity;
-  }
-  return null;
-}
+// `memoizePerRequest` moved to `utils/memoize-per-request.ts` (the canonical
+// principal owner now lives outside this module); re-exported here.
+export { memoizePerRequest } from '../../utils/memoize-per-request.js';
 
 /**
  * Whether the request came from a process on THIS machine that reached this

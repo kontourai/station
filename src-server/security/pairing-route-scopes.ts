@@ -2135,6 +2135,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // should supersede a legacy credential; it does not infer locality.
     { method: 'GET', path: '/api/auth/local-grant-eligibility' },
     { method: 'GET', path: '/api/auth/status' },
+    // #481 groundwork: the credential-bound authority observation — an
+    // authorization-neutral self-read of the caller's own resolved
+    // principal, public grant tier, and the current home identity. It
+    // grants nothing beyond the ordinary family read scope it already
+    // requires, and adds no credential metadata to any response. GET only:
+    // that is the one verb the route mounts, and the leaf scan audits
+    // exactly what the source registers — a HEAD entry would be stale by
+    // construction. (A HEAD request still resolves through the family's
+    // READ_METHODS rule at the same read tier, and the account-bound gate
+    // admits only GET/HEAD on this path, so no other verb rides this
+    // audit.)
+    { method: 'GET', path: '/api/auth/authority' },
     { method: 'POST', path: '/api/auth/terminal' },
     { method: 'GET', path: '/api/branding' },
     { method: 'POST', path: '/api/coding/exec' },
