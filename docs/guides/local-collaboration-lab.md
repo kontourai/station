@@ -513,3 +513,36 @@ real humans, remote-host deployment, compute/plugin isolation, or a production
 rollout. Those remain separate acceptance requirements. The original direct
 transport profiles retain their certificate-substitution controls; this broker
 mode reports only the controls it actually executes.
+
+### Cross-machine encrypted relay qualification
+
+`npm run lab:remote-relay -- --ssh-host <known-host> --remote-checkout
+/absolute/isolated-checkout --remote-node /absolute/node --pion-executable
+/absolute/local/linux-pion-peer --keep` uses a local Chromium controller and a
+separate POSIX Station/Pion process on the selected SSH host. Prepare the remote
+checkout with the same committed source and managed dependencies first; supply a
+Pion executable built for that host. Existing SSH host trust is required.
+
+The controller owns loopback broker and TURN fixtures. Explicit SSH reverse TCP
+forwarding makes those fixtures reachable from the remote Station without a
+firewall or service change. Browser application requests still use the verified
+encrypted DataChannel. A separate SSH forward is restricted to fixture operator
+setup; the browser is blocked from using it. This qualifies cross-machine
+TCP-over-SSH transport, not native remote UDP, a production deployment or a
+managed service.
+
+The account scenario also creates inert Tasks through the real API, publishes
+selected messages and a document, and proves that unpublished work in the same
+Project stays hidden. Unsharing, republication and membership/Device revocation
+are checked independently. No Task is dispatched to an agent or billable model.
+
+The run creates a private home beneath the isolated remote checkout and leaves
+that named fixture root and local evidence available for inspection. It does not
+restart an existing Station. Successful completion requires clean remote
+supervisor exit, broker withdrawal, owned-process cleanup, the real account and
+Project authorization journey, reconnect and renewal, zero direct browser
+application requests, and a nonempty relay capture without application secret
+markers. Source revisions, dirty state, fixture and binary hashes are recorded;
+an uncommitted-source diagnostic is not an exact-release receipt. A synthetic
+pre-approved Device remains a fixture prerequisite and does not qualify fresh
+collaborator enrollment, native clients or real humans.

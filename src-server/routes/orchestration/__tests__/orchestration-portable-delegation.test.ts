@@ -1393,7 +1393,7 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
       expect(await res.json()).toMatchObject({
         success: false,
         error:
-          'This portable task predates its Project identity record and cannot continue. Start a new portable execution.',
+          'The original Project identity of this portable task cannot be verified. Start a new portable execution.',
         code: 'receiver_execution_consent_stale',
       });
       expect(continueDelegatedTask).toHaveBeenCalledTimes(1);

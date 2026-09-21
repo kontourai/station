@@ -40,6 +40,7 @@ import {
   decodeChatAttachments,
   rejectFileAttachments,
 } from '../sessions/chat-attachments.js';
+import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   buildMuseExecArgs,
   parseMuseLine,
@@ -1156,6 +1157,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       // (see muse-adapter-events.ts). Its own itemId keeps the tool row
       // distinct from the assistant text item.
       const isNewToolResult = !turn.seenToolCallIds.includes(effect.toolCallId);
+      const preview = projectBoundedToolOutput(effect.output);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -1167,7 +1169,8 @@ export class MuseAdapter implements ProviderAdapterShape {
         toolCallId: effect.toolCallId,
         toolName: effect.toolName,
         status: effect.status,
-        ...(effect.output === null ? {} : { output: effect.output }),
+        ...(effect.output === null ? {} : { output: preview.value }),
+        ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
       });
       // Replay/duplicate completion receipts must not extend idle: only a
       // NEWLY identified tool result counts. Malformed/unknown/heartbeat

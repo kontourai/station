@@ -2661,78 +2661,96 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal).not.toHaveBeenCalled();
   });
 
-  test('a pre-incarnation portable marker fails closed stale, retaining history', async () => {
-    installCurrentStationFetch();
-    const authority = hostedAuthority('alpha');
-    const base = localDelegatedTaskService('completed');
-    // A marker minted before the ORIGINAL-incarnation field existed
-    // cannot prove its association: the follow-up fails closed with the
-    // named stale outcome — never silently upgraded — while the thread's
-    // history stays readable for a new explicit execution.
-    const legacyMarkedDetail = {
-      session: {
-        threadId: 'task-alpha',
-        lifecycleState: 'completed',
-        eventCount: 2,
-        delegation: {
-          taskId: 'task-alpha',
-          environmentId: 'environment-current',
-          environmentName: 'Current environment',
-          targetKind: 'agent',
-          targetId: 'reviewer',
-        },
+  test.each(
+    [
+      { portableProjectId: 'prj_shared', resourceId: 'git.example/acme/repo' },
+      {
+        portableProjectId: 42,
+        resourceId: 'git.example/acme/repo',
+        localProjectId: 'local-project-1',
       },
-      events: [
-        {
-          method: 'session.configured',
-          metadata: {
+      {
+        portableProjectId: 'prj_shared',
+        resourceId: null,
+        localProjectId: 'local-project-1',
+      },
+      { portableProjectId: '', resourceId: 'git.example/acme/repo' },
+      null,
+      'corrupted marker',
+      [],
+    ].map((marker) => ({ marker })),
+  )(
+    'an unprovable portable marker fails closed with history retained: %j',
+    async ({ marker }) => {
+      installCurrentStationFetch();
+      const authority = hostedAuthority('alpha');
+      const base = localDelegatedTaskService('completed');
+      // A marker minted before the ORIGINAL-incarnation field existed
+      // cannot prove its association: the follow-up fails closed with the
+      // named stale outcome — never silently upgraded — while the thread's
+      // history stays readable for a new explicit execution.
+      const legacyMarkedDetail = {
+        session: {
+          threadId: 'task-alpha',
+          lifecycleState: 'completed',
+          eventCount: 2,
+          delegation: {
             taskId: 'task-alpha',
             environmentId: 'environment-current',
             environmentName: 'Current environment',
             targetKind: 'agent',
             targetId: 'reviewer',
-            userId: 'shared-user',
-            [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: {
-              portableProjectId: 'prj_shared',
-              resourceId: 'git.example/acme/repo',
-            },
           },
         },
-      ],
-    };
-    const service = {
-      ...base,
-      readSession: vi.fn(async () => legacyMarkedDetail),
-      readCurrentConversationSession: vi.fn(async () => legacyMarkedDetail),
-    };
-    const { continueDelegatedTask, observeDelegatedTask } = await import(
-      '../station-control-delegation.js'
-    );
+        events: [
+          {
+            method: 'session.configured',
+            metadata: {
+              taskId: 'task-alpha',
+              environmentId: 'environment-current',
+              environmentName: 'Current environment',
+              targetKind: 'agent',
+              targetId: 'reviewer',
+              userId: 'shared-user',
+              [PORTABLE_EXECUTION_CONSENT_METADATA_KEY]: marker,
+            },
+          },
+        ],
+      };
+      const service = {
+        ...base,
+        readSession: vi.fn(async () => legacyMarkedDetail),
+        readCurrentConversationSession: vi.fn(async () => legacyMarkedDetail),
+      };
+      const { continueDelegatedTask, observeDelegatedTask } = await import(
+        '../station-control-delegation.js'
+      );
 
-    await expect(
-      continueDelegatedTask(
-        {
-          taskId: 'task-alpha',
-          message: 'One more thing',
-          readAuthority: authority,
-          // Even a willing factory cannot upgrade a legacy marker.
-          authorizeReceiverExecution: vi.fn(async () => {
-            throw new Error('must not mint for a stale marker');
-          }),
-        },
-        service as never,
-      ),
-    ).rejects.toMatchObject({ code: 'receiver_execution_consent_stale' });
-    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
-    expect(service.startSessionInternal).not.toHaveBeenCalled();
-    // History is retained: the task still observes as completed.
-    await expect(
-      observeDelegatedTask(
-        { taskId: 'task-alpha', readAuthority: authority },
-        service as never,
-      ),
-    ).resolves.toMatchObject({ status: 'completed' });
-  });
+      await expect(
+        continueDelegatedTask(
+          {
+            taskId: 'task-alpha',
+            message: 'One more thing',
+            readAuthority: authority,
+            // Even a willing factory cannot upgrade a legacy marker.
+            authorizeReceiverExecution: vi.fn(async () => {
+              throw new Error('must not mint for a stale marker');
+            }),
+          },
+          service as never,
+        ),
+      ).rejects.toMatchObject({ code: 'receiver_execution_consent_stale' });
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+      expect(service.startSessionInternal).not.toHaveBeenCalled();
+      // History is retained: the task still observes as completed.
+      await expect(
+        observeDelegatedTask(
+          { taskId: 'task-alpha', readAuthority: authority },
+          service as never,
+        ),
+      ).resolves.toMatchObject({ status: 'completed' });
+    },
+  );
 
   test('a marked portable continue mints from the marker and threads admission to the child effects', async () => {
     installCurrentStationFetch();
