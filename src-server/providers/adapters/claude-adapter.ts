@@ -127,6 +127,7 @@ type PendingRequest = {
   resolve: (result: PermissionResult) => void;
   suggestions?: PermissionUpdate[];
   toolInput: Record<string, unknown>;
+  toolName: string;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -560,6 +561,15 @@ type ClaudeSessionRecord = {
    * rejected rather than silently applied (archive#727 review item 1).
    */
   allowsBypassPermissions: boolean;
+  /**
+   * Tool-level session grants from `acceptForSession`. The SDK's own session
+   * rule is scoped to its suggested `PermissionUpdate` — for Bash that is the
+   * command pattern, not the tool — so a second, different Bash command
+   * re-prompts even after "Allow Bash for this session". Station remembers
+   * the tool name itself here (mirrors station-agent-adapter's
+   * `approvedTools`) so the grant covers the whole tool for this session.
+   */
+  approvedTools: Set<string>;
   /** Model controls confirmed at spawn or by a successful SDK control call. */
   currentModelOptions: ClaudeAppliedModelOptions;
   /**
@@ -1246,6 +1256,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       promptQueue,
       query: sdkQuery,
       pendingRequests: new Map(),
+      approvedTools: new Set(),
       lastSessionState: 'idle',
       streamTask: Promise.resolve(),
       currentPermissionMode: permissionMode,
@@ -1669,6 +1680,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     record.pendingRequests.delete(requestId);
+    if (decision === 'acceptForSession') {
+      record.approvedTools.add(pending.toolName);
+    }
     pending.resolve(
       mapClaudeDecisionToPermissionResult(
         decision,
@@ -2271,8 +2285,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
-        const requestId = crypto.randomUUID();
         const record = this.requireSession(input.threadId);
+        // Tool-level session grant: "Allow Bash for this session" must cover
+        // every later Bash call, not just the SDK-suggested command pattern.
+        // Checked after agent autoApprove (authored policy stays first) and
+        // before publishing, so granted tools never re-prompt. Denies are
+        // never cached here — only `acceptForSession` populates the set.
+        if (record.approvedTools.has(toolName)) {
+          return { behavior: 'allow', updatedInput: toolInput };
+        }
+        const requestId = crypto.randomUUID();
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -2302,6 +2324,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             resolve,
             suggestions: options.suggestions,
             toolInput,
+            toolName,
           });
         });
       },
