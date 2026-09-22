@@ -289,7 +289,14 @@ const MUSE_TASK_FINAL_PHASES = new Set(['completed', 'failed', 'cancelled']);
 /** What {@link observeMuseToolTask} tells the adapter to do, if anything. */
 export type MuseToolTaskObservation =
   | { kind: 'started'; toolName: string; toolCallId: string }
-  | { kind: 'cancelled'; toolName: string; toolCallId: string };
+  | { kind: 'cancelled'; toolName: string; toolCallId: string }
+  /**
+   * The task reached `completed` or `failed`: muse is no longer executing
+   * the tool, but its `tool_result` (which carries the output) normally
+   * follows, so the call stays open and pairable — it just stops being
+   * in-flight work for idle supervision.
+   */
+  | { kind: 'finished'; toolName: string; toolCallId: string };
 
 /**
  * Folds one `task-lifecycle` effect into `bindings` (keyed by `task_id`) and
@@ -311,7 +318,8 @@ export type MuseToolTaskObservation =
  * `cancelled` returns a `cancelled` observation so the adapter can close the
  * open tool: muse reported it will not finish, so leaving it open would keep
  * the row running and the idle deadline disarmed for nothing. `completed` and
- * `failed` close nothing here — the `tool_result` that follows them does. `maxEntries` bounds the map: oldest tasks are evicted first.
+ * `failed` return `finished` instead: the row stays open for the
+ * `tool_result` that normally follows, but the tool is no longer running. `maxEntries` bounds the map: oldest tasks are evicted first.
  * Once-per-`call_id` across tasks is the caller's job (the adapter keeps
  * its own per-turn record of started call ids).
  */
@@ -323,14 +331,9 @@ export function observeMuseToolTask(
   if (MUSE_TASK_FINAL_PHASES.has(effect.phase)) {
     const finished = bindings.get(effect.taskId);
     bindings.delete(effect.taskId);
-    if (
-      effect.phase === 'cancelled' &&
-      finished?.emitted &&
-      finished.toolName &&
-      finished.toolCallId
-    ) {
+    if (finished?.emitted && finished.toolName && finished.toolCallId) {
       return {
-        kind: 'cancelled',
+        kind: effect.phase === 'cancelled' ? 'cancelled' : 'finished',
         toolName: finished.toolName,
         toolCallId: finished.toolCallId,
       };

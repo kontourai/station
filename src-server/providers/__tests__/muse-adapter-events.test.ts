@@ -466,7 +466,7 @@ describe('muse 1.3 tool start (#2308, real capture)', () => {
     expect(starts[0]).toMatchObject({ toolCallId: MUSE_13_BASH_CALL_ID });
   });
 
-  test('cancelled closes a started tool; completed and failed do not', () => {
+  test('cancelled closes a started tool; completed and failed only mark it finished', () => {
     const lines = MUSE_13_BASH_TOOL_TURN_LINES;
     const run = (finalPhase: string) => {
       const bindings = new Map<string, MuseToolTaskBinding>();
@@ -495,7 +495,8 @@ describe('muse 1.3 tool start (#2308, real capture)', () => {
     // final phase, so neither `failed` nor `completed` closes anything here.
     for (const phase of ['failed', 'completed']) {
       const { observed, bindings } = run(phase);
-      expect(observed.map((o) => o?.kind)).toEqual(['started']);
+      // `finished`, not `cancelled`: the row stays open for its result.
+      expect(observed.map((o) => o?.kind)).toEqual(['started', 'finished']);
       expect(bindings.size).toBe(0);
     }
   });

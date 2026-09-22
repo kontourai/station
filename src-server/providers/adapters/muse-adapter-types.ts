@@ -146,7 +146,8 @@ export interface MuseActiveTurn {
    *   (`turnTimeoutMs`); absolute from turn start, never rescheduled.
    * - `idleTimeoutHandle`: full silence window with no verified protocol
    *   activity AND no tool in flight; rescheduled by `noteVerifiedActivity`,
-   *   and not armed at all while `openToolCalls` is non-empty.
+   *   and not armed at all while a tool is in flight (an open call not yet in
+   *   `awaitingResultToolCalls`).
    */
   totalTimeoutHandle?: ReturnType<typeof setTimeout>;
   idleTimeoutHandle?: ReturnType<typeof setTimeout>;
@@ -177,6 +178,13 @@ export interface MuseActiveTurn {
    * settles is closed as `unresolved`.
    */
   openToolCalls: Map<string, string>;
+  /**
+   * Open calls whose muse task already reached `completed`/`failed`: still
+   * awaiting (and pairable with) their `tool_result`, but no longer running,
+   * so they do not hold the idle deadline disarmed. Always a subset of
+   * `openToolCalls`.
+   */
+  awaitingResultToolCalls: Set<string>;
 }
 
 /**

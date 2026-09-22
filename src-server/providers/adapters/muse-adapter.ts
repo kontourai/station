@@ -131,9 +131,10 @@ export interface MuseAdapterOptions {
  * - IDLE (default 30 min): a full window with no VERIFIED protocol activity
  *   (non-empty streamed text, a newly started tool, or a newly identified
  *   tool result) ends the turn — but never while a tool is in flight (a
- *   `tool.started` with no result yet, #2308): that is known in-progress
- *   work, not silence. Each verified activity reschedules the window, and a
- *   tool's result (or its task reporting `cancelled`) re-arms it. Invalid values fall back to this default
+ *   `tool.started` whose muse task has not finished, #2308): that is known
+ *   in-progress work, not silence. Each verified activity reschedules the
+ *   window, and the tool's task finishing (completed/failed/cancelled) or
+ *   its result re-arms it. Invalid values fall back to this default
  *   (fail-closed, mirroring `resolveTurnStallWindowMs`).
  * - TOTAL: there is NO default. An absolute wall-clock ceiling applies only
  *   when a server-owned caller declares one (`turnTimeoutMs`). No production
@@ -892,6 +893,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       seenToolCallIds: [],
       toolTasks: new Map(),
       openToolCalls: new Map(),
+      awaitingResultToolCalls: new Set(),
       outputText: '',
       settled: false,
       interrupted: false,
@@ -1243,6 +1245,19 @@ export class MuseAdapter implements ProviderAdapterShape {
         this.closeCancelledTool(record, turn, observed);
         return;
       }
+      if (observed.kind === 'finished') {
+        // The task ended; its result is still owed and still pairs, but the
+        // tool is no longer running, so it stops holding idle disarmed. A
+        // result that never arrives is closed as unresolved at settle.
+        if (
+          turn.openToolCalls.has(observed.toolCallId) &&
+          !turn.awaitingResultToolCalls.has(observed.toolCallId)
+        ) {
+          turn.awaitingResultToolCalls.add(observed.toolCallId);
+          this.noteVerifiedActivity(record, turn);
+        }
+        return;
+      }
       const start = observed;
       // At most one start per call id, and never a start for a call whose
       // result already arrived: that would reopen a finished row.
@@ -1281,6 +1296,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       // Its own itemId keeps the tool row distinct from the assistant text
       // item, and matches the `tool.started` itemId for the same call.
       turn.openToolCalls.delete(effect.toolCallId);
+      turn.awaitingResultToolCalls.delete(effect.toolCallId);
       const isNewToolResult = !turn.seenToolCallIds.includes(effect.toolCallId);
       const preview = projectBoundedToolOutput(effect.output);
       this.publish({
@@ -1491,8 +1507,12 @@ export class MuseAdapter implements ProviderAdapterShape {
     // `unresolved` with the turn-scoped sentence says exactly that: no
     // result, fate unknown — not a failure and not a cancellation. (A task
     // that is proposed and never starts opened no row, so it needs none.)
+    // Idle was disarmed at settle only if a call was still RUNNING; calls
+    // that were merely awaiting their result left it armed.
+    const hadToolInFlight = this.hasToolInFlight(turn);
     const openToolCalls = [...turn.openToolCalls];
     turn.openToolCalls.clear();
+    turn.awaitingResultToolCalls.clear();
     for (const [toolCallId, toolName] of openToolCalls) {
       this.publish({
         eventId: crypto.randomUUID(),
@@ -1515,7 +1535,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     // above, so it is restored here — from now, the same rule a tool's
     // result follows (the in-flight time was work, not silence). What the
     // timer does after settle is unchanged and belongs to #2300.
-    if (openToolCalls.length > 0 && !turn.idleTimeoutHandle) {
+    if (hadToolInFlight && !turn.idleTimeoutHandle) {
       this.scheduleIdleTimer(record, turn);
     }
 
@@ -1703,9 +1723,10 @@ export class MuseAdapter implements ProviderAdapterShape {
    * anything else — notably never for approval state (muse has no approval
    * channel) and never by the total path.
    *
-   * While a tool is in flight (`openToolCalls` non-empty) the deadline is
-   * cleared and NOT re-armed: a started tool with no result is known work,
-   * however long it runs. Its result is verified activity and re-arms it.
+   * While a tool is in flight (an open call whose muse task has not reached
+   * `completed`/`failed`/`cancelled`) the deadline is cleared and NOT
+   * re-armed: a running tool is known work, however long it runs. The task
+   * finishing, or its result, is verified activity and re-arms it.
    */
   private armIdleDeadline(
     record: MuseSessionRecord,
@@ -1716,8 +1737,13 @@ export class MuseAdapter implements ProviderAdapterShape {
       turn.idleTimeoutHandle = undefined;
     }
     if (turn.settled) return;
-    if (turn.openToolCalls.size > 0) return;
+    if (this.hasToolInFlight(turn)) return;
     this.scheduleIdleTimer(record, turn);
+  }
+
+  /** True while any open call's muse task has not yet finished. */
+  private hasToolInFlight(turn: MuseActiveTurn): boolean {
+    return turn.openToolCalls.size > turn.awaitingResultToolCalls.size;
   }
 
   /**
@@ -1761,6 +1787,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     tool: { toolName: string; toolCallId: string },
   ): void {
     if (!turn.openToolCalls.delete(tool.toolCallId)) return;
+    turn.awaitingResultToolCalls.delete(tool.toolCallId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,

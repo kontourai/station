@@ -2408,50 +2408,185 @@ describe('MuseAdapter tool events', () => {
       ]);
     });
 
-    test('a cancelled task closes its open tool as cancelled and re-arms idle; failed does not close', async () => {
+    test('a cancelled task closes its open tool as cancelled and re-arms idle', async () => {
       vi.useFakeTimers();
       const { harness, turn, emit } = await startTurn('thread-cancel');
-      const failedTool = bashTool('task-f', 'call_f');
-      const cancelledTool = bashTool('task-c', 'call_c');
-      await emit(...failedTool.start, failedTool.failed);
-      // `failed` leaves call_f open (its tool_result still follows), so
-      // cancelling call_c alone must not re-arm idle yet.
-      await emit(...cancelledTool.start, cancelledTool.cancelled);
-      await vi.advanceTimersByTimeAsync(20_000);
-      expect(harness.released).toBe(0);
-      // call_f's result arrives after its task's `failed`, as muse batches it.
-      await emit(failedTool.result);
-      await vi.advanceTimersByTimeAsync(1_100);
-      expect(harness.released).toBe(1);
-      const events = await drain(harness.iterator, 8, 'cancelled tool');
-      const completions = events.filter((e) => e.method === 'tool.completed');
-      expect(completions).toEqual([
-        expect.objectContaining({
-          toolCallId: 'call_c',
-          toolName: 'bash',
-          turnId: turn.turnId,
-          itemId: 'tool:call_c',
-          status: 'cancelled',
-          output: MUSE_CANCELLED_TOOL_OUTPUT,
-        }),
-        expect.objectContaining({ toolCallId: 'call_f', status: 'success' }),
-      ]);
-      expect(events.at(-1)).toMatchObject({
-        method: 'runtime.error',
-        code: MUSE_TURN_IDLE_TIMEOUT_CODE,
-      });
-    });
-
-    test('a cancelled task alone re-arms idle', async () => {
-      vi.useFakeTimers();
-      const { harness, emit } = await startTurn('thread-cancel-only');
       const tool = bashTool('task-c', 'call_c');
       await emit(...tool.start);
       await vi.advanceTimersByTimeAsync(20_000);
       expect(harness.released).toBe(0);
       await emit(tool.cancelled);
+      await vi.advanceTimersByTimeAsync(900);
+      expect(harness.released).toBe(0);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(harness.released).toBe(1);
+      const events = await drain(harness.iterator, 6, 'cancelled tool');
+      expect(events.slice(3).map((e) => e.method)).toEqual([
+        'tool.started',
+        'tool.completed',
+        'runtime.error',
+      ]);
+      expect(events[4]).toMatchObject({
+        toolCallId: 'call_c',
+        toolName: 'bash',
+        turnId: turn.turnId,
+        itemId: 'tool:call_c',
+        status: 'cancelled',
+        output: MUSE_CANCELLED_TOOL_OUTPUT,
+      });
+      expect(events[5]).toMatchObject({ code: MUSE_TURN_IDLE_TIMEOUT_CODE });
+    });
+
+    test('a failed task keeps its call open and pairable for the result that follows', async () => {
+      vi.useFakeTimers();
+      const { harness, emit } = await startTurn('thread-failed-result', 60_000);
+      const tool = bashTool('task-f', 'call_f');
+      const nameless = tool.result.replace('"tool_name":"bash",', '');
+      await emit(...tool.start, tool.failed, nameless);
+      await emit(LINES[54]!);
+      const events = await drain(harness.iterator, 6, 'failed then result');
+      expect(events.slice(3).map((e) => [e.method, e.status])).toEqual([
+        ['tool.started', undefined],
+        // Paired by call id (the result has no name), not closed at `failed`.
+        ['tool.completed', 'success'],
+        ['turn.completed', undefined],
+      ]);
+      expect(events[4]).toMatchObject({
+        toolCallId: 'call_f',
+        toolName: 'bash',
+      });
+    });
+
+    test('a failed task with no result stops holding idle disarmed; settle closes it unresolved', async () => {
+      vi.useFakeTimers();
+      const { harness, emit } = await startTurn('thread-failed-no-result');
+      const tool = bashTool('task-f', 'call_f');
+      await emit(...tool.start);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(harness.released).toBe(0);
+      // `failed`, and muse never emits the tool_result.
+      await emit(tool.failed);
+      await vi.advanceTimersByTimeAsync(900);
+      expect(harness.released).toBe(0);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(harness.released).toBe(1);
+      const events = await drain(harness.iterator, 6, 'failed no result');
+      expect(
+        events.slice(3).map((e) => [e.method, e.status ?? e.code]),
+      ).toEqual([
+        ['tool.started', undefined],
+        ['tool.completed', 'unresolved'],
+        ['runtime.error', MUSE_TURN_IDLE_TIMEOUT_CODE],
+      ]);
+    });
+
+    test("a still-running tool keeps idle disarmed even after another tool's task failed", async () => {
+      vi.useFakeTimers();
+      const { harness, emit } = await startTurn('thread-failed-and-running');
+      const failed = bashTool('task-f', 'call_f');
+      const running = bashTool('task-r', 'call_r');
+      await emit(...failed.start, ...running.start, failed.failed);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(harness.released).toBe(0);
+      await emit(running.completed, running.result);
       await vi.advanceTimersByTimeAsync(1_100);
       expect(harness.released).toBe(1);
+    });
+
+    // Verifier probes P1-P4 (AC3): every settle path closes an open tool
+    // BEFORE the turn's terminal, not only run_terminal.
+    test('P1: child exit without a terminal closes the open tool as unresolved first', async () => {
+      const h = createHarness();
+      await h.adapter.startSession({ provider: 'muse', threadId: 'p1' });
+      await h.adapter.sendTurn({ threadId: 'p1', input: 'go' });
+      await writeLines(h.processes[0], ...LINES.slice(0, 26));
+      h.processes[0].exit(0);
+      await flushIo();
+      const events = await drain(h.iterator, 6, 'p1');
+      expect(events.map((e) => e.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'tool.started',
+        'tool.completed',
+        'runtime.error',
+      ]);
+      expect(events[4]).toMatchObject({
+        status: 'unresolved',
+        toolCallId: MUSE_13_BASH_CALL_ID,
+        output: UNRESOLVED_TURN_TOOL_OUTPUT,
+      });
+      expect(events[5]).toMatchObject({ code: 'muse-exit-without-terminal' });
+      await expectNoFurtherEvent(h.iterator, 'p1');
+    });
+
+    test('P2: interrupt closes the open tool as unresolved before turn.aborted', async () => {
+      const h = createHarness();
+      await h.adapter.startSession({ provider: 'muse', threadId: 'p2' });
+      const turn = await h.adapter.sendTurn({ threadId: 'p2', input: 'go' });
+      await writeLines(h.processes[0], ...LINES.slice(0, 26));
+      const result = await h.adapter.interruptTurn('p2', turn.turnId);
+      expect(result.outcome).toBe('cancelled');
+      const events = await drain(h.iterator, 6, 'p2');
+      expect(events.map((e) => e.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'tool.started',
+        'tool.completed',
+        'turn.aborted',
+      ]);
+      expect(events[4]).toMatchObject({
+        status: 'unresolved',
+        toolCallId: MUSE_13_BASH_CALL_ID,
+      });
+      await expectNoFurtherEvent(h.iterator, 'p2');
+    });
+
+    test('P3: a declared budget ends a turn with a tool in flight; the tool is closed first', async () => {
+      vi.useFakeTimers();
+      const h = createHarness({
+        turnTimeoutMs: 5_000,
+        turnIdleTimeoutMs: 1_000,
+      });
+      await h.adapter.startSession({ provider: 'muse', threadId: 'p3' });
+      await h.adapter.sendTurn({ threadId: 'p3', input: 'go' });
+      for (const line of LINES.slice(0, 26))
+        h.processes[0].stdout.write(`${line}\n`);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(4_900);
+      expect(h.released).toBe(0);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(h.released).toBe(1);
+      const events = await drain(h.iterator, 6, 'p3');
+      expect(events.map((e) => e.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'tool.started',
+        'tool.completed',
+        'runtime.error',
+      ]);
+      expect(events[4]).toMatchObject({ status: 'unresolved' });
+      expect(events[5]).toMatchObject({ code: MUSE_TURN_TOTAL_TIMEOUT_CODE });
+    });
+
+    test('P4: stopSession closes the open tool as unresolved before turn.aborted', async () => {
+      const h = createHarness();
+      await h.adapter.startSession({ provider: 'muse', threadId: 'p4' });
+      await h.adapter.sendTurn({ threadId: 'p4', input: 'go' });
+      await writeLines(h.processes[0], ...LINES.slice(0, 26));
+      await h.adapter.stopSession('p4');
+      const events = await drain(h.iterator, 6, 'p4');
+      expect(events.map((e) => e.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'tool.started',
+        'tool.completed',
+        'turn.aborted',
+      ]);
+      expect(events[4]).toMatchObject({ status: 'unresolved' });
     });
 
     test('a result without correlation_facts.tool_name pairs with its start; without a start it is dropped', async () => {
@@ -2749,16 +2884,21 @@ describe('Muse turn supervision (#2269)', () => {
         input: 'hi',
       });
       const minute = 60_000;
-      // Verified activity every 29 minutes for 10 hours: under the old 2 h
-      // default this turn died at t=120min.
-      for (let round = 0; round < 21; round += 1) {
+      // Verified activity every 29 minutes for ~24.7 hours — past the 24 h
+      // cap on ANY budget value — so no hidden default total (2 h, or even
+      // MUSE_MAX_SUPERVISION_TIMEOUT_MS) can survive this test.
+      const rounds = 51;
+      expect(rounds * 29 * minute).toBeGreaterThan(
+        MUSE_MAX_SUPERVISION_TIMEOUT_MS,
+      );
+      for (let round = 0; round < rounds; round += 1) {
         await vi.advanceTimersByTimeAsync(29 * minute);
         harness.processes[0].stdout.write(`${MUSE_META_OUTPUT_DELTA_1}\n`);
         await vi.advanceTimersByTimeAsync(0);
       }
       expect(harness.processes[0].killed).toBe(false);
       expect(harness.released).toBe(0);
-      const events = await drain(harness.iterator, 24, 'no total');
+      const events = await drain(harness.iterator, 3 + rounds, 'no total');
       expect(
         events.filter((event) => event.method === 'runtime.error'),
       ).toEqual([]);
