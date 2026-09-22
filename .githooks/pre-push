@@ -80,15 +80,15 @@ node scripts/check-prepush-orchestration-transfer.mjs
 # required `fast-checks` lane, composes node-runtime-contract,
 # lockfile-sync:gate, channel-ports:check, gate:workflows and the typecheck
 # aggregate. What it does NOT compose is any of the fourteen ratchets this
-# step runs. Post-merge, windows-verification.yml runs typecheck, gate:naming
-# and gate:ui-contracts on a paths-filtered push to main, which does cover
-# thirteen of the fourteen (agent-plugin-validators-gate is the exception).
+# step runs. The required windows-pr-verification.yml runs typecheck,
+# gate:naming and gate:ui-contracts on every PR and merge-queue candidate,
+# which covers thirteen of the fourteen (agent-plugin-validators-gate is the
+# exception).
 #
-# So the gap this closes is pre-merge, not absolute: without this hook these
-# ratchets first evaluate a change AFTER it is on main — and only if the push
-# touched the filtered paths, else not until the next Nightly — so the red
-# lands on whoever gates next. Three regressions reached main in one day that
-# way (two motion literals, one undeclared Coding dependency).
+# So this hook buys earlier feedback, not new coverage: without it these
+# ratchets first report at the merge queue, a round trip later. Three
+# regressions reached main in one day when these ratchets ran only after
+# merge (two motion literals, one undeclared Coding dependency).
 echo "[station pre-push] static gates (UI contracts, content)"
 node scripts/check-prepush-static-gates.mjs
 

@@ -6,7 +6,6 @@ on:
     workflows:
       - Nightly
       - Container smoke
-      - Windows Verification
       - Secret Scan
       - Backlog disposition policy
       - Scheduled dependency advisory floor
