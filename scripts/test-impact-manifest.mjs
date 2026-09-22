@@ -49,40 +49,59 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
 );
 
 /**
- * station#2301: the SDK's HTTP transport is imported by every client fetcher,
- * so its import graph is nearly the whole UI — 9,035 tests from a change to
- * this one file. That does not fit the fast lane's affected-test window on a
- * two-core hosted runner (`run-ci-fast.mjs`: 720s minus the 220s static
- * reserve), and the lane died of `ci:fast exceeded its 12-minute feedback
- * budget` with zero failures, deterministically, for any transport change.
+ * station#2301: the SDK's HTTP transport — `http.ts` and the two modules it
+ * imports, `bounded-response.ts` and `client-origin.ts` — is imported by every
+ * client fetcher, so each of the three has the SAME import graph: ~771 test
+ * files, 9,035 tests, nearly the whole UI. That cannot fit ci:fast's
+ * affected-test window on a two-core hosted runner (`run-ci-fast.mjs`: the
+ * 720s lane minus its 220s static reserve), so fast-checks died with
+ * "ci:fast exceeded its 12-minute feedback budget" and zero failures,
+ * deterministically, for any change to these files.
  *
- * So the transport gets an explicit boundary: the suites that exercise its
- * OWN behaviour (streams, auth, timeouts, origin headers, failure mapping,
- * request authority, portability) run before merge, and every consumer is
- * deferred BY NAME to `test-full` — the receipt reads `provisional` and
- * carries the obligation, which full-regression discharges (it remains the
- * required completion gate for promotions). A failure in the listed suites
- * still fails the lane. This deliberately trades pre-merge consumer coverage
- * for a fast lane that can run at all; the alternative, a lane budget large
- * enough for 9,035 tests on two cores, would slow every broad change.
+ * So each gets an explicit boundary instead of the related graph: the suites
+ * that exercise the transport's OWN behaviour — streams, authentication and
+ * native transport order, credential wake, timeouts, origin headers, failure
+ * mapping, request authority, portability. As with every explicit-boundary
+ * edge in this manifest, the transport's CONSUMERS are then covered by
+ * full-regression (the required completion gate for promotions), not before
+ * merge. That is the trade: stated here, not hidden.
+ *
+ * Deliberately NOT a `test-full` lane. Any lane switches the whole diff to
+ * deferred execution (`executionSelection` in `run-changed-verification.mjs`):
+ * it drops the related suites of every OTHER changed file and runs no
+ * explicit test at all above 32 — so a transport change would silently stop
+ * testing the rest of its own pull request.
  */
-const SDK_TRANSPORT_EDGE = Object.freeze({
-  pattern: 'packages/sdk/src/client/http.ts',
-  tests: Object.freeze([
-    'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
-    'packages/sdk/src/__tests__/client-entry-portability.test.ts',
-    'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
-    'packages/sdk/src/__tests__/client-origin.test.ts',
-    'packages/sdk/src/__tests__/client-request-timeout.test.ts',
-    'packages/sdk/src/__tests__/fetch-sse.test.ts',
-    'packages/sdk/src/__tests__/scoped-request-authority.test.ts',
-    'packages/sdk/src/__tests__/scoped-request-invocation-boundaries.test.tsx',
-  ]),
-  lanes: Object.freeze(['test-full']),
-  reason:
-    'SDK transport: own-behaviour suites before merge; its import graph is ' +
-    'too broad for the fast lane, so consumers defer to test-full (#2301)',
-});
+const SDK_TRANSPORT_TESTS = Object.freeze([
+  'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+  'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+  'packages/sdk/src/__tests__/client-origin.test.ts',
+  'packages/sdk/src/__tests__/client-request-timeout.test.ts',
+  'packages/sdk/src/__tests__/fetch-sse.test.ts',
+  'packages/sdk/src/__tests__/request-inspection.test.ts',
+  'packages/sdk/src/__tests__/scoped-request-authority.test.ts',
+  'packages/sdk/src/__tests__/scoped-request-invocation-boundaries.test.tsx',
+  'src-ui/src/__tests__/useServerEvents-authority-stability.test.tsx',
+  'src-ui/src/contexts/__tests__/ApiBaseContext.credential-wake.test.tsx',
+  'src-ui/src/contexts/__tests__/ApiBaseContext.native-transport-order.test.tsx',
+]);
+const SDK_TRANSPORT_PATHS = Object.freeze([
+  'packages/sdk/src/client/bounded-response.ts',
+  'packages/sdk/src/client/client-origin.ts',
+  'packages/sdk/src/client/http.ts',
+]);
+const SDK_TRANSPORT_EDGES = Object.freeze(
+  SDK_TRANSPORT_PATHS.map((pattern) =>
+    Object.freeze({
+      pattern,
+      tests: SDK_TRANSPORT_TESTS,
+      reason:
+        'SDK transport: own-behaviour suites; its import graph is too broad ' +
+        'for the fast lane, so consumers are covered by full-regression (#2301)',
+    }),
+  ),
+);
 
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
@@ -141,14 +160,14 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   },
   {
     pattern: 'packages/sdk/src/client/**',
-    // `http.ts` has its own edge below: see SDK_TRANSPORT_EDGE.
-    except: ['packages/sdk/src/client/http.ts'],
+    // The transport modules have their own edges: see SDK_TRANSPORT_EDGES.
+    except: SDK_TRANSPORT_PATHS,
     related: true,
     tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
     reason:
       'portable client dependency scan reads source outside the import graph',
   },
-  SDK_TRANSPORT_EDGE,
+  ...SDK_TRANSPORT_EDGES,
   {
     pattern: 'packages/cli/src/commands/session-client.ts',
     related: true,
@@ -1443,17 +1462,39 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
     // A supplemental edge is excluded from the boundary, escalation, and
     // related decisions, so `lanes` or `related` on one would be silently
     // ignored — and a reader would believe the lane was scheduled.
-    // An exception that the pattern cannot match is a typo that silently
-    // keeps the path on the broad edge — exactly what `except` exists to stop.
-    for (const excepted of edge?.except ?? [])
-      if (!matches(edge.pattern, excepted))
-        errors.push(
-          `impact edge exception outside its pattern: ${edge.pattern} except ${excepted}`,
-        );
     if (edge?.supplemental && (edge.lanes?.length || edge.related))
       errors.push(
         `supplemental impact edge may only add tests: ${edge.pattern}`,
       );
+    // `except` is an exact-path list. A glob-shaped entry, one its pattern
+    // cannot match, or one on a supplemental edge (whose boundary role it
+    // cannot change) would each leave the path on the broad edge silently —
+    // exactly the typo class this field exists to stop.
+    if (edge?.except?.length && edge.supplemental)
+      errors.push(
+        `supplemental impact edge may not declare exceptions: ${edge.pattern}`,
+      );
+    for (const excepted of edge?.except ?? []) {
+      if (excepted.endsWith('/**') || !matches(edge.pattern, excepted))
+        errors.push(
+          `impact edge exception outside its pattern: ${edge.pattern} except ${excepted}`,
+        );
+      // An excepted path must still have an owner, or removing it from this
+      // edge silently narrows it to whatever broader edge is left.
+      else if (
+        !manifest.some(
+          (other) =>
+            other !== edge &&
+            !other.supplemental &&
+            !other.except?.includes(excepted) &&
+            matches(other.pattern, excepted) &&
+            (other.tests?.length || other.lanes?.length),
+        )
+      )
+        errors.push(
+          `impact edge exception has no explicit owner: ${edge.pattern} except ${excepted}`,
+        );
+    }
   }
   // These dynamic seams cannot be inferred from Vitest imports. Deleting one
   // is an unsafe silent narrowing, so validation is intentionally explicit.
