@@ -1,4 +1,7 @@
-import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
+import type {
+  InterruptTurnResult,
+  OrchestrationSessionSummary,
+} from '@kontourai/station-contracts/orchestration';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   type ChatHttpError,
@@ -8,6 +11,7 @@ import {
   steerOrchestrationTurn,
   useEngineConnectionsQuery,
   useInvalidateQuery,
+  useQueryClient,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
@@ -129,6 +133,28 @@ function rejectedSendRollback(
   };
 }
 
+/**
+ * #2310 review H1: whether the cached session list still describes one of
+ * these identities as a Draft. Read-only; `undefined` ids are skipped.
+ */
+function cachedSummaryIsDraft(
+  queryClient: ReturnType<typeof useQueryClient>,
+  ids: ReadonlyArray<string | undefined>,
+): boolean {
+  const wanted = new Set(ids.filter((id): id is string => Boolean(id)));
+  const cached =
+    queryClient.getQueryData<OrchestrationSessionSummary[]>([
+      'orchestration-sessions',
+    ]) ?? [];
+  return cached.some(
+    (session) =>
+      session.draft === true &&
+      (wanted.has(session.threadId) ||
+        (session.conversationId !== undefined &&
+          wanted.has(session.conversationId))),
+  );
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -152,6 +178,7 @@ export function useSendMessage(
     data: ConnectionConfig[];
   };
   const invalidate = useInvalidateQuery();
+  const queryClient = useQueryClient();
   // #2144 slice 6 fix round 1: the two default layers below a session
   // override (the engine connection's own default, then this Station's
   // `defaultApprovalMode`) were display-only — the composer chip read them
@@ -408,9 +435,19 @@ export function useSendMessage(
         // receipted execution identity changes; otherwise the dock looks for
         // the new child in a pre-child cache and falsely reports "Session
         // record missing" even though that record is durable on the server.
+        //
+        // #2310 review H1: also when the cached list still calls this
+        // conversation a Draft. Opening a Draft marks the chat started, so
+        // neither condition above fires on its first send, and every surface
+        // would keep reading "nothing was ever sent" from the pre-send cache.
         if (
           !currentState?.orchestrationSessionStarted ||
-          currentState.currentSessionId !== receipt.sessionId
+          currentState.currentSessionId !== receipt.sessionId ||
+          cachedSummaryIsDraft(queryClient, [
+            receipt.sessionId,
+            receipt.conversationId,
+            currentState?.conversationId,
+          ])
         ) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
@@ -669,6 +706,7 @@ export function useSendMessage(
       clearStreamingMessage,
       handleSlashCommand,
       invalidate,
+      queryClient,
       onActiveSessionChange,
       onError,
       stationApprovalModeDefault,

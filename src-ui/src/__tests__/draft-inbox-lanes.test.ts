@@ -11,15 +11,15 @@ import { partitionSessionLanes } from '../views/sessions/sessions-lane-model';
  * #2310 — a session nothing has been sent to is a Draft, and "Active now"
  * means actually active.
  *
- * FIXTURE FIDELITY: `SERVER_DRAFT` is the summary the server's own builder
- * (`buildOrchestrationSessionSummary`, lineage consulted) produced for the
- * event sequence the nightly home recorded for `grok-build:1790099828990` —
- * `session.started`, 31 `_x.ai` notifications, `session.configured`,
- * `policy.hooks-attached`, no turn. Captured by running that builder, not
- * imagined: note `lifecycleState: 'queued'` and `status: 'ready'`, which is
- * why the old fold called it "Ready" and filed it under Active now.
- * `SERVER_AFTER_FIRST_TURN` is the same builder's output once `turn.started`
- * lands.
+ * FIXTURE PROVENANCE, stated exactly (review L2): `SERVER_DRAFT` has the
+ * field SHAPE the server builder (`buildOrchestrationSessionSummary`, lineage
+ * consulted) emits for a never-prompted ACP session — the fields it sets and
+ * the states it folds to, notably `status: 'ready'` and
+ * `lifecycleState: 'queued'`, which is why the old fold called it "Ready" and
+ * filed it under Active now. It is hand-transcribed, not a byte capture:
+ * `eventCount` and the timestamps are illustrative. The server-side test
+ * (`session-draft-lifecycle.test.ts`) is where the builder itself runs
+ * against the recorded event sequence.
  */
 const THREAD = 'grok-build:1790099828990';
 const NOW = Date.parse('2026-09-22T20:00:00.000Z');
@@ -182,6 +182,86 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
       expect(items[0]?.lifecycleLabel).toBe('Draft');
       expect(idsIn('drafts')).toEqual([THREAD]);
     });
+  });
+
+  // #2310 review H1: the sending device. Opening a Draft marks the chat
+  // started, so the first send used to leave the session list cache alone;
+  // once the turn finished the chat read 'Recent' (not locally actionable)
+  // and the stale server Draft won the merge — real work filed as a Draft.
+  // Driven through the real merge, one state per step, with the server
+  // summary deliberately NOT refreshed at any step.
+  test('open a Draft, send, turn completes: the row never falls back into Drafts', () => {
+    const chatKey = 'grok-build:1790100000000';
+    const opened: Partial<ChatUIState> = {
+      agentSlug: 'grok-build',
+      conversationId: THREAD,
+      currentSessionId: THREAD,
+      orchestrationSessionStarted: true,
+      status: 'idle',
+      createdAt: Date.parse('2026-09-22T19:00:00.000Z'),
+      messages: [],
+    };
+    const userMessage = {
+      role: 'user',
+      content: 'first prompt',
+      timestamp: Date.parse('2026-09-22T19:00:05.000Z'),
+    };
+    const sending: Partial<ChatUIState> = {
+      ...opened,
+      status: 'sending',
+      orchestrationStatus: 'running',
+      messages: [userMessage] as ChatUIState['messages'],
+    };
+    const completed: Partial<ChatUIState> = {
+      ...opened,
+      status: 'idle',
+      orchestrationStatus: 'running',
+      messages: [
+        userMessage,
+        {
+          role: 'assistant',
+          content: 'done',
+          timestamp: Date.parse('2026-09-22T19:00:09.000Z'),
+        },
+      ] as ChatUIState['messages'],
+    };
+    const step = (chat: Partial<ChatUIState>) => {
+      const { items, idsIn } = inboxGroups([SERVER_DRAFT], {
+        [chatKey]: chat,
+      });
+      expect(items).toHaveLength(1);
+      return { label: items[0]?.lifecycleLabel, drafts: idsIn('drafts') };
+    };
+
+    expect(step(opened)).toEqual({ label: 'Draft', drafts: [THREAD] });
+    expect(step(sending)).toEqual({ label: 'Running', drafts: [] });
+    const after = step(completed);
+    expect(after.drafts).toEqual([]);
+    expect(after.label).not.toBe('Draft');
+  });
+
+  // Review M1: the recorded grok thread's sends were refused and nothing
+  // started. The server folds that to Failed with a send_refused reason; the
+  // row leaves Active now through the terminal lane and says why.
+  test('a refused first send is Failed with its reason, not a Draft and not active', () => {
+    const refused: OrchestrationSessionSummary = {
+      ...SERVER_DRAFT,
+      lifecycleState: 'failed',
+      draft: false,
+      terminalAttribution: {
+        kind: 'send_refused',
+        detail:
+          'Sending the first message failed before anything started. Nothing ran in this session.',
+      },
+    };
+    const { items, idsIn } = inboxGroups([refused]);
+    expect(items[0]?.lifecycleLabel).toBe('Failed');
+    expect(items[0]?.failureNotice).toContain('first message failed');
+    expect(idsIn('active')).toEqual([]);
+    expect(idsIn('drafts')).toEqual([]);
+    // A terminal lane: "Just finished" while it lingers, "Earlier" after
+    // (this fixture is two hours old, so Earlier).
+    expect([...idsIn('settled'), ...idsIn('earlier')]).toEqual([THREAD]);
   });
 
   test('Home and the Sessions list file the Draft the same way', () => {

@@ -110,26 +110,65 @@ function hasOpenTurn(events: CanonicalRuntimeEvent[]): boolean {
 }
 
 /**
- * The turn facts that end a Draft (#2310). `turn.completed` is counted beside
- * `turn.started` because the conversation history's own message count
- * (`EventStore.projectConversationHistoryEvent`) counts exactly these two: a
- * log holding either has messages, and "has messages" must not be decided two
- * different ways.
+ * Event families that mean a conversation has had ACTIVITY and so cannot be a
+ * Draft (#2310). Turn facts, because the conversation history's own message
+ * count (`EventStore.projectConversationHistoryEvent`) counts exactly
+ * `turn.started`/`turn.completed`, and "has messages" must not be decided two
+ * ways. Content and tool events too (review L4): the nightly home holds a
+ * continuation child that streamed text and started a tool with no
+ * `turn.started` of its own, and output is not what a Draft looks like.
  */
 export const DRAFT_ENDING_TURN_METHODS = [
   'turn.started',
   'turn.completed',
 ] as const;
+export const DRAFT_ENDING_METHOD_PREFIXES = ['content.', 'tool.'] as const;
+
+export function isDraftEndingActivity(method: string): boolean {
+  return (
+    (DRAFT_ENDING_TURN_METHODS as readonly string[]).includes(method) ||
+    DRAFT_ENDING_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix))
+  );
+}
+
+/**
+ * What the store knows about a thread's whole CONVERSATION that its own
+ * events cannot say (`EventStore.conversationDraftFactsForThreads`).
+ */
+export interface ConversationDraftFacts {
+  /** Any Session of the lineage recorded turn, content or tool activity. */
+  activityObserved: boolean;
+  /** Any `sendTurn` receipt in the lineage was accepted. */
+  sendAccepted: boolean;
+  /**
+   * Any `sendTurn` receipt in the lineage was `rejected` (a pre-send refusal,
+   * #2302) or `failed` (how the same refusal was recorded before #2302).
+   */
+  sendRefused: boolean;
+  /** The conversation is a fork target: it carries copied messages. */
+  hasCopiedHistory: boolean;
+}
+
+export interface SessionDraftVerdict {
+  /**
+   * `true` Draft, `false` not a Draft, `undefined` no claim (the lineage was
+   * not read and the thread's own events do not settle it).
+   */
+  draft: boolean | undefined;
+  /**
+   * Review M1 (owner decision): a send was attempted, refused, and nothing
+   * ever started. That is not a Draft — it is a failure the user must see.
+   */
+  firstSendRefused: boolean;
+}
 
 /**
  * #2310: whether a session is a Draft — see `OrchestrationSessionSummary.draft`.
  *
- * `conversationTurnObserved` is the LINEAGE answer (`EventStore.
- * conversationTurnObservedForThreads`): did any Session of this thread's
- * conversation record a turn. `undefined` means the caller did not ask, and
- * the result is then `undefined` too unless the thread's own events already
+ * `facts` is the LINEAGE answer. Omitted means the caller did not read it,
+ * and the verdict is then "no claim" unless the thread's own events already
  * settle it — a missing lineage read must never become a Draft claim, because
- * a continuation child with no turns of its own is exactly the shape that
+ * a continuation child with no activity of its own is exactly the shape that
  * would be mislabelled.
  */
 export function deriveSessionDraft(input: {
@@ -139,8 +178,9 @@ export function deriveSessionDraft(input: {
     'controlMode' | 'attachedSource' | 'continuationSourceThreadId'
   >;
   delegated: boolean;
-  conversationTurnObserved?: boolean;
-}): boolean | undefined {
+  facts?: ConversationDraftFacts;
+}): SessionDraftVerdict {
+  const notDraft = { draft: false, firstSendRefused: false } as const;
   // History that did not arrive through a local turn: followed from another
   // app, adopted from one, or dispatched by Station with its prompt in hand.
   if (
@@ -149,15 +189,22 @@ export function deriveSessionDraft(input: {
     input.session.continuationSourceThreadId !== undefined ||
     input.delegated
   ) {
-    return false;
+    return notDraft;
   }
-  const ownTurn = input.events.some((event) =>
-    (DRAFT_ENDING_TURN_METHODS as readonly string[]).includes(event.method),
-  );
-  if (ownTurn) return false;
-  if (input.conversationTurnObserved === undefined) return undefined;
-  return !input.conversationTurnObserved;
+  if (input.events.some((event) => isDraftEndingActivity(event.method))) {
+    return notDraft;
+  }
+  const facts = input.facts;
+  if (!facts) return { draft: undefined, firstSendRefused: false };
+  if (facts.activityObserved || facts.hasCopiedHistory) return notDraft;
+  if (facts.sendAccepted) return notDraft;
+  if (facts.sendRefused) return { draft: false, firstSendRefused: true };
+  return { draft: true, firstSendRefused: false };
 }
+
+/** The reason a refused first send carries into its Failed row (review M1). */
+export const FIRST_SEND_REFUSED_DETAIL =
+  'Sending the first message failed before anything started. Nothing ran in this session.';
 
 export function trackOrchestrationSession(options: {
   threadProviders: Map<string, EngineId>;
@@ -346,12 +393,12 @@ export function buildOrchestrationSessionSummary(options: {
    */
   conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
   /**
-   * #2310: whether any Session in this thread's conversation lineage recorded
-   * a turn (`EventStore.conversationTurnObservedForThreads`). Omitted means
-   * the lineage was not consulted, and the summary then makes no Draft claim
-   * (`draft` stays absent unless the thread's own events rule it out).
+   * #2310: what the store knows about this thread's whole conversation
+   * (`EventStore.conversationDraftFactsForThreads`). Omitted means the lineage
+   * was not consulted, and the summary then makes no Draft claim (`draft`
+   * stays absent unless the thread's own events rule it out).
    */
-  conversationTurnObserved?: boolean;
+  conversationDraftFacts?: ConversationDraftFacts;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   if (!base) {
@@ -360,7 +407,7 @@ export function buildOrchestrationSessionSummary(options: {
 
   const events = options.events ?? [];
   const lastEvent = events.at(-1);
-  const lifecycle = projectSessionLifecycle({ session: base, events });
+  const foldedLifecycle = projectSessionLifecycle({ session: base, events });
   const delegation = extractDelegationContext(events);
   const inputOrigin = delegation
     ? {
@@ -382,14 +429,33 @@ export function buildOrchestrationSessionSummary(options: {
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const controlMode = base.controlMode ?? 'station-owned';
-  const draft = deriveSessionDraft({
+  const { draft, firstSendRefused } = deriveSessionDraft({
     events,
     session: { ...base, controlMode },
     delegated: delegation !== undefined,
-    ...(options.conversationTurnObserved !== undefined
-      ? { conversationTurnObserved: options.conversationTurnObserved }
+    ...(options.conversationDraftFacts
+      ? { facts: options.conversationDraftFacts }
       : {}),
   });
+  // Review M1 (owner decision): a session whose only send was refused before
+  // anything started is Failed, with the reason on the row — not an idle
+  // session and not a Draft. The event fold cannot see it: a pre-send refusal
+  // publishes no event, only a rejected command receipt. An outcome the fold
+  // already recorded (failed, completed, canceled) is left as it is.
+  const lifecycle =
+    firstSendRefused &&
+    foldedLifecycle.lifecycleState !== 'failed' &&
+    foldedLifecycle.lifecycleState !== 'completed' &&
+    foldedLifecycle.lifecycleState !== 'canceled'
+      ? {
+          ...foldedLifecycle,
+          lifecycleState: 'failed' as const,
+          terminalAttribution: {
+            kind: 'send_refused' as const,
+            detail: FIRST_SEND_REFUSED_DETAIL,
+          },
+        }
+      : foldedLifecycle;
   const {
     projectSlug: lifecycleProjectSlug,
     assignedAgentSlug,

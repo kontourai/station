@@ -79,6 +79,15 @@ const steerOrchestrationTurnMock = vi.fn();
 // were invalidated. A fresh `vi.fn` per `useInvalidateQuery` call records
 // nothing an assertion can reach.
 const invalidateMock = vi.fn();
+// #2310 review H1: the session-list cache the send path consults. Tests set
+// what the cache holds; the default is an empty list.
+let cachedSessionList: unknown[] = [];
+const queryClientMock = {
+  getQueryData: (key: unknown[]) =>
+    JSON.stringify(key) === JSON.stringify(['orchestration-sessions'])
+      ? cachedSessionList
+      : undefined,
+};
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
 // failed" (the request provably never left this browser) or the honest
@@ -97,6 +106,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     // chats carry their own binding, so the catalog is empty here.
     useAgentsQuery: () => ({ data: [], error: null }),
     useInvalidateQuery: () => invalidateMock,
+    useQueryClient: () => queryClientMock,
     interruptOrchestrationTurn: (...args: unknown[]) =>
       interruptOrchestrationTurnMock(...args),
     steerOrchestrationTurn: (...args: unknown[]) =>
@@ -1515,6 +1525,46 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(invalidateMock).not.toHaveBeenCalledWith(['orchestration-sessions']);
     expect(invalidateMock).not.toHaveBeenCalledWith(['conversation-inventory']);
+  });
+
+  // #2310 review H1: opening a Draft marks the chat started with its
+  // session current, so neither condition above fires on the first send. The
+  // cached list still says Draft, and without a re-read every surface keeps
+  // reading "nothing was ever sent" after the turn completes.
+  it('invalidates the session list when the cached summary still calls the conversation a Draft', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      orchestrationSessionStarted: true,
+      currentSessionId: sessionId,
+    });
+    cachedSessionList = [{ threadId: sessionId, draft: true }];
+    try {
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'codex', sessionId, 'first message');
+      });
+    } finally {
+      cachedSessionList = [];
+    }
+
+    expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
+  });
+
+  it('does not invalidate for a cached summary that is not a Draft', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      orchestrationSessionStarted: true,
+      currentSessionId: sessionId,
+    });
+    cachedSessionList = [{ threadId: sessionId, draft: false }];
+    try {
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'codex', sessionId, 'next message');
+      });
+    } finally {
+      cachedSessionList = [];
+    }
+
+    expect(invalidateMock).not.toHaveBeenCalledWith(['orchestration-sessions']);
   });
 
   it('invalidates inventories when a continuation child becomes the current execution Session', async () => {

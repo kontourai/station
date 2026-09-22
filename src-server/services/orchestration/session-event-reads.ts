@@ -18,7 +18,10 @@ import {
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
-import { buildOrchestrationSessionSummary } from './orchestration-session-state.js';
+import {
+  buildOrchestrationSessionSummary,
+  type ConversationDraftFacts,
+} from './orchestration-session-state.js';
 import type { TurnProgressTracker } from './turn-progress-tracker.js';
 
 /** Provider resume state is server-only and can be arbitrarily large. */
@@ -30,14 +33,12 @@ function eventWindowSessionSummary(
 }
 
 /** #2310: the lineage half of the Draft fold; absent without a store. */
-function conversationTurnObservedOption(
+function conversationDraftFactsOption(
   eventStore: EventStore | undefined,
   threadId: string,
-): { conversationTurnObserved?: boolean } {
+): { conversationDraftFacts?: ConversationDraftFacts } {
   return eventStore
-    ? {
-        conversationTurnObserved: eventStore.conversationTurnObserved(threadId),
-      }
+    ? { conversationDraftFacts: eventStore.conversationDraftFacts(threadId) }
     : {};
 }
 
@@ -175,7 +176,7 @@ export class SessionEventReads {
           loaded,
           events: projectionEvents.map((event) => event.payload),
           eventCount: this.deps.eventStore?.countEventsByThread(threadId),
-          ...conversationTurnObservedOption(this.deps.eventStore, threadId),
+          ...conversationDraftFactsOption(this.deps.eventStore, threadId),
           turnProgress: this.deps.readTurnProgress(threadId),
           answerability: this.deps.observeAnswerability(
             threadId,
@@ -235,7 +236,7 @@ export class SessionEventReads {
       loaded,
       events: projectionEvents.map((event) => event.payload),
       eventCount: this.deps.eventStore?.countEventsByThread(threadId),
-      ...conversationTurnObservedOption(this.deps.eventStore, threadId),
+      ...conversationDraftFactsOption(this.deps.eventStore, threadId),
       turnProgress: this.deps.readTurnProgress(threadId),
       answerability: this.deps.observeAnswerability(
         threadId,

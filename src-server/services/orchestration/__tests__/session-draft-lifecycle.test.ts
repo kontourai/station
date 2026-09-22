@@ -15,13 +15,16 @@ import { buildOrchestrationSessionSummary } from '../orchestration-session-state
 
 /**
  * #2310 — a session nothing has been sent to is a DRAFT, derived on the
- * server so every device agrees, and derived over the conversation's LINEAGE
- * rather than one thread's events.
+ * server so every device computes the same answer from the same read, and
+ * derived over the conversation's LINEAGE rather than one thread's events.
  *
  * The fixture events copy the byte shapes the nightly home recorded for
  * `grok-build:1790099828990` on 2026-09-22 (ids, paths and the environment id
  * replaced): `session.started`, 31 `_x.ai` `extension.notification`s,
- * `session.configured`, `policy.hooks-attached` — and no turn, ever. The same
+ * `session.configured`, `policy.hooks-attached` — and no turn, ever. The
+ * recorded thread ALSO held three failed `sendTurn` receipts, which makes it
+ * Failed, not a Draft (review M1); the event sequence alone is the Draft
+ * case, and both are tested below. The same
  * home also held the shape that makes lineage load-bearing: two continuation
  * children with zero `turn.started` of their own inside conversations with 3
  * and 4 turns. A per-thread fold labels both of those Draft.
@@ -179,7 +182,7 @@ describe('Draft lifecycle derivation (#2310)', () => {
       events: store
         .listSessionProjectionEvents(threadId)
         .map((event) => event.payload),
-      conversationTurnObserved: store.conversationTurnObserved(threadId),
+      conversationDraftFacts: store.conversationDraftFacts(threadId),
       answerability: { answerable: true } as never,
     });
   }
@@ -335,16 +338,144 @@ describe('Draft lifecycle derivation (#2310)', () => {
     seedNeverPrompted(other);
     turn(other, 'turn-1');
 
-    const batched = store.conversationTurnObservedForThreads([
+    const batched = store.conversationDraftFactsForThreads([
       ROOT,
       other,
       'never-persisted',
     ]);
+    const none = {
+      activityObserved: false,
+      sendAccepted: false,
+      sendRefused: false,
+      hasCopiedHistory: false,
+    };
     expect(Object.fromEntries(batched)).toEqual({
-      [ROOT]: false,
-      [other]: true,
-      'never-persisted': false,
+      [ROOT]: none,
+      [other]: { ...none, activityObserved: true },
+      'never-persisted': none,
     });
+  });
+
+  function receipt(
+    threadId: string,
+    status: 'accepted' | 'rejected' | 'failed',
+    n: number,
+  ): void {
+    store.appendCommandReceipt({
+      commandId: `cmd-${threadId}-${n}`,
+      threadId,
+      commandType: 'sendTurn',
+      status,
+      createdAt: at(2_000 + n),
+    });
+  }
+
+  describe('a send was attempted (review M1)', () => {
+    // The nightly home recorded exactly this for grok-build:1790099828990:
+    // one accepted startSession, then three FAILED sendTurn receipts (the
+    // pre-#2302 spelling of a pre-send refusal) and no turn, ever.
+    test('refused sends with nothing started read Failed, with the reason', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      receipt(ROOT, 'failed', 1);
+      receipt(ROOT, 'failed', 2);
+      receipt(ROOT, 'failed', 3);
+
+      const summary = summaryFor(ROOT, session);
+      expect(summary.draft).toBe(false);
+      expect(summary.lifecycleState).toBe('failed');
+      expect(summary.terminalAttribution).toEqual({
+        kind: 'send_refused',
+        detail: expect.stringContaining('first message failed'),
+      });
+    });
+
+    test('a #2302 rejected receipt reads the same way', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      receipt(ROOT, 'rejected', 1);
+      expect(summaryFor(ROOT, session).lifecycleState).toBe('failed');
+    });
+
+    test('an accepted send whose turn has not started yet is not a Draft, and not Failed', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      receipt(ROOT, 'failed', 1);
+      receipt(ROOT, 'accepted', 2);
+      const summary = summaryFor(ROOT, session);
+      expect(summary.draft).toBe(false);
+      expect(summary.lifecycleState).toBe('queued');
+      expect(summary.terminalAttribution).toBeUndefined();
+    });
+
+    test('a refused send in a conversation that already ran turns changes nothing', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      turn(ROOT, 'turn-1');
+      receipt(ROOT, 'rejected', 1);
+      const summary = summaryFor(ROOT, session);
+      expect(summary.draft).toBe(false);
+      expect(summary.lifecycleState).toBe('completed');
+      expect(summary.terminalAttribution?.kind).not.toBe('send_refused');
+    });
+  });
+
+  test('a fork target carries copied messages and is never a Draft (review M2)', () => {
+    const target = 'human:local:operator:fork:0123456789abcdef01234567';
+    const session = upsert(target);
+    seedNeverPrompted(target);
+    store.appendEvent({
+      eventId: 'conversation-fork:test',
+      provider: 'station',
+      threadId: 'grok-build:1789000000000',
+      method: 'conversation.forked',
+      sourceConversationId: 'grok-build:1789000000000',
+      targetConversationId: target,
+      targetAgent: 'grok-build',
+      forkedAt: at(3_000),
+      continuation: 'replay-seed',
+      createdAt: at(3_000),
+    } as never);
+    // The fixture is the fact the fork route writes: the store's own fork
+    // fold reads it as this conversation's origin.
+    expect(
+      store.readConversationForkProvenance(target).forkedFrom
+        ?.targetConversationId,
+    ).toBe(target);
+    expect(summaryFor(target, session).draft).toBe(false);
+  });
+
+  test('content or tool output anywhere in the lineage is activity (review L4)', () => {
+    // The nightly home's second lineage child: streamed text and started a
+    // tool with no turn.started of its own. Here the ROOT carries only that
+    // output, so no turn fact exists anywhere in the conversation.
+    const root = upsert(ROOT);
+    seedNeverPrompted(ROOT);
+    append({
+      threadId: ROOT,
+      method: 'content.text-delta',
+      turnId: 'unseen-turn',
+      delta: 'partial output',
+    });
+    const child = `${ROOT}:session:6acdd623-1420-4a50-8f54-e804f66a07b2`;
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: child,
+      createdAt: at(5_000),
+    });
+    const childSession = upsert(child, { createdAt: at(5_000) });
+    seedNeverPrompted(child, ROOT);
+    append({
+      threadId: child,
+      method: 'tool.started',
+      turnId: 'unseen-turn-2',
+      toolCallId: 'call-1',
+      toolName: 'shell',
+    });
+
+    expect(summaryFor(ROOT, root).draft).toBe(false);
+    expect(summaryFor(child, childSession).draft).toBe(false);
   });
 
   test('the list route carries the lineage-aware answer', async () => {

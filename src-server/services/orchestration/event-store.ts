@@ -181,7 +181,9 @@ import {
   releaseNativeInvocationOwner,
 } from './native-invocation-runs.js';
 import {
+  type ConversationDraftFacts,
   clientOriginIdentity,
+  DRAFT_ENDING_METHOD_PREFIXES,
   DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
@@ -7327,30 +7329,56 @@ export class EventStore {
   }
 
   /**
-   * #2310: for each thread, whether ANY Session of its conversation — the
-   * root and every continuation/handoff child — recorded a turn
-   * (`turn.started`/`turn.completed`, the pair the conversation history counts
-   * as messages). This is the lineage half of the Draft derivation
-   * (`deriveSessionDraft`): a child minted for the next turn, or a root whose
-   * turns all ran in children, has no turn of its own and is still not a
-   * draft.
+   * #2310: what the store knows about each thread's whole CONVERSATION that
+   * the thread's own events cannot say — the lineage half of the Draft
+   * derivation (`deriveSessionDraft`). Over every Session of the conversation
+   * (the root and every continuation/handoff child):
+   *
+   * - `activityObserved`: any turn fact, or any `content.*`/`tool.*` event;
+   * - `sendAccepted` / `sendRefused`: the `sendTurn` command receipts, which
+   *   are the only record of a send refused before anything started (#2302 —
+   *   a pre-send refusal publishes no event);
+   * - `hasCopiedHistory`: the conversation is the target of a
+   *   `conversation.forked` fact, so it carries copied messages.
+   *
+   * A child minted for the next turn, or a root whose turns all ran in
+   * children, therefore still reads as having activity.
    *
    * Every thread asked about gets an entry. A thread with no lineage row is
    * its own conversation (the store registers every persisted Session as the
-   * root of one — `upsertSession`/`markSessionClosed`), so it is answered from
-   * its own events. Chunked like
+   * root of one — `upsertSession`/`markSessionClosed`). Chunked like
    * {@link conversationRootFirstPromptedTurnForThreads}, and for the same
-   * reason: the caller is the batched session-list read, and a per-row lookup
-   * there would restore the cost archive#4466 removed.
+   * reason: the caller is the batched session-list read. Cost per chunk: the
+   * activity probes are range seeks on `(thread_id, method, sequence)`, the
+   * fork probe uses `idx_events_method`, and the receipt probe scans
+   * `orchestration_command_receipts`, which has no thread index — one scan per
+   * chunk, of a table that grows by one row per command.
    */
-  conversationTurnObservedForThreads(
+  conversationDraftFactsForThreads(
     threadIds: readonly string[],
-  ): Map<string, boolean> {
+  ): Map<string, ConversationDraftFacts> {
     const unique = [...new Set(threadIds)];
-    const result = new Map<string, boolean>(
-      unique.map((threadId) => [threadId, false]),
+    const result = new Map<string, ConversationDraftFacts>(
+      unique.map((threadId) => [
+        threadId,
+        {
+          activityObserved: false,
+          sendAccepted: false,
+          sendRefused: false,
+          hasCopiedHistory: false,
+        },
+      ]),
     );
-    const methods = DRAFT_ENDING_TURN_METHODS.map(() => '?').join(', ');
+    const turnMethods = DRAFT_ENDING_TURN_METHODS.map(() => '?').join(', ');
+    // A half-open range per prefix ('content.' <= m < 'content/') is an index
+    // seek; LIKE would not be.
+    const prefixRanges = DRAFT_ENDING_METHOD_PREFIXES.map(
+      () => '(event.method >= ? AND event.method < ?)',
+    ).join(' OR ');
+    const prefixBounds = DRAFT_ENDING_METHOD_PREFIXES.flatMap((prefix) => [
+      prefix,
+      `${prefix.slice(0, -1)}/`,
+    ]);
     for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
       const rows = this.db
         .prepare(
@@ -7370,26 +7398,67 @@ export class EventStore {
              FROM asked
              INNER JOIN orchestration_conversation_sessions sibling
                ON sibling.conversation_id = asked.conversation_id
+           ),
+           sends(thread_id, accepted, refused) AS (
+             SELECT thread_id,
+                    MAX(status = 'accepted'),
+                    MAX(status IN ('rejected', 'failed'))
+             FROM orchestration_command_receipts
+             WHERE command_type = 'sendTurn'
+             GROUP BY thread_id
            )
-           SELECT DISTINCT member.thread_id AS thread_id
-           FROM member
-           WHERE EXISTS (
-             SELECT 1 FROM orchestration_events event
-             WHERE event.thread_id = member.session_id
-               AND event.method IN (${methods})
-           )`,
+           SELECT asked.thread_id AS thread_id,
+             EXISTS (
+               SELECT 1 FROM member
+               INNER JOIN orchestration_events event
+                 ON event.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+                 AND (event.method IN (${turnMethods}) OR ${prefixRanges})
+             ) AS activity_observed,
+             COALESCE((
+               SELECT MAX(sends.accepted) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_accepted,
+             COALESCE((
+               SELECT MAX(sends.refused) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_refused,
+             EXISTS (
+               SELECT 1 FROM orchestration_events fork
+               WHERE fork.method = 'conversation.forked'
+                 AND json_extract(fork.payload, '$.targetConversationId')
+                   = asked.conversation_id
+             ) AS has_copied_history
+           FROM asked`,
         )
-        .all(JSON.stringify(chunk), ...DRAFT_ENDING_TURN_METHODS) as Array<{
+        .all(
+          JSON.stringify(chunk),
+          ...DRAFT_ENDING_TURN_METHODS,
+          ...prefixBounds,
+        ) as Array<{
         thread_id: string;
+        activity_observed: number;
+        send_accepted: number;
+        send_refused: number;
+        has_copied_history: number;
       }>;
-      for (const row of rows) result.set(row.thread_id, true);
+      for (const row of rows) {
+        result.set(row.thread_id, {
+          activityObserved: row.activity_observed === 1,
+          sendAccepted: row.send_accepted === 1,
+          sendRefused: row.send_refused === 1,
+          hasCopiedHistory: row.has_copied_history === 1,
+        });
+      }
     }
     return result;
   }
 
-  /** Single-thread {@link conversationTurnObservedForThreads}. */
-  conversationTurnObserved(threadId: string): boolean {
-    return this.conversationTurnObservedForThreads([threadId]).get(threadId)!;
+  /** Single-thread {@link conversationDraftFactsForThreads}. */
+  conversationDraftFacts(threadId: string): ConversationDraftFacts {
+    return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
   }
 
   reserveNextConversationSession(input: {

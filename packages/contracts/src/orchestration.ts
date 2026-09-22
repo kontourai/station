@@ -574,7 +574,14 @@ export interface TerminalAttribution {
     | 'runtime_error'
     | 'timeout'
     | 'no_output'
-    | 'exit';
+    | 'exit'
+    /**
+     * #2310 review M1: the session's only send was refused before anything
+     * started (a rejected or failed `sendTurn` receipt, no turn or output
+     * anywhere in the conversation). Derived from command receipts, since a
+     * pre-send refusal publishes no runtime event.
+     */
+    | 'send_refused';
   detail?: string;
 }
 
@@ -710,19 +717,29 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   hasActiveTurn?: boolean;
   /**
    * #2310: true when this session is a **Draft** — it exists, but no turn has
-   * ever started anywhere in its CONVERSATION's lineage (the root Session and
-   * every continuation/handoff child), and it carries no history from
-   * elsewhere: not a read-only attached session, not an adopted continuation,
-   * not a Station-dispatched delegation (whose prompt exists by
-   * construction). The first `turn.started` in the lineage makes it false.
+   * started and no send was attempted anywhere in its CONVERSATION's lineage
+   * (the root Session and every continuation/handoff child), and nothing in
+   * that lineage produced turn, content or tool events. A session that
+   * carries history from elsewhere is never a Draft: read-only attached, an
+   * adopted continuation, a Station-dispatched delegation (its prompt exists
+   * by construction), or a fork target (it carries copied messages).
+   *
+   * A send that was attempted and refused before anything started is not a
+   * Draft either: that session reads `lifecycleState: 'failed'` with
+   * `terminalAttribution.kind: 'send_refused'`.
    *
    * Lineage-aware on purpose: a continuation child minted for the NEXT turn,
-   * or a root whose turns all ran in children, has zero turns of its own and
-   * is not a draft.
+   * or a root whose turns all ran in children, has no activity of its own and
+   * is not a Draft.
    *
    * `false` is a derived "not a draft". ABSENT means the reader that built
    * this summary did not consult the lineage, so no draft claim is made — a
    * consumer must test `=== true`, never `!== false`.
+   *
+   * Freshness: a client learns that a Draft ended only by re-reading the
+   * summary. The sending device re-reads on its own send; other devices depend
+   * on the event stream refreshing the session read-model, which is not wired
+   * in production until #2307 lands (and is superseded by #2309 Phase B).
    *
    * Unrelated to composer draft text (unsent input kept per device).
    */

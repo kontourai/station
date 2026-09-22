@@ -539,6 +539,48 @@ describe('HomeView', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
+  // #2310 review M3: the newest session is a Draft (nothing ever sent). The
+  // card must continue the most recent WORK, not an empty session.
+  test('"Continue most recent work" skips a newer Draft', () => {
+    fixtures.agents = [];
+    fixtures.defaultAgent = undefined;
+    fixtures.defaultModelLabel = 'Model not reported';
+    const base = {
+      provider: '',
+      status: 'ready' as const,
+      isLoaded: true,
+      isPersisted: true,
+      answerability: { answerable: true as const },
+      eventCount: 0,
+      hasActiveTurn: false,
+    };
+    fixtures.sessions = [
+      {
+        ...base,
+        threadId: 'worked-thread',
+        lifecycleState: 'running',
+        draft: false,
+        createdAt: '2026-07-13T00:00:00Z',
+        updatedAt: '2026-07-13T00:00:00Z',
+      },
+      {
+        ...base,
+        threadId: 'draft-thread',
+        lifecycleState: 'queued',
+        draft: true,
+        createdAt: '2026-07-14T00:00:00Z',
+        updatedAt: '2026-07-14T00:00:00Z',
+      },
+    ];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Continue most recent work/i }),
+    );
+    expect(showSurface).toHaveBeenCalledWith('activity', {
+      session: 'worked-thread',
+    });
+  });
+
   // archive#1297: an orchestration row Station CAN rehydrate (a real
   // `agentSlug`, not `read-only-attached`) should reopen into the chat
   // overlay via the shared focus action instead of always jumping to the
