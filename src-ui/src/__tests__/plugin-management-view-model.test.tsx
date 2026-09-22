@@ -1103,5 +1103,72 @@ describe('InstallPreviewModal', () => {
       ).disabled,
     ).toBe(true);
     expect(screen.getByText(/Required package declaration/)).toBeTruthy();
+    expect(screen.getByText(/conflict \(builtin\)/)).toBeTruthy();
+  });
+
+  test('marks a required Pane without a conflict as required, not conflicted, and shows its declared name', () => {
+    render(
+      <InstallPreviewModal
+        previewData={{
+          valid: true,
+          manifest: {
+            name: 'pulse-plugin',
+            version: '1.0.0',
+            hasBundle: true,
+          },
+          components: [
+            {
+              type: 'pane',
+              id: 'pane:plugin%3Apulse-plugin:pulse:workspace',
+              name: 'Connected Pulse',
+              skippable: false,
+            },
+          ],
+          conflicts: [],
+        }}
+        previewSkips={new Set()}
+        installPending={false}
+        onClose={vi.fn()}
+        onToggleSkip={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).not.toMatch(/conflict/i);
+    expect(screen.getByText('Required')).toBeTruthy();
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'paneConnected Pulsepane:plugin%3Apulse-plugin:pulse:workspace',
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    expect(checkbox.disabled).toBe(true);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Confirm Install',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  test('falls back to the component id when the manifest declares no name', () => {
+    render(
+      <InstallPreviewModal
+        previewData={{
+          valid: true,
+          manifest: { name: 'agent-plugin', version: '1.0.0', hasBundle: true },
+          components: [{ type: 'agent', id: 'assistant' }],
+          conflicts: [],
+        }}
+        previewSkips={new Set()}
+        installPending={false}
+        onClose={vi.fn()}
+        onToggleSkip={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('checkbox', { name: 'agentassistant' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Required')).toBeNull();
   });
 });
