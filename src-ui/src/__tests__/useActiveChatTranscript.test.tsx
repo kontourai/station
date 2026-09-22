@@ -1466,11 +1466,8 @@ describe('useActiveChatTranscript', () => {
       const { registerReplayThread, unregisterReplayThread } = await import(
         '../hooks/orchestration/replay/replay-registry'
       );
-      const { SessionTapePlayer } = await import(
-        '../hooks/orchestration/replay/player'
-      );
-      const { tapeFromSessionEvents } = await import(
-        '../hooks/orchestration/replay/tape'
+      const { EMPTY_REPLAY_HISTORY, setReplayHistory } = await import(
+        '../hooks/orchestration/replay/history'
       );
       const replayId = registerReplayThread();
       activeChatsStore.initChat(replayId, {
@@ -1480,31 +1477,25 @@ describe('useActiveChatTranscript', () => {
         orchestrationSessionStarted: true,
         replay: { sourceThreadId: 'thread-1', tapeEventCount: 1 },
       });
-      const tape = tapeFromSessionEvents(
-        { threadId: 'thread-1', agentSlug: 'codex' },
-        [started('turn-2').event] as Parameters<
-          typeof tapeFromSessionEvents
-        >[1],
-      );
-      const player = new SessionTapePlayer(tape, replayId);
+      activeChatsStore.updateChat(replayId, { orchestrationTurnOpen: true });
+      // The replay's history, as the player publishes it: the tape's events
+      // re-addressed to the replay thread. It shows an open turn, exactly
+      // what a live reader would seed from.
+      const replayStart = started('turn-2', { threadId: replayId });
+      setReplayHistory(replayId, {
+        ...EMPTY_REPLAY_HISTORY,
+        settled: true,
+        events: [replayStart] as typeof EMPTY_REPLAY_HISTORY.events,
+      });
       try {
-        act(() => {
-          player.step();
-        });
-        // Clear what the replayed handler stamped, BEFORE the reader mounts,
-        // so only the seed could put a start back.
-        activeChatsStore.updateChat(replayId, {
-          openTurnStartedAt: undefined,
-        });
-        const chat = activeChatsStore.getSnapshot()[replayId];
-        expect(chat?.orchestrationTurnOpen).toBe(true);
         const view = renderHook(() =>
           useActiveChatTranscript('', {
             ...baseSession,
-            ...chat,
+            ...activeChatsStore.getSnapshot()[replayId],
             id: replayId,
           } as unknown as ChatSession),
         );
+        // The replay reader is live (it projects the replay history) ...
         await waitFor(() =>
           expect(
             view.result.current.messages.some(
@@ -1512,11 +1503,14 @@ describe('useActiveChatTranscript', () => {
             ),
           ).toBe(true),
         );
+        expect(view.result.current.enabled).toBe(true);
+        // ... and still does not seed a start.
         expect(
           activeChatsStore.getSnapshot()[replayId]?.openTurnStartedAt,
         ).toBeUndefined();
         view.unmount();
       } finally {
+        setReplayHistory(replayId, null);
         activeChatsStore.removeChat(replayId);
         unregisterReplayThread(replayId);
       }
