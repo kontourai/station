@@ -3850,10 +3850,11 @@ describe('EventStore', () => {
     };
 
     test('labels a payload stripped by the serialized ceiling byte_limit', () => {
-      // Comfortably past the 4 KB per-event ceiling, and nothing else about
-      // it is unusual — this is the shape a long prompt or an inline
-      // attachment produces.
-      startTurn('turn-big', 'p'.repeat(8_000));
+      // Comfortably past the per-event ceiling (24 KiB — sized to clear the
+      // 16 KiB transcript chunks, so this needs 32 KiB), and nothing else
+      // about it is unusual — this is the shape a very long prompt or an
+      // inline attachment produces.
+      startTurn('turn-big', 'p'.repeat(32_000));
       const started = windowEvent('turn-big-start');
 
       expect(started.elided).toBe('byte_limit');
@@ -3965,7 +3966,7 @@ describe('EventStore', () => {
      */
     test('counts what it withheld, by reason', () => {
       vi.mocked(orchestrationEventWindowElisions.add).mockClear();
-      startTurn('turn-counted', 'p'.repeat(8_000));
+      startTurn('turn-counted', 'p'.repeat(32_000));
 
       store.listEventWindowByTurn(threadId, { turnLimit: 1 });
 
@@ -3985,9 +3986,9 @@ describe('EventStore', () => {
 
     test('reports byte_limit, not output_limit, when both budgets fire on one event', () => {
       // A tool result whose output is cut to 84 chars AND whose remaining
-      // payload still blows the ceiling. Naming the narrower budget would
-      // understate what the read withheld — the cut field is gone with
-      // everything else.
+      // payload still blows the ceiling (24 KiB — the padding needs 32 KiB).
+      // Naming the narrower budget would understate what the read withheld —
+      // the cut field is gone with everything else.
       store.appendEvent({
         eventId: 'turn-both-start',
         provider: 'codex',
@@ -4006,7 +4007,7 @@ describe('EventStore', () => {
         method: 'tool.completed',
         toolCallId: 'tool-1',
         output: 'o'.repeat(500),
-        args: { padding: 'z'.repeat(8_000) },
+        args: { padding: 'z'.repeat(32_000) },
       } as any);
       const completed = windowEvent('turn-both-complete');
 
@@ -4415,6 +4416,106 @@ describe('EventStore', () => {
     expect(older.events.map((event) => event.id)).not.toContain(
       'conversation-late-new-child-start',
     );
+  });
+
+  test('a 16 KiB transcript chunk survives the conversation window with its text', () => {
+    // The session sources persist assistant text in 16 KiB deltas
+    // (`MAX_TEXT_CHUNK_BYTES`). At the old 4 KiB per-event ceiling every one
+    // stripped to identity fields, and a turn whose text lived only in them
+    // projected to no assistant message while its short user prompt
+    // survived — the scroll-back shape where AI rows vanish and user rows
+    // do not.
+    const threadId = 'transcript-chunk-conversation';
+    const longText = 'ab '.repeat(5_462);
+    expect(Buffer.byteLength(longText, 'utf8')).toBeGreaterThan(16 * 1024);
+    store.appendEvent({
+      eventId: 'chunk-turn-started',
+      provider: 'codex',
+      threadId,
+      turnId: 'chunk-turn',
+      createdAt: '2026-08-24T04:00:00.000Z',
+      method: 'turn.started',
+      prompt: 'summarize this',
+    });
+    store.appendEvent({
+      eventId: 'chunk-turn-delta',
+      provider: 'codex',
+      threadId,
+      turnId: 'chunk-turn',
+      createdAt: '2026-08-24T04:00:01.000Z',
+      method: 'content.text-delta',
+      itemId: 'chunk-item',
+      delta: longText,
+    });
+    store.appendEvent({
+      eventId: 'chunk-turn-completed',
+      provider: 'codex',
+      threadId,
+      turnId: 'chunk-turn',
+      createdAt: '2026-08-24T04:00:02.000Z',
+      method: 'turn.completed',
+      outputText: longText,
+    });
+
+    const window = store.listConversationEventWindowByTurn([threadId], {
+      turnLimit: 1,
+    });
+    const delta = window.events.find(
+      (event) => event.id === 'chunk-turn-delta',
+    )!;
+    expect(delta.elided).toBeUndefined();
+    expect((delta.payload as { delta?: string }).delta).toBe(longText);
+    const messages = projectRuntimeEventsToMessages(
+      window.events.map((event) => event.payload as never),
+    );
+    expect(messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+  });
+
+  test('a long turn.completed reply survives the conversation window', () => {
+    // No streamed deltas: the reply text lives only in the terminal event.
+    // The newest-first path always allowed it 48 KiB; the conversation path
+    // held it to the per-event ceiling and dropped the assistant message.
+    const threadId = 'long-reply-conversation';
+    const reply = 'r'.repeat(30_000);
+    store.appendEvent({
+      eventId: 'long-turn-started',
+      provider: 'codex',
+      threadId,
+      turnId: 'long-turn',
+      createdAt: '2026-08-24T05:00:00.000Z',
+      method: 'turn.started',
+      prompt: 'write a long reply',
+    });
+    store.appendEvent({
+      eventId: 'long-turn-completed',
+      provider: 'codex',
+      threadId,
+      turnId: 'long-turn',
+      createdAt: '2026-08-24T05:00:01.000Z',
+      method: 'turn.completed',
+      outputText: reply,
+    });
+
+    const window = store.listConversationEventWindowByTurn([threadId], {
+      turnLimit: 1,
+    });
+    const completed = window.events.find(
+      (event) => event.id === 'long-turn-completed',
+    )!;
+    expect(completed.elided).toBeUndefined();
+    expect((completed.payload as { outputText?: string }).outputText).toBe(
+      reply,
+    );
+    const messages = projectRuntimeEventsToMessages(
+      window.events.map((event) => event.payload as never),
+    );
+    expect(messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
   });
 
   test('keeps a ten-session conversation cursor within the route cursor cap', () => {
