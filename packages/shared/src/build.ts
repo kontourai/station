@@ -107,6 +107,20 @@ export function registrationFooter(pluginName: string): string {
   return `window.__station_ai_plugins = window.__station_ai_plugins || {}; window.__station_ai_plugins[${JSON.stringify(pluginName)}] = __plugin;`;
 }
 
+/**
+ * Registration footer for a DRAFT build (epic #2323 S3).
+ *
+ * A draft is previewed from a Project folder without being installed, and it
+ * must never take the place of an installed plugin's registration: an
+ * installed plugin and a draft of it routinely share a manifest `name`, and
+ * `window.__station_ai_plugins[name]` is what the installed-plugin registry
+ * admits. So a draft writes ONLY to a separate global, keyed by an opaque
+ * per-generation key the host minted — never by anything the manifest chose.
+ */
+export function draftRegistrationFooter(registrationKey: string): string {
+  return `window.__station_ai_plugin_drafts = window.__station_ai_plugin_drafts || {}; window.__station_ai_plugin_drafts[${JSON.stringify(registrationKey)}] = __plugin;`;
+}
+
 export interface BuildResult {
   built: boolean;
   bundlePath?: string;
@@ -202,7 +216,49 @@ async function buildLayoutPlugin(
   mkdirSync(outdir, { recursive: true });
   assertRealPathInside([pluginRoot], outdir, 'Plugin build output directory');
 
-  await esbuild({
+  await esbuild(
+    pluginBundleOptions({
+      entrypoint,
+      outfile,
+      isDev,
+      footer: registrationFooter(manifest.name),
+      allowedRoots,
+    }),
+  );
+
+  const cssPath = outfile.replace(/\.js$/, '.css');
+  return {
+    built: true,
+    bundlePath: outfile,
+    cssPath: existsSync(cssPath) ? cssPath : undefined,
+  };
+}
+
+/**
+ * The one esbuild configuration every plugin bundle is built with: installed
+ * builds and draft builds differ only in where the output goes and which
+ * global the footer registers on. Sharing it keeps a draft's runtime shape
+ * (externals, shim, containment) identical to what an install would produce.
+ */
+function pluginBundleOptions({
+  entrypoint,
+  outfile,
+  isDev,
+  footer,
+  allowedRoots,
+  logLevel = 'info',
+  absWorkingDir,
+}: {
+  entrypoint: string;
+  outfile: string;
+  isDev: boolean;
+  footer: string;
+  allowedRoots: string[];
+  logLevel?: 'info' | 'silent';
+  absWorkingDir?: string;
+}): Parameters<typeof EsbuildBuild>[0] {
+  return {
+    ...(absWorkingDir ? { absWorkingDir } : {}),
     entryPoints: [entrypoint],
     bundle: true,
     format: 'iife',
@@ -211,7 +267,7 @@ async function buildLayoutPlugin(
     jsx: 'automatic',
     sourcemap: isDev ? 'inline' : false,
     banner: { js: RUNTIME_SHIM },
-    footer: { js: registrationFooter(manifest.name) },
+    footer: { js: footer },
     define: {
       'process.env.NODE_ENV': isDev ? '"development"' : '"production"',
     },
@@ -242,15 +298,182 @@ async function buildLayoutPlugin(
         },
       },
     ],
-    logLevel: 'info',
-  });
-
-  const cssPath = outfile.replace(/\.js$/, '.css');
-  return {
-    built: true,
-    bundlePath: outfile,
-    cssPath: existsSync(cssPath) ? cssPath : undefined,
+    logLevel,
   };
+}
+
+/** One esbuild message, reduced to what a draft author needs and nothing host-local. */
+export interface PluginDraftBuildDiagnostic {
+  readonly text: string;
+  /** Path relative to the plugin root, when esbuild attributed the message to a file. */
+  readonly file?: string;
+  readonly line?: number;
+  readonly column?: number;
+}
+
+export interface PluginDraftBuildOptions {
+  /** The author's plugin folder. Read only: nothing is written under it. */
+  readonly pluginDir: string;
+  /** Host-owned output directory. Must not lie inside `pluginDir`. */
+  readonly outdir: string;
+  /** Opaque host-minted key the bundle registers under (see {@link draftRegistrationFooter}). */
+  readonly registrationKey: string;
+  /** The manifest the host already parsed and validated. */
+  readonly manifest: PluginManifest;
+}
+
+export type PluginDraftBuildResult =
+  | {
+      readonly ok: true;
+      readonly bundlePath: string;
+      readonly cssPath?: string;
+    }
+  | {
+      readonly ok: false;
+      readonly diagnostics: readonly PluginDraftBuildDiagnostic[];
+    };
+
+const MAX_DRAFT_DIAGNOSTICS = 20;
+const MAX_DRAFT_DIAGNOSTIC_TEXT = 500;
+
+/**
+ * Builds a plugin DRAFT for in-app preview (epic #2323 S3).
+ *
+ * Three things distinguish it from {@link buildPlugin}, each deliberate:
+ *
+ * - It never installs dependencies and never writes into the author's folder.
+ *   The install path runs `npm install` in the plugin directory and writes
+ *   `<dir>/dist`; a preview that did either would mutate the very Project the
+ *   author (or their agent) is editing, on every keystroke. Output goes to the
+ *   host-owned `outdir`, and a dependency that is not already resolvable is
+ *   reported as a diagnostic, not fetched.
+ * - It registers under {@link draftRegistrationFooter}, never the installed
+ *   global, so a draft cannot shadow an installed plugin of the same name.
+ * - Build errors come back as bounded diagnostics rather than a throw, because
+ *   a broken draft is the normal state of a draft being written.
+ *
+ * Input containment is the install path's own: the same allowed roots and the
+ * same realpath check on every file esbuild loads, so a symlink in the Project
+ * folder cannot pull a file from outside it into the bundle.
+ */
+export async function buildPluginDraft(
+  options: PluginDraftBuildOptions,
+): Promise<PluginDraftBuildResult> {
+  const { pluginDir, outdir, registrationKey, manifest } = options;
+  const fail = (text: string): PluginDraftBuildResult => ({
+    ok: false,
+    diagnostics: [{ text }],
+  });
+  if (manifest.build) {
+    return fail(
+      'plugin.json declares a build command. Station does not run manifest build commands; declare an entrypoint instead.',
+    );
+  }
+  if (!manifest.entrypoint) {
+    return fail(
+      'plugin.json declares no entrypoint, so there is no bundle to preview.',
+    );
+  }
+  let pluginRoot: string;
+  try {
+    pluginRoot = realpathSync(pluginDir);
+  } catch {
+    return fail('The plugin folder could not be read.');
+  }
+  const resolvedOutdir = resolve(outdir);
+  if (
+    resolvedOutdir === pluginRoot ||
+    resolvedOutdir.startsWith(`${pluginRoot}${sep}`) ||
+    resolve(pluginDir) === resolvedOutdir ||
+    resolvedOutdir.startsWith(`${resolve(pluginDir)}${sep}`)
+  ) {
+    throw new Error('Draft build output must not be inside the plugin folder');
+  }
+  const esbuild = await loadEsbuild();
+  const entrypoint = join(pluginRoot, manifest.entrypoint);
+  const allowedRoots = buildAllowedInputRoots(pluginRoot);
+  try {
+    assertRealPathInside(allowedRoots, entrypoint, 'Plugin entrypoint');
+  } catch (error) {
+    const code = (error as { code?: string } | undefined)?.code;
+    return fail(
+      code === 'ENOENT'
+        ? `The entrypoint ${manifest.entrypoint} does not exist.`
+        : `The entrypoint ${manifest.entrypoint} resolves outside the plugin folder.`,
+    );
+  }
+  mkdirSync(resolvedOutdir, { recursive: true });
+  const outfile = join(resolvedOutdir, 'bundle.js');
+  try {
+    await esbuild(
+      pluginBundleOptions({
+        entrypoint,
+        outfile,
+        isDev: true,
+        footer: draftRegistrationFooter(registrationKey),
+        allowedRoots,
+        logLevel: 'silent',
+        // Diagnostic locations are then relative to the plugin folder.
+        absWorkingDir: pluginRoot,
+      }),
+    );
+  } catch (error) {
+    return { ok: false, diagnostics: draftDiagnostics(error, pluginRoot) };
+  }
+  const cssPath = join(resolvedOutdir, 'bundle.css');
+  return {
+    ok: true,
+    bundlePath: outfile,
+    ...(existsSync(cssPath) ? { cssPath } : {}),
+  };
+}
+
+function draftDiagnostics(
+  error: unknown,
+  pluginRoot: string,
+): PluginDraftBuildDiagnostic[] {
+  const messages = (
+    error as {
+      errors?: Array<{
+        text?: unknown;
+        location?: { file?: unknown; line?: unknown; column?: unknown } | null;
+      }>;
+    }
+  )?.errors;
+  const bound = (text: string) =>
+    text.length > MAX_DRAFT_DIAGNOSTIC_TEXT
+      ? `${text.slice(0, MAX_DRAFT_DIAGNOSTIC_TEXT)}…`
+      : text;
+  // Host-absolute paths are replaced by the plugin-relative path: the author
+  // needs to know which of THEIR files, not where Station keeps things.
+  const scrub = (text: string) => text.split(pluginRoot + sep).join('');
+  if (!Array.isArray(messages) || messages.length === 0) {
+    const text =
+      error instanceof Error ? error.message : 'The draft build failed.';
+    return [{ text: bound(scrub(text)) }];
+  }
+  return messages.slice(0, MAX_DRAFT_DIAGNOSTICS).map((message) => {
+    const rawText = String(message.text ?? 'Build error');
+    // A containment refusal names the file the symlink points at, which is a
+    // host path outside the Project. Say what happened, not where.
+    const text = rawText.includes('escapes plugin root')
+      ? 'This import resolves outside the plugin folder (a symlink?), so it cannot be bundled.'
+      : rawText;
+    const location = message.location ?? undefined;
+    const rawFile =
+      typeof location?.file === 'string' ? location.file : undefined;
+    const file = rawFile
+      ? relative(pluginRoot, resolve(pluginRoot, rawFile)).replaceAll('\\', '/')
+      : undefined;
+    return {
+      text: bound(scrub(text)),
+      ...(file && !file.startsWith('..') ? { file } : {}),
+      ...(typeof location?.line === 'number' ? { line: location.line } : {}),
+      ...(typeof location?.column === 'number'
+        ? { column: location.column }
+        : {}),
+    };
+  });
 }
 
 function assertRealPathInside(
