@@ -1090,7 +1090,7 @@ const LINEAGE_HASH_HEX_CHARS = 32;
 
 function hashLineageThreadIds(threadIds: readonly string[]): string {
   return createHash('sha256')
-    .update(threadIds.join(' '), 'utf8')
+    .update(threadIds.join('\0'), 'utf8')
     .digest('hex')
     .slice(0, LINEAGE_HASH_HEX_CHARS);
 }
