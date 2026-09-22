@@ -180,15 +180,6 @@ export interface ClaudeMessageState {
    */
   dispatchedTurnId?: string;
   /**
-   * #2309: a turn the ENGINE opened — a top-level reply Claude began with no
-   * dispatched turn (it finished background work and answered on its own).
-   * Published as `turn.started` with `metadata.trigger: 'provider'`, closed
-   * by the reply's own `result`. Kept apart from `dispatchedTurnId` because
-   * a user send can be queued behind it: the next `result` is still this
-   * reply's, and must not complete the queued turn.
-   */
-  providerTurnId?: string;
-  /**
    * The exact turn for which Station has an in-flight, user-requested SDK
    * interrupt. Claude reports that intentional interruption as an
    * `is_error: true` result with `stop_reason: null`; without this identity,
@@ -661,14 +652,6 @@ export function mapClaudeSdkMessage({
 
   if (message.type === 'stream_event') {
     const streamEvent = message.event as any;
-    if (
-      message.parent_tool_use_id === null &&
-      CLAUDE_REPLY_STREAM_EVENTS.has(streamEvent?.type) &&
-      !record.dispatchedTurnId &&
-      !record.providerTurnId
-    ) {
-      openClaudeProviderTurn({ provider, record, publish, createdAt });
-    }
     if (streamEvent?.type === 'message_start') {
       // A new assistant message opens: every content-block index that
       // follows belongs to it, not to the previous message's blocks.
@@ -734,7 +717,7 @@ export function mapClaudeSdkMessage({
     const resultTurnId =
       message.is_error && record.interruptingTurnId
         ? record.interruptingTurnId
-        : (record.providerTurnId ?? record.activeTurnId);
+        : record.activeTurnId;
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -782,14 +765,11 @@ export function mapClaudeSdkMessage({
       record.attemptedResumeCursor,
     );
     if (outcome !== 'ok') {
-      const turnId = record.providerTurnId ?? record.activeTurnId;
+      const turnId = record.activeTurnId;
       const interruptingTurnId = record.interruptingTurnId;
       if (interruptingTurnId) {
         record.interruptingTurnId = undefined;
         record.interruptedResultObserved = true;
-        // The Stop already published this provider turn's `turn.aborted`.
-        if (record.providerTurnId === interruptingTurnId)
-          clearClaudeProviderTurn(record);
         // A new turn can be queued before Claude emits the stopped turn's
         // result. Consume the older interruption receipt without clearing the
         // newer turn's provenance.
@@ -808,7 +788,6 @@ export function mapClaudeSdkMessage({
       }
       record.terminalResultObserved = outcome;
       record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
-      record.providerTurnId = undefined;
       clearClaudeDispatchedTurn(record);
       publish({
         eventId: crypto.randomUUID(),
@@ -846,14 +825,11 @@ export function mapClaudeSdkMessage({
     // An older Stop marker cannot apply to a later result after this ordered
     // stream point, so do not let it suppress a future genuine failure.
     record.interruptingTurnId = undefined;
-    // #2309: a provider-opened reply started before any send queued behind
-    // it, so this ordered `result` is its end — never the queued turn's.
-    const providerTurnId = record.providerTurnId;
     if (
-      providerTurnId ||
-      (record.activeTurnId && record.dispatchedTurnId === record.activeTurnId)
+      record.activeTurnId &&
+      record.dispatchedTurnId === record.activeTurnId
     ) {
-      const turnId = providerTurnId ?? record.activeTurnId!;
+      const turnId = record.activeTurnId;
       // A turn the engine ended by handing a tool call back to its host: the
       // call is unresolved and will stay that way. Settle it as the error it
       // is, before the completion, so the transcript carries a reason instead
@@ -886,8 +862,7 @@ export function mapClaudeSdkMessage({
           error: CLAUDE_DEFERRED_TOOL_ERROR,
         });
       }
-      if (providerTurnId) clearClaudeProviderTurn(record);
-      else clearClaudeDispatchedTurn(record);
+      clearClaudeDispatchedTurn(record);
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -915,15 +890,8 @@ export function mapClaudeSdkMessage({
         // resolves to its underlying snapshot) — a structured API field,
         // never text parsed out of the assistant's own reply. Absent when no
         // assistant message arrived this turn (e.g. an immediate error).
-        ...(record.lastReportedModel || providerTurnId
-          ? {
-              metadata: {
-                ...(record.lastReportedModel
-                  ? reportedModelMetadata(record.lastReportedModel)
-                  : {}),
-                ...(providerTurnId ? { trigger: 'provider' } : {}),
-              },
-            }
+        ...(record.lastReportedModel
+          ? { metadata: reportedModelMetadata(record.lastReportedModel) }
           : {}),
       });
     } else {
@@ -1177,58 +1145,6 @@ export function settleUnresolvedClaudeToolCalls({
 function clearClaudeDispatchedTurn(record: ClaudeMessageState): void {
   record.activeTurnId = undefined;
   record.dispatchedTurnId = undefined;
-}
-
-/**
- * #2309: stream events that mean the model is producing a reply. `ping`,
- * `message_delta` and `message_stop` do not begin one.
- */
-const CLAUDE_REPLY_STREAM_EVENTS: ReadonlySet<unknown> = new Set([
-  'message_start',
-  'content_block_start',
-  'content_block_delta',
-]);
-
-/**
- * #2309 (owner decision): unprompted engine output is a real turn. Claude
- * began a top-level reply that no dispatched turn asked for — typically after
- * a backgrounded task finished — so publish the turn the engine opened. Its
- * `turnId` is minted here and namespaced `provider:` so it can never collide
- * with a Station-dispatched id; `metadata.trigger` is the only marker any
- * consumer may derive "provider" from. Background subagent frames
- * (`parent_tool_use_id` set), `tool_progress` and approvals never reach this.
- *
- * `activeTurnId` takes the provider id so the reply's items, tool calls and a
- * Stop all address this turn. A `sendTurn` that allocated an id but has not
- * dispatched yet is overwritten here and restored from `dispatchedTurnId`
- * when this turn closes (`clearClaudeProviderTurn`).
- */
-function openClaudeProviderTurn(input: {
-  provider: ProviderSession['provider'];
-  record: ClaudeMessageState;
-  publish: (event: CanonicalRuntimeEvent) => void;
-  createdAt: string;
-}): void {
-  const { record } = input;
-  const turnId = `provider:${crypto.randomUUID()}`;
-  record.providerTurnId = turnId;
-  record.activeTurnId = turnId;
-  record.lastReportedModel = undefined;
-  input.publish({
-    eventId: crypto.randomUUID(),
-    provider: input.provider,
-    threadId: record.session.threadId,
-    createdAt: input.createdAt,
-    turnId,
-    method: 'turn.started',
-    metadata: { trigger: 'provider' },
-  });
-}
-
-function clearClaudeProviderTurn(record: ClaudeMessageState): void {
-  if (record.activeTurnId === record.providerTurnId)
-    record.activeTurnId = record.dispatchedTurnId;
-  record.providerTurnId = undefined;
 }
 
 function claudeTaskToolName(message: {
