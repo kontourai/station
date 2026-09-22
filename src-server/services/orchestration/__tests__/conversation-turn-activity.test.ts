@@ -226,6 +226,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
   });
 
   test('closes on a deferred-retriable runtime.error and on an interrupt abort, as hasActiveTurn does', () => {
+    expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
     append(ROOT, { method: 'turn.started', turnId: 'turn-r' });
     append(ROOT, {
       method: 'runtime.error',
@@ -247,6 +248,8 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
   });
 
   test('a stale terminal for an earlier turn does not close the current one', () => {
+    // Warm first, so the LIVE fold (not a seed) meets the stale terminal.
+    expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
     append(ROOT, { method: 'turn.started', turnId: 't1' });
     append(ROOT, { method: 'turn.started', turnId: 't2' });
     append(ROOT, { method: 'turn.completed', turnId: 't1' });
