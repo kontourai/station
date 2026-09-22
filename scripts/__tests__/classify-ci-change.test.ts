@@ -1,17 +1,21 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 import {
   classifyChangedPaths,
+  classifyDesktopRustChangedPaths,
+  classifyDesktopRustGitRange,
   classifyGitRange,
   classifyIosGitRange,
   renderGithubOutputs,
@@ -49,11 +53,24 @@ const iosRelevanceShell = parse(
   (step: { id?: string }) => step.id === 'relevance',
 ).run;
 
+const desktopRustRelevanceShell = parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      '../../.github/workflows/windows-pr-verification.yml',
+    ),
+    'utf8',
+  ),
+).jobs['windows-pr-portable'].steps.find(
+  (step: { id?: string }) => step.id === 'rust_relevance',
+).run;
+
 function runIosRelevanceShell(
   root: string,
   eventName: string,
   before: string,
   after: string,
+  shell: string = iosRelevanceShell,
 ) {
   const runnerTemp = join(root, '.runner-temp');
   const githubOutput = join(root, '.github-output');
@@ -61,7 +78,7 @@ function runIosRelevanceShell(
   writeFileSync(githubOutput, '');
   execFileSync(
     'bash',
-    ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', iosRelevanceShell],
+    ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', shell],
     {
       cwd: root,
       env: {
@@ -392,5 +409,242 @@ describe('exact CI change classification', () => {
     const classified = classifyChangedPaths(['src-server/routes/foo.ts']);
     expect(classified.dependencies).toBe(false);
     expect(classified.dependencyScopes).toEqual([]);
+  });
+});
+
+const repoRoot = resolve(import.meta.dirname, '../..');
+
+describe('desktop Rust relevance for the Windows PR floor', () => {
+  test.each([
+    'src-desktop/src/lib.rs',
+    'src-desktop/Cargo.lock',
+    'src-desktop/tauri.windows.conf.json',
+    'src-desktop/.cargo/config.toml',
+    'experiments/mobile-device/tauri-host/Cargo.toml',
+    'experiments/mobile-device/tauri-host/Cargo.lock',
+    'rust-toolchain.toml',
+    'tools/.cargo/config.toml',
+    'patches/android-native-keyring-store/src/lib.rs',
+    'package.json',
+    'packages/cli/src/commands/profile-store.ts',
+    'schemas/station-config.schema.json',
+    '.github/workflows/windows-pr-verification.yml',
+    'scripts/classify-ci-change.mjs',
+  ])('compiles for %s', (changedPath) => {
+    expect(classifyDesktopRustChangedPaths([changedPath]).relevant).toBe(true);
+  });
+
+  test.each([
+    'src-ui/src/App.tsx',
+    'src-server/routes/foo.ts',
+    'docs/guides/testing.md',
+    'patches/some-npm-package.patch',
+    'packages/cli/src/commands/other.ts',
+    'packages/cli/package.json',
+    '.github/workflows/build-ios.yml',
+    'scripts/run-ci-fast.mjs',
+  ])('skips the compile for %s', (changedPath) => {
+    expect(classifyDesktopRustChangedPaths([changedPath]).relevant).toBe(false);
+  });
+
+  test('one Rust input makes a mixed change relevant', () => {
+    expect(
+      classifyDesktopRustChangedPaths([
+        'src-ui/src/App.tsx',
+        'src-desktop/src/tray.rs',
+      ]).relevant,
+    ).toBe(true);
+  });
+
+  // The input list is hand-maintained, so it is checked against what the
+  // crate actually reads: every file it pulls in from outside src-desktop
+  // must classify as relevant, or a change to it would skip the only Windows
+  // compile. A new include_str!, path dependency, build.rs read or bundled
+  // resource that the list does not cover fails here instead.
+  test('covers every input the crate reads from outside src-desktop', () => {
+    const crate = join(repoRoot, 'src-desktop');
+    const outside = new Set<string>();
+    const note = (absolute: string) => {
+      const path = relative(repoRoot, absolute).split('\\').join('/');
+      // Build outputs the workflow creates empty; nothing in Git to change.
+      if (path.startsWith('dist-')) return;
+      if (!path.startsWith('src-desktop/')) outside.add(path);
+    };
+    const sources = readdirSync(join(crate, 'src'), {
+      recursive: true,
+    }) as string[];
+    for (const file of sources.filter((name) => name.endsWith('.rs'))) {
+      const absolute = join(crate, 'src', file);
+      for (const match of readFileSync(absolute, 'utf8').matchAll(
+        /include_(?:str|bytes)!\("([^"]+)"\)/g,
+      ))
+        note(resolve(dirname(absolute), match[1]));
+    }
+    for (const match of readFileSync(
+      join(crate, 'Cargo.toml'),
+      'utf8',
+    ).matchAll(/path\s*=\s*"([^"]+)"/g))
+      note(join(resolve(crate, match[1]), 'Cargo.toml'));
+    for (const match of readFileSync(join(crate, 'build.rs'), 'utf8').matchAll(
+      /"(\.\.\/[^"]+)"/g,
+    ))
+      note(resolve(crate, match[1]));
+    for (const config of readdirSync(crate).filter((name) =>
+      /^tauri(\..+)?\.conf\.json$/.test(name),
+    )) {
+      const resources = JSON.parse(readFileSync(join(crate, config), 'utf8'))
+        ?.bundle?.resources;
+      const sourcesOf = Array.isArray(resources)
+        ? resources
+        : Object.keys(resources ?? {});
+      for (const source of sourcesOf)
+        if (String(source).startsWith('../'))
+          note(join(resolve(crate, source), 'resource'));
+    }
+
+    // Pin the discovery itself, so a regex that stops matching cannot turn
+    // this into a loop over nothing.
+    expect([...outside].sort()).toEqual([
+      'package.json',
+      'packages/cli/src/commands/profile-store.ts',
+      'patches/android-native-keyring-store/Cargo.toml',
+      'schemas/resource',
+    ]);
+    for (const path of outside) {
+      expect(
+        existsSync(join(repoRoot, path)) || path.endsWith('/resource'),
+      ).toBe(true);
+      expect(
+        classifyDesktopRustChangedPaths([path]).relevant,
+        `${path} is read by the desktop crate`,
+      ).toBe(true);
+    }
+  });
+
+  test('runs the workflow step against a base-controlled classifier and fails closed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-rust-change-range-'));
+    try {
+      git(root, ['init', '--initial-branch=main']);
+      git(root, ['config', 'user.email', 'fixture@example.test']);
+      git(root, ['config', 'user.name', 'Fixture']);
+      // A base whose classifier predates the desktop-rust scope prints the
+      // default classifier's lines, which the step must refuse.
+      const legacyBase = commitFile(
+        root,
+        'scripts/classify-ci-change.mjs',
+        `console.log(['heavy=true', 'container=true', 'dependencies=false', 'classification=runtime-or-workflow', 'changed-files=1'].join('\\n'));\n`,
+        'legacy classifier',
+      );
+      git(root, ['checkout', '-b', 'ui-candidate']);
+      const uiHead = commitFile(
+        root,
+        'src-ui/candidate.ts',
+        'export {};\n',
+        'candidate UI',
+      );
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          legacyBase,
+          uiHead,
+          desktopRustRelevanceShell,
+        ),
+      ).toBe('relevant=true');
+
+      git(root, ['checkout', 'main']);
+      const currentBase = commitFile(
+        root,
+        'scripts/classify-ci-change.mjs',
+        readFileSync(
+          resolve(import.meta.dirname, '../classify-ci-change.mjs'),
+          'utf8',
+        ),
+        'current classifier',
+      );
+      git(root, ['checkout', '-b', 'ui-only', currentBase]);
+      const uiOnly = commitFile(
+        root,
+        'src-ui/only.ts',
+        'export {};\n',
+        'UI only',
+      );
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          currentBase,
+          uiOnly,
+          desktopRustRelevanceShell,
+        ),
+      ).toBe('relevant=false');
+      expect(
+        runIosRelevanceShell(
+          root,
+          'merge_group',
+          currentBase,
+          uiOnly,
+          desktopRustRelevanceShell,
+        ),
+      ).toBe('relevant=false');
+
+      const rustToo = commitFile(
+        root,
+        'src-desktop/src/lib.rs',
+        'fn main() {}\n',
+        'Rust',
+      );
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          currentBase,
+          rustToo,
+          desktopRustRelevanceShell,
+        ),
+      ).toBe('relevant=true');
+
+      // An unresolvable base cannot supply a classifier: compile anyway.
+      expect(
+        runIosRelevanceShell(
+          root,
+          'pull_request_target',
+          'a'.repeat(40),
+          uiOnly,
+          desktopRustRelevanceShell,
+        ),
+      ).toBe('relevant=true');
+      expect(
+        classifyDesktopRustGitRange({
+          before: 'a'.repeat(40),
+          after: uiOnly,
+          mode: 'candidate',
+          cwd: root,
+        }),
+      ).toMatchObject({
+        relevant: true,
+        classification: 'classifier-error-fail-closed',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('refuses an unknown scope instead of answering with the default classifier', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve(import.meta.dirname, '../classify-ci-change.mjs'),
+        '--scope',
+        'not-a-scope',
+        '--before',
+        'a'.repeat(40),
+        '--after',
+        'b'.repeat(40),
+      ],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
   });
 });

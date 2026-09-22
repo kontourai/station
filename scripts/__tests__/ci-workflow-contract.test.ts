@@ -1999,6 +1999,36 @@ describe('CI verification workflow contracts', () => {
     expect(windows).toContain(
       'run: npm run gate:naming && npm run gate:ui-contracts',
     );
+    // The cargo compile is skipped only on an exact base-controlled `false`.
+    // The job itself has no condition: a skipped job would leave the required
+    // `Windows PR portable floor` check to GitHub's skipped-counts-as-success.
+    const floorJob = document.jobs['windows-pr-portable'] as {
+      if?: string;
+      steps: Array<{ id?: string; name?: string; if?: string; run?: string }>;
+    };
+    expect(floorJob.if).toBeUndefined();
+    const relevance = floorJob.steps.find(
+      (step) => step.id === 'rust_relevance',
+    );
+    expect(relevance?.run).toContain(
+      '$BASE_SHA:scripts/classify-ci-change.mjs',
+    );
+    expect(relevance?.run).toContain('--scope desktop-rust --mode candidate');
+    expect(relevance?.run).toContain('fail_closed');
+    const compile = floorJob.steps.find(
+      (step) => step.name === 'Compile desktop Rust tests',
+    );
+    expect(compile?.if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ steps.rust_relevance.outputs.relevant != 'false' }}",
+    );
+    expect(
+      floorJob.steps.findIndex((step) => step.id === 'rust_relevance'),
+    ).toBeLessThan(
+      floorJob.steps.findIndex(
+        (step) => step.name === 'Compile desktop Rust tests',
+      ),
+    );
     const upload = document.jobs['windows-pr-portable'].steps.find(
       (step) => step.name === 'Upload Windows portable verification evidence',
     );

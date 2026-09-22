@@ -59,7 +59,46 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
 
+      # The cargo compile below is the job's longest step (202-276s) and reads
+      # only the inputs classify-ci-change.mjs lists for `desktop-rust`. The
+      # classifier is taken from the BASE commit, as build-ios.yml does, so a
+      # candidate cannot rewrite the rule that decides whether its own Rust is
+      # compiled. Every failure path answers relevant=true, and the cargo step
+      # runs unless the answer is exactly `false`, so a missing output compiles
+      # too. The job, and so the required check, always runs; only the step is
+      # skipped.
+      - id: rust_relevance
+        name: Classify desktop Rust inputs
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          fail_closed() {
+            echo "::warning::desktop Rust change classification failed closed: $1"
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          classifier="$RUNNER_TEMP/classify-ci-change.mjs"
+          git show "$BASE_SHA:scripts/classify-ci-change.mjs" > "$classifier" || \
+            fail_closed "base-controlled classifier unavailable"
+          output="$RUNNER_TEMP/desktop-rust-change-classification"
+          node "$classifier" --scope desktop-rust --mode candidate \
+            --before "$BASE_SHA" --after "$HEAD_SHA" > "$output" || \
+            fail_closed "classifier execution failed"
+          classification=$(tr -d '\r' < "$output")
+          case "$classification" in
+            relevant=true|relevant=false)
+              printf '%s\n' "$classification" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              fail_closed "classifier returned malformed output"
+              ;;
+          esac
+
       - name: Compile desktop Rust tests
+        if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist-server | Out-Null

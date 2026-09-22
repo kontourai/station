@@ -58,6 +58,46 @@ const IOS_VERIFICATION_PREFIXES = Object.freeze([
   'patches/',
 ]);
 
+/**
+ * What `cargo test --manifest-path src-desktop/Cargo.toml --no-run` reads on
+ * the Windows PR floor, so a change outside this set cannot alter its verdict.
+ * Beyond the crate itself: build.rs reads the root package.json's
+ * engines.node, lib.rs `include_str!`s a CLI source file, the Android keyring
+ * patch is a path dependency cargo must resolve on every target, and
+ * tauri.windows.conf.json bundles schemas/ as a resource tauri-build checks.
+ * Any Cargo manifest, lockfile, toolchain file or `.cargo/` config anywhere
+ * counts too, so a new crate or toolchain pin is compiled rather than
+ * silently skipped. Grow this list when the crate grows a new outside input
+ * (an `include_*!`, a `path =` dependency, a build.rs read, a resource).
+ */
+const DESKTOP_RUST_FILES = new Set([
+  '.github/workflows/windows-pr-verification.yml',
+  'scripts/classify-ci-change.mjs',
+  'package.json',
+  'packages/cli/src/commands/profile-store.ts',
+]);
+const DESKTOP_RUST_PREFIXES = Object.freeze([
+  'src-desktop/',
+  'patches/android-native-keyring-store/',
+  'schemas/',
+]);
+const DESKTOP_RUST_BASENAMES = new Set([
+  'Cargo.toml',
+  'Cargo.lock',
+  'rust-toolchain',
+  'rust-toolchain.toml',
+]);
+
+function isDesktopRustInput(changedPath) {
+  if (DESKTOP_RUST_FILES.has(changedPath)) return true;
+  if (DESKTOP_RUST_PREFIXES.some((prefix) => changedPath.startsWith(prefix)))
+    return true;
+  if (changedPath.startsWith('.cargo/') || changedPath.includes('/.cargo/'))
+    return true;
+  const base = changedPath.slice(changedPath.lastIndexOf('/') + 1);
+  return DESKTOP_RUST_BASENAMES.has(base);
+}
+
 function isDependencyInput(changedPath) {
   if (changedPath.startsWith('patches/')) return true;
   if (changedPath === 'scripts/dependency-advisory-exceptions.json')
@@ -197,9 +237,18 @@ export function classifyIosChangedPaths(paths) {
   };
 }
 
-export function classifyIosGitRange(options) {
+export function classifyDesktopRustChangedPaths(paths) {
+  const normalized = [...new Set(paths.filter(Boolean))];
+  return {
+    relevant: normalized.some(isDesktopRustInput),
+    classification: 'classified',
+    changedFiles: normalized.length,
+  };
+}
+
+function classifyScopedGitRange(classifyPaths, options) {
   try {
-    return classifyIosChangedPaths(changedPathsForGitRange(options));
+    return classifyPaths(changedPathsForGitRange(options));
   } catch (error) {
     return {
       relevant: true,
@@ -209,6 +258,23 @@ export function classifyIosGitRange(options) {
     };
   }
 }
+
+export function classifyIosGitRange(options) {
+  return classifyScopedGitRange(classifyIosChangedPaths, options);
+}
+
+export function classifyDesktopRustGitRange(options) {
+  return classifyScopedGitRange(classifyDesktopRustChangedPaths, options);
+}
+
+/** `--scope` values that answer a single relevant=true|false question. */
+const RELEVANCE_SCOPES = Object.freeze({
+  ios: { label: 'iOS', classify: classifyIosGitRange },
+  'desktop-rust': {
+    label: 'desktop Rust',
+    classify: classifyDesktopRustGitRange,
+  },
+});
 
 export function classifyGitRange({ before, after, cwd = process.cwd() }) {
   if (!SHA.test(before) || !SHA.test(after))
@@ -243,13 +309,26 @@ export function renderGithubOutputs(result) {
 }
 
 function main(args) {
-  if (argumentValue(args, '--scope') === 'ios') {
-    const result = classifyIosGitRange({
+  const scope = argumentValue(args, '--scope');
+  if (scope !== undefined) {
+    // An unknown scope must not fall through to the default classifier: its
+    // heavy=/container= lines would be read as some other scope's answer.
+    // Refusing leaves the caller's malformed-output path to fail closed.
+    const relevance = Object.hasOwn(RELEVANCE_SCOPES, scope)
+      ? RELEVANCE_SCOPES[scope]
+      : undefined;
+    if (!relevance) {
+      console.error(`Unknown CI classification scope: ${scope}`);
+      process.exitCode = 2;
+      return;
+    }
+    const result = relevance.classify({
       before: argumentValue(args, '--before') ?? '',
       after: argumentValue(args, '--after') ?? '',
       mode: argumentValue(args, '--mode') ?? '',
     });
-    if (result.error) console.error(`iOS CI classification: ${result.error}`);
+    if (result.error)
+      console.error(`${relevance.label} CI classification: ${result.error}`);
     console.log(`relevant=${result.relevant}`);
     return;
   }
