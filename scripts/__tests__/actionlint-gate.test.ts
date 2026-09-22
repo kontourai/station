@@ -2784,7 +2784,7 @@ describe('the real workflow corpus', () => {
     // `main` went red on this line, not on the change that tripped it. A bare
     // count names whoever gates next rather than whoever moved it; the
     // contributing files are listed below so the next removal says which one.
-    expect(directCapacityJobs).toBe(8);
+    expect(directCapacityJobs).toBe(7);
     expect(capacityFiles.sort()).toEqual([
       '.github/workflows/ci-extended.yml#coverage',
       '.github/workflows/ci-extended.yml#playwright-full',
@@ -2792,7 +2792,6 @@ describe('the real workflow corpus', () => {
       '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-work-board-reference',
       '.github/workflows/interactive-workspace-performance.yml#reference-performance',
-      '.github/workflows/windows-verification.yml#portable-floor',
       '.github/workflows/windows-vitest-diagnostic.yml#diagnostic',
     ]);
     expect(recoveryJobs).toBe(2);
