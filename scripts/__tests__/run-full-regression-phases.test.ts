@@ -1,16 +1,26 @@
-import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   parseFullRegressionPhaseArguments,
   resolveFullRegressionPhasePlan,
   runFullRegressionPhases,
   runPhaseProcess,
+  snapshotWorkspace,
 } from '../run-full-regression-phases.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const driver = resolve(root, 'scripts/run-full-regression-phases.mjs');
+// A workspace that never changes, for tests about exit-status handling.
+const unchangedWorkspace = () => ({
+  headSha: 'a'.repeat(40),
+  workspaceDigest: 'w',
+  dependencyDigest: 'd',
+  status: [] as string[],
+});
 
 describe('full-regression phase driver', () => {
   it('resolves every canonical phase to its own private script, in canonical order', () => {
@@ -93,6 +103,7 @@ describe('full-regression phase driver', () => {
     const lines: string[] = [];
     const result = await runFullRegressionPhases(plan, {
       log: (line) => lines.push(line),
+      snapshot: unchangedWorkspace,
       runPhase: async (step) => {
         ran.push(step.id);
         return step.id === 'sdk-builds'
@@ -120,6 +131,7 @@ describe('full-regression phase driver', () => {
     );
     const result = await runFullRegressionPhases(plan, {
       log: () => {},
+      snapshot: unchangedWorkspace,
       runPhase: async (step) => {
         if (step.id === 'repo-governance')
           return { status: 0, error: 'left an owned process tree alive' };
@@ -138,6 +150,7 @@ describe('full-regression phase driver', () => {
     );
     const result = await runFullRegressionPhases(plan, {
       log: () => {},
+      snapshot: unchangedWorkspace,
       runPhase: async () => ({ status: 0, error: null }),
     });
     expect(result.passed).toBe(true);
@@ -156,6 +169,7 @@ describe('full-regression phase driver', () => {
     const controller = new AbortController();
     const result = await runFullRegressionPhases(plan, {
       log: () => {},
+      snapshot: unchangedWorkspace,
       signal: controller.signal,
       runPhase: async () => {
         controller.abort('SIGTERM');
@@ -208,4 +222,139 @@ describe('full-regression phase driver', () => {
     expect(outcome.error).toMatch(/exceeded its 3000 ms deadline/);
     expect(Date.now() - started).toBeLessThan(60_000);
   }, 90_000);
+
+  it('fails a phase whose output is not valid UTF-8, as the canonical runner does', async () => {
+    const outcome = await runPhaseProcess(
+      {
+        id: 'bad-utf8',
+        args: [
+          'exec',
+          '--',
+          'node',
+          '-e',
+          'process.stdout.write(Buffer.from([0x6f, 0x6b, 0xff, 0xfe]))',
+        ],
+        timeoutMs: 60_000,
+      },
+      { cwd: root },
+    );
+    expect(outcome.status).toBe(0);
+    expect(outcome.error).toMatch(/output was not valid UTF-8/);
+    const control = await runPhaseProcess(
+      {
+        id: 'good-utf8',
+        args: ['exec', '--', 'node', '-e', 'process.stdout.write("ok ✓")'],
+        timeoutMs: 60_000,
+      },
+      { cwd: root },
+    );
+    expect(control).toEqual({ status: 0, error: null });
+  }, 120_000);
+});
+
+describe('workspace mutation check', () => {
+  function repository() {
+    const directory = mkdtempSync(join(tmpdir(), 'full-regression-phases-'));
+    const run = (...args: string[]) =>
+      execFileSync('git', args, { cwd: directory, windowsHide: true });
+    run('init', '--quiet');
+    run('config', 'user.email', 'test@example.invalid');
+    run('config', 'user.name', 'Test');
+    run('config', 'commit.gpgsign', 'false');
+    writeFileSync(join(directory, '.gitignore'), 'ignored.txt\nignored/\n');
+    writeFileSync(join(directory, 'package-lock.json'), '{}\n');
+    writeFileSync(join(directory, 'tracked.txt'), 'original\n');
+    run('add', '.');
+    run('commit', '--quiet', '-m', 'fixture');
+    return { directory, run };
+  }
+
+  async function runWith(
+    directory: string,
+    mutate: () => void,
+  ): Promise<{ passed: boolean; error: string | null }> {
+    const result = await runFullRegressionPhases(
+      [
+        {
+          id: 'phase',
+          script: 'phase',
+          args: ['run', 'phase'],
+          timeoutMs: 1_000,
+        },
+      ],
+      {
+        cwd: directory,
+        log: () => {},
+        runPhase: async () => {
+          mutate();
+          return { status: 0, error: null };
+        },
+      },
+    );
+    return { passed: result.passed, error: result.results[0].error };
+  }
+
+  const cleanups: string[] = [];
+  afterEach(() => {
+    for (const directory of cleanups.splice(0))
+      rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('fails a phase that modifies a tracked file and names it', async () => {
+    const { directory } = repository();
+    cleanups.push(directory);
+    const result = await runWith(directory, () =>
+      writeFileSync(join(directory, 'tracked.txt'), 'changed\n'),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.error).toMatch(/phase mutated the workspace/);
+    expect(result.error).toContain(' M tracked.txt');
+  });
+
+  it('fails a phase that creates an untracked file and names it', async () => {
+    const { directory } = repository();
+    cleanups.push(directory);
+    const result = await runWith(directory, () =>
+      writeFileSync(join(directory, 'stray.txt'), 'new\n'),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.error).toContain('?? stray.txt');
+  });
+
+  it('fails a phase that rewrites an already-modified file', async () => {
+    const { directory } = repository();
+    cleanups.push(directory);
+    writeFileSync(join(directory, 'tracked.txt'), 'dirty before\n');
+    const result = await runWith(directory, () =>
+      writeFileSync(join(directory, 'tracked.txt'), 'dirty after\n'),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.error).toContain(
+      'content changed under already-modified paths:  M tracked.txt',
+    );
+  });
+
+  it('fails a phase that moves HEAD', async () => {
+    const { directory, run } = repository();
+    cleanups.push(directory);
+    const result = await runWith(directory, () => {
+      run('commit', '--quiet', '--allow-empty', '-m', 'inside a phase');
+    });
+    expect(result.passed).toBe(false);
+    expect(result.error).toMatch(
+      /HEAD moved from [0-9a-f]{40} to [0-9a-f]{40}/,
+    );
+  });
+
+  it('passes a phase that writes only ignored files (false-positive control)', async () => {
+    const { directory } = repository();
+    cleanups.push(directory);
+    const result = await runWith(directory, () => {
+      writeFileSync(join(directory, 'ignored.txt'), 'scratch\n');
+      mkdirSync(join(directory, 'ignored'));
+      writeFileSync(join(directory, 'ignored', 'output.json'), '{}\n');
+    });
+    expect(result).toEqual({ passed: true, error: null });
+    expect(snapshotWorkspace(directory).status).toEqual([]);
+  });
 });

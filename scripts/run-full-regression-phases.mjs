@@ -12,17 +12,35 @@
  * canonical `npm run full:regression` lane is unchanged. Unlike that lane it
  * continues past a failed phase so one run names every red phase it owns,
  * then exits non-zero if any phase failed.
+ *
+ * A phase passes here only when the canonical lane would also pass it:
+ * - exit status 0, no runner error, no surviving owned process tree;
+ * - output that is valid UTF-8 and within the canonical per-stream capture
+ *   cap (the canonical runner captures through the same
+ *   `captureOwnedProcessOutput` and fails either condition);
+ * - an unchanged workspace. The canonical lane fails a phase whose before and
+ *   after request keys differ, so this driver compares HEAD, the workspace
+ *   digest (`git diff --binary HEAD` plus untracked non-ignored file content),
+ *   the dependency digest, and the porcelain status before and after each
+ *   phase, and names what changed.
+ * Not mirrored: the environment/toolchain parts of the request key, which a
+ * phase cannot change from inside its own process tree.
  */
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
+  captureOwnedProcessOutput,
   executeOwnedProcess,
   registerProcessSignal,
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import {
+  collectWorkspaceProvenance,
+  digestVerificationDependencies,
+} from './lib/test-reliability.mjs';
 import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
 
 const PROCESS_HEAVY_PHASE_ID = 'test-full-process-heavy';
@@ -31,6 +49,75 @@ const USAGE =
   'usage: node scripts/run-full-regression-phases.mjs --phase=<id> [--phase=<id>...] [--process-heavy-shard=<k>/<n>]';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const GIT_STATUS_MAX_BUFFER = 64 * 1024 * 1024;
+
+function git(args, cwd) {
+  return execFileSync('git', args, {
+    cwd,
+    maxBuffer: GIT_STATUS_MAX_BUFFER,
+    windowsHide: true,
+  });
+}
+
+/** Porcelain status entries (`XY path`, renames as `XY new <- old`). */
+function statusEntries(root) {
+  const tokens = git(
+    ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+    root,
+  )
+    .toString('utf8')
+    .split('\0');
+  const entries = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token) continue;
+    const code = token.slice(0, 2);
+    const path = token.slice(3);
+    if (code.includes('R') || code.includes('C')) {
+      entries.push(`${code} ${path} <- ${tokens[index + 1]}`);
+      index += 1;
+    } else entries.push(`${code} ${path}`);
+  }
+  return entries.sort();
+}
+
+/** The workspace identity the canonical request key derives from. */
+export function snapshotWorkspace(cwd = repoRoot) {
+  const root = git(['rev-parse', '--show-toplevel'], cwd)
+    .toString('utf8')
+    .trim();
+  const workspace = collectWorkspaceProvenance({ cwd: root });
+  return {
+    headSha: workspace.headSha,
+    workspaceDigest: workspace.workspaceDigest,
+    dependencyDigest: digestVerificationDependencies(root),
+    status: statusEntries(root),
+  };
+}
+
+/** Human-readable differences; an empty list means the workspace is unchanged. */
+export function workspaceChanges(before, after) {
+  const changes = [];
+  if (before.headSha !== after.headSha)
+    changes.push(`HEAD moved from ${before.headSha} to ${after.headSha}`);
+  const beforeStatus = new Set(before.status);
+  const afterStatus = new Set(after.status);
+  const changedEntries = [
+    ...after.status.filter((entry) => !beforeStatus.has(entry)),
+    ...before.status
+      .filter((entry) => !afterStatus.has(entry))
+      .map((entry) => `${entry} (no longer reported)`),
+  ];
+  if (changedEntries.length > 0)
+    changes.push(`changed paths: ${changedEntries.join(', ')}`);
+  else if (before.workspaceDigest !== after.workspaceDigest)
+    changes.push(
+      `content changed under already-modified paths: ${after.status.join(', ') || '<none reported>'}`,
+    );
+  if (before.dependencyDigest !== after.dependencyDigest)
+    changes.push('dependency digest changed');
+  return changes;
+}
 
 export function parseFullRegressionPhaseArguments(
   args,
@@ -127,8 +214,13 @@ export async function runPhaseProcess(
     [...prefix, ...step.args],
     spawnProcess,
     label,
-    { cwd, stdio: 'inherit', windowsHide: true },
+    { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
   );
+  // Stream the child's bytes to this job log as they arrive, and validate
+  // them through the same capture the canonical runner uses.
+  execution.child.stdout?.on('data', (chunk) => process.stdout.write(chunk));
+  execution.child.stderr?.on('data', (chunk) => process.stderr.write(chunk));
+  const capture = captureOwnedProcessOutput(execution);
   let timer;
   let onAbort;
   const interrupted = new Promise((resolveInterrupt) => {
@@ -163,6 +255,17 @@ export async function runPhaseProcess(
         status: outcome.result.status,
         error: `${label} left an owned process tree alive`,
       };
+    const captured = capture.finish();
+    if (captured.invalidUtf8)
+      return {
+        status: outcome.result.status,
+        error: `${label} output was not valid UTF-8`,
+      };
+    if (captured.truncated)
+      return {
+        status: outcome.result.status,
+        error: `${label} output exceeded the canonical per-stream capture limit`,
+      };
     return { status: outcome.result.status, error: null };
   } finally {
     clearTimeout(timer);
@@ -179,6 +282,8 @@ export async function runFullRegressionPhases(
   plan,
   {
     runPhase = runPhaseProcess,
+    snapshot = snapshotWorkspace,
+    cwd = repoRoot,
     signal = /** @type {AbortSignal | undefined} */ (undefined),
     now = () => Date.now(),
     log = (line) => {
@@ -204,7 +309,19 @@ export async function runFullRegressionPhases(
     const started = now();
     let outcome;
     try {
-      outcome = await runPhase(step, { signal });
+      const before = snapshot(cwd);
+      outcome = await runPhase(step, { signal, cwd });
+      const changes = workspaceChanges(before, snapshot(cwd));
+      if (changes.length > 0)
+        outcome = {
+          ...outcome,
+          error: [
+            outcome.error,
+            `phase mutated the workspace (the canonical lane fails this): ${changes.join('; ')}`,
+          ]
+            .filter(Boolean)
+            .join('; '),
+        };
     } catch (error) {
       outcome = {
         status: null,
