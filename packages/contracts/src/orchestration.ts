@@ -530,6 +530,67 @@ export interface TurnProgressObservation {
 }
 
 /**
+ * #2309: the server's one projection of what a conversation is doing right
+ * now, folded from committed canonical events across every execution child
+ * of the conversation. Clients render this instead of re-deriving liveness
+ * from the event stream; a content delta on its own never implies an open
+ * turn.
+ *
+ * `openTurn` is the SAME fold `hasActiveTurn` uses (the shared open-turn step
+ * in `session-lifecycle-service.ts`), so the two cannot disagree for a
+ * thread. Background engine work outside an open turn (a backgrounded
+ * subagent's progress, approvals between turns) never opens a turn here; it
+ * shows only as `lastActivityAt`/`lastTool`.
+ */
+export interface ConversationTurnActivity {
+  conversationId: string;
+  /**
+   * The `global_sequence` of the newest committed event folded into this
+   * value. Several carriers deliver it (snapshot rows, stream frames, list
+   * items, open resolutions); a client keeps the value with the highest
+   * `asOfSequence` and discards older ones.
+   */
+  asOfSequence: number;
+  /** Absent when no execution child of the conversation has an open turn. */
+  openTurn?: {
+    turnId: string;
+    /** The execution child (orchestration thread) running the turn. */
+    threadId: string;
+    /** `createdAt` of the turn's first `turn.started`; a steer keeps it. */
+    startedAt: string;
+    /**
+     * `provider` when the engine opened the turn itself (a reply nobody
+     * dispatched, marked by the adapter with `metadata.trigger:
+     * 'provider'`); `dispatched` for every turn Station sent. Derived from
+     * that marker only — never from the prompt or the adapter kind.
+     */
+    trigger: 'dispatched' | 'provider';
+  };
+  /** `createdAt` of the newest committed event on any child. */
+  lastActivityAt?: string;
+  /**
+   * Tool calls started inside the open turn with no terminal yet, oldest
+   * first (the most recently started is last). Absent when the list is
+   * empty. A call still running when its turn closes is dropped, not
+   * settled: its fate is the adapter's to report.
+   */
+  runningTools?: Array<{ name: string; callId: string; startedAt: string }>;
+  /** The newest tool terminal on any child, in or out of a turn. */
+  lastTool?: {
+    name: string;
+    callId: string;
+    outcome: 'success' | 'error' | 'cancelled' | 'unresolved';
+    completedAt: string;
+  };
+  /**
+   * The turn-stall watchdog's own silence marker for `openTurn`, passed
+   * through unchanged. Present only while the watchdog holds it for that
+   * exact turn; never re-derived from `lastActivityAt`.
+   */
+  progressSilence?: TurnProgressSilence;
+}
+
+/**
  * #2269: the finite per-TURN supervision an adapter declared for one turn
  * (never an aggregate budget across later continuations or new turns).
  *
@@ -610,6 +671,12 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Present only while this process is watching this session's active turn. */
   turnProgress?: TurnProgressObservation;
+  /**
+   * #2309: the activity of the conversation this session belongs to (every
+   * execution child, not just this one). Absent on servers without the
+   * projection and for sessions with no conversation lineage.
+   */
+  conversationActivity?: ConversationTurnActivity;
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   transitionReason?: SessionTransitionReason;
@@ -763,6 +830,13 @@ export interface OrchestrationSessionEventPage {
 export interface OrchestrationConversationStreamBinding {
   conversationId: string;
   currentSessionId: string;
+  /**
+   * #2309: the conversation's activity after this frame's event was
+   * committed. Present on turn/tool/terminal and session start frames and,
+   * at most once per second per execution child, on other frames (content
+   * deltas, tool progress). Keep the value with the highest `asOfSequence`.
+   */
+  activity?: ConversationTurnActivity;
 }
 
 /** Versioned bounded hydration contract for one orchestration session. */
@@ -1023,7 +1097,13 @@ export interface ConversationListItem {
   environmentId?: string;
   /** Version of this conversation that the current user has opened. */
   acknowledgedAt?: string;
+  /**
+   * Whether the conversation has an open turn. When `activity` is present
+   * this is exactly `activity.openTurn !== undefined`.
+   */
   hasActiveTurn?: boolean;
+  /** #2309: the conversation's activity; absent from older servers. */
+  activity?: ConversationTurnActivity;
   /** Immutable fork facts folded by the conversation read model. */
   forkProvenance?: {
     forkedFrom?: ConversationForkProvenance;
@@ -1071,6 +1151,11 @@ export type ConversationOpenResolution =
       canContinue: boolean;
       /** Continuation is temporarily blocked only by the current active turn. */
       continuationPending?: boolean;
+      /**
+       * #2309: the conversation's activity read with this resolution — fresher
+       * than any copy on the `conversation` row the caller supplied.
+       */
+      activity?: ConversationTurnActivity;
       answerability: RequestAnswerability;
       recoveryActions: readonly [];
     }

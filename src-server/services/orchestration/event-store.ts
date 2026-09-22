@@ -873,6 +873,8 @@ const { DatabaseSync } = require('node:sqlite') as {
     path: string,
     options?: { timeout?: number; readOnly?: boolean },
   ) => {
+    /** node:sqlite: true while any transaction or savepoint is open. */
+    readonly isTransaction: boolean;
     exec(sql: string): void;
     prepare(sql: string): {
       run: (...args: unknown[]) => unknown;
@@ -1608,6 +1610,54 @@ type SessionWorkItemTerminalAdmission =
 
 type SessionWorkItemAssociationMetadataRow = Record<string, unknown>;
 
+/**
+ * #2309: a process-local observer of this store's committed writes, for an
+ * in-memory projection that must see EVERY writer — not only the service's
+ * `publishCanonicalEvent` (attached-follow, fork provenance and boot recovery
+ * append here directly).
+ *
+ * Callbacks run synchronously after the row is durable and are isolated: a
+ * throwing observer never fails the write, so an observer owns its own error
+ * reporting. `deferred`
+ * is true when the append ran inside a caller's still-open outer
+ * transaction, whose rollback could still retract it; an observer must not
+ * fold such an event and should instead re-read the thread's durable state.
+ */
+export interface EventStoreCommitObserver {
+  eventCommitted?(input: {
+    event: CanonicalRuntimeEvent;
+    globalSequence: number;
+    deferred: boolean;
+  }): void;
+  /** `deleteThread` removed every durable fact of `threadId`. */
+  threadDeleted?(threadId: string): void;
+  /**
+   * Conversation lineage may have gained or confirmed `sessionId` under
+   * `conversationId`. Invalidation only; re-read the lineage to learn more.
+   */
+  lineageChanged?(input: { conversationId: string; sessionId: string }): void;
+}
+
+/** #2309: see {@link EventStore.readTurnActivitySeed}. */
+export interface TurnActivitySeed {
+  head?: { globalSequence: number; createdAt: string };
+  openTurn?: { startedAt: string; trigger?: string };
+  tools: Array<{
+    method: 'tool.started' | 'tool.completed';
+    callId: string;
+    name: string;
+    status?: string;
+    createdAt: string;
+  }>;
+  toolsTruncated: boolean;
+  lastTool?: {
+    callId: string;
+    name: string;
+    status?: string;
+    createdAt: string;
+  };
+}
+
 export class EventStore {
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
@@ -1651,6 +1701,7 @@ export class EventStore {
   private readonly conversationContextBoundaries: ConversationContextBoundaryModule;
   private readonly operationalEventConsumers =
     new Set<OperationalEventConsumer>();
+  private readonly commitObservers = new Set<EventStoreCommitObserver>();
   private readonly operationalEventSubscriptionRegistries =
     new Set<OperationalEventSubscriptionRegistry>();
   private readonly projectTaskRoomHistories = new Set<ProjectTaskRoomHistory>();
@@ -2909,6 +2960,7 @@ export class EventStore {
     // been taken yet, so there is no process-local claim to settle.
     this.openAppendEventSavepoint();
     let nextSequence: number;
+    let globalSequence: number;
     try {
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
@@ -2917,6 +2969,7 @@ export class EventStore {
         new Date().toISOString();
       workItemAdmission = this.takeSessionWorkItemAdmission(event, observedAt);
       nextSequence = this.nextSequence(event.threadId);
+      globalSequence = this.nextGlobalSequence();
       const insert = this.db
         .prepare(
           `${declaredOutputs.length || event.method === 'tool.completed' ? 'INSERT OR IGNORE' : 'INSERT'} INTO orchestration_events
@@ -2935,7 +2988,7 @@ export class EventStore {
           event.createdAt,
           observedAt,
           nextSequence,
-          this.nextGlobalSequence(),
+          globalSequence,
         ) as { changes: number };
       if (insert.changes === 0) {
         // Exact terminal event replay is idempotent only when every opaque
@@ -3061,7 +3114,51 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
+  }
+
+  /**
+   * #2309: register a process-local observer of committed writes (see
+   * {@link EventStoreCommitObserver}). Returns the unsubscribe function.
+   */
+  observeCommits(observer: EventStoreCommitObserver): () => void {
+    this.commitObservers.add(observer);
+    return () => {
+      this.commitObservers.delete(observer);
+    };
+  }
+
+  private notifyCommitObservers(
+    call: (observer: EventStoreCommitObserver) => void,
+  ): void {
+    for (const observer of this.commitObservers) {
+      try {
+        call(observer);
+      } catch {
+        // Observation only: the write already committed.
+      }
+    }
+  }
+
+  private notifyEventCommitted(
+    event: CanonicalRuntimeEvent,
+    globalSequence: number,
+  ): void {
+    if (this.commitObservers.size === 0) return;
+    // Our own savepoint is released; a transaction still open here belongs
+    // to a caller and can still roll this row back.
+    const deferred = this.db.isTransaction;
+    this.notifyCommitObservers((observer) =>
+      observer.eventCommitted?.({ event, globalSequence, deferred }),
+    );
+  }
+
+  private notifyLineageChanged(conversationId: string, sessionId: string) {
+    if (this.commitObservers.size === 0) return;
+    this.notifyCommitObservers((observer) =>
+      observer.lineageChanged?.({ conversationId, sessionId }),
+    );
   }
 
   /** Stages a reviewed, pre-terminal candidate without exposing the registry. */
@@ -3593,9 +3690,11 @@ export class EventStore {
     const { requestId, persisted, serializedPayload } = ingress;
     this.db.exec('SAVEPOINT append_event_if_absent_history');
     let nextSequence: number;
+    let globalSequence: number;
     let absent: boolean;
     try {
       nextSequence = this.nextSequence(event.threadId);
+      globalSequence = this.nextGlobalSequence();
       const result = this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_events
@@ -3614,7 +3713,7 @@ export class EventStore {
           event.createdAt,
           new Date().toISOString(),
           nextSequence,
-          this.nextGlobalSequence(),
+          globalSequence,
         ) as { changes: number };
       absent = result.changes === 0;
       if (!absent) {
@@ -3644,6 +3743,7 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
   }
 
@@ -5386,6 +5486,245 @@ export class EventStore {
     ).map((row: any) => this.mapEventRow(row));
   }
 
+  /**
+   * #2309: the durable facts the conversation activity projection seeds a
+   * thread from, once per thread per process. Every read is index-backed
+   * (`thread_id, sequence` / `thread_id, turn_id, sequence`) and reads tool
+   * identity through `json_extract`, never a tool's (unbounded) output.
+   *
+   * - `head`: the thread's newest event (its global sequence and time).
+   * - `openTurn`/`tools`: see {@link readOpenTurnActivitySeed}.
+   * - `lastTool`: the thread's newest `tool.completed`.
+   */
+  readTurnActivitySeed(
+    threadId: string,
+    openTurnId: string | undefined,
+  ): TurnActivitySeed {
+    const head = this.db
+      .prepare(
+        `SELECT global_sequence, created_at FROM orchestration_events
+         WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(threadId) as
+      | { global_sequence: number; created_at: string }
+      | undefined;
+    const lastTool = this.latestToolTerminalsForThreads([threadId]).get(
+      threadId,
+    );
+    const open = openTurnId
+      ? this.readOpenTurnActivitySeed(threadId, openTurnId)
+      : { tools: [], toolsTruncated: false };
+    return {
+      ...(head
+        ? {
+            head: {
+              globalSequence: Number(head.global_sequence),
+              createdAt: head.created_at,
+            },
+          }
+        : {}),
+      ...open,
+      ...(lastTool ? { lastTool } : {}),
+    };
+  }
+
+  /**
+   * #2309: the FIRST `turn.started` of `turnId` (a steer re-emits
+   * `turn.started` under the same id and must not move the start), with its
+   * trigger marker, and the tool starts/terminals after it in order, bounded
+   * by `toolLimit` (`toolsTruncated` says the bound fired).
+   */
+  readOpenTurnActivitySeed(
+    threadId: string,
+    turnId: string,
+    toolLimit = 2_000,
+  ): Pick<TurnActivitySeed, 'openTurn' | 'tools' | 'toolsTruncated'> {
+    const started = this.db
+      .prepare(
+        `SELECT sequence, created_at,
+                json_extract(payload, '$.metadata.trigger') AS trigger
+         FROM orchestration_events
+         WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+         ORDER BY sequence ASC LIMIT 1`,
+      )
+      .get(threadId, turnId) as
+      | { sequence: number; created_at: string; trigger: unknown }
+      | undefined;
+    if (!started) return { tools: [], toolsTruncated: false };
+    const rows = this.db
+      .prepare(
+        `SELECT method,
+                json_extract(payload, '$.toolCallId') AS call_id,
+                json_extract(payload, '$.toolName') AS tool_name,
+                json_extract(payload, '$.status') AS status,
+                created_at
+         FROM orchestration_events
+         WHERE thread_id = ? AND method IN ('tool.started', 'tool.completed')
+           AND sequence > ?
+         ORDER BY sequence ASC LIMIT ?`,
+      )
+      .all(threadId, started.sequence, toolLimit + 1) as Array<{
+      method: 'tool.started' | 'tool.completed';
+      call_id: unknown;
+      tool_name: unknown;
+      status: unknown;
+      created_at: string;
+    }>;
+    const tools: TurnActivitySeed['tools'] = [];
+    for (const row of rows.slice(0, toolLimit)) {
+      if (typeof row.call_id !== 'string' || typeof row.tool_name !== 'string')
+        continue;
+      tools.push({
+        method: row.method,
+        callId: row.call_id,
+        name: row.tool_name,
+        ...(typeof row.status === 'string' ? { status: row.status } : {}),
+        createdAt: row.created_at,
+      });
+    }
+    return {
+      openTurn: {
+        startedAt: started.created_at,
+        ...(typeof started.trigger === 'string'
+          ? { trigger: started.trigger }
+          : {}),
+      },
+      tools,
+      toolsTruncated: rows.length > toolLimit,
+    };
+  }
+
+  /**
+   * #2309: each thread's newest `tool.completed` identity, batched: one
+   * statement per chunk, each thread resolved by an indexed backward seek.
+   */
+  latestToolTerminalsForThreads(
+    threadIds: readonly string[],
+  ): Map<string, NonNullable<TurnActivitySeed['lastTool']>> {
+    const result = new Map<string, NonNullable<TurnActivitySeed['lastTool']>>();
+    for (
+      let offset = 0;
+      offset < threadIds.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = threadIds.slice(
+        offset,
+        offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+      );
+      if (chunk.length === 0) continue;
+      const rows = this.db
+        .prepare(
+          `WITH tool_threads(thread_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')})
+           SELECT event.thread_id AS thread_id,
+                  json_extract(event.payload, '$.toolCallId') AS call_id,
+                  json_extract(event.payload, '$.toolName') AS tool_name,
+                  json_extract(event.payload, '$.status') AS status,
+                  event.created_at AS created_at
+           FROM tool_threads
+           JOIN orchestration_events AS event ON event.id = (
+             SELECT latest.id FROM orchestration_events AS latest
+             WHERE latest.thread_id = tool_threads.thread_id
+               AND latest.method = 'tool.completed'
+             ORDER BY latest.sequence DESC LIMIT 1
+           )`,
+        )
+        .all(...chunk) as Array<{
+        thread_id: string;
+        call_id: unknown;
+        tool_name: unknown;
+        status: unknown;
+        created_at: string;
+      }>;
+      for (const row of rows) {
+        if (
+          typeof row.call_id !== 'string' ||
+          typeof row.tool_name !== 'string'
+        )
+          continue;
+        result.set(row.thread_id, {
+          callId: row.call_id,
+          name: row.tool_name,
+          ...(typeof row.status === 'string' ? { status: row.status } : {}),
+          createdAt: row.created_at,
+        });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * #2309: the conversation and ordered execution children of each thread
+   * that has lineage, batched — the same facts `conversationForSession` and
+   * `conversationSessions` answer one at a time. A thread without lineage is
+   * absent from the result.
+   */
+  conversationLineageForThreads(
+    threadIds: readonly string[],
+  ): Map<string, { conversationId: string; sessionIds: string[] }> {
+    const conversationByThread = new Map<string, string>();
+    for (
+      let offset = 0;
+      offset < threadIds.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = threadIds.slice(
+        offset,
+        offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+      );
+      if (chunk.length === 0) continue;
+      const rows = this.db
+        .prepare(
+          `SELECT session_id, conversation_id
+           FROM orchestration_conversation_sessions
+           WHERE session_id IN (${chunk.map(() => '?').join(', ')})`,
+        )
+        .all(...chunk) as Array<{
+        session_id: string;
+        conversation_id: string;
+      }>;
+      for (const row of rows)
+        conversationByThread.set(row.session_id, row.conversation_id);
+    }
+    const conversationIds = [...new Set(conversationByThread.values())];
+    const sessionsByConversation = new Map<string, string[]>();
+    for (
+      let offset = 0;
+      offset < conversationIds.length;
+      offset += EVENT_STORE_BATCH_CHUNK_SIZE
+    ) {
+      const chunk = conversationIds.slice(
+        offset,
+        offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+      );
+      const rows = this.db
+        .prepare(
+          `SELECT conversation_id, session_id
+           FROM orchestration_conversation_sessions
+           WHERE conversation_id IN (${chunk.map(() => '?').join(', ')})
+           ORDER BY conversation_id ASC, ordinal ASC`,
+        )
+        .all(...chunk) as Array<{
+        conversation_id: string;
+        session_id: string;
+      }>;
+      for (const row of rows) {
+        const sessions = sessionsByConversation.get(row.conversation_id) ?? [];
+        sessions.push(row.session_id);
+        sessionsByConversation.set(row.conversation_id, sessions);
+      }
+    }
+    const result = new Map<
+      string,
+      { conversationId: string; sessionIds: string[] }
+    >();
+    for (const [threadId, conversationId] of conversationByThread)
+      result.set(threadId, {
+        conversationId,
+        sessionIds: sessionsByConversation.get(conversationId) ?? [],
+      });
+    return result;
+  }
+
   readConsoleDeliveryProgress(threadId: string, scopeId: string): number {
     const row = this.db
       .prepare(
@@ -7122,6 +7461,7 @@ export class EventStore {
           sessionId: session.threadId,
           createdAt: session.createdAt,
         });
+        this.notifyLineageChanged(conversationId, session.threadId);
       }
       // #1536 B4: `conversationId` is the ROOT thread for a continuation
       // child, so writing this session's `createdAt` here stamped the child's
@@ -7191,6 +7531,7 @@ export class EventStore {
           sessionId: threadId,
           createdAt: existing?.created_at ?? now,
         });
+        this.notifyLineageChanged(threadId, threadId);
       }
       this.db.exec('RELEASE SAVEPOINT mark_session_closed_lineage');
     } catch (error) {
@@ -7363,7 +7704,12 @@ export class EventStore {
     lineage: Readonly<ConversationSessionLineage>;
     outcome: 'created' | 'existing';
   } {
-    return this.conversationSessionLineage.reserveNextSession(input);
+    const reserved = this.conversationSessionLineage.reserveNextSession(input);
+    this.notifyLineageChanged(
+      reserved.lineage.conversationId,
+      reserved.lineage.sessionId,
+    );
+    return reserved;
   }
 
   /**
@@ -7991,6 +8337,7 @@ export class EventStore {
                 input.predecessorSessionId,
                 input.createdAt,
               );
+              this.notifyLineageChanged(input.conversationId, input.sessionId);
             }
             insertMarker.run(
               input.conversationId,
@@ -8121,6 +8468,10 @@ export class EventStore {
                 input.predecessorSessionId,
                 input.createdAt,
               );
+              this.notifyLineageChanged(
+                input.conversationId,
+                input.successorSessionId,
+              );
             }
             insert.run(
               input.boundaryId,
@@ -8240,6 +8591,10 @@ export class EventStore {
                 marker.successorSessionId,
                 marker.predecessorSessionId,
               ) as { changes?: number };
+            this.notifyLineageChanged(
+              marker.conversationId,
+              marker.successorSessionId,
+            );
             if (cancelled.changes !== 1 || retired.changes !== 1) {
               this.db.exec('ROLLBACK');
               return undefined;
@@ -10238,6 +10593,10 @@ export class EventStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+    if (this.commitObservers.size > 0)
+      this.notifyCommitObservers((observer) =>
+        observer.threadDeleted?.(threadId),
+      );
     // Deleting a conversation must delete the pasted screenshot, not merely
     // make it unreachable. Content addressing means the bytes may still belong
     // to another thread, so only a blob with no bindings left is reclaimed —

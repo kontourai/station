@@ -911,6 +911,21 @@ export const orchestrationTurnStallDetections = meter.createCounter(
   },
 );
 
+/**
+ * #2309: conversation activity reads that found more than one execution child
+ * of one conversation with an open turn. Lineage admits at most one live
+ * child, so any count here is an invariant breach worth investigating; the
+ * read reports the most recently started turn.
+ */
+export const orchestrationConversationActivityMultipleOpenChildren =
+  meter.createCounter(
+    'station.orchestration.conversation_activity.multiple_open_children',
+    {
+      description:
+        'Conversation activity reads that observed more than one child with an open turn',
+    },
+  );
+
 /** Content-free model launch decisions emitted at shared dispatch. */
 export const modelLaunchResolutionTotal = meter.createCounter(
   'station.model_launch.resolution.total',
