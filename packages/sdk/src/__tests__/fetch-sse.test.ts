@@ -1174,15 +1174,21 @@ function silentAfterSseResponse(body: string): Response {
 /** A body that writes a keepalive every `everyMs`, forever. */
 function heartbeatSseResponse(everyMs: number): Response {
   const ping = new TextEncoder().encode('event: ping\ndata: \n\n');
+  let cancelled = false;
   return new Response(
     new ReadableStream({
       pull(controller) {
         return new Promise<void>((resolve) => {
           setTimeout(() => {
-            controller.enqueue(ping);
+            // A reader that abandons this body must see an ordinary
+            // assertion, not a fixture throwing into a closed controller.
+            if (!cancelled) controller.enqueue(ping);
             resolve();
           }, everyMs);
         });
+      },
+      cancel() {
+        cancelled = true;
       },
     }),
     { headers: { 'Content-Type': 'text/event-stream' } },
