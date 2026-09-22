@@ -702,7 +702,10 @@ describe('terminal websocket browser origin on the credential-free loopback path
     return JSON.parse(raw.toString());
   }
 
-  async function expectRefusedUpgrade(port: number, origin: string) {
+  async function refusedUpgradeOutcome(
+    port: number,
+    origin: string,
+  ): Promise<string> {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin });
     // Fail fast with a named reason if the upgrade is admitted, rather than
     // waiting out the test timeout.
@@ -714,7 +717,7 @@ describe('terminal websocket browser origin on the credential-free loopback path
       ws.close();
       await once(ws, 'close');
     }
-    expect(outcome).toBe('Unexpected server response: 403');
+    return outcome;
   }
 
   it('accepts a loopback upgrade with no Origin header', async () => {
@@ -749,8 +752,9 @@ describe('terminal websocket browser origin on the credential-free loopback path
     async (origin) => {
       const { service, audit, terminal } = loopbackHarness();
       const { port, wss, connection } = await startWithOrigins(terminal);
-      await expectRefusedUpgrade(port, origin);
+      const outcome = await refusedUpgradeOutcome(port, origin);
       await closeServer(terminal, wss);
+      expect(outcome).toBe('Unexpected server response: 403');
       expect(connection).not.toHaveBeenCalled();
       expect(service.open).not.toHaveBeenCalled();
       expect(service.subscribe).not.toHaveBeenCalled();
@@ -773,8 +777,12 @@ describe('terminal websocket browser origin on the credential-free loopback path
     const address = wss.address();
     if (!address || typeof address === 'string')
       throw new Error('missing address');
-    await expectRefusedUpgrade(address.port, 'tauri://localhost');
+    const outcome = await refusedUpgradeOutcome(
+      address.port,
+      'tauri://localhost',
+    );
     await closeServer(terminal, wss);
+    expect(outcome).toBe('Unexpected server response: 403');
     expect(service.open).not.toHaveBeenCalled();
   });
 

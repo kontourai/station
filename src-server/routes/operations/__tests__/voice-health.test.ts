@@ -724,7 +724,10 @@ describe('voice websocket browser origin on the credential-free loopback path', 
     await once(ws, 'close');
   }
 
-  async function expectRefusedUpgrade(port: number, origin: string) {
+  async function refusedUpgradeOutcome(
+    port: number,
+    origin: string,
+  ): Promise<string> {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/?agent=station-voice`, {
       origin,
     });
@@ -738,7 +741,7 @@ describe('voice websocket browser origin on the credential-free loopback path', 
       ws.close();
       await once(ws, 'close');
     }
-    expect(outcome).toBe('Unexpected server response: 403');
+    return outcome;
   }
 
   it('accepts a loopback upgrade with no Origin header', async () => {
@@ -766,8 +769,9 @@ describe('voice websocket browser origin on the credential-free loopback path', 
     async (origin) => {
       const { voiceService, audit, port, connection, close } =
         await startVoice();
-      await expectRefusedUpgrade(port, origin);
+      const outcome = await refusedUpgradeOutcome(port, origin);
       await close();
+      expect(outcome).toBe('Unexpected server response: 403');
       expect(connection).not.toHaveBeenCalled();
       expect(voiceService.createSession).not.toHaveBeenCalled();
       expect(audit).toHaveBeenCalledWith(
@@ -784,8 +788,9 @@ describe('voice websocket browser origin on the credential-free loopback path', 
 
   it('refuses every browser upgrade on the loopback path when no origin set is configured', async () => {
     const { voiceService, port, close } = await startVoice({});
-    await expectRefusedUpgrade(port, 'tauri://localhost');
+    const outcome = await refusedUpgradeOutcome(port, 'tauri://localhost');
     await close();
+    expect(outcome).toBe('Unexpected server response: 403');
     expect(voiceService.createSession).not.toHaveBeenCalled();
   });
 });
