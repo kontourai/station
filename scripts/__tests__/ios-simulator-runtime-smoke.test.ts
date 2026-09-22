@@ -4,9 +4,11 @@ import { describe, expect, test } from 'vitest';
 import {
   classifyXcuiTestFailure,
   findPreTestLaunchLine,
+  parseIosPrebootOptions,
   parseIosSmokeOptions,
   runAttemptsWithLaunchRetry,
   selectIosSimulator,
+  simulatorBootPlan,
 } from '../ios-simulator-runtime-smoke.mjs';
 
 const catalog = {
@@ -470,6 +472,62 @@ describe('iOS simulator runtime smoke retry policy', () => {
       attempts: [
         { index: 1, status: 0, signature: 'passed', retryable: false },
       ],
+    });
+  });
+});
+
+describe('iOS simulator pre-boot hand-off', () => {
+  test('the smoke skips its own boot only for a device already started', () => {
+    // CI's --preboot leaves the device Booting (simctl boot returns before it
+    // is usable) or Booted; a second `simctl boot` would fail on its state.
+    expect(simulatorBootPlan('Booting')).toEqual({
+      boot: false,
+      alreadyStarted: true,
+    });
+    expect(simulatorBootPlan('Booted')).toEqual({
+      boot: false,
+      alreadyStarted: true,
+    });
+  });
+
+  test('a failed or absent pre-boot falls back to the smoke booting the device', () => {
+    // A pre-boot that failed leaves Shutdown; any other state is handed to
+    // `simctl boot`, whose refusal fails the run instead of passing as booted.
+    expect(simulatorBootPlan('Shutdown')).toEqual({
+      boot: true,
+      alreadyStarted: false,
+    });
+    for (const state of ['Shutting Down', 'Creating', undefined])
+      expect(simulatorBootPlan(state)).toEqual({
+        boot: true,
+        alreadyStarted: false,
+      });
+  });
+
+  test('pre-boots the same exact device the smoke selects', () => {
+    // No --app is needed to pre-boot, and the defaults are the smoke's own,
+    // so a workflow that passes neither --device nor --runtime to either
+    // invocation warms the device the XCUITest then runs on.
+    const preboot = parseIosPrebootOptions(['--preboot']);
+    const smoke = parseIosSmokeOptions(['--app', '/tmp/Station.app']);
+    expect(preboot).toEqual({
+      deviceName: smoke.deviceName,
+      runtimeIdentifier: smoke.runtimeIdentifier,
+    });
+    expect(selectIosSimulator(catalog, preboot).udid).toBe(
+      selectIosSimulator(catalog, smoke).udid,
+    );
+    expect(
+      parseIosPrebootOptions([
+        '--preboot',
+        '--device',
+        'iPhone 17',
+        '--runtime',
+        'com.apple.CoreSimulator.SimRuntime.iOS-26-5',
+      ]),
+    ).toEqual({
+      deviceName: 'iPhone 17',
+      runtimeIdentifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5',
     });
   });
 });

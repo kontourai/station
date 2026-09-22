@@ -2234,6 +2234,49 @@ describe('iOS verification proves packaged runtime readiness', () => {
     );
   });
 
+  it('starts the simulator booting before the build without trusting that boot', () => {
+    const document = load(ios) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            name?: string;
+            run?: string;
+            'continue-on-error'?: boolean;
+            'working-directory'?: string;
+          }>;
+        }
+      >;
+    };
+    const steps = document.jobs['build-ios-verification'].steps;
+    const preboot = steps.findIndex((step) =>
+      String(step.run ?? '').includes('--preboot'),
+    );
+    const xcode = steps.findIndex((step) =>
+      String(step.run ?? '').includes('xcode-select -s'),
+    );
+    const build = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npx tauri ios build'),
+    );
+    const smoke = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npm run test:ios-runtime-smoke --'),
+    );
+    // After the Xcode selection (simctl must be the reviewed Xcode's), before
+    // the build it overlaps, and before the smoke that waits on it.
+    expect(xcode).toBeGreaterThan(-1);
+    expect(preboot).toBeGreaterThan(xcode);
+    expect(preboot).toBeLessThan(build);
+    expect(build).toBeLessThan(smoke);
+    // A failed pre-boot must not fail the job on its own: the smoke's own
+    // boot path is the fallback, and it fails the run if it cannot boot.
+    expect(steps[preboot]['continue-on-error']).toBe(true);
+    // Same exact device: neither invocation overrides the smoke's defaults.
+    for (const index of [preboot, smoke]) {
+      expect(steps[index].run).not.toContain('--device');
+      expect(steps[index].run).not.toContain('--runtime');
+    }
+  });
+
   it('runs the native accessibility smoke and always retains its evidence', () => {
     expect(ios).toContain('npm run test:ios-runtime-smoke --');
     expect(ios).toContain('station-ios-simulator-runtime');
