@@ -789,9 +789,6 @@ describe('CI verification workflow contracts', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'group: hosted-full-regression-${{ inputs.source_sha }}',
     );
-    expect(ci).toContain(
-      `group: ci-browser-smoke-\${{ github.event_name }}-\${{ github.ref }}`,
-    );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );
@@ -951,7 +948,9 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(ci).not.toContain('playwright-full:');
-    expect(ci).toContain('browser-smoke:');
+    // The PR smoke lives in fast-checks; the post-completion duplicate that
+    // could only ever run on dispatch is gone (200 of 200 push runs skipped).
+    expect(ci).not.toContain('  browser-smoke:');
     expect(extended).toContain('coverage:');
     expect(extended).toContain('playwright-full:');
     expect(extended).not.toContain('run: npm run ci:extended');
@@ -1129,19 +1128,18 @@ describe('CI verification workflow contracts', () => {
     expect(suite).toContain('STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION');
   });
 
-  it('runs browser smoke only after the full completion gate releases capacity', () => {
+  it('runs browser smoke once, inside fast-checks, on every event', () => {
+    // A second smoke job gated on full-regression (without always()) was
+    // skipped on every push and merge_group run and only repeated this step
+    // on dispatch. fast-checks runs on dispatch too, so dispatch keeps it.
     const ci = workflow('ci.yml');
-    const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
-
-    expect(browserSmoke).toContain('needs: [classify, full-regression]');
-    expect(browserSmoke).toContain(
-      "if: github.event_name != 'pull_request_target'",
-    );
-    expect(browserSmoke).toContain(
-      'Start browser smoke only after the completion gate',
-    );
-    expect(browserSmoke).toContain(
-      'GitHub skips failed dependencies by default',
+    const jobs = (load(ci) as { jobs: Record<string, unknown> }).jobs;
+    const smokeJobs = Object.entries(jobs)
+      .filter(([, job]) => JSON.stringify(job).includes('test:e2e:pr-smoke'))
+      .map(([id]) => id);
+    expect(smokeJobs).toEqual(['fast-checks']);
+    expect(String((jobs['fast-checks'] as { if?: string }).if)).toContain(
+      "github.event_name == 'workflow_dispatch'",
     );
   });
 
@@ -1153,7 +1151,7 @@ describe('CI verification workflow contracts', () => {
     );
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
-      ci.indexOf('  browser-smoke:'),
+      ci.indexOf('  manual-completion-diagnostics:'),
     );
 
     expect(fastChecks).toContain('timeout-minutes: 45');
@@ -1336,7 +1334,10 @@ describe('CI verification workflow contracts', () => {
 
     const ci = workflow('ci.yml');
     const fullRegression = workflow('full-regression.yml');
-    const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
+    const fastChecks = ci.slice(
+      ci.indexOf('  fast-checks:'),
+      ci.indexOf('  fork-smoke:'),
+    );
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
       extended.indexOf('  coverage:'),
@@ -1426,13 +1427,13 @@ describe('CI verification workflow contracts', () => {
       expect(npmCiIndex, name).toBeLessThan(jobRunBody.indexOf(envExport));
     }
 
-    // browser-smoke already used this convention before this change and is
-    // unaffected by it — asserted here so a future edit that regresses it
-    // back toward node_modules is caught by the same test.
-    const browserSmokeRunBody = extractRunBodies(browserSmoke);
-    expect(browserSmokeRunBody).toContain(envExport);
-    expect(browserSmoke).toContain(envExport);
-    expect(browserSmokeRunBody).not.toMatch(inNodeModulesPathZero);
+    // fast-checks (which now owns the only PR browser smoke) uses the same
+    // convention — asserted here so a future edit that regresses it back
+    // toward node_modules is caught by the same test.
+    const fastChecksRunBody = extractRunBodies(fastChecks);
+    expect(fastChecksRunBody).toContain(envExport);
+    expect(fastChecks).toContain(envExport);
+    expect(fastChecksRunBody).not.toMatch(inNodeModulesPathZero);
     // coverage (ci-extended.yml) installs no browsers at all. Its run
     // bodies are non-empty (`npm run dependencies:ci`, `npm run test:coverage`) so this
     // absence check has something real to check against, not a body
@@ -1447,7 +1448,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  browser-smoke:'),
+      ci.indexOf('  fork-smoke:'),
     );
 
     expect(fastChecks).toContain('fetch-depth: 0');

@@ -317,7 +317,6 @@ const PRIMARY_ROUTER_JOBS = new Set([
   'fork-smoke',
   'full-regression',
   'manual-completion-diagnostics',
-  'browser-smoke',
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
 const FAST_CHECKOUT_REF = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`;
@@ -426,8 +425,6 @@ const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
   classify: `\${{ github.event_name != 'pull_request_target' }}`,
   'full-regression': `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}`,
   'manual-completion-diagnostics': `\${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}`,
-  'browser-smoke':
-    "github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')",
 });
 const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/build-ios.yml',
@@ -1799,7 +1796,6 @@ function primaryCiRouterFindings(file, document) {
     'classify',
     'full-regression',
     'manual-completion-diagnostics',
-    'browser-smoke',
   ]) {
     const job = jobs[jobId];
     if (job && job.if !== EXACT_TARGET_SKIP_GUARDS[jobId])
