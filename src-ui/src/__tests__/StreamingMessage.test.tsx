@@ -519,6 +519,63 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     view.unmount();
   });
 
+  test('a cleared start keeps the row counting from the last start, and the same start returning changes nothing', () => {
+    const view = renderRow(Date.parse(serverStart));
+    expect(view.container.textContent).toContain('Working for 12:00');
+    view.rerender(
+      <StreamingMessage
+        sessionId={chatId}
+        agentIcon={<div />}
+        agentIconStyle={{}}
+        fontSize={14}
+        turnStartedAt={undefined}
+      />,
+    );
+    expect(view.container.textContent).toContain('Working for 12:00');
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(view.container.textContent).toContain('Working for 12:05');
+    view.rerender(
+      <StreamingMessage
+        sessionId={chatId}
+        agentIcon={<div />}
+        agentIconStyle={{}}
+        fontSize={14}
+        turnStartedAt={Date.parse(serverStart)}
+      />,
+    );
+    expect(view.container.textContent).toContain('Working for 12:05');
+    view.unmount();
+  });
+
+  test('a different start after a clear restarts the row for that turn', () => {
+    const view = renderRow(Date.parse(serverStart));
+    act(() => {
+      vi.advanceTimersByTime(600_000);
+    });
+    view.rerender(
+      <StreamingMessage
+        sessionId={chatId}
+        agentIcon={<div />}
+        agentIconStyle={{}}
+        fontSize={14}
+        turnStartedAt={undefined}
+      />,
+    );
+    view.rerender(
+      <StreamingMessage
+        sessionId={chatId}
+        agentIcon={<div />}
+        agentIconStyle={{}}
+        fontSize={14}
+        turnStartedAt={Date.now() - 10_000}
+      />,
+    );
+    expect(view.container.textContent).toContain('Working for 0:10');
+    view.unmount();
+  });
+
   test("a mounted row that sees the next turn's start (no clear in between) restarts for that turn", () => {
     // Row up for turn 1, which started 12 minutes before this mount.
     const view = renderRow(Date.parse(serverStart));

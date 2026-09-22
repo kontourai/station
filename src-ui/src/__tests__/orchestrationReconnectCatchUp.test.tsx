@@ -112,6 +112,7 @@ import { applyOrchestrationSnapshot } from '../hooks/orchestration/snapshotHandl
 import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
+import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
@@ -143,6 +144,28 @@ function useDockTranscript() {
   const sessions = useDerivedSessions('', null, null);
   const session = sessions.find((candidate) => candidate.id === THREAD)!;
   return useActiveChatTranscript(API, session);
+}
+
+/**
+ * #2304: the dock's working clock — the real derived session and transcript
+ * reader (which seeds the turn start), feeding a mounted streaming row that
+ * stays mounted across the reconnect, as `ChatMessageList`'s does while the
+ * turn fold stays open.
+ */
+function DockClock({ statusLabel }: { statusLabel?: string }) {
+  const sessions = useDerivedSessions('', null, null);
+  const session = sessions.find((candidate) => candidate.id === THREAD)!;
+  useActiveChatTranscript(API, session);
+  return (
+    <StreamingMessage
+      sessionId={THREAD}
+      agentIcon={null}
+      agentIconStyle={{}}
+      fontSize={14}
+      turnStartedAt={session.openTurnStartedAt}
+      statusLabel={statusLabel}
+    />
+  );
 }
 
 /**
@@ -508,20 +531,6 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
           }),
       );
       streamUntilTheDrop();
-      function DockClock() {
-        const sessions = useDerivedSessions('', null, null);
-        const session = sessions.find((candidate) => candidate.id === THREAD)!;
-        useActiveChatTranscript(API, session);
-        return (
-          <StreamingMessage
-            sessionId={THREAD}
-            agentIcon={null}
-            agentIconStyle={{}}
-            fontSize={14}
-            turnStartedAt={session.openTurnStartedAt}
-          />
-        );
-      }
       const view = render(<DockClock />);
       await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
 
@@ -579,6 +588,173 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
    * was a different one, which the `openTurnId` check refused. The catch-up
    * turns that check off; the pre-gap page must still not be read.
    */
+  /**
+   * #2304 round 3. A catch-up clears the stamp on EVERY open-turn reconnect,
+   * and the usual case is a short drop with the SAME turn still running. The
+   * mounted row must neither restart nor flash 0:00 while the refetch is in
+   * flight, must keep counting if the reseed never lands, and must not reset
+   * a status-labelled wait.
+   */
+  for (const statusLabel of [undefined, 'Waiting for approval']) {
+    test(`a short drop with the same turn running keeps the ${statusLabel ? 'status-labelled' : 'working'} clock counting`, async () => {
+      const t0 = Date.parse('2026-08-19T00:00:02.000Z');
+      const label = statusLabel ? `${statusLabel} · ` : 'Working for ';
+      vi.useFakeTimers({ toFake: ['Date'], now: t0 });
+      try {
+        const sameTurnPage = {
+          protocolVersion: 1,
+          watermark: 3,
+          hasMore: false,
+          events: [
+            event(2, 'turn.started', { turnId: TURN, prompt: 'Long job' }),
+          ],
+        };
+        fetchWindow.mockResolvedValueOnce(sameTurnPage);
+        let deliverAfterDrop: ((page: unknown) => void) | undefined;
+        fetchWindow.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              deliverAfterDrop = resolve;
+            }),
+        );
+        streamUntilTheDrop();
+        const view = render(<DockClock statusLabel={statusLabel} />);
+        await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+        vi.setSystemTime(t0 + 300_000);
+        await waitFor(
+          () => expect(view.container.textContent).toContain(`${label}5:00`),
+          { timeout: 3_000 },
+        );
+
+        await act(async () => {
+          reconnectFallbackSnapshot(true);
+        });
+        await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+        expect(
+          activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt,
+        ).toBeUndefined();
+        // Stamp cleared, refetch in flight (it may never land): the clock
+        // keeps the turn's count rather than restarting from the reconnect.
+        vi.setSystemTime(t0 + 305_000);
+        await waitFor(
+          () => expect(view.container.textContent).toContain(`${label}5:05`),
+          { timeout: 3_000 },
+        );
+
+        await act(async () => {
+          deliverAfterDrop?.(sameTurnPage);
+        });
+        await waitFor(() =>
+          expect(
+            activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt,
+          ).toBe(t0),
+        );
+        vi.setSystemTime(t0 + 310_000);
+        await waitFor(
+          () => expect(view.container.textContent).toContain(`${label}5:10`),
+          { timeout: 3_000 },
+        );
+        view.unmount();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  }
+
+  /**
+   * #2304 round 3, MEDIUM 3. The sender's `turn.started` fell in the gap, so
+   * its prompt row never gained a turn id and can only match by content.
+   * With this client's clock 5s ahead, keeping its own time sorted it below
+   * its own turn's activity. The window also holds an OLDER turn that sent
+   * the same text: the prompt must stand in for the open turn's copy, not
+   * claim (and hide) the older one.
+   */
+  test('a sender whose turn.started fell in the gap keeps its prompt above its activity', async () => {
+    const serverStart = '2026-08-19T00:00:05.000Z';
+    activeChatsStore.initChat(THREAD, {
+      agentSlug: 'agent-one',
+      agentName: 'Agent One',
+      title: 'Session',
+    });
+    activeChatsStore.updateChat(THREAD, {
+      provider: 'claude',
+      orchestrationSessionStarted: true,
+      orchestrationStatus: 'running',
+    });
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse(serverStart) + 5_000);
+    const outgoing = buildOutgoingUserMessage(
+      activeChatsStore.getSnapshot()[THREAD]?.messages,
+      'why did you stop?',
+    );
+    now.mockRestore();
+    activeChatsStore.updateChat(THREAD, {
+      messages: outgoing.messages,
+      pendingClientTurnId: 'client-turn',
+      status: 'sending',
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        event(1, 'turn.started', {
+          turnId: 'turn-old',
+          prompt: 'why did you stop?',
+        }),
+        event(2, 'turn.completed', {
+          turnId: 'turn-old',
+          outputText: 'Old answer',
+        }),
+      ],
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: false,
+      events: [
+        event(1, 'turn.started', {
+          turnId: 'turn-old',
+          prompt: 'why did you stop?',
+        }),
+        event(2, 'turn.completed', {
+          turnId: 'turn-old',
+          outputText: 'Old answer',
+        }),
+        event(5, 'turn.started', {
+          turnId: 'turn-new',
+          prompt: 'why did you stop?',
+        }),
+        event(6, 'content.text-delta', {
+          turnId: 'turn-new',
+          itemId: 'text',
+          delta: 'Reading files',
+        }),
+      ],
+    });
+    const { result } = renderHook(() => useDockTranscript());
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      reconnectFallbackSnapshot(true);
+    });
+    await waitFor(() =>
+      expect(
+        result.current.messages.some(
+          (message) => message.content === 'Reading files',
+        ),
+      ).toBe(true),
+    );
+    expect(
+      result.current.messages.map((message) => [message.id, message.content]),
+    ).toEqual([
+      ['e1:user', 'why did you stop?'],
+      ['e1:assistant', 'Old answer'],
+      [outgoing.clientId, 'why did you stop?'],
+      ['e5:assistant', 'Reading files'],
+    ]);
+  });
+
   test('a catch-up with no stamp to clear still does not seed from the pre-gap page', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,

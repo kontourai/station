@@ -63,20 +63,16 @@ const TURN_TERMINAL_METHODS = [
 ];
 
 /**
- * #2304: the server's start time for the turn still open at the end of this
- * window, or undefined when the window cannot say. A client that attached to
- * an already-running turn never saw its `turn.started` live, so the bounded
- * read is the only place that start exists. Undefined when the newest
- * `turn.started` is outside the page, already ended in it (a terminal for
- * that turn, or an interrupted-turn boundary, which the projection also
- * treats as closing whatever turn is open), or names a different turn than
- * `openTurnId` when one is given.
+ * #2304: the turn still open at the end of this window, by its newest
+ * non-steer `turn.started`, or undefined when the window cannot say: that
+ * `turn.started` is outside the page, or the turn already ended in it (a
+ * terminal for that turn, or an interrupted-turn boundary, which the
+ * projection also treats as closing whatever turn is open).
  */
-function openTurnStartFromWindow(
+function openTurnInWindow(
   events: readonly { event: CanonicalRuntimeEvent }[],
   threadId: string,
-  openTurnId: string | undefined,
-): number | undefined {
+): { turnId?: string; createdAt: string } | undefined {
   let open: { turnId?: string; createdAt: string } | undefined;
   for (const { event } of events) {
     if (event.threadId !== threadId) continue;
@@ -91,6 +87,22 @@ function openTurnStartFromWindow(
       open = undefined;
     }
   }
+  return open;
+}
+
+/**
+ * #2304: the server's start time for the turn still open at the end of this
+ * window. A client that attached to an already-running turn never saw its
+ * `turn.started` live, so the bounded read is the only place that start
+ * exists. Undefined when the window cannot say, or its open turn is not
+ * `openTurnId` when one is given.
+ */
+function openTurnStartFromWindow(
+  events: readonly { event: CanonicalRuntimeEvent }[],
+  threadId: string,
+  openTurnId: string | undefined,
+): number | undefined {
+  const open = openTurnInWindow(events, threadId);
   if (!open) return undefined;
   if (openTurnId && open.turnId !== openTurnId) return undefined;
   return parseTurnStartedAt(open.createdAt);
@@ -423,9 +435,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       : undefined;
     const claimedProjectedUsers = new Set<number>();
     // The live prompt row, keyed by the index of the canonical row it stands
-    // in for (#2304). It takes that row's position, and — when matched by
-    // turn identity — its timestamp, keeping its own identity and content.
-    // (A content match, before `turn.started`, keeps the row's own time.)
+    // in for (#2304). It takes that row's position, and — when that row is
+    // its own turn's prompt — its timestamp, keeping its own identity and
+    // content. (Any other content match keeps the row's own time.)
     // The merge sorts by timestamp, then
     // by input order: the projection stamps a turn's prompt and its activity
     // with the one `turn.started` time, and emits the prompt first, so in the
@@ -434,16 +446,42 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // composer's send time on this client's clock) it sorted below its own
     // activity whenever this clock ran ahead of the server's.
     const liveProjectedUsers = new Map<number, ChatMessage>();
+    // The turn the window shows open. A sender whose `turn.started` fell in
+    // a reconnect gap never had its prompt row stamped with a turn id, so it
+    // can only match by content; when its text is the open turn's prompt,
+    // that row IS its canonical copy. (`openTurnId` is not the key: across a
+    // gap it still names the last turn this connection saw start.)
+    const windowOpenTurnId = active
+      ? openTurnInWindow(window.events, executionSessionId)?.turnId
+      : undefined;
     const pendingUsers = session.messages.filter((message) => {
       if (message.role !== 'user' || !message.clientId) return false;
-      const match = projected.findIndex(
-        (candidate, index) =>
-          !claimedProjectedUsers.has(index) &&
-          candidate.role === 'user' &&
-          (message.turnId
-            ? candidate.turnId === message.turnId
-            : candidate.content === message.content),
-      );
+      const unclaimedUser = (candidate: ChatMessage, index: number) =>
+        !claimedProjectedUsers.has(index) && candidate.role === 'user';
+      let match = message.turnId
+        ? projected.findIndex(
+            (candidate, index) =>
+              unclaimedUser(candidate, index) &&
+              candidate.turnId === message.turnId,
+          )
+        : -1;
+      let ownTurn = match >= 0;
+      if (!message.turnId && windowOpenTurnId) {
+        match = projected.findIndex(
+          (candidate, index) =>
+            unclaimedUser(candidate, index) &&
+            candidate.turnId === windowOpenTurnId &&
+            candidate.content === message.content,
+        );
+        ownTurn = match >= 0;
+      }
+      if (!message.turnId && match < 0) {
+        match = projected.findIndex(
+          (candidate, index) =>
+            unclaimedUser(candidate, index) &&
+            candidate.content === message.content,
+        );
+      }
       if (match < 0) return true;
       claimedProjectedUsers.add(match);
       // The local row owns the prompt's stable identity until the turn has
@@ -454,10 +492,11 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         liveProjectedUsers.set(match, {
           ...message,
           id: message.id ?? message.clientId,
-          // Only a TURN-identified match is this prompt's own canonical
-          // row. Before `turn.started` the match is by content, and can be
-          // an older turn that sent the same text; its time is not ours.
-          timestamp: message.turnId
+          // Only this prompt's OWN turn's row lends its time: matched by
+          // turn id, or by content against the turn the window shows open.
+          // Any other content match can be an older turn that sent the same
+          // text, and its time is not ours.
+          timestamp: ownTurn
             ? (projected[match]?.timestamp ?? message.timestamp)
             : message.timestamp,
         });
@@ -601,6 +640,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     });
   }, [
     enabled,
+    executionSessionId,
     session.messages,
     session.openTurnId,
     session.openTurnShellSuperseded,
