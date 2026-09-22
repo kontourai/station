@@ -24,6 +24,10 @@ import {
 import { z } from 'zod';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import {
+  isAgentOriginatedRequest,
+  resolveStationControlCallerForRequest,
+} from '../../../runtime/mcp/station-control-caller.js';
+import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
   mintStationControlStdioCallerToken,
@@ -57,6 +61,8 @@ import {
 } from '../station-control-mcp-route.js';
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-caller-suite';
+const ORIGIN_PROBE_PATH =
+  '/api/orchestration/station-control/test-origin-probe';
 
 // The principal mapping is the production one: a real SessionAuthorization
 // over a fake ownership store, configured as a personal host is.
@@ -119,6 +125,7 @@ function createProbeServer(): McpServer {
           'x-station-session-id': 'session-b',
         },
       });
+      const origin = await api(ORIGIN_PROBE_PATH);
       let required: unknown;
       try {
         required = await requireStationControlCaller();
@@ -132,6 +139,7 @@ function createProbeServer(): McpServer {
         argumentSessionId: args.sessionId ?? null,
         inProcess,
         rest: rest.caller,
+        origin,
         required,
       });
     },
@@ -191,6 +199,13 @@ beforeAll(async () => {
   app.route(
     '/api/orchestration',
     createStationControlCallerRoutes({ resolveRecord }),
+  );
+  // Test-only probe route: what a route using the helpers sees.
+  app.get(ORIGIN_PROBE_PATH, (c) =>
+    c.json({
+      agentOriginated: isAgentOriginatedRequest(c.req.raw),
+      caller: resolveStationControlCallerForRequest(c.req.raw, resolveRecord),
+    }),
   );
 });
 
@@ -275,6 +290,11 @@ describe('station-control verified caller (HTTP MCP)', () => {
     expect(observed.inProcess).toEqual(SESSION_A);
     expect(observed.rest).toEqual(SESSION_A);
     expect(observed.required).toEqual(SESSION_A);
+    // A route can tell this is an agent's tool call, and whose.
+    expect(observed.origin).toEqual({
+      agentOriginated: true,
+      caller: SESSION_A,
+    });
     // Everything came from the server record for the TOKEN's session.
     expect(resolveRecord).toHaveBeenCalledWith('session-a');
     expect(resolveRecord).not.toHaveBeenCalledWith('session-b');
@@ -431,5 +451,40 @@ describe('station-control verified caller (stdio child path)', () => {
     await expect(requireStationControlCaller()).rejects.toBeInstanceOf(
       StationControlCallerRequiredError,
     );
+  });
+
+  test('a pooled child (no credential) is still agent-originated, with no caller', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    installStationControlStdioCallerCredential({});
+    expect(await api(ORIGIN_PROBE_PATH)).toEqual({
+      agentOriginated: true,
+      caller: null,
+    });
+  });
+});
+
+describe('isAgentOriginatedRequest', () => {
+  async function origin(headers: Record<string, string>) {
+    const response = await fetch(`${baseUrl}${ORIGIN_PROBE_PATH}`, {
+      headers,
+    });
+    expect(response.status).toBe(200);
+    return response.json();
+  }
+
+  test("the operator's own internal client (no marker, no credential) is not agent-originated", async () => {
+    expect(await origin(internalHeaders())).toEqual({
+      agentOriginated: false,
+      caller: null,
+    });
+  });
+
+  test('a forged caller credential still reads as agent-originated (restrictive) but names no caller', async () => {
+    expect(
+      await origin({
+        ...internalHeaders(),
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: 'forged',
+      }),
+    ).toEqual({ agentOriginated: true, caller: null });
   });
 });

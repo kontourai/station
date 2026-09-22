@@ -105,6 +105,18 @@ const CALLER_PRINCIPAL_SOURCES: ReadonlySet<string> = new Set([
  */
 export const STATION_CONTROL_CALLER_TOKEN_HEADER =
   'x-station-control-caller-token';
+/**
+ * Marks every REST request a station-control tool makes as agent-originated
+ * (`isAgentOriginatedRequest`). Station's UI and a pooled station-control
+ * child both reach the API as the same internal principal, so without this
+ * a route cannot tell an agent's tool call from the operator's own client.
+ * It is a self-declaration by Station's tool code, trusted in one direction
+ * only: it can make a request look MORE agent-like (and so more
+ * restricted), never grant anything. The verified identity is the caller
+ * token, not this header.
+ */
+export const STATION_CONTROL_ORIGIN_HEADER = 'x-station-control-origin';
+export const STATION_CONTROL_ORIGIN_AGENT_TOOL = 'agent-tool';
 /** Spawn-env key carrying a stdio child's per-session caller credential. */
 export const STATION_CONTROL_CALLER_TOKEN_ENV = 'STATION_CONTROL_CALLER_TOKEN';
 /** The REST projection of the verified caller (used by stdio children). */
@@ -244,6 +256,7 @@ function executionContextHeaders(): Record<string, string> {
   const tenantId = context?.tenantId ?? process.env.STATION_INTERNAL_TENANT;
   return {
     ...(tenantId ? { 'x-station-internal-tenant': tenantId } : {}),
+    [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
     ...(callerToken
       ? { [STATION_CONTROL_CALLER_TOKEN_HEADER]: callerToken }
       : {}),

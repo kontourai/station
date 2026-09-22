@@ -22,7 +22,11 @@ import type {
   StationControlCaller,
   StationControlCallerPrincipal,
 } from '../../tools/station-control-shared.js';
-import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
+import {
+  STATION_CONTROL_CALLER_TOKEN_HEADER,
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../tools/station-control-shared.js';
 import { INTERNAL_TENANT_HEADER } from '../../utils/internal-api-token.js';
 import { verifyStationControlMcpToken } from './station-control-mcp-token.js';
 
@@ -105,6 +109,31 @@ export function resolveStationControlCallerForRequest(
     request.headers.get(INTERNAL_TENANT_HEADER) || undefined;
   if ((caller.tenant?.tenantId ?? undefined) !== requestTenant) return null;
   return caller;
+}
+
+/**
+ * Whether a REST request came from a station-control agent tool rather than
+ * a human client. Personal-mode Station's UI and a station-control child both
+ * authenticate as the same internal principal (`human:local:operator`), so
+ * the principal cannot answer this.
+ *
+ * True when the request carries a caller credential (valid or not) or the
+ * origin marker every station-control tool request sets. Both signals can
+ * only make a request MORE restricted: a human client that adds them refuses
+ * itself; an agent cannot shed them, because they are added by Station's own
+ * tool code, not by the model. `false` means "not a station-control tool
+ * call", not "verified human".
+ *
+ * Use {@link resolveStationControlCallerForRequest} for WHO: an
+ * agent-originated request with a `null` caller is an agent Station cannot
+ * attribute to a session (a pooled child), and must be treated as such.
+ */
+export function isAgentOriginatedRequest(request: Request): boolean {
+  return (
+    request.headers.has(STATION_CONTROL_CALLER_TOKEN_HEADER) ||
+    request.headers.get(STATION_CONTROL_ORIGIN_HEADER) ===
+      STATION_CONTROL_ORIGIN_AGENT_TOOL
+  );
 }
 
 /** The REST projection: tenant context is never a public payload field. */
