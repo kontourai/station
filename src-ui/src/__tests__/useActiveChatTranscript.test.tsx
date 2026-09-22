@@ -57,6 +57,7 @@ vi.mock('@kontourai/station-sdk', async () => ({
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
+import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 
 const baseSession = {
   id: 'thread-1',
@@ -1283,6 +1284,270 @@ describe('useActiveChatTranscript', () => {
     } finally {
       activeChatsStore.removeChat(id);
     }
+  });
+
+  /**
+   * #2304 M1: the SENDER's prompt is the composer's optimistic row, stamped by
+   * `buildOutgoingUserMessage` from this client's clock. With that clock 5s
+   * ahead of the server, keeping its own timestamp sorted the prompt below
+   * the activity its own turn produced, even in the canonical row's slot.
+   */
+  test("the sender's optimistic prompt stays above its activity when this clock runs ahead of the server", async () => {
+    const id = 'thread-1';
+    const serverStart = '2026-08-09T00:00:03.000Z';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Skewed sender',
+      orchestrationSessionStarted: true,
+    });
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse(serverStart) + 5_000);
+    const outgoing = buildOutgoingUserMessage([], 'why did you stop?');
+    now.mockRestore();
+    try {
+      expect(outgoing.messages[0]?.timestamp).toBe(
+        Date.parse(serverStart) + 5_000,
+      );
+      activeChatsStore.updateChat(id, {
+        messages: outgoing.messages,
+        pendingClientTurnId: 'client-turn',
+        status: 'sending',
+      });
+      const started = event('e3', 'turn.started', {
+        turnId: 'turn-2',
+        prompt: 'why did you stop?',
+      });
+      handleTurnStartedEvent(
+        started.event as Parameters<typeof handleTurnStartedEvent>[0],
+      );
+      activeChatsStore.updateChat(id, { openTurnShellSuperseded: true });
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 4,
+        hasMore: false,
+        events: [
+          event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'Q1' }),
+          event('e2', 'turn.completed', { turnId: 'turn-1', outputText: 'A1' }),
+          started,
+          event('e4', 'content.text-delta', {
+            turnId: 'turn-2',
+            delta: 'Reading files',
+          }),
+        ],
+      });
+      const session = {
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      } as unknown as ChatSession;
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      await waitFor(() =>
+        expect(
+          result.current.messages.some(
+            (message) => message.content === 'Reading files',
+          ),
+        ).toBe(true),
+      );
+      expect(
+        result.current.messages.map((message) => [message.id, message.content]),
+      ).toEqual([
+        ['e1:user', 'Q1'],
+        ['e1:assistant', 'A1'],
+        [outgoing.clientId, 'why did you stop?'],
+        ['e3:assistant', 'Reading files'],
+      ]);
+    } finally {
+      activeChatsStore.removeChat(id);
+    }
+  });
+
+  describe('#2304 seeding guards', () => {
+    const id = 'thread-1';
+    const started = (turnId: string, fields = {}) =>
+      event('e3', 'turn.started', { turnId, prompt: 'running', ...fields });
+
+    async function seedFrom(
+      events: unknown[],
+      chatPatch: Record<string, unknown> = {},
+      sessionPatch: Record<string, unknown> = {},
+    ) {
+      activeChatsStore.initChat(id, {
+        agentSlug: 'codex',
+        agentName: 'Codex',
+        title: 'Seed guard',
+        orchestrationSessionStarted: true,
+      });
+      activeChatsStore.updateChat(id, {
+        orchestrationTurnOpen: true,
+        ...chatPatch,
+      });
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 9,
+        hasMore: false,
+        events,
+      });
+      const session = {
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+        ...sessionPatch,
+      } as unknown as ChatSession;
+      const view = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalled());
+      const value = activeChatsStore.getSnapshot()[id]?.openTurnStartedAt;
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      return value;
+    }
+
+    test('baseline: an open turn in the window seeds its start', async () => {
+      expect(await seedFrom([started('turn-2')])).toBe(
+        Date.parse(started('turn-2').event.createdAt),
+      );
+    });
+
+    test("a window whose open turn is not the fold's openTurnId does not seed", async () => {
+      expect(
+        await seedFrom([started('turn-2')], { openTurnId: 'turn-9' }),
+      ).toBeUndefined();
+    });
+
+    test('a turn.started for another execution session does not seed', async () => {
+      expect(
+        await seedFrom([started('turn-2', { threadId: 'other-thread' })]),
+      ).toBeUndefined();
+    });
+
+    test('a steer is more input on the open turn, not its start', async () => {
+      const steer = event('e5', 'turn.started', {
+        turnId: 'turn-2',
+        inputKind: 'steer',
+        prompt: 'also this',
+      });
+      expect(await seedFrom([started('turn-2'), steer])).toBe(
+        Date.parse(started('turn-2').event.createdAt),
+      );
+      expect(await seedFrom([steer])).toBeUndefined();
+    });
+
+    test('an interrupted-turn boundary ends the open turn', async () => {
+      expect(
+        await seedFrom([
+          started('turn-2'),
+          event('e6', 'session.state-changed', {
+            interruptedTurnBoundary: { boundaryId: 'boundary-1' },
+          }),
+        ]),
+      ).toBeUndefined();
+    });
+
+    test("a live stamp that landed after this render's props wins over the window", async () => {
+      const live = Date.parse('2026-09-22T12:00:00.000Z');
+      // The store already holds the live `turn.started` stamp; the props this
+      // render was given predate it.
+      expect(
+        await seedFrom(
+          [started('turn-2')],
+          { openTurnStartedAt: live },
+          { openTurnStartedAt: undefined },
+        ),
+      ).toBe(live);
+    });
+
+    test("a replay never seeds: its clock is the tape's elapsed time", async () => {
+      const { registerReplayThread, unregisterReplayThread } = await import(
+        '../hooks/orchestration/replay/replay-registry'
+      );
+      const { SessionTapePlayer } = await import(
+        '../hooks/orchestration/replay/player'
+      );
+      const { tapeFromSessionEvents } = await import(
+        '../hooks/orchestration/replay/tape'
+      );
+      const replayId = registerReplayThread();
+      activeChatsStore.initChat(replayId, {
+        agentSlug: 'codex',
+        agentName: 'Codex',
+        title: 'Replay',
+        orchestrationSessionStarted: true,
+        replay: { sourceThreadId: 'thread-1', tapeEventCount: 1 },
+      });
+      const tape = tapeFromSessionEvents(
+        { threadId: 'thread-1', agentSlug: 'codex' },
+        [started('turn-2').event] as Parameters<
+          typeof tapeFromSessionEvents
+        >[1],
+      );
+      const player = new SessionTapePlayer(tape, replayId);
+      try {
+        act(() => {
+          player.step();
+        });
+        // Clear what the replayed handler stamped, BEFORE the reader mounts,
+        // so only the seed could put a start back.
+        activeChatsStore.updateChat(replayId, {
+          openTurnStartedAt: undefined,
+        });
+        const chat = activeChatsStore.getSnapshot()[replayId];
+        expect(chat?.orchestrationTurnOpen).toBe(true);
+        const view = renderHook(() =>
+          useActiveChatTranscript('', {
+            ...baseSession,
+            ...chat,
+            id: replayId,
+          } as unknown as ChatSession),
+        );
+        await waitFor(() =>
+          expect(
+            view.result.current.messages.some(
+              (message) => message.content === 'running',
+            ),
+          ).toBe(true),
+        );
+        expect(
+          activeChatsStore.getSnapshot()[replayId]?.openTurnStartedAt,
+        ).toBeUndefined();
+        view.unmount();
+      } finally {
+        activeChatsStore.removeChat(replayId);
+        unregisterReplayThread(replayId);
+      }
+    });
+
+    test('a turn.started for this turn stamps from the server; a steer does not move it', () => {
+      activeChatsStore.initChat(id, {
+        agentSlug: 'codex',
+        agentName: 'Codex',
+        title: 'Steer',
+      });
+      try {
+        handleTurnStartedEvent(
+          started('turn-2').event as Parameters<
+            typeof handleTurnStartedEvent
+          >[0],
+        );
+        handleTurnStartedEvent(
+          event('e5', 'turn.started', {
+            turnId: 'turn-2',
+            inputKind: 'steer',
+            prompt: 'also this',
+          }).event as Parameters<typeof handleTurnStartedEvent>[0],
+        );
+        expect(activeChatsStore.getSnapshot()[id]?.openTurnStartedAt).toBe(
+          Date.parse(started('turn-2').event.createdAt),
+        );
+      } finally {
+        activeChatsStore.removeChat(id);
+      }
+    });
   });
 
   test('keeps historical canonical users in place while only the current optimistic prompt owns the live row', async () => {

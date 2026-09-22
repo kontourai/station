@@ -395,9 +395,14 @@ export type ChatUIState = {
    * remount (navigation, dock teardown, virtualizer drop) keeps counting the
    * turn instead of restarting at 0:00 from the component's own mount.
    *
-   * Cleared whenever `orchestrationTurnOpen` goes false (`mergeChatUpdates`),
-   * so a closed turn's start can never be read as the next turn's. Session-
-   * scoped bookkeeping, deliberately NOT persisted, like `openTurnId`.
+   * Cleared by any update that sets `orchestrationTurnOpen: false`
+   * (`mergeChatUpdates`) and by a reconnect catch-up for an open turn
+   * (`applyOrchestrationSnapshot`), and replaced by every non-steer
+   * `turn.started`. A turn that ended unobserved WITHOUT the fold passing
+   * through `false` or a catch-up (a gap no snapshot fallback reported)
+   * would still leave its start here until the next `turn.started`.
+   * Session-scoped bookkeeping, deliberately NOT persisted, like
+   * `openTurnId`.
    */
   openTurnStartedAt?: number;
   orchestrationHistoryRevision?: number;
@@ -931,9 +936,11 @@ export function mergeChatUpdates(
     ...current,
     ...nextUpdates,
     ...(bounded.kept ? { queuedMessages: bounded.kept } : {}),
-    // #2304: one clearing site for every writer that closes the turn fold
-    // (terminal events, session exit, snapshot reseed, conversation switch),
-    // so a closed turn's start time cannot leak into the next open turn.
+    // #2304: clears the open turn's start for every writer that closes the
+    // turn fold (terminal events, session exit, a snapshot reporting
+    // `hasActiveTurn: false`, conversation switch). A snapshot that reseeds
+    // the fold to `true` never passes through here; the reconnect catch-up
+    // clears the start itself (`snapshotHandlers.ts`).
     ...(nextUpdates.orchestrationTurnOpen === false
       ? { openTurnStartedAt: undefined }
       : {}),

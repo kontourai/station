@@ -408,6 +408,71 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
     ).toBe(false);
   });
 
+  /**
+   * #2304 H1. The turn the client saw start completes inside the gap and the
+   * next one starts; the fallback snapshot reseeds the fold with
+   * `hasActiveTurn: true` without it ever passing through `false`. The
+   * finished turn's start must not stay on the "Working for" clock — not
+   * from the stale stamp, and not re-derived from the page the dock read
+   * BEFORE the gap (which still shows that turn open). The start comes from
+   * the page read after it.
+   */
+  test("a turn that ended during the gap does not leave its start on the next turn's clock", async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        event(2, 'turn.started', { turnId: TURN, prompt: 'First question' }),
+      ],
+    });
+    let deliverAfterGap: ((page: unknown) => void) | undefined;
+    fetchWindow.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          deliverAfterGap = resolve;
+        }),
+    );
+
+    streamUntilTheDrop();
+    expect(activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt).toBe(
+      Date.parse('2026-08-19T00:00:02.000Z'),
+    );
+    renderHook(() => useDockTranscript());
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      reconnectFallbackSnapshot(true);
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+    // The refetch is still in flight: the pre-gap page is all the dock has,
+    // and it must not be read as the open turn's start.
+    expect(
+      activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt,
+    ).toBeUndefined();
+
+    await act(async () => {
+      deliverAfterGap?.({
+        protocolVersion: 1,
+        watermark: 8,
+        hasMore: false,
+        events: [
+          event(2, 'turn.started', { turnId: TURN, prompt: 'First question' }),
+          event(5, 'turn.completed', { turnId: TURN, outputText: 'Done.' }),
+          event(7, 'turn.started', {
+            turnId: 'turn-after-gap',
+            prompt: 'Second question',
+          }),
+        ],
+      });
+    });
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt).toBe(
+        Date.parse('2026-08-19T00:00:07.000Z'),
+      ),
+    );
+  });
+
   test('a turn that COMPLETED during the gap shows its answer instead of leaving the prompt unanswered', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,

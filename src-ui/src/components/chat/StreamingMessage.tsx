@@ -38,9 +38,13 @@ export type StreamingMessageProps = {
   elapsedMs?: number;
   /**
    * #2304: when the open turn started, from the server's `turn.started`
-   * (`ChatUIState.openTurnStartedAt`). The "Working for" count derives from
-   * it so a remount keeps the turn's real duration; absent, the row counts
-   * from its own mount as before.
+   * (`ChatUIState.openTurnStartedAt`). The working count reads from the
+   * EARLIER of this and the row's own mount: a row remounted mid-turn reads
+   * the turn's real duration, while the sender's row — mounted at send,
+   * before the server's start — keeps counting without jumping back when
+   * `turn.started` lands. Absent, the row counts from its own mount. The
+   * server start is compared against this client's clock, so skew between
+   * the two shows up in the count.
    */
   turnStartedAt?: number;
   suppressActivity?: boolean;
@@ -231,11 +235,15 @@ export function StreamingMessageView({
                   `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
                 }
                 separator={statusLabel ? ' · ' : ' '}
-                // A status label ("Waiting for approval") names a wait that
-                // began after the turn did, so only the working count reads
-                // the turn's server start.
+                // A status-labelled wait ("Waiting for approval") still counts
+                // from this row's mount, as it did before #2304. That is not
+                // the wait's own start: the row does not remount when the
+                // status arrives, so it reads from whenever the row mounted —
+                // a pre-existing limitation, deliberately left alone here.
                 startedAt={
-                  statusLabel ? waitingSince : (turnStartedAt ?? waitingSince)
+                  statusLabel || turnStartedAt === undefined
+                    ? waitingSince
+                    : Math.min(turnStartedAt, waitingSince)
                 }
                 elapsedMs={elapsedMs}
               />

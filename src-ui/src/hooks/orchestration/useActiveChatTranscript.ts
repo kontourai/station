@@ -1,7 +1,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
@@ -55,13 +55,22 @@ function isLiveSupplementalMessage(message: ChatMessage): boolean {
   );
 }
 
+/** Events that end a turn by its id. */
+const TURN_TERMINAL_METHODS = [
+  'turn.completed',
+  'runtime.error',
+  'turn.aborted',
+];
+
 /**
  * #2304: the server's start time for the turn still open at the end of this
  * window, or undefined when the window cannot say. A client that attached to
  * an already-running turn never saw its `turn.started` live, so the bounded
  * read is the only place that start exists. Undefined when the newest
- * `turn.started` is outside the page, already terminated in it, or names a
- * different turn than the one the live fold knows is open.
+ * `turn.started` is outside the page, already ended in it (a terminal for
+ * that turn, or an interrupted-turn boundary, which the projection also
+ * treats as closing whatever turn is open), or names a different turn than
+ * `openTurnId` when one is given.
  */
 function openTurnStartFromWindow(
   events: readonly { event: CanonicalRuntimeEvent }[],
@@ -74,11 +83,10 @@ function openTurnStartFromWindow(
     if (event.method === 'turn.started' && event.inputKind !== 'steer') {
       open = { turnId: event.turnId, createdAt: event.createdAt };
     } else if (
-      open &&
-      ['turn.completed', 'runtime.error', 'turn.aborted'].includes(
-        event.method,
-      ) &&
-      event.turnId === open.turnId
+      (TURN_TERMINAL_METHODS.includes(event.method) &&
+        event.turnId === open?.turnId) ||
+      (event.method === 'session.state-changed' &&
+        event.interruptedTurnBoundary?.boundaryId)
     ) {
       open = undefined;
     }
@@ -188,15 +196,33 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   // #2304: seed the open turn's server start when this client attached to a
   // turn already running (fresh load, reconnect), so the "Working for" clock
   // reads the turn's duration rather than this view's. A live `turn.started`
-  // stamps it directly and wins; the fold closing clears it.
+  // stamps it directly and wins.
+  //
+  // When a stamp is CLEARED while this reader is mounted (the fold closed, or
+  // a reconnect catch-up discarded it), the page on screen is the one read
+  // before that happened — after a gap it can still show the previous turn
+  // open. Seed only from a page read after the clear.
   const executionSessionId = session.currentSessionId ?? session.id;
+  const previousTurnStartedAt = useRef(session.openTurnStartedAt);
+  const eventsReadBeforeClear = useRef<unknown>(undefined);
   useEffect(() => {
+    if (
+      previousTurnStartedAt.current !== undefined &&
+      session.openTurnStartedAt === undefined
+    ) {
+      eventsReadBeforeClear.current = window.events;
+    }
+    previousTurnStartedAt.current = session.openTurnStartedAt;
     if (!enabled || replay || !session.orchestrationTurnOpen) return;
     if (session.openTurnStartedAt !== undefined) return;
+    if (window.events === eventsReadBeforeClear.current) return;
     const startedAt = openTurnStartFromWindow(
       window.events,
       executionSessionId,
-      session.openTurnId,
+      // A superseded shell's `openTurnId` is the last turn THIS connection
+      // saw start; after a gap the server may have moved on, and the
+      // refetched page is the authority for which turn is open.
+      session.openTurnShellSuperseded ? undefined : session.openTurnId,
     );
     if (startedAt === undefined) return;
     const latest = activeChatsStore.getSnapshot()[session.id];
@@ -212,6 +238,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     executionSessionId,
     session.id,
     session.openTurnId,
+    session.openTurnShellSuperseded,
     session.openTurnStartedAt,
     session.orchestrationTurnOpen,
     window.events,
@@ -392,12 +419,14 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       : undefined;
     const claimedProjectedUsers = new Set<number>();
     // The live prompt row, keyed by the index of the canonical row it stands
-    // in for. It takes that row's PLACE rather than being appended in its own
-    // group (#2304): the projection emits a turn's prompt before the
-    // assistant row that turn produced, and both carry the turn's single
-    // `turn.started` stamp, so the merge's timestamp sort ties and falls back
-    // to input order. Appended after the projection, the prompt lost that tie
-    // to its own turn's activity row and rendered below it.
+    // in for (#2304). It takes that row's position AND its timestamp, keeping
+    // only its own identity and content. The merge sorts by timestamp, then
+    // by input order: the projection stamps a turn's prompt and its activity
+    // with the one `turn.started` time, and emits the prompt first, so in the
+    // canonical row's slot with the canonical time the prompt wins the tie.
+    // Appended in a later group it lost that tie; keeping its own time (the
+    // composer's send time on this client's clock) it sorted below its own
+    // activity whenever this clock ran ahead of the server's.
     const liveProjectedUsers = new Map<number, ChatMessage>();
     const pendingUsers = session.messages.filter((message) => {
       if (message.role !== 'user' || !message.clientId) return false;
@@ -419,6 +448,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         liveProjectedUsers.set(match, {
           ...message,
           id: message.id ?? message.clientId,
+          timestamp: projected[match]?.timestamp ?? message.timestamp,
         });
       }
       return false;
@@ -528,9 +558,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       latestLiveAnswer &&
       !window.events.some(
         ({ event, elided }) =>
-          ['turn.completed', 'runtime.error', 'turn.aborted'].includes(
-            event.method,
-          ) &&
+          TURN_TERMINAL_METHODS.includes(event.method) &&
           event.turnId === latestLiveAnswer.turnId &&
           !elided,
       )

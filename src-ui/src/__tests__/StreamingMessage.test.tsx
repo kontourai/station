@@ -507,9 +507,47 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     view.unmount();
   });
 
-  test('a status-labelled wait keeps its own count rather than the turn duration', () => {
+  test("a status-labelled wait reads the row's mount clock, not the turn duration (pre-existing limitation)", () => {
     const view = renderRow(Date.parse(serverStart), 'Waiting for approval');
     expect(view.container.textContent).toContain('Waiting for approval · 0:00');
+    act(() => {
+      vi.advanceTimersByTime(4_000);
+    });
+    // Mount-relative: four seconds since this row mounted, not 12:04 since
+    // the turn started, and not since any approval request.
+    expect(view.container.textContent).toContain('Waiting for approval · 0:04');
     view.unmount();
+  });
+
+  test("the sender's row keeps counting when a later server start lands, rather than jumping back", () => {
+    // Mounted at send (the fake clock's now), before the turn has started.
+    const view = renderRow(undefined);
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(view.container.textContent).toContain('Working for 0:30');
+    // turn.started lands; the server's start is 30s after this row mounted.
+    const laterServerStart = now + 30_000;
+    view.rerender(
+      <StreamingMessage
+        sessionId={chatId}
+        agentIcon={<div />}
+        agentIconStyle={{}}
+        fontSize={14}
+        turnStartedAt={laterServerStart}
+      />,
+    );
+    expect(view.container.textContent).toContain('Working for 0:30');
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(view.container.textContent).toContain('Working for 0:32');
+    view.unmount();
+
+    // A row remounted after that reads the server start: its own mount is
+    // later still.
+    const remounted = renderRow(laterServerStart);
+    expect(remounted.container.textContent).toContain('Working for 0:02');
+    remounted.unmount();
   });
 });
