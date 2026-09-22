@@ -2,6 +2,8 @@ import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principa
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  MUSE_TURN_IDLE_TIMEOUT_CODE,
+  MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 
@@ -304,6 +306,25 @@ export function translateChatError(
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
       terminalSession: true,
+    };
+  }
+
+  // #2269: a Station-owned deadline ended the turn. Neither code is an
+  // engine or connection failure, so the fallback's "Retrying may help if
+  // this was a temporary failure" would misstate the cause. The raw message
+  // (with the window/budget in ms) stays behind Details.
+  if (code === MUSE_TURN_IDLE_TIMEOUT_CODE) {
+    return {
+      title: 'Turn stopped after going quiet',
+      body: 'Station stopped this turn after a full idle window with no output and no tool running.',
+      disclosureRaw: true,
+    };
+  }
+  if (code === MUSE_TURN_TOTAL_TIMEOUT_CODE) {
+    return {
+      title: 'Turn stopped at its time budget',
+      body: 'Station stopped this turn when it reached the time budget declared for it.',
+      disclosureRaw: true,
     };
   }
 

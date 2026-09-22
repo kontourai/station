@@ -140,21 +140,23 @@ export interface MuseActiveTurn {
   stdoutOverflowed: boolean;
   terminationPromise?: Promise<boolean>;
   /**
-   * #2269: two per-turn deadlines, both cleared only when the slot is freed,
-   * so a child that emits `run_terminal` and then wedges is still killed
-   * and reaped.
+   * #2269: per-turn deadlines, both cleared only when the slot is freed.
    *
-   * - `totalTimeoutHandle`: absolute budget from turn start; armed once,
-   *   never rescheduled by activity or approval.
+   * - `totalTimeoutHandle`: armed ONLY when the server declared a turn budget
+   *   (`turnTimeoutMs`); absolute from turn start, never rescheduled.
    * - `idleTimeoutHandle`: full silence window with no verified protocol
-   *   activity; rescheduled by `noteVerifiedActivity` alone.
+   *   activity AND no tool in flight; rescheduled by `noteVerifiedActivity`,
+   *   and not armed at all while `openToolCalls` is non-empty.
    */
   totalTimeoutHandle?: ReturnType<typeof setTimeout>;
   idleTimeoutHandle?: ReturnType<typeof setTimeout>;
   /** Resolved idle window for this turn (server-owned config). */
   idleLimitMs: number;
-  /** Resolved absolute budget for this turn (server-owned config). */
-  totalLimitMs: number;
+  /**
+   * Declared absolute budget for this turn (server-owned config), or
+   * `undefined` when none was declared — the default: no total timer.
+   */
+  totalLimitMs: number | undefined;
   /** Wall-clock of the last verified protocol activity (turn start initially). */
   lastProgressAt: number;
   /**

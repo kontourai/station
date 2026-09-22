@@ -21,7 +21,6 @@ import type { ProviderAdapterShape } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
   MUSE_DEFAULT_IDLE_TIMEOUT_MS,
-  MUSE_DEFAULT_TOTAL_TIMEOUT_MS,
   MUSE_MAX_SUPERVISION_TIMEOUT_MS,
   MUSE_PROVIDER_OVERRIDE_ENV,
   MUSE_REFUSED_VALUE_MAX_CHARS,
@@ -32,6 +31,7 @@ import {
   museCredentialPath,
   resolveMuseProviderOverride,
   resolveMuseSupervisionBound,
+  resolveMuseTurnBudget,
 } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
 import {
@@ -2258,13 +2258,10 @@ describe('MuseAdapter tool events', () => {
     await harness.adapter.stopAll();
   });
 
-  test('#2308: a tool start is verified activity once per call id; a replayed start is not', async () => {
+  test('#2269: a tool in flight is never idle-killed, however long it runs; its result re-arms idle', async () => {
     vi.useFakeTimers();
     try {
-      const harness = createHarness({
-        turnIdleTimeoutMs: 1_000,
-        turnTimeoutMs: 60_000,
-      });
+      const harness = createHarness({ turnIdleTimeoutMs: 1_000 });
       await harness.adapter.startSession({
         provider: 'muse',
         threadId: 'thread-tools-idle',
@@ -2278,22 +2275,21 @@ describe('MuseAdapter tool events', () => {
           harness.processes[0].stdout.write(`${line}\n`);
         await vi.advanceTimersByTimeAsync(0);
       };
-      // Lines 1-25 are lifecycle bookkeeping for tasks that have not started
-      // running a tool yet: not activity, so the idle clock keeps running.
-      await emit(...MUSE_13_BASH_TOOL_TURN_LINES.slice(0, 25));
-      await vi.advanceTimersByTimeAsync(900);
-      // t=900: the bash task starts -> idle moves to t=1900.
-      await emit(MUSE_13_BASH_TOOL_TURN_LINES[25]!);
-      await vi.advanceTimersByTimeAsync(600);
-      // t=1500: past the ORIGINAL deadline, alive only because of the start.
+      // Lines 1-26: through the bash task's `started` -> tool in flight.
+      await emit(...MUSE_13_BASH_TOOL_TURN_LINES.slice(0, 26));
+      // Fifty idle windows of silence with the tool still running: nothing
+      // may end the turn (the old policy would have killed it at t=1000).
+      await vi.advanceTimersByTimeAsync(50_000);
       expect(harness.released).toBe(0);
-      // The same start replayed must not buy more time (it would move idle
-      // to t=2500 if it counted).
-      await emit(MUSE_13_BASH_TOOL_TURN_LINES[25]!);
-      await vi.advanceTimersByTimeAsync(450);
-      // t=1950: the t=1900 deadline fired.
+      expect(harness.processes[0].killed).toBe(false);
+      // The result (line 29) closes the tool and re-arms idle from now...
+      await emit(...MUSE_13_BASH_TOOL_TURN_LINES.slice(26, 29));
+      await vi.advanceTimersByTimeAsync(900);
+      expect(harness.released).toBe(0);
+      // ...so a full window of silence AFTER it ends the turn as idle.
+      await vi.advanceTimersByTimeAsync(200);
       expect(harness.released).toBe(1);
-      const events = await drain(harness.iterator, 6, 'tool start idle');
+      const events = await drain(harness.iterator, 6, 'tool in flight idle');
       expect(events.map((event) => event.method)).toEqual([
         'session.started',
         'session.configured',
@@ -2302,7 +2298,7 @@ describe('MuseAdapter tool events', () => {
         'tool.completed',
         'runtime.error',
       ]);
-      expect(events[4]).toMatchObject({ status: 'unresolved' });
+      expect(events[4]).toMatchObject({ status: 'success' });
       expect(events[5]).toMatchObject({ code: MUSE_TURN_IDLE_TIMEOUT_CODE });
     } finally {
       vi.useRealTimers();
@@ -2312,8 +2308,8 @@ describe('MuseAdapter tool events', () => {
 
 /**
  * #2269: idle (default 30 min since last verified protocol activity) plus
- * FIXED total (default 2 h since turn start; explicit `turnTimeoutMs`
- * remains an absolute total override). Spawn-free like the rest of this
+ * a total budget ONLY when `turnTimeoutMs` is declared (no default — owner
+ * direction 2026-09-22). Spawn-free like the rest of this
  * suite: short real-timer budgets for the behavior edges, fake-clock for
  * the headline "active work survives past the old 30-minute wall cutoff".
  */
@@ -2322,9 +2318,8 @@ describe('Muse turn supervision (#2269)', () => {
     vi.useRealTimers();
   });
 
-  test('supervision bounds fail closed to documented defaults, never to disabled', () => {
+  test('the idle bound fails closed to its default; the total bound has no default', () => {
     expect(MUSE_DEFAULT_IDLE_TIMEOUT_MS).toBe(30 * 60_000);
-    expect(MUSE_DEFAULT_TOTAL_TIMEOUT_MS).toBe(2 * 60 * 60_000);
     expect(MUSE_MAX_SUPERVISION_TIMEOUT_MS).toBe(24 * 60 * 60_000);
     for (const invalid of [
       undefined,
@@ -2340,9 +2335,52 @@ describe('Muse turn supervision (#2269)', () => {
     expect(
       resolveMuseSupervisionBound(MUSE_MAX_SUPERVISION_TIMEOUT_MS, 1234),
     ).toBe(MUSE_MAX_SUPERVISION_TIMEOUT_MS);
+
+    // Total: absent means none, not a substitute budget.
+    expect(resolveMuseTurnBudget(undefined)).toEqual({
+      budgetMs: undefined,
+      invalid: false,
+    });
+    for (const invalid of [
+      0,
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      MUSE_MAX_SUPERVISION_TIMEOUT_MS + 1,
+    ]) {
+      expect(resolveMuseTurnBudget(invalid)).toEqual({
+        budgetMs: undefined,
+        invalid: true,
+      });
+    }
+    expect(resolveMuseTurnBudget(500)).toEqual({
+      budgetMs: 500,
+      invalid: false,
+    });
   });
 
-  test('invalid turnTimeoutMs/turnIdleTimeoutMs declare bounded defaults on turn.started', async () => {
+  test('with no declared budget, turn.started declares idle only — no deadline, no total', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-no-budget',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'thread-no-budget',
+      input: 'hi',
+    });
+    const events = await drain(harness.iterator, 3, 'no budget');
+    const supervision = events[2].metadata.supervision;
+    expect(supervision).toEqual({
+      provider: 'muse',
+      turnId: events[2].turnId,
+      startedAt: expect.any(String),
+      idleLimitMs: MUSE_DEFAULT_IDLE_TIMEOUT_MS,
+    });
+    await harness.adapter.stopAll();
+  });
+
+  test('an invalid turnTimeoutMs applies no total budget and is reported once; invalid idle falls back', async () => {
     const harness = createHarness({
       turnTimeoutMs: 0,
       turnIdleTimeoutMs: Number.NaN,
@@ -2358,15 +2396,22 @@ describe('Muse turn supervision (#2269)', () => {
     const events = await drain(harness.iterator, 3, 'invalid bounds');
     expect(events[2]).toMatchObject({ method: 'turn.started' });
     const supervision = events[2].metadata.supervision;
-    expect(supervision).toMatchObject({
-      provider: 'muse',
-      turnId: events[2].turnId,
-      idleLimitMs: MUSE_DEFAULT_IDLE_TIMEOUT_MS,
-      totalLimitMs: MUSE_DEFAULT_TOTAL_TIMEOUT_MS,
+    expect(supervision.idleLimitMs).toBe(MUSE_DEFAULT_IDLE_TIMEOUT_MS);
+    expect(supervision).not.toHaveProperty('totalLimitMs');
+    expect(supervision).not.toHaveProperty('deadlineAt');
+    const budgetWarnings = () =>
+      harness.logger.warn.mock.calls.filter(([message]) =>
+        String(message).includes('turnTimeoutMs=0'),
+      );
+    expect(budgetWarnings()).toHaveLength(1);
+    harness.processes[0].exit(0);
+    await flushIo();
+    await harness.adapter.sendTurn({
+      threadId: 'thread-invalid-bounds',
+      input: 'again',
     });
-    expect(
-      Date.parse(supervision.deadlineAt) - Date.parse(supervision.startedAt),
-    ).toBe(MUSE_DEFAULT_TOTAL_TIMEOUT_MS);
+    expect(budgetWarnings()).toHaveLength(1);
+    await harness.adapter.stopAll();
   });
 
   test('a genuinely silent turn settles with the distinct idle code and frees the slot', async () => {
@@ -2489,43 +2534,99 @@ describe('Muse turn supervision (#2269)', () => {
     }
   });
 
-  test('sustained valid activity still hits the fixed total — and an invalid total never disables it', async () => {
+  test('with no declared budget, a turn with sustained activity is never ended by Station', async () => {
     vi.useFakeTimers();
     try {
-      // `turnTimeoutMs: 0` is invalid: fail-closed to the 2 h fixed total.
-      const harness = createHarness({ turnTimeoutMs: 0 });
+      const harness = createHarness();
       await harness.adapter.startSession({
         provider: 'muse',
-        threadId: 'thread-total',
+        threadId: 'thread-no-total',
       });
       await harness.adapter.sendTurn({
-        threadId: 'thread-total',
+        threadId: 'thread-no-total',
         input: 'hi',
       });
       const minute = 60_000;
-      // Fresh verified activity every 29 minutes keeps idle at bay forever.
-      for (let round = 0; round < 4; round += 1) {
+      // Verified activity every 29 minutes for 10 hours: under the old 2 h
+      // default this turn died at t=120min.
+      for (let round = 0; round < 21; round += 1) {
         await vi.advanceTimersByTimeAsync(29 * minute);
         harness.processes[0].stdout.write(`${MUSE_META_OUTPUT_DELTA_1}\n`);
         await vi.advanceTimersByTimeAsync(0);
       }
-      // t=116min of genuine activity: the absolute budget still ends it.
-      await vi.advanceTimersByTimeAsync(5 * minute);
-      const events = await drain(harness.iterator, 8, 'total policy');
-      const error = events.find((event) => event.method === 'runtime.error');
-      expect(error).toMatchObject({
-        code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
-      });
-      expect(harness.processes[0].killed).toBe(true);
-      expect(harness.released).toBe(1);
-      await harness.adapter.sendTurn({
-        threadId: 'thread-total',
-        input: 'again',
-      });
-      expect(harness.processes).toHaveLength(2);
+      expect(harness.processes[0].killed).toBe(false);
+      expect(harness.released).toBe(0);
+      const events = await drain(harness.iterator, 24, 'no total');
+      expect(
+        events.filter((event) => event.method === 'runtime.error'),
+      ).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('a declared turnTimeoutMs still ends an active turn and is attributed to that budget, without stderr', async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = createHarness({ turnTimeoutMs: 60 * 60_000 });
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-total',
+      });
+      const turn = await harness.adapter.sendTurn({
+        threadId: 'thread-total',
+        input: 'hi',
+      });
+      // muse's routine stderr, present on every real run.
+      harness.processes[0].stderr.write(
+        'muse: workspace root: /work\nwarning: rules file AGENTS.md truncated\n',
+      );
+      const minute = 60_000;
+      for (let round = 0; round < 2; round += 1) {
+        await vi.advanceTimersByTimeAsync(29 * minute);
+        harness.processes[0].stdout.write(`${MUSE_META_OUTPUT_DELTA_1}\n`);
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      // t=58min of genuine activity; the declared 60 min budget still ends it.
+      await vi.advanceTimersByTimeAsync(3 * minute);
+      const events = await drain(harness.iterator, 6, 'declared total');
+      const error = events.find((event) => event.method === 'runtime.error');
+      expect(error).toMatchObject({
+        code: MUSE_TURN_TOTAL_TIMEOUT_CODE,
+        turnId: turn.turnId,
+      });
+      expect(error.message).toContain('3600000ms turn budget declared for it');
+      expect(error.message).not.toContain('workspace root');
+      expect(error.message).not.toContain('truncated');
+      expect(error.message).not.toContain('muse stderr');
+      expect(harness.processes[0].killed).toBe(true);
+      expect(harness.released).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('an idle expiry message does not carry muse’s routine stderr', async () => {
+    const harness = createHarness({ turnIdleTimeoutMs: 40 });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-idle-stderr',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'thread-idle-stderr',
+      input: 'hi',
+    });
+    harness.processes[0].stderr.write(
+      'muse: workspace root: /work\nwarning: rules file AGENTS.md truncated\n',
+    );
+    const events = await drain(harness.iterator, 4, 'idle stderr');
+    expect(events[3]).toMatchObject({
+      method: 'runtime.error',
+      code: MUSE_TURN_IDLE_TIMEOUT_CODE,
+    });
+    expect(events[3].message).toContain('no tool running');
+    expect(events[3].message).not.toContain('workspace root');
+    expect(events[3].message).not.toContain('muse stderr');
   });
 
   test('an unconfirmed deadline kill holds the slot until the late exit', async () => {
@@ -2605,12 +2706,11 @@ describe('Muse turn supervision (#2269)', () => {
     ]);
   });
 
-  test('tool-receipt replay past the bounded retention reads as new — and still never moves total', async () => {
+  test('tool-receipt replay past the bounded retention reads as new idle activity', async () => {
     // The per-turn replay dedup is bounded (oldest-first past the cap): an
     // evicted id replaying reads as new idle activity, because it is still
     // a protocol frame the child actually emitted. This pins that honest
-    // bound rather than claiming every duplicate never reschedules. The
-    // fixed total is unaffected regardless.
+    // bound rather than claiming every duplicate never reschedules.
     vi.useFakeTimers();
     try {
       const harness = createHarness();

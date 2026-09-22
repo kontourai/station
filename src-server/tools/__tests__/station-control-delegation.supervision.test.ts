@@ -84,7 +84,7 @@ describe('delegation supervision projection (#2269)', () => {
             createdAt: '2026-09-20T22:30:01.000Z',
             code: 'muse-turn-idle-timeout',
             message:
-              'Muse turn was idle for 1800000ms with no verified protocol activity (last activity at 2026-09-20T22:00:00.000Z; no progress observed — the turn may have been working quietly) and was terminated.',
+              'Muse turn was idle for 1800000ms with no verified protocol activity and no tool running (last activity at 2026-09-20T22:00:00.000Z), so Station stopped it.',
             retriable: false,
           },
         ],
@@ -130,7 +130,7 @@ describe('delegation supervision projection (#2269)', () => {
             createdAt: '2026-09-21T00:00:01.000Z',
             code: 'muse-turn-timeout',
             message:
-              'Muse did not finish the turn within 7200000ms (absolute turn budget) and was terminated.',
+              'Muse did not finish the turn within the 7200000ms turn budget declared for it, so Station stopped it.',
             retriable: false,
           },
         ],
@@ -141,6 +141,26 @@ describe('delegation supervision projection (#2269)', () => {
       code: 'muse-turn-timeout',
       detail: 'The turn ended at its absolute turn budget.',
     });
+  });
+
+  test('a Muse turn with no declared budget (idle-only declaration) reports no supervision', () => {
+    // Owner direction on #2269: with no `turnTimeoutMs` the Muse adapter
+    // declares only `idleLimitMs` — no deadline, no total. The projection
+    // must read that as "no declared budget", never invent a deadline.
+    const {
+      deadlineAt: _deadline,
+      totalLimitMs: _total,
+      ...idleOnly
+    } = museDeclaration('turn-1');
+    const snapshot = snapshotFor({
+      target: TARGET,
+      detail: {
+        session: { ...observingSession('turn-1'), provider: 'muse' },
+        events: [turnStartedEvent('turn-1', idleOnly)],
+      },
+      metadata: METADATA,
+    });
+    expect(snapshot.supervision).toBeUndefined();
   });
 
   test('time-expiry clamps remaining to zero instead of going negative', () => {

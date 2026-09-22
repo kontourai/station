@@ -101,28 +101,31 @@ built-in scheduler now emits.
 
 ## Delegation turn supervision (#2269)
 
-A delegated task's current turn carries two distinct, finite bounds. Both
-are PER TURN — a follow-up turn gets its own budget; nothing here promises
-an aggregate limit across a whole task or conversation.
+A delegated task's current turn can carry two distinct bounds. Both are PER
+TURN — a follow-up turn gets its own budget; nothing here promises an
+aggregate limit across a whole task or conversation. Station does not end a
+live turn on a schedule it chose itself: the total bound exists only when a
+caller declares it.
 
 | Bound | Owner | Semantics | Muse default |
 |---|---|---|---|
-| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity, and the absolute total still bounds the turn. | 30 min |
-| Total (absolute budget) | Owning adapter | Fixed wall-clock ceiling from turn start. Activity, approval, and progress never move it (`muse-turn-timeout`, unchanged string). An explicit positive finite `turnTimeoutMs` remains an absolute total override — never reinterpreted as idle. | 2 h |
+| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text, a newly started tool, or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). It is not armed while a tool is in flight (a `tool.started` with no result yet); the result re-arms it. Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity. | 30 min |
+| Total (declared budget) | The caller that declares it (server-owned `turnTimeoutMs`) | Wall-clock ceiling from turn start, armed only when declared; activity never moves it. Expiry is `muse-turn-timeout` (unchanged string), attributed to that declared budget. | None |
 
-Both bounds fail closed: absent, zero, negative, NaN, infinite, or above the
-24 h cap resolves to the documented default, never to "no bound". No
-request, child, or user metadata can choose or extend either bound. On the
-current Muse wire a truly silent long tool call is indistinguishable from a
-stuck turn (no `tool.started`/approval evidence exists to report), so the
-idle copy must say no progress was *observed* — never that the turn is
-stalled or confirmed working.
+The idle bound fails closed: absent, zero, negative, NaN, infinite, or above
+the 24 h cap resolves to its default. A declared total outside (0, 24 h]
+applies no total budget and is logged once — a substitute budget nobody
+declared would be the failure this policy removes. No request, child, or
+user metadata can choose or extend either bound. Muse 1.3 reports tool
+starts (#2308), so a long tool call is known work rather than silence; a
+deadline's error message never carries Muse's routine stderr, and the UI
+names the deadline instead of suggesting a retry.
 
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
-no progress was *observed* — quiet providers (notably long Muse tool calls,
-which emit no `tool.started`) may be working quietly, and the marker must
-never be rendered as proof of a stall.
+no progress was *observed* — quiet providers (for example a Muse build
+older than 1.3, which emits no `tool.started`) may be working quietly, and
+the marker must never be rendered as proof of a stall.
 
 An interrupted adapter event consumer is also observation loss, not a turn
 terminal. The shared consumer publishes `runtime.warning` with code
