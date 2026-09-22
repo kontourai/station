@@ -118,7 +118,7 @@ echo "[station pre-push] Veritas readiness"
 npm run --silent veritas:readiness
 
 # ~50-90s (51s wall measured here end to end, preconditions included, with
-# the thirteen lanes run concurrently; station#4273 recorded 82s for the
+# the lanes run concurrently; station#4273 recorded 82s for the
 # aggregate alone), and
 # only when this push changes something a tsc project reads — a .ts/.tsx/
 # .mts/.cts source, any tsconfig, a manifest, or a patch. Everything else in

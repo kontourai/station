@@ -86,7 +86,7 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
-  // that `typecheck:basis-pane`, `typecheck:server`, and `typecheck:ui`
+  // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`
   // resolve as ordinary modules. Generating here (~2s) makes the lane
   // self-sufficient rather than dependent on an earlier install having run
   // in the same tree. Nothing is tracked, so there is nothing to be stale.
