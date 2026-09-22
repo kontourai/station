@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchSSE,
   notifyCredentialChanged,
+  StationSseStallError,
   setClientCredentialResolver,
 } from '../client/http';
 
@@ -1144,5 +1145,175 @@ describe('fetchSSE', () => {
     await stream.completed;
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(cancelled).toHaveBeenCalledTimes(3);
+  });
+});
+
+/**
+ * station#2301: a body that delivers `body` once and then never another byte
+ * and never an error — the shape of a socket that died without telling
+ * anyone (doze, NAT rebind, a WebView resuming onto a dead connection).
+ */
+function silentAfterSseResponse(body: string): Response {
+  const bytes = new TextEncoder().encode(body);
+  let sent = false;
+  return new Response(
+    new ReadableStream({
+      pull(controller) {
+        if (!sent) {
+          sent = true;
+          controller.enqueue(bytes);
+          return;
+        }
+        return new Promise<void>(() => undefined);
+      },
+    }),
+    { headers: { 'Content-Type': 'text/event-stream' } },
+  );
+}
+
+/** A body that writes a keepalive every `everyMs`, forever. */
+function heartbeatSseResponse(everyMs: number): Response {
+  const ping = new TextEncoder().encode('event: ping\ndata: \n\n');
+  return new Response(
+    new ReadableStream({
+      pull(controller) {
+        return new Promise<void>((resolve) => {
+          setTimeout(() => {
+            controller.enqueue(ping);
+            resolve();
+          }, everyMs);
+        });
+      },
+    }),
+    { headers: { 'Content-Type': 'text/event-stream' } },
+  );
+}
+
+function visibilityDocument(hidden: boolean) {
+  const listeners = new Set<() => void>();
+  return {
+    hidden,
+    addEventListener(type: string, listener: () => void) {
+      if (type === 'visibilitychange') listeners.add(listener);
+    },
+    removeEventListener(type: string, listener: () => void) {
+      if (type === 'visibilitychange') listeners.delete(listener);
+    },
+    show() {
+      this.hidden = false;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
+describe('fetchSSE stall watchdog (station#2301)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('abandons a body that goes silent past stallTimeoutMs and reconnects with its cursor', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        silentAfterSseResponse('id: 7\nevent: update\ndata: a\n\n'),
+      )
+      .mockImplementationOnce(
+        async () => new Promise<Response>(() => undefined),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const errors: unknown[] = [];
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      retryDelayMs: 10,
+      stallTimeoutMs: 300,
+      onMessage: () => undefined,
+      onError: (error) => errors.push(error),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Inside the deadline: still the first connection.
+    await vi.advanceTimersByTimeAsync(250);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual([]);
+
+    // Past it (plus one check interval and the backoff): a new request.
+    await vi.advanceTimersByTimeAsync(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(StationSseStallError);
+    const reconnectInit = (fetchMock.mock.calls as unknown[][])[1]?.[1] as
+      | RequestInit
+      | undefined;
+    expect(new Headers(reconnectInit?.headers).get('Last-Event-ID')).toBe('7');
+
+    stream.close();
+  });
+
+  it('never trips while the server keeps writing heartbeats', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce(heartbeatSseResponse(100));
+    vi.stubGlobal('fetch', fetchMock);
+    const errors: unknown[] = [];
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      retryDelayMs: 10,
+      stallTimeoutMs: 300,
+      onMessage: () => undefined,
+      onError: (error) => errors.push(error),
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual([]);
+    stream.close();
+  });
+
+  it('without stallTimeoutMs a silent body is waited on indefinitely (default unchanged)', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(silentAfterSseResponse('data: a\n\n'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      retryDelayMs: 10,
+      onMessage: () => undefined,
+    });
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    stream.close();
+  });
+
+  it('does not reconnect while hidden, and reconnects the moment the page is shown again', async () => {
+    vi.useFakeTimers();
+    const doc = visibilityDocument(true);
+    vi.stubGlobal('document', doc);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(silentAfterSseResponse('id: 3\ndata: a\n\n'))
+      .mockImplementationOnce(
+        async () => new Promise<Response>(() => undefined),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      retryDelayMs: 10,
+      stallTimeoutMs: 300,
+      onMessage: () => undefined,
+    });
+    // Far past the deadline, but hidden: a background page is left alone.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Shown again: the check runs at once, without waiting for an interval.
+    doc.show();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    stream.close();
   });
 });
