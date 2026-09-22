@@ -912,6 +912,7 @@ describe('persistent runner policy', () => {
       '.github/workflows/desktop-rust.yml',
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
+      '.github/workflows/merge-queue-regression.yml',
       '.github/workflows/security-analysis.yml',
     ];
     for (const file of expected) {
@@ -1280,6 +1281,7 @@ describe('persistent runner policy', () => {
     '.github/workflows/security-analysis.yml',
     '.github/workflows/windows-pr-verification.yml',
     '.github/workflows/build-ios.yml',
+    '.github/workflows/merge-queue-regression.yml',
   ])('rejects %s without merge_group queue evaluation', (file) => {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -2768,5 +2770,99 @@ describe('the real workflow corpus', () => {
     ]);
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
+  });
+});
+
+describe('merge-queue regression workflow policy', () => {
+  const file = '.github/workflows/merge-queue-regression.yml';
+  function mergeQueueRegressionDocument() {
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    expect(workflow).toBeTruthy();
+    return structuredClone(workflow?.document) as {
+      jobs: Record<
+        string,
+        { steps: Array<Record<string, unknown>>; [key: string]: unknown }
+      >;
+      [key: string]: unknown;
+    };
+  }
+
+  test('accepts the checked-in workflow (false-positive control)', () => {
+    expect(
+      persistentRunnerPolicyFindings([
+        { file, document: mergeQueueRegressionDocument() },
+      ]),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'an aggregate that runs an action',
+      (steps: Array<Record<string, unknown>>) =>
+        steps.push({ uses: 'example/reusable@full-sha' }),
+    ],
+    [
+      'an aggregate that runs repository code',
+      (steps: Array<Record<string, unknown>>) => {
+        steps[0].run = 'node scripts/anything.mjs';
+      },
+    ],
+    [
+      'an aggregate with a second shell step',
+      (steps: Array<Record<string, unknown>>) =>
+        steps.push({ run: 'echo more' }),
+    ],
+  ])('removes the checkout exemption from %s', (_name, mutate) => {
+    const document = mergeQueueRegressionDocument();
+    mutate(document.jobs['merge-queue-regression'].steps);
+    expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
+      expect.objectContaining({
+        file,
+        jobId: 'merge-queue-regression',
+      }),
+    );
+  });
+
+  test('rejects a test job that stops checking out the explicit candidate', () => {
+    const document = mergeQueueRegressionDocument();
+    const checkout = document.jobs.static.steps.find((step) =>
+      String(step.uses).startsWith('actions/checkout@'),
+    ) as { with: Record<string, unknown> };
+    delete checkout.with.ref;
+    expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
+      {
+        file,
+        jobId: 'static',
+        message:
+          'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA',
+      },
+    );
+  });
+
+  test('rejects write permissions and shared caches', () => {
+    const widened = mergeQueueRegressionDocument();
+    (widened.permissions as Record<string, string>).contents = 'write';
+    expect(
+      persistentRunnerPolicyFindings([{ file, document: widened }]),
+    ).toContainEqual({
+      file,
+      jobId: 'workflow',
+      message:
+        'base-controlled PR workflows must declare only permissions: { contents: read }',
+    });
+    const cached = mergeQueueRegressionDocument();
+    const setupNode = cached.jobs.ordinary.steps.find((step) =>
+      String(step.uses).startsWith('actions/setup-node@'),
+    ) as { with: Record<string, unknown> };
+    setupNode.with.cache = 'pnpm';
+    expect(
+      persistentRunnerPolicyFindings([{ file, document: cached }]),
+    ).toContainEqual({
+      file,
+      jobId: 'ordinary',
+      message: 'base-controlled PR workflows must not use shared caches',
+    });
   });
 });

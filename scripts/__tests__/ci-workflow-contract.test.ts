@@ -26,6 +26,8 @@ import {
   sanitizeLookupDiagnostic,
   validateAndroidBuildRun,
 } from '../resolve-android-build-run.mjs';
+import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
+import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -2238,5 +2240,117 @@ describe('the root tauri script roots itself at the app directory', () => {
     );
     expect(buildTask).toContain('"run"');
     expect(buildTask).toContain('"tauri"');
+  });
+});
+
+describe('merge-queue regression workflow covers the full regression', () => {
+  type Step = { run?: string; env?: Record<string, string>; uses?: string };
+  type Job = {
+    name?: string;
+    if?: string;
+    needs?: string[];
+    strategy?: { matrix?: { include?: Array<Record<string, string>> } };
+    steps?: Step[];
+  };
+  function document() {
+    const entry = readWorkflowDocuments().find(
+      (candidate) =>
+        candidate.file === '.github/workflows/merge-queue-regression.yml',
+    );
+    expect(entry, 'merge-queue-regression.yml must exist').toBeDefined();
+    return entry?.document as { jobs: Record<string, Job> };
+  }
+
+  // Every place a phase selection may live: a step's PHASES env, a matrix
+  // entry's `phases`, or a literal driver invocation in a run block.
+  function selections(jobs: Record<string, Job>) {
+    const found: Array<{ job: string; text: string }> = [];
+    for (const [job, definition] of Object.entries(jobs)) {
+      for (const entry of definition.strategy?.matrix?.include ?? [])
+        if (entry.phases) found.push({ job, text: entry.phases });
+      for (const step of definition.steps ?? []) {
+        if (step.env?.PHASES && !step.env.PHASES.includes('${{'))
+          found.push({ job, text: step.env.PHASES });
+        for (const line of (step.run ?? '').split('\n'))
+          if (line.includes('run-full-regression-phases.mjs --phase='))
+            found.push({ job, text: line });
+      }
+    }
+    return found;
+  }
+
+  function phaseIds(text: string) {
+    return [...text.matchAll(/--phase=([A-Za-z0-9-]+)/g)].map(
+      (match) => match[1],
+    );
+  }
+
+  it('selects exactly the FULL_REGRESSION_PHASES ids, so a new phase fails until the queue runs it', () => {
+    const covered = new Set(
+      selections(document().jobs).flatMap(({ text }) => phaseIds(text)),
+    );
+    expect([...covered].sort()).toEqual(
+      FULL_REGRESSION_PHASES.map(({ id }) => id).sort(),
+    );
+    // Every resource class in the corpus runner reaches the queue through a
+    // phase: the ordinary shards and each serialized group.
+    for (const group of VITEST_CORPUS_GROUP_NAMES)
+      expect(
+        [...covered].some(
+          (id) =>
+            id === `test-full-${group}` || id.startsWith(`test-full-${group}-`),
+        ),
+        `corpus group ${group}`,
+      ).toBe(true);
+  });
+
+  it('runs every ordinary shard exactly once', () => {
+    const ordinary = selections(document().jobs)
+      .flatMap(({ text }) => phaseIds(text))
+      .filter((id) => id.startsWith('test-full-ordinary-'));
+    const expected = FULL_REGRESSION_PHASES.map(({ id }) => id).filter((id) =>
+      id.startsWith('test-full-ordinary-'),
+    );
+    expect(expected).toHaveLength(8);
+    expect([...ordinary].sort()).toEqual([...expected].sort());
+  });
+
+  it('splits process-heavy into slices that cover the group exactly once', () => {
+    const heavy = selections(document().jobs).filter(({ text }) =>
+      phaseIds(text).includes('test-full-process-heavy'),
+    );
+    const shards = heavy.map(({ text }) => {
+      const match = /--process-heavy-shard=(\d+)\/(\d+)/.exec(text);
+      expect(match, `process-heavy without a slice: ${text}`).not.toBeNull();
+      return { index: Number(match?.[1]), count: Number(match?.[2]) };
+    });
+    expect(shards.length).toBeGreaterThanOrEqual(2);
+    const counts = new Set(shards.map(({ count }) => count));
+    expect(counts.size).toBe(1);
+    expect(shards.map(({ index }) => index).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: shards[0].count }, (_, index) => index + 1),
+    );
+  });
+
+  it('runs phases only through the driver and gates on one aggregate check', () => {
+    const { jobs } = document();
+    const text = workflow('merge-queue-regression.yml');
+    expect(text).not.toMatch(/:raw\b/);
+    const aggregate = jobs['merge-queue-regression'];
+    expect(aggregate.name).toBe('Merge-queue regression');
+    expect(aggregate.if).toBe(
+      "always() && github.event_name != 'pull_request_target'",
+    );
+    const testJobs = Object.keys(jobs).filter(
+      (job) => job !== 'merge-queue-regression',
+    );
+    expect([...(aggregate.needs ?? [])].sort()).toEqual([...testJobs].sort());
+    for (const job of testJobs)
+      expect(jobs[job].if, job).toBe(
+        "github.event_name != 'pull_request_target'",
+      );
+    expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
+      'npm run test:android',
+    );
   });
 });
