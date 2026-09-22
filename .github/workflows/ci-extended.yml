@@ -1,12 +1,10 @@
 name: CI Extended
 
 on:
-  # #518 owner decision (2026-08-30): the self-hosted fleet consumes zero
-  # Actions minutes. Its cost is physical fleet capacity, coordinated through
-  # the existing leases, so Extended runs weekly plus on explicit dispatch.
-  schedule:
-    # Saturday 11:30 UTC — after the daily gallery (07:30) and Nightly (09:00).
-    - cron: '30 11 * * 6'
+  # Dispatch only. #518 (2026-08-30) made this weekly; every scheduled run
+  # through 2026-09-19 failed (3 of 3, infrastructure errors in the coverage
+  # lane), so the schedule produced a red nobody acted on. Restore the cron
+  # once a dispatched run is green.
   workflow_dispatch:
 
 permissions:
