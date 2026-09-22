@@ -358,4 +358,32 @@ describe('GET /events lifecycle log (station#2301)', () => {
       lifecycleCalls(logger, 'Orchestration event stream closed')[0],
     ).toMatchObject({ reason: 'authorization-expired', framesWritten: 0 });
   });
+
+  test('a client that leaves while the store read never settles is released at once', async () => {
+    const presence = new OrchestrationStreamPresence();
+    const service = {
+      ...makeService(),
+      listSessionReadModel: vi.fn(() => new Promise<unknown[]>(() => {})),
+    };
+    const app = createOrchestrationRoutes(service as never, {
+      eventBus: new EventBus(),
+      logger: makeLogger(),
+      getUserId: () => 'user-1',
+      presence,
+    });
+    const base = await listen(app);
+    const controller = new AbortController();
+    const response = await fetch(`${base}/events`, {
+      signal: controller.signal,
+    });
+    await waitFor(() => service.listSessionReadModel.mock.calls.length > 0);
+    expect(presence.isConnected('user-1')).toBe(true);
+
+    controller.abort();
+    await response.body?.cancel().catch(() => {});
+    // The read is still pending, so `finally` has not run — yet the user is
+    // no longer counted as present.
+    await waitFor(() => !presence.isConnected('user-1'));
+    expect(presence.isConnected('user-1')).toBe(false);
+  });
 });

@@ -22,8 +22,13 @@ interface OwnedStream {
   connection: FetchSseConnection;
   /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
   parked: boolean;
-  /** When a recovery signal last asked a parked stream to try again. */
+  /**
+   * Monotonic time (`monotonicNow`) of the last refusal or retry of a parked
+   * stream.
+   */
   lastParkedRetryAt: number;
+  /** The one deferred retry a throttled recovery signal left behind. */
+  deferredParkedRetry: ReturnType<typeof setTimeout> | undefined;
   /** The connection's loop has returned, whether or not it was aborted. */
   ended: boolean;
 }
@@ -34,11 +39,39 @@ interface OwnedStream {
  * runtime rate-limits those per peer (10 a minute by default). Focus and
  * visibility fire as often as a user switches windows, so without a floor a
  * user with a revoked credential could trip that limiter on their own peer
- * and have the request that fixes the credential refused too. One retry per
- * this interval is the SDK's own backoff ceiling; the credential-change wake
- * is not throttled, because it means something actually changed.
+ * and have the request that fixes the credential refused too.
+ *
+ * A signal inside the floor is DEFERRED, not dropped: it leaves one retry
+ * scheduled for the end of the floor. A parked stream has no timer of its
+ * own, so a dropped signal could strand it — a user who repaired the
+ * authorization on the host and came back 20s after the refusal would then
+ * sit on "Connection needs attention" until they happened to switch windows
+ * again. The credential-change wake is not throttled, because it means the
+ * saved credential actually changed.
  */
 const PARKED_RETRY_MIN_INTERVAL_MS = 30_000;
+
+/**
+ * The floor is an interval, so it reads a monotonic clock: a wall clock
+ * stepped backwards (NTP, a manual change, sleep fix-up) would otherwise hold
+ * every parked retry off until the clock caught up.
+ */
+function monotonicNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
+}
+
+function clearDeferredParkedRetry(owned: OwnedStream): void {
+  if (owned.deferredParkedRetry === undefined) return;
+  clearTimeout(owned.deferredParkedRetry);
+  owned.deferredParkedRetry = undefined;
+}
+
+function retryParkedStream(owned: OwnedStream): void {
+  clearDeferredParkedRetry(owned);
+  if (!owned.parked || owned.ended || owned.connection.signal.aborted) return;
+  owned.lastParkedRetryAt = monotonicNow();
+  owned.connection.retry();
+}
 
 /**
  * station#2301: the single-flight registry. An entry counts only while its
@@ -164,14 +197,19 @@ export function ensureOrchestrationEventStream(
   if (existing && !existing.ended && !existing.connection.signal.aborted) {
     // A parked stream is alive but waiting for a credential change that may
     // have arrived by a path that never announced it. Ask again at most once
-    // per floor interval — see `PARKED_RETRY_MIN_INTERVAL_MS`.
-    const now = Date.now();
-    if (
-      existing.parked &&
-      now - existing.lastParkedRetryAt >= PARKED_RETRY_MIN_INTERVAL_MS
-    ) {
-      existing.lastParkedRetryAt = now;
-      existing.connection.retry();
+    // per floor interval, deferring rather than dropping a signal that lands
+    // inside it — see `PARKED_RETRY_MIN_INTERVAL_MS`.
+    if (existing.parked) {
+      const wait =
+        existing.lastParkedRetryAt +
+        PARKED_RETRY_MIN_INTERVAL_MS -
+        monotonicNow();
+      if (wait <= 0) retryParkedStream(existing);
+      else if (existing.deferredParkedRetry === undefined)
+        existing.deferredParkedRetry = setTimeout(
+          () => retryParkedStream(existing),
+          wait,
+        );
     }
     return;
   }
@@ -312,10 +350,11 @@ export function ensureOrchestrationEventStream(
       owned.parked = true;
       // The floor counts from the rejection, so the first recovery signal
       // after a 401 does not immediately repeat it.
-      owned.lastParkedRetryAt = Date.now();
+      owned.lastParkedRetryAt = monotonicNow();
     },
     onRetry: () => {
       owned.parked = false;
+      clearDeferredParkedRetry(owned);
     },
   });
 
@@ -323,6 +362,7 @@ export function ensureOrchestrationEventStream(
     connection: authenticatedStream,
     parked: false,
     lastParkedRetryAt: 0,
+    deferredParkedRetry: undefined,
     ended: false,
   };
   activeSources.set(apiBase, owned);
@@ -332,9 +372,19 @@ export function ensureOrchestrationEventStream(
   void authenticatedStream.completed.then(
     () => {
       owned.ended = true;
+      clearDeferredParkedRetry(owned);
     },
-    () => {
+    (error: unknown) => {
       owned.ended = true;
+      clearDeferredParkedRetry(owned);
+      // Not silent: the dock must stop claiming a live feed, and whatever
+      // threw is a defect worth seeing. The next recovery signal replaces it.
+      if (setStreamConnectionState(apiBase, 'interrupted'))
+        recordReplayConnection(apiBase, 'interrupted');
+      console.error(
+        '[orchestration] event stream ended unexpectedly; it will be replaced on the next ensure',
+        error,
+      );
     },
   );
 }

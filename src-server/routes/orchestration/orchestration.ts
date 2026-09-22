@@ -3802,6 +3802,13 @@ export function createOrchestrationRoutes(
         const clientGone = new Promise<void>((resolve) => {
           const onGone = () => {
             closeReason ??= 'client-abort';
+            // Release what the connection holds NOW, not in `finally`: a store
+            // read that never settles would otherwise keep this user counted
+            // as present (suppressing push-on-completion) and subscribed. All
+            // three are idempotent; `finally` repeats them harmlessly.
+            stopKeepAlive?.();
+            unsub?.();
+            releasePresence();
             resolve();
           };
           if (stream.aborted) onGone();

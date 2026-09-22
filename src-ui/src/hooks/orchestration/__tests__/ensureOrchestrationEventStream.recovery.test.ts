@@ -32,6 +32,7 @@ vi.mock('../eventHandlers', () => ({
 }));
 
 import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
+import { getStreamConnectionState } from '../streamConnectionState';
 
 const encoder = new TextEncoder();
 
@@ -127,10 +128,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Moves `Date.now` forward without faking the timers the streams run on. */
+/**
+ * Moves the monotonic clock the parked-retry floor reads, without faking the
+ * timers the streams run on.
+ */
 function advanceClock(ms: number) {
-  const now = Date.now() + ms;
-  vi.spyOn(Date, 'now').mockReturnValue(now);
+  const now = performance.now() + ms;
+  vi.spyOn(performance, 'now').mockReturnValue(now);
 }
 
 describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
@@ -289,6 +293,9 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
   });
 
   test('a stream whose loop ends without an abort is replaced too', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
     const apiBase = 'http://recovery.test/rejected-loop';
     script(apiBase, ['network']);
     // The UI's onError throwing inside the SDK's catch rejects the loop
@@ -304,9 +311,52 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     ensureOrchestrationEventStream(apiBase);
     await settle();
     expect(requestsTo(apiBase)).toHaveLength(1);
+    // ...and the dock stops claiming a live feed, loudly.
+    expect(getStreamConnectionState(apiBase).phase).toBe('interrupted');
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('event stream ended unexpectedly'),
+      expect.any(Error),
+    );
 
     ensureOrchestrationEventStream(apiBase);
     await settle();
     expect(requestsTo(apiBase)).toHaveLength(2);
+  });
+
+  test('a recovery signal inside the floor is deferred to its end, not dropped', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+        'performance',
+        'Date',
+      ],
+    });
+    try {
+      const apiBase = 'http://recovery.test/parked-deferred';
+      script(apiBase, 'always-401');
+      ensureOrchestrationEventStream(apiBase);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(requestsTo(apiBase)).toHaveLength(1);
+
+      // The user comes back 20s after the refusal: too soon to ask again...
+      await vi.advanceTimersByTimeAsync(20_000);
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(requestsTo(apiBase)).toHaveLength(1);
+
+      // ...but the signal is kept: one retry when the floor ends.
+      await vi.advanceTimersByTimeAsync(10_001);
+      expect(requestsTo(apiBase)).toHaveLength(2);
+
+      // And only one: with no further signal the parked stream stays quiet.
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(requestsTo(apiBase)).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

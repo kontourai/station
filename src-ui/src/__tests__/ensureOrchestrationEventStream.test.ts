@@ -116,6 +116,39 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1);
   });
+
+  it('past the retry floor, a remount retries the SAME parked stream — still one owner', async () => {
+    vi.useFakeTimers();
+    const origin = 'https://ensure-orchestration-orphan-late.example.test';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+      // The remount's retry of the one owner.
+      .mockResolvedValueOnce(
+        openSseResponseWithOneFrame(orchestrationEventFrame('evt-late')),
+      )
+      // Only reached if a second stream exists alongside it.
+      .mockResolvedValueOnce(
+        openSseResponseWithOneFrame(orchestrationEventFrame('evt-late')),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    ensureOrchestrationEventStream(origin);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    ensureOrchestrationEventStream(origin);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
+    );
+
+    // A credential wake finds nothing else parked to resume.
+    notifyCredentialChanged(origin);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**
