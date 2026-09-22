@@ -17,6 +17,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
+  retainRequestedNonModelOptions,
 } from '../../utils/modelCapabilities';
 import {
   isChatErrorMarker,
@@ -82,6 +83,12 @@ export function handleTurnStartedEvent(
     currentChat?.defaultModel,
     effectiveModel,
   );
+  const consumesRequestedOptions =
+    acceptedExplicitChoice &&
+    modelControlOptionsMatch(
+      currentChat?.requestedProviderOptions,
+      effectiveModelOptions,
+    );
   const acceptedNewChatChoice =
     currentChat?.modelSource === 'session override' &&
     currentChat.model === effectiveModel;
@@ -235,10 +242,7 @@ export function handleTurnStartedEvent(
       ? {
           requestedModel: undefined,
           requestedModelSource: undefined,
-          ...(modelControlOptionsMatch(
-            currentChat?.requestedProviderOptions,
-            effectiveModelOptions,
-          )
+          ...(consumesRequestedOptions
             ? { requestedProviderOptions: undefined }
             : {}),
           ...(currentChat?.requestedModel !== null
@@ -249,7 +253,12 @@ export function handleTurnStartedEvent(
     ...(effectiveModel
       ? {
           providerOptions: replaceModelControlOptions(
-            currentChat?.providerOptions ?? {},
+            consumesRequestedOptions
+              ? retainRequestedNonModelOptions(
+                  currentChat?.providerOptions,
+                  currentChat?.requestedProviderOptions,
+                )
+              : (currentChat?.providerOptions ?? {}),
             effectiveModelOptions,
           ),
         }

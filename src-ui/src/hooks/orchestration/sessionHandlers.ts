@@ -8,6 +8,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
+  retainRequestedNonModelOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
 import type { OrchestrationEvent } from './types';
@@ -41,6 +42,17 @@ export function handleSessionLifecycleEvent(
   const currentChat = activeChatsStore.getChatForExecutionSession(
     event.threadId,
   );
+  const acknowledgesRequest = acknowledgesModelRequest(
+    currentChat?.requestedModel,
+    currentChat?.defaultModel,
+    effectiveModel,
+  );
+  const consumesRequestedOptions =
+    acknowledgesRequest &&
+    modelControlOptionsMatch(
+      currentChat?.requestedProviderOptions,
+      effectiveModelOptions,
+    );
   activeChatsStore.updateChat(event.threadId, {
     provider: event.provider,
     orchestrationProvider: event.provider,
@@ -53,18 +65,11 @@ export function handleSessionLifecycleEvent(
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
-    ...(acknowledgesModelRequest(
-      currentChat?.requestedModel,
-      currentChat?.defaultModel,
-      effectiveModel,
-    )
+    ...(acknowledgesRequest
       ? {
           requestedModel: undefined,
           requestedModelSource: undefined,
-          ...(modelControlOptionsMatch(
-            currentChat?.requestedProviderOptions,
-            effectiveModelOptions,
-          )
+          ...(consumesRequestedOptions
             ? { requestedProviderOptions: undefined }
             : {}),
           ...(currentChat?.requestedModel !== null
@@ -75,7 +80,12 @@ export function handleSessionLifecycleEvent(
     ...(effectiveModel
       ? {
           providerOptions: replaceModelControlOptions(
-            currentChat?.providerOptions ?? {},
+            consumesRequestedOptions
+              ? retainRequestedNonModelOptions(
+                  currentChat?.providerOptions,
+                  currentChat?.requestedProviderOptions,
+                )
+              : (currentChat?.providerOptions ?? {}),
             effectiveModelOptions,
           ),
         }

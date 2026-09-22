@@ -184,6 +184,26 @@ export function replaceModelControlOptions(
 }
 
 /**
+ * The confirmed option bag once a model report CONSUMES the request bag
+ * (`requestedProviderOptions: undefined`). A report acknowledges only model
+ * controls, but the request bag also carries choices with their own
+ * confirmation path — the approval posture, an ACP session mode. Dropping the
+ * bag without carrying those over made an explicit "Never ask (full access)"
+ * vanish from the chat the moment the session started: the composer chip,
+ * which reads `requestedProviderOptions ?? providerOptions`, then found no
+ * session override and read "Default" while the session ran with full access
+ * (#2321). Model controls are left to `replaceModelControlOptions`.
+ */
+export function retainRequestedNonModelOptions(
+  current: Record<string, unknown> | undefined,
+  requested: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const retained: Record<string, unknown> = { ...(requested ?? {}) };
+  for (const key of MODEL_CONTROL_KEYS) delete retained[key];
+  return { ...(current ?? {}), ...retained };
+}
+
+/**
  * A report can acknowledge picker-owned controls only when every meaningful
  * model control agrees. Non-model options (for example approval posture) are
  * deliberately excluded: they have their own confirmation path.

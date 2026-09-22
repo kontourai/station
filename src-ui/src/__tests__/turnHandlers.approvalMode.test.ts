@@ -8,6 +8,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
 }));
 
+import { render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 
@@ -337,4 +340,84 @@ describe('lastAppliedApprovalMode tracking from session.configured / turn.starte
       requestedProviderOptions: { effort: 'low' },
     });
   });
+});
+
+describe('an explicit approval choice survives the model report that consumes the request bag (#2321)', () => {
+  const CHOICE_THREAD_ID = 'approval-choice-thread';
+
+  beforeEach(() => {
+    activeChatsStore.removeChat(CHOICE_THREAD_ID);
+    activeChatsStore.initChat(CHOICE_THREAD_ID, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Codex Chat',
+    });
+    // A new chat with a picked model, then "Never ask (full access)"
+    // confirmed before the first send (useChatInput.handleApprovalModeChange
+    // writes only the request bag).
+    activeChatsStore.updateChat(CHOICE_THREAD_ID, {
+      requestedModel: 'gpt-5-codex',
+      requestedModelSource: 'session override',
+      requestedProviderOptions: { approvalMode: 'never' },
+    });
+  });
+
+  /** The composer pill, fed exactly as ChatDockBody feeds it. */
+  function renderComposerPill() {
+    const chat = activeChatsStore.getSnapshot()[CHOICE_THREAD_ID];
+    render(
+      createElement(ApprovalModeChip, {
+        engineConnectionId: 'codex',
+        sessionOverride: (chat.requestedProviderOptions ?? chat.providerOptions)
+          ?.approvalMode,
+        lastAppliedApprovalMode: chat.lastAppliedApprovalMode,
+        onChange: vi.fn(),
+      }),
+    );
+    return screen.getByRole('button', { name: /^Approval mode:/ });
+  }
+
+  test.each([
+    [
+      'session.configured',
+      {
+        method: 'session.configured',
+        sessionId: CHOICE_THREAD_ID,
+        metadata: {
+          approvalMode: 'never',
+          effectiveModel: 'gpt-5-codex',
+          effectiveModelOptions: {},
+        },
+      },
+    ],
+    [
+      'turn.started',
+      {
+        method: 'turn.started',
+        turnId: 'turn-1',
+        metadata: {
+          approvalMode: 'never',
+          effectiveModel: 'gpt-5-codex',
+          effectiveModelOptions: {},
+        },
+      },
+    ],
+  ])(
+    'after %s the pill still shows full access, not Default',
+    (_name, event) => {
+      handleOrchestrationEvent('http://localhost', {
+        provider: 'codex',
+        threadId: CHOICE_THREAD_ID,
+        createdAt: '2026-09-22T00:00:00.000Z',
+        ...event,
+      } as Parameters<typeof handleOrchestrationEvent>[1]);
+
+      const chat = activeChatsStore.getSnapshot()[CHOICE_THREAD_ID];
+      // The model report consumed the request bag…
+      expect(chat.requestedProviderOptions).toBeUndefined();
+      // …and the approval choice moved to the confirmed bag instead of vanishing.
+      expect(chat.providerOptions?.approvalMode).toBe('never');
+      expect(renderComposerPill().textContent).toBe('ApprovalFull access');
+    },
+  );
 });

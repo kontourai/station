@@ -6,6 +6,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
+  retainRequestedNonModelOptions,
 } from '../../utils/modelCapabilities';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
@@ -93,33 +94,46 @@ export function buildOrchestrationSnapshotSyncPlan(
 
   const sessionUpdates = payload.sessions
     .map((session) => {
-      if (!chats[session.threadId]) return null;
+      const chat = chats[session.threadId];
+      if (!chat) return null;
+      const acknowledgesRequest = acknowledgesModelRequest(
+        chat.requestedModel,
+        chat.defaultModel,
+        session.reportedModel ?? session.effectiveModel ?? session.model,
+      );
+      const consumesRequestedOptions =
+        acknowledgesRequest &&
+        modelControlOptionsMatch(
+          chat.requestedProviderOptions,
+          session.effectiveModelOptions,
+        );
+      // Consuming the request bag must not drop the non-model choices it
+      // carried (approval posture), whether or not this snapshot reports
+      // model controls (#2321).
+      const confirmedOptions = consumesRequestedOptions
+        ? retainRequestedNonModelOptions(
+            chat.providerOptions,
+            chat.requestedProviderOptions,
+          )
+        : (chat.providerOptions ?? {});
       return {
         threadId: session.threadId,
         updates: {
           provider: session.provider,
           model:
             session.reportedModel ?? session.effectiveModel ?? session.model,
-          ...(acknowledgesModelRequest(
-            chats[session.threadId]?.requestedModel,
-            chats[session.threadId]?.defaultModel,
-            session.reportedModel ?? session.effectiveModel ?? session.model,
-          )
+          ...(acknowledgesRequest
             ? {
                 // The model can acknowledge independently from controls: a
                 // late B+high report must not consume a newer B+low request.
                 requestedModel: undefined,
                 requestedModelSource: undefined,
-                ...(modelControlOptionsMatch(
-                  chats[session.threadId]?.requestedProviderOptions,
-                  session.effectiveModelOptions,
-                )
+                ...(consumesRequestedOptions
                   ? { requestedProviderOptions: undefined }
                   : {}),
-                ...(chats[session.threadId]?.requestedModel !== null
+                ...(chat.requestedModel !== null
                   ? {
-                      modelSource:
-                        chats[session.threadId]?.requestedModelSource,
+                      modelSource: chat.requestedModelSource,
                     }
                   : {}),
               }
@@ -127,11 +141,13 @@ export function buildOrchestrationSnapshotSyncPlan(
           ...(session.effectiveModel
             ? {
                 providerOptions: replaceModelControlOptions(
-                  chats[session.threadId]?.providerOptions ?? {},
+                  confirmedOptions,
                   session.effectiveModelOptions,
                 ),
               }
-            : {}),
+            : consumesRequestedOptions
+              ? { providerOptions: confirmedOptions }
+              : {}),
           orchestrationProvider: session.provider,
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,
