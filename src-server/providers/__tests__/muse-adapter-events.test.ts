@@ -2,11 +2,15 @@ import { describe, expect, test } from 'vitest';
 import {
   buildMuseExecArgs,
   mapMuseFinishReason,
+  observeMuseToolTask,
   parseMuseLine,
   splitMuseLines,
   translateMuseRecord,
 } from '../adapters/muse-adapter-events.js';
+import type { MuseToolTaskBinding } from '../adapters/muse-adapter-types.js';
 import {
+  MUSE_13_BASH_CALL_ID,
+  MUSE_13_BASH_TOOL_TURN_LINES,
   MUSE_ECHO_COMMAND_ACCEPTED,
   MUSE_ECHO_OUTPUT_DELTA,
   MUSE_ECHO_RUN_STARTED,
@@ -87,14 +91,12 @@ describe('translateMuseRecord', () => {
   });
 
   // Every one of these is a deliberate drop, not an oversight: Station already
-  // publishes the session/turn rows they restate, and `task_lifecycle` names
-  // no tool, arguments, or output — synthesizing `tool.*` from it would be a
-  // label with nothing deriving it.
+  // publishes the session/turn rows they restate. (`task_lifecycle` is no
+  // longer dropped — #2308, see 'muse 1.3 tool start' below.)
   test.each([
     ['command_accepted', MUSE_ECHO_COMMAND_ACCEPTED],
     ['session_run_linked', MUSE_ECHO_SESSION_RUN_LINKED],
     ['run_started', MUSE_ECHO_RUN_STARTED],
-    ['task_lifecycle', MUSE_ECHO_TASK_LIFECYCLE],
     ['run_model_configured', MUSE_META_MODEL_CONFIGURED],
   ])('drops %s', (_label, line) => {
     expect(translate(line)).toEqual({ kind: 'ignored' });
@@ -324,8 +326,142 @@ describe('tool_result translation', () => {
     });
   });
 
-  it('still ignores task_lifecycle, which names no tool and carries no output', () => {
-    const record = parseMuseLine(MUSE_ECHO_TASK_LIFECYCLE);
-    expect(translateMuseRecord(record!)).toEqual({ kind: 'ignored' });
+  it("a model task's lifecycle record carries no tool identity and opens nothing", () => {
+    const effect = translateMuseRecord(
+      parseMuseLine(MUSE_ECHO_TASK_LIFECYCLE)!,
+    );
+    expect(effect).toEqual({
+      kind: 'task-lifecycle',
+      taskId: 'fa2007a2-344f-449a-8194-a76a7a83707b',
+      phase: 'side_effect_intent',
+      toolName: null,
+      toolCallId: null,
+    });
+    const bindings = new Map<string, MuseToolTaskBinding>();
+    expect(observeMuseToolTask(bindings, effect as never, 500)).toBeNull();
+    // Not even remembered: only tool evidence or a start earns a binding.
+    expect(bindings.size).toBe(0);
+  });
+});
+
+/**
+ * #2308: folds a stream through `translateMuseRecord` + `observeMuseToolTask`
+ * exactly as the adapter does, returning the tool starts/completions in
+ * stream order.
+ */
+function foldToolEffects(lines: readonly string[]) {
+  const bindings = new Map<string, MuseToolTaskBinding>();
+  const out: Array<
+    | { kind: 'started'; toolName: string; toolCallId: string; line: number }
+    | { kind: 'completed'; toolName: string; toolCallId: string; line: number }
+  > = [];
+  lines.forEach((line, index) => {
+    const record = parseMuseLine(line);
+    if (!record) return;
+    const effect = translateMuseRecord(record);
+    if (effect.kind === 'task-lifecycle') {
+      const start = observeMuseToolTask(bindings, effect, 500);
+      if (start) out.push({ kind: 'started', ...start, line: index + 1 });
+    } else if (effect.kind === 'tool-completed') {
+      out.push({
+        kind: 'completed',
+        toolName: effect.toolName,
+        toolCallId: effect.toolCallId,
+        line: index + 1,
+      });
+    }
+  });
+  return { out, bindings };
+}
+
+describe('muse 1.3 tool start (#2308, real capture)', () => {
+  test('the capture is the 55-record one-bash-call turn it claims to be', () => {
+    expect(MUSE_13_BASH_TOOL_TURN_LINES).toHaveLength(55);
+    for (const line of MUSE_13_BASH_TOOL_TURN_LINES) {
+      expect(parseMuseLine(line)).not.toBeNull();
+    }
+  });
+
+  test('opens exactly one start, named and keyed exactly as its tool_result', () => {
+    const { out, bindings } = foldToolEffects(MUSE_13_BASH_TOOL_TURN_LINES);
+    expect(out).toEqual([
+      // Line 26 is the bash task's `task.lifecycle.started`: the start fires
+      // there, not at `proposed`/`scheduled`/`side_effect_intent`.
+      {
+        kind: 'started',
+        toolName: 'bash',
+        toolCallId: MUSE_13_BASH_CALL_ID,
+        line: 26,
+      },
+      {
+        kind: 'completed',
+        toolName: 'bash',
+        toolCallId: MUSE_13_BASH_CALL_ID,
+        line: 29,
+      },
+    ]);
+    // Every task in the capture reached a final phase, so nothing lingers.
+    expect(bindings.size).toBe(0);
+  });
+
+  test('model and reminder tasks never open a tool, even though they start', () => {
+    const toolTaskId = '01a0cab2-5d4f-7600-886e-a77b38b198a3';
+    const others = MUSE_13_BASH_TOOL_TURN_LINES.filter(
+      (line) => !line.includes(toolTaskId),
+    );
+    // Sanity: the filtered stream still has started tasks (model/reminder).
+    expect(others.some((line) => line.includes('"kind":"started"'))).toBe(true);
+    expect(
+      foldToolEffects(others).out.filter((e) => e.kind === 'started'),
+    ).toEqual([]);
+  });
+
+  test('a stream without task_kind / idempotency_key (older muse) opens no start', () => {
+    const stripped = MUSE_13_BASH_TOOL_TURN_LINES.map((line) => {
+      const decoded = JSON.parse(line);
+      const event = decoded.payload?.event;
+      if (event && typeof event === 'object') {
+        delete event.task_kind;
+        delete event.idempotency_key;
+      }
+      return JSON.stringify(decoded);
+    });
+    const { out } = foldToolEffects(stripped);
+    // The completion still arrives — today's behavior — with no start.
+    expect(out.map((e) => e.kind)).toEqual(['completed']);
+  });
+
+  test('either identity alone is not enough to open a start', () => {
+    for (const field of ['task_kind', 'idempotency_key'] as const) {
+      const stripped = MUSE_13_BASH_TOOL_TURN_LINES.map((line) => {
+        const decoded = JSON.parse(line);
+        const event = decoded.payload?.event;
+        if (event && typeof event === 'object') delete event[field];
+        return JSON.stringify(decoded);
+      });
+      expect(
+        foldToolEffects(stripped).out.filter((e) => e.kind === 'started'),
+      ).toEqual([]);
+    }
+  });
+
+  test('a start that precedes its binding still fires once, when the binding lands', () => {
+    const lines = [...MUSE_13_BASH_TOOL_TURN_LINES];
+    // Move the bash task's `started` (line 26) ahead of its `proposed` (22).
+    const [started] = lines.splice(25, 1);
+    lines.splice(21, 0, started!);
+    const starts = foldToolEffects(lines).out.filter(
+      (e) => e.kind === 'started',
+    );
+    expect(starts).toHaveLength(1);
+    expect(starts[0]).toMatchObject({ toolCallId: MUSE_13_BASH_CALL_ID });
+  });
+
+  test('a replayed started record does not open a second start', () => {
+    const lines = [...MUSE_13_BASH_TOOL_TURN_LINES];
+    lines.splice(26, 0, lines[25]!);
+    expect(
+      foldToolEffects(lines).out.filter((e) => e.kind === 'started'),
+    ).toHaveLength(1);
   });
 });

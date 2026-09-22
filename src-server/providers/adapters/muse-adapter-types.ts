@@ -163,6 +163,31 @@ export interface MuseActiveTurn {
    * (the transcript is a fact) but never reschedules idle.
    */
   seenToolCallIds: string[];
+  /**
+   * #2308: what each muse task has revealed about itself so far, keyed by
+   * `task_id` (see `observeMuseToolTask`). Bounded by the same cap as
+   * `seenToolCallIds`; a task is dropped at its final lifecycle phase.
+   */
+  toolTasks: Map<string, MuseToolTaskBinding>;
+  /**
+   * Tool calls this turn published `tool.started` for and has not yet seen a
+   * result for (`call_id` -> tool name). Whatever remains when the turn
+   * settles is closed as `unresolved`.
+   */
+  openToolCalls: Map<string, string>;
+}
+
+/**
+ * What `observeMuseToolTask` has learned about one muse task so far. A task
+ * only becomes a tool start once BOTH identities and `started` have been
+ * observed for the same `task_id`.
+ */
+export interface MuseToolTaskBinding {
+  toolName?: string;
+  toolCallId?: string;
+  started: boolean;
+  /** True once this binding has produced its start. */
+  emitted?: boolean;
 }
 
 export interface MuseSessionRecord {

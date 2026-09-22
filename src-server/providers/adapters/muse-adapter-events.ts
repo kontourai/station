@@ -10,7 +10,10 @@
  * on the Codex adapter's lifetime or its JSON-RPC vocabulary.
  */
 
-import type { MuseProviderMode } from './muse-adapter-types.js';
+import type {
+  MuseProviderMode,
+  MuseToolTaskBinding,
+} from './muse-adapter-types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -88,6 +91,24 @@ type MuseTurnEffect =
       status: 'success' | 'error';
       output: string | null;
     }
+  | {
+      kind: 'task-lifecycle';
+      /** `task_lifecycle.event.task_id` (falls back to the payload's own). */
+      taskId: string;
+      /** `task_lifecycle.event.kind`: proposed/scheduled/started/completed/... */
+      phase: string;
+      /**
+       * Tool name read from `event.task_kind` (`tool.<name>`); present only on
+       * the `proposed` record of a tool task, `null` everywhere else.
+       */
+      toolName: string | null;
+      /**
+       * muse's tool `call_id`, read from `event.idempotency_key`
+       * (`tool:<call_id>`); present only on a tool task's `scheduled` and
+       * `side_effect_intent` records, `null` everywhere else.
+       */
+      toolCallId: string | null;
+    }
   | { kind: 'ignored' };
 
 /**
@@ -131,18 +152,24 @@ export function mapMuseFinishReason(
  *   `run_model_configured`, `task_stream_linked` restate what Station already
  *   published from `startSession`/`sendTurn`; re-emitting them duplicates
  *   transcript rows.
- * - `task_lifecycle` is an internal scheduler ping (proposed/accepted/
- *   scheduled/started/status/completed/failed). It names no tool, carries no
- *   arguments and no output, so synthesizing `tool.*` events from it would be
- *   a label with nothing deriving it.
- * - `tool_result` IS that payload, and is mapped: it carries `call_id`, plus
+ * - `tool_result` is mapped to `tool-completed`: it carries `call_id`, plus
  *   `correlation_facts.{tool_name,outcome}` and the result `text`.
- * - No `tool.started` is emitted. `call_id` appears exactly once in a live
- *   turn — on `tool_result` — so a start event would have to borrow
- *   `task_lifecycle`'s `task_id`, and start/completion would then carry
- *   different ids that never pair. Arguments are likewise absent from the live
- *   stream (they exist only in `muse export`'s durable log), so
- *   `tool.started.arguments` would have nothing behind it either.
+ * - `task_lifecycle` (proposed/accepted/scheduled/side_effect_intent/started/
+ *   output/status/completed/failed) is surfaced as a `task-lifecycle` effect
+ *   so {@link observeMuseToolTask} can open a `tool.started`. Against muse
+ *   0.2.1 this was dropped: its lifecycle records named no tool and carried
+ *   no `call_id`, so a start could only have borrowed `task_id` and would
+ *   never have paired with the result. Muse 1.3.0-R3401.1 (a live
+ *   `muse exec --json` capture of a one-bash-call turn, kept verbatim as
+ *   `__tests__/fixtures/muse-1.3-bash-tool-turn.jsonl`) names both on the
+ *   tool's task: `proposed.task_kind` is `tool.bash`, and
+ *   `scheduled.idempotency_key` / `side_effect_intent.idempotency_key` are
+ *   `tool:<call_id>` — the same `call_id` its `tool_result` carries. Model
+ *   and reminder tasks use other prefixes (`model.*`/`model:`,
+ *   `reminder.*`/`reminder_child:`) and never open a tool.
+ * - Arguments are still absent from the live stream (in the 1.3 capture the
+ *   command first appears in `task_lifecycle.output`, after `started`), so
+ *   `tool.started` carries no `arguments` rather than a guessed value.
  * - **No `token-usage.updated` is emitted, because the live envelope carries
  *   no usage kind to map (archive#4197 audit, muse 0.2.1-R1215.1).** Verified
  *   two ways: a live `muse exec --json --provider echo` run (full stream
@@ -207,9 +234,101 @@ export function translateMuseRecord(record: MuseRecord): MuseTurnEffect {
         output: extractStringField(record.payload, 'text'),
       };
     }
+    case 'task_lifecycle': {
+      const event = isRecord(record.payload.event)
+        ? record.payload.event
+        : undefined;
+      const phase = event ? extractStringField(event, 'kind') : null;
+      const taskId =
+        (event ? extractStringField(event, 'task_id') : null) ??
+        extractStringField(record.payload, 'task_id');
+      if (!event || !phase || !taskId) return { kind: 'ignored' };
+      return {
+        kind: 'task-lifecycle',
+        taskId,
+        phase,
+        toolName: stripNonEmptyPrefix(
+          extractStringField(event, 'task_kind'),
+          'tool.',
+        ),
+        toolCallId: stripNonEmptyPrefix(
+          extractStringField(event, 'idempotency_key'),
+          'tool:',
+        ),
+      };
+    }
     default:
       return { kind: 'ignored' };
   }
+}
+
+function stripNonEmptyPrefix(
+  value: string | null,
+  prefix: string,
+): string | null {
+  if (value === null || !value.startsWith(prefix)) return null;
+  const rest = value.slice(prefix.length);
+  return rest.length > 0 ? rest : null;
+}
+
+/** Task phases after which muse reports nothing further for a task. */
+const MUSE_TASK_FINAL_PHASES = new Set(['completed', 'failed', 'cancelled']);
+
+/**
+ * Folds one `task-lifecycle` effect into `bindings` (keyed by `task_id`) and
+ * returns the tool start it completes, if any.
+ *
+ * A start is returned only when the same task has shown a `tool.<name>`
+ * `task_kind`, a `tool:<call_id>` idempotency key, AND a `started` phase.
+ * In the 1.3 capture the name and id are both known by `scheduled`, so the
+ * start fires at `started`; the fold is order-independent anyway, so a
+ * build that reports `started` before the binding still fires once the
+ * binding lands. `started` rather than `scheduled`/`side_effect_intent` is
+ * the trigger because it is the record that says the tool is executing —
+ * a task still awaiting approval is not running. A muse build without these
+ * fields never completes a binding, so it degrades to today's behavior: no
+ * start, only the `tool_result` completion.
+ *
+ * Returns each binding at most once (`emitted`), and forgets a task at its
+ * final phase. `maxEntries` bounds the map: oldest tasks are evicted first.
+ * Once-per-`call_id` across tasks is the caller's job (the adapter keeps
+ * its own per-turn record of started call ids).
+ */
+export function observeMuseToolTask(
+  bindings: Map<string, MuseToolTaskBinding>,
+  effect: Extract<MuseTurnEffect, { kind: 'task-lifecycle' }>,
+  maxEntries: number,
+): { toolName: string; toolCallId: string } | null {
+  if (MUSE_TASK_FINAL_PHASES.has(effect.phase)) {
+    bindings.delete(effect.taskId);
+    return null;
+  }
+  const isStart = effect.phase === 'started';
+  let binding = bindings.get(effect.taskId);
+  if (!binding) {
+    // Only tasks that have shown tool evidence (or a start that evidence may
+    // still follow) are remembered; everything else is not a tool candidate.
+    if (!effect.toolName && !effect.toolCallId && !isStart) return null;
+    if (bindings.size >= maxEntries) {
+      const oldest = bindings.keys().next().value;
+      if (oldest !== undefined) bindings.delete(oldest);
+    }
+    binding = { started: false };
+    bindings.set(effect.taskId, binding);
+  }
+  if (effect.toolName) binding.toolName ??= effect.toolName;
+  if (effect.toolCallId) binding.toolCallId ??= effect.toolCallId;
+  if (isStart) binding.started = true;
+  if (
+    binding.emitted ||
+    !binding.started ||
+    !binding.toolName ||
+    !binding.toolCallId
+  ) {
+    return null;
+  }
+  binding.emitted = true;
+  return { toolName: binding.toolName, toolCallId: binding.toolCallId };
 }
 
 /**

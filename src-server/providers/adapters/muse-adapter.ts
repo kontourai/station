@@ -43,6 +43,7 @@ import {
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   buildMuseExecArgs,
+  observeMuseToolTask,
   parseMuseLine,
   splitMuseLines,
   translateMuseRecord,
@@ -59,6 +60,7 @@ import {
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
 } from './muse-adapter-types.js';
+import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
  * Only `warn`/`info` are used, so the option is typed to exactly that slice —
@@ -822,6 +824,8 @@ export class MuseAdapter implements ProviderAdapterShape {
       totalLimitMs: this.turnTimeoutMs,
       lastProgressAt: turnStartedAt,
       seenToolCallIds: [],
+      toolTasks: new Map(),
+      openToolCalls: new Map(),
       outputText: '',
       settled: false,
       interrupted: false,
@@ -1151,11 +1155,46 @@ export class MuseAdapter implements ProviderAdapterShape {
       return;
     }
 
+    if (effect.kind === 'task-lifecycle') {
+      // #2308: muse 1.3 names the tool and its `call_id` on the tool task's
+      // lifecycle records, so a start can be opened under the SAME id its
+      // `tool_result` later closes (see `observeMuseToolTask`).
+      const start = observeMuseToolTask(
+        turn.toolTasks,
+        effect,
+        MUSE_SEEN_TOOL_CALL_IDS_MAX,
+      );
+      if (!start) return;
+      // At most one start per call id, and never a start for a call whose
+      // result already arrived: that would reopen a finished row.
+      if (
+        turn.openToolCalls.has(start.toolCallId) ||
+        turn.seenToolCallIds.includes(start.toolCallId)
+      ) {
+        return;
+      }
+      turn.openToolCalls.set(start.toolCallId, start.toolName);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'tool.started',
+        turnId: turn.turnId,
+        itemId: `tool:${start.toolCallId}`,
+        toolCallId: start.toolCallId,
+        toolName: start.toolName,
+      });
+      // A newly started tool is verified activity, counted once per call id
+      // exactly like a newly identified result.
+      this.noteVerifiedActivity(record, turn);
+      return;
+    }
+
     if (effect.kind === 'tool-completed') {
-      // Only `tool.completed` — the live stream emits `call_id` exactly once,
-      // on the result, so there is no honest id to open a `tool.started` with
-      // (see muse-adapter-events.ts). Its own itemId keeps the tool row
-      // distinct from the assistant text item.
+      // Its own itemId keeps the tool row distinct from the assistant text
+      // item, and matches the `tool.started` itemId for the same call.
+      turn.openToolCalls.delete(effect.toolCallId);
       const isNewToolResult = !turn.seenToolCallIds.includes(effect.toolCallId);
       const preview = projectBoundedToolOutput(effect.output);
       this.publish({
@@ -1356,6 +1395,33 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (turn.settled) return;
     turn.settled = true;
     const nowIso = this.now().toISOString();
+
+    // #2308: a tool this turn started but never reported a result for is
+    // closed BEFORE the turn's terminal. Muse's engine run is one process
+    // per turn, and once the turn settles this adapter reads nothing more
+    // from it, so no result can ever reach Station for these calls. The
+    // projection deliberately carries an open call past its turn
+    // (station#1558), so without this the row would read "running" forever
+    // — observed with muse tasks that are proposed and never complete.
+    // `unresolved` + the shared sentence says exactly that: no result, fate
+    // unknown — not a failure and not a cancellation.
+    const openToolCalls = [...turn.openToolCalls];
+    turn.openToolCalls.clear();
+    for (const [toolCallId, toolName] of openToolCalls) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'tool.completed',
+        turnId: turn.turnId,
+        itemId: `tool:${toolCallId}`,
+        toolCallId,
+        toolName,
+        status: 'unresolved',
+        output: UNRESOLVED_TOOL_OUTPUT,
+      });
+    }
 
     switch (outcome.kind) {
       case 'aborted':
@@ -1564,8 +1630,8 @@ export class MuseAdapter implements ProviderAdapterShape {
 
   /**
    * Records verified protocol activity and reschedules the IDLE deadline
-   * only. Callers are `handleStdoutLine`'s text-delta and new-tool-result
-   * branches — i.e. facts the child actually emitted — never stderr noise,
+   * only. Callers are `handleStdoutLine`'s text-delta, new-tool-start and
+   * new-tool-result branches — i.e. facts the child actually emitted — never stderr noise,
    * malformed lines, heartbeats, or duplicate receipts.
    */
   private noteVerifiedActivity(

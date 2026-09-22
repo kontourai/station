@@ -38,8 +38,11 @@ import {
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
 } from '../adapters/muse-adapter-types.js';
+import { UNRESOLVED_TOOL_OUTPUT } from '../adapters/unresolved-tool-output.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
+  MUSE_13_BASH_CALL_ID,
+  MUSE_13_BASH_TOOL_TURN_LINES,
   MUSE_ECHO_OUTPUT_DELTA,
   MUSE_ECHO_RUN_STARTED,
   MUSE_ECHO_RUN_TERMINAL,
@@ -2133,34 +2136,177 @@ describe('MuseAdapter tool events', () => {
     }
   });
 
-  test('does not publish tool.started — the live stream has no id to open one with', async () => {
+  test('#2308: a real muse 1.3 bash turn publishes tool.started, then its tool.completed under the same id', async () => {
     const harness = createHarness();
     await harness.adapter.startSession({
       provider: 'muse',
       threadId: 'thread-tools-start',
     });
-    await harness.adapter.sendTurn({
+    const turn = await harness.adapter.sendTurn({
       threadId: 'thread-tools-start',
       input: 'go',
     });
-    await writeLines(harness.processes[0], MUSE_TOOL_RESULT);
-    harness.processes[0].stdout.write(
-      `${JSON.stringify({
-        schema_version: 1,
-        record_type: 'event',
-        payload: { kind: 'run_terminal', terminal: 'completed', text: 'done' },
-      })}\n`,
-    );
-    await flushIo();
+    await writeLines(harness.processes[0], ...MUSE_13_BASH_TOOL_TURN_LINES);
 
-    const methods: string[] = [];
-    for (let i = 0; i < 5; i += 1) {
-      methods.push((await nextEvent(harness.iterator, `m${i}`)).method);
+    const events = await drain(harness.iterator, 7, 'muse 1.3 tool turn');
+    expect(events.map((event) => event.method)).toEqual([
+      'session.started',
+      'session.configured',
+      'turn.started',
+      'tool.started',
+      'tool.completed',
+      'content.text-delta',
+      'turn.completed',
+    ]);
+    const started = events[3];
+    expect(started).toEqual({
+      eventId: expect.any(String),
+      provider: 'muse',
+      threadId: 'thread-tools-start',
+      createdAt: expect.any(String),
+      method: 'tool.started',
+      turnId: turn.turnId,
+      itemId: `tool:${MUSE_13_BASH_CALL_ID}`,
+      toolCallId: MUSE_13_BASH_CALL_ID,
+      toolName: 'bash',
+    });
+    // Nothing in the live stream carries arguments at start.
+    expect(started).not.toHaveProperty('arguments');
+    expect(events[4]).toMatchObject({
+      method: 'tool.completed',
+      turnId: turn.turnId,
+      itemId: started.itemId,
+      toolCallId: MUSE_13_BASH_CALL_ID,
+      toolName: 'bash',
+      status: 'success',
+    });
+    await expectNoFurtherEvent(harness.iterator, 'muse 1.3 tool turn');
+    await harness.adapter.stopAll();
+  });
+
+  test('#2308: a stream without task_kind/idempotency_key (older muse) publishes no tool.started', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-tools-old',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'thread-tools-old',
+      input: 'go',
+    });
+    const stripped = MUSE_13_BASH_TOOL_TURN_LINES.map((line) => {
+      const decoded = JSON.parse(line);
+      const event = decoded.payload?.event;
+      if (event && typeof event === 'object') {
+        delete event.task_kind;
+        delete event.idempotency_key;
+      }
+      return JSON.stringify(decoded);
+    });
+    await writeLines(harness.processes[0], ...stripped);
+
+    const events = await drain(harness.iterator, 6, 'old-shape tool turn');
+    expect(events.map((event) => event.method)).toEqual([
+      'session.started',
+      'session.configured',
+      'turn.started',
+      'tool.completed',
+      'content.text-delta',
+      'turn.completed',
+    ]);
+    await expectNoFurtherEvent(harness.iterator, 'old-shape tool turn');
+    await harness.adapter.stopAll();
+  });
+
+  test('#2308: a started tool with no result is closed as unresolved before the turn terminal', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-tools-open',
+    });
+    const turn = await harness.adapter.sendTurn({
+      threadId: 'thread-tools-open',
+      input: 'go',
+    });
+    // Everything through the bash task's `started` (line 26), then straight
+    // to the run's terminal: the tool never reports a result.
+    await writeLines(
+      harness.processes[0],
+      ...MUSE_13_BASH_TOOL_TURN_LINES.slice(0, 26),
+      MUSE_13_BASH_TOOL_TURN_LINES[54]!,
+    );
+
+    const events = await drain(harness.iterator, 6, 'open tool at terminal');
+    expect(events.map((event) => event.method)).toEqual([
+      'session.started',
+      'session.configured',
+      'turn.started',
+      'tool.started',
+      'tool.completed',
+      'turn.completed',
+    ]);
+    expect(events[4]).toMatchObject({
+      method: 'tool.completed',
+      turnId: turn.turnId,
+      itemId: `tool:${MUSE_13_BASH_CALL_ID}`,
+      toolCallId: MUSE_13_BASH_CALL_ID,
+      toolName: 'bash',
+      status: 'unresolved',
+      output: UNRESOLVED_TOOL_OUTPUT,
+    });
+    await expectNoFurtherEvent(harness.iterator, 'open tool at terminal');
+    await harness.adapter.stopAll();
+  });
+
+  test('#2308: a tool start is verified activity once per call id; a replayed start is not', async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = createHarness({
+        turnIdleTimeoutMs: 1_000,
+        turnTimeoutMs: 60_000,
+      });
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-tools-idle',
+      });
+      await harness.adapter.sendTurn({
+        threadId: 'thread-tools-idle',
+        input: 'go',
+      });
+      const emit = async (...lines: string[]) => {
+        for (const line of lines)
+          harness.processes[0].stdout.write(`${line}\n`);
+        await vi.advanceTimersByTimeAsync(0);
+      };
+      // Lines 1-25 are lifecycle bookkeeping for tasks that have not started
+      // running a tool yet: not activity, so the idle clock keeps running.
+      await emit(...MUSE_13_BASH_TOOL_TURN_LINES.slice(0, 25));
+      await vi.advanceTimersByTimeAsync(900);
+      // t=900: the bash task starts -> idle moves to t=1900.
+      await emit(MUSE_13_BASH_TOOL_TURN_LINES[25]!);
+      await vi.advanceTimersByTimeAsync(600);
+      // t=1500: past the ORIGINAL deadline, alive only because of the start.
+      expect(harness.released).toBe(0);
+      // The same start replayed must not buy more time (it would move idle
+      // to t=2500 if it counted).
+      await emit(MUSE_13_BASH_TOOL_TURN_LINES[25]!);
+      await vi.advanceTimersByTimeAsync(450);
+      // t=1950: the t=1900 deadline fired.
+      expect(harness.released).toBe(1);
+      const events = await drain(harness.iterator, 6, 'tool start idle');
+      expect(events.map((event) => event.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'tool.started',
+        'tool.completed',
+        'runtime.error',
+      ]);
+      expect(events[4]).toMatchObject({ status: 'unresolved' });
+      expect(events[5]).toMatchObject({ code: MUSE_TURN_IDLE_TIMEOUT_CODE });
+    } finally {
+      vi.useRealTimers();
     }
-    expect(methods).toContain('tool.completed');
-    // `call_id` appears only on the result; a started event would have to
-    // borrow task_lifecycle's task_id and would never pair.
-    expect(methods).not.toContain('tool.started');
   });
 });
 
