@@ -627,6 +627,28 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
     },
   );
 
+  // Post-send invalidate: `status` stays `success` with the pre-child cache
+  // while the refetch is in flight. That window must read as `pending`
+  // (skeleton), never as established `absent` ("Session record missing").
+  test.each([
+    ['success', true, 'pending'],
+    ['success', false, 'absent'],
+    ['error', true, 'pending'],
+    ['error', false, 'error'],
+  ])(
+    'reads a not-found session under query status %s fetching %s as %s',
+    (status, fetching, expected) => {
+      const { result } = render({
+        orchestrationSessions: [] as any,
+        orchestrationSessionsStatus: status as never,
+        orchestrationSessionsFetching: fetching,
+      });
+
+      expect(result.current.activeOrchestrationSession).toBeNull();
+      expect(result.current.activeOrchestrationSessionRead).toBe(expected);
+    },
+  );
+
   test('a found session reads present regardless of the query status field', () => {
     const { result } = render({
       orchestrationSessions: [{ threadId: chatSession.id }] as any,
