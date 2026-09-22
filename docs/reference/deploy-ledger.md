@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-22T05:16:06Z | nightly-android | 0.1.11-nightly.2456 | `8b599ec` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35687186254) |
 | 2026-09-22T05:12:56Z | nightly-npm | 0.6.0-nightly.2456.35687186254 | `8b599ec` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35687186254) |
 | 2026-09-20T11:53:33Z | nightly-npm | 0.6.0-nightly.2454.35506930127 | `6a52072` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35506930127) |
 | 2026-09-20T05:15:52Z | nightly-npm | 0.6.0-nightly.2454.35489589152 | `49543b7` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35489589152) |
@@ -118,6 +119,66 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-22T05:16:06Z · nightly-android · 0.1.11-nightly.2456
+
+- Ship SHA: `8b599ecbf8de37fde7439ccf185393f3a0571ee3`
+- Artifact built at: `2026-09-22T04:39:25.810Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 35687186254)
+
+### Changelog
+
+Commits since `79b6112` ([full sha](https://github.com/kontourai/station/commit/79b6112cabedf1b2dccd9e3690dc7b363bf090f3)):
+
+**Features**
+
+- [#2287](https://github.com/kontourai/station/pull/2287) feat(projects): claim portable delegation attempts before execution
+- [#2278](https://github.com/kontourai/station/pull/2278) feat(projects): isolate query persistence by verified authority
+- [#2285](https://github.com/kontourai/station/pull/2285) feat(projects): reauthorize portable conversation follow-ups
+- [#2281](https://github.com/kontourai/station/pull/2281) feat(cli): wait for delegated work without controlling execution
+- [#2279](https://github.com/kontourai/station/pull/2279) feat(projects): let invited admins manage scoped access
+- [#2273](https://github.com/kontourai/station/pull/2273) feat(projects): execute portable resources through receiver-owned admission
+- [#2276](https://github.com/kontourai/station/pull/2276) feat(connections): configure optional broker startup and offline identity
+- [#2268](https://github.com/kontourai/station/pull/2268) feat(projects): scope app reads and optimistic reordering to captured authority
+- [#2275](https://github.com/kontourai/station/pull/2275) feat(connections): compose encrypted broker transport and qualify the real browser path
+- [#2272](https://github.com/kontourai/station/pull/2272) feat(projects): permit scoped invited-admin access and guard response delivery
+- [#2267](https://github.com/kontourai/station/pull/2267) feat(chat): complete history, reference and recovery controls
+- [#2270](https://github.com/kontourai/station/pull/2270) feat(auth): expose credential-bound authority observations for multi-home clients
+- [#2245](https://github.com/kontourai/station/pull/2245) feat(connections): qualify production Pion application transport
+- [#2254](https://github.com/kontourai/station/pull/2254) feat(projects): scope catalogue reads to connection authority
+- [#2258](https://github.com/kontourai/station/pull/2258) feat(projects): add reviewed Task sharing controls
+- [#2263](https://github.com/kontourai/station/pull/2263) feat(projects): add explicit receiver-local execution offers
+- [#2257](https://github.com/kontourai/station/pull/2257) feat(accounts): read shared Tasks from the guest Project view
+- [#2252](https://github.com/kontourai/station/pull/2252) feat(projects): edit portable execution roots with revision guards
+- [#2248](https://github.com/kontourai/station/pull/2248) feat(projects): authorize explicitly shared Task reads
+- [#2250](https://github.com/kontourai/station/pull/2250) feat(broker): add self-hosted signaling and connector lifecycle
+- [#2249](https://github.com/kontourai/station/pull/2249) feat(accounts): complete restricted guest Project entry
+- [#2247](https://github.com/kontourai/station/pull/2247) feat(projects): support portable repository-relative execution roots
+
+**Fixes**
+
+- [#2294](https://github.com/kontourai/station/pull/2294) fix(tests): retarget the boot-seed ordering pin and de-clock the runtime import
+- [#2293](https://github.com/kontourai/station/pull/2293) fix(e2e): prefer the toolbar chip over setup-launcher in openConnections
+- [#2291](https://github.com/kontourai/station/pull/2291) fix(pipeline): clear the six Nightly full-regression reds on main
+- [#2284](https://github.com/kontourai/station/pull/2284) fix(deps): preserve pnpm shim invocation names with canonical drivers
+- [#2283](https://github.com/kontourai/station/pull/2283) fix(orchestration): preserve active turns after event observation errors
+- [#2271](https://github.com/kontourai/station/pull/2271) fix(delegation): separate progress stalls from finite turn budgets
+- [#2255](https://github.com/kontourai/station/pull/2255) fix(agents): show current failure after a previously passing smoke
+- [#2261](https://github.com/kontourai/station/pull/2261) fix(ui): make the mobile navigation close target reliably tappable
+- [#2259](https://github.com/kontourai/station/pull/2259) fix(acp): report actionable delegation and reconnect failures
+- [#2246](https://github.com/kontourai/station/pull/2246) fix(auth): bind collaborator Devices to Project authority
+
+**Docs**
+
+- [#2244](https://github.com/kontourai/station/pull/2244) docs(connectivity): select the self-operated broker implementation path
+
+**Other**
+
+- [#2286](https://github.com/kontourai/station/pull/2286) test(orchestration): assert trusted follow-up forwarding context
+- [#2277](https://github.com/kontourai/station/pull/2277) test(connections): qualify encrypted shared work across isolated machines
+- [#2262](https://github.com/kontourai/station/pull/2262) test(projects): exercise real guest invitation and shared Task access
+- [#2239](https://github.com/kontourai/station/pull/2239) build(deps): bump adm-zip from 0.6.0 to 0.6.1
 
 ## 2026-09-22T05:12:56Z · nightly-npm · 0.6.0-nightly.2456.35687186254
 
