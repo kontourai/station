@@ -445,38 +445,55 @@ describe('Draft lifecycle derivation (#2310)', () => {
     expect(summaryFor(target, session).draft).toBe(false);
   });
 
-  test('content or tool output anywhere in the lineage is activity (review L4)', () => {
-    // The nightly home's second lineage child: streamed text and started a
-    // tool with no turn.started of its own. Here the ROOT carries only that
-    // output, so no turn fact exists anywhere in the conversation.
-    const root = upsert(ROOT);
-    seedNeverPrompted(ROOT);
-    append({
-      threadId: ROOT,
-      method: 'content.text-delta',
-      turnId: 'unseen-turn',
-      delta: 'partial output',
-    });
-    const child = `${ROOT}:session:6acdd623-1420-4a50-8f54-e804f66a07b2`;
-    store.reserveNextConversationSession({
-      conversationId: ROOT,
-      predecessorSessionId: ROOT,
-      proposedSessionId: child,
-      createdAt: at(5_000),
-    });
-    const childSession = upsert(child, { createdAt: at(5_000) });
-    seedNeverPrompted(child, ROOT);
-    append({
-      threadId: child,
-      method: 'tool.started',
-      turnId: 'unseen-turn-2',
-      toolCallId: 'call-1',
-      toolName: 'shell',
-    });
+  // Review L4. The discriminating session is always the one with NO output
+  // of its own, so only the lineage read can see the activity: the nightly
+  // home's second lineage child streamed text and started a tool with no
+  // turn.started anywhere nearby.
+  describe.each([
+    {
+      family: 'content',
+      output: {
+        method: 'content.text-delta',
+        turnId: 'unseen-turn',
+        delta: 'partial output',
+      },
+    },
+    {
+      family: 'tool',
+      output: {
+        method: 'tool.started',
+        turnId: 'unseen-turn',
+        toolCallId: 'call-1',
+        toolName: 'shell',
+      },
+    },
+  ])(
+    '$family output elsewhere in the lineage is activity (review L4)',
+    ({ output }) => {
+      test('a quiet child of a conversation whose only activity is that output is not a Draft', () => {
+        upsert(ROOT);
+        seedNeverPrompted(ROOT);
+        append({ threadId: ROOT, ...output });
+        const child = `${ROOT}:session:6acdd623-1420-4a50-8f54-e804f66a07b2`;
+        store.reserveNextConversationSession({
+          conversationId: ROOT,
+          predecessorSessionId: ROOT,
+          proposedSessionId: child,
+          createdAt: at(5_000),
+        });
+        const childSession = upsert(child, { createdAt: at(5_000) });
+        seedNeverPrompted(child, ROOT);
 
-    expect(summaryFor(ROOT, root).draft).toBe(false);
-    expect(summaryFor(child, childSession).draft).toBe(false);
-  });
+        // No turn fact anywhere, and none of the output is the child's own.
+        expect(
+          store
+            .listSessionProjectionEvents(child)
+            .some((event) => /^(turn|content|tool)\./.test(event.method)),
+        ).toBe(false);
+        expect(summaryFor(child, childSession).draft).toBe(false);
+      });
+    },
+  );
 
   test('the list route carries the lineage-aware answer', async () => {
     upsert(ROOT);
