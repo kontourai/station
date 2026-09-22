@@ -54,6 +54,7 @@
     "./windows-path-trust": "./src/windows-path-trust.ts",
     "./runtime-events": "./src/runtime-events.ts",
     "./runtime-path-resolver": "./src/runtime-path-resolver.ts",
+    "./source-watch": "./src/source-watch.ts",
     "./conversation-message": "./src/conversation-message.ts",
     "./runtime-event-projection": "./src/runtime-event-projection.ts",
     "./usage-fold": "./src/usage-fold.ts",
