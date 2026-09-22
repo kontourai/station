@@ -250,6 +250,37 @@ describe('full-regression phase driver', () => {
     );
     expect(control).toEqual({ status: 0, error: null });
   }, 120_000);
+
+  it('binds the history ref to the checked-out HEAD, overriding inheritance', async () => {
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+    const inherited = process.env.STATION_VERIFICATION_HISTORY_REF;
+    process.env.STATION_VERIFICATION_HISTORY_REF = 'f'.repeat(40);
+    try {
+      const outcome = await runPhaseProcess(
+        {
+          id: 'history-ref',
+          args: [
+            'exec',
+            '--',
+            'node',
+            '-e',
+            `process.exit(process.env.STATION_VERIFICATION_HISTORY_REF === '${head}' ? 0 : 3)`,
+          ],
+          timeoutMs: 60_000,
+        },
+        { cwd: root },
+      );
+      expect(outcome).toEqual({ status: 0, error: null });
+    } finally {
+      if (inherited === undefined)
+        delete process.env.STATION_VERIFICATION_HISTORY_REF;
+      else process.env.STATION_VERIFICATION_HISTORY_REF = inherited;
+    }
+  }, 120_000);
 });
 
 describe('workspace mutation check', () => {

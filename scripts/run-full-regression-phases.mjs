@@ -41,6 +41,7 @@ import {
   collectWorkspaceProvenance,
   digestVerificationDependencies,
 } from './lib/test-reliability.mjs';
+import { bindVerificationRequestEnvironment } from './lib/verification-request-environment.mjs';
 import { FULL_REGRESSION_PHASES } from './verification-lanes.mjs';
 
 const PROCESS_HEAVY_PHASE_ID = 'test-full-process-heavy';
@@ -209,12 +210,18 @@ export async function runPhaseProcess(
 ) {
   const { executable, prefix } = npmInvocation();
   const label = `full-regression phase ${step.id}`;
+  // The canonical lane binds STATION_VERIFICATION_HISTORY_REF to the request's
+  // HEAD, so history-reading tests (commit-message corpora) inspect the
+  // candidate rather than origin/main. The binding overwrites inheritance.
+  const env = bindVerificationRequestEnvironment(process.env, {
+    headSha: git(['rev-parse', 'HEAD'], cwd).toString('utf8').trim(),
+  });
   const execution = executeOwnedProcess(
     executable,
     [...prefix, ...step.args],
     spawnProcess,
     label,
-    { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+    { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
   );
   // Stream the child's bytes to this job log as they arrive, and validate
   // them through the same capture the canonical runner uses.
