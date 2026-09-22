@@ -2,6 +2,7 @@ import { once } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { RuntimeAuthFailureLimiter } from '../../../security/runtime-request-security.js';
+import { resolveStationBrowserOrigins } from '../../../security/station-browser-origins.js';
 import { attachVoiceWebSocket } from '../voice.js';
 
 async function closesWithin(ws: WebSocket, timeoutMs = 200): Promise<boolean> {
@@ -668,6 +669,117 @@ describe('voice websocket remote authentication', () => {
     await new Promise<void>((resolve) => wss.close(() => resolve()));
     expect(code).toBe(4404);
     expect(reason.toString()).toBe('unexpected_path');
+    expect(voiceService.createSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('voice websocket browser origin on the credential-free loopback path', () => {
+  const SERVER_PORT = 47_300;
+  const UI_ORIGIN = 'http://127.0.0.1:47400';
+  const allowedBrowserOrigins = resolveStationBrowserOrigins({
+    port: SERVER_PORT,
+    host: '127.0.0.1',
+    allowedOriginsEnv: UI_ORIGIN,
+  });
+
+  async function startVoice(
+    authOverrides: Record<string, unknown> = { allowedBrowserOrigins },
+  ) {
+    const voiceService = {
+      createSession: vi.fn(),
+      getActiveCount: vi.fn(() => 0),
+    };
+    const audit = vi.fn();
+    // Real peer classification: the test client connects over 127.0.0.1.
+    const auth = {
+      verifyCredential: vi.fn(() => false),
+      audit,
+      ...authOverrides,
+    };
+    const wss = attachVoiceWebSocket(
+      0,
+      voiceService as any,
+      '127.0.0.1',
+      auth as any,
+    );
+    if (!wss) throw new Error('voice websocket was not created');
+    await once(wss, 'listening');
+    const address = wss.address();
+    if (!address || typeof address === 'string')
+      throw new Error('missing address');
+    const connection = vi.fn();
+    wss.on('connection', connection);
+    const close = () =>
+      new Promise<void>((resolve) => wss.close(() => resolve()));
+    return { voiceService, audit, auth, port: address.port, connection, close };
+  }
+
+  async function expectSession(port: number, origin?: string) {
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/?agent=station-voice`,
+      origin ? { origin } : {},
+    );
+    await once(ws, 'open');
+    ws.close();
+    await once(ws, 'close');
+  }
+
+  async function expectRefusedUpgrade(port: number, origin: string) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/?agent=station-voice`, {
+      origin,
+    });
+    const opened = vi.fn();
+    ws.on('open', opened);
+    const [error] = await once(ws, 'error');
+    expect((error as Error).message).toBe('Unexpected server response: 403');
+    expect(opened).not.toHaveBeenCalled();
+  }
+
+  it('accepts a loopback upgrade with no Origin header', async () => {
+    const { voiceService, auth, port, close } = await startVoice();
+    await expectSession(port);
+    await close();
+    expect(voiceService.createSession).toHaveBeenCalledWith(expect.anything(), {
+      agentSlug: 'station-voice',
+    });
+    expect(auth.verifyCredential).not.toHaveBeenCalled();
+  });
+
+  it.each([UI_ORIGIN, `http://localhost:${SERVER_PORT}`, 'tauri://localhost'])(
+    'accepts a loopback upgrade from Station UI origin %s',
+    async (origin) => {
+      const { voiceService, port, close } = await startVoice();
+      await expectSession(port, origin);
+      await close();
+      expect(voiceService.createSession).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['https://evil.example', 'http://localhost:9999'])(
+    'refuses a loopback upgrade from foreign origin %s before creating a session',
+    async (origin) => {
+      const { voiceService, audit, port, connection, close } =
+        await startVoice();
+      await expectRefusedUpgrade(port, origin);
+      await close();
+      expect(connection).not.toHaveBeenCalled();
+      expect(voiceService.createSession).not.toHaveBeenCalled();
+      expect(audit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'station.auth.failure',
+          outcome: 'denied',
+          reason: 'origin_forbidden',
+          peerClass: 'loopback',
+          transport: 'websocket',
+        }),
+      );
+    },
+  );
+
+  it('refuses every browser upgrade on the loopback path when no origin set is configured', async () => {
+    const { voiceService, port, close } = await startVoice({});
+    await expectRefusedUpgrade(port, 'tauri://localhost');
+    await close();
     expect(voiceService.createSession).not.toHaveBeenCalled();
   });
 });
