@@ -603,8 +603,90 @@ describe('#2303: a turn running in a lineage child reseeds its conversation chat
       expect(chat.orchestrationStatus).not.toBe('exited');
       // No chat was fabricated under an execution-thread key.
       expect(Object.keys(chats)).toEqual([ROOT]);
+      // The binding changed under the chat, so it is re-proved exactly as
+      // the live `session.started` repair does (`handleOrchestrationEvent`).
+      expect(chat.conversationOpenPending).toBe(true);
+      expect(chat.conversationOpenFailed).toBe(false);
+      if (isReconnectFallback) {
+        // The catch-up hands the OPEN turn to the projection — keyed by the
+        // conversation chat, not by the child row's thread id.
+        expect(chat.openTurnShellSuperseded).toBe(true);
+      }
     });
   }
+
+  test('model fields come from the child running the turn, not the root that launched the first one', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          { ...rootRow, reportedModel: 'model-a' },
+          { ...liveChildRow, reportedModel: 'model-b' },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].model).toBe('model-b');
+    expect(chats[ROOT].orchestrationModel).toBe('model-b');
+  });
+
+  test('an idle conversation keeps the pre-#2303 semantics: its own root row speaks, and the binding is untouched', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          { ...rootRow, reportedModel: 'model-a' },
+          { ...oldChildRow, reportedModel: 'model-b' },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT]).toMatchObject({
+      orchestrationTurnOpen: false,
+      status: 'idle',
+      model: 'model-a',
+      currentSessionId: OLD_CHILD,
+    });
+    expect(chats[ROOT].conversationOpenPending).toBeUndefined();
+  });
+
+  test('a conversation whose root row is absent is reconciled from its children, not marked exited', () => {
+    applyOrchestrationSnapshot(
+      { sessions: [oldChildRow, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].orchestrationStatus).toBe('running');
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+  });
+
+  test('a row without conversationId still reaches the chat whose currentSessionId names it (legacy server)', () => {
+    chats[ROOT].currentSessionId = LIVE_CHILD;
+    const { conversationId: _root, ...legacyRoot } = rootRow;
+    const { conversationId: _child, ...legacyChild } = liveChildRow;
+    applyOrchestrationSnapshot(
+      { sessions: [legacyRoot, legacyChild] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+    expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
+    // Already bound to the live child: nothing to re-prove.
+    expect(chats[ROOT].conversationOpenPending).toBeUndefined();
+  });
+
+  test('a chat keyed by the child thread itself still receives that row', () => {
+    chats[LIVE_CHILD] = {
+      provider: 'muse',
+      orchestrationSessionStarted: true,
+      status: 'idle',
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [rootRow, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[LIVE_CHILD].orchestrationTurnOpen).toBe(true);
+    expect(chats[LIVE_CHILD].orchestrationStatus).toBe('running');
+    // Its own key is its thread: no binding to adopt.
+    expect(chats[LIVE_CHILD].currentSessionId).toBeUndefined();
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+  });
 
   test('row order does not matter: an idle root listed AFTER the live child cannot overwrite it', () => {
     applyOrchestrationSnapshot(
