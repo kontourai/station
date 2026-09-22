@@ -103,7 +103,10 @@ import type {
   ProviderTaskStopResult,
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
-import { ProviderTurnEndedError } from '../../providers/adapter-shape.js';
+import {
+  ProviderTurnEndedError,
+  SendTurnRefusedError,
+} from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
@@ -5756,6 +5759,33 @@ export class OrchestrationService {
                         }
                         throw error;
                       }
+                      if (error instanceof SendTurnRefusedError) {
+                        // The adapter refused the turn BEFORE its first
+                        // provider-visible effect — the type is only thrown
+                        // by pre-effect input validation (unsupported
+                        // attachments, unadvertised capabilities), so no
+                        // engine was invoked and no `turn.started` was
+                        // published even though `providerInvoked` is already
+                        // set (it flips before `adapter.sendTurn` runs).
+                        // Same clean-refusal shape as above: retire this
+                        // dispatch's boundary row and release the
+                        // client-turn claim so the thread stays usable, and
+                        // rethrow honestly instead of converting to
+                        // indeterminate. Only a failed retirement itself
+                        // falls back to indeterminate.
+                        claimOutcome = 'release';
+                        const retired = boundary.terminalObserved(
+                          turnCorrelation?.turnId ??
+                            turnInput.clientTurnId ??
+                            turnInput.threadId,
+                        );
+                        if (retired.kind !== 'applied') {
+                          claimOutcome = 'retain';
+                          boundary.indeterminate(new Date().toISOString());
+                          throw new SessionTurnStartIndeterminateError();
+                        }
+                        throw error;
+                      }
                       claimOutcome = 'retain';
                       boundary.indeterminate(new Date().toISOString());
                       throw new SessionTurnStartIndeterminateError();
@@ -6471,6 +6501,7 @@ export class OrchestrationService {
         ...receipt,
         status:
           error instanceof ModelLaunchPlanUnavailableError ||
+          error instanceof SendTurnRefusedError ||
           error instanceof SessionReattachConflictError ||
           error instanceof SessionEndedError ||
           // archive#3493 fix round: a Stop refused because the session is

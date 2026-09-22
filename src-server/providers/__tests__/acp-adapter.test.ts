@@ -42,6 +42,7 @@ import {
 } from '../../services/acp/acp-process.js';
 import { normalizeCanonicalRuntimeEventLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
+import { SendTurnRefusedError } from '../adapter-shape.js';
 import {
   AcpAdapter,
   type AcpAdapterOptions,
@@ -2517,8 +2518,8 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
 
-    await expect(
-      adapter.sendTurn({
+    const failure = await adapter
+      .sendTurn({
         threadId: 'thread-image-unsupported',
         input: 'Inspect this',
         attachments: [
@@ -2530,8 +2531,20 @@ describe('AcpAdapter', () => {
             dataUrl: 'data:image/png;base64,YWJj',
           },
         ],
-      }),
-    ).rejects.toThrow('did not advertise image attachment support');
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    // A pre-effect refusal, not an ambiguous provider failure: no prompt
+    // reached the engine, so orchestration must surface this honestly
+    // instead of reporting the turn as possibly started.
+    expect(failure).toBeInstanceOf(SendTurnRefusedError);
+    expect(failure).toMatchObject({
+      message: expect.stringContaining(
+        'did not advertise image attachment support',
+      ),
+    });
     expect(processes[0].promptContents).toEqual([]);
     await adapter.stopAll();
   });

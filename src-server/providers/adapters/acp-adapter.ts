@@ -79,6 +79,7 @@ import {
   type ProviderSessionStartInput,
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -1406,14 +1407,27 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
     }
     const turnId = crypto.randomUUID();
-    const decodedAttachments = decodeChatAttachments(input.attachments);
-    rejectFileAttachments('This engine', decodedAttachments);
+    // Every throw below runs before the first provider-visible effect (no
+    // prompt sent, no `turn.started` published), so each is a
+    // `SendTurnRefusedError`: orchestration surfaces the message honestly
+    // instead of reporting the turn as possibly started.
+    let decodedAttachments: ReturnType<typeof decodeChatAttachments>;
+    try {
+      decodedAttachments = decodeChatAttachments(input.attachments);
+    } catch (error) {
+      throw new SendTurnRefusedError(errorMessage(error));
+    }
+    try {
+      rejectFileAttachments('This engine', decodedAttachments);
+    } catch (error) {
+      throw new SendTurnRefusedError(errorMessage(error));
+    }
     if (
       decodedAttachments.length > 0 &&
       record.process.initResult?.agentCapabilities?.promptCapabilities
         ?.image !== true
     ) {
-      throw new Error(
+      throw new SendTurnRefusedError(
         'This engine did not advertise image attachment support.',
       );
     }
