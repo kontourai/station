@@ -937,7 +937,8 @@ describe('CI verification workflow contracts', () => {
     expect(extended).not.toContain('run: npm run ci:fast');
     expect(extended).toContain('run: npm run test:coverage');
     expect(extended).toContain('run: npm run verify:e2e:full');
-    expect(extended).toContain("- cron: '30 11 * * 6'");
+    // Dispatch only until a run is green; a scheduled red nobody acts on is noise.
+    expect(extended).not.toContain('schedule:');
     expect(extended).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(coverage).toContain('needs: playwright-full');
     expect(coverage).toContain(
