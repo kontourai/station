@@ -199,20 +199,24 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   // stamps it directly and wins.
   //
   // When a stamp is CLEARED while this reader is mounted (the fold closed, or
-  // a reconnect catch-up discarded it), the page on screen is the one read
+  // a reconnect catch-up discarded it), or a catch-up supersedes the shell
+  // when there was no stamp to clear, the page on screen is the one read
   // before that happened — after a gap it can still show the previous turn
-  // open. Seed only from a page read after the clear.
+  // open. Seed only from a page read after it.
   const executionSessionId = session.currentSessionId ?? session.id;
   const previousTurnStartedAt = useRef(session.openTurnStartedAt);
+  const previousShellSuperseded = useRef(session.openTurnShellSuperseded);
   const eventsReadBeforeClear = useRef<unknown>(undefined);
   useEffect(() => {
     if (
-      previousTurnStartedAt.current !== undefined &&
-      session.openTurnStartedAt === undefined
+      (previousTurnStartedAt.current !== undefined &&
+        session.openTurnStartedAt === undefined) ||
+      (!previousShellSuperseded.current && session.openTurnShellSuperseded)
     ) {
       eventsReadBeforeClear.current = window.events;
     }
     previousTurnStartedAt.current = session.openTurnStartedAt;
+    previousShellSuperseded.current = session.openTurnShellSuperseded;
     if (!enabled || replay || !session.orchestrationTurnOpen) return;
     if (session.openTurnStartedAt !== undefined) return;
     if (window.events === eventsReadBeforeClear.current) return;
@@ -419,8 +423,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       : undefined;
     const claimedProjectedUsers = new Set<number>();
     // The live prompt row, keyed by the index of the canonical row it stands
-    // in for (#2304). It takes that row's position AND its timestamp, keeping
-    // only its own identity and content. The merge sorts by timestamp, then
+    // in for (#2304). It takes that row's position, and — when matched by
+    // turn identity — its timestamp, keeping its own identity and content.
+    // (A content match, before `turn.started`, keeps the row's own time.)
+    // The merge sorts by timestamp, then
     // by input order: the projection stamps a turn's prompt and its activity
     // with the one `turn.started` time, and emits the prompt first, so in the
     // canonical row's slot with the canonical time the prompt wins the tie.
@@ -448,7 +454,12 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         liveProjectedUsers.set(match, {
           ...message,
           id: message.id ?? message.clientId,
-          timestamp: projected[match]?.timestamp ?? message.timestamp,
+          // Only a TURN-identified match is this prompt's own canonical
+          // row. Before `turn.started` the match is by content, and can be
+          // an older turn that sent the same text; its time is not ours.
+          timestamp: message.turnId
+            ? (projected[match]?.timestamp ?? message.timestamp)
+            : message.timestamp,
         });
       }
       return false;

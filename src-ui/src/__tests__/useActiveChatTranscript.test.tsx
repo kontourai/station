@@ -1365,6 +1365,77 @@ describe('useActiveChatTranscript', () => {
     }
   });
 
+  /**
+   * #2304 delta MEDIUM. Before `turn.started` the pending prompt is matched
+   * to a projected row by CONTENT, which can be an older turn that sent the
+   * same text. That row's time is not this prompt's: taking it rendered a
+   * fresh "continue" at the top of the transcript.
+   */
+  test("a pending prompt matched only by content keeps its own time, not an older identical prompt's", async () => {
+    const id = 'thread-1';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Repeat prompt',
+      orchestrationSessionStarted: true,
+    });
+    const sendAt = Date.parse('2026-08-09T01:00:00.000Z');
+    try {
+      activeChatsStore.updateChat(id, {
+        messages: [
+          {
+            role: 'user',
+            content: 'continue',
+            clientId: 'pending-continue',
+            timestamp: sendAt,
+          },
+        ],
+        pendingClientTurnId: 'client-turn-2',
+        status: 'sending',
+      });
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 5,
+        hasMore: false,
+        events: [
+          event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'continue' }),
+          event('e3', 'turn.completed', {
+            turnId: 'turn-1',
+            outputText: 'Old answer',
+          }),
+          event('e4', 'turn.started', { turnId: 'turn-x', prompt: 'other' }),
+          event('e5', 'turn.completed', {
+            turnId: 'turn-x',
+            outputText: 'Other answer',
+          }),
+        ],
+      });
+      const session = {
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      } as unknown as ChatSession;
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      await waitFor(() =>
+        expect(
+          result.current.messages.some(
+            (message) => message.content === 'Other answer',
+          ),
+        ).toBe(true),
+      );
+      const last = result.current.messages.at(-1);
+      expect(last).toMatchObject({
+        id: 'pending-continue',
+        content: 'continue',
+        timestamp: sendAt,
+      });
+    } finally {
+      activeChatsStore.removeChat(id);
+    }
+  });
+
   describe('#2304 seeding guards', () => {
     const id = 'thread-1';
     const started = (turnId: string, fields = {}) =>

@@ -14,7 +14,13 @@
  * never performs for a Station-owned thread) are stubbed.
  */
 
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fetchCapability = vi.fn();
@@ -98,6 +104,7 @@ vi.mock('../hooks/orchestration/rehydrateChatSession', () => ({
   rehydrateChatSession: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { StreamingMessage } from '../components/chat/StreamingMessage';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { settleSemanticDeliveryBuffer } from '../hooks/orchestration/eventHandlers';
@@ -469,6 +476,176 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
     await waitFor(() =>
       expect(activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt).toBe(
         Date.parse('2026-08-19T00:00:07.000Z'),
+      ),
+    );
+  });
+
+  /**
+   * #2304 delta HIGH. The streaming row stays MOUNTED through a catch-up (the
+   * fold is reseeded open, never closed), so its own mount time is the
+   * previous turn's. The clock a user reads must restart for the turn that
+   * started during the gap — rendered, not just the stored start. Only
+   * `Date` is faked, so the row's 1s ticker and the fetch promises run on
+   * real time while the wall clock jumps ten minutes.
+   */
+  test("the mounted working clock reads the turn that started during the gap, not the row's mount", async () => {
+    const t0 = Date.parse('2026-08-19T00:00:02.000Z');
+    vi.useFakeTimers({ toFake: ['Date'], now: t0 });
+    try {
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 2,
+        hasMore: false,
+        events: [
+          event(2, 'turn.started', { turnId: TURN, prompt: 'First question' }),
+        ],
+      });
+      let deliverAfterGap: ((page: unknown) => void) | undefined;
+      fetchWindow.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            deliverAfterGap = resolve;
+          }),
+      );
+      streamUntilTheDrop();
+      function DockClock() {
+        const sessions = useDerivedSessions('', null, null);
+        const session = sessions.find((candidate) => candidate.id === THREAD)!;
+        useActiveChatTranscript(API, session);
+        return (
+          <StreamingMessage
+            sessionId={THREAD}
+            agentIcon={null}
+            agentIconStyle={{}}
+            fontSize={14}
+            turnStartedAt={session.openTurnStartedAt}
+          />
+        );
+      }
+      const view = render(<DockClock />);
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+
+      vi.setSystemTime(t0 + 600_000);
+      await waitFor(
+        () => expect(view.container.textContent).toContain('Working for 10:00'),
+        { timeout: 3_000 },
+      );
+
+      await act(async () => {
+        reconnectFallbackSnapshot(true);
+      });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        deliverAfterGap?.({
+          protocolVersion: 1,
+          watermark: 8,
+          hasMore: false,
+          events: [
+            event(2, 'turn.started', {
+              turnId: TURN,
+              prompt: 'First question',
+            }),
+            event(5, 'turn.completed', {
+              turnId: TURN,
+              outputText: 'Done.',
+              createdAt: new Date(t0 + 300_000).toISOString(),
+            }),
+            event(7, 'turn.started', {
+              turnId: 'turn-after-gap',
+              prompt: 'Second question',
+              createdAt: new Date(t0 + 590_000).toISOString(),
+            }),
+          ],
+        });
+      });
+      await waitFor(() =>
+        expect(activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt).toBe(
+          t0 + 590_000,
+        ),
+      );
+      await waitFor(
+        () => expect(view.container.textContent).toContain('Working for 0:10'),
+        { timeout: 3_000 },
+      );
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * #2304 delta LOW. No stamp existed when the catch-up landed — the live
+   * `turn.started` had an unparseable time, and the pre-gap page's open turn
+   * was a different one, which the `openTurnId` check refused. The catch-up
+   * turns that check off; the pre-gap page must still not be read.
+   */
+  test('a catch-up with no stamp to clear still does not seed from the pre-gap page', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [
+        event(1, 'turn.started', { turnId: 'turn-before', prompt: 'Earlier' }),
+      ],
+    });
+    let deliverAfterGap: ((page: unknown) => void) | undefined;
+    fetchWindow.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          deliverAfterGap = resolve;
+        }),
+    );
+    activeChatsStore.initChat(THREAD, {
+      agentSlug: 'agent-one',
+      agentName: 'Agent One',
+      title: 'Session',
+    });
+    activeChatsStore.updateChat(THREAD, {
+      provider: 'claude',
+      orchestrationSessionStarted: true,
+      orchestrationStatus: 'running',
+    });
+    handleTurnStartedEvent({
+      method: 'turn.started',
+      threadId: THREAD,
+      turnId: TURN,
+      createdAt: 'not-a-time',
+    } as never);
+    expect(
+      activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt,
+    ).toBeUndefined();
+    renderHook(() => useDockTranscript());
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      reconnectFallbackSnapshot(true);
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+    expect(
+      activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt,
+    ).toBeUndefined();
+
+    await act(async () => {
+      deliverAfterGap?.({
+        protocolVersion: 1,
+        watermark: 9,
+        hasMore: false,
+        events: [
+          event(1, 'turn.started', {
+            turnId: 'turn-before',
+            prompt: 'Earlier',
+          }),
+          event(3, 'turn.completed', {
+            turnId: 'turn-before',
+            outputText: 'Earlier answer',
+          }),
+          event(8, 'turn.started', { turnId: TURN, prompt: 'Now' }),
+        ],
+      });
+    });
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt).toBe(
+        Date.parse('2026-08-19T00:00:08.000Z'),
       ),
     );
   });

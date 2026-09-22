@@ -39,10 +39,11 @@ export type StreamingMessageProps = {
   /**
    * #2304: when the open turn started, from the server's `turn.started`
    * (`ChatUIState.openTurnStartedAt`). The working count reads from the
-   * EARLIER of this and the row's own mount: a row remounted mid-turn reads
-   * the turn's real duration, while the sender's row — mounted at send,
-   * before the server's start — keeps counting without jumping back when
-   * `turn.started` lands. Absent, the row counts from its own mount. The
+   * EARLIER of this and the row's own clock (its mount, reset at each turn
+   * boundary it sees): a row remounted mid-turn reads the turn's real
+   * duration, while the sender's row — mounted at send, before the server's
+   * start — keeps counting without jumping back when `turn.started` lands.
+   * Absent, the row counts from its own clock. The
    * server start is compared against this client's clock, so skew between
    * the two shows up in the count.
    */
@@ -111,7 +112,27 @@ export function StreamingMessageView({
   contentRevision: number;
 }) {
   const isMobile = useIsMobile();
-  const [waitingSince] = useState(Date.now);
+  // The row's own clock: when it mounted, or when it last saw a turn
+  // boundary. The row can stay mounted across turns — a reconnect catch-up
+  // reseeds the turn fold open without it ever closing, and a new turn's
+  // `turn.started` can land while the previous turn's row is still up — so
+  // its mount time is not "since this turn". A boundary is `turnStartedAt`
+  // being cleared (defined → undefined) or replaced by a different start;
+  // undefined → defined is the FIRST stamp for the turn this row already
+  // represents (the sender's `turn.started` landing after send), and keeps
+  // the clock (#2304 L2 / delta HIGH). Adjusted during render, React's
+  // documented pattern for state derived from a changing prop.
+  const [rowClock, setRowClock] = useState(() => ({
+    turnStartedAt,
+    since: Date.now(),
+  }));
+  if (rowClock.turnStartedAt !== turnStartedAt) {
+    setRowClock({
+      turnStartedAt,
+      since: rowClock.turnStartedAt === undefined ? rowClock.since : Date.now(),
+    });
+  }
+  const waitingSince = rowClock.since;
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -235,11 +256,12 @@ export function StreamingMessageView({
                   `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
                 }
                 separator={statusLabel ? ' · ' : ' '}
-                // A status-labelled wait ("Waiting for approval") still counts
-                // from this row's mount, as it did before #2304. That is not
-                // the wait's own start: the row does not remount when the
-                // status arrives, so it reads from whenever the row mounted —
-                // a pre-existing limitation, deliberately left alone here.
+                // A status-labelled wait ("Waiting for approval") counts from
+                // the row's own clock (its mount, or its last turn boundary),
+                // as it did from the mount before #2304. That is not the
+                // wait's own start: nothing resets the clock when the status
+                // arrives — a pre-existing limitation, deliberately left
+                // alone here.
                 startedAt={
                   statusLabel || turnStartedAt === undefined
                     ? waitingSince
