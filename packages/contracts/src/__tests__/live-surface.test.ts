@@ -117,17 +117,26 @@ describe('live surface record envelope bounds', () => {
   });
 
   test('a 2 MB frame in 16 KB relay chunks decodes intact', () => {
-    const body = Uint8Array.from(
-      { length: 2 * 1024 * 1024 },
-      (_, i) => i % 253,
-    );
+    // Built and compared with plain loops: a generator-backed
+    // `Uint8Array.from` and a deep `toEqual` over 2 M elements take tens of
+    // seconds on a loaded host, which is the test's cost, not the decoder's.
+    const body = new Uint8Array(2 * 1024 * 1024);
+    for (let i = 0; i < body.length; i += 1) body[i] = i % 253;
     const bytes = encodeLiveSurfaceRecord({ ...frame, body });
     const decoder = new LiveSurfaceRecordDecoder();
     const records: LiveSurfaceRecord[] = [];
     for (let offset = 0; offset < bytes.length; offset += 16 * 1024)
       records.push(...decoder.push(bytes.subarray(offset, offset + 16 * 1024)));
     expect(records).toHaveLength(1);
-    expect(records[0]?.kind === 'frame' && records[0].body).toEqual(body);
+    const decoded = records[0]?.kind === 'frame' ? records[0].body : null;
+    expect(decoded?.byteLength).toBe(body.byteLength);
+    let firstMismatch = -1;
+    for (let i = 0; decoded && i < body.length; i += 1)
+      if (decoded[i] !== body[i]) {
+        firstMismatch = i;
+        break;
+      }
+    expect(firstMismatch).toBe(-1);
     expect(decoder.pendingBytes).toBe(0);
   });
 

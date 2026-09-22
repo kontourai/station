@@ -708,7 +708,9 @@ export function encodeLiveSurfaceRecord(record: LiveSurfaceRecord): Uint8Array {
  */
 export class LiveSurfaceRecordDecoder {
   private chunks: Uint8Array[] = [];
-  /** Offset into `chunks[0]` of the first unconsumed byte. */
+  /** Index of the first unconsumed chunk (no O(n) `shift` per chunk). */
+  private head = 0;
+  /** Offset into `chunks[head]` of the first unconsumed byte. */
   private offset = 0;
   private buffered = 0;
 
@@ -781,7 +783,8 @@ export class LiveSurfaceRecordDecoder {
     const out = new Uint8Array(length);
     let written = 0;
     let offset = this.offset;
-    for (const chunk of this.chunks) {
+    for (let index = this.head; index < this.chunks.length; index += 1) {
+      const chunk = this.chunks[index]!;
       const part = chunk.subarray(offset, offset + (length - written));
       out.set(part, written);
       written += part.byteLength;
@@ -796,16 +799,21 @@ export class LiveSurfaceRecordDecoder {
     const out = new Uint8Array(length);
     let written = 0;
     while (written < length) {
-      const chunk = this.chunks[0]!;
+      const chunk = this.chunks[this.head]!;
       const available = chunk.byteLength - this.offset;
       const count = Math.min(available, length - written);
       out.set(chunk.subarray(this.offset, this.offset + count), written);
       written += count;
       this.offset += count;
       if (this.offset === chunk.byteLength) {
-        this.chunks.shift();
+        this.head += 1;
         this.offset = 0;
       }
+    }
+    // Drop consumed chunks in bulk, amortized O(1) per chunk.
+    if (this.head > 0 && this.head * 2 >= this.chunks.length) {
+      this.chunks = this.chunks.slice(this.head);
+      this.head = 0;
     }
     this.buffered -= length;
     return out;
