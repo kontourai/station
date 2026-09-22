@@ -352,8 +352,9 @@ function formatCreateSummary(handle: DelegatedTaskHandle): string {
 /**
  * #2269: renders the serving Station's forwarded supervision facts — the
  * effective absolute budget, remaining time, and idle window for the current
- * turn. Rendered only when the server declared them; an undeclared budget
- * renders nothing (honest unknown, never a client-side invention).
+ * turn. No forwarded supervision renders nothing (honest unknown, never a
+ * client-side invention); an idle-only supervision renders "Turn budget:
+ * none declared for this turn" plus its idle limit.
  */
 function supervisionLines(
   supervision: DelegatedTaskSnapshot['supervision'],

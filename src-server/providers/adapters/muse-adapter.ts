@@ -223,6 +223,16 @@ export const MUSE_STDOUT_BUFFER_MAX_CHARS = 1_048_576;
  */
 const MUSE_SEEN_TOOL_CALL_IDS_MAX = 500;
 
+/**
+ * Outputs for a call whose muse task reached `completed` / `failed` but
+ * whose `tool_result` never arrived before the turn settled. The status
+ * follows muse's reported phase; the sentence says the result is missing.
+ */
+export const MUSE_FINISHED_NO_RESULT_OUTPUT =
+  'Muse reported the tool finished but sent no result.';
+export const MUSE_FAILED_NO_RESULT_OUTPUT =
+  'Muse reported the tool failed but sent no result.';
+
 /** Output for a tool call muse cancelled before reporting a result. */
 export const MUSE_CANCELLED_TOOL_OUTPUT =
   'Muse cancelled this tool call before it reported a result.';
@@ -893,7 +903,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       seenToolCallIds: [],
       toolTasks: new Map(),
       openToolCalls: new Map(),
-      awaitingResultToolCalls: new Set(),
+      awaitingResultToolCalls: new Map(),
       outputText: '',
       settled: false,
       interrupted: false,
@@ -943,7 +953,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         turnId,
         startedAt: turnStartedAtIso,
         // No declared budget -> no deadline and no total to declare; the
-        // delegation projection then reports "no declared budget".
+        // delegation projection then forwards an idle-only supervision.
         ...(this.turnTimeoutMs === undefined
           ? {}
           : {
@@ -1253,7 +1263,10 @@ export class MuseAdapter implements ProviderAdapterShape {
           turn.openToolCalls.has(observed.toolCallId) &&
           !turn.awaitingResultToolCalls.has(observed.toolCallId)
         ) {
-          turn.awaitingResultToolCalls.add(observed.toolCallId);
+          turn.awaitingResultToolCalls.set(
+            observed.toolCallId,
+            observed.outcome,
+          );
           this.noteVerifiedActivity(record, turn);
         }
         return;
@@ -1293,6 +1306,13 @@ export class MuseAdapter implements ProviderAdapterShape {
       const toolName =
         effect.toolName ?? turn.openToolCalls.get(effect.toolCallId);
       if (!toolName) return;
+      // At most one `tool.completed` per call id per turn: a result for a
+      // call already closed (by an earlier result, or by its task reporting
+      // `cancelled`) is dropped, so a replayed or late receipt cannot add a
+      // second outcome row. `seenToolCallIds` is bounded (oldest-first), so
+      // a call evicted from it reads as new again — the same disclosed
+      // bound its idle bookkeeping has.
+      if (turn.seenToolCallIds.includes(effect.toolCallId)) return;
       // Its own itemId keeps the tool row distinct from the assistant text
       // item, and matches the `tool.started` itemId for the same call.
       turn.openToolCalls.delete(effect.toolCallId);
@@ -1504,16 +1524,22 @@ export class MuseAdapter implements ProviderAdapterShape {
     // from it, so no result can ever reach Station for these calls. The
     // projection deliberately carries an open call past its turn
     // (station#1558), so without this the row would read "running" forever.
-    // `unresolved` with the turn-scoped sentence says exactly that: no
-    // result, fate unknown — not a failure and not a cancellation. (A task
+    // For a call still RUNNING, `unresolved` with the turn-scoped sentence
+    // says exactly that: no result, fate unknown — not a failure and not a
+    // cancellation. A call whose task muse already reported finished keeps
+    // that verdict (see below). (A task
     // that is proposed and never starts opened no row, so it needs none.)
     // Idle was disarmed at settle only if a call was still RUNNING; calls
     // that were merely awaiting their result left it armed.
     const hadToolInFlight = this.hasToolInFlight(turn);
     const openToolCalls = [...turn.openToolCalls];
+    const finishedPhases = new Map(turn.awaitingResultToolCalls);
     turn.openToolCalls.clear();
     turn.awaitingResultToolCalls.clear();
     for (const [toolCallId, toolName] of openToolCalls) {
+      // A call whose task muse reported finished keeps muse's verdict; only
+      // a call still RUNNING at settle has an unknown fate.
+      const phase = finishedPhases.get(toolCallId);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -1524,8 +1550,11 @@ export class MuseAdapter implements ProviderAdapterShape {
         itemId: `tool:${toolCallId}`,
         toolCallId,
         toolName,
-        status: 'unresolved',
-        output: UNRESOLVED_TURN_TOOL_OUTPUT,
+        ...(phase === 'completed'
+          ? { status: 'success', output: MUSE_FINISHED_NO_RESULT_OUTPUT }
+          : phase === 'failed'
+            ? { status: 'error', output: MUSE_FAILED_NO_RESULT_OUTPUT }
+            : { status: 'unresolved', output: UNRESOLVED_TURN_TOOL_OUTPUT }),
       });
     }
     // Parity with the pre-#2308 schedule for a settled turn: there, the idle
@@ -1812,9 +1841,10 @@ export class MuseAdapter implements ProviderAdapterShape {
 
   /**
    * Records verified protocol activity and reschedules the IDLE deadline
-   * only. Callers are `handleStdoutLine`'s text-delta, new-tool-start and
-   * new-tool-result branches — i.e. facts the child actually emitted — never stderr noise,
-   * malformed lines, heartbeats, or duplicate receipts.
+   * only. Callers are `handleStdoutLine`'s text-delta, new-tool-start,
+   * tool-task-finished and new-tool-result branches, and `closeCancelledTool`
+   * — i.e. facts the child actually emitted — never stderr noise, malformed
+   * lines, heartbeats, or duplicate receipts.
    */
   private noteVerifiedActivity(
     record: MuseSessionRecord,

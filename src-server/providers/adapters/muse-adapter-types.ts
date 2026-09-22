@@ -179,12 +179,16 @@ export interface MuseActiveTurn {
    */
   openToolCalls: Map<string, string>;
   /**
-   * Open calls whose muse task already reached `completed`/`failed`: still
-   * awaiting (and pairable with) their `tool_result`, but no longer running,
-   * so they do not hold the idle deadline disarmed. Always a subset of
-   * `openToolCalls`.
+   * Open calls whose muse task already reached `completed`/`failed`, keyed
+   * by `call_id` to that phase: still awaiting (and pairable with) their
+   * `tool_result`, but no longer running, so they do not hold the idle
+   * deadline disarmed. If the result never arrives, settle reports the
+   * phase muse gave rather than `unresolved`. Keys are always a subset of
+   * `openToolCalls`. Tracked per call id: two tasks sharing one `call_id`
+   * share this entry (a disclosed limit — the first task finishing re-arms
+   * idle even if the second is still running).
    */
-  awaitingResultToolCalls: Set<string>;
+  awaitingResultToolCalls: Map<string, 'completed' | 'failed'>;
 }
 
 /**

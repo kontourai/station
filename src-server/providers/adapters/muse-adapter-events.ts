@@ -296,7 +296,13 @@ export type MuseToolTaskObservation =
    * follows, so the call stays open and pairable — it just stops being
    * in-flight work for idle supervision.
    */
-  | { kind: 'finished'; toolName: string; toolCallId: string };
+  | {
+      kind: 'finished';
+      toolName: string;
+      toolCallId: string;
+      /** The task's final phase, which settle reports if no result arrives. */
+      outcome: 'completed' | 'failed';
+    };
 
 /**
  * Folds one `task-lifecycle` effect into `bindings` (keyed by `task_id`) and
@@ -332,11 +338,17 @@ export function observeMuseToolTask(
     const finished = bindings.get(effect.taskId);
     bindings.delete(effect.taskId);
     if (finished?.emitted && finished.toolName && finished.toolCallId) {
-      return {
-        kind: effect.phase === 'cancelled' ? 'cancelled' : 'finished',
+      const tool = {
         toolName: finished.toolName,
         toolCallId: finished.toolCallId,
       };
+      return effect.phase === 'cancelled'
+        ? { kind: 'cancelled', ...tool }
+        : {
+            kind: 'finished',
+            ...tool,
+            outcome: effect.phase === 'failed' ? 'failed' : 'completed',
+          };
     }
     return null;
   }

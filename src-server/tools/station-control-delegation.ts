@@ -792,9 +792,10 @@ function optionalIsoTimestamp(value: unknown): string | undefined {
  * rather than repaired. A declaration whose provider disagrees with the
  * session's own projected provider is dropped too: the session projection
  * is Station-authored while event metadata from a non-owning adapter may
- * repeat caller input. Returns `undefined` for "no declared budget"
- * (honest unknown) — including when the status event window no longer
- * contains the turn's start event after a long history.
+ * repeat caller input. Returns `undefined` when there is no usable
+ * declaration (honest unknown) — including when the status event window no
+ * longer contains the turn's start event after a long history. An idle-only
+ * declaration (no total budget) is returned as idle-only.
  */
 export function delegatedTurnSupervision(
   session: Record<string, unknown>,

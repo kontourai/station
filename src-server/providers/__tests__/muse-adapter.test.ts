@@ -22,6 +22,8 @@ import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
   MUSE_CANCELLED_TOOL_OUTPUT,
   MUSE_DEFAULT_IDLE_TIMEOUT_MS,
+  MUSE_FAILED_NO_RESULT_OUTPUT,
+  MUSE_FINISHED_NO_RESULT_OUTPUT,
   MUSE_MAX_SUPERVISION_TIMEOUT_MS,
   MUSE_PROVIDER_OVERRIDE_ENV,
   MUSE_REFUSED_VALUE_MAX_CHARS,
@@ -2457,7 +2459,7 @@ describe('MuseAdapter tool events', () => {
       });
     });
 
-    test('a failed task with no result stops holding idle disarmed; settle closes it unresolved', async () => {
+    test("a failed task with no result stops holding idle disarmed; settle reports muse's failure", async () => {
       vi.useFakeTimers();
       const { harness, emit } = await startTurn('thread-failed-no-result');
       const tool = bashTool('task-f', 'call_f');
@@ -2475,9 +2477,44 @@ describe('MuseAdapter tool events', () => {
         events.slice(3).map((e) => [e.method, e.status ?? e.code]),
       ).toEqual([
         ['tool.started', undefined],
-        ['tool.completed', 'unresolved'],
+        // muse said `failed`; only the missing result is new information.
+        ['tool.completed', 'error'],
         ['runtime.error', MUSE_TURN_IDLE_TIMEOUT_CODE],
       ]);
+      expect(events[4].output).toBe(MUSE_FAILED_NO_RESULT_OUTPUT);
+    });
+
+    test('at settle, a completed task with no result reports success; a still-running one stays unresolved', async () => {
+      const { harness, emit } = await startTurn(
+        'thread-finished-no-result',
+        60_000,
+      );
+      const done = bashTool('task-d', 'call_d');
+      const running = bashTool('task-r', 'call_r');
+      await emit(...done.start, ...running.start, done.completed);
+      await emit(LINES[54]!); // run_terminal; no tool_result for either
+      const events = await drain(harness.iterator, 8, 'finished no result');
+      const closes = events.filter((e) => e.method === 'tool.completed');
+      expect(closes.map((e) => [e.toolCallId, e.status, e.output])).toEqual([
+        ['call_d', 'success', MUSE_FINISHED_NO_RESULT_OUTPUT],
+        ['call_r', 'unresolved', UNRESOLVED_TURN_TOOL_OUTPUT],
+      ]);
+      expect(events.at(-1)?.method).toBe('turn.completed');
+      await expectNoFurtherEvent(harness.iterator, 'finished no result');
+    });
+
+    test('a late named result after a cancel does not publish a second completion', async () => {
+      const { harness, emit } = await startTurn('thread-cancel-late', 60_000);
+      const tool = bashTool('task-c', 'call_c');
+      await emit(...tool.start, tool.cancelled, tool.result);
+      await emit(LINES[54]!);
+      const events = await drain(harness.iterator, 6, 'cancel then result');
+      expect(events.slice(3).map((e) => [e.method, e.status])).toEqual([
+        ['tool.started', undefined],
+        ['tool.completed', 'cancelled'],
+        ['turn.completed', undefined],
+      ]);
+      await expectNoFurtherEvent(harness.iterator, 'cancel then result');
     });
 
     test("a still-running tool keeps idle disarmed even after another tool's task failed", async () => {
@@ -2854,18 +2891,19 @@ describe('Muse turn supervision (#2269)', () => {
       });
       expect(harness.processes).toHaveLength(2);
 
-      const events = await drain(harness.iterator, 9, 'idle policy');
+      const events = await drain(harness.iterator, 8, 'idle policy');
       const error = events.find((event) => event.method === 'runtime.error');
       expect(error).toMatchObject({
         code: MUSE_TURN_IDLE_TIMEOUT_CODE,
       });
-      // Both receipts are still transcript fact (published twice) — the
-      // replay just never bought idle time.
+      // #2308 review: one completion per call id per turn — the replayed
+      // receipt is dropped rather than published as a second outcome row,
+      // and (as before) never buys idle time.
       expect(
         events.filter((event) => event.method === 'tool.completed'),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
       // Exactly one terminal: the last event is the recovery turn's start.
-      expect(events[8]).toMatchObject({ method: 'turn.started' });
+      expect(events[7]).toMatchObject({ method: 'turn.started' });
     } finally {
       vi.useRealTimers();
     }
