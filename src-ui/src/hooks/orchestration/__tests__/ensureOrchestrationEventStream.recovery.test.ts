@@ -24,9 +24,11 @@ vi.mock('../snapshotHandlers', () => ({
   applyOrchestrationSnapshot: (...args: unknown[]) =>
     applyOrchestrationSnapshot(...args),
 }));
+const settleSemanticDeliveryBuffer = vi.fn();
 vi.mock('../eventHandlers', () => ({
   handleOrchestrationEvent: vi.fn(),
-  settleSemanticDeliveryBuffer: vi.fn(),
+  settleSemanticDeliveryBuffer: (...args: unknown[]) =>
+    settleSemanticDeliveryBuffer(...args),
 }));
 
 import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
@@ -95,8 +97,16 @@ beforeEach(() => {
 
 afterEach(() => {
   setClientCredentialResolver(undefined);
+  settleSemanticDeliveryBuffer.mockReset();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+/** Moves `Date.now` forward without faking the timers the streams run on. */
+function advanceClock(ms: number) {
+  const now = Date.now() + ms;
+  vi.spyOn(Date, 'now').mockReturnValue(now);
+}
 
 describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
   test('a stream ended by a non-persisted pagehide is replaced by the next ensure', async () => {
@@ -186,5 +196,95 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
       { sessions: [] },
       expect.objectContaining({ apiBase, isReconnectFallback: true }),
     );
+  });
+
+  test.each([
+    ['focus', () => window.dispatchEvent(new Event('focus'))],
+    ['online', () => window.dispatchEvent(new Event('online'))],
+    ['pageshow', () => window.dispatchEvent(new Event('pageshow'))],
+  ])('a %s signal re-ensures an ended stream', async (name, signal) => {
+    const apiBase = `http://recovery.test/signal-${name}`;
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+    pagehide(false);
+    await settle();
+
+    signal();
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
+  });
+
+  test('a hidden page is not re-ensured by a visibilitychange', async () => {
+    const apiBase = 'http://recovery.test/hidden';
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+    pagehide(false);
+    await settle();
+
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(1);
+  });
+
+  test('recovery signals retry a parked (401) stream at most once per floor interval', async () => {
+    const apiBase = 'http://recovery.test/parked-floor';
+    fetchMock.mockImplementation(async () => new Response('', { status: 401 }));
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(1);
+
+    // A burst of window switches right after the refusal: no new request.
+    for (let i = 0; i < 5; i++) window.dispatchEvent(new Event('focus'));
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(1);
+
+    // Past the floor: exactly one retry, however many signals arrive.
+    advanceClock(30_001);
+    for (let i = 0; i < 5; i++) window.dispatchEvent(new Event('focus'));
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
+  });
+
+  test('a stream resumed from its park is no longer treated as parked', async () => {
+    const apiBase = 'http://recovery.test/unpark';
+    fetchMock
+      .mockImplementationOnce(async () => new Response('', { status: 401 }))
+      .mockImplementationOnce(async () => {
+        throw new TypeError('network down');
+      });
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+
+    // Woken; its next attempt fails transiently and waits out a 2s backoff.
+    notifyCredentialChanged('http://recovery.test');
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
+
+    // A stale `parked` flag would call retry() here and cut that backoff
+    // short. Unparked, the ensure leaves the transport's own schedule alone.
+    advanceClock(30_001);
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
+  });
+
+  test('a stream whose loop ends without an abort is replaced too', async () => {
+    const apiBase = 'http://recovery.test/rejected-loop';
+    fetchMock.mockImplementationOnce(async () => {
+      throw new TypeError('network down');
+    });
+    // The UI's onError throwing inside the SDK's catch rejects the loop
+    // without ever aborting the connection.
+    settleSemanticDeliveryBuffer.mockImplementationOnce(() => {
+      throw new Error('handler failure');
+    });
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(1);
+
+    ensureOrchestrationEventStream(apiBase);
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
   });
 });

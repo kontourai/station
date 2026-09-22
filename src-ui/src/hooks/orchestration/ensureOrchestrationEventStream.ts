@@ -22,7 +22,23 @@ interface OwnedStream {
   connection: FetchSseConnection;
   /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
   parked: boolean;
+  /** When a recovery signal last asked a parked stream to try again. */
+  lastParkedRetryAt: number;
+  /** The connection's loop has returned, whether or not it was aborted. */
+  ended: boolean;
 }
+
+/**
+ * station#2301 review (M1): a parked stream is one whose credential the server
+ * REFUSED, so every retry it makes is a failed authentication — and the
+ * runtime rate-limits those per peer (10 a minute by default). Focus and
+ * visibility fire as often as a user switches windows, so without a floor a
+ * user with a revoked credential could trip that limiter on their own peer
+ * and have the request that fixes the credential refused too. One retry per
+ * this interval is the SDK's own backoff ceiling; the credential-change wake
+ * is not throttled, because it means something actually changed.
+ */
+const PARKED_RETRY_MIN_INTERVAL_MS = 30_000;
 
 /**
  * station#2301: the single-flight registry. An entry counts only while its
@@ -32,9 +48,8 @@ interface OwnedStream {
  * ensure, including one in the same tick as the abort. Before this, the guard
  * checked presence and only the 401/403 path ever deleted an entry, so every
  * other abort left a dead connection registered forever and every later
- * ensure returned early against it. (This caller's loop cannot end any other
- * way: it sets no `maxRetries`, never `reconnect: false`, and a terminal stop
- * parks rather than ends.)
+ * ensure returned early against it. A loop that ends WITHOUT an abort (a
+ * callback throwing inside the SDK's retry loop) is caught by `ended`.
  */
 const activeSources = new Map<string, OwnedStream>();
 
@@ -146,11 +161,18 @@ export function ensureOrchestrationEventStream(
   requestedBases.add(apiBase);
   installRecoveryListeners();
   const existing = activeSources.get(apiBase);
-  if (existing && !existing.connection.signal.aborted) {
+  if (existing && !existing.ended && !existing.connection.signal.aborted) {
     // A parked stream is alive but waiting for a credential change that may
-    // have arrived by a path that never announced it. Asking again is one
-    // request, made only on a mount or a recovery signal, never on a timer.
-    if (existing.parked) existing.connection.retry();
+    // have arrived by a path that never announced it. Ask again at most once
+    // per floor interval — see `PARKED_RETRY_MIN_INTERVAL_MS`.
+    const now = Date.now();
+    if (
+      existing.parked &&
+      now - existing.lastParkedRetryAt >= PARKED_RETRY_MIN_INTERVAL_MS
+    ) {
+      existing.lastParkedRetryAt = now;
+      existing.connection.retry();
+    }
     return;
   }
   if (existing) activeSources.delete(apiBase);
@@ -276,6 +298,10 @@ export function ensureOrchestrationEventStream(
     // replay against its stale cursor beside whatever stream a later ensure
     // created. Keeping it registered makes it the one owner, so no second
     // stream is ever created while it waits.
+    //
+    // Resuming in place keeps this stream's cursor. That assumes the new
+    // credential is the same principal's; if it is not, the server still
+    // gates every replayed event by the NEW request's authority.
     onTerminal: () => {
       // fetchSSE invokes onError first. Cancel its deferred transient flush:
       // a terminal 401/403 means authority was lost, so hidden content is
@@ -284,12 +310,31 @@ export function ensureOrchestrationEventStream(
       recordReplayConnection(apiBase, 'closed');
       setStreamConnectionState(apiBase, 'closed');
       owned.parked = true;
+      // The floor counts from the rejection, so the first recovery signal
+      // after a 401 does not immediately repeat it.
+      owned.lastParkedRetryAt = Date.now();
     },
     onRetry: () => {
       owned.parked = false;
     },
   });
 
-  const owned: OwnedStream = { connection: authenticatedStream, parked: false };
+  const owned: OwnedStream = {
+    connection: authenticatedStream,
+    parked: false,
+    lastParkedRetryAt: 0,
+    ended: false,
+  };
   activeSources.set(apiBase, owned);
+  // station#2301 review (L1): the abort signal covers every abort, but the
+  // loop can also end by REJECTING — a callback above throwing inside the
+  // SDK's catch — without aborting. Either way the connection is gone.
+  void authenticatedStream.completed.then(
+    () => {
+      owned.ended = true;
+    },
+    () => {
+      owned.ended = true;
+    },
+  );
 }

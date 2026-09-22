@@ -883,7 +883,7 @@ export function resolveStreamResumePlan(
  * - `surface`/`build` are client-REPORTED and display-only, as everywhere
  *   else they appear.
  */
-export function describeOrchestrationStreamClient(request: Request): {
+function describeOrchestrationStreamClient(request: Request): {
   clientSession: string;
   actor: string;
   surface: string;
@@ -3793,6 +3793,26 @@ export function createOrchestrationRoutes(
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       try {
+        // station#2301 review (M2): register for the client going away
+        // BEFORE anything below can await. Hono notifies only subscribers
+        // registered before `abort()` runs, so a client that left during a
+        // slow snapshot read used to leave this handler waiting forever: its
+        // presence count, event subscription and keepalive timer leaked, and
+        // no close line was ever written.
+        const clientGone = new Promise<void>((resolve) => {
+          const onGone = () => {
+            closeReason ??= 'client-abort';
+            resolve();
+          };
+          if (stream.aborted) onGone();
+          else stream.onAbort(onGone);
+        });
+        // ...and keep the connection audibly alive while that read runs. The
+        // client abandons a body that writes nothing for its stall deadline,
+        // and until caught-up this route used to write nothing at all, so a
+        // snapshot slower than the deadline would reconnect forever. Each
+        // frame is a single write, so a ping cannot land inside another frame.
+        stopKeepAlive = sseKeepalive(stream);
         // Ordering fence (R4): subscribe and buffer live events FIRST, before
         // any `await` below can yield to an event that was appended and
         // emitted concurrently. Nothing buffered here is written until after
@@ -3934,7 +3954,8 @@ export function createOrchestrationRoutes(
           connectionId,
           ...client,
           scope: threadId ? 'thread' : 'all',
-          ...(threadId ? { threadId } : {}),
+          // Query-string supplied, so bounded like every other client field.
+          ...(threadId ? { threadId: threadId.slice(0, 200) } : {}),
           // `invalid` = a header was sent but is not a cursor this server
           // accepts, which the resume plan then treats as no cursor.
           lastEventId:
@@ -4033,20 +4054,8 @@ export function createOrchestrationRoutes(
           await writeAuthorized(frame);
         }
 
-        stopKeepAlive = sseKeepalive(stream);
-
-        try {
-          await new Promise((_, reject) => {
-            stream.onAbort(() => {
-              closeReason ??= 'client-abort';
-              reject(new Error('aborted'));
-            });
-          });
-        } catch (error) {
-          deps.logger.debug('Orchestration SSE client disconnected', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+        await clientGone;
+        deps.logger.debug('Orchestration SSE client disconnected');
       } catch (error) {
         // Recorded for the close line, then rethrown unchanged: Hono's
         // `streamSSE` still owns what an uncaught setup throw does.
@@ -4076,7 +4085,9 @@ export function createOrchestrationRoutes(
           // too; the specific reason wins over the generic setup failure.
           reason:
             closeReason ?? (setupError !== undefined ? 'setup-error' : 'ended'),
-          ...(setupError !== undefined ? { error: setupError } : {}),
+          ...(setupError !== undefined
+            ? { error: setupError.slice(0, 500) }
+            : {}),
           durationMs: Date.now() - connectedAt,
           framesWritten,
         });

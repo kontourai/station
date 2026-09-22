@@ -253,4 +253,109 @@ describe('GET /events lifecycle log (station#2301)', () => {
       framesWritten: 0,
     });
   });
+
+  test('a client that leaves during a slow snapshot read still closes the connection and releases its state', async () => {
+    const logger = makeLogger();
+    const presence = new OrchestrationStreamPresence();
+    let releaseSnapshot: (sessions: unknown[]) => void = () => {};
+    const service = {
+      ...makeService(),
+      listSessionReadModel: vi.fn(
+        () =>
+          new Promise<unknown[]>((resolve) => {
+            releaseSnapshot = resolve;
+          }),
+      ),
+    };
+    const app = createOrchestrationRoutes(service as never, {
+      eventBus: new EventBus(),
+      logger,
+      getUserId: () => 'user-1',
+      presence,
+    });
+    const base = await listen(app);
+    const controller = new AbortController();
+    const response = await fetch(`${base}/events`, {
+      signal: controller.signal,
+    });
+    await waitFor(() => service.listSessionReadModel.mock.calls.length > 0);
+    expect(presence.isConnected('user-1')).toBe(true);
+
+    // The client gives up while the store read is still running...
+    controller.abort();
+    await response.body?.cancel().catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // ...and only then does the read finish.
+    releaseSnapshot([]);
+
+    await waitFor(
+      () =>
+        lifecycleCalls(logger, 'Orchestration event stream closed').length > 0,
+    );
+    expect(
+      lifecycleCalls(logger, 'Orchestration event stream closed')[0],
+    ).toMatchObject({ reason: 'client-abort' });
+    expect(presence.isConnected('user-1')).toBe(false);
+  });
+
+  test('the connection is kept audibly alive while a slow snapshot read runs', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const logger = makeLogger();
+      const service = {
+        ...makeService(),
+        listSessionReadModel: vi.fn(() => new Promise<unknown[]>(() => {})),
+      };
+      const app = createOrchestrationRoutes(service as never, {
+        eventBus: new EventBus(),
+        logger,
+        getUserId: () => 'user-1',
+        presence: new OrchestrationStreamPresence(),
+      });
+      const base = await listen(app);
+      const controller = new AbortController();
+      const response = await fetch(`${base}/events`, {
+        signal: controller.signal,
+      });
+      const reader = response.body!.getReader();
+      await waitFor(() => service.listSessionReadModel.mock.calls.length > 0);
+
+      // One server keepalive interval passes with the snapshot still pending.
+      vi.advanceTimersByTime(30_000);
+      const received = await readUntil(reader, 'event: ping');
+      expect(received).toContain('event: ping');
+      expect(received).not.toContain('orchestration:snapshot');
+      controller.abort();
+      await reader.cancel().catch(() => {});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a stream whose principal stops being current closes as authorization-expired', async () => {
+    const logger = makeLogger();
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const app = createOrchestrationRoutes(
+      makeService() as never,
+      {
+        eventBus: new EventBus(),
+        logger,
+        getUserId: () => 'user-1',
+        presence: new OrchestrationStreamPresence(),
+        isRequestPrincipalCurrent: () => false,
+      } as never,
+    );
+    await app.request('/events');
+    await waitFor(
+      () =>
+        lifecycleCalls(logger, 'Orchestration event stream closed').length > 0,
+    );
+    consoleErrorSpy.mockRestore();
+
+    expect(
+      lifecycleCalls(logger, 'Orchestration event stream closed')[0],
+    ).toMatchObject({ reason: 'authorization-expired', framesWritten: 0 });
+  });
 });
