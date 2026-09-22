@@ -359,10 +359,15 @@ function supervisionLines(
   supervision: DelegatedTaskSnapshot['supervision'],
 ): string[] {
   if (!supervision) return [];
+  const { totalLimitMs, remainingMs, deadlineAt } = supervision;
   const lines = [
-    `Turn budget (this turn only, not the whole task): ${formatDurationMs(supervision.totalLimitMs)} total ` +
-      `(${formatDurationMs(supervision.remainingMs)} remaining, ` +
-      `deadline ${supervision.deadlineAt})`,
+    totalLimitMs !== undefined &&
+    remainingMs !== undefined &&
+    deadlineAt !== undefined
+      ? `Turn budget (this turn only, not the whole task): ${formatDurationMs(totalLimitMs)} total ` +
+        `(${formatDurationMs(remainingMs)} remaining, ` +
+        `deadline ${deadlineAt})`
+      : 'Turn budget: none declared for this turn',
     `Idle limit: ${formatDurationMs(supervision.idleLimitMs)} ` +
       `with no verified protocol activity${
         supervision.lastProgressEventAt

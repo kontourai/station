@@ -20,6 +20,7 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
+  MUSE_CANCELLED_TOOL_OUTPUT,
   MUSE_DEFAULT_IDLE_TIMEOUT_MS,
   MUSE_MAX_SUPERVISION_TIMEOUT_MS,
   MUSE_PROVIDER_OVERRIDE_ENV,
@@ -38,7 +39,7 @@ import {
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
 } from '../adapters/muse-adapter-types.js';
-import { UNRESOLVED_TOOL_OUTPUT } from '../adapters/unresolved-tool-output.js';
+import { UNRESOLVED_TURN_TOOL_OUTPUT } from '../adapters/unresolved-tool-output.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   MUSE_13_BASH_CALL_ID,
@@ -2252,7 +2253,7 @@ describe('MuseAdapter tool events', () => {
       toolCallId: MUSE_13_BASH_CALL_ID,
       toolName: 'bash',
       status: 'unresolved',
-      output: UNRESOLVED_TOOL_OUTPUT,
+      output: UNRESOLVED_TURN_TOOL_OUTPUT,
     });
     await expectNoFurtherEvent(harness.iterator, 'open tool at terminal');
     await harness.adapter.stopAll();
@@ -2303,6 +2304,175 @@ describe('MuseAdapter tool events', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('#2308 review round: tool lifecycle edges through the adapter', () => {
+    const LINES = MUSE_13_BASH_TOOL_TURN_LINES;
+    const BASH_TASK_ID = '01a0cab2-5d4f-7600-886e-a77b38b198a3';
+    /** The capture's bash tool, re-keyed to another task and call id. */
+    const bashTool = (taskId: string, callId: string) => {
+      const sub = (line: string) =>
+        line
+          .split(BASH_TASK_ID)
+          .join(taskId)
+          .split(MUSE_13_BASH_CALL_ID)
+          .join(callId);
+      const finalPhase = (phase: string) =>
+        sub(LINES[27]!).replace(
+          '"event":{"kind":"completed"',
+          `"event":{"kind":"${phase}"`,
+        );
+      return {
+        start: LINES.slice(21, 26).map(sub),
+        completed: finalPhase('completed'),
+        failed: finalPhase('failed'),
+        cancelled: finalPhase('cancelled'),
+        result: sub(LINES[28]!),
+      };
+    };
+
+    async function startTurn(threadId: string, idleMs = 1_000) {
+      const harness = createHarness({ turnIdleTimeoutMs: idleMs });
+      await harness.adapter.startSession({ provider: 'muse', threadId });
+      const turn = await harness.adapter.sendTurn({ threadId, input: 'go' });
+      const emit = async (...lines: string[]) => {
+        for (const line of lines)
+          harness.processes[0].stdout.write(`${line}\n`);
+        if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+        else await flushIo();
+      };
+      return { harness, turn, emit };
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test('parallel tools: idle stays disarmed until the LAST open call resolves', async () => {
+      vi.useFakeTimers();
+      const { harness, emit } = await startTurn('thread-parallel');
+      const a = bashTool('task-a', 'call_a');
+      const b = bashTool('task-b', 'call_b');
+      await emit(...a.start, ...b.start);
+      // First result while the second call is still open: still no idle.
+      await emit(a.completed, a.result);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(harness.released).toBe(0);
+      // Second result: idle re-arms from now and fires one window later.
+      await emit(b.completed, b.result);
+      await vi.advanceTimersByTimeAsync(900);
+      expect(harness.released).toBe(0);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(harness.released).toBe(1);
+      const events = await drain(harness.iterator, 8, 'parallel tools');
+      expect(
+        events.slice(3).map((e) => [e.method, e.toolCallId ?? e.code]),
+      ).toEqual([
+        ['tool.started', 'call_a'],
+        ['tool.started', 'call_b'],
+        ['tool.completed', 'call_a'],
+        ['tool.completed', 'call_b'],
+        ['runtime.error', MUSE_TURN_IDLE_TIMEOUT_CODE],
+      ]);
+    });
+
+    test('a cancelled task closes its open tool as cancelled and re-arms idle; failed does not close', async () => {
+      vi.useFakeTimers();
+      const { harness, turn, emit } = await startTurn('thread-cancel');
+      const failedTool = bashTool('task-f', 'call_f');
+      const cancelledTool = bashTool('task-c', 'call_c');
+      await emit(...failedTool.start, failedTool.failed);
+      // `failed` leaves call_f open (its tool_result still follows), so
+      // cancelling call_c alone must not re-arm idle yet.
+      await emit(...cancelledTool.start, cancelledTool.cancelled);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(harness.released).toBe(0);
+      // call_f's result arrives after its task's `failed`, as muse batches it.
+      await emit(failedTool.result);
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(harness.released).toBe(1);
+      const events = await drain(harness.iterator, 8, 'cancelled tool');
+      const completions = events.filter((e) => e.method === 'tool.completed');
+      expect(completions).toEqual([
+        expect.objectContaining({
+          toolCallId: 'call_c',
+          toolName: 'bash',
+          turnId: turn.turnId,
+          itemId: 'tool:call_c',
+          status: 'cancelled',
+          output: MUSE_CANCELLED_TOOL_OUTPUT,
+        }),
+        expect.objectContaining({ toolCallId: 'call_f', status: 'success' }),
+      ]);
+      expect(events.at(-1)).toMatchObject({
+        method: 'runtime.error',
+        code: MUSE_TURN_IDLE_TIMEOUT_CODE,
+      });
+    });
+
+    test('a cancelled task alone re-arms idle', async () => {
+      vi.useFakeTimers();
+      const { harness, emit } = await startTurn('thread-cancel-only');
+      const tool = bashTool('task-c', 'call_c');
+      await emit(...tool.start);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(harness.released).toBe(0);
+      await emit(tool.cancelled);
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(harness.released).toBe(1);
+    });
+
+    test('a result without correlation_facts.tool_name pairs with its start; without a start it is dropped', async () => {
+      // Real timers: this test awaits `expectNoFurtherEvent`.
+      const { harness, emit } = await startTurn('thread-nameless', 60_000);
+      const tool = bashTool('task-n', 'call_n');
+      const nameless = (line: string) =>
+        line.replace('"tool_name":"bash",', '');
+      expect(nameless(tool.result)).not.toContain('tool_name');
+      await emit(...tool.start, nameless(tool.result));
+      // No start for call_orphan: nothing to name it by, so no event.
+      await emit(nameless(bashTool('task-o', 'call_orphan').result));
+      await emit(LINES[54]!);
+      const events = await drain(harness.iterator, 6, 'nameless result');
+      expect(events.map((e) => e.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'tool.started',
+        'tool.completed',
+        'turn.completed',
+      ]);
+      expect(events[4]).toMatchObject({
+        toolCallId: 'call_n',
+        toolName: 'bash',
+        status: 'success',
+      });
+      await expectNoFurtherEvent(harness.iterator, 'nameless result');
+    });
+
+    test('two tasks naming the same call id open one start; a start after its result opens none', async () => {
+      // Real timers: this test awaits `expectNoFurtherEvent`.
+      const { harness, emit } = await startTurn('thread-dup', 60_000);
+      const first = bashTool('task-1', 'call_dup');
+      const second = bashTool('task-2', 'call_dup');
+      await emit(...first.start, ...second.start);
+      const late = bashTool('task-3', 'call_late');
+      // Result first, then a start for the same call: the row stays closed.
+      await emit(late.result, ...late.start);
+      await emit(LINES[54]!);
+      const events = await drain(harness.iterator, 7, 'dup starts');
+      expect(
+        events.slice(3).map((e) => [e.method, e.toolCallId, e.status]),
+      ).toEqual([
+        ['tool.started', 'call_dup', undefined],
+        ['tool.completed', 'call_late', 'success'],
+        // call_dup never resolved: closed as unresolved at the turn's end.
+        ['tool.completed', 'call_dup', 'unresolved'],
+        ['turn.completed', undefined, undefined],
+      ]);
+      expect(events[5].output).toBe(UNRESOLVED_TURN_TOOL_OUTPUT);
+      await expectNoFurtherEvent(harness.iterator, 'dup starts');
+    });
   });
 });
 
@@ -2624,7 +2794,7 @@ describe('Muse turn supervision (#2269)', () => {
       method: 'runtime.error',
       code: MUSE_TURN_IDLE_TIMEOUT_CODE,
     });
-    expect(events[3].message).toContain('no tool running');
+    expect(events[3].message).toContain('no tool reported running');
     expect(events[3].message).not.toContain('workspace root');
     expect(events[3].message).not.toContain('muse stderr');
   });

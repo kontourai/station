@@ -84,9 +84,14 @@ type MuseTurnEffect =
     }
   | {
       kind: 'tool-completed';
-      /** muse's own `call_id`; the ONLY tool identity the live stream emits. */
+      /** muse's own `call_id`; the tool identity the result is keyed by. */
       toolCallId: string;
-      toolName: string;
+      /**
+       * `correlation_facts.tool_name`, or `null` when the record omits it.
+       * The adapter pairs a nameless result with the `tool.started` it opened
+       * for the same `call_id` and drops it otherwise.
+       */
+      toolName: string | null;
       /** Derived from `correlation_facts.outcome`, not guessed from presence. */
       status: 'success' | 'error';
       output: string | null;
@@ -218,9 +223,11 @@ export function translateMuseRecord(record: MuseRecord): MuseTurnEffect {
       const toolName = factsRecord
         ? extractStringField(factsRecord, 'tool_name')
         : null;
-      // Without an id and a name there is nothing honest to attribute the
-      // result to, and a synthesized id would never pair with anything.
-      if (!toolCallId || !toolName) return { kind: 'ignored' };
+      // Without an id there is nothing honest to attribute the result to, and
+      // a synthesized id would never pair with anything. A missing name is
+      // passed through as `null`: the adapter can still take it from the
+      // start it opened under this `call_id`, and drops the result if none.
+      if (!toolCallId) return { kind: 'ignored' };
       const outcome = factsRecord
         ? extractStringField(factsRecord, 'outcome')
         : null;
@@ -271,8 +278,18 @@ function stripNonEmptyPrefix(
   return rest.length > 0 ? rest : null;
 }
 
-/** Task phases after which muse reports nothing further for a task. */
+/**
+ * Task phases after which muse reports nothing further about the TASK. A
+ * tool task's `tool_result` still follows `completed` and `failed` (results
+ * are batched after the task's final phase, and a failed tool still gets
+ * one), so neither closes an open tool; only `cancelled` does.
+ */
 const MUSE_TASK_FINAL_PHASES = new Set(['completed', 'failed', 'cancelled']);
+
+/** What {@link observeMuseToolTask} tells the adapter to do, if anything. */
+export type MuseToolTaskObservation =
+  | { kind: 'started'; toolName: string; toolCallId: string }
+  | { kind: 'cancelled'; toolName: string; toolCallId: string };
 
 /**
  * Folds one `task-lifecycle` effect into `bindings` (keyed by `task_id`) and
@@ -289,8 +306,12 @@ const MUSE_TASK_FINAL_PHASES = new Set(['completed', 'failed', 'cancelled']);
  * fields never completes a binding, so it degrades to today's behavior: no
  * start, only the `tool_result` completion.
  *
- * Returns each binding at most once (`emitted`), and forgets a task at its
- * final phase. `maxEntries` bounds the map: oldest tasks are evicted first.
+ * Returns each binding's start at most once (`emitted`), and forgets a task
+ * at its final phase. A task whose start was returned and which then reaches
+ * `cancelled` returns a `cancelled` observation so the adapter can close the
+ * open tool: muse reported it will not finish, so leaving it open would keep
+ * the row running and the idle deadline disarmed for nothing. `completed` and
+ * `failed` close nothing here — the `tool_result` that follows them does. `maxEntries` bounds the map: oldest tasks are evicted first.
  * Once-per-`call_id` across tasks is the caller's job (the adapter keeps
  * its own per-turn record of started call ids).
  */
@@ -298,9 +319,22 @@ export function observeMuseToolTask(
   bindings: Map<string, MuseToolTaskBinding>,
   effect: Extract<MuseTurnEffect, { kind: 'task-lifecycle' }>,
   maxEntries: number,
-): { toolName: string; toolCallId: string } | null {
+): MuseToolTaskObservation | null {
   if (MUSE_TASK_FINAL_PHASES.has(effect.phase)) {
+    const finished = bindings.get(effect.taskId);
     bindings.delete(effect.taskId);
+    if (
+      effect.phase === 'cancelled' &&
+      finished?.emitted &&
+      finished.toolName &&
+      finished.toolCallId
+    ) {
+      return {
+        kind: 'cancelled',
+        toolName: finished.toolName,
+        toolCallId: finished.toolCallId,
+      };
+    }
     return null;
   }
   const isStart = effect.phase === 'started';
@@ -328,7 +362,11 @@ export function observeMuseToolTask(
     return null;
   }
   binding.emitted = true;
-  return { toolName: binding.toolName, toolCallId: binding.toolCallId };
+  return {
+    kind: 'started',
+    toolName: binding.toolName,
+    toolCallId: binding.toolCallId,
+  };
 }
 
 /**

@@ -64,7 +64,7 @@ import {
   MUSE_MODEL_LAUNCH,
   MUSE_PROVIDER_MODES,
 } from './muse-adapter-types.js';
-import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
+import { UNRESOLVED_TURN_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /**
  * Only `warn`/`info` are used, so the option is typed to exactly that slice —
@@ -133,11 +133,13 @@ export interface MuseAdapterOptions {
  *   tool result) ends the turn — but never while a tool is in flight (a
  *   `tool.started` with no result yet, #2308): that is known in-progress
  *   work, not silence. Each verified activity reschedules the window, and a
- *   tool's result re-arms it. Invalid values fall back to this default
+ *   tool's result (or its task reporting `cancelled`) re-arms it. Invalid values fall back to this default
  *   (fail-closed, mirroring `resolveTurnStallWindowMs`).
  * - TOTAL: there is NO default. An absolute wall-clock ceiling applies only
- *   when the server declares one (`turnTimeoutMs`, e.g. a delegation budget),
- *   and its expiry is attributed to that declared budget
+ *   when a server-owned caller declares one (`turnTimeoutMs`). No production
+ *   caller does today — `station-runtime.ts` constructs this adapter without
+ *   it — so in production Muse turns have no total budget; tests and any
+ *   future caller use it. Its expiry is attributed to that declared budget
  *   (`MUSE_TURN_TOTAL_TIMEOUT_CODE`). A fixed 2 h default used to apply here
  *   and killed a healthy turn whose bash tool completed every ~5 minutes.
  *
@@ -219,6 +221,10 @@ export const MUSE_STDOUT_BUFFER_MAX_CHARS = 1_048_576;
  * actually emitted (and a declared total budget, if any, still bounds it).
  */
 const MUSE_SEEN_TOOL_CALL_IDS_MAX = 500;
+
+/** Output for a tool call muse cancelled before reporting a result. */
+export const MUSE_CANCELLED_TOOL_OUTPUT =
+  'Muse cancelled this tool call before it reported a result.';
 
 /**
  * Where the muse CLI stores its credential, honoring XDG. Presence only —
@@ -1227,12 +1233,17 @@ export class MuseAdapter implements ProviderAdapterShape {
       // #2308: muse 1.3 names the tool and its `call_id` on the tool task's
       // lifecycle records, so a start can be opened under the SAME id its
       // `tool_result` later closes (see `observeMuseToolTask`).
-      const start = observeMuseToolTask(
+      const observed = observeMuseToolTask(
         turn.toolTasks,
         effect,
         MUSE_SEEN_TOOL_CALL_IDS_MAX,
       );
-      if (!start) return;
+      if (!observed) return;
+      if (observed.kind === 'cancelled') {
+        this.closeCancelledTool(record, turn, observed);
+        return;
+      }
+      const start = observed;
       // At most one start per call id, and never a start for a call whose
       // result already arrived: that would reopen a finished row.
       if (
@@ -1260,6 +1271,13 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
 
     if (effect.kind === 'tool-completed') {
+      // A result that omits `correlation_facts.tool_name` still pairs with
+      // the start this turn opened under its `call_id`, which named the tool
+      // from muse's own `task_kind`. With no such start there is nothing to
+      // name it by, so it is dropped rather than published under a guess.
+      const toolName =
+        effect.toolName ?? turn.openToolCalls.get(effect.toolCallId);
+      if (!toolName) return;
       // Its own itemId keeps the tool row distinct from the assistant text
       // item, and matches the `tool.started` itemId for the same call.
       turn.openToolCalls.delete(effect.toolCallId);
@@ -1274,7 +1292,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         turnId: turn.turnId,
         itemId: `tool:${effect.toolCallId}`,
         toolCallId: effect.toolCallId,
-        toolName: effect.toolName,
+        toolName,
         status: effect.status,
         ...(effect.output === null ? {} : { output: preview.value }),
         ...(preview.receipt ? { outputReceipt: preview.receipt } : {}),
@@ -1469,10 +1487,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     // per turn, and once the turn settles this adapter reads nothing more
     // from it, so no result can ever reach Station for these calls. The
     // projection deliberately carries an open call past its turn
-    // (station#1558), so without this the row would read "running" forever
-    // — observed with muse tasks that are proposed and never complete.
-    // `unresolved` + the shared sentence says exactly that: no result, fate
-    // unknown — not a failure and not a cancellation.
+    // (station#1558), so without this the row would read "running" forever.
+    // `unresolved` with the turn-scoped sentence says exactly that: no
+    // result, fate unknown — not a failure and not a cancellation. (A task
+    // that is proposed and never starts opened no row, so it needs none.)
     const openToolCalls = [...turn.openToolCalls];
     turn.openToolCalls.clear();
     for (const [toolCallId, toolName] of openToolCalls) {
@@ -1487,7 +1505,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         toolCallId,
         toolName,
         status: 'unresolved',
-        output: UNRESOLVED_TOOL_OUTPUT,
+        output: UNRESOLVED_TURN_TOOL_OUTPUT,
       });
     }
 
@@ -1697,13 +1715,50 @@ export class MuseAdapter implements ProviderAdapterShape {
         outputText: turn.outputText.length > 0 ? turn.outputText : undefined,
         omitStderr: true,
         error: {
-          message: `Muse turn was idle for ${idleLimitMs}ms with no verified protocol activity and no tool running (last activity at ${lastActivityIso}), so Station stopped it.`,
+          message: `Muse turn was idle for ${idleLimitMs}ms with no verified protocol activity and no tool reported running (last activity at ${lastActivityIso}), so Station stopped it.`,
           code: MUSE_TURN_IDLE_TIMEOUT_CODE,
         },
       });
     }, idleLimitMs);
     handle.unref?.();
     turn.idleTimeoutHandle = handle;
+  }
+
+  /**
+   * Closes a started tool whose muse task reported `cancelled` (see
+   * `observeMuseToolTask`). Published as `cancelled` because that is the
+   * outcome muse itself reported — not a failure nothing observed, and not
+   * `unresolved`, which asserts that no verdict arrived. The call leaves
+   * `openToolCalls`, so the idle deadline re-arms once nothing else is in
+   * flight; the cancel is itself verified activity. It is also recorded as
+   * seen, so a later start for the same `call_id` cannot reopen the row.
+   */
+  private closeCancelledTool(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+    tool: { toolName: string; toolCallId: string },
+  ): void {
+    if (!turn.openToolCalls.delete(tool.toolCallId)) return;
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      method: 'tool.completed',
+      turnId: turn.turnId,
+      itemId: `tool:${tool.toolCallId}`,
+      toolCallId: tool.toolCallId,
+      toolName: tool.toolName,
+      status: 'cancelled',
+      output: MUSE_CANCELLED_TOOL_OUTPUT,
+    });
+    if (!turn.seenToolCallIds.includes(tool.toolCallId)) {
+      if (turn.seenToolCallIds.length >= MUSE_SEEN_TOOL_CALL_IDS_MAX) {
+        turn.seenToolCallIds.shift();
+      }
+      turn.seenToolCallIds.push(tool.toolCallId);
+    }
+    this.noteVerifiedActivity(record, turn);
   }
 
   /**

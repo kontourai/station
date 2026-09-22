@@ -647,7 +647,7 @@ export const ENGINE_TURN_FAILED_CODE = 'engine-turn-failed';
 
 /**
  * #2269: `runtime.error` codes for a Muse turn that a Station-owned deadline
- * ended — a full idle window with no verified activity and no tool running,
+ * ended — a full idle window with no verified activity and no tool reported running,
  * or the turn budget a server-owned caller declared. Neither reports an
  * engine or connection failure. Published by the Muse adapter; the UI reads
  * them so its copy names the deadline instead of guessing at a cause.

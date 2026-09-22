@@ -311,7 +311,7 @@ describe('tool_result translation', () => {
     expect(effect).toMatchObject({ kind: 'tool-completed', status: 'error' });
   });
 
-  it('ignores a tool_result with no id or no tool name instead of inventing one', () => {
+  it('ignores a tool_result with no id, and passes a missing tool name through as null', () => {
     // A synthesized id would never pair with anything downstream.
     const noId = MUSE_TOOL_RESULT.replace(
       '"call_id":"call_019feab717fd75639b5a008d7b2c3e09",',
@@ -320,9 +320,13 @@ describe('tool_result translation', () => {
     expect(translateMuseRecord(parseMuseLine(noId)!)).toEqual({
       kind: 'ignored',
     });
+    // No name is not a guessed name: the adapter pairs it with an open
+    // start for this call_id, or drops it (see muse-adapter.test.ts).
     const noName = MUSE_TOOL_RESULT.replace('"tool_name":"read_file",', '');
-    expect(translateMuseRecord(parseMuseLine(noName)!)).toEqual({
-      kind: 'ignored',
+    expect(translateMuseRecord(parseMuseLine(noName)!)).toMatchObject({
+      kind: 'tool-completed',
+      toolCallId: 'call_019feab717fd75639b5a008d7b2c3e09',
+      toolName: null,
     });
   });
 
@@ -353,7 +357,12 @@ function foldToolEffects(lines: readonly string[]) {
   const bindings = new Map<string, MuseToolTaskBinding>();
   const out: Array<
     | { kind: 'started'; toolName: string; toolCallId: string; line: number }
-    | { kind: 'completed'; toolName: string; toolCallId: string; line: number }
+    | {
+        kind: 'completed';
+        toolName: string | null;
+        toolCallId: string;
+        line: number;
+      }
   > = [];
   lines.forEach((line, index) => {
     const record = parseMuseLine(line);
@@ -361,7 +370,7 @@ function foldToolEffects(lines: readonly string[]) {
     const effect = translateMuseRecord(record);
     if (effect.kind === 'task-lifecycle') {
       const start = observeMuseToolTask(bindings, effect, 500);
-      if (start) out.push({ kind: 'started', ...start, line: index + 1 });
+      if (start?.kind === 'started') out.push({ ...start, line: index + 1 });
     } else if (effect.kind === 'tool-completed') {
       out.push({
         kind: 'completed',
@@ -455,6 +464,60 @@ describe('muse 1.3 tool start (#2308, real capture)', () => {
     );
     expect(starts).toHaveLength(1);
     expect(starts[0]).toMatchObject({ toolCallId: MUSE_13_BASH_CALL_ID });
+  });
+
+  test('cancelled closes a started tool; completed and failed do not', () => {
+    const lines = MUSE_13_BASH_TOOL_TURN_LINES;
+    const run = (finalPhase: string) => {
+      const bindings = new Map<string, MuseToolTaskBinding>();
+      const observed = [
+        ...lines.slice(21, 26),
+        lines[27]!.replace(
+          '"event":{"kind":"completed"',
+          `"event":{"kind":"${finalPhase}"`,
+        ),
+      ].map((line) =>
+        observeMuseToolTask(
+          bindings,
+          translateMuseRecord(parseMuseLine(line)!) as never,
+          500,
+        ),
+      );
+      return { observed: observed.filter(Boolean), bindings };
+    };
+    const cancelled = run('cancelled');
+    expect(cancelled.observed).toEqual([
+      { kind: 'started', toolName: 'bash', toolCallId: MUSE_13_BASH_CALL_ID },
+      { kind: 'cancelled', toolName: 'bash', toolCallId: MUSE_13_BASH_CALL_ID },
+    ]);
+    expect(cancelled.bindings.size).toBe(0);
+    // A failed tool still gets its tool_result, batched after the task's
+    // final phase, so neither `failed` nor `completed` closes anything here.
+    for (const phase of ['failed', 'completed']) {
+      const { observed, bindings } = run(phase);
+      expect(observed.map((o) => o?.kind)).toEqual(['started']);
+      expect(bindings.size).toBe(0);
+    }
+  });
+
+  test('a cancelled task that never started opens and closes nothing', () => {
+    const bindings = new Map<string, MuseToolTaskBinding>();
+    const lines = [
+      ...MUSE_13_BASH_TOOL_TURN_LINES.slice(21, 25),
+      MUSE_13_BASH_TOOL_TURN_LINES[27]!.replace(
+        '"event":{"kind":"completed"',
+        '"event":{"kind":"cancelled"',
+      ),
+    ];
+    for (const line of lines) {
+      expect(
+        observeMuseToolTask(
+          bindings,
+          translateMuseRecord(parseMuseLine(line)!) as never,
+          500,
+        ),
+      ).toBeNull();
+    }
   });
 
   test('a replayed started record does not open a second start', () => {

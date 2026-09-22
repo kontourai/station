@@ -44,11 +44,11 @@ interface DelegatedTaskRecord {
   supervision?: {
     provider: string;
     turnId: string;
-    deadlineAt: string;
+    deadlineAt?: string;
     elapsedMs: number;
-    remainingMs: number;
+    remainingMs?: number;
     idleLimitMs: number;
-    totalLimitMs: number;
+    totalLimitMs?: number;
     lastProgressEventAt?: string;
   };
   reason?: { code: string; detail?: string };
@@ -256,6 +256,18 @@ describe('station delegate over HTTP', () => {
                     'The turn ended after a full window with no verified protocol activity.',
                 },
                 transitionReason: 'runtime_error',
+              }
+            : {}),
+          // #2269 (owner direction): Muse's default — an idle window and no
+          // declared total budget.
+          ...(body.prompt === 'trigger idle-only supervised task'
+            ? {
+                supervision: {
+                  provider: 'muse',
+                  turnId: 'turn-idle-only-1',
+                  elapsedMs: 10 * 60_000,
+                  idleLimitMs: 30 * 60_000,
+                },
               }
             : {}),
         };
@@ -889,6 +901,36 @@ describe('station delegate over HTTP', () => {
       detail:
         'The turn ended after a full window with no verified protocol activity.',
     });
+  });
+
+  test('status renders an idle-only supervision as no declared budget (#2269)', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger idle-only supervised task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Turn budget: none declared for this turn');
+    expect(printed).toContain(
+      'Idle limit: 30m with no verified protocol activity',
+    );
+    expect(printed).not.toContain('undefined');
+    expect(printed).not.toContain('deadline');
   });
 
   test('rejects the retired direct connection selector before any request', async () => {

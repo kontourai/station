@@ -249,6 +249,11 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  * function so a future prose pattern can never preempt a backend-supplied
  * `code` by accident, not just "review confirmed none of today's prose
  * patterns collide."
+ *   -4. `code` is a Muse deadline code (#2269: `MUSE_TURN_IDLE_TIMEOUT_CODE`
+ *       / `MUSE_TURN_TOTAL_TIMEOUT_CODE`) -> Station stopped the turn at an
+ *       idle window or a declared budget; not an engine or connection
+ *       failure, so no retry hint. Checked right after the session-ended
+ *       refusal.
  *   -3. `code === PRINCIPAL_UNRESOLVED_CODE` (archive#4518) -> the request's
  *       caller could not be resolved to a principal — a deterministic authz
  *       failure, never a temporary one, so the hint never claims retrying
@@ -316,7 +321,7 @@ export function translateChatError(
   if (code === MUSE_TURN_IDLE_TIMEOUT_CODE) {
     return {
       title: 'Turn stopped after going quiet',
-      body: 'Station stopped this turn after a full idle window with no output and no tool running.',
+      body: 'Station stopped this turn after a full idle window with no output and no tool reported running.',
       disclosureRaw: true,
     };
   }

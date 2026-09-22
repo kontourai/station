@@ -105,12 +105,14 @@ A delegated task's current turn can carry two distinct bounds. Both are PER
 TURN — a follow-up turn gets its own budget; nothing here promises an
 aggregate limit across a whole task or conversation. Station does not end a
 live turn on a schedule it chose itself: the total bound exists only when a
-caller declares it.
+server-owned caller declares it, and no production caller does today
+(`station-runtime.ts` builds the Muse adapter without `turnTimeoutMs`), so
+production Muse turns carry the idle bound only.
 
 | Bound | Owner | Semantics | Muse default |
 |---|---|---|---|
-| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text, a newly started tool, or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). It is not armed while a tool is in flight (a `tool.started` with no result yet); the result re-arms it. Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity. | 30 min |
-| Total (declared budget) | The caller that declares it (server-owned `turnTimeoutMs`) | Wall-clock ceiling from turn start, armed only when declared; activity never moves it. Expiry is `muse-turn-timeout` (unchanged string), attributed to that declared budget. | None |
+| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text, a newly started tool, or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). It is not armed while a tool is in flight (a `tool.started` with no result yet); the result, or the tool's task reporting `cancelled`, re-arms it. Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity. | 30 min |
+| Total (declared budget) | A server-owned caller that declares `turnTimeoutMs` (none in production today) | Wall-clock ceiling from turn start, armed only when declared; activity never moves it. Expiry is `muse-turn-timeout` (unchanged string), attributed to that declared budget. | None |
 
 The idle bound fails closed: absent, zero, negative, NaN, infinite, or above
 the 24 h cap resolves to its default. A declared total outside (0, 24 h]
@@ -120,6 +122,15 @@ user metadata can choose or extend either bound. Muse 1.3 reports tool
 starts (#2308), so a long tool call is known work rather than silence; a
 deadline's error message never carries Muse's routine stderr, and the UI
 names the deadline instead of suggesting a retry.
+
+Out of scope pending #2300: a Muse child that emits `run_terminal` and then
+keeps running. The adapter stops reading its stdout at that terminal, and
+`settleTurn` neither clears nor re-arms the idle deadline, and its callback
+has no settled-turn guard. So a lingering child is reaped by whatever idle
+deadline (or declared total) was armed when the turn settled — but a turn
+that settles while a tool is in flight has no idle deadline armed, and its
+lingering child is not reaped until it exits or the user stops it.
+Changing that post-terminal handling belongs to #2300.
 
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
@@ -146,9 +157,13 @@ Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
   with the session's own projected provider). A stale prior turn's facts
   and a malformed declaration are dropped. The status event window is
   bounded, so a very long turn's start event can age out — that reads as
-  honest unknown, never a repaired policy. Adapters without a declared hard
-  budget omit supervision: consumers render "no declared budget", never a
-  deadline derived from RPC timeouts or metadata.
+  honest unknown, never a repaired policy. Adapters that declare no
+  supervision omit it. A declaration with an idle window and no total
+  budget (Muse's production default) is forwarded as idle-only — no
+  `deadlineAt`, `remainingMs`, or `totalLimitMs` — and `station delegate
+  status` prints "Turn budget: none declared for this turn". A declaration
+  carrying only half of a total budget is malformed and dropped. Nothing
+  derives a deadline from RPC timeouts or metadata.
 - `reason` is allowlisted and re-synthesized, never forwarded as-is. The
   lifecycle fold classifies a budget-killed turn as `runtime_error` first
   (its message is always non-empty), so the terminal `runtime.error`

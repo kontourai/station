@@ -143,10 +143,10 @@ describe('delegation supervision projection (#2269)', () => {
     });
   });
 
-  test('a Muse turn with no declared budget (idle-only declaration) reports no supervision', () => {
+  test('a Muse turn with no declared budget reports its live idle window and no deadline', () => {
     // Owner direction on #2269: with no `turnTimeoutMs` the Muse adapter
-    // declares only `idleLimitMs` — no deadline, no total. The projection
-    // must read that as "no declared budget", never invent a deadline.
+    // declares only `idleLimitMs`. The idle deadline can still end the turn,
+    // so the projection forwards it — and invents no deadline or total.
     const {
       deadlineAt: _deadline,
       totalLimitMs: _total,
@@ -160,7 +160,26 @@ describe('delegation supervision projection (#2269)', () => {
       },
       metadata: METADATA,
     });
-    expect(snapshot.supervision).toBeUndefined();
+    expect(snapshot.supervision).toEqual({
+      provider: 'muse',
+      turnId: 'turn-1',
+      elapsedMs: expect.any(Number),
+      idleLimitMs: 30 * 60_000,
+      lastProgressEventAt: '2026-09-20T22:10:00.000Z',
+    });
+  });
+
+  test('a declaration carrying only half of a total budget is dropped, not repaired', () => {
+    for (const drop of ['totalLimitMs', 'deadlineAt'] as const) {
+      const declaration: Record<string, unknown> = museDeclaration('turn-1');
+      delete declaration[drop];
+      expect(
+        delegatedTurnSupervision(
+          { ...observingSession('turn-1'), provider: 'muse' },
+          [turnStartedEvent('turn-1', declaration)],
+        ),
+      ).toBeUndefined();
+    }
   });
 
   test('time-expiry clamps remaining to zero instead of going negative', () => {
