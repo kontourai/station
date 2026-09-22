@@ -83,7 +83,17 @@ export type LiveSurfaceInput =
 export type LiveSurfaceInputKind = LiveSurfaceInput['kind'];
 
 export type LiveSurfaceController =
-  | { kind: 'human'; principal: string }
+  | {
+      kind: 'human';
+      principal: string;
+      /**
+       * The server-derived client the human acts from (a paired device, or
+       * one credential). Two clients of the same person are distinct
+       * controllers: the later one's input takes control and fences the
+       * earlier one. Absent only in contexts that never name a device.
+       */
+      device?: string;
+    }
   | { kind: 'agent'; principal: string; sessionId: string };
 
 export interface LiveSurfaceControlLease {
@@ -134,6 +144,13 @@ export const LIVE_SURFACE_COORDINATE_MAX = 65_536;
 export const LIVE_SURFACE_WHEEL_DELTA_MAX = 100_000;
 export const LIVE_SURFACE_LEASE_MAX_BODY_BYTES = 1024;
 export const LIVE_SURFACE_MAX_EPOCH = Number.MAX_SAFE_INTEGER;
+/**
+ * Image pixels per surface pixel. The floor admits a thumbnail capture of a
+ * wide page (64 image px of a 1280 px page is 0.05); the ceiling is a
+ * generous device pixel ratio.
+ */
+export const LIVE_SURFACE_DEVICE_SCALE_FACTOR_MIN = 0.01;
+export const LIVE_SURFACE_DEVICE_SCALE_FACTOR_MAX = 16;
 
 // ---------------------------------------------------------------------------
 // Typed results
@@ -150,6 +167,8 @@ export type LiveSurfaceLeaseRefusalCode =
   | 'human-controlling'
   /** Another agent holds an unexpired lease the caller may not take. */
   | 'held-by-other'
+  /** The surface's authorizer refused the principal this action. */
+  | 'not-authorized'
   /** The caller is not the current holder (release/renew/dispatch). */
   | 'not-holder';
 
@@ -165,7 +184,10 @@ export type LiveSurfaceInputRefusalCode =
   | LiveSurfaceLeaseRefusalCode
   /** The producer does not accept one of the batch's input kinds. */
   | 'unsupported-input'
-  /** The producer failed while dispatching; `accepted` events did land. */
+  /**
+   * The producer failed, or did not answer within the dispatch timeout,
+   * while dispatching; `accepted` events did land.
+   */
   | 'dispatch-failed';
 
 export type LiveSurfaceInputResult =
@@ -467,10 +489,13 @@ function parseController(value: unknown): LiveSurfaceController | null {
   if (!record) return null;
   if (
     record.kind === 'human' &&
-    onlyKeys(record, ['kind', 'principal']) &&
-    boundedText(record.principal, 512)
+    onlyKeys(record, ['kind', 'principal', 'device']) &&
+    boundedText(record.principal, 512) &&
+    (record.device === undefined || boundedText(record.device, 512))
   )
-    return { kind: 'human', principal: record.principal };
+    return record.device === undefined
+      ? { kind: 'human', principal: record.principal }
+      : { kind: 'human', principal: record.principal, device: record.device };
   if (
     record.kind === 'agent' &&
     onlyKeys(record, ['kind', 'principal', 'sessionId']) &&
@@ -536,7 +561,11 @@ export function parseLiveSurfaceFrameHeader(
     !LIVE_SURFACE_CODECS.includes(record.codec as LiveSurfaceCodec) ||
     !intInRange(record.width, 1, LIVE_SURFACE_COORDINATE_MAX) ||
     !intInRange(record.height, 1, LIVE_SURFACE_COORDINATE_MAX) ||
-    !finiteInRange(record.deviceScaleFactor, 0.1, 16) ||
+    !finiteInRange(
+      record.deviceScaleFactor,
+      LIVE_SURFACE_DEVICE_SCALE_FACTOR_MIN,
+      LIVE_SURFACE_DEVICE_SCALE_FACTOR_MAX,
+    ) ||
     !finiteInRange(record.capturedAt, 0, Number.MAX_SAFE_INTEGER)
   )
     return null;
@@ -563,6 +592,17 @@ export interface LiveSurfaceStreamState {
   surfaceId: string;
   lease: LiveSurfaceControlLease;
   effectiveParams: LiveSurfaceStreamParams;
+  /**
+   * Who THIS viewer is, as the server resolved it: compare with
+   * `lease.holder` (principal and device) to tell "you" from "you on another
+   * device" from "another person". Server-derived, never client-asserted.
+   */
+  viewer?: LiveSurfaceViewerIdentity;
+}
+
+export interface LiveSurfaceViewerIdentity {
+  principal: string;
+  device: string;
 }
 
 export function parseLiveSurfaceStreamState(
@@ -571,17 +611,30 @@ export function parseLiveSurfaceStreamState(
   const record = plainRecord(value);
   if (
     !record ||
-    !onlyKeys(record, ['surfaceId', 'lease', 'effectiveParams']) ||
+    !onlyKeys(record, ['surfaceId', 'lease', 'effectiveParams', 'viewer']) ||
     !isLiveSurfaceId(record.surfaceId) ||
     !isLiveSurfaceStreamParams(record.effectiveParams)
   )
     return null;
   const lease = parseLiveSurfaceControlLease(record.lease);
   if (!lease || lease.surfaceId !== record.surfaceId) return null;
+  let viewer: LiveSurfaceViewerIdentity | undefined;
+  if (record.viewer !== undefined) {
+    const identity = plainRecord(record.viewer);
+    if (
+      !identity ||
+      !onlyKeys(identity, ['principal', 'device']) ||
+      !boundedText(identity.principal, 512) ||
+      !boundedText(identity.device, 512)
+    )
+      return null;
+    viewer = { principal: identity.principal, device: identity.device };
+  }
   return {
     surfaceId: record.surfaceId,
     lease,
     effectiveParams: { ...record.effectiveParams },
+    ...(viewer ? { viewer } : {}),
   };
 }
 
@@ -648,23 +701,29 @@ export function encodeLiveSurfaceRecord(record: LiveSurfaceRecord): Uint8Array {
  * it yields complete records. Any malformed prefix or header is fatal for
  * the stream: the decoder throws `LiveSurfaceRecordError` and the caller
  * must drop the connection, because a length-prefixed stream cannot resync.
+ *
+ * Buffering is linear: chunks are kept as a list and each byte is copied
+ * once, into the record it belongs to. (Concatenating on every push is
+ * quadratic — a 2 MB frame in 16 KB chunks copied ~128 MB.)
  */
 export class LiveSurfaceRecordDecoder {
-  private buffer = new Uint8Array(0);
+  private chunks: Uint8Array[] = [];
+  /** Offset into `chunks[0]` of the first unconsumed byte. */
+  private offset = 0;
+  private buffered = 0;
 
   push(chunk: Uint8Array): LiveSurfaceRecord[] {
     if (chunk.byteLength > 0) {
-      const next = new Uint8Array(this.buffer.byteLength + chunk.byteLength);
-      next.set(this.buffer, 0);
-      next.set(chunk, this.buffer.byteLength);
-      this.buffer = next;
+      this.chunks.push(chunk);
+      this.buffered += chunk.byteLength;
     }
     const records: LiveSurfaceRecord[] = [];
-    while (this.buffer.byteLength >= LIVE_SURFACE_RECORD_PREFIX_BYTES) {
+    while (this.buffered >= LIVE_SURFACE_RECORD_PREFIX_BYTES) {
+      const prefix = this.peek(LIVE_SURFACE_RECORD_PREFIX_BYTES);
       const view = new DataView(
-        this.buffer.buffer,
-        this.buffer.byteOffset,
-        this.buffer.byteLength,
+        prefix.buffer,
+        prefix.byteOffset,
+        prefix.byteLength,
       );
       const version = view.getUint8(0);
       const kind = view.getUint8(1);
@@ -687,16 +746,14 @@ export class LiveSurfaceRecordDecoder {
         throw new LiveSurfaceRecordError('state record carries a body');
       const total =
         LIVE_SURFACE_RECORD_PREFIX_BYTES + headerLength + bodyLength;
-      if (this.buffer.byteLength < total) break;
+      if (this.buffered < total) break;
+      this.take(LIVE_SURFACE_RECORD_PREFIX_BYTES);
+      const headerBytes = this.take(headerLength);
+      const body = this.take(bodyLength);
       let json: unknown;
       try {
         json = JSON.parse(
-          new TextDecoder('utf-8', { fatal: true }).decode(
-            this.buffer.subarray(
-              LIVE_SURFACE_RECORD_PREFIX_BYTES,
-              LIVE_SURFACE_RECORD_PREFIX_BYTES + headerLength,
-            ),
-          ),
+          new TextDecoder('utf-8', { fatal: true }).decode(headerBytes),
         );
       } catch {
         throw new LiveSurfaceRecordError('record header is not UTF-8 JSON');
@@ -704,27 +761,53 @@ export class LiveSurfaceRecordDecoder {
       if (kind === RECORD_KIND_FRAME) {
         const header = parseLiveSurfaceFrameHeader(json);
         if (!header) throw new LiveSurfaceRecordError('invalid frame header');
-        records.push({
-          kind: 'frame',
-          header,
-          // Copy: the body must outlive this decoder's buffer.
-          body: this.buffer.slice(
-            LIVE_SURFACE_RECORD_PREFIX_BYTES + headerLength,
-            total,
-          ),
-        });
+        records.push({ kind: 'frame', header, body });
       } else {
         const state = parseLiveSurfaceStreamState(json);
         if (!state) throw new LiveSurfaceRecordError('invalid state record');
         records.push({ kind: 'state', state });
       }
-      this.buffer = this.buffer.slice(total);
     }
     return records;
   }
 
   /** Bytes buffered toward an incomplete record. */
   get pendingBytes(): number {
-    return this.buffer.byteLength;
+    return this.buffered;
+  }
+
+  /** Copy of the next `length` bytes without consuming them (prefix only). */
+  private peek(length: number): Uint8Array {
+    const out = new Uint8Array(length);
+    let written = 0;
+    let offset = this.offset;
+    for (const chunk of this.chunks) {
+      const part = chunk.subarray(offset, offset + (length - written));
+      out.set(part, written);
+      written += part.byteLength;
+      offset = 0;
+      if (written === length) break;
+    }
+    return out;
+  }
+
+  /** Consume the next `length` bytes into a new, owned array. */
+  private take(length: number): Uint8Array {
+    const out = new Uint8Array(length);
+    let written = 0;
+    while (written < length) {
+      const chunk = this.chunks[0]!;
+      const available = chunk.byteLength - this.offset;
+      const count = Math.min(available, length - written);
+      out.set(chunk.subarray(this.offset, this.offset + count), written);
+      written += count;
+      this.offset += count;
+      if (this.offset === chunk.byteLength) {
+        this.chunks.shift();
+        this.offset = 0;
+      }
+    }
+    this.buffered -= length;
+    return out;
   }
 }

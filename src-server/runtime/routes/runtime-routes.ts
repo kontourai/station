@@ -2065,12 +2065,31 @@ export function configureRuntimeRoutes(
       '/api/live-surfaces',
       createLiveSurfaceRoutes(liveSurfaceRegistry, {
         isRequestPrincipalCurrent,
-        // Only a HUMAN principal can drive a surface over HTTP. An agent's
-        // credential resolves to a non-human principal and is refused here;
-        // agents claim through the server-side lease with a verified session.
-        resolveHumanPrincipal: (c) => {
+        // Only a HUMAN may drive a surface over HTTP; agents claim through
+        // the registry with their verified session. In personal mode every
+        // credential — including the per-boot internal token the
+        // station-control MCP child presents — resolves to the operator's
+        // human principal, so the principal kind alone refuses nothing:
+        // refuse agent-originated credentials explicitly.
+        // TODO(#122): replace these two checks with the first-class
+        // `isAgentOriginatedRequest` once it lands.
+        resolveHumanCaller: (c) => {
+          const runtime = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          if (!runtime || runtime.kind === 'internal') return null;
+          if (
+            resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
+              context.environmentSecurityService.identifyDevice(credential),
+            ) === 'delegation'
+          )
+            return null;
           const principal = resolveSubscriberPrincipal(c as never);
-          return principal?.kind === 'human' ? principal.id : null;
+          if (principal?.kind !== 'human') return null;
+          // The client the human acts from: the paired device, else the one
+          // credential (a digest prefix, never the credential itself).
+          const device = runtime.deviceId
+            ? `device:${runtime.deviceId}`
+            : `credential:${createHash('sha256').update(runtime.credential).digest('base64url').slice(0, 16)}`;
+          return { principal: principal.id, device };
         },
       }),
     );

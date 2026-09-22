@@ -104,8 +104,17 @@ function controllerLine(surface: UseLiveSurfaceResult): {
       text: 'An agent is in control. Interacting takes control from it.',
       tone: 'agent',
     };
-  if (surface.selfPrincipal && holder.principal === surface.selfPrincipal)
-    return { text: 'You are in control.', tone: 'you' };
+  // Identity comes from the server (each viewer's state record names it),
+  // never from which principal this client last saw win a claim.
+  const self = surface.self;
+  if (self && holder.principal === self.principal) {
+    if (holder.device === self.device)
+      return { text: 'You are in control.', tone: 'you' };
+    return {
+      text: 'You are in control from another device. Interacting here takes control.',
+      tone: 'other',
+    };
+  }
   return {
     text: 'Another person is in control. Interacting takes control.',
     tone: 'other',
@@ -195,22 +204,30 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     return () => clearInterval(timer);
   }, [surface.status, now]);
 
-  const toSurface = useCallback((clientX: number, clientY: number) => {
-    const canvas = canvasRef.current;
-    const header = headerRef.current;
-    if (!canvas || !header) return null;
-    const rect = canvas.getBoundingClientRect();
-    return mapClientPointToSurface(
-      { x: clientX, y: clientY },
-      {
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-      },
-      header,
-    );
-  }, []);
+  /** Buttons this pointer holds down on the surface, and where it last was. */
+  const heldRef = useRef(new Set<LiveSurfacePointerButton>());
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+
+  const toSurface = useCallback(
+    (clientX: number, clientY: number, clamp = false) => {
+      const canvas = canvasRef.current;
+      const header = headerRef.current;
+      if (!canvas || !header) return null;
+      const rect = canvas.getBoundingClientRect();
+      return mapClientPointToSurface(
+        { x: clientX, y: clientY },
+        {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+        header,
+        { clamp },
+      );
+    },
+    [],
+  );
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const point = toSurface(event.clientX, event.clientY);
@@ -228,6 +245,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         ? Math.min(3, last.count + 1)
         : 1;
     lastDownRef.current = { at, x: point.x, y: point.y, count };
+    lastPointRef.current = point;
     const input: LiveSurfaceInput = {
       kind: 'pointer',
       type: 'down',
@@ -235,31 +253,59 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       clickCount: count,
     };
     const button = buttonOf(event.button);
-    if (button) input.button = button;
+    if (button) {
+      input.button = button;
+      heldRef.current.add(button);
+    }
     const modifiers = modifiersOf(event);
     if (modifiers) input.modifiers = modifiers;
     sendInput([input]);
   };
 
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const point = toSurface(event.clientX, event.clientY);
+    const button = buttonOf(event.button);
+    const held = button !== undefined && heldRef.current.has(button);
+    // A release of a held button must reach the surface wherever it happens
+    // (pointer capture keeps delivering it here): clamp, don't drop.
+    const point = toSurface(event.clientX, event.clientY, held);
     if (!point) return;
+    if (button) heldRef.current.delete(button);
+    lastPointRef.current = point;
     const input: LiveSurfaceInput = {
       kind: 'pointer',
       type: 'up',
       ...point,
       clickCount: lastDownRef.current?.count ?? 1,
     };
-    const button = buttonOf(event.button);
     if (button) input.button = button;
     const modifiers = modifiersOf(event);
     if (modifiers) input.modifiers = modifiers;
     sendInput([input]);
   };
 
+  /** The gesture was taken away (cancel, lost capture): release what's held. */
+  const releaseHeld = () => {
+    const point = lastPointRef.current;
+    if (!point || heldRef.current.size === 0) return;
+    const events: LiveSurfaceInput[] = [...heldRef.current].map((button) => ({
+      kind: 'pointer',
+      type: 'up',
+      ...point,
+      button,
+      clickCount: 1,
+    }));
+    heldRef.current.clear();
+    sendInput(events);
+  };
+
   const onPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const point = toSurface(event.clientX, event.clientY);
+    const point = toSurface(
+      event.clientX,
+      event.clientY,
+      heldRef.current.size > 0,
+    );
     if (!point) return;
+    lastPointRef.current = point;
     const input: LiveSurfaceInput = { kind: 'pointer', type: 'move', ...point };
     const modifiers = modifiersOf(event);
     if (modifiers) input.modifiers = modifiers;
@@ -333,7 +379,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   };
 
   const controller = controllerLine(surface);
-  const recordAge = secondsAgo(clock, surface.lastRecordAt);
+  const recordAge = secondsAgo(clock, surface.lastActivityAt);
   const frameAge = secondsAgo(clock, surface.lastFrameAt);
   let statusText: string | null = null;
   if (surface.status === 'connecting') statusText = 'Connecting…';
@@ -402,6 +448,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           onPointerDown={canInteract ? onPointerDown : undefined}
           onPointerUp={canInteract ? onPointerUp : undefined}
           onPointerMove={canInteract ? onPointerMove : undefined}
+          onPointerCancel={releaseHeld}
+          onLostPointerCapture={releaseHeld}
           onContextMenu={(event) => event.preventDefault()}
         />
         <textarea

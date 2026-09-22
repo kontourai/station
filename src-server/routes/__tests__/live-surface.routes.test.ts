@@ -19,6 +19,7 @@ import {
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
 import {
+  claimAgentControl,
   type LiveSurfaceAuthorizer,
   LiveSurfaceRegistry,
 } from '../../services/live-surface/registry.js';
@@ -82,11 +83,16 @@ function harness(
     createLiveSurfaceRoutes(registry, {
       isRequestPrincipalCurrent: (request) =>
         isRuntimeRequestPrincipalCurrent(request, security),
-      resolveHumanPrincipal: (c) => {
+      // The runtime composition's resolver is exercised separately, through
+      // the real credential pipeline (runtime-routes-live-surface.test.ts).
+      resolveHumanCaller: (c) => {
         const credential = c.req
           .header('Authorization')
           ?.replace(/^Bearer /, '');
-        return (credential && principals.get(credential)) ?? null;
+        const principal = credential && principals.get(credential);
+        return principal
+          ? { principal, device: `credential:${credential}` }
+          : null;
       },
       principalRecheckMs: 0,
     }),
@@ -197,6 +203,11 @@ describe('live surface routes through runtime authentication', () => {
           maxWidth: 640,
           maxHeight: 1280,
         },
+        // Each viewer is told who IT is (S9), so the UI never guesses.
+        viewer: {
+          principal: 'human:local:operator',
+          device: 'credential:operator',
+        },
       },
     });
     const entry = h.registry.get(SURFACE)!;
@@ -273,7 +284,11 @@ describe('live surface routes through runtime authentication', () => {
         lease: {
           surfaceId: SURFACE,
           epoch: 1,
-          holder: { kind: 'human', principal: 'human:local:operator' },
+          holder: {
+            kind: 'human',
+            principal: 'human:local:operator',
+            device: 'credential:operator',
+          },
           expiresAt: expect.any(Number),
         },
       },
@@ -283,14 +298,16 @@ describe('live surface routes through runtime authentication', () => {
 
   test('human input fences an agent, and a stale epoch is rejected', async () => {
     const h = harness();
-    const { lease } = h.registry.get(SURFACE)!;
+    const entry = h.registry.get(SURFACE)!;
+    const { lease } = entry;
     const agent = {
       kind: 'agent' as const,
       principal: 'agent:builtin:coder',
       sessionId: 'session-a',
     };
-    const agentEpoch = lease.claimForAgent(agent.principal, agent.sessionId)
-      .lease.epoch;
+    const agentEpoch = (
+      await claimAgentControl(entry, agent, 'human:local:operator')
+    ).lease.epoch;
 
     // A viewer that has not yet seen the agent's claim acts on epoch 0.
     const stale = await h.request(
@@ -421,7 +438,7 @@ describe('live surface routes through runtime authentication', () => {
     );
     expect(await release.json()).toMatchObject({
       success: true,
-      data: { ok: true, lease: { epoch: 2, holder: null } },
+      data: { ok: true, lease: { epoch: 1, holder: null } },
     });
     // An agent cannot be named in a lease request body.
     const agentClaim = await h.request(
@@ -513,5 +530,25 @@ describe('live surface routes through runtime authentication', () => {
     allowed = false;
     h.producer.emit();
     expect(await records.next()).toBeNull();
+  });
+  test('input needs control as well as input: an input-only grant is refused (behavioural)', async () => {
+    const h = harness({
+      authorize: (_principal, _surface, action) => action !== 'control',
+    });
+    const response = await h.request(
+      `${base}/input`,
+      'operator',
+      JSON.stringify({ epoch: 0, events: click(1, 1) }),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      success: false,
+      code: 'access-denied',
+    });
+    expect(h.producer.dispatched).toEqual([]);
+    expect(h.registry.get(SURFACE)!.lease.snapshot()).toMatchObject({
+      epoch: 0,
+      holder: null,
+    });
   });
 });

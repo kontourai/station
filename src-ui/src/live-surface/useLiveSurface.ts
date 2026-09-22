@@ -9,6 +9,7 @@ import {
   type LiveSurfaceLeaseResult,
   LiveSurfaceRecordDecoder,
   type LiveSurfaceStreamParams,
+  type LiveSurfaceViewerIdentity,
   parseLiveSurfaceControlLease,
 } from '@kontourai/station-contracts/live-surface';
 import { authenticatedFetch } from '@kontourai/station-sdk';
@@ -40,7 +41,15 @@ import {
  *   one POST at a time, each bounded to fit one relay chunk. A batch
  *   refused as `stale-epoch` is DROPPED, not replayed: it was aimed at a view
  *   that changed hands, and replaying clicks onto a page someone else has
- *   since changed is exactly what the epoch exists to prevent.
+ *   since changed is exactly what the epoch exists to prevent. Anything this
+ *   client held down when that happened was already released by the server
+ *   at the handoff, so its eventual button/key UP is swallowed here: sending
+ *   it would be fresh human input, and would take control straight back.
+ * - The epoch this client acts on only moves forward (it is the max of every
+ *   epoch it has seen), so a frame published before a handoff can never
+ *   walk it back behind a state record that already announced the handoff.
+ * - Liveness counts BYTES, not records: a large frame still arriving over a
+ *   slow relay is a live stream, not a stalled one.
  */
 
 export type LiveSurfaceConnectionStatus =
@@ -76,11 +85,11 @@ export interface UseLiveSurfaceResult {
   status: LiveSurfaceConnectionStatus;
   lease: LiveSurfaceControlLease | null;
   effectiveParams: LiveSurfaceStreamParams | null;
-  /** Client time the last record (frame or heartbeat) arrived. */
-  lastRecordAt: number | null;
+  /** Client time the stream last delivered any bytes. */
+  lastActivityAt: number | null;
   lastFrameAt: number | null;
-  /** The principal this viewer acts as, learned from a successful claim. */
-  selfPrincipal: string | null;
+  /** Who this viewer is, as the server told it (principal and device). */
+  self: LiveSurfaceViewerIdentity | null;
   inputNotice: LiveSurfaceInputNotice;
   sendInput: (events: LiveSurfaceInput[]) => void;
   claimControl: () => Promise<void>;
@@ -135,6 +144,24 @@ function streamUrl(
 
 const encoder = new TextEncoder();
 
+/** The held thing an event presses or releases, or null. */
+function pressId(event: LiveSurfaceInput): string | null {
+  if (
+    event.kind === 'pointer' &&
+    event.button &&
+    (event.type === 'down' || event.type === 'up')
+  )
+    return `button:${event.button}`;
+  if (event.kind === 'key') return `key:${event.code || event.key}`;
+  return null;
+}
+
+function isRelease(event: LiveSurfaceInput): boolean {
+  return (
+    (event.kind === 'pointer' || event.kind === 'key') && event.type === 'up'
+  );
+}
+
 /** Split over-long text so every event parses at the route. */
 function normalizeEvents(events: LiveSurfaceInput[]): LiveSurfaceInput[] {
   const out: LiveSurfaceInput[] = [];
@@ -182,17 +209,23 @@ export function useLiveSurface(
   const [lease, setLease] = useState<LiveSurfaceControlLease | null>(null);
   const [effectiveParams, setEffectiveParams] =
     useState<LiveSurfaceStreamParams | null>(null);
-  const [lastRecordAt, setLastRecordAt] = useState<number | null>(null);
+  const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
   const [lastFrameAt, setLastFrameAt] = useState<number | null>(null);
-  const [selfPrincipal, setSelfPrincipal] = useState<string | null>(null);
+  const [self, setSelf] = useState<LiveSurfaceViewerIdentity | null>(null);
   const [inputNotice, setInputNotice] = useState<LiveSurfaceInputNotice>(null);
   const [retryToken, setRetryToken] = useState(0);
   const epochRef = useRef(0);
 
-  const adoptLease = useCallback((next: LiveSurfaceControlLease) => {
-    epochRef.current = next.epoch;
-    setLease(next);
+  const observeEpoch = useCallback((epoch: number) => {
+    epochRef.current = Math.max(epochRef.current, epoch);
   }, []);
+  const adoptLease = useCallback(
+    (next: LiveSurfaceControlLease) => {
+      observeEpoch(next.epoch);
+      setLease(next);
+    },
+    [observeEpoch],
+  );
 
   const paramsKey = JSON.stringify(params ?? {});
 
@@ -252,16 +285,25 @@ export function useLiveSurface(
         while (!stopped) {
           const chunk = await reader.read();
           if (chunk.done) break;
+          if (chunk.value.byteLength > 0) setLastActivityAt(nowRef.current());
           for (const record of decoder.push(chunk.value)) {
             const receivedAt = nowRef.current();
             attempt = 0;
             setStatus('live');
-            setLastRecordAt(receivedAt);
             if (record.kind === 'state') {
               adoptLease(record.state.lease);
               setEffectiveParams(record.state.effectiveParams);
+              if (record.state.viewer) {
+                const viewer = record.state.viewer;
+                setSelf((previous) =>
+                  previous?.principal === viewer.principal &&
+                  previous.device === viewer.device
+                    ? previous
+                    : viewer,
+                );
+              }
             } else {
-              epochRef.current = record.header.epoch;
+              observeEpoch(record.header.epoch);
               setLastFrameAt(receivedAt);
               onFrameRef.current({
                 header: record.header,
@@ -287,10 +329,22 @@ export function useLiveSurface(
       abort.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [apiBase, surfaceId, paramsKey, visible, retryToken, adoptLease]);
+  }, [
+    apiBase,
+    surfaceId,
+    paramsKey,
+    visible,
+    retryToken,
+    adoptLease,
+    observeEpoch,
+  ]);
 
   // ---- input -------------------------------------------------------------
   const queueRef = useRef<LiveSurfaceInput[]>([]);
+  /** Buttons/keys this client pressed and has not released. */
+  const pressedRef = useRef(new Set<string>());
+  /** Pressed when control changed hands; the server released them already. */
+  const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
   const flushScheduledRef = useRef(false);
   const inputUrl = `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/input`;
@@ -338,11 +392,11 @@ export function useLiveSurface(
         : null;
       if (nextLease) adoptLease(nextLease);
       if (result?.ok) {
-        if (nextLease?.holder?.kind === 'human')
-          setSelfPrincipal(nextLease.holder.principal);
         setInputNotice(null);
       } else if (result && !result.ok && result.code === 'stale-epoch') {
         queueRef.current = [];
+        for (const id of pressedRef.current) orphanedRef.current.add(id);
+        pressedRef.current.clear();
         setInputNotice('control-changed');
       } else {
         queueRef.current = [];
@@ -360,6 +414,10 @@ export function useLiveSurface(
   const sendInput = useCallback(
     (events: LiveSurfaceInput[]) => {
       for (const event of normalizeEvents(events)) {
+        const id = pressId(event);
+        if (id && isRelease(event) && orphanedRef.current.delete(id)) continue;
+        if (id && !isRelease(event)) pressedRef.current.add(id);
+        if (id && isRelease(event)) pressedRef.current.delete(id);
         const queue = queueRef.current;
         const last = queue[queue.length - 1];
         if (
@@ -399,8 +457,6 @@ export function useLiveSurface(
         : null;
       if (!nextLease) return;
       adoptLease(nextLease);
-      if (envelope?.data?.ok && nextLease.holder?.kind === 'human')
-        setSelfPrincipal(nextLease.holder.principal);
     } catch {
       setInputNotice('input-failed');
     }
@@ -412,9 +468,9 @@ export function useLiveSurface(
     status,
     lease,
     effectiveParams,
-    lastRecordAt,
+    lastActivityAt,
     lastFrameAt,
-    selfPrincipal,
+    self,
     inputNotice,
     sendInput,
     claimControl,

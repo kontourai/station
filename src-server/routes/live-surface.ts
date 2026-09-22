@@ -15,10 +15,13 @@ import {
 } from '@kontourai/station-contracts/live-surface';
 import { type Context, Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
+import type { HumanController } from '../services/live-surface/control-lease.js';
 import {
+  claimHumanControl,
   dispatchHumanInput,
   type LiveSurfaceEntry,
   type LiveSurfaceRegistry,
+  releaseHumanControl,
 } from '../services/live-surface/registry.js';
 
 /**
@@ -32,7 +35,7 @@ import {
  * - `GET  /:surfaceId/lease` / `POST /:surfaceId/lease` — read the lease, or
  *   claim/release it for the authenticated HUMAN caller. Agents never claim
  *   over HTTP: an agent claim needs a verified session, which the server-side
- *   automation supplies to `LiveSurfaceControlLeaseState.claimForAgent`.
+ *   automation supplies to the registry's `claimAgentControl`.
  *
  * Authorization (D5) is two layers. The pairing scope (`terminal:operate`,
  * `pairing-route-scopes.ts`) gates the family; then every route asks the
@@ -40,13 +43,26 @@ import {
  * for `view`, `input` or `control` for the resolved HUMAN principal. No
  * authorizer means deny. Every route re-checks that the credential is still
  * current at the publication boundary, and the frames stream re-checks both
- * the credential and the `view` grant while it runs.
+ * the credential and the `view` grant while it runs. That re-check rides the
+ * stream's own records, so on a still page (no frames, only heartbeats)
+ * revocation takes effect within one heartbeat (`heartbeatMs`, 5 s by
+ * default) plus the re-check interval, not instantly.
+ *
+ * Who is a human caller is decided by the composition
+ * (`resolveHumanCaller`): it returns the principal AND the client it acts
+ * from, and refuses anything agent-originated. Each viewer's state records
+ * carry that identity back to it, so the UI can say "you" honestly.
  */
 
 export interface LiveSurfaceRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
-  /** The authenticated human's stable principal id, or null if unattributable. */
-  resolveHumanPrincipal: (c: Context) => string | null;
+  /**
+   * The authenticated HUMAN caller and the client it acts from, or null for
+   * an unattributable or agent-originated request (which is then refused).
+   */
+  resolveHumanCaller: (
+    c: Context,
+  ) => { principal: string; device: string } | null;
   /** How often a running frames stream re-checks the credential. */
   principalRecheckMs?: number;
   now?: () => number;
@@ -119,15 +135,22 @@ export function createLiveSurfaceRoutes(
     c: Context,
     entry: LiveSurfaceEntry,
     actions: readonly LiveSurfaceAction[],
-  ): Promise<Found<string>> => {
-    const principal = options.resolveHumanPrincipal(c);
-    if (!principal)
+  ): Promise<Found<HumanController & { device: string }>> => {
+    const caller = options.resolveHumanCaller(c);
+    if (!caller)
       return { ok: false, response: failure(c, 'principal-unresolved', 403) };
     for (const action of actions) {
-      if (!(await entry.authorize(principal, action)))
+      if (!(await entry.authorize(caller.principal, action)))
         return { ok: false, response: failure(c, 'access-denied', 403) };
     }
-    return { ok: true, value: principal };
+    return {
+      ok: true,
+      value: {
+        kind: 'human',
+        principal: caller.principal,
+        device: caller.device,
+      },
+    };
   };
 
   app.get('/:surfaceId/frames', async (c) => {
@@ -136,7 +159,7 @@ export function createLiveSurfaceRoutes(
     const entry = found.value;
     const caller = await authorize(c, entry, ['view']);
     if (!caller.ok) return caller.response;
-    const principal = caller.value;
+    const human = caller.value;
     const queryKeys = Object.keys(c.req.queries());
     if (
       queryKeys.some(
@@ -155,7 +178,10 @@ export function createLiveSurfaceRoutes(
     if (!parsed.ok) return failure(c, 'invalid-request', 400);
 
     const request = c.req.raw;
-    const viewer = entry.hub.attach(parsed.params);
+    const viewer = entry.hub.attach(parsed.params, {
+      principal: human.principal,
+      device: human.device,
+    });
     const abort = new AbortController();
     const end = () => {
       abort.abort();
@@ -177,7 +203,7 @@ export function createLiveSurfaceRoutes(
             // stream runs (scope narrowed, Project admin removed).
             if (
               !options.isRequestPrincipalCurrent(request) ||
-              !(await entry.authorize(principal, 'view'))
+              !(await entry.authorize(human.principal, 'view'))
             ) {
               end();
               controller.close();
@@ -210,7 +236,7 @@ export function createLiveSurfaceRoutes(
     // Human input auto-claims the lease, so it needs control as well as input.
     const caller = await authorize(c, found.value, ['input', 'control']);
     if (!caller.ok) return caller.response;
-    const principal = caller.value;
+    const human = caller.value;
     const body = await readJson(c, LIVE_SURFACE_INPUT_MAX_BODY_BYTES);
     if (!body.ok) return body.response;
     const batch = parseLiveSurfaceInputBatch(body.value);
@@ -219,7 +245,7 @@ export function createLiveSurfaceRoutes(
       return failure(c, 'access-denied', 403);
     const result: LiveSurfaceInputResult = await dispatchHumanInput(
       found.value,
-      principal,
+      human,
       batch.epoch,
       batch.events,
     );
@@ -242,18 +268,17 @@ export function createLiveSurfaceRoutes(
     if (!found.ok) return found.response;
     const caller = await authorize(c, found.value, ['control']);
     if (!caller.ok) return caller.response;
-    const principal = caller.value;
+    const human = caller.value;
     const body = await readJson(c, LIVE_SURFACE_LEASE_MAX_BODY_BYTES);
     if (!body.ok) return body.response;
     const request = parseLiveSurfaceLeaseRequest(body.value);
     if (!request) return failure(c, 'invalid-request', 400);
     if (!options.isRequestPrincipalCurrent(c.req.raw))
       return failure(c, 'access-denied', 403);
-    const lease = found.value.lease;
     const result: LiveSurfaceLeaseResult =
       request.action === 'claim'
-        ? lease.claimHuman(principal)
-        : lease.release({ kind: 'human', principal }, request.epoch);
+        ? claimHumanControl(found.value, human)
+        : releaseHumanControl(found.value, human, request.epoch);
     return c.json({ success: result.ok, data: result }, result.ok ? 200 : 409);
   });
 

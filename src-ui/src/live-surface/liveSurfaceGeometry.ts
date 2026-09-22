@@ -52,11 +52,17 @@ function containRect(
 /**
  * Map a client point to surface pixels, or null when it falls in the
  * letterbox bars (outside the drawn image) — a click there hits nothing.
+ *
+ * With `clamp`, a point outside the image is pinned to its nearest edge
+ * instead. That is for a gesture already in progress (a button is held and
+ * the pointer is captured): its move and release must still reach the
+ * surface, or the surface is left with a button held down.
  */
 export function mapClientPointToSurface(
   client: LiveSurfacePoint,
   box: LiveSurfaceBox,
   frame: LiveSurfaceFrameGeometry,
+  options: { clamp?: boolean } = {},
 ): LiveSurfacePoint | null {
   if (
     box.width <= 0 ||
@@ -67,15 +73,19 @@ export function mapClientPointToSurface(
   )
     return null;
   const drawn = containRect(box, frame);
-  const imageX = (client.x - drawn.left) / drawn.scale;
-  const imageY = (client.y - drawn.top) / drawn.scale;
-  if (
+  let imageX = (client.x - drawn.left) / drawn.scale;
+  let imageY = (client.y - drawn.top) / drawn.scale;
+  if (options.clamp) {
+    imageX = Math.min(Math.max(imageX, 0), frame.width);
+    imageY = Math.min(Math.max(imageY, 0), frame.height);
+  } else if (
     imageX < 0 ||
     imageY < 0 ||
     imageX >= frame.width ||
     imageY >= frame.height
-  )
+  ) {
     return null;
+  }
   const round = (value: number) => Math.round(value * 100) / 100;
   return {
     x: round(imageX / frame.deviceScaleFactor),

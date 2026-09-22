@@ -17,6 +17,16 @@ const agent = {
   principal: 'agent:builtin:coder',
   sessionId: 'session-a',
 } as const;
+const alice = {
+  kind: 'human',
+  principal: 'human:local:alice',
+  device: 'device:laptop',
+} as const;
+const bob = {
+  kind: 'human',
+  principal: 'human:local:bob',
+  device: 'device:phone',
+} as const;
 
 describe('live surface control lease', () => {
   test('human input auto-claims with epoch + 1 and fences the in-flight agent', () => {
@@ -28,13 +38,10 @@ describe('live surface control lease', () => {
     // The agent's op checks the fence before its step: still current.
     expect(state.isCurrent(agentEpoch, agent).ok).toBe(true);
 
-    const human = state.claimForHumanInput('human:local:operator', agentEpoch);
+    const human = state.claimForHumanInput(alice, agentEpoch);
     expect(human).toMatchObject({
       ok: true,
-      lease: {
-        epoch: agentEpoch + 1,
-        holder: { kind: 'human', principal: 'human:local:operator' },
-      },
+      lease: { epoch: agentEpoch + 1, holder: alice },
     });
     // ...and after its step: fenced. This is what makes the op abort.
     expect(state.isCurrent(agentEpoch, agent)).toMatchObject({
@@ -45,21 +52,21 @@ describe('live surface control lease', () => {
 
   test('an agent claim never preempts a live human; it may claim once the hold lapses', () => {
     const { state, clock } = lease();
-    state.claimForHumanInput('human:local:operator', 0);
+    state.claimForHumanInput(alice, 0);
     clock.t = 800;
     // More input renews the hold: live is measured from the LAST input.
-    state.claimForHumanInput('human:local:operator', 1);
+    state.claimForHumanInput(alice, 1);
     clock.t = 1_700;
     expect(state.claimForAgent(agent.principal, agent.sessionId)).toMatchObject(
       {
         ok: false,
         code: 'human-controlling',
-        lease: { epoch: 1, holder: { kind: 'human' } },
+        lease: { epoch: 1, holder: alice },
       },
     );
     clock.t = 1_800;
     expect(state.claimForAgent(agent.principal, agent.sessionId)).toMatchObject(
-      { ok: true, lease: { epoch: 3, holder: agent } },
+      { ok: true, lease: { epoch: 2, holder: agent } },
     );
   });
 
@@ -67,60 +74,132 @@ describe('live surface control lease', () => {
     const { state } = lease();
     // The human last observed epoch 0; an agent has since taken the surface.
     state.claimForAgent(agent.principal, agent.sessionId);
-    const result = state.claimForHumanInput('human:local:operator', 0);
+    const result = state.claimForHumanInput(alice, 0);
     expect(result).toMatchObject({ ok: false, code: 'stale-epoch' });
     expect(state.snapshot()).toMatchObject({ epoch: 1, holder: agent });
   });
 
   test('a continuing human holder renews without moving the epoch', () => {
     const { state, clock } = lease();
-    state.claimForHumanInput('human:local:operator', 0);
+    state.claimForHumanInput(alice, 0);
     clock.t = 500;
-    const again = state.claimForHumanInput('human:local:operator', 1);
+    const again = state.claimForHumanInput(alice, 1);
     expect(again).toMatchObject({
       ok: true,
       lease: { epoch: 1, expiresAt: 1_500 },
     });
   });
 
-  test('expiry releases the holder and advances the epoch, fencing it', () => {
+  test("a lapsed lease does not refuse the same holder's next input (S3)", () => {
+    const { state, clock } = lease();
+    const first = state.claimForHumanInput(alice, 0);
+    clock.t = 1_000; // the hold lapses: no holder, nobody else acted
+    expect(state.snapshot()).toMatchObject({ epoch: 1, holder: null });
+    const next = state.claimForHumanInput(alice, first.lease.epoch);
+    expect(next).toMatchObject({
+      ok: true,
+      lease: { epoch: 1, holder: alice },
+    });
+  });
+
+  test('expiry leaves no holder and still fences the expired agent', () => {
     const { state, clock } = lease();
     const claimed = state.claimForAgent(agent.principal, agent.sessionId);
-    const changes: number[] = [];
-    state.onChange((next) => changes.push(next.epoch));
+    const changes: (string | null)[] = [];
+    state.onChange((next) => changes.push(next.holder?.principal ?? null));
     clock.t = 1_999;
     expect(state.isCurrent(claimed.lease.epoch, agent).ok).toBe(true);
     clock.t = 2_000;
     expect(state.snapshot()).toMatchObject({
-      epoch: 2,
+      epoch: 1,
       holder: null,
       expiresAt: null,
     });
     expect(state.isCurrent(claimed.lease.epoch, agent)).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'not-holder',
     });
-    expect(changes).toEqual([2]);
-    // Once expired, another agent may claim.
+    expect(changes).toEqual([null]);
+    // Another agent taking over is a handoff: the epoch advances.
     expect(state.claimForAgent('agent:other', 'session-b')).toMatchObject({
       ok: true,
-      lease: { epoch: 3 },
+      lease: { epoch: 2 },
     });
+    expect(state.isCurrent(claimed.lease.epoch, agent)).toMatchObject({
+      ok: false,
+      code: 'stale-epoch',
+    });
+  });
+
+  test('a second human takes control, fences the first, and cannot release their lease (M4)', () => {
+    const { state } = lease();
+    const a = state.claimForHumanInput(alice, 0);
+    expect(a.lease).toMatchObject({ epoch: 1, holder: alice });
+    // Bob cannot release Alice's lease.
+    expect(state.release(bob, 1)).toMatchObject({
+      ok: false,
+      code: 'not-holder',
+      lease: { holder: alice },
+    });
+    const b = state.claimForHumanInput(bob, 1);
+    expect(b.lease).toMatchObject({ epoch: 2, holder: bob });
+    expect(state.isCurrent(1, alice)).toMatchObject({
+      ok: false,
+      code: 'stale-epoch',
+    });
+    // Alice's view is now stale: her next batch is refused, not a takeover.
+    expect(state.claimForHumanInput(alice, 1)).toMatchObject({
+      ok: false,
+      code: 'stale-epoch',
+    });
+  });
+
+  test('the same person on another device is a different controller', () => {
+    const { state } = lease();
+    state.claimForHumanInput(alice, 0);
+    const otherDevice = { ...alice, device: 'device:tablet' };
+    expect(state.claimForHumanInput(otherDevice, 1)).toMatchObject({
+      ok: true,
+      lease: { epoch: 2, holder: otherDevice },
+    });
+    expect(state.isCurrent(2, alice)).toMatchObject({
+      ok: false,
+      code: 'not-holder',
+    });
+  });
+
+  test('handoff listeners fire on a change of controller, not on renewals or lapses', () => {
+    const { state, clock } = lease();
+    const handoffs: [number, string | null][] = [];
+    state.onHandoff((next, previous) =>
+      handoffs.push([next.epoch, previous?.principal ?? null]),
+    );
+    state.claimForHumanInput(alice, 0);
+    state.claimForHumanInput(alice, 1); // renewal
+    clock.t = 5_000; // lapse
+    state.snapshot();
+    state.claimForHumanInput(alice, 1); // same holder returns
+    state.claimForHumanInput(bob, 1); // handoff
+    expect(handoffs).toEqual([
+      [1, null],
+      [2, 'human:local:alice'],
+    ]);
   });
 
   test('only the current holder at the current epoch can release', () => {
     const { state } = lease();
     state.claimForAgent(agent.principal, agent.sessionId);
-    expect(
-      state.release({ kind: 'human', principal: 'human:local:operator' }, 1),
-    ).toMatchObject({ ok: false, code: 'not-holder' });
+    expect(state.release(alice, 1)).toMatchObject({
+      ok: false,
+      code: 'not-holder',
+    });
     expect(state.release(agent, 0)).toMatchObject({
       ok: false,
       code: 'stale-epoch',
     });
     expect(state.release(agent, 1)).toMatchObject({
       ok: true,
-      lease: { epoch: 2, holder: null },
+      lease: { epoch: 1, holder: null },
     });
   });
 

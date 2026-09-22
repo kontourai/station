@@ -85,6 +85,76 @@ describe('live surface record envelope', () => {
   });
 });
 
+describe('live surface record envelope bounds', () => {
+  test('a state record that carries a body is rejected', () => {
+    const bytes = encodeLiveSurfaceRecord(state);
+    const withBody = new Uint8Array(bytes.length + 3);
+    withBody.set(bytes);
+    new DataView(withBody.buffer).setUint32(6, 3);
+    expect(() => new LiveSurfaceRecordDecoder().push(withBody)).toThrow(
+      'state record carries a body',
+    );
+  });
+
+  test('a thumbnail capture of a wide page (deviceScaleFactor 0.05) decodes; below 0.01 does not', () => {
+    const thumbnail = encodeLiveSurfaceRecord({
+      ...frame,
+      header: {
+        ...frame.header,
+        width: 64,
+        height: 40,
+        deviceScaleFactor: 64 / 1280,
+      },
+    });
+    expect(new LiveSurfaceRecordDecoder().push(thumbnail)).toHaveLength(1);
+    const tooSmall = encodeLiveSurfaceRecord({
+      ...frame,
+      header: { ...frame.header, deviceScaleFactor: 0.009 },
+    });
+    expect(() => new LiveSurfaceRecordDecoder().push(tooSmall)).toThrow(
+      'invalid frame header',
+    );
+  });
+
+  test('a 2 MB frame in 16 KB relay chunks decodes intact', () => {
+    const body = Uint8Array.from(
+      { length: 2 * 1024 * 1024 },
+      (_, i) => i % 253,
+    );
+    const bytes = encodeLiveSurfaceRecord({ ...frame, body });
+    const decoder = new LiveSurfaceRecordDecoder();
+    const records: LiveSurfaceRecord[] = [];
+    for (let offset = 0; offset < bytes.length; offset += 16 * 1024)
+      records.push(...decoder.push(bytes.subarray(offset, offset + 16 * 1024)));
+    expect(records).toHaveLength(1);
+    expect(records[0]?.kind === 'frame' && records[0].body).toEqual(body);
+    expect(decoder.pendingBytes).toBe(0);
+  });
+
+  test('a state record names its viewer and a human holder names its device', () => {
+    const named: LiveSurfaceRecord = {
+      kind: 'state',
+      state: {
+        ...(state as Extract<LiveSurfaceRecord, { kind: 'state' }>).state,
+        lease: {
+          surfaceId: 'browser:s1',
+          epoch: 3,
+          holder: {
+            kind: 'human',
+            principal: 'human:local:a',
+            device: 'device:x',
+          },
+          expiresAt: 9,
+        },
+        viewer: { principal: 'human:local:a', device: 'device:y' },
+      },
+    };
+    expect(
+      new LiveSurfaceRecordDecoder().push(encodeLiveSurfaceRecord(named)),
+    ).toEqual([named]);
+  });
+});
+
 describe('live surface wire parsers', () => {
   test('input events are parsed strictly', () => {
     expect(

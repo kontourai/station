@@ -1,11 +1,14 @@
 import {
+  LIVE_SURFACE_RECORD_MAX_BODY_BYTES,
   LIVE_SURFACE_STREAM_PARAM_BOUNDS,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceRecord,
   type LiveSurfaceStreamParams,
   type LiveSurfaceStreamState,
+  type LiveSurfaceViewerIdentity,
+  parseLiveSurfaceFrameHeader,
 } from '@kontourai/station-contracts/live-surface';
-import type { LiveSurfaceControlLeaseState } from './control-lease.js';
+import type { LiveSurfaceLeaseReader } from './control-lease.js';
 import type { LiveSurfaceProducer } from './producer.js';
 
 /**
@@ -21,21 +24,33 @@ import type { LiveSurfaceProducer } from './producer.js';
  * 16 KB chunks (~5 fps): a queued frame is by definition a stale one.
  *
  * Backpressure: every frame is acked to the producer exactly once — when a
- * viewer first takes it, or when a newer frame supersedes it undelivered. A
- * producer that honours acks (CDP screencast) is thereby paced by the
- * fastest viewer, and paused entirely while every viewer is still busy
- * sending the previous frame.
+ * viewer first takes it, when a newer frame supersedes it undelivered, or
+ * when the last viewer holding it goes away. A producer that honours acks
+ * (CDP screencast) is thereby paced by the fastest viewer, and never left
+ * waiting on a frame nobody will take.
  *
- * Adaptive params: when a viewer's slot is overwritten while that viewer is
- * still busy with its previous frame `downgradeAfter` times in a row, the
- * hub halves its fps (floor 1) and tells the producer if it can listen
- * (`updateParams`); otherwise the throttle enforces it. After
- * `recoverAfterMs` with no such overwrite it doubles back toward what the
- * viewers asked for.
+ * Epoch: a frame's header carries the lease epoch at DELIVERY, not at
+ * capture. A frame published before a handoff and delivered after it (the
+ * viewer was busy) must not tell the viewer an older epoch than the state
+ * record it just received.
  *
- * Lifecycle: the producer starts when the first viewer attaches and stops
- * when the last one leaves (after `idleStopMs`, default 0). Start/stop are
- * serialized, and a frame from a stopped run is discarded.
+ * A viewer that joins a running stream is seeded with the last published
+ * frame: a screencast sends nothing while a page is still, so otherwise the
+ * second viewer of a static page would never see it.
+ *
+ * Adaptive params: fps halves (floor 1) only when EVERY attached viewer has
+ * had its slot overwritten `downgradeAfter` times in a row while still busy
+ * — one slow viewer never lowers the rate a fast viewer gets. The producer
+ * hears the new params if it can (`updateParams`); otherwise the throttle
+ * enforces them. After `recoverAfterMs` with no downgrade fps doubles back
+ * toward what the viewers asked for.
+ *
+ * Lifecycle: the frame stream starts when the first viewer attaches and
+ * stops when the last one leaves (after `idleStopMs`, default 0). Start/stop
+ * are serialized, and a frame from a stopped run is discarded. Frames the
+ * producer mislabels (a header that does not validate, or an oversized
+ * body) are dropped, acked and reported, never delivered: one producer bug
+ * must not turn into every client's decoder failing and reconnecting.
  */
 
 export interface LiveSurfaceHubOptions {
@@ -88,6 +103,7 @@ class HubViewer implements LiveSurfaceViewer {
   constructor(
     readonly hub: LiveSurfaceHub,
     readonly requested: LiveSurfaceStreamParams,
+    readonly identity: LiveSurfaceViewerIdentity | undefined,
   ) {}
 
   notify(): void {
@@ -98,8 +114,11 @@ class HubViewer implements LiveSurfaceViewer {
 
   async next(signal?: AbortSignal): Promise<LiveSurfaceRecord | null> {
     this.busy = false;
-    if (signal?.aborted) this.close();
     while (!this.closed) {
+      if (signal?.aborted) {
+        this.close();
+        break;
+      }
       const record = this.take();
       if (record) return record;
       const timedOut = await new Promise<boolean>((resolve) => {
@@ -125,7 +144,7 @@ class HubViewer implements LiveSurfaceViewer {
     if (this.statePending) {
       this.statePending = false;
       this.busy = true;
-      return { kind: 'state', state: this.hub.state() };
+      return { kind: 'state', state: this.hub.state(this.identity) };
     }
     const frame = this.slot;
     if (!frame) return null;
@@ -134,12 +153,18 @@ class HubViewer implements LiveSurfaceViewer {
     this.consecutiveSlowOverwrites = 0;
     this.stats.delivered += 1;
     this.hub.ackOnce(frame);
-    return { kind: 'frame', header: { ...frame.header }, body: frame.body };
+    return {
+      kind: 'frame',
+      header: { ...frame.header, epoch: this.hub.lease.snapshot().epoch },
+      body: frame.body,
+    };
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    // The frame this viewer never took must not keep the producer waiting.
+    if (this.slot) this.hub.ackOnce(this.slot);
     this.slot = null;
     this.notify();
     this.hub.detach(this);
@@ -162,6 +187,7 @@ export class LiveSurfaceHub {
   private lastSlowAt = 0;
   private pending: HubFrame | null = null;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPublished: HubFrame | null = null;
   private lastPublishedAt = Number.NEGATIVE_INFINITY;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
@@ -169,7 +195,7 @@ export class LiveSurfaceHub {
 
   constructor(
     readonly producer: LiveSurfaceProducer,
-    readonly lease: LiveSurfaceControlLeaseState,
+    readonly lease: LiveSurfaceLeaseReader,
     options: LiveSurfaceHubOptions = {},
   ) {
     this.now = options.now ?? Date.now;
@@ -198,9 +224,17 @@ export class LiveSurfaceHub {
     return this.lifecycle;
   }
 
-  attach(requested: LiveSurfaceStreamParams): LiveSurfaceViewer {
+  attach(
+    requested: LiveSurfaceStreamParams,
+    identity?: LiveSurfaceViewerIdentity,
+  ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
-    const viewer = new HubViewer(this, { ...requested });
+    const viewer = new HubViewer(
+      this,
+      { ...requested },
+      identity ? { ...identity } : undefined,
+    );
+    if (this.running && this.lastPublished) viewer.slot = this.lastPublished;
     this.viewers.add(viewer);
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
@@ -254,14 +288,18 @@ export class LiveSurfaceHub {
 
   effectiveParams(): LiveSurfaceStreamParams {
     const target = this.targetParams();
-    return { ...target, maxFps: Math.min(target.maxFps, this.adaptiveFps) };
+    return {
+      ...target,
+      maxFps: Math.max(FPS_FLOOR, Math.min(target.maxFps, this.adaptiveFps)),
+    };
   }
 
-  state(): LiveSurfaceStreamState {
+  state(viewer?: LiveSurfaceViewerIdentity): LiveSurfaceStreamState {
     return {
       surfaceId: this.surfaceId,
       lease: this.lease.snapshot(),
       effectiveParams: this.effectiveParams(),
+      ...(viewer ? { viewer: { ...viewer } } : {}),
     };
   }
 
@@ -269,11 +307,7 @@ export class LiveSurfaceHub {
   ackOnce(frame: HubFrame): void {
     if (frame.acked) return;
     frame.acked = true;
-    try {
-      this.producer.ack(frame.header.seq);
-    } catch (error) {
-      this.onError('live surface producer ack failed', error);
-    }
+    this.ackSeq(frame.header.seq);
   }
 
   async dispose(): Promise<void> {
@@ -284,6 +318,14 @@ export class LiveSurfaceHub {
     this.idleTimer = null;
     this.reconcile();
     await this.lifecycle;
+  }
+
+  private ackSeq(seq: number): void {
+    try {
+      this.producer.ack(seq);
+    } catch (error) {
+      this.onError('live surface producer ack failed', error);
+    }
   }
 
   private markStatePending(): void {
@@ -346,6 +388,7 @@ export class LiveSurfaceHub {
         this.running = false;
         this.runGeneration += 1;
         this.clearPending();
+        this.lastPublished = null;
         this.adaptiveFps = FPS_CEILING;
         try {
           await this.producer.stop();
@@ -368,14 +411,25 @@ export class LiveSurfaceHub {
     body: Uint8Array,
   ): void {
     if (!this.running || generation !== this.runGeneration) return;
-    if (header.surfaceId !== this.surfaceId) {
-      this.onError(
-        'live surface producer emitted a frame for another surface',
-        header.surfaceId,
-      );
+    const valid = parseLiveSurfaceFrameHeader(header);
+    if (
+      !valid ||
+      valid.surfaceId !== this.surfaceId ||
+      !(body instanceof Uint8Array) ||
+      body.byteLength > LIVE_SURFACE_RECORD_MAX_BODY_BYTES
+    ) {
+      this.onError('live surface producer emitted an invalid frame; dropped', {
+        surfaceId: this.surfaceId,
+        seq: (header as { seq?: unknown } | null)?.seq,
+      });
+      // Ack what it sent, so a producer that waits for acks is not wedged
+      // by its own bad frame.
+      const seq = (header as { seq?: unknown } | null)?.seq;
+      if (typeof seq === 'number' && Number.isSafeInteger(seq))
+        this.ackSeq(seq);
       return;
     }
-    const frame: HubFrame = { header: { ...header }, body, acked: false };
+    const frame: HubFrame = { header: valid, body, acked: false };
     // Trailing-edge throttle with a single slot: a newer frame supersedes
     // the held one (acking it), and the held frame is published when the
     // interval opens — so the LAST frame of a burst is never lost, which
@@ -399,24 +453,24 @@ export class LiveSurfaceHub {
     this.pending = null;
     if (!frame || !this.running) return;
     this.lastPublishedAt = this.now();
-    frame.header.epoch = this.lease.snapshot().epoch;
-    let slow = false;
+    this.lastPublished = frame;
     for (const viewer of this.viewers) {
       const previous = viewer.slot;
-      if (previous) {
+      if (previous && previous !== frame) {
         // Superseded undelivered: this viewer skips it. Latest frame wins.
         this.ackOnce(previous);
         viewer.stats.overwritten += 1;
-        if (viewer.busy) {
-          viewer.consecutiveSlowOverwrites += 1;
-          if (viewer.consecutiveSlowOverwrites >= this.downgradeAfter)
-            slow = true;
-        }
+        if (viewer.busy) viewer.consecutiveSlowOverwrites += 1;
       }
       viewer.slot = frame;
       viewer.notify();
     }
-    if (slow) this.downgrade();
+    const allSlow =
+      this.viewers.size > 0 &&
+      [...this.viewers].every(
+        (viewer) => viewer.consecutiveSlowOverwrites >= this.downgradeAfter,
+      );
+    if (allSlow) this.downgrade();
     else this.maybeRecover();
   }
 
