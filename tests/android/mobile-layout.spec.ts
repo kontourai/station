@@ -4,7 +4,10 @@
 
 import { expect, test } from '@playwright/test';
 import { mockEmptyKnowledgeRegistry } from '../helpers/knowledge-setup';
-import { dismissSetupLauncher } from '../helpers/orchestration';
+import {
+  dismissSetupLauncher,
+  openHeaderSettings,
+} from '../helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
 
 test.describe('Android — Mobile Layout', () => {
@@ -101,25 +104,32 @@ test.describe('Android — Mobile Layout', () => {
       ),
     ).toBe(false);
 
-    const settings = page.locator('.app-toolbar').getByTitle(/Settings/);
-    await expect(settings).toBeVisible({ timeout: 10_000 });
-    const bounds = await settings.boundingBox();
+    // The toolbar has had no Settings button since the four-control header
+    // (#1571): Settings is reached through the avatar menu, or on a phone
+    // through the drawer. Whichever entry this breakpoint renders must be a
+    // full touch target that nothing overlays.
+    const entry = page
+      .locator('.app-toolbar')
+      .getByRole('button', { name: /^(Profile and settings|Toggle menu)$/ })
+      .first();
+    await expect(entry).toBeVisible({ timeout: 10_000 });
+    const bounds = await entry.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(
-      await page.evaluate(
-        ({ x, y }) =>
-          Boolean(
-            document.elementFromPoint(x, y)?.closest('[title*="Settings"]'),
-          ),
+      await entry.evaluate(
+        (element, { x, y }) => {
+          const hit = document.elementFromPoint(x, y);
+          return hit !== null && element.contains(hit);
+        },
         {
           x: (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
           y: (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2,
         },
       ),
     ).toBe(true);
-    await settings.click();
+    await openHeaderSettings(page);
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
 
@@ -203,11 +213,7 @@ test.describe('Android — Mobile Layout', () => {
     );
 
     await page.goto('/');
-    const settingsButton = page.locator(
-      '.app-toolbar button[title^="Settings"]',
-    );
-    await expect(settingsButton).toBeVisible();
-    await settingsButton.click();
+    await openHeaderSettings(page);
 
     await expect(page.locator('.settings__section-nav')).toBeVisible();
     await page.getByRole('link', { name: 'System', exact: true }).click();

@@ -2,12 +2,12 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
+import { build } from 'esbuild';
 import { describe, expect, test, vi } from 'vitest';
 import { BASIS_MCP_APP_MANIFEST } from '../basis-mcp-app-manifest.mjs';
 import { inspectGeneratedBuildInputs } from '../check-dist-freshness.mjs';
 import { generateBuildInputs } from '../dependency-lifecycle.mjs';
-import { runInNewContext } from 'node:vm';
-import { build } from 'esbuild';
 import {
   biomeFormatterInvocation,
   generateBasisMcpApps,

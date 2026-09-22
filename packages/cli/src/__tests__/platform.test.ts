@@ -95,7 +95,9 @@ describe('inspectProcessFingerprint (station#3049)', () => {
 });
 
 describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
-  const psCommand = vi.fn(() => '/usr/bin/node dist-server/main.js\n');
+  const psCommand = vi.fn(
+    (_file: string, _args: string[]) => '/usr/bin/node dist-server/main.js\n',
+  );
 
   it('takes the start token from the /proc birth, never from lstart', () => {
     // The defect: under WSL2 `ps -o lstart=` for one live process walks
@@ -113,8 +115,8 @@ describe('inspectProcessFingerprint on Linux (WSL2 lstart drift)', () => {
       startToken: 'linux:boot-id:68452148',
       commandDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
-    const psArgs = psCommand.mock.calls.map((call) => call[1] as string[]);
-    expect(psArgs.flat()).not.toContain('lstart=');
+    const psArgs = psCommand.mock.calls.map((call) => call[1]);
+    expect(psArgs).toEqual([['-o', 'command=', '-p', '41']]);
   });
 
   it('fails closed when the pid is reused between the birth and command reads', () => {
