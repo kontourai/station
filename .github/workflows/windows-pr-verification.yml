@@ -66,8 +66,17 @@ jobs:
           New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
           cargo test --manifest-path src-desktop/Cargo.toml --no-run
 
-      - name: Typecheck Station contracts
-        run: npm run typecheck
+      # No `npm run typecheck` here. tsc's verdict does not depend on the host
+      # OS: forceConsistentCasingInFileNames (the TypeScript default, and set
+      # explicitly in tsconfig.json) makes a wrong-case import an error on
+      # Windows as well as Linux, and ci:fast's typecheck aggregate runs every
+      # project on each same-repository PR and merge-queue candidate (fork
+      # PRs run ci:fast in fork-smoke). Repeating it here cost 107-159s of
+      # the required check's critical path for no additional verdict.
+      # What this job does not replace: a live Windows run of the aggregate's
+      # win32 spawn path (scripts/lib/npm-lane-aggregate.mjs). That shape is
+      # pinned by injected-platform unit tests and runs for real in a Windows
+      # contributor's pre-push typecheck.
 
       - name: Run focused static ratchets
         run: npm run gate:naming && npm run gate:ui-contracts

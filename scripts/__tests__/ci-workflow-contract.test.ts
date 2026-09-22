@@ -1960,6 +1960,7 @@ describe('CI verification workflow contracts', () => {
             name?: string;
             if?: string;
             uses?: string;
+            run?: string;
             with?: Record<string, unknown>;
           }>;
         }
@@ -1988,7 +1989,16 @@ describe('CI verification workflow contracts', () => {
     expect(windows).toContain(
       'cargo test --manifest-path src-desktop/Cargo.toml --no-run',
     );
-    expect(windows).toContain('run: npm run typecheck');
+    // tsc's verdict is OS-independent and ci:fast's typecheck aggregate owns
+    // it; repeating it here only lengthened the required check. The policy
+    // gate above stays: it is the only Windows run of the policy scripts.
+    const windowsRuns = document.jobs['windows-pr-portable'].steps.map((step) =>
+      String(step.run ?? ''),
+    );
+    expect(windowsRuns.filter((run) => /\btypecheck\b/.test(run))).toEqual([]);
+    expect(windows).toContain(
+      'run: npm run gate:naming && npm run gate:ui-contracts',
+    );
     const upload = document.jobs['windows-pr-portable'].steps.find(
       (step) => step.name === 'Upload Windows portable verification evidence',
     );
