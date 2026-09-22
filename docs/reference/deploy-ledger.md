@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-22T22:04:19Z | nightly-desktop | 0.1.11-nightly.2456.1 | `0015690` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35784910501) |
 | 2026-09-22T22:04:15Z | nightly-android | 0.1.11-nightly.2456.1 | `0015690` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35784910501) |
 | 2026-09-22T21:59:05Z | nightly-npm | 0.6.0-nightly.2456.35784910501 | `0015690` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35784910501) |
 | 2026-09-22T17:34:38Z | nightly-npm | 0.6.0-nightly.2456.35756143372 | `a294ead` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35756143372) |
@@ -124,6 +125,30 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-22T22:04:19Z · nightly-desktop · 0.1.11-nightly.2456.1
+
+- Ship SHA: `0015690b78f76eb2b397a08e6ec86ee755678b9b`
+- Artifact built at: `2026-09-22T21:18:42.564Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35784910501)
+
+### Changelog
+
+Commits since `8b599ec` ([full sha](https://github.com/kontourai/station/commit/8b599ecbf8de37fde7439ccf185393f3a0571ee3)):
+
+**Fixes**
+
+- [#2306](https://github.com/kontourai/station/pull/2306) fix(chat): reconcile timed-out send when its turn starts late
+- [#2297](https://github.com/kontourai/station/pull/2297) fix(server): keep transcript text in window reads past the per-event ceiling
+- [#2302](https://github.com/kontourai/station/pull/2302) fix(orchestration): surface adapter pre-send refusals honestly instead of indeterminate
+- [#2296](https://github.com/kontourai/station/pull/2296) fix(server): pin event-window cursors by lineage hash, not embedded ids
+- [#2299](https://github.com/kontourai/station/pull/2299) fix(approvals): trust the tool, not the call, for session grants
+- [#2295](https://github.com/kontourai/station/pull/2295) fix(chat): read sessions refetch window as pending, not absent
+
+**Other**
+
+- [#2298](https://github.com/kontourai/station/pull/2298) chore(ios): regenerate gen/apple from the base config
 
 ## 2026-09-22T22:04:15Z · nightly-android · 0.1.11-nightly.2456.1
 

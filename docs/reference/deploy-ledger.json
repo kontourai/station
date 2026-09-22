@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-09-22T22:04:19Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2456.1",
+    "sha": "0015690b78f76eb2b397a08e6ec86ee755678b9b",
+    "artifactBuiltAt": "2026-09-22T21:18:42.564Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35784910501",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 35784910501)"
+    ],
+    "changelog": {
+      "previousSha": "8b599ecbf8de37fde7439ccf185393f3a0571ee3",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2306](https://github.com/kontourai/station/pull/2306) fix(chat): reconcile timed-out send when its turn starts late",
+          "[#2297](https://github.com/kontourai/station/pull/2297) fix(server): keep transcript text in window reads past the per-event ceiling",
+          "[#2302](https://github.com/kontourai/station/pull/2302) fix(orchestration): surface adapter pre-send refusals honestly instead of indeterminate",
+          "[#2296](https://github.com/kontourai/station/pull/2296) fix(server): pin event-window cursors by lineage hash, not embedded ids",
+          "[#2299](https://github.com/kontourai/station/pull/2299) fix(approvals): trust the tool, not the call, for session grants",
+          "[#2295](https://github.com/kontourai/station/pull/2295) fix(chat): read sessions refetch window as pending, not absent"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2298](https://github.com/kontourai/station/pull/2298) chore(ios): regenerate gen/apple from the base config"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-09-22T22:04:15Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2456.1",
