@@ -1,59 +1,92 @@
 # ADR 0019 — Host the Browser pane server-side, behind a host adapter
 
-**Status:** Accepted, 2026-09-22. Records four owner decisions (D1–D4) made
-for epic #90 on that date. It **supersedes in part** ADR 0017
-([Keep browser-preview hosting adapter-local](0017-browser-preview-host.md))
-and the #1376 [host spike](../design/browser-preview-host-spike.md); each of
-those records names the parts superseded. No code ships with this ADR. Every
-module it describes as *planned* does not exist yet.
+**Status:** Accepted, 2026-09-22. It records six owner decisions (D1–D6) made
+that day for epic [#90](https://github.com/kontourai/station/issues/90). It
+**supersedes in part** three records, and each names the parts superseded:
+
+- ADR 0017 ([Keep browser-preview hosting adapter-local](0017-browser-preview-host.md));
+- the archive#1376 [host spike](../design/browser-preview-host-spike.md);
+- the archive#1375 [Browser Preview Pane MVP](../design/browser-preview-pane-mvp.md).
+
+It also amends two requirements and one non-goal of #90, and one acceptance
+criterion of [#121](https://github.com/kontourai/station/issues/121). No code
+ships with this ADR, and every module it calls *planned* does not exist yet.
+Where a rule is an engineering addition rather than an owner decision, the
+text says so.
+
+Issue references follow `AGENTS.md`. Bare numbers of #550 and above refer to
+this repository. #90 and #121–#125 are below 550 but belong to this
+repository too, so they are linked in full on first mention. `archive#` names
+the archived backlog.
 
 ## Context
 
 Epic #90 wants a Browser pane that a user and an authorized agent operate
-together: one visible page, explicit control arbitration, scoped tools, and
-bounded artifacts (BA-R1 to BA-R6). The epic was blocked until a production
-host was chosen.
+together. They share one page, arbitrate control explicitly, use scoped tools,
+and produce bounded artifacts (BA-R1 to BA-R6). The epic stayed blocked until
+a production host was chosen.
 
-The previous host record could not carry that. ADR 0017 and the spike selected
-a separate Tauri `WebviewWindow` confined to one approved loopback origin, on
-desktop only. Its go/no-go forbade expanding it to remote targets, automation,
-or a web/mobile renderer, and it marked a screenshot/stream transport as out of
-scope. Station's clients are not only the desktop app: the web/PWA client and
+The previous host record could not carry that. ADR 0017 and the spike chose a
+separate Tauri `WebviewWindow` confined to one approved loopback origin, on
+desktop only. Their go/no-go ruled out remote targets, automation and a
+web/mobile renderer, and put a screenshot or stream transport out of scope.
+But Station's clients are not only the desktop app: the web/PWA client and
 paired phones reach the same Station. A desktop-local window cannot show them
-the page, and it cannot be driven while no desktop UI is open.
+the page, and cannot be driven while no desktop UI is open.
 
 Facts this decision depends on, checked on this branch:
 
-- Hosted and personal deployments are already told apart at route mount. The
+- **Hosted and personal deployments are distinguished at route mount.** The
   mobile device routes mount only when there is no hosted tenant registry and
-  hosted tenant execution is not required
-  (`src-server/runtime/routes/runtime-routes.ts`, the `/api/mobile-devices`
-  mount).
-- Station already owns child-process lifetime through `spawnOwnedChild`
-  (`src-server/services/infra/process-utils.ts`), which records children in
-  its orphan registry.
-- The remote relay's application channel is stop-and-wait. The producer sends
-  one chunk of at most 16 KiB, base64-encoded, per `credit` frame from the
-  peer (`APPLICATION_CHANNEL_CHUNK_BYTES` in
+  hosted tenant execution is not required. See the `/api/mobile-devices`
+  mount in `src-server/runtime/routes/runtime-routes.ts`.
+- **A personal host is not a single-principal host.** A non-hosted Station can
+  enable local accounts (`STATION_LOCAL_ACCOUNTS`, read in
+  `src-server/services/identity/local-account-runtime.ts`). It can load a
+  deployment authentication module (`STATION_AUTHENTICATION_MODULE`, read in
+  `src-server/services/identity/deployment-authentication-loader.ts`). Projects
+  carry per-principal access roles (`viewer`, `contributor`, `admin`,
+  `owner`) in `src-server/services/projects/project-membership-store.ts`,
+  served by the `/api/projects` membership routes and the operator's
+  `/api/operator/accounts` routes in `runtime-routes.ts`. "Not hosted"
+  therefore does not mean "one person".
+- **Station owns child-process lifetime.** `spawnOwnedChild`
+  (`src-server/services/infra/process-utils.ts`) writes a host-wide registry
+  record for each child, keyed to its owning Station. A later startup sweep
+  reaps the child if that owner died without running cleanup. It also removes
+  the boot-internal secrets from the child's environment (`scrubBootInternalSecrets`
+  in `src-server/utils/child-process-environment.ts`).
+- **Station runs five listeners per instance, not one.** They are the HTTP
+  server, the terminal WebSocket (`port + 1`), the voice WebSocket
+  (`port + 2`), the consent listener, and the UI. The CLI enforces that all
+  five are distinct (`packages/cli/src/commands/lifecycle.ts`). The server
+  side self-allocates a contiguous block of four for the first four
+  (`src-server/runtime/bootstrap/allocate-port-block.ts`). Several Station
+  instances can run on one host, and a Station can also listen on LAN or
+  tailnet addresses.
+- **The remote relay's application channel is stop-and-wait.** The producer
+  sends one chunk of at most 16 KiB per `credit` frame from the peer. Each
+  chunk is base64-encoded
+  (`APPLICATION_CHANNEL_CHUNK_BYTES` in
   `packages/connect/src/core/applicationChannelFrames.ts`; the credit loop in
-  `packages/connect/src/core/applicationChannel.ts`). The planner estimated
-  about 5 fps for screen-sized frames over it. That figure depends on
-  round-trip time and frame size, and it has not been measured.
-- The station-control MCP token is per-session in lifetime but not in
-  authority. A live token opens the whole station-control tool surface and is
-  not scoped by the session that minted it
+  `packages/connect/src/core/applicationChannel.ts`). A rough estimate puts
+  screen-sized frames at about 5 fps. That figure depends on round-trip time
+  and frame size, and has not been measured.
+- **The station-control MCP token is per-session in lifetime, not in
+  authority.** A live token opens the whole station-control tool surface and
+  is not scoped by the minting session
   (`src-server/runtime/mcp/station-control-mcp-token.ts`, module docblock).
-- Upstream, Tauri 3's CEF runtime (`tauri-runtime-cef`) published
-  `v3.0.0-alpha.2` on 2026-09-21. Tauri child webviews still carry the open
-  defects the spike cited: tauri-apps/tauri#15682 (child webview covers the
-  main webview), #15656 (Wayland bounds) and #11794 (no mobile `add_child`).
-  All three were open on 2026-09-22.
+- **Upstream Tauri.** Tauri 3's CEF runtime (`tauri-runtime-cef`) published
+  `v3.0.0-alpha.2` on 2026-09-21. The Tauri 2 child-webview defects the spike
+  cited were all open on 2026-09-22: tauri-apps/tauri#15682 (the child covers
+  the main webview), #15656 (Wayland bounds) and #11794 (no mobile
+  `add_child`).
 
 Prior art: [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT) runs
-an Electron webview driven over the Chrome DevTools Protocol (CDP), a
-server-side automation broker, human-input control epochs, and Playwright's
-injected script for locators. Station borrows its broker, tool and arbitration
-model. The host is different.
+an Electron webview driven over the Chrome DevTools Protocol (CDP). It has a
+server-side automation broker, human-input control epochs, and uses
+Playwright's injected script for locators. Station borrows its broker, tool and
+arbitration model. The host is different.
 
 ## Decision
 
@@ -62,49 +95,65 @@ model. The host is different.
 **Phase 1.** The Station host runs a Chromium process, and the page is
 streamed into the Browser pane as frames. Input travels back as typed events.
 The same stream serves the desktop (Tauri 2), web/PWA and mobile clients.
+Chromium runs headless; that is an implementation detail (see D6).
 
 Why stream first:
 
 - **Client parity.** A server-side page with a frame stream is the only host
-  that renders identically in every client Station ships, with no per-platform
-  embedding. A desktop-local webview reaches one client.
+  that renders identically in every client Station ships, with no
+  per-platform embedding. A desktop-local webview reaches one client.
 - **The agent does not need a UI.** The browser belongs to the Station host,
-  not to a window. An agent can open, navigate and act on a page while no
-  client has the pane open, and a user who opens the pane later sees the same
-  live page (BA-R1).
+  not to a window. An agent can act on a page with no client open. A user who
+  opens the pane later sees the same live page and its history (D6).
 
 **Phase 2 (later).** A native desktop renderer on Tauri 3's CEF runtime, which
 exposes CDP per webview in Rust. It is a **thin adapter**. Tools, the
-automation broker, pane state, control arbitration and artifacts never branch
-on host kind. The host interface carries a kind (`'server-chromium' |
-'desktop-cef'`) for diagnostics and capability reporting, not for control flow
-elsewhere.
+automation broker, pane state, control arbitration, authorization and
+artifacts never branch on host kind. The host interface carries a kind
+(`'server-chromium' | 'desktop-cef'`) for diagnostics and capability
+reporting only.
 
 **Streaming stays universal in Phase 2.** Every host offers a screencast
 producer, because web and phone viewers need frames whatever renders the page.
-A native CEF surface is an extra per-viewer option, available only to a viewer
-on the same desktop as the renderer.
+A native CEF surface is an extra option, and only for a viewer on the same
+desktop as the renderer.
 
 ### D2 — Any `http:`/`https:` URL, on personal hosts only
 
 - **Personal hosts only.** The feature mounts behind the same gate as the
   mobile device routes. On hosted or multi-tenant deployments the routes are
-  not mounted and the browser tools report *unavailable*. They do not fail
-  late or silently.
-- **Schemes.** Only `http:` and `https:` are allowed, plus `about:blank`.
-  `file:`, `chrome:`, `data:`, `javascript:`, `view-source:`, `devtools:` and
-  every other `about:` URL fail closed. This applies to tool-initiated
-  navigation **and** to navigation started inside the page.
-- **Downloads are denied.** Popups load in the same tab (t3code's behaviour).
-  No second target opens.
+  not mounted and the browser tools report *unavailable*. They neither fail
+  late nor fail silently. Being a personal host is **necessary but not
+  sufficient**; D5 adds per-principal authorization.
+- **Schemes.** `http:` and `https:` are allowed. Every other scheme fails
+  closed: `file:`, `chrome:`, `data:`, `javascript:`, `view-source:`,
+  `devtools:`, `blob:`, and every `about:` URL. This covers tool-initiated
+  navigation and navigation started inside the page, in the top frame and in
+  subframes.
+  - `about:blank` is allowed. That is an **engineering addition, not an owner
+    decision**: the browser opens new targets on it.
+  - The `blob:` and `data:` denial is an engineering reading of D2. It applies
+    to *navigation*. A page loading its own `blob:` or `data:` images,
+    scripts or workers is subresource use, not navigation, and is allowed.
+- **Downloads are denied.** **File choosers are denied too**, because an
+  upload dialog would expose host filesystem paths (BA-R4). Popups load in the
+  same tab, as t3code does, so no second target opens.
 
-This is the SSRF posture. On a personal host there is one operator, and the
-browser reaches what that operator's machine can reach. That includes loopback
-dev servers, which are the main reason for the feature. On a hosted
-deployment, a server-side browser that fetches an arbitrary URL is a
-server-side request forgery primitive against the provider's internal network
-and metadata endpoints. No per-URL policy is strong enough to justify it, so
-the feature is absent there.
+**This amends #90 BA-R4 a first time.** "External navigation fails closed"
+becomes "navigation outside `http(s)` fails closed, and on personal hosts
+`http(s)` navigation to any destination is allowed". The destination limit
+that remains is the listener denial below.
+
+**SSRF posture.** On a personal host, the browser reaches what that host can
+reach. That includes loopback dev servers, which are the main reason for the
+feature. On a hosted deployment, a server-side browser fetching arbitrary URLs
+is a server-side request forgery primitive against the provider's internal
+network and metadata endpoints. No per-URL policy is strong enough to justify
+that, so the feature is absent there.
+
+Even on a personal host, **the browser must never reach any Station listener
+on this host**. See "Hostile pages" under Consequences for the threat and the
+enforcement rule.
 
 ### D3 — Use an installed Chrome or Edge, else download a pinned build with consent
 
@@ -112,143 +161,249 @@ the feature is absent there.
   per-OS install locations.
 - Otherwise, download a **pinned** Chrome-for-Testing build on first use,
   **only after explicit user consent**, into
-  `<STATION_HOME>/browser/chromium/<version>/`. Station never bundles a browser
-  in the app.
-- Station launches the browser itself through `spawnOwnedChild` with
-  `--remote-debugging-pipe`, so the process is in the orphan registry. It
-  speaks raw CDP over the pipe. No debugging port opens on the network.
-- Profiles are Station-owned, one per Project, under
-  `<home>/projects/<slug>/browser/profile`. Station never launches against the
-  user's own browser profile. Cookies and history persist only inside that
-  Project's profile, as #90's scope requires.
-- Playwright's Page and Locator APIs are **not** used at runtime, because a CEF
-  host gives raw CDP only. Playwright's injected script (from
-  `playwright-core`) may be installed through `Runtime.evaluate` for locators,
-  as t3code does.
+  `<STATION_HOME>/browser/chromium/<version>/`. The app never bundles a
+  browser.
+- **Launch.** Station launches the browser itself through `spawnOwnedChild`
+  with `--remote-debugging-pipe` and speaks raw CDP over the pipe. No
+  debugging port opens on the network.
+- **Environment.** The child environment is scrubbed of the boot-internal
+  secrets. The internal API token is scoped to the built-in station-control
+  MCP child alone, and the browser process never receives it or any other
+  Station credential.
+- **Profiles.** Station owns them, one per Project, keyed by the **canonical
+  Project ID** rather than the slug, so a rename does not orphan or alias a
+  profile. Station never launches against the user's own browser profile.
+  Cookies and history persist only inside that Project's profile, as #90
+  requires.
+- **No Playwright at runtime.** Playwright's Page and Locator APIs are not
+  used, because a CEF host gives raw CDP only. Playwright's injected script
+  (from `playwright-core`) may be installed through `Runtime.evaluate` for
+  locators, as t3code does.
 
 ### D4 — JavaScript evaluation exists, behind a per-Project permission that defaults off
 
-The evaluation tool ships. It is gated by a per-Project permission that is
-**off by default**. When the permission is off, the tool fails closed with a
-typed *not permitted* result that says how to enable it.
+The evaluation tool ships behind a per-Project permission that is **off by
+default**. When the permission is off, the tool fails closed with a typed *not
+permitted* result that says how to enable it. Only principals D5 authorizes
+may toggle it.
 
-This **amends BA-R4**. "Arbitrary evaluation fails closed" becomes "arbitrary
-evaluation fails closed unless the Project enables it". Downloads, browser
-permissions, filesystem paths and non-`http(s)` navigation still fail closed
-unconditionally.
+**This amends #90 BA-R4 a second time.** "Arbitrary evaluation fails closed"
+becomes "arbitrary evaluation fails closed unless the Project enables it".
+Downloads, file choosers, browser permissions and filesystem paths still fail
+closed unconditionally.
 
-Station's own vetted scripts, such as the locator engine above, are not
-*arbitrary evaluation* and are not governed by this permission. The permission
-governs agent-supplied source only.
+It is an **engineering addition, not an owner decision**, that Station's own
+vetted scripts (such as the locator engine) are not *arbitrary evaluation* and
+are not governed by this permission. The permission governs agent-supplied
+source only.
+
+### D5 — The operator and the Project's admins; per-principal authorization on every operation
+
+The following people may view a Browser session, send it input, claim its
+control lease, toggle its eval permission, and use the browser tools through
+their agents:
+
+- the **Station operator**; and
+- **admins of the session's Project**.
+
+Project **viewers and contributors get nothing**: no view, no input, no tools.
+Being a personal host (D2) is necessary but not sufficient.
+
+- **Every route and every operation is authorized per principal**, including
+  frame streams, input, lease claims, tool calls and permission changes. It is
+  never inferred from network position, loopback, or possession of a surface
+  id.
+- **Input authorization is separate from view authorization.** Each is checked
+  on its own, so a later change to one rule cannot widen the other.
+- **An agent acts with the authority of its verified calling session's
+  principal.** That principal must satisfy D5 for the session's Project. A
+  `sessionId` supplied as a tool argument never counts. The current
+  station-control token does not establish the caller (see Context). Verified
+  caller identity is a wave-1 slice
+  ([#122](https://github.com/kontourai/station/issues/122)), and the agent
+  tools do not ship before it.
+- **Human input always preempts an agent.** An agent claim never preempts a
+  live human holder.
+
+The membership store also has an `owner` role above `admin`. This ADR reads
+"Project admins" as including owners. That reading needs owner confirmation.
+
+### D6 — Agents may drive with no viewer; no session is ever hidden
+
+An agent **may** drive a Browser session while no viewer is connected. Every
+session is **always discoverable**:
+
+- it is listed to the principals D5 authorizes;
+- it carries its full action history (who acted, which operation, when, and
+  under which lease epoch);
+- it can be opened and watched live at any time.
+
+Chromium runs headless as an implementation detail. What D6 forbids is a
+session the user cannot find, not a browser without a window.
+
+**This amends #90 in two places:**
+
+- **BA-R1** ("Agent and user share one visible browser state; hidden fallback
+  automation is explicit…") becomes: agent and user share one browser state,
+  which is always discoverable and watchable. A session may be driven while
+  unwatched, but never while hidden.
+- The **non-goal "Silent headless-browser substitution"** becomes: "a browser
+  session hidden from the user". Headless rendering is not substitution when
+  it is the same session every viewer attaches to.
+
+**It also amends #121 VB-AC2.** "Stale, hidden, wrong-context and non-owning
+renderers are rejected" keeps rejecting stale, wrong-context and non-owning
+renderers. *Hidden* now means undiscoverable. A session with zero connected
+viewers is not hidden, and an authorized agent may drive it.
 
 ### Shared live-surface primitive and control lease
 
 The frame stream, the input channel and control arbitration form one
-host-neutral primitive, the **live surface**. It is built for the Browser pane
-first. It is designed so the Device pane (#1969, and the device control
-leases of #1970) can adopt it. The Device pane today uses bounded PNG capture
+host-neutral primitive, the **live surface**. It is built first for the
+Browser pane. The Device pane (#1969, whose device control leases are #1970)
+is meant to adopt it. Today the Device pane uses bounded PNG capture
 (`LocalMobileDeviceHost.capture` in
-`src-server/services/mobile-device/mobile-device-host.ts`). Its adoption of
-this primitive is planned, not done.
+`src-server/services/mobile-device/mobile-device-host.ts`), so that adoption
+is planned, not done.
 
-The planned modules are a `live-surface.ts` contract in the contracts package,
-a `live-surface` service directory in the server (a surface hub and a control
-lease), and a shared canvas component and hook in the UI. None of them exists
-on this branch.
+The planned modules are:
+
+- a `live-surface.ts` contract in the contracts package;
+- a `live-surface` service directory in the server, with a surface hub and a
+  control lease;
+- a shared canvas component and hook in the UI.
+
+None of them exists on this branch.
 
 Semantics:
 
-- **Producers.** Any frame-and-input source (a CDP screencast, later a device
-  capture) implements one producer interface: start with stream parameters,
-  acknowledge frames for backpressure, stop, and dispatch typed input
-  (pointer, key, text).
-- **Fan-out.** A surface hub fans one producer out to N viewers.
+- **Producers.** Any frame-and-input source implements one producer
+  interface: a CDP screencast now, a device capture later. It can start with
+  stream parameters, acknowledge frames for backpressure, stop, and dispatch
+  typed input (pointer, key, text).
+- **Fan-out.** A surface hub fans one producer out to N authorized viewers.
   **Latest-frame-wins:** a slow viewer skips frames and never receives a queue
   of stale ones. The producer is suspended when the surface has **zero
-  viewers**.
-- **Control lease.** One controller and any number of viewers. Watching never
-  requires the lease. Each lease has an **epoch**, and every claim increments
-  it. **Human input claims the lease automatically** at `epoch + 1`. That
-  fences any in-flight agent operation: the operation checks the epoch before
-  and after each CDP send, and aborts with a typed *interrupted* error when the
-  epoch moved (BA-R3). Agents claim explicitly. A lease may carry an expiry.
+  viewers**; the session itself stays alive (D6).
+- **Control lease.** There is one controller and any number of viewers, and
+  watching never requires the lease.
+  - Each lease has an **epoch**, which every claim increments.
+  - **Human input from an authorized principal claims the lease
+    automatically** at `epoch + 1`. That fences any agent operation already in
+    flight: the operation checks the epoch before and after each CDP send, and
+    aborts with a typed *interrupted* error if it moved (BA-R3).
+  - Agents claim explicitly, and an agent claim fails while a human holds the
+    lease (D5).
+  - A lease may carry an expiry.
 - **Server-owned session.** A browser session is owned by the server and keyed
-  by its own id. It records Project, optional thread, URL, viewport,
-  generation, host kind and profile reference. Browser pane state v2 persists
-  only the Project, the browser session id and an update time. It references
-  the session and never embeds it. The existing v1 contract
-  (`packages/contracts/src/workspace-browser-preview.ts`) is kept and migrated
-  explicitly, never read implicitly as v2.
+  by its own id. It records the Project, an optional thread, the URL, viewport,
+  generation, host kind, profile reference and action history. Browser pane
+  state v2 persists only the Project, the browser session id and an update
+  time, and it references the session rather than embedding it. The existing
+  v1 contract (`packages/contracts/src/workspace-browser-preview.ts`) is kept
+  and migrated explicitly, never read implicitly as v2.
 
 ### Frame transport and the relay limit
 
-Frames travel as a **length-prefixed binary fetch stream**, not SSE. The
-stream is open only while a pane is visible, and closes at zero viewers.
-Input is ordinary authenticated requests. ADR 0018 records how this fits the
-connection budget.
+Frames travel as a **length-prefixed binary fetch stream**, not SSE, and only
+while a pane is visible. Each client should use **one frame stream,
+multiplexing all its visible panes**. Input goes as ordinary authenticated
+requests and must never queue behind frames. ADR 0018 records how this fits
+the per-origin connection budget.
 
-Over the relay (see Context), throughput is bounded by stop-and-wait 16 KiB
-chunks. Streams therefore **adapt fps and quality** to what the path delivers,
-and keep latest-frame-wins end to end. They never buffer stale frames to
-catch up. Improving relay throughput is separate work and overlaps #1973.
-
-### Caller authority is a prerequisite
-
-Browser tools act for a specific agent session, and the lease records which
-one. They need the **verified** calling session. The current station-control
-token does not establish it (see Context), and a `sessionId` supplied as a tool
-argument never counts as authority. Verified caller identity for
-station-control tools is a wave-1 slice of #90 (#122). The agent tools do not
-ship before it.
+Over the relay, throughput is bounded by stop-and-wait 16 KiB chunks (see
+Context). Streams therefore **adapt fps and quality** to what the path
+delivers. They keep latest-frame-wins end to end and never buffer stale
+frames to catch up. Improving relay throughput is separate work that overlaps
+#1973.
 
 ## Consequences
 
-- **Performance over the relay is limited.** On a remote phone, expect low
+- **Hostile pages are the new actor, and the dominant threat is Station's own
+  loopback listeners.** An agent's own tools may already reach the network.
+  A page loaded in this browser is untrusted code running from the Station
+  host's network position.
+  - **The terminal and voice WebSocket listeners** trust loopback peers
+    (`src-server/services/terminal/terminal-ws-server.ts`), and a page in the
+    host's browser would be one. A separate, pre-existing fix is in flight for
+    that listener behaviour. The rule below is required whether or not that
+    fix lands.
+  - **Lesser loopback locality.** `isSameMachineBrowserCaller` in
+    `runtime-routes.ts` grants presentation and log-read locality to
+    loopback callers on the UI-bootstrap path.
+
+  Rule: **the browser must never reach any Station listener on this host**.
+  That covers all five listeners of this instance, the listeners of every
+  other Station instance on the host, and the LAN and tailnet addresses any
+  of them listen on.
+
+  Enforcement sits **below the page**:
+  - It decides on the **resolved address and port** of each connection, never
+    on the hostname.
+  - It covers `ws:` and `wss:`, dedicated workers, shared workers and service
+    workers as well as documents and fetches.
+  - It survives DNS rebinding.
+  - CDP `Fetch` interception alone is not sufficient, because it does not see
+    every connection a page can open.
+
+  The hostile-page suite ([#125](https://github.com/kontourai/station/issues/125),
+  BA-AC6) must prove the rule. How it is enforced is a host-core design
+  question, and every alias and rebinding case stays NOT_VERIFIED until that
+  suite exists.
+- **Credentials live in the profile.** The Station-owned profile is launched
+  with the password manager, autofill and sync disabled. Credentials a user
+  types through the stream still persist as session cookies and site storage
+  in the per-Project profile. Anyone D5 authorizes can act as that logged-in
+  user, and so can their agents. Eval and snapshots can read logged-in page
+  state. That is why D4 defaults off and why D5 excludes Project viewers and
+  contributors.
+- **Clipboard stays inside the browser.** Page clipboard writes stay inside
+  headless Chromium and never reach the host operating system's clipboard.
+  This is NOT_VERIFIED.
+- **Frame rates over the relay are limited.** On a remote phone, expect low
   frame rates on busy pages until relay throughput improves. The design
-  degrades gracefully instead of falling behind, but it cannot make the relay
-  faster.
+  degrades rather than falling behind, but it cannot make the relay faster.
 - **A pinned Chrome-for-Testing build does not update itself.** A browser that
-  loads arbitrary web pages accumulates known vulnerabilities as it ages. The
-  pin needs a bump cadence, and an installed, auto-updating Chrome or Edge is
-  preferred for this reason too. Installed browsers vary in version, so the CDP
-  surface Station uses must tolerate a supported version range.
-- **The host runs a real browser process** with its own CPU and memory cost.
-  Suspending the screencast at zero viewers removes the encoding cost, but not
-  the cost of a loaded page. Lifetime and orphan cleanup ride the existing
-  owned-child registry.
-- **Hostile pages are the new actor.** An agent's own tools may already reach
-  the network. A page loaded in this browser is untrusted code running on the
-  Station host's network position. Station treats some loopback callers
-  specially. `isSameMachineBrowserCaller` in
-  `src-server/runtime/routes/runtime-routes.ts` grants presentation and
-  log-read locality to a loopback socket, and its own docblock says loopback
-  is a transport position that any local process satisfies. A page in the
-  host's browser that sends requests to Station's own listening origins is
-  therefore a new path to that locality. The host adapter must deny
-  navigation and subresource requests to Station's own origins, and the
-  hostile-page suite (#125, BA-AC6) must prove it. This control is derived
-  from existing code, not from D1–D4. See the open questions.
-- **Remote viewers see host-local pages.** A paired phone that views the pane
-  sees pages rendered from the host's network, including loopback dev servers.
-  That is the feature on a single-operator host, and a second reason the
-  feature is absent where the operator is not the only principal.
-- **Viewing stays separate from control.** Opening or closing a pane never
-  starts or stops the browser session, and never claims or releases the lease.
-- **Previous desktop paths remain for now.** The external open action and the
-  loopback-confined separate-window preview stay in place until the pane v2
-  migration decides their fate.
+  loads arbitrary pages accumulates known vulnerabilities as it ages. The pin
+  needs a bump cadence. An installed, auto-updating Chrome or Edge is
+  preferred partly for this reason. Installed browsers vary in version, so the
+  CDP surface Station uses must tolerate a supported range.
+- **The host pays for a real browser.** Each live session costs a Chromium
+  renderer process: typically hundreds of megabytes of memory, plus CPU for
+  page scripts. That cost continues while nobody watches, because D6 allows
+  unwatched driving. Suspending the screencast at zero viewers removes only
+  the capture and encoding cost. Session count needs a bound, and so does
+  idle-session teardown. Both are host-core design items.
+- **Lifetime and orphan cleanup ride the owned-child registry.** Its startup
+  sweep reaps a browser whose owning Station died without cleanup. Its
+  process-group reaping is POSIX-shaped, and its Windows behaviour for a
+  browser tree is NOT_VERIFIED.
+- **Remote viewers see host-local pages.** An authorized phone sees pages
+  rendered from the host's network, including loopback dev servers. D5 limits
+  that to the operator and Project admins.
+- **Viewing is separate from control and from lifetime.** Opening or closing a
+  pane never starts or stops the browser session, and never claims or releases
+  the lease.
+- **Existing desktop paths remain for now.** The external open action and the
+  loopback-confined separate-window preview stay until the pane v2 migration
+  decides their fate.
 
 ### What stays NOT_VERIFIED
 
 - The relay frame rate. The ~5 fps figure is an estimate, not a measurement.
 - Chrome and Edge discovery on each OS, CDP compatibility across installed
-  versions, and pipe transport on Windows.
-- Chrome-for-Testing download integrity checks, consent UX and cleanup.
-- Scheme and navigation enforcement against in-page redirects, `window.open`,
-  meta refresh and service workers.
-- Denial of Station's own origins to page subresource requests.
-- Lease fencing under concurrent human and agent input, measured end to end.
-- The Tauri 3 CEF adapter. It is an alpha upstream; no Station code, package
+  versions, and pipe transport and process-tree cleanup on Windows.
+- Chrome-for-Testing download integrity checks, the consent UX and cleanup.
+- Scheme enforcement against in-page redirects, `window.open`, meta refresh
+  and service workers.
+- The Station-listener denial. That includes address aliases (other loopback
+  addresses, IPv4-mapped IPv6, `0.0.0.0`, LAN and tailnet names), DNS
+  rebinding, and WebSocket and worker connections.
+- Per-principal authorization (D5) on every route and operation, and the
+  separation of input from view authorization.
+- Lease fencing under concurrent human and agent input, end to end.
+- That page clipboard writes never reach the host clipboard.
+- The Tauri 3 CEF adapter. Upstream it is alpha. No Station code, package
   size, signing or platform result exists for it.
 - Frame streaming on the web/PWA client and on paired phones.
 
@@ -256,31 +411,26 @@ ship before it.
 
 - **Tauri 2 child webview inside the main window.** Rejected, as in ADR 0017.
   It requires the `unstable` feature, and tauri-apps/tauri#15682, #15656 and
-  #11794 remain open. It would also reach the desktop client only.
+  #11794 remain open. It would also reach only the desktop client.
 - **Port Station to Electron** (t3code's host). Rejected. ADR 0017 already
   declined an Electron migration for this feature. It would buy an embedded
-  webview on desktop only, at the cost of a new distribution, patch and signing
-  programme. Web and mobile would still need a stream.
-- **Wait for Tauri 3 CEF.** Rejected as the first step. It had reached
-  `v3.0.0-alpha.2` on 2026-09-21, which is not a base to ship on, and it is
-  desktop-only too. It remains the planned Phase 2 adapter, which is why the
-  host interface is shaped around raw CDP.
-- **Loopback-only targets** (the spike's containment, kept for a server
-  browser). Rejected by the owner. It blocks the common case of opening
+  webview on desktop only, at the cost of a new distribution, patch and
+  signing programme, and web and mobile would still need a stream.
+- **Wait for Tauri 3 CEF.** Rejected as the first step. At `v3.0.0-alpha.2`
+  (2026-09-21) it is not a base to ship on, and it is desktop-only too. It
+  remains the planned Phase 2 adapter, which is why the host interface is
+  shaped around raw CDP.
+- **Loopback-only targets** (the spike's containment, applied to a server
+  browser). Rejected by the owner. It would block the common case of opening
   documentation, staging sites or the user's own deployments beside a dev
-  server. The personal-host gate takes the place of loopback confinement as
-  the SSRF boundary.
+  server. The personal-host gate (D2), per-principal authorization (D5) and
+  the Station-listener denial replace loopback confinement as the boundary.
 
 ## Open questions
 
-- **Station's own origins.** Should the deny list be exactly the Station
-  process's HTTP, terminal (`port + 1`) and voice (`port + 2`) origins, or all
-  of loopback except user-chosen dev-server ports? This ADR assumes the former.
-  It needs owner confirmation before the host-core slice lands.
-- **Injected-script world.** Should the locator script run in an isolated
-  world rather than the page's main world, so page script cannot tamper with
-  it?
-- **Several visible Browser panes.** Should they share one multiplexed frame
-  stream, given the connection budget in ADR 0018?
-- **Existing desktop preview.** Is the separate-window preview retired or
-  retained once pane v2 ships?
+- **Isolated world.** Should the locator script run in an isolated world rather
+  than the page's main world, so page script cannot tamper with it?
+- **The separate-window preview.** Is it retired or retained once pane v2
+  ships?
+- **The `owner` role.** Confirm that Project owners are included with admins
+  (D5).

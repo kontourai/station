@@ -11,11 +11,15 @@ The text below is the original record and is unchanged.
 - **Superseded:** the premise that a native webview in the desktop app is the
   production host. The Phase 1 host is server-side. A native desktop renderer
   returns in Phase 2 as a Tauri 3 CEF adapter behind the same tools and state.
-- **Still in force:** decisions 4 and 5. Child webviews stay unselected, and
-  Station does not migrate to Electron. Decision 2 also stands: the external
-  open action remains. Pane identity rules stay in force too. The persisted
-  state that ADR 0019 introduces is versioned (`2.0`) and migrated
-  explicitly.
+- **Still in force:**
+  - Decision 2: the external open action remains.
+  - Decision 3, for the loopback Browser Preview only. It does not describe
+    the Browser pane host.
+  - Decision 4, scoped to Tauri 2 (wry) child webviews. It says nothing about
+    Tauri 3's CEF runtime, which ADR 0019 plans as a Phase 2 adapter.
+  - Decision 5: Station does not migrate to Electron.
+  - The pane identity rules. The persisted state ADR 0019 introduces will be
+    versioned (`2.0`) and migrated explicitly. It is not implemented yet.
 
 ## Context
 

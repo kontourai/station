@@ -311,8 +311,9 @@ Decided in [ADR 0019](adr/0019-host-the-browser-pane-server-side-behind-a-host-a
 None of it is implemented yet.
 
 - **Browser pane** — the Workspace Pane that shows a web page rendered by a
-  browser on the Station host, streamed to every client. A user and an
-  authorized agent can both operate it. It supersedes the loopback-only
+  browser on the Station host, streamed to every client. The Station operator
+  and the admins of the session's Project, and their agents, can operate it.
+  It supersedes the loopback-only
   **Browser Preview** pane (`packages/contracts/src/workspace-browser-preview.ts`),
   which remains the shipped `1.0` pane until the `2.0` migration lands.
 - **Live surface** — the host-neutral primitive behind a streamed pane: one
@@ -325,7 +326,9 @@ None of it is implemented yet.
 - **Control lease** — the right to send input to a live surface. At most one
   holder (a human or an agent session) at a time; watching needs no lease.
   Every claim increments the lease's **epoch**. Human input claims it
-  automatically, which interrupts an agent operation already in flight.
+  automatically, which interrupts an agent operation already in flight. An
+  agent claim never preempts a human holder. The right to view and the right
+  to hold the lease are authorized separately.
 
 ## User-facing labels
 

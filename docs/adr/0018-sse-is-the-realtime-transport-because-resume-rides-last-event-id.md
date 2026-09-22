@@ -65,20 +65,30 @@ function to watch.
 **Browser pane frame streams (added 2026-09-22, ADR 0019).** Frames from the
 planned server-hosted Browser pane
 ([ADR 0019](0019-host-the-browser-pane-server-side-behind-a-host-adapter.md))
-do not use SSE. They travel as a length-prefixed binary `fetch` stream. SSE
-carries text, so binary frames would pay base64 inflation. Its `Last-Event-ID`
-resume is also worthless for frames: a stale frame is dropped, never replayed.
-This leaves the decision above unchanged, because it covers event streams
-where resume matters.
+do not use SSE. They travel as a length-prefixed binary `fetch` stream.
 
-A frame stream counts against the same per-origin budget as a **view-scoped**
-stream, not an always-on one. It is open only while a Browser pane is visible,
-and closes when the surface has zero viewers. Input is ordinary requests, not
-a stream. One visible Browser pane therefore fits the budget above. Several
-visible at once, alongside the other view-scoped streams, could approach the
-cap. Multiplexing them onto one stream is an open question in ADR 0019, and
-the sixth-stream trigger above still applies. This is a design constraint.
-None of it is implemented or measured yet.
+- **Why not SSE.** SSE's `Last-Event-ID` resume is worthless for frames,
+  because a stale frame is dropped, never replayed. On a direct connection,
+  SSE's text framing would also force base64 onto binary frames. The remote
+  relay base64-encodes every chunk anyway, so there that point does not
+  differ between the two.
+- **Scope.** This leaves the decision above unchanged, because that decision
+  covers event streams where resume matters.
+- **Budget.** A frame stream draws on the same per-origin connection pool, as
+  a **view-scoped** stream. It is open only while a Browser pane is visible,
+  and closes at zero viewers. The plan is **one frame stream per client**,
+  multiplexing every visible Browser pane, so extra panes add no connections.
+- **Input** (pointer, key, lease claims) is ordinary requests. Those requests
+  share the same per-origin pool as every stream above. **Interrupt latency
+  therefore depends on a free connection slot.** Input must never queue
+  behind frames, so the frame stream stays a single connection and never
+  fans out to one per pane.
+- **The trigger.** The revisit trigger above counts *always-on* streams. The
+  frame stream is view-scoped, so it does not trip that trigger formally. It
+  does shrink the slack left for input and for the other view-scoped streams,
+  so an input-latency regression is a reason to revisit too.
+
+This is a design constraint. None of it is implemented or measured yet.
 
 **Host resource pressure is not a reason to revisit this.** Station's admission
 controls act on starting engine processes, never on connections; no SSE route
