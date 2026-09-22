@@ -420,9 +420,43 @@ describe('changed verification selection', () => {
       ]),
     );
   });
+  test('the SDK transport runs its own suites and defers its consumers to test-full by name (#2301)', () => {
+    const selection = selectChangedVerification([
+      'packages/sdk/src/client/http.ts',
+    ]);
+    // Nearly the whole UI imports the transport; its import graph must not
+    // reach the fast lane, where 9,035 tests overran the hosted budget.
+    expect(selection.relatedPaths).not.toContain(
+      'packages/sdk/src/client/http.ts',
+    );
+    expect(selection.tests.map((entry) => entry.path)).toEqual(
+      expect.arrayContaining([
+        'packages/sdk/src/__tests__/fetch-sse.test.ts',
+        'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      ]),
+    );
+    // The deferral is named, so the receipt reads provisional rather than
+    // passing on a narrowed selection.
+    expect(selection.lanes.map((lane) => lane.id)).toContain('test-full');
+  });
+  test('an impact-edge exception its pattern cannot match is a validation error', () => {
+    expect(
+      validateTestImpactManifest([
+        ...TEST_IMPACT_MANIFEST,
+        {
+          pattern: 'packages/sdk/src/client/**',
+          except: ['packages/sdk/src/clients/http.ts'],
+          related: true,
+          reason: 'typo guard',
+        },
+      ]),
+    ).toContain(
+      'impact edge exception outside its pattern: packages/sdk/src/client/** except packages/sdk/src/clients/http.ts',
+    );
+  });
   test('selects portable client source scans and accepted-turn CLI consumers', () => {
     for (const path of [
-      'packages/sdk/src/client/http.ts',
       'packages/sdk/src/client/bounded-response.ts',
       'packages/sdk/src/client/future-client.ts',
     ]) {
