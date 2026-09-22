@@ -420,44 +420,120 @@ describe('changed verification selection', () => {
       ]),
     );
   });
-  test('the SDK transport runs its own suites and defers its consumers to test-full by name (#2301)', () => {
-    const selection = selectChangedVerification([
-      'packages/sdk/src/client/http.ts',
-    ]);
-    // Nearly the whole UI imports the transport; its import graph must not
-    // reach the fast lane, where 9,035 tests overran the hosted budget.
-    expect(selection.relatedPaths).not.toContain(
-      'packages/sdk/src/client/http.ts',
-    );
-    expect(selection.tests.map((entry) => entry.path)).toEqual(
+  test.each([
+    'packages/sdk/src/client/http.ts',
+    'packages/sdk/src/client/bounded-response.ts',
+    'packages/sdk/src/client/client-origin.ts',
+  ])(
+    'selects the SDK transport suites for %s instead of its import graph (#2301)',
+    (path) => {
+      const selection = selectChangedVerification([path]);
+      // Nearly the whole UI imports the transport; its graph must not reach
+      // the fast lane, where 9,035 tests overran the hosted budget.
+      expect(selection.relatedPaths).not.toContain(path);
+      expect(selection.tests.map((entry) => entry.path)).toEqual(
+        expect.arrayContaining([
+          'packages/sdk/src/__tests__/fetch-sse.test.ts',
+          'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+          'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+          'src-ui/src/contexts/__tests__/ApiBaseContext.native-transport-order.test.tsx',
+        ]),
+      );
+      // No lane: a lane would switch the WHOLE diff to deferred execution.
+      expect(selection.lanes).toEqual([]);
+    },
+  );
+  test('a transport change still EXECUTES the related suites of the files changed with it (#2301)', async () => {
+    const discovered: string[][] = [];
+    const run = reportedRun();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [
+          'packages/sdk/src/client/http.ts',
+          'src-ui/src/hooks/useServerEvents.ts',
+        ],
+      }),
+      discoverRelatedFiles: async (_root: string, relatedPaths: string[]) => {
+        discovered.push([...relatedPaths]);
+        return [
+          'src-ui/src/hooks/orchestration/__tests__/ensureOrchestrationEventStream.test.ts',
+        ];
+      },
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    // The co-changed file's graph is discovered; the transport's is not.
+    expect(discovered).toEqual([['src-ui/src/hooks/useServerEvents.ts']]);
+    // Both reached the runner: the transport's own suites AND the related
+    // suite discovered for the co-changed file.
+    const runArgs = run.mock.calls.flatMap(([, args]) => args as string[]);
+    expect(runArgs).toEqual(
       expect.arrayContaining([
-        'packages/sdk/src/__tests__/fetch-sse.test.ts',
-        'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
-        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+        './packages/sdk/src/__tests__/fetch-sse.test.ts',
+        './src-ui/src/hooks/orchestration/__tests__/ensureOrchestrationEventStream.test.ts',
       ]),
     );
-    // The deferral is named, so the receipt reads provisional rather than
-    // passing on a narrowed selection.
-    expect(selection.lanes.map((lane) => lane.id)).toContain('test-full');
+    // Nothing was deferred, so the result can complete rather than read
+    // provisional on a selection that dropped the rest of the diff.
+    expect(result.receipt.terminal.status).toBe('completed');
   });
-  test('an impact-edge exception its pattern cannot match is a validation error', () => {
-    expect(
-      validateTestImpactManifest([
-        ...TEST_IMPACT_MANIFEST,
-        {
-          pattern: 'packages/sdk/src/client/**',
-          except: ['packages/sdk/src/clients/http.ts'],
-          related: true,
-          reason: 'typo guard',
-        },
-      ]),
-    ).toContain(
+  test.each([
+    [
+      'a pattern it cannot match',
+      {
+        pattern: 'packages/sdk/src/client/**',
+        except: ['packages/sdk/src/clients/http.ts'],
+        related: true,
+      },
       'impact edge exception outside its pattern: packages/sdk/src/client/** except packages/sdk/src/clients/http.ts',
-    );
-  });
+    ],
+    [
+      'a glob-shaped entry',
+      {
+        pattern: 'packages/sdk/src/client/**',
+        except: ['packages/sdk/src/client/http.ts/**'],
+        related: true,
+      },
+      'impact edge exception outside its pattern: packages/sdk/src/client/** except packages/sdk/src/client/http.ts/**',
+    ],
+    [
+      'an excepted path no other edge owns',
+      {
+        pattern: 'packages/cli/src/**',
+        except: ['packages/cli/src/unowned-module.ts'],
+        related: true,
+      },
+      'impact edge exception has no explicit owner: packages/cli/src/** except packages/cli/src/unowned-module.ts',
+    ],
+    [
+      'a supplemental edge',
+      {
+        pattern: 'packages/sdk/src/client/**',
+        except: ['packages/sdk/src/client/http.ts'],
+        supplemental: true,
+        tests: ['x.test.ts'],
+      },
+      'supplemental impact edge may not declare exceptions: packages/sdk/src/client/**',
+    ],
+  ])(
+    'an impact-edge exception on %s is a validation error',
+    (_name, edge, message) => {
+      expect(
+        validateTestImpactManifest([
+          ...TEST_IMPACT_MANIFEST,
+          { ...edge, reason: 'exception guard' },
+        ]),
+      ).toContain(message);
+    },
+  );
   test('selects portable client source scans and accepted-turn CLI consumers', () => {
+    // bounded-response.ts / client-origin.ts / http.ts are the transport:
+    // see the SDK transport test above.
     for (const path of [
-      'packages/sdk/src/client/bounded-response.ts',
+      'packages/sdk/src/client/projects.ts',
       'packages/sdk/src/client/future-client.ts',
     ]) {
       expect(
