@@ -6,9 +6,12 @@ import { describe, expect, test, vi } from 'vitest';
 import { BASIS_MCP_APP_MANIFEST } from '../basis-mcp-app-manifest.mjs';
 import { inspectGeneratedBuildInputs } from '../check-dist-freshness.mjs';
 import { generateBuildInputs } from '../dependency-lifecycle.mjs';
+import { runInNewContext } from 'node:vm';
+import { build } from 'esbuild';
 import {
   biomeFormatterInvocation,
   generateBasisMcpApps,
+  ZOD_LOCALE_AGGREGATE_PLUGIN,
 } from '../generate-basis-mcp-apps.mjs';
 
 describe('Basis MCP app generator', () => {
@@ -89,6 +92,56 @@ describe('Basis MCP app generator', () => {
     expect(diagnostic).toContain('Repair with:\n  npm run basis:mcp:generate');
     expect(diagnostic.length).toBeLessThan(2_000);
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('Basis MCP app zod locale aggregate', () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  // The same import shape as `@kontourai/thread`, the path that reaches zod
+  // from the Task Basis and Session inventory apps.
+  const fixture = [
+    "import { z } from 'zod';",
+    'const result = z.object({ id: z.string() }).safeParse({ id: 1 });',
+    'globalThis.observed = { success: result.success, message: result.error?.issues[0]?.message, en: typeof z.locales.en, de: typeof z.locales.de };',
+  ].join('\n');
+  const bundle = async (plugins: (typeof ZOD_LOCALE_AGGREGATE_PLUGIN)[]) => {
+    const result = await build({
+      stdin: { contents: fixture, resolveDir: root, loader: 'js' },
+      bundle: true,
+      format: 'iife',
+      platform: 'browser',
+      minify: true,
+      write: false,
+      target: ['es2022'],
+      legalComments: 'none',
+      logLevel: 'silent',
+      plugins,
+    });
+    return result.outputFiles[0].text;
+  };
+  const observe = (code: string) => {
+    const sandbox: { observed?: Record<string, unknown> } = {};
+    runInNewContext(code, sandbox);
+    return sandbox.observed;
+  };
+
+  test('drops every non-English locale while zod still validates in English', async () => {
+    const [plain, stripped] = await Promise.all([
+      bundle([]),
+      bundle([ZOD_LOCALE_AGGREGATE_PLUGIN]),
+    ]);
+    // Without the plugin the aggregate is retained (this is what took the
+    // Task Basis app over its 480 KiB bound); with it, well over 100 KB goes.
+    expect(
+      Buffer.byteLength(plain) - Buffer.byteLength(stripped),
+    ).toBeGreaterThan(100_000);
+    expect(observe(plain)).toMatchObject({ de: 'function' });
+    expect(observe(stripped)).toEqual({
+      success: false,
+      message: expect.stringMatching(/^Invalid input: expected string/),
+      en: 'function',
+      de: 'undefined',
+    });
   });
 });
 
