@@ -1,4 +1,5 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { createBrowserRoutes } from '../../routes/browser.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
@@ -8,6 +9,15 @@ import { createDeploymentAuthenticationRoutes } from '../../routes/system/deploy
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import {
+  createBrowserOperatorAuthorizer,
+  createBrowserProjectAuthorizer,
+} from '../../services/browser/browser-access.js';
+import {
+  type BrowserService,
+  configuredConsentPort,
+  createBrowserService,
+} from '../../services/browser/browser-service.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
@@ -699,6 +709,8 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /** Personal hosts only; the runtime shuts it down on stop. */
+  browserService?: BrowserService;
 }
 
 /**
@@ -863,6 +875,7 @@ export function configureRuntimeRoutes(
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
+  let browserService: BrowserService | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
     deploymentAuthentication: context.deploymentAuthentication?.service,
@@ -2029,8 +2042,11 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
-  // Mobile helpers belong to the personal operator host, never a shared tenant.
-  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+  // Mobile helpers and the Browser pane belong to the personal operator host,
+  // never a shared tenant: neither is mounted on a hosted deployment.
+  const isPersonalHost =
+    !hostedTenantRegistry && !isHostedTenantExecutionRequired();
+  if (isPersonalHost) {
     context.app.route(
       '/api/mobile-devices',
       createMobileDeviceRoutes(
@@ -3147,6 +3163,44 @@ export function configureRuntimeRoutes(
       context.deploymentAuthentication?.publicOrigin,
     ),
   );
+  // #90 Browser pane: personal hosts only (same gate as the device routes),
+  // and every request is authorized per Project (operator or Project admin).
+  if (isPersonalHost) {
+    browserService = createBrowserService({
+      stationHome: context.configLoader.getProjectHomeDir(),
+      serverPort: context.port,
+      consentPort: configuredConsentPort(),
+      configuredOrigins: allowedOrigins,
+    });
+    const browserMembership = context.projectMembership;
+    const browserAccess = {
+      operator: (request: Request) =>
+        projectMembershipAuthority(request).operator(),
+      authority: projectMembershipAuthority,
+      ...(browserMembership ? { membership: browserMembership } : {}),
+    };
+    context.app.use('/api/browser/*', async (c, next) => {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      await next();
+    });
+    context.app.route(
+      '/api/browser',
+      createBrowserRoutes({
+        registry: browserService.registry,
+        acquisition: browserService.acquisition,
+        authorizeProject: createBrowserProjectAuthorizer(browserAccess),
+        authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
+        projectExists: (projectId) =>
+          context.projectService
+            .listProjects()
+            .some((project) => project.slug === projectId),
+        isRequestPrincipalCurrent,
+      }),
+    );
+  }
   const contributionResolution = buildProjectResolutionRouteDeps(context);
   context.app.route(
     '/api/project-contributions',
@@ -4678,6 +4732,7 @@ export function configureRuntimeRoutes(
     webPushService,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    browserService,
   };
 }
 
