@@ -1,5 +1,6 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -15,6 +16,7 @@ import {
   deploymentAccountPrincipal,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import type {
   ProjectMembershipAuthority,
@@ -699,6 +701,11 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /**
+   * Where live-surface producers register (#90). Undefined on hosted or
+   * multi-tenant deployments, where the routes are not mounted at all.
+   */
+  liveSurfaceRegistry?: LiveSurfaceRegistry;
 }
 
 /**
@@ -863,6 +870,7 @@ export function configureRuntimeRoutes(
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
+  let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
     deploymentAuthentication: context.deploymentAuthentication?.service,
@@ -2039,6 +2047,32 @@ export function configureRuntimeRoutes(
         }),
         { isRequestPrincipalCurrent },
       ),
+    );
+  }
+  // Live surfaces (#90) stream a server-side screen (Chromium now, a device
+  // later) and accept its input: personal operator hosts only, like the
+  // device routes above. With no producer registered the routes are inert.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    liveSurfaceRegistry = new LiveSurfaceRegistry({
+      hub: {
+        onError: (message, error) =>
+          context.logger.warn(message, {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      },
+    });
+    context.app.route(
+      '/api/live-surfaces',
+      createLiveSurfaceRoutes(liveSurfaceRegistry, {
+        isRequestPrincipalCurrent,
+        // Only a HUMAN principal can drive a surface over HTTP. An agent's
+        // credential resolves to a non-human principal and is refused here;
+        // agents claim through the server-side lease with a verified session.
+        resolveHumanPrincipal: (c) => {
+          const principal = resolveSubscriberPrincipal(c as never);
+          return principal?.kind === 'human' ? principal.id : null;
+        },
+      }),
     );
   }
   context.app.route(
@@ -4678,6 +4712,7 @@ export function configureRuntimeRoutes(
     webPushService,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    liveSurfaceRegistry,
   };
 }
 

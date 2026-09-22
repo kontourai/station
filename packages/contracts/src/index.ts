@@ -42,6 +42,7 @@ export * from './knowledge-store.js';
 export * from './known-environment.js';
 export * from './layout.js';
 export * from './live-activity.js';
+export * from './live-surface.js';
 export * from './mcp-app-display-mode.js';
 export * from './model-inventory.js';
 export * from './notification.js';

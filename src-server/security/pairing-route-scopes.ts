@@ -467,6 +467,19 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
+  // Live surfaces (#90) stream a server-side screen (a Chromium page, later a
+  // device) and inject pointer/key/text input into it. Watching exposes the
+  // same private screen data as a device capture, and input is remote control
+  // of a browser running as the operator — so every present and future leaf,
+  // reads included, sits on the terminal authority. No leaf inherits the
+  // ordinary read/operate family split.
+  {
+    id: '/api/live-surfaces:terminal-operate',
+    method: '*',
+    prefix: '/api/live-surfaces',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.
