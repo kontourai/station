@@ -87,6 +87,12 @@ do not use SSE. They travel as a length-prefixed binary `fetch` stream.
   frame stream is view-scoped, so it does not trip that trigger formally. It
   does shrink the slack left for input and for the other view-scoped streams,
   so an input-latency regression is a reason to revisit too.
+- **The single-stream rule is not enough on its own.** In the worst case, 2
+  always-on streams, 3 view-scoped streams and 1 frame stream fill the
+  ~6-connection pool. An input request would then queue anyway. When the
+  pool is full, the client must fall back: either send input over a separate
+  path that does not draw on the main origin's pool, or yield a view-scoped
+  stream while a Browser pane has focus.
 
 This is a design constraint. None of it is implemented or measured yet.
 

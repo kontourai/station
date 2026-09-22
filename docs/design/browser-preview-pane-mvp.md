@@ -8,13 +8,13 @@ which is not yet implemented.
 - Browser pane state `2.0` will persist a reference to a server-owned browser
   session instead of a loopback address.
 - Targets widen to any `http(s)` URL on personal hosts, except Station's own
-  listeners, for the operator and Project admins.
+  listeners, for the operator and Project admins and owners.
 - Browser automation comes into scope.
 - The streamed pane renders in Web/PWA, Android and iOS. That supersedes the
   closing statement "Web/PWA and Android/iOS remain unavailable".
 
-The "Not included" list below is superseded for remote targets and
-automation only. This record keeps describing `1.0` until the migration
+The "Not included" list below is superseded for remote targets,
+automation, and Web/PWA and Android/iOS availability. This record keeps describing `1.0` until the migration
 ships.
 
 Browser Preview is a Project-scoped Workspace Pane for a user-selected local

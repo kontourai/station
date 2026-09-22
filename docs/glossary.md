@@ -312,7 +312,8 @@ None of it is implemented yet.
 
 - **Browser pane** — the Workspace Pane that shows a web page rendered by a
   browser on the Station host, streamed to every client. The Station operator
-  and the admins of the session's Project, and their agents, can operate it.
+  and the admins and owners of the session's Project, and their agents, can
+  operate it.
   It supersedes the loopback-only
   **Browser Preview** pane (`packages/contracts/src/workspace-browser-preview.ts`),
   which remains the shipped `1.0` pane until the `2.0` migration lands.

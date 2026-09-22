@@ -8,8 +8,10 @@ that day for epic [#90](https://github.com/kontourai/station/issues/90). It
 - the archive#1376 [host spike](../design/browser-preview-host-spike.md);
 - the archive#1375 [Browser Preview Pane MVP](../design/browser-preview-pane-mvp.md).
 
-It also amends two requirements and one non-goal of #90, and one acceptance
-criterion of [#121](https://github.com/kontourai/station/issues/121). No code
+It also amends two requirements of #90 (BA-R1, and BA-R4 twice). It amends
+one of #90's non-goals and reconciles another without amending it. It amends
+one acceptance criterion of
+[#121](https://github.com/kontourai/station/issues/121). No code
 ships with this ADR, and every module it calls *planned* does not exist yet.
 Where a rule is an engineering addition rather than an owner decision, the
 text says so.
@@ -53,7 +55,9 @@ Facts this decision depends on, checked on this branch:
 - **Station owns child-process lifetime.** `spawnOwnedChild`
   (`src-server/services/infra/process-utils.ts`) writes a host-wide registry
   record for each child, keyed to its owning Station. A later startup sweep
-  reaps the child if that owner died without running cleanup. It also removes
+  reaps the child if that owner died without running cleanup. The record is
+  best-effort: a registry write failure is swallowed so the spawn still
+  succeeds, and that child is then not sweep-protected. It also removes
   the boot-internal secrets from the child's environment (`scrubBootInternalSecrets`
   in `src-server/utils/child-process-environment.ts`).
 - **Station runs five listeners per instance, not one.** They are the HTTP
@@ -76,6 +80,10 @@ Facts this decision depends on, checked on this branch:
   authority.** A live token opens the whole station-control tool surface and
   is not scoped by the minting session
   (`src-server/runtime/mcp/station-control-mcp-token.ts`, module docblock).
+  The env-delivered built-in station-control child is no better. It carries
+  the single global internal API token (`INTERNAL_API_TOKEN`, re-attached by
+  `src-server/runtime/bootstrap/station-control-runtime-env.ts`), which does
+  not identify a session at all.
 - **Upstream Tauri.** Tauri 3's CEF runtime (`tauri-runtime-cef`) published
   `v3.0.0-alpha.2` on 2026-09-21. The Tauri 2 child-webview defects the spike
   cited were all open on 2026-09-22: tauri-apps/tauri#15682 (the child covers
@@ -131,7 +139,9 @@ desktop as the renderer.
   navigation and navigation started inside the page, in the top frame and in
   subframes.
   - `about:blank` is allowed. That is an **engineering addition, not an owner
-    decision**: the browser opens new targets on it.
+    decision**: the browser opens new targets on it. `about:srcdoc` is allowed
+    for subframes only, as the same kind of engineering exception, because
+    that is how an `<iframe srcdoc>` document loads.
   - The `blob:` and `data:` denial is an engineering reading of D2. It applies
     to *navigation*. A page loading its own `blob:` or `data:` images,
     scripts or workers is subresource use, not navigation, and is allowed.
@@ -197,14 +207,17 @@ vetted scripts (such as the locator engine) are not *arbitrary evaluation* and
 are not governed by this permission. The permission governs agent-supplied
 source only.
 
-### D5 — The operator and the Project's admins; per-principal authorization on every operation
+### D5 — The operator and the Project's admins and owners; per-principal authorization on every operation
 
 The following people may view a Browser session, send it input, claim its
 control lease, toggle its eval permission, and use the browser tools through
 their agents:
 
-- the **Station operator**; and
-- **admins of the session's Project**.
+- the **Station operator**, as computed by
+  `projectMembershipAuthority(request).operator()` in
+  `src-server/runtime/routes/runtime-routes.ts`; and
+- **admins and owners of the session's Project** (owner ⊇ admin: an owner
+  holds every admin right here).
 
 Project **viewers and contributors get nothing**: no view, no input, no tools.
 Being a personal host (D2) is necessary but not sufficient.
@@ -217,16 +230,15 @@ Being a personal host (D2) is necessary but not sufficient.
   on its own, so a later change to one rule cannot widen the other.
 - **An agent acts with the authority of its verified calling session's
   principal.** That principal must satisfy D5 for the session's Project. A
-  `sessionId` supplied as a tool argument never counts. The current
-  station-control token does not establish the caller (see Context). Verified
-  caller identity is a wave-1 slice
+  `sessionId` supplied as a tool argument never counts. Neither current
+  station-control credential establishes the caller: the per-session wire MCP
+  token, or the global `INTERNAL_API_TOKEN` carried by the env-delivered
+  built-in station-control child (see Context). Verified caller identity for
+  both delivery paths is a wave-1 slice
   ([#122](https://github.com/kontourai/station/issues/122)), and the agent
   tools do not ship before it.
 - **Human input always preempts an agent.** An agent claim never preempts a
   live human holder.
-
-The membership store also has an `owner` role above `admin`. This ADR reads
-"Project admins" as including owners. That reading needs owner confirmation.
 
 ### D6 — Agents may drive with no viewer; no session is ever hidden
 
@@ -250,6 +262,17 @@ session the user cannot find, not a browser without a window.
 - The **non-goal "Silent headless-browser substitution"** becomes: "a browser
   session hidden from the user". Headless rendering is not substitution when
   it is the same session every viewer attaches to.
+
+**It reconciles #90's other non-goal without amending it.** "Unattended
+general web automation outside an explicit Browser Workspace Pane" stays a
+non-goal. A D6 session is not outside an explicit pane:
+
+- every session is bound to a Project;
+- it is listed as a Browser pane session;
+- it carries its action history;
+- it can be attached as a pane at any time.
+
+Unwatched is not the same as outside the pane.
 
 **It also amends #121 VB-AC2.** "Stale, hidden, wrong-context and non-owning
 renderers are rejected" keeps rejecting stale, wrong-context and non-owning
@@ -323,9 +346,8 @@ frames to catch up. Improving relay throughput is separate work that overlaps
   loopback listeners.** An agent's own tools may already reach the network.
   A page loaded in this browser is untrusted code running from the Station
   host's network position.
-  - **The terminal and voice WebSocket listeners** trust loopback peers
-    (`src-server/services/terminal/terminal-ws-server.ts`), and a page in the
-    host's browser would be one. A separate, pre-existing fix is in flight for
+  - **The terminal and voice WebSocket listeners** trust loopback peers, and
+    a page in the host's browser would be one. A separate, pre-existing fix is in flight for
     that listener behaviour. The rule below is required whether or not that
     fix lands.
   - **Lesser loopback locality.** `isSameMachineBrowserCaller` in
@@ -350,15 +372,16 @@ frames to catch up. Improving relay throughput is separate work that overlaps
   BA-AC6) must prove the rule. How it is enforced is a host-core design
   question, and every alias and rebinding case stays NOT_VERIFIED until that
   suite exists.
-- **Credentials live in the profile.** The Station-owned profile is launched
-  with the password manager, autofill and sync disabled. Credentials a user
-  types through the stream still persist as session cookies and site storage
+- **Credentials live in the profile.** The Station-owned profile will be
+  launched with the password manager, autofill and sync disabled. Credentials
+  a user types through the stream will still persist as session cookies and site storage
   in the per-Project profile. Anyone D5 authorizes can act as that logged-in
   user, and so can their agents. Eval and snapshots can read logged-in page
   state. That is why D4 defaults off and why D5 excludes Project viewers and
   contributors.
-- **Clipboard stays inside the browser.** Page clipboard writes stay inside
-  headless Chromium and never reach the host operating system's clipboard.
+- **Clipboard stays inside the browser.** Page clipboard writes will stay
+  inside headless Chromium and must never reach the host operating system's
+  clipboard.
   This is NOT_VERIFIED.
 - **Frame rates over the relay are limited.** On a remote phone, expect low
   frame rates on busy pages until relay throughput improves. The design
@@ -380,7 +403,7 @@ frames to catch up. Improving relay throughput is separate work that overlaps
   browser tree is NOT_VERIFIED.
 - **Remote viewers see host-local pages.** An authorized phone sees pages
   rendered from the host's network, including loopback dev servers. D5 limits
-  that to the operator and Project admins.
+  that to the operator and Project admins and owners.
 - **Viewing is separate from control and from lifetime.** Opening or closing a
   pane never starts or stops the browser session, and never claims or releases
   the lease.
@@ -403,6 +426,8 @@ frames to catch up. Improving relay throughput is separate work that overlaps
   separation of input from view authorization.
 - Lease fencing under concurrent human and agent input, end to end.
 - That page clipboard writes never reach the host clipboard.
+- That the profile's password manager, autofill and sync are actually
+  disabled by the launch flags on every supported browser.
 - The Tauri 3 CEF adapter. Upstream it is alpha. No Station code, package
   size, signing or platform result exists for it.
 - Frame streaming on the web/PWA client and on paired phones.
@@ -432,5 +457,3 @@ frames to catch up. Improving relay throughput is separate work that overlaps
   than the page's main world, so page script cannot tamper with it?
 - **The separate-window preview.** Is it retired or retained once pane v2
   ships?
-- **The `owner` role.** Confirm that Project owners are included with admins
-  (D5).
