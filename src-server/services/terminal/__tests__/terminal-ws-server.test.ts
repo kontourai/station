@@ -704,11 +704,17 @@ describe('terminal websocket browser origin on the credential-free loopback path
 
   async function expectRefusedUpgrade(port: number, origin: string) {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin });
-    const opened = vi.fn();
-    ws.on('open', opened);
-    const [error] = await once(ws, 'error');
-    expect((error as Error).message).toBe('Unexpected server response: 403');
-    expect(opened).not.toHaveBeenCalled();
+    // Fail fast with a named reason if the upgrade is admitted, rather than
+    // waiting out the test timeout.
+    const outcome = await new Promise<string>((resolve) => {
+      ws.once('error', (error) => resolve(error.message));
+      ws.once('open', () => resolve('upgrade admitted'));
+    });
+    if (outcome === 'upgrade admitted') {
+      ws.close();
+      await once(ws, 'close');
+    }
+    expect(outcome).toBe('Unexpected server response: 403');
   }
 
   it('accepts a loopback upgrade with no Origin header', async () => {
