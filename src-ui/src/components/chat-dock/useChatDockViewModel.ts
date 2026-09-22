@@ -93,6 +93,14 @@ interface UseChatDockViewModelArgs {
    * once the read has SUCCEEDED.
    */
   orchestrationSessionsStatus?: 'pending' | 'error' | 'success';
+  /**
+   * Whether the sessions query currently has a request in flight — including
+   * a background refetch where `status` stays `success` with stale data.
+   * After a send invalidates `orchestration-sessions`, the dock looks for the
+   * new child session in the pre-child cache until that refetch lands; that
+   * window must read as `pending`, never as established `absent`.
+   */
+  orchestrationSessionsFetching?: boolean;
 }
 
 export function useChatDockViewModel({
@@ -104,6 +112,7 @@ export function useChatDockViewModel({
   sessions,
   orchestrationSessions = EMPTY_ORCHESTRATION_SESSIONS,
   orchestrationSessionsStatus = 'success',
+  orchestrationSessionsFetching = false,
 }: UseChatDockViewModelArgs) {
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) || null;
@@ -176,7 +185,8 @@ export function useChatDockViewModel({
     | 'absent' =
     !sessionThreadId || activeOrchestrationSession
       ? 'present'
-      : orchestrationSessionsStatus === 'pending'
+      : orchestrationSessionsStatus === 'pending' ||
+          orchestrationSessionsFetching
         ? 'pending'
         : orchestrationSessionsStatus === 'error'
           ? 'error'

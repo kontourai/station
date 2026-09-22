@@ -386,6 +386,12 @@ function findAcpModelConfigOption(
 interface AcpPendingRequest {
   resolve: (decision: AcpDecision) => void;
   options: PermissionOption[];
+  /**
+   * Tool-level session-grant identity (`params.toolCall.name`), stored so
+   * `respondToRequest` can remember an `acceptForSession` grant. Absent
+   * when the agent named no tool (nothing is granted or remembered).
+   */
+  toolName?: string;
 }
 
 export interface AcpSessionRecord {
@@ -416,6 +422,14 @@ export interface AcpSessionRecord {
     'threadId' | 'resumeCursor' | 'signal'
   >;
   pendingRequests: Map<string, AcpPendingRequest>;
+  /**
+   * Tool-level session grants from `acceptForSession` (mirrors
+   * claude-adapter/station-agent-adapter `approvedTools`). The grant is
+   * checked Station-side because an agent that only offers `allow_once`
+   * degrades the `allow_always` wire preference to a one-call allow.
+   * Dies with the session.
+   */
+  approvedTools: Set<string>;
   preToolPolicy?: StagedPreToolPolicyEvaluator;
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
@@ -809,6 +823,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         tenantExecutionContext: input.tenantExecutionContext,
       },
       pendingRequests: new Map(),
+      approvedTools: new Set(),
       preToolPolicy,
       delegation:
         input.metadata?.delegation &&
@@ -1603,6 +1618,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     record.pendingRequests.delete(requestId);
+    if (decision === 'acceptForSession' && pending.toolName) {
+      record.approvedTools.add(pending.toolName);
+    }
     pending.resolve(decision);
 
     this.publish({
@@ -1906,6 +1924,22 @@ export class AcpAdapter implements ProviderAdapterShape {
         };
       }
 
+      // Tool-level session grant: "Allow for this session" covers every later
+      // call of the tool, not just this call. Checked after authored policy
+      // (preToolPolicy/autoApprove above stay first) and before publishing,
+      // so granted tools never re-prompt. Denies are never cached. When the
+      // agent offers no allow option at all, the auto-acceptance would be
+      // `cancelled` — fall through to the prompt rather than auto-cancel.
+      if (toolName && record.approvedTools.has(toolName)) {
+        const grantedOutcome = mapAcpDecisionToOutcome(
+          'accept',
+          params.options,
+        );
+        if (grantedOutcome.outcome !== 'cancelled') {
+          return { outcome: grantedOutcome };
+        }
+      }
+
       const requestId = crypto.randomUUID();
       this.publish({
         eventId: crypto.randomUUID(),
@@ -1927,6 +1961,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.pendingRequests.set(requestId, {
           resolve,
           options: params.options,
+          ...(toolName ? { toolName } : {}),
         });
       });
 

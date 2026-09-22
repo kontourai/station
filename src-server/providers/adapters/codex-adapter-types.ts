@@ -47,6 +47,12 @@ export interface PendingApprovalRequest {
   title: string;
   threadId: string;
   payload: Record<string, unknown>;
+  /**
+   * Tool-level session-grant identity (`deriveApprovalToolName`), stored so
+   * `respondToRequest` can remember an `acceptForSession` grant without
+   * re-deriving it. Absent when the method has no stable tool identity.
+   */
+  toolName?: string;
 }
 
 export interface CodexSessionRecord {
@@ -57,6 +63,14 @@ export interface CodexSessionRecord {
   rpcRequestCounter: number;
   pendingRpcRequests: Map<string, PendingRpcRequest>;
   pendingApprovals: Map<string, PendingApprovalRequest>;
+  /**
+   * Tool-level session grants from `acceptForSession` (mirrors
+   * claude-adapter/station-agent-adapter `approvedTools`). The Codex wire
+   * responses for `commandExecution`/`fileChange`/elicitation carry no
+   * session scope, so Station remembers the tool name itself and
+   * auto-accepts later calls without re-prompting. Dies with the session.
+   */
+  approvedTools: Set<string>;
   activeTurnId?: string;
   activeTurnStartedAt?: number;
   /**

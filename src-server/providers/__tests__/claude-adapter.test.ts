@@ -73,6 +73,7 @@ vi.mock('../auth/cli-auth.js', () => ({
   runCliCommand: mockRunCliCommand,
 }));
 
+import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
@@ -1062,6 +1063,66 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('acceptForSession grants the whole tool: a later different Bash command auto-allows', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-session-grant',
+    });
+    await iterator.next();
+    await iterator.next();
+
+    const queryArgs = mockQuery.mock.calls[0][0];
+    const firstCall = queryArgs.options.canUseTool(
+      'Bash',
+      { command: 'git grep -n foo' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'tool-use-first',
+        suggestions: [],
+      },
+    );
+    const opened = await iterator.next();
+    expect(opened.value).toMatchObject({ method: 'request.opened' });
+    await adapter.respondToRequest(
+      'thread-session-grant',
+      opened.value.requestId,
+      'acceptForSession',
+    );
+    await expect(firstCall).resolves.toMatchObject({ behavior: 'allow' });
+    await iterator.next();
+
+    // A different Bash command must NOT publish another request.opened —
+    // race the call against the event stream and require the call to win.
+    const secondCall = queryArgs.options.canUseTool(
+      'Bash',
+      { command: 'git log --oneline -5' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'tool-use-second',
+        suggestions: [],
+      },
+    );
+    const race = await Promise.race([
+      secondCall.then((result: PermissionResult) => ({
+        kind: 'result',
+        result,
+      })),
+      iterator.next().then((event) => ({ kind: 'event', event })),
+    ]);
+    expect(race).toMatchObject({
+      kind: 'result',
+      result: {
+        behavior: 'allow',
+        updatedInput: { command: 'git log --oneline -5' },
+      },
+    });
+    await adapter.stopSession('thread-session-grant');
+  });
+
   describe('canUseTool honors the session agent tools.autoApprove (external autoApprove parity)', () => {
     function withTimeout<T>(
       promise: Promise<T>,
@@ -1547,8 +1608,12 @@ describe('ClaudeAdapter', () => {
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
       toolInput: Record<string, unknown>,
     ) {
+      // Each decision drives a distinct tool name: `acceptForSession` now
+      // records a tool-level session grant, so reusing 'Bash' across drives
+      // would auto-allow the later decisions instead of opening a request.
+      const toolName = `Bash-${decision}`;
       const permissionPromise = queryArgs.options.canUseTool(
-        'Bash',
+        toolName,
         toolInput,
         {
           signal: new AbortController().signal,

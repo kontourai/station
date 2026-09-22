@@ -517,6 +517,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const {
     data: orchestrationSessions = [],
     status: orchestrationSessionsStatus,
+    isFetching: orchestrationSessionsFetching,
     isError: orchestrationSessionsFailed,
     refetch: refetchOrchestrationSessions,
   } = useOrchestrationSessionsQuery();
@@ -765,6 +766,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessions,
     orchestrationSessions,
     orchestrationSessionsStatus,
+    orchestrationSessionsFetching,
   });
   const handleReplayConversation = useCallback(() => {
     const sourceThreadId =

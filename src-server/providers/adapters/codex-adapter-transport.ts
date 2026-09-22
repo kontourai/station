@@ -7,11 +7,13 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { findCliBinary } from '../auth/cli-auth.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
+  deriveApprovalToolName,
   extractThreadId,
   hasId,
   hasMethod,
   mapApprovalResolutionStatus,
   mapServerRequestToEvent,
+  resolveSessionGrantAutoApproval,
 } from './codex-adapter-events.js';
 import {
   handleCodexNotification,
@@ -92,6 +94,7 @@ export function createCodexSessionRecord(options: {
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
     pendingApprovals: new Map(),
+    approvedTools: new Set(),
     lastSessionState: 'idle',
     turnOutput: new Map(),
     toolNames: new Map(),
@@ -594,12 +597,30 @@ export class CodexAdapterTransport {
       return;
     }
 
+    const payload = (request.params ?? {}) as Record<string, unknown>;
+    const toolName = deriveApprovalToolName(request.method, payload);
+    // Tool-level session grant: "Allow for this session" covers every later
+    // call of the tool, not just the one call the engine asked about (the
+    // command/file-change/elicitation wire responses carry no session
+    // scope). Granted tools never re-prompt; denies are never cached. A
+    // data-collecting elicitation has no truthful auto-acceptance, so it
+    // always re-prompts even under a grant.
+    const grantedAutoApproval =
+      toolName && record.approvedTools.has(toolName)
+        ? resolveSessionGrantAutoApproval(request.method, payload)
+        : null;
+    if (grantedAutoApproval !== null) {
+      this.sendResponse(record, requestId, grantedAutoApproval);
+      return;
+    }
+
     record.pendingApprovals.set(canonicalRequestId, {
       rpcRequestId: requestId,
       method: request.method,
       title: event.title,
       threadId: record.externalThreadId,
-      payload: (request.params ?? {}) as Record<string, unknown>,
+      payload,
+      ...(toolName ? { toolName } : {}),
     });
     this.publish(event);
   }

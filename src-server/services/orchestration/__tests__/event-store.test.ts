@@ -4518,6 +4518,154 @@ describe('EventStore', () => {
     ]);
   });
 
+  test('keeps a ten-session conversation cursor within the route cursor cap', () => {
+    // The cursor used to embed every lineage session id, so past ~7 UUID
+    // sessions the server minted a page-two cursor its own route schema
+    // (512 chars) rejected with `Invalid event window`. The pin carries the
+    // prefix size and hash instead, so length is lineage-independent.
+    const sessionIds = Array.from(
+      { length: 10 },
+      (_, index) =>
+        `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    );
+    for (const [index, threadId] of sessionIds.entries()) {
+      const turnId = `long-lineage-turn-${index}`;
+      store.appendEvent({
+        eventId: `${turnId}-started`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T01:${String(index).padStart(2, '0')}:00.000Z`,
+        method: 'turn.started',
+        prompt: `question ${index}`,
+      });
+      store.appendEvent({
+        eventId: `${turnId}-completed`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T01:${String(index).padStart(2, '0')}:01.000Z`,
+        method: 'turn.completed',
+        outputText: `answer ${index}`,
+      });
+    }
+
+    const pages = [
+      store.listConversationEventWindowByTurn(sessionIds, { turnLimit: 2 }),
+    ];
+    for (let guard = 0; pages.at(-1)!.nextCursor && guard < 10; guard += 1) {
+      pages.push(
+        store.listConversationEventWindowByTurn(sessionIds, {
+          cursor: pages.at(-1)!.nextCursor,
+          turnLimit: 2,
+        }),
+      );
+    }
+    const cursors = pages.flatMap((page) =>
+      page.nextCursor ? [page.nextCursor] : [],
+    );
+    expect(cursors.length).toBeGreaterThan(0);
+    for (const cursor of cursors)
+      expect(cursor.length).toBeLessThanOrEqual(512);
+    const received = pages.flatMap((page) => page.events);
+    expect(new Set(received.map((event) => event.id)).size).toBe(20);
+    expect(pages.at(-1)!.hasMore).toBe(false);
+  });
+
+  test('a pre-pin cursor embedding the lineage ids still pages one turn', () => {
+    // A client mid-pagination when the pin ships still holds an
+    // id-embedding cursor. Rebuilding that exact shape from a fresh pin
+    // cursor must read the same page as the pin cursor itself.
+    const sessionIds = [
+      'legacy-cursor-root',
+      'legacy-cursor-child-1',
+      'legacy-cursor-child-2',
+    ];
+    for (const [index, threadId] of sessionIds.entries()) {
+      const turnId = `legacy-turn-${index}`;
+      store.appendEvent({
+        eventId: `${turnId}-started`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:00.000Z`,
+        method: 'turn.started',
+        prompt: `question ${index}`,
+      });
+      store.appendEvent({
+        eventId: `${turnId}-completed`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:01.000Z`,
+        method: 'turn.completed',
+        outputText: `answer ${index}`,
+      });
+    }
+    const first = store.listConversationEventWindowByTurn(sessionIds, {
+      turnLimit: 1,
+    });
+    expect(first.nextCursor).toBeDefined();
+    const decoded = JSON.parse(
+      Buffer.from(first.nextCursor!, 'base64url').toString('utf8'),
+    );
+    expect(decoded.threadIds).toBeUndefined();
+    const { lineageSize, lineageHash, ...rest } = decoded;
+    expect(typeof lineageSize).toBe('number');
+    expect(typeof lineageHash).toBe('string');
+    const legacy = Buffer.from(
+      JSON.stringify({ ...rest, threadIds: sessionIds }),
+    ).toString('base64url');
+    const viaLegacy = store.listConversationEventWindowByTurn(sessionIds, {
+      cursor: legacy,
+      turnLimit: 1,
+    });
+    const viaPin = store.listConversationEventWindowByTurn(sessionIds, {
+      cursor: first.nextCursor,
+      turnLimit: 1,
+    });
+    expect(viaLegacy.events.map((event) => event.id)).toEqual(
+      viaPin.events.map((event) => event.id),
+    );
+  });
+
+  test('a pin minted for another lineage cannot page this conversation', () => {
+    const sessionIds = ['pin-mine-1', 'pin-mine-2'];
+    for (const [index, threadId] of sessionIds.entries()) {
+      store.appendEvent({
+        eventId: `pin-turn-${index}-started`,
+        provider: 'codex',
+        threadId,
+        turnId: `pin-turn-${index}`,
+        createdAt: `2026-08-24T03:0${index}:00.000Z`,
+        method: 'turn.started',
+        prompt: `question ${index}`,
+      });
+    }
+    const first = store.listConversationEventWindowByTurn(sessionIds, {
+      turnLimit: 1,
+    });
+    expect(first.nextCursor).toBeDefined();
+    const foreignIds = ['pin-foreign-1', 'pin-foreign-2'];
+    for (const [index, threadId] of foreignIds.entries()) {
+      store.appendEvent({
+        eventId: `pin-foreign-${index}-started`,
+        provider: 'codex',
+        threadId,
+        turnId: `pin-foreign-turn-${index}`,
+        createdAt: `2026-08-24T03:1${index}:00.000Z`,
+        method: 'turn.started',
+        prompt: `foreign ${index}`,
+      });
+    }
+    expect(() =>
+      store.listConversationEventWindowByTurn(foreignIds, {
+        cursor: first.nextCursor,
+        turnLimit: 1,
+      }),
+    ).toThrow('Conversation event window cursor is invalid');
+  });
+
   test('preflights the exact UTF-8 replay frame with a persisted provenance sidecar without reading payloads', () => {
     const threadId = 'thread-replay-sidecar-bytes';
     const event = {
