@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-22T12:10:11Z | nightly-npm | 0.6.0-nightly.2456.35721103767 | `3d3b656` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35721103767) |
 | 2026-09-22T05:16:09Z | nightly-desktop | 0.1.11-nightly.2456 | `8b599ec` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35687186254) |
 | 2026-09-22T05:16:06Z | nightly-android | 0.1.11-nightly.2456 | `8b599ec` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35687186254) |
 | 2026-09-22T05:12:56Z | nightly-npm | 0.6.0-nightly.2456.35687186254 | `8b599ec` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/35687186254) |
@@ -120,6 +121,19 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-22T12:10:11Z · nightly-npm · 0.6.0-nightly.2456.35721103767
+
+- Ship SHA: `3d3b65649e88d83f9491b3b2fc14526628c5c22c`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2456.35721103767 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `8b599ec` ([full sha](https://github.com/kontourai/station/commit/8b599ecbf8de37fde7439ccf185393f3a0571ee3)):
+
+_No user-visible changes recorded for this slice._
 
 ## 2026-09-22T05:16:09Z · nightly-desktop · 0.1.11-nightly.2456
 
