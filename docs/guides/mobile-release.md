@@ -79,8 +79,9 @@ build unsigned debug/simulator artifacts to catch a Rust/Gradle/Xcode-breaking
 change before it reaches a real release tag — they carry no store-upload step
 and no signing secret, and are unrelated to everything else in this doc.
 Android also runs on affected `main` pushes and `workflow_dispatch`. iOS runs
-through the reviewed base-controlled `pull_request_target` topology, on
-affected `main` pushes, through `merge_group`, and through `workflow_dispatch`.
+through the reviewed base-controlled `pull_request_target` topology, through
+`merge_group`, and through `workflow_dispatch`. It has no push trigger: the
+merge queue fast-forwards `main` to the exact candidate it already built.
 Every pull request and queued merge candidate emits the stable
 `build-ios-verification` check so the main ruleset can require it. A reviewed
 hosted-Linux classifier runs the `macos-26` job only when the pull-request or

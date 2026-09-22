@@ -2209,6 +2209,17 @@ describe('iOS verification proves packaged runtime readiness', () => {
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
     expect(ios).toContain('merge_group:');
+    // The queue fast-forwards main to the candidate it built (merge_group run
+    // 35778933116 and push run 35781390232 built the same SHA), so a push
+    // trigger only repeats a finished macOS build. Dispatch covers the rest.
+    const triggers = Object.keys(
+      (load(ios) as { on: Record<string, unknown> }).on,
+    ).sort();
+    expect(triggers).toEqual([
+      'merge_group',
+      'pull_request_target',
+      'workflow_dispatch',
+    ]);
     expect(classifier).toContain("'src-desktop/'");
     expect(classifier).toContain("'src-ui/'");
     expect(classifier).toContain("'packages/connect/'");
