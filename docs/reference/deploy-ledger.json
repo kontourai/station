@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-09-22T21:59:05Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2456.35784910501",
+    "sha": "0015690b78f76eb2b397a08e6ec86ee755678b9b",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/35784910501",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2456.35784910501 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a294eada0deb430689b5bed916da43c6d020f1a6",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#2306](https://github.com/kontourai/station/pull/2306) fix(chat): reconcile timed-out send when its turn starts late",
+          "[#2297](https://github.com/kontourai/station/pull/2297) fix(server): keep transcript text in window reads past the per-event ceiling",
+          "[#2302](https://github.com/kontourai/station/pull/2302) fix(orchestration): surface adapter pre-send refusals honestly instead of indeterminate",
+          "[#2296](https://github.com/kontourai/station/pull/2296) fix(server): pin event-window cursors by lineage hash, not embedded ids",
+          "[#2299](https://github.com/kontourai/station/pull/2299) fix(approvals): trust the tool, not the call, for session grants",
+          "[#2295](https://github.com/kontourai/station/pull/2295) fix(chat): read sessions refetch window as pending, not absent"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2298](https://github.com/kontourai/station/pull/2298) chore(ios): regenerate gen/apple from the base config"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-09-22T17:34:38Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2456.35756143372",
