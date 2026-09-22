@@ -114,7 +114,11 @@ function npmInvocation() {
 /** Run one phase as an owned process group bounded by its canonical deadline. */
 export async function runPhaseProcess(
   step,
-  { cwd = repoRoot, signal, spawnProcess = spawn } = {},
+  {
+    cwd = repoRoot,
+    signal = /** @type {AbortSignal | undefined} */ (undefined),
+    spawnProcess = spawn,
+  } = {},
 ) {
   const { executable, prefix } = npmInvocation();
   const label = `full-regression phase ${step.id}`;
@@ -175,9 +179,11 @@ export async function runFullRegressionPhases(
   plan,
   {
     runPhase = runPhaseProcess,
-    signal,
+    signal = /** @type {AbortSignal | undefined} */ (undefined),
     now = () => Date.now(),
-    log = (line) => process.stdout.write(`${line}\n`),
+    log = (line) => {
+      process.stdout.write(`${line}\n`);
+    },
   } = {},
 ) {
   const results = [];
