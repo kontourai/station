@@ -629,7 +629,11 @@ describe('#2303: a turn running in a lineage child reseeds its conversation chat
     expect(chats[ROOT].orchestrationModel).toBe('model-b');
   });
 
-  test('an idle conversation keeps the pre-#2303 semantics: its own root row speaks, and the binding is untouched', () => {
+  // KNOWN GAP, not a desired property: for an idle conversation the root row
+  // still speaks (pre-#2303 behavior, unchanged here), so the model label is
+  // whatever the FIRST turn launched with (`model-a`) even though the newer
+  // child reported `model-b`. Pinned so a change to it is deliberate.
+  test('an idle conversation keeps the pre-#2303 semantics (known gap: stale root model label), and the binding is untouched', () => {
     applyOrchestrationSnapshot(
       {
         sessions: [
@@ -669,6 +673,88 @@ describe('#2303: a turn running in a lineage child reseeds its conversation chat
     expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
     // Already bound to the live child: nothing to re-prove.
     expect(chats[ROOT].conversationOpenPending).toBeUndefined();
+  });
+
+  test('an idle winner that is not the chat key is never adopted as the binding (root absent, rule 3)', () => {
+    const newerIdleChild = {
+      ...oldChildRow,
+      threadId: 'muse:C:session:newer',
+      reportedModel: 'model-new',
+      createdAt: '2026-09-22T17:20:00.000Z',
+      lastEventAt: '2026-09-22T17:25:00.000Z',
+    };
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          { ...oldChildRow, reportedModel: 'model-old' },
+          newerIdleChild,
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    // Rule 3: the LATEST row speaks (not merely the first listed)...
+    expect(chats[ROOT].model).toBe('model-new');
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(false);
+    // ...but an idle row is no evidence of the current child: no adoption,
+    // no re-proof churn on every snapshot.
+    expect(chats[ROOT].currentSessionId).toBe(OLD_CHILD);
+    expect(chats[ROOT].conversationOpenPending).toBeUndefined();
+  });
+
+  test('recency is lastEventAt, not createdAt, when the two disagree', () => {
+    // `early` was created first but has the most recent activity.
+    const early = {
+      ...oldChildRow,
+      threadId: 'muse:C:session:early',
+      reportedModel: 'model-recent-activity',
+      createdAt: '2026-09-22T17:05:00.000Z',
+      lastEventAt: '2026-09-22T17:50:00.000Z',
+    };
+    const late = {
+      ...oldChildRow,
+      threadId: 'muse:C:session:late',
+      reportedModel: 'model-recent-creation',
+      createdAt: '2026-09-22T17:30:00.000Z',
+      lastEventAt: '2026-09-22T17:31:00.000Z',
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [late, early] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].model).toBe('model-recent-activity');
+  });
+
+  test('two open children (the server should prevent it): the most recently active one wins', () => {
+    const olderOpen = {
+      ...liveChildRow,
+      threadId: 'muse:C:session:older-open',
+      createdAt: '2026-09-22T17:30:00.000Z',
+      lastEventAt: '2026-09-22T17:35:00.000Z',
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [olderOpen, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
+  });
+
+  test('a child-keyed chat that declares the conversation, whose own row is gone, follows the conversation (deliberate)', () => {
+    const K = 'muse:C:session:k';
+    chats = {
+      [K]: {
+        provider: 'muse',
+        conversationId: ROOT,
+        orchestrationSessionStarted: true,
+        status: 'idle',
+      },
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [rootRow, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[K].orchestrationStatus).toBe('running');
+    expect(chats[K].orchestrationTurnOpen).toBe(true);
+    expect(chats[K].currentSessionId).toBe(LIVE_CHILD);
   });
 
   test('a chat keyed by the child thread itself still receives that row', () => {

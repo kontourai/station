@@ -110,6 +110,12 @@ function snapshotRowRecency(session: SnapshotSession): string {
  * stale `currentSessionId`: a reopened conversation points at the child the
  * open resolved to, and the next turn runs in a newer one.
  *
+ * That includes a chat keyed by some child K that itself declares
+ * `conversationId: C` (a legacy child-keyed tab) whose own row is no longer
+ * in the snapshot: it is reached through C's rows, reconciled from them, and
+ * is not marked exited. Deliberate — the chat says it is a view of C, and C
+ * is still live; marking it exited while C's turn runs is the defect.
+ *
  * When several rows reach one chat, the row that speaks for it is:
  * 1. the one with an explicitly open turn (`hasActiveTurn === true`), latest
  *    by `lastEventAt`/`createdAt` if several — an idle sibling is not
@@ -188,6 +194,25 @@ function planSnapshot(
     // chat still pointing at an older child would drop every one of them.
     // Repaired exactly the way the live `session.started` path repairs it
     // (`handleOrchestrationEvent`), including re-proving the binding.
+    //
+    // Only an OPEN row is adopted, and only because the server guarantees an
+    // open turn marks the conversation's CURRENT child: it refuses a new
+    // continuation child while the predecessor has an active turn
+    // (`canResolveConversationContinuation` requires `hasActiveTurn !== true`;
+    // context-boundary and handoff reservations require a terminal
+    // predecessor with no active turn — conversation-lineage.ts), and a
+    // crashed turn is closed with `turn.aborted` rather than left open
+    // (interrupted-turn-recovery.ts, station#2235). The live path instead
+    // gates on the server's own binding (`conversation.currentSessionId`);
+    // the snapshot carries no such binding, so this inference is only as
+    // good as those rules. An idle winner (rule 3) is never adopted.
+    //
+    // Known limitation, shared with the live repair (eventHandlers.ts sets
+    // the same `conversationOpenPending: true`): the revalidator that clears
+    // it mounts only for the ACTIVE chat (ChatDock's
+    // `activeSession.conversationOpenPending` gate), so a background chat
+    // stays 'resolving' until opened, and `drainQueuedMessageOnTurnCompleted`
+    // (`!conversationCanMutate`) holds its queued follow-up until then.
     const adoptsOpenChild =
       session.hasActiveTurn === true &&
       session.threadId !== chatKey &&
