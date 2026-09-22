@@ -58,6 +58,7 @@ function buildRecord(
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
     pendingApprovals: new Map(),
+    approvedTools: new Set(),
     lastSessionState: 'idle',
     turnOutput: new Map(),
     toolNames: new Map(),

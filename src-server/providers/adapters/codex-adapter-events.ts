@@ -375,6 +375,57 @@ export function mapApprovalResolutionStatus(
   return 'cancelled';
 }
 
+/**
+ * Tool-level session-grant identity for an inbound Codex approval request.
+ * Mirrors `deriveToolName`'s vocabulary (`shell_exec`/`apply_patch`) so a
+ * Station-side `acceptForSession` grant covers the whole tool, not the one
+ * call the engine asked about: Codex's `commandExecution`/`fileChange`
+ * wire responses carry no session scope, and `mcpServer/elicitation/request`
+ * degrades `acceptForSession` to a one-call `accept`. Returns null for
+ * methods with no stable tool identity (nothing is granted or remembered).
+ */
+export function deriveApprovalToolName(
+  method: string,
+  payload: Record<string, unknown>,
+): string | null {
+  switch (method) {
+    case 'item/commandExecution/requestApproval':
+      return 'shell_exec';
+    case 'item/fileChange/requestApproval':
+      return 'apply_patch';
+    case 'item/permissions/requestApproval':
+      return 'permissions';
+    case 'mcpServer/elicitation/request': {
+      const serverName = extractString(payload.serverName) ?? 'server';
+      return `mcp/${serverName}`;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The wire result Station may send WITHOUT prompting when a tool-level
+ * session grant covers this approval request, or null when no truthful
+ * auto-acceptance exists. A data-collecting MCP elicitation needs
+ * user-supplied content this approval surface does not collect, so it must
+ * re-prompt rather than accept with `undefined` (same reason
+ * `resolveApprovalOutcome` declines it on the wire).
+ */
+export function resolveSessionGrantAutoApproval(
+  method: string,
+  payload: Record<string, unknown>,
+): unknown | null {
+  const outcome = resolveApprovalOutcome(method, payload, 'accept');
+  if (
+    method === 'mcpServer/elicitation/request' &&
+    (!isRecord(outcome.result) || outcome.result.action !== 'accept')
+  ) {
+    return null;
+  }
+  return outcome.result;
+}
+
 export function deriveToolName(item: Record<string, unknown>): string | null {
   switch (item.type) {
     case 'commandExecution':

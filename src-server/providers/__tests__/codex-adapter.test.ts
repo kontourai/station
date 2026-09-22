@@ -2659,6 +2659,93 @@ describe('CodexAdapter', () => {
     });
   });
 
+  test('acceptForSession grants the whole tool: a later different command auto-approves', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const sessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-session-grant',
+      cwd: '/tmp/project',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: '2',
+      result: { thread: { id: 'codex-session-grant' } },
+    });
+    await withTimeout(sessionPromise, 'startSession session grant');
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: 'approval-1',
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'codex-session-grant',
+        turnId: 'turn-1',
+        itemId: 'cmd-1',
+        command: 'git grep -n foo',
+        reason: 'Search the tree',
+      },
+    });
+    await flushIo();
+    const opened = await nextEvent(iterator, 'request.opened');
+    await adapter.respondToRequest(
+      'thread-session-grant',
+      opened.requestId,
+      'acceptForSession',
+    );
+    await flushIo();
+    expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'approved',
+    });
+
+    // A different command must NOT publish another request.opened — the
+    // grant covers `shell_exec`, and the wire answer goes out as a plain
+    // one-call accept.
+    const linesBefore = processHandle.stdin.lines.length;
+    writeServerMessage(adapter, 'thread-session-grant', {
+      id: 'approval-2',
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'codex-session-grant',
+        turnId: 'turn-1',
+        itemId: 'cmd-2',
+        command: 'git log --oneline -5',
+        reason: 'Recent history',
+      },
+    });
+    let autoResponse: any;
+    for (let i = 0; i < 50 && autoResponse === undefined; i++) {
+      await flushIo();
+      const fresh = processHandle.stdin.lines
+        .slice(linesBefore)
+        .map(parseLine)
+        .find((line) => line.id === 'approval-2');
+      if (fresh) autoResponse = fresh;
+    }
+    expect(autoResponse).toMatchObject({
+      id: 'approval-2',
+      result: { decision: 'accept' },
+    });
+    const noPrompt = await Promise.race([
+      iterator.next().then((result) => result.value),
+      new Promise<'TIMED_OUT'>((resolve) =>
+        setTimeout(() => resolve('TIMED_OUT'), 150),
+      ),
+    ]);
+    expect(noPrompt).toBe('TIMED_OUT');
+    await adapter.stopAll();
+  });
+
   test('declines a data-required MCP elicitation on the wire and in the canonical event', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({

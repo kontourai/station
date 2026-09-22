@@ -80,6 +80,7 @@ import {
   isResumeCursor,
   mapApprovalResolutionStatus,
   resolveApprovalOutcome,
+  resolveSessionGrantAutoApproval,
 } from './codex-adapter-events.js';
 import {
   CodexAdapterTransport,
@@ -2428,6 +2429,18 @@ export class CodexAdapter implements ProviderAdapterShape {
       pending.payload,
       decision,
     );
+    // Tool-level session grant (mirrors claude-adapter `approvedTools`): the
+    // command/file-change/elicitation wire responses carry no session scope,
+    // so Station remembers the tool itself. Recorded only when the wire
+    // outcome actually accepts — a data-collecting elicitation declines on
+    // the wire even for `acceptForSession`, and must not mint a grant.
+    if (
+      decision === 'acceptForSession' &&
+      pending.toolName &&
+      resolveSessionGrantAutoApproval(pending.method, pending.payload) !== null
+    ) {
+      record.approvedTools.add(pending.toolName);
+    }
     this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
 
     this.transport.publish({

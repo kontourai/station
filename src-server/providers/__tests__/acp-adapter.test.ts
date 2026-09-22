@@ -2595,6 +2595,41 @@ describe('AcpAdapter', () => {
     }
   });
 
+  test('acceptForSession grants the whole tool: a later call auto-allows with no prompt', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-session-grant',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    const proc = processes[0];
+    const first = requestPermission(proc.client, 'tool-first', 'my-tool');
+    const opened = await nextEvent(iterator, 'request.opened');
+    await adapter.respondToRequest(
+      'thread-session-grant',
+      String(opened.requestId),
+      'acceptForSession',
+    );
+    await expect(first).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow-always' },
+    });
+    await nextEvent(iterator, 'request.resolved');
+
+    // Same tool, different call: no request.opened, and the auto-allow maps
+    // through the offered options (`accept` prefers `allow_once`).
+    const second = requestPermission(proc.client, 'tool-second', 'my-tool');
+    await expect(second).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow-once' },
+    });
+    expect(await nextEventOrTimeout(iterator, 150)).toBe('TIMED_OUT');
+    await adapter.stopAll();
+  });
+
   test('multiplexes two concurrent sessions against two different ACP connections', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
