@@ -8,6 +8,11 @@
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import { createStationControlMcpServer } from './station-control-mcp-server.js';
+import { installStationControlStdioCallerCredential } from './station-control-shared.js';
+
+// Lane D of #90: a per-session child receives its caller credential in its
+// spawn env. Adopt it before serving and drop it from process.env.
+installStationControlStdioCallerCredential();
 
 const inputClosed = new Promise<void>((resolve) => {
   process.stdin.once('end', resolve);

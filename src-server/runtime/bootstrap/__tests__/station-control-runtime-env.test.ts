@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../../tools/station-control-shared.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../../utils/internal-api-token.js';
 import {
   builtinStationControlServerPath,
@@ -70,5 +71,38 @@ describe('withStationControlRuntimeEnv', () => {
         { tenantId: 'alpha' as any, source: 'request' },
       ),
     ).not.toHaveProperty('STATION_INTERNAL_TENANT');
+  });
+
+  test('Lane D of #90: attaches a per-session caller credential to the built-in child only, and never inherits one from the parent env', () => {
+    const inherited = { [STATION_CONTROL_CALLER_TOKEN_ENV]: 'parent-leak' };
+
+    // Supplied by the server for this session: attached to the built-in.
+    expect(
+      withStationControlRuntimeEnv(
+        'station-control',
+        builtinDefinition,
+        inherited,
+        undefined,
+        'session-token',
+      ),
+    ).toMatchObject({ [STATION_CONTROL_CALLER_TOKEN_ENV]: 'session-token' });
+    // Not supplied (a pooled child): the parent's value is stripped.
+    expect(
+      withStationControlRuntimeEnv(
+        'station-control',
+        builtinDefinition,
+        inherited,
+      ),
+    ).not.toHaveProperty(STATION_CONTROL_CALLER_TOKEN_ENV);
+    // A third-party server never receives one, supplied or inherited.
+    expect(
+      withStationControlRuntimeEnv(
+        'third-party',
+        { ...builtinDefinition, id: 'third-party' },
+        inherited,
+        undefined,
+        'session-token',
+      ),
+    ).not.toHaveProperty(STATION_CONTROL_CALLER_TOKEN_ENV);
   });
 });

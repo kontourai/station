@@ -3841,6 +3841,16 @@ export class OrchestrationService {
   }
 
   /**
+   * Lane D of #90 (archive#122): the principal a session acts for, from the
+   * ownership record only. See `SessionActingPrincipal` for the derivations.
+   */
+  resolveSessionActingPrincipal(
+    threadId: string,
+  ): import('./session-authorization.js').SessionActingPrincipal | undefined {
+    return this.sessionAuthz.sessionActingPrincipal(threadId);
+  }
+
+  /**
    * The session's current project binding (delegation-scoped first, same
    * precedence `sessionOpenHref`/`resolveNotificationOpenHref` use), read
    * synchronously from the persisted event store + in-memory read model —

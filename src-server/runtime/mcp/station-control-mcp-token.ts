@@ -70,7 +70,10 @@ export const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
  * `session/new` payload — and a default would silently attribute one
  * channel's mints to the other on the one metric that can tell them apart.
  */
-type StationControlMcpTokenChannel = 'url-token' | 'http-header-token';
+type StationControlMcpTokenChannel =
+  | 'url-token'
+  | 'http-header-token'
+  | 'stdio-env-token';
 
 interface StationControlMcpTokenEntry {
   sessionId: string;
@@ -232,6 +235,27 @@ export function mintStationControlMcpHeaderAuth(
     tenantExecutionContext,
   );
   return { url: buildStationControlMcpHeaderUrl(port), token };
+}
+
+/**
+ * Lane D of #90 (archive#122): the stdio channel's mint. A per-session stdio
+ * child (the Claude Agent SDK spawns station-control once per session) gets
+ * this token in its spawn env so its REST calls carry a verifiable caller
+ * (`STATION_CONTROL_CALLER_TOKEN_ENV`). It is the same credential the HTTP
+ * channels mint, with the same per-session replacement, revocation and TTL.
+ * It adds no authority to that child, which already holds the process-wide
+ * `INTERNAL_API_TOKEN`; it adds identity.
+ */
+export function mintStationControlStdioCallerToken(
+  sessionId: string,
+  tenantExecutionContext?: TenantExecutionContext,
+): string {
+  return mintStationControlMcpToken(
+    sessionId,
+    'stdio-env-token',
+    undefined,
+    tenantExecutionContext,
+  ).token;
 }
 
 /** Test-only reset so suites don't leak state across test files. */

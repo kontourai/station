@@ -79,6 +79,8 @@ interface ResolveClaudeMcpServersResult {
 export function resolveClaudeMcpServers(
   toolServers: ResolvedAgentToolServer[],
   stationControlEnv?: Record<string, string>,
+  /** Lane D of #90: this session's caller credential, built-in only. */
+  stationControlCallerToken?: string,
 ): ResolveClaudeMcpServersResult {
   const servers: Record<string, McpServerConfig> = {};
   const skipped: ClaudeToolServerSkip[] = [];
@@ -100,12 +102,13 @@ export function resolveClaudeMcpServers(
       // ever handed to a server that IS the canonical built-in match, so a
       // third-party server never sees STATION_API_BASE/STATION_PORT
       // either, not only the token.
+      const builtin = isBuiltinStationControl(server.id, toolDef);
       const env = withStationControlRuntimeEnv(
         server.id,
         toolDef,
-        isBuiltinStationControl(server.id, toolDef)
-          ? stationControlEnv
-          : undefined,
+        builtin ? stationControlEnv : undefined,
+        undefined,
+        builtin ? stationControlCallerToken : undefined,
       );
       servers[server.id] = {
         type: 'stdio',

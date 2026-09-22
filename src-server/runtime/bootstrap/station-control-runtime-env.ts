@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_ENV,
@@ -112,16 +113,24 @@ export function isBuiltinStationControl(
  * station-control child. The credential must never be persisted in the
  * integration definition, while arbitrary third-party MCP servers must not
  * receive it.
+ *
+ * Lane D of #90: `callerToken` is the per-session caller credential for a
+ * child that serves exactly one session. It is attached only here, only to
+ * the built-in, and never inherited from `env` — a pooled child (Station's
+ * own engine shares one per tenant) must not pick up a session identity
+ * from the parent's environment.
  */
 export function withStationControlRuntimeEnv(
   toolId: string,
   toolDef: ToolDef,
   env: Record<string, string> | undefined,
   tenantExecutionContext?: TenantExecutionContext,
+  callerToken?: string,
 ): Record<string, string> | undefined {
   const runtimeEnv = env ? { ...env } : undefined;
   if (runtimeEnv) {
     delete runtimeEnv[INTERNAL_API_TOKEN_ENV];
+    delete runtimeEnv[STATION_CONTROL_CALLER_TOKEN_ENV];
     // A parent process is never tenant authority. Only the trusted execution
     // context supplied by the server below may carry this reserved value to
     // the exact built-in child.
@@ -134,6 +143,7 @@ export function withStationControlRuntimeEnv(
     ...(tenantExecutionContext
       ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
       : {}),
+    ...(callerToken ? { [STATION_CONTROL_CALLER_TOKEN_ENV]: callerToken } : {}),
   };
 }
 

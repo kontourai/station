@@ -34,6 +34,7 @@ import {
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type {
   ModelOption,
   ModelOptionCapabilities,
@@ -728,6 +729,19 @@ export interface ClaudeAdapterOptions {
    */
   getStationControlEnv?: () => Record<string, string> | undefined;
   /**
+   * Lane D of #90 (archive#122): mints the per-session caller credential the
+   * built-in station-control child carries in its spawn env, so its REST
+   * calls name a verified calling session. Called only when the session's
+   * authored tool servers include station-control. Absent (most unit tests),
+   * the child runs exactly as before and reports no caller.
+   */
+  mintStationControlCallerToken?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => string;
+  /** Revocation counterpart, called when the session stops or fails to start. */
+  revokeStationControlCallerToken?: (threadId: string) => void;
+  /**
    * Resolves Station's shared staged pre-tool evaluator for a real resolved
    * agent. It is intentionally absent for agent-less/synthetic sessions;
    * those retain the SDK's native permission behavior.
@@ -1221,21 +1235,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const permissionMode = this.resolvePermissionMode(input.modelOptions);
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
-    const sdkQuery = query({
-      prompt: promptQueue,
-      options: this.buildOptions(
-        input,
-        persistSession,
-        permissionMode,
-        appHomeEnv,
-        connectionEnv,
-        toolServers.mcpServers,
-        skillsOverlayDir,
-        augmentedEnv,
-        preToolPolicy,
-        claudeExecutable,
-      ),
-    });
+    let sdkQuery: ReturnType<typeof query>;
+    try {
+      sdkQuery = query({
+        prompt: promptQueue,
+        options: this.buildOptions(
+          input,
+          persistSession,
+          permissionMode,
+          appHomeEnv,
+          connectionEnv,
+          toolServers.mcpServers,
+          skillsOverlayDir,
+          augmentedEnv,
+          preToolPolicy,
+          claudeExecutable,
+        ),
+      });
+    } catch (error) {
+      this.options.revokeStationControlCallerToken?.(input.threadId);
+      throw error;
+    }
 
     const session: ProviderSession = {
       provider: this.provider,
@@ -1711,6 +1731,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const record = this.sessions.get(threadId);
     if (!record) return;
     this.sessions.delete(threadId);
+    // Lane D of #90: the session's caller credential ends with it.
+    this.options.revokeStationControlCallerToken?.(threadId);
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     for (const [requestId, pending] of record.pendingRequests) {
@@ -2104,12 +2126,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
 
-    const { servers, skipped } = resolveClaudeMcpServers(toolServers, {
-      ...this.options.getStationControlEnv?.(),
-      ...(input.tenantExecutionContext
-        ? { STATION_INTERNAL_TENANT: input.tenantExecutionContext.tenantId }
-        : {}),
-    });
+    const callerToken = toolServers.some(
+      (server) => server.id === 'station-control',
+    )
+      ? this.options.mintStationControlCallerToken?.(
+          input.threadId,
+          input.tenantExecutionContext,
+        )
+      : undefined;
+    const { servers, skipped } = resolveClaudeMcpServers(
+      toolServers,
+      {
+        ...this.options.getStationControlEnv?.(),
+        ...(input.tenantExecutionContext
+          ? { STATION_INTERNAL_TENANT: input.tenantExecutionContext.tenantId }
+          : {}),
+      },
+      callerToken,
+    );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: ClaudeToolServerSkip) => ({
         capability: 'toolServers',

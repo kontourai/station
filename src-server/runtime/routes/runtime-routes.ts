@@ -176,6 +176,7 @@ import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-re
 import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
+import { createStationControlCallerRoutes } from '../../routes/mcp/station-control-caller-route.js';
 import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
@@ -1536,11 +1537,36 @@ export function configureRuntimeRoutes(
     conversationForSession: (sessionId) =>
       context.orchestrationEventStore?.conversationForSession(sessionId),
   });
+  // Lane D of #90 (archive#122): a station-control tool's verified caller
+  // names a session; the principal it acts for, its project and its
+  // conversation come from these records, never from the request.
+  const resolveStationControlCallerRecord = (sessionId: string) => {
+    const principal =
+      context.orchestrationService.resolveSessionActingPrincipal(sessionId);
+    const projectSlug =
+      context.orchestrationService.resolveSessionProjectSlug(sessionId);
+    const conversationId =
+      context.orchestrationEventStore?.conversationForSession(
+        sessionId,
+      )?.conversationId;
+    return {
+      ...(principal ? { principal } : {}),
+      ...(projectSlug ? { projectSlug } : {}),
+      ...(conversationId ? { conversationId } : {}),
+    };
+  };
   context.app.route(
     '',
     createStationControlMcpRoutes({
       port: context.port,
       hostedTenantRegistry,
+      resolveCallerRecord: resolveStationControlCallerRecord,
+    }),
+  );
+  context.app.route(
+    '/api/orchestration',
+    createStationControlCallerRoutes({
+      resolveRecord: resolveStationControlCallerRecord,
     }),
   );
   context.app.route(

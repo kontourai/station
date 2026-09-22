@@ -22,6 +22,29 @@ import {
 // LRU — generous relative to realistic concurrently-relevant thread counts.
 const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
 
+/**
+ * Lane D of #90 (archive#122): the principal an agent session acts for, read
+ * from the server's own ownership record. `source` says how it was derived,
+ * so a consumer can refuse a derivation it does not accept:
+ *
+ * - `session-owner` — the session's recorded `metadata.userId`, stamped
+ *   server-side from the authenticated caller that started it.
+ * - `legacy-personal-owner` — a pre-ownership row carrying this Station's
+ *   former OS alias (#749); it maps to the local operator, the same mapping
+ *   `canReadSessionForCommand` applies.
+ * - `ownerless-single-operator` — a personal host in `single-user-compat`
+ *   mode, where a session with no recorded owner is the local operator's
+ *   (the only account such a host has). Hosted or `deny` hosts never
+ *   produce it: an ownerless session there acts for no one.
+ */
+export interface SessionActingPrincipal {
+  readonly id: string;
+  readonly source:
+    | 'session-owner'
+    | 'legacy-personal-owner'
+    | 'ownerless-single-operator';
+}
+
 export interface PersonalConversationAccess {
   canRead(requesterId: string, ownerId: string): boolean;
   ownerIds(requesterId: string): readonly string[] | undefined;
@@ -266,6 +289,32 @@ export class SessionAuthorization {
     // an authorization outcome must never be pinned by a cache the way a
     // positive owner safely can be.
     return undefined;
+  }
+
+  /** See {@link SessionActingPrincipal}. Never reads request input. */
+  sessionActingPrincipal(threadId: string): SessionActingPrincipal | undefined {
+    const hosted = this.deps.requireTenantExecutionContext?.() === true;
+    const owner = this.sessionOwnerUserId(threadId);
+    if (owner !== undefined) {
+      if (
+        this.deps.legacyPersonalOwner !== undefined &&
+        owner === this.deps.legacyPersonalOwner
+      ) {
+        return hosted
+          ? undefined
+          : {
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              source: 'legacy-personal-owner',
+            };
+      }
+      return { id: owner, source: 'session-owner' };
+    }
+    if (hosted || this.deps.ownerlessSessionAccess !== 'single-user-compat')
+      return undefined;
+    return {
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'ownerless-single-operator',
+    };
   }
 
   /**

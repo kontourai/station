@@ -48,8 +48,194 @@ export function withStationControlExecutionContext<T>(
     : executionContexts.run(context, operation);
 }
 
+/**
+ * Lane D of #90 (archive#122): the VERIFIED identity of the agent session
+ * calling a station-control tool.
+ *
+ * The per-session station-control MCP token (`station-control-mcp-token.ts`)
+ * bounds LIFETIME, not authority, and that is unchanged: nothing here narrows
+ * what an existing tool may do. This only makes the caller AVAILABLE, derived
+ * from a server-minted credential and never from tool input. A `sessionId`
+ * (or any other identity) in a tool's arguments is not authority and no code
+ * path below reads one.
+ *
+ * `sessionId` is the session the credential was minted for (Station's
+ * provider `threadId`). `projectSlug` and `conversationId` come from the
+ * server's own session records for that session, never from the request.
+ * `tenant` is present only in-process; the REST projection omits it because
+ * tenant context is never a public payload field (`tenancy.ts`).
+ */
+export interface StationControlCaller {
+  readonly sessionId: string;
+  /**
+   * The principal the session acts for (D5: browser tools check this
+   * principal's Project role). Read from the session's ownership record,
+   * never from tool input or a request header; `source` names the
+   * derivation (see `SessionActingPrincipal` in
+   * `services/orchestration/session-authorization.ts`). Absent when the
+   * session acts for no attributable principal — a consumer that needs one
+   * must fail closed.
+   */
+  readonly principal?: StationControlCallerPrincipal;
+  readonly projectSlug?: string;
+  readonly conversationId?: string;
+  readonly tenant?: TenantExecutionContext;
+}
+
+export interface StationControlCallerPrincipal {
+  readonly id: string;
+  readonly source:
+    | 'session-owner'
+    | 'legacy-personal-owner'
+    | 'ownerless-single-operator';
+}
+
+const CALLER_PRINCIPAL_SOURCES: ReadonlySet<string> = new Set([
+  'session-owner',
+  'legacy-personal-owner',
+  'ownerless-single-operator',
+]);
+
+/**
+ * The header a station-control tool's REST call carries its caller
+ * credential in. The value is the same per-session token the MCP transport
+ * verified; Station's REST side re-verifies it
+ * (`resolveStationControlCallerForRequest`), so the header is a credential,
+ * not a claim.
+ */
+export const STATION_CONTROL_CALLER_TOKEN_HEADER =
+  'x-station-control-caller-token';
+/** Spawn-env key carrying a stdio child's per-session caller credential. */
+export const STATION_CONTROL_CALLER_TOKEN_ENV = 'STATION_CONTROL_CALLER_TOKEN';
+/** The REST projection of the verified caller (used by stdio children). */
+export const STATION_CONTROL_CALLER_PATH =
+  '/api/orchestration/station-control/caller';
+
+export class StationControlCallerRequiredError extends Error {
+  readonly code = 'station_control_caller_required' as const;
+  constructor() {
+    super(
+      'This tool requires a verified calling session. The station-control connection for this engine does not carry one.',
+    );
+    this.name = 'StationControlCallerRequiredError';
+  }
+}
+
+interface StationControlCallerContext {
+  /** The verified transport credential, forwarded to Station's REST API. */
+  readonly token: string | undefined;
+  /** Re-derives the caller from the server's token registry and records. */
+  readonly resolve: () => StationControlCaller | null;
+}
+const callerContexts = new AsyncLocalStorage<StationControlCallerContext>();
+
+// Installed only by the stdio entry point (`station-control-server.ts`), which
+// reads it from its own spawn env. Station's own process never installs one,
+// so an in-process tool call outside an HTTP MCP request has no caller rather
+// than inheriting whatever the server's environment happens to hold.
+let stdioCallerToken: string | undefined;
+
+/** Verified MCP transport identity only; never sourced from public tool input. */
+export function withStationControlCallerContext<T>(
+  context: StationControlCallerContext,
+  operation: () => T,
+): T {
+  return callerContexts.run(context, operation);
+}
+
+/**
+ * Stdio entry point only: adopt the per-session caller credential from the
+ * spawn env and remove it from `process.env`, so nothing this child spawns
+ * inherits it.
+ */
+export function installStationControlStdioCallerCredential(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const value = env[STATION_CONTROL_CALLER_TOKEN_ENV];
+  delete env[STATION_CONTROL_CALLER_TOKEN_ENV];
+  stdioCallerToken =
+    typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** Test-only reset for the stdio credential. */
+export function __resetStationControlStdioCallerCredentialForTests(): void {
+  stdioCallerToken = undefined;
+}
+
+function callerCredential(): string | undefined {
+  const context = callerContexts.getStore();
+  // An HTTP MCP request always decides for itself; it never falls back to a
+  // process-level credential.
+  if (context) return context.token;
+  return stdioCallerToken;
+}
+
+function parseCallerProjection(value: unknown): StationControlCaller | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.sessionId !== 'string' || record.sessionId.length === 0)
+    return null;
+  const principal = record.principal as Record<string, unknown> | undefined;
+  return Object.freeze({
+    sessionId: record.sessionId,
+    ...(principal &&
+    typeof principal.id === 'string' &&
+    principal.id.length > 0 &&
+    typeof principal.source === 'string' &&
+    CALLER_PRINCIPAL_SOURCES.has(principal.source)
+      ? {
+          principal: Object.freeze({
+            id: principal.id,
+            source: principal.source as StationControlCallerPrincipal['source'],
+          }),
+        }
+      : {}),
+    ...(typeof record.projectSlug === 'string'
+      ? { projectSlug: record.projectSlug }
+      : {}),
+    ...(typeof record.conversationId === 'string'
+      ? { conversationId: record.conversationId }
+      : {}),
+  });
+}
+
+/**
+ * The verified caller of the current station-control tool call, or `null`
+ * when this delivery path carries no per-session credential, the credential
+ * is revoked or expired, or Station cannot be reached. In-process (HTTP MCP)
+ * calls resolve directly against the token registry; a stdio child asks
+ * Station's REST projection, which runs the same derivation.
+ */
+export async function getStationControlCaller(): Promise<StationControlCaller | null> {
+  const context = callerContexts.getStore();
+  if (context) {
+    try {
+      return context.resolve();
+    } catch {
+      return null;
+    }
+  }
+  if (!stdioCallerToken) return null;
+  try {
+    const body = (await api(STATION_CONTROL_CALLER_PATH)) as {
+      caller?: unknown;
+    };
+    return parseCallerProjection(body?.caller);
+  } catch {
+    return null;
+  }
+}
+
+/** Fails closed with {@link StationControlCallerRequiredError}. */
+export async function requireStationControlCaller(): Promise<StationControlCaller> {
+  const caller = await getStationControlCaller();
+  if (!caller) throw new StationControlCallerRequiredError();
+  return caller;
+}
+
 function executionContextHeaders(): Record<string, string> {
   const context = executionContexts.getStore();
+  const callerToken = callerCredential();
   // In-process HTTP requests always prefer their AsyncLocal request context.
   // A spawned stdio station-control child is already one-session/one-tenant
   // and receives that immutable binding in its process environment; retain
@@ -58,6 +244,9 @@ function executionContextHeaders(): Record<string, string> {
   const tenantId = context?.tenantId ?? process.env.STATION_INTERNAL_TENANT;
   return {
     ...(tenantId ? { 'x-station-internal-tenant': tenantId } : {}),
+    ...(callerToken
+      ? { [STATION_CONTROL_CALLER_TOKEN_HEADER]: callerToken }
+      : {}),
     ...((callerBindings.getStore()?.binding ?? stdioCallerBinding)
       ? {
           [INTERNAL_CONTROL_CALLER_BINDING_HEADER]:

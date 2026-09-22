@@ -397,6 +397,7 @@ import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   buildStationControlMcpUrl,
   mintStationControlMcpToken,
+  mintStationControlStdioCallerToken,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
 import {
@@ -789,6 +790,14 @@ export class StationRuntime {
     // this closure is only invoked at `startSession` time, well after
     // construction completes.
     getStationControlEnv: () => stationControlSpawnEnv(this.port),
+    // Lane D of #90 (archive#122): the Claude Agent SDK spawns one
+    // station-control stdio child per session, so that child can carry a
+    // per-session caller credential in its env (see
+    // `mintStationControlStdioCallerToken`).
+    mintStationControlCallerToken: (threadId, tenantExecutionContext) =>
+      mintStationControlStdioCallerToken(threadId, tenantExecutionContext),
+    revokeStationControlCallerToken: (threadId: string) =>
+      revokeStationControlMcpToken(threadId),
     // `this.logger` is not assigned until later in the constructor body
     // (field initializers run first) — wrap it in a lazily-evaluated shim
     // rather than capturing `this.logger` (which would freeze in as

@@ -75,8 +75,15 @@ vi.mock('../auth/cli-auth.js', () => ({
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  __resetStationControlMcpTokensForTests,
+  mintStationControlStdioCallerToken,
+  revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
+import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import { ProviderTurnEndedError } from '../adapter-shape.js';
@@ -3442,6 +3449,57 @@ describe('ClaudeAdapter', () => {
       expect(
         configured.value.metadata.capabilityDelivery.toolServers.delivered,
       ).toEqual(['station-control', 'third-party']);
+    });
+
+    test('Lane D of #90: the built-in station-control child carries a per-session caller credential that verifies to this session, and stopSession revokes it', async () => {
+      __resetStationControlMcpTokensForTests();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        mintStationControlCallerToken: (threadId, tenant) =>
+          mintStationControlStdioCallerToken(threadId, tenant),
+        revokeStationControlCallerToken: (threadId) =>
+          revokeStationControlMcpToken(threadId),
+      });
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-caller-credential',
+        agent: {
+          slug: 'my-agent',
+          toolServers: [
+            {
+              id: 'station-control',
+              transport: 'stdio',
+              command: 'node',
+              args: [builtinStationControlServerPath()],
+            },
+            {
+              id: 'third-party',
+              transport: 'stdio',
+              command: process.execPath,
+              args: ['--version'],
+            },
+          ],
+        },
+      });
+
+      const queryArgs = mockQuery.mock.calls[0][0] as {
+        options: {
+          mcpServers: Record<string, { env?: Record<string, string> }>;
+        };
+      };
+      const token =
+        queryArgs.options.mcpServers['station-control'].env?.[
+          STATION_CONTROL_CALLER_TOKEN_ENV
+        ];
+      expect(typeof token).toBe('string');
+      expect(verifyStationControlMcpToken(token)).toEqual({
+        sessionId: 'thread-caller-credential',
+      });
+      expect(queryArgs.options.mcpServers['third-party'].env).toBeUndefined();
+
+      await adapter.stopSession('thread-caller-credential');
+      expect(verifyStationControlMcpToken(token)).toBeUndefined();
     });
 
     test('reports an invalid HTTP tool server and still starts the session', async () => {

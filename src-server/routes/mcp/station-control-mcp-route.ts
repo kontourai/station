@@ -66,6 +66,10 @@ import { createMcpHandler } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { stationControlSpawnEnv } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
+  resolveStationControlCallerFromToken,
+  type StationControlCallerRecordResolver,
+} from '../../runtime/mcp/station-control-caller.js';
+import {
   STATION_CONTROL_MCP_PATH,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
@@ -77,6 +81,7 @@ import {
 import { createStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
 import {
   withStationControlCallerBinding,
+  withStationControlCallerContext,
   withStationControlExecutionContext,
 } from '../../tools/station-control-shared.js';
 
@@ -124,6 +129,10 @@ interface StationControlMcpRouteOptions {
   port: number;
   /** When configured, only registry-valid tenant-bound MCP tokens are accepted. */
   hostedTenantRegistry?: HostedTenantRegistry;
+  /** Lane D of #90: the server's own records for a verified session. */
+  resolveCallerRecord?: StationControlCallerRecordResolver;
+  /** Test seam only: production always serves the real registrations. */
+  createServer?: typeof createStationControlMcpServer;
 }
 
 /** Build the isolated Hono sub-app. Exported for unit tests (`app.request`). */
@@ -131,10 +140,13 @@ export function createStationControlMcpRoutes(
   options: StationControlMcpRouteOptions,
 ): Hono {
   const app = new Hono();
-  const handler = createMcpHandler(createStationControlMcpServer, {
-    legacy: 'stateless',
-    responseMode: 'auto',
-  });
+  const handler = createMcpHandler(
+    options.createServer ?? createStationControlMcpServer,
+    {
+      legacy: 'stateless',
+      responseMode: 'auto',
+    },
+  );
 
   app.all(STATION_CONTROL_MCP_PATH, async (c) => {
     if (!isLoopbackRemoteAddress(extractRemoteAddress(c.env))) {
@@ -212,7 +224,22 @@ export function createStationControlMcpRoutes(
       () =>
         withStationControlCallerBinding(
           callerBinding,
-          () => handler.fetch(c.req.raw),
+          // Lane D of #90: tool callbacks learn the caller from THIS verified
+          // token, re-derived on every read so a revocation mid-request
+          // yields no caller, and forward it so Station's REST side can
+          // re-verify it.
+          () =>
+            withStationControlCallerContext(
+              {
+                token: candidate!,
+                resolve: () =>
+                  resolveStationControlCallerFromToken(
+                    candidate,
+                    options.resolveCallerRecord,
+                  ),
+              },
+              () => handler.fetch(c.req.raw),
+            ),
           () => {
             const current = verifyStationControlMcpToken(candidate);
             return (
