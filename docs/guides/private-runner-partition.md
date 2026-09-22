@@ -4,7 +4,7 @@ Station's Linux CI, Android, publish, and secret-scan jobs run on
 GitHub-hosted images now that the repository is public. Container-smoke
 Playwright stays on the docker fleet listener. A private native Windows host
 remains available for interactive-workspace performance,
-the Windows portable floor, the Windows Vitest diagnostic, and recovering a
+the Windows Vitest diagnostic, and recovering a
 leaked physical-host capacity lease.
 
 This is an operations plan for any remaining GitHub Actions fleet where short
