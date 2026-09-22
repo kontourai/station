@@ -85,7 +85,9 @@ merge queue fast-forwards `main` to the exact candidate it already built.
 Every pull request and queued merge candidate emits the stable
 `build-ios-verification` check so the main ruleset can require it. A reviewed
 hosted-Linux classifier runs the `macos-26` job only when the pull-request or
-merge-group diff changes iOS, native, frontend, or shared package inputs;
+merge-group diff changes iOS, native, frontend, or shared package inputs
+(test-only `__tests__/`, `*.test.*` and `*.spec.*` TypeScript files under
+`src-ui/` and `packages/` do not count, since the app never imports them);
 unrelated candidates receive a successful skipped job without consuming macOS
 capacity. The cancellation group supersedes stale runs for the same candidate.
 The macOS job builds an unsigned iOS 26.5 simulator app, installs it on an

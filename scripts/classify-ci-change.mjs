@@ -224,13 +224,34 @@ export function changedPathsForGitRange({
   return [...new Set(output.split('\0').filter(Boolean))].sort();
 }
 
+/**
+ * Test-only sources under the JavaScript roots the iOS app bundles. The app is
+ * built from src-ui's and the packages' import graphs, and no non-test module
+ * imports one of these, so a change confined to them cannot alter the
+ * simulator build or the packaged runtime the XCUITest drives. Deliberately
+ * narrow: only src-ui/ and packages/ (never src-desktop/, the smoke's own
+ * tests/ios-runtime-smoke/, or the explicitly listed smoke test), and only
+ * the `__tests__/` directory and `*.test`/`*.spec` TypeScript names. Test
+ * helpers named anything else still count.
+ */
+const IOS_TEST_ONLY_ROOTS = Object.freeze(['src-ui/', 'packages/']);
+const TEST_ONLY_SOURCE = /(^|\/)__tests__\/|\.(test|spec)\.tsx?$/;
+
+function isIosTestOnlyPath(path) {
+  return (
+    IOS_TEST_ONLY_ROOTS.some((root) => path.startsWith(root)) &&
+    TEST_ONLY_SOURCE.test(path)
+  );
+}
+
 export function classifyIosChangedPaths(paths) {
   const normalized = [...new Set(paths.filter(Boolean))];
   return {
     relevant: normalized.some(
       (path) =>
         IOS_VERIFICATION_FILES.has(path) ||
-        IOS_VERIFICATION_PREFIXES.some((prefix) => path.startsWith(prefix)),
+        (IOS_VERIFICATION_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
+          !isIosTestOnlyPath(path)),
     ),
     classification: 'classified',
     changedFiles: normalized.length,

@@ -17,6 +17,7 @@ import {
   classifyDesktopRustChangedPaths,
   classifyDesktopRustGitRange,
   classifyGitRange,
+  classifyIosChangedPaths,
   classifyIosGitRange,
   renderGithubOutputs,
 } from '../classify-ci-change.mjs';
@@ -646,5 +647,62 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
     );
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
+  });
+});
+
+describe('iOS relevance ignores test-only JavaScript sources', () => {
+  test.each([
+    'src-ui/src/components/__tests__/Button.test.tsx',
+    'src-ui/src/components/Button.test.tsx',
+    'src-ui/src/lib/format.spec.ts',
+    'src-ui/src/__tests__/fixtures/session.json',
+    'packages/sdk/src/__tests__/client.test.ts',
+    'packages/connect/src/pairing.test.ts',
+    'packages/contracts/src/schema.spec.tsx',
+  ])('skips the macOS build for %s', (changedPath) => {
+    expect(classifyIosChangedPaths([changedPath]).relevant).toBe(false);
+  });
+
+  test('a test-only change across several packages stays irrelevant', () => {
+    expect(
+      classifyIosChangedPaths([
+        'src-ui/src/components/__tests__/Button.test.tsx',
+        'packages/sdk/src/__tests__/client.test.ts',
+        'docs/guides/testing.md',
+      ]),
+    ).toMatchObject({ relevant: false, changedFiles: 3 });
+  });
+
+  test('a test change beside a source change is still relevant', () => {
+    expect(
+      classifyIosChangedPaths([
+        'src-ui/src/components/__tests__/Button.test.tsx',
+        'src-ui/src/components/Button.tsx',
+      ]).relevant,
+    ).toBe(true);
+  });
+
+  test.each([
+    // Production sources whose names merely resemble tests.
+    'src-ui/src/lib/test-utils.ts',
+    'src-ui/src/testing/harness.tsx',
+    'src-ui/src/contest.ts',
+    'packages/sdk/src/attest.ts',
+    // Native and smoke inputs are never exempt, whatever they are called.
+    'src-desktop/src/__tests__/lib.test.ts',
+    'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
+    'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+  ])('keeps %s relevant', (changedPath) => {
+    expect(classifyIosChangedPaths([changedPath]).relevant).toBe(true);
+  });
+
+  test('changes only the iOS answer, not the shared heavy/container classification', () => {
+    const testOnly = ['src-ui/src/components/Button.test.tsx'];
+    expect(classifyChangedPaths(testOnly)).toMatchObject({
+      heavy: true,
+      container: true,
+      classification: 'runtime-or-workflow',
+    });
+    expect(classifyIosChangedPaths(testOnly).relevant).toBe(false);
   });
 });
