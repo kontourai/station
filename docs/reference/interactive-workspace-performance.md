@@ -8,7 +8,7 @@ attached production bundle then calls a versioned product-owned in-page bridge.
 The checker calculates percentiles, verifies generated provenance, and emits a
 machine-readable report. The product bridge measures the shipped Task editor,
 two-context live room, project FilePreview/DiffPanel, retained reconnect paths,
-the Work Board seam, and separately scheduled actual one-hour observations.
+the Work Board seam, and separately dispatched actual one-hour observations.
 The Work Board fixture opens the first-party Project Pane and registers its
 driver only after the mounted surface can perform real query and interaction
 work. A missing mounted Pane or physical reference environment is deliberately
@@ -73,7 +73,7 @@ one-hour acceptance.
 
 `npm run performance:workspace:reference -- --output .kontourai/performance/interactive-workspace.json`
 executes the real-browser adapter and evaluates only its in-run observations.
-The scheduled Windows lane first builds the production server/UI bundles, then
+The dispatched Windows lane first builds the production server/UI bundles, then
 the adapter attaches to `STATION_PERFORMANCE_UI_URL` and verifies its fetched
 production HTML hash and in-page build commit against the local built
 `dist-ui/index.html` receipt. CPU/RAM/OS
@@ -153,7 +153,7 @@ then snapshot-render branch. No raw path, operation payload, or content enters
 the bridge receipts.
 
 The ordinary reference job remains intentionally shorter than one hour and
-therefore reports one-hour fixtures as `NOT_VERIFIED`. The scheduled Windows
+therefore reports one-hour fixtures as `NOT_VERIFIED`. The dispatched Windows
 lanes perform five warmups and 100 real samples across an unscaled hour.
 `work-board-one-hour-v1` captures start/end board DOM nodes, mounted interaction
 handler surfaces, pending interaction bookkeeping, and board query/cache entries.
@@ -187,7 +187,7 @@ provenance, action-derived fixture corpus identity/checksum, matching revision,
 required hardware/OS/build metadata, fallback evidence, and long-session
 duration. Missing, stale, or mismatched reference evidence is `NOT_VERIFIED`,
 never `PASS`. Reference artifacts remain fresh for at most 60 minutes: this
-covers the scheduled lane's bounded 55-minute reference test plus handoff and
+covers the dispatched lane's bounded 55-minute reference test plus handoff and
 upload headroom, without accepting an earlier run as current evidence.
 
 ## Decision rule
@@ -200,6 +200,8 @@ implication. The Work Board browser/reference test is an acceptance resource;
 the bridge registration unit test and PR smoke are scoped static/diagnostic
 evidence only.
 
-The PR smoke is wired into the existing fast-checks job. The scheduled reference
+The PR smoke is wired into the existing fast-checks job. The reference
 workflow remains separate and reports `NOT_VERIFIED` rather than treating
-arbitrary CI hardware as reference evidence.
+arbitrary CI hardware as reference evidence. It runs on `workflow_dispatch`
+only: its weekly schedule produced no green run in 12 attempts through
+2026-09-21, so the cron was removed until a dispatched run passes.

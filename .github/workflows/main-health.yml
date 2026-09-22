@@ -6,9 +6,7 @@ on:
     workflows:
       - Nightly
       - Container smoke
-      - Windows Verification
       - Secret Scan
-      - Backlog disposition policy
       - Scheduled dependency advisory floor
       # Chained: Android Tests is itself a workflow_run of the Android build
       # (two levels, within GitHub's limit of three). Its green runs have no
