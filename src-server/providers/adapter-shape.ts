@@ -26,6 +26,26 @@ export class ProviderTurnEndedError extends Error {
   }
 }
 
+/**
+ * An adapter refused a turn BEFORE its first provider-visible effect: no
+ * engine was invoked, no prompt was sent, and no `turn.started` was
+ * published. Input validation (unsupported attachment kinds, an engine that
+ * did not advertise a needed capability) is the expected source.
+ *
+ * Throw ONLY before the first provider-visible effect. Orchestration treats
+ * this as a refusal to act — the turn boundary is retired, the client-turn
+ * claim is released, the dispatch receipt is `rejected`, and the message is
+ * surfaced honestly — instead of the fail-closed indeterminate path. An
+ * adapter failure that MAY have reached the provider must stay a plain
+ * error so callers keep refusing to retry it blindly.
+ */
+export class SendTurnRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SendTurnRefusedError';
+  }
+}
+
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   ConnectionCapability,
