@@ -353,8 +353,8 @@ export function ensureOrchestrationEventStream(
       owned.lastParkedRetryAt = monotonicNow();
     },
     onRetry: () => {
+      // A deferred retry still pending re-checks `parked` before it fires.
       owned.parked = false;
-      clearDeferredParkedRetry(owned);
     },
   });
 
