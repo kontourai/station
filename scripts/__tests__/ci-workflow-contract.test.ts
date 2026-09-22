@@ -842,9 +842,7 @@ describe('CI verification workflow contracts', () => {
     expect(Number.isInteger(smokeWaitSeconds)).toBe(true);
     expect(Number.isInteger(smokeBudgetMinutes)).toBe(true);
 
-    // (1) The post-merge Windows floor that once shared this host with the
-    // smoke was removed: windows-pr-verification.yml runs the same floor on
-    // the merge-queue candidate, on a hosted runner. Whatever the wait is, the job must keep the smoke's own running
+    // (1) Whatever the wait is, the job must keep the smoke's own running
     // time after it: raising the wait alone moves the red from the reserve
     // step to the job timeout. 25 minutes is the observed smoke duration
     // (af2ae065: 03:45 -> 04:06) with margin.
@@ -852,7 +850,7 @@ describe('CI verification workflow contracts', () => {
       25 * 60,
     );
 
-    // (3) The Docker-state cleanup is conditional on the isolate step having
+    // (2) The Docker-state cleanup is conditional on the isolate step having
     // run. With a bare `always()` it refused the empty DOCKER_CONFIG after a
     // failed reservation and reported that refusal as the job's last error.
     const isolate = smoke.steps?.find(
@@ -918,7 +916,7 @@ describe('CI verification workflow contracts', () => {
     expect(emulatorSmoke).toContain('timeout-minutes: 90');
   });
 
-  it('keeps CI Extended as the weekly and manual full-browser surface without rerunning ci:fast', () => {
+  it('keeps CI Extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -1279,10 +1277,7 @@ describe('CI verification workflow contracts', () => {
   });
 
   it('keeps coordinated lane receipts and failure artifacts downloadable', () => {
-    for (const name of [
-      'ci.yml',
-      'ci-extended.yml',
-    ]) {
+    for (const name of ['ci.yml', 'ci-extended.yml']) {
       const source = workflow(name);
       expect(source, name).toContain('if: always()');
       expect(source, name).toContain('if-no-files-found: ignore');

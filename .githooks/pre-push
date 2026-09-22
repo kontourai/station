@@ -86,7 +86,8 @@ node scripts/check-prepush-orchestration-transfer.mjs
 # exception).
 #
 # So this hook buys earlier feedback, not new coverage: without it these
-# ratchets first report at the merge queue, a round trip later. Three
+# ratchets first report on the PR's Windows check, after a push and a hosted
+# Windows runner's queue. Three
 # regressions reached main in one day when these ratchets ran only after
 # merge (two motion literals, one undeclared Coding dependency).
 echo "[station pre-push] static gates (UI contracts, content)"
