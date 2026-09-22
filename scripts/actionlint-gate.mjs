@@ -343,6 +343,16 @@ const SECURITY_BASE_POLICY_DIRECTORY = `\${{ runner.temp }}/base-policy`;
 const SECURITY_SARIF_OUTPUT = `\${{ runner.temp }}/codeql-sarif`;
 const SECURITY_NORMALIZED_SARIF = `\${{ runner.temp }}/codeql-sarif-normalized/javascript.sarif`;
 const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
+/**
+ * The only CodeQL configuration the scan accepts: test code out, nothing else.
+ * Exported so the workflow test and the baseline test share one copy.
+ */
+export const SECURITY_CODEQL_CONFIG = `paths-ignore:
+  - '**/__tests__/**'
+  - 'tests/**'
+  - '**/*.test.*'
+  - '**/*.spec.*'
+`;
 const SECURITY_ANALYSIS_CONCURRENCY_GROUP =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   'security-analysis-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}';
@@ -1221,11 +1231,13 @@ function hasExactSecurityAnalysisSteps(job) {
       'build-mode',
       'queries',
       'source-root',
+      'config',
     ]) &&
     init.with?.languages === 'javascript-typescript' &&
     init.with?.['build-mode'] === 'none' &&
     init.with?.queries === 'security-extended' &&
     init.with?.['source-root'] === SECURITY_CANDIDATE_CHECKOUT_PATH &&
+    init.with?.config === SECURITY_CODEQL_CONFIG &&
     hasExactKeys(analyze, ['id', 'name', 'uses', 'with']) &&
     analyze?.id === 'analyze' &&
     analyze?.name === 'Analyze without ingestion' &&

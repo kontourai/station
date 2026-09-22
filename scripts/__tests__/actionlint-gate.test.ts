@@ -956,6 +956,35 @@ describe('persistent runner policy', () => {
       (steps: Array<Record<string, unknown>>) =>
         steps.push({ uses: 'example/reusable@full-sha' }),
     ],
+    // The test-code ignore list is the one CodeQL config accepted. Anything
+    // that could hide production code from the scan must be refused.
+    [
+      'CodeQL ignore list widened to production code',
+      (steps: Array<Record<string, unknown>>) => {
+        const init = steps[4].with as Record<string, unknown>;
+        init.config = `${String(init.config)}  - 'src-server/**'\n`;
+      },
+    ],
+    [
+      'CodeQL config moved to a candidate-controlled file',
+      (steps: Array<Record<string, unknown>>) => {
+        const init = steps[4].with as Record<string, unknown>;
+        delete init.config;
+        init['config-file'] = './candidate/.github/codeql/codeql-config.yml';
+      },
+    ],
+    [
+      'CodeQL config dropped',
+      (steps: Array<Record<string, unknown>>) => {
+        delete (steps[4].with as Record<string, unknown>).config;
+      },
+    ],
+    [
+      'CodeQL queries narrowed from security-extended',
+      (steps: Array<Record<string, unknown>>) => {
+        (steps[4].with as Record<string, unknown>).queries = 'default';
+      },
+    ],
   ])('rejects security-analysis %s', (_name, mutate) => {
     const document = securityAnalysisWorkflowDocument();
     mutate(document.jobs.codeql.steps);
@@ -2796,7 +2825,9 @@ describe('trusted Rust caches stay out of pull-request workflows', () => {
       (step) => String(step.uses).startsWith(RUST_CACHE_PREFIX),
     );
     expect(cache?.uses).toMatch(/^Swatinem\/rust-cache@[0-9a-f]{40}$/);
-    expect((cache?.with as Record<string, unknown>)['save-if']).toBe(
+    expect(
+      (cache?.with as Record<string, unknown> | undefined)?.['save-if'],
+    ).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       "${{ github.ref == 'refs/heads/main' }}",
     );
