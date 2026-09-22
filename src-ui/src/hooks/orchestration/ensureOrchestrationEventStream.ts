@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
+import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   handleOrchestrationEvent,
   settleSemanticDeliveryBuffer,
@@ -103,6 +104,9 @@ export function ensureOrchestrationEventStream(
   let receiving = false;
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
+    // station#2301: lets the server's stream open/close lines say WHICH
+    // document connected — see `clientDocumentSession.ts`.
+    headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
     // archive#1848: a ceiling equal to the initial delay is not a backoff
     // ladder — it is a fixed 2s poll that never decays, so a server that is
     // down, restarting, or refusing keeps receiving ~30 requests/minute from

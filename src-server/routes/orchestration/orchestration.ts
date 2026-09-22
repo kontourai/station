@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
@@ -114,6 +114,7 @@ import {
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -866,6 +867,43 @@ export function resolveStreamResumePlan(
 }
 
 /**
+ * station#2301: who is on the other end of an `/events` connection, in the
+ * terms an operator reconstructing a two-device divergence needs. The access
+ * log's `stream-open-after=` line carries none of this, and without it a
+ * desktop and a phone reconnecting against one headless server are
+ * indistinguishable after the fact.
+ *
+ * - `clientSession` is the per-document id the client sends in
+ *   `X-Station-Client-Session`: it changes on every app restart or reload and
+ *   is stable across that document's reconnects, so it separates "the same
+ *   client reconnected" from "a fresh JS context connected". Only a
+ *   well-formed UUID is echoed; anything else reads `none`.
+ * - `actor` is Station's own authenticated resolution (a paired device's id,
+ *   or the operator) — never a client claim.
+ * - `surface`/`build` are client-REPORTED and display-only, as everywhere
+ *   else they appear.
+ */
+export function describeOrchestrationStreamClient(request: Request): {
+  clientSession: string;
+  actor: string;
+  surface: string;
+  build: string | null;
+} {
+  const header = request.headers.get('x-station-client-session');
+  const origin = resolveClientOriginForRequest(request);
+  return {
+    clientSession:
+      header && CLIENT_SESSION_ID_PATTERN.test(header) ? header : 'none',
+    actor:
+      origin.actor.kind === 'device'
+        ? `device:${origin.actor.deviceId}`
+        : origin.actor.kind,
+    surface: origin.reported.surface,
+    build: origin.reported.build,
+  };
+}
+
+/**
  * archive#4075 stage 2: the minimal per-request shape `resolvePrincipal`
  * needs — a duck-typed subset of Hono's `Context`, not the Hono type itself,
  * so this route module stays decoupled from Hono internals. Every route
@@ -940,6 +978,12 @@ export function createOrchestrationRoutes(
     };
     logger: {
       debug(message: string, meta?: Record<string, unknown>): void;
+      /**
+       * Optional: the `/events` stream lifecycle lines (open/close) go here so
+       * they survive the default `info` level. Falls back to `debug` for the
+       * narrow `{ debug }` test doubles this suite uses everywhere.
+       */
+      info?(message: string, meta?: Record<string, unknown>): void;
       warn?(message: string, meta?: Record<string, unknown>): void;
       /**
        * Optional (archive#1897 logging slice 3): binds a `conversationId`
@@ -3707,6 +3751,20 @@ export function createOrchestrationRoutes(
       // connection's whole life — including a setup-time throw, which is
       // exactly the short-lived case a rate problem looks like.
       const connectedAt = Date.now();
+      // station#2301: one line when the connection opens (after the resume
+      // decision is known) and one when it ends, joined by `connectionId`.
+      // The close line is the one that matters most for this defect class —
+      // a stream that dies quietly and is never replaced — and it is the one
+      // the access log never had.
+      const logLifecycle = (deps.logger.info ?? deps.logger.debug).bind(
+        deps.logger,
+      );
+      const connectionId = randomUUID();
+      const client = describeOrchestrationStreamClient(c.req.raw);
+      const rawLastEventId = c.req.header('Last-Event-ID');
+      let framesWritten = 0;
+      let closeReason: 'client-abort' | 'authorization-expired' | undefined;
+      let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
       // BEFORE anything else can `await` — the push-on-completion gate
       // (`turn-completion-notifications.ts`) must never see a window where
@@ -3746,10 +3804,12 @@ export function createOrchestrationRoutes(
           id?: string;
         }) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            closeReason ??= 'authorization-expired';
             stream.abort();
             throw new Error('Orchestration stream authorization expired');
           }
           await stream.writeSSE(frame);
+          framesWritten++;
         };
         let caughtUp = false;
         const pending: Array<{ event: string; data: string; id?: string }> = [];
@@ -3766,6 +3826,7 @@ export function createOrchestrationRoutes(
         };
         unsub = deps.eventBus.subscribe((evt) => {
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            closeReason ??= 'authorization-expired';
             stream.abort();
             return;
           }
@@ -3869,6 +3930,20 @@ export function createOrchestrationRoutes(
         if (plan.gap !== undefined) {
           orchestrationStreamResumeGap.record(plan.gap);
         }
+        logLifecycle('Orchestration event stream opened', {
+          connectionId,
+          ...client,
+          scope: threadId ? 'thread' : 'all',
+          ...(threadId ? { threadId } : {}),
+          // `invalid` = a header was sent but is not a cursor this server
+          // accepts, which the resume plan then treats as no cursor.
+          lastEventId:
+            cursor !== undefined ? cursor : rawLastEventId ? 'invalid' : 'none',
+          head,
+          resumeDecision: plan.decision,
+          resumeReason: plan.reason,
+          ...(plan.gap !== undefined ? { resumeGap: plan.gap } : {}),
+        });
 
         // The advertised resume cursor for the snapshot/caught-up frames.
         // Starts at `head` (computed above, before any `await`) and is
@@ -3962,13 +4037,21 @@ export function createOrchestrationRoutes(
 
         try {
           await new Promise((_, reject) => {
-            stream.onAbort(() => reject(new Error('aborted')));
+            stream.onAbort(() => {
+              closeReason ??= 'client-abort';
+              reject(new Error('aborted'));
+            });
           });
         } catch (error) {
           deps.logger.debug('Orchestration SSE client disconnected', {
             error: error instanceof Error ? error.message : String(error),
           });
         }
+      } catch (error) {
+        // Recorded for the close line, then rethrown unchanged: Hono's
+        // `streamSSE` still owns what an uncaught setup throw does.
+        setupError = error instanceof Error ? error.message : String(error);
+        throw error;
       } finally {
         // archive#1225 review (HIGH): this ALWAYS runs — a throw anywhere
         // above (setup, replay/snapshot writes, the abort-wait) still
@@ -3984,6 +4067,18 @@ export function createOrchestrationRoutes(
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });
         orchestrationStreamDuration.record(Date.now() - connectedAt, {
           scope: threadId ? 'thread' : 'all',
+        });
+        logLifecycle('Orchestration event stream closed', {
+          connectionId,
+          clientSession: client.clientSession,
+          actor: client.actor,
+          // An authorization expiry mid-write throws into the catch above
+          // too; the specific reason wins over the generic setup failure.
+          reason:
+            closeReason ?? (setupError !== undefined ? 'setup-error' : 'ended'),
+          ...(setupError !== undefined ? { error: setupError } : {}),
+          durationMs: Date.now() - connectedAt,
+          framesWritten,
         });
       }
     });
