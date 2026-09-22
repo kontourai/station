@@ -49,6 +49,24 @@ export const SELECTOR_DEFERRED_MESSAGE =
 // dropping an invariant back out of the list — the gap this list closes is
 // that a violation was unobservable before merge, and a shorter static set
 // restores exactly that.
+//
+// Hosted evidence, 2026-09-22 (2-4 vCPU ubuntu-22.04): the static set alone
+// takes longer than this reserve. In fast-checks run 35784946947 the whole
+// ci:fast step took 365s, and the statics AFTER verification:policy:gate's
+// focused Vitest (which printed "Start at 21:13:41") ran 232s to the step's
+// end at 21:17:33; run 35778933422 took 311s and 178s. The earlier statics
+// and a small selection share the remainder, so the hosted static set is
+// roughly 250-330s.
+//
+// Deliberately NOT raised to match. The reserve does not add time; it only
+// decides where a 720s overrun is cut. A selection allowed 500s whose statics
+// then need 330s dies at 720s inside the statics; a reserve of 360s would
+// kill that selection at 360s instead, which is just as red, and would ALSO
+// fail selections of 360-470s that pass today because their statics
+// happened to fit. Raising the reserve therefore only converts passes into
+// infrastructure errors. The real levers are the policy-pinned twelve-minute
+// budget (an owner decision; verification-policy-gate.test.ts pins it) and a
+// shorter static set (the typecheck aggregate is its largest member).
 export const FAST_STATIC_RESERVE_MS = 220_000;
 export const CONTENT_INTEGRITY_FAST_COMMAND = Object.freeze([
   'npm',
