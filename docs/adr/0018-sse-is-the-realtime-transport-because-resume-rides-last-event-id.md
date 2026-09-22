@@ -62,6 +62,24 @@ per-client stream to the main origin would be the point at which this decision
 needs revisiting — that, and not host load or throughput, is the forcing
 function to watch.
 
+**Browser pane frame streams (added 2026-09-22, ADR 0019).** Frames from the
+planned server-hosted Browser pane
+([ADR 0019](0019-host-the-browser-pane-server-side-behind-a-host-adapter.md))
+do not use SSE. They travel as a length-prefixed binary `fetch` stream. SSE
+carries text, so binary frames would pay base64 inflation. Its `Last-Event-ID`
+resume is also worthless for frames: a stale frame is dropped, never replayed.
+This leaves the decision above unchanged, because it covers event streams
+where resume matters.
+
+A frame stream counts against the same per-origin budget as a **view-scoped**
+stream, not an always-on one. It is open only while a Browser pane is visible,
+and closes when the surface has zero viewers. Input is ordinary requests, not
+a stream. One visible Browser pane therefore fits the budget above. Several
+visible at once, alongside the other view-scoped streams, could approach the
+cap. Multiplexing them onto one stream is an open question in ADR 0019, and
+the sixth-stream trigger above still applies. This is a design constraint.
+None of it is implemented or measured yet.
+
 **Host resource pressure is not a reason to revisit this.** Station's admission
 controls act on starting engine processes, never on connections; no SSE route
 consults them, an open stream is never torn down by them, and resume is a pure

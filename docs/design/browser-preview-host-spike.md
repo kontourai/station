@@ -1,5 +1,23 @@
 # Browser-preview host spike (Station #1376)
 
+**Status (2026-09-22):** Superseded in part by
+[ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md).
+This record is kept as written. Two parts no longer bind:
+
+- The candidate row "Screenshot/stream transport or bundled browser — Out of
+  scope". A stream transport from a server-side Chromium is now the selected
+  host for the Browser pane. A *bundled* browser is still rejected: ADR 0019
+  uses an installed Chrome or Edge, or downloads a pinned build after consent.
+- The go/no-go limit "do not expand it to … remote target, shared browser
+  store, automation, or a mobile/web renderer". On personal hosts the Browser
+  pane admits any `http(s)` target, has a persistent profile per Project
+  (never shared across Projects), is driven by agent tools, and renders in the
+  web and mobile clients.
+
+The child-webview limit and the Electron decision are unchanged. The evidence
+and scorecard below describe the separate-window desktop preview. They are not
+evidence for the ADR 0019 host.
+
 **Decision:** retain a stable, separate Tauri `WebviewWindow` as the bounded
 desktop Browser Preview host. The follow-up implementation mints a fresh,
 native-owned grant only after it resolves the running per-user service's
