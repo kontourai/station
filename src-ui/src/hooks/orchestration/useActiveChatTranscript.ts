@@ -55,12 +55,6 @@ function isLiveSupplementalMessage(message: ChatMessage): boolean {
   );
 }
 
-const TURN_TERMINAL_METHODS = new Set([
-  'turn.completed',
-  'turn.aborted',
-  'runtime.error',
-]);
-
 /**
  * #2304: the server's start time for the turn still open at the end of this
  * window, or undefined when the window cannot say. A client that attached to
@@ -81,7 +75,9 @@ function openTurnStartFromWindow(
       open = { turnId: event.turnId, createdAt: event.createdAt };
     } else if (
       open &&
-      TURN_TERMINAL_METHODS.has(event.method) &&
+      ['turn.completed', 'runtime.error', 'turn.aborted'].includes(
+        event.method,
+      ) &&
       event.turnId === open.turnId
     ) {
       open = undefined;

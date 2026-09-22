@@ -237,11 +237,6 @@ export function StreamingMessageView({
                 startedAt={
                   statusLabel ? waitingSince : (turnStartedAt ?? waitingSince)
                 }
-                title={
-                  !statusLabel && turnStartedAt !== undefined
-                    ? 'Time since this turn started; not an estimate of completion'
-                    : undefined
-                }
                 elapsedMs={elapsedMs}
               />
             </div>

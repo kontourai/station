@@ -6,7 +6,6 @@ export function ElapsedWait({
   elapsedMs,
   label = 'Waiting',
   separator = ' · ',
-  title = 'Time waiting in this view; not an estimate of completion',
 }: {
   /**
    * Epoch ms the wait began. It may come from another clock (a server
@@ -16,8 +15,6 @@ export function ElapsedWait({
   elapsedMs?: number;
   label?: string;
   separator?: string;
-  /** What the count measures; the default describes a mount-local count. */
-  title?: string;
 }) {
   const [mountedAt] = useState(Date.now);
   const [now, setNow] = useState(Date.now);
@@ -31,7 +28,13 @@ export function ElapsedWait({
     Math.floor((elapsedMs ?? now - (startedAt ?? mountedAt)) / 1000),
   );
   return (
-    <span className="elapsed-wait" aria-live="off" title={title}>
+    <span
+      className="elapsed-wait"
+      aria-live="off"
+      // #2304: not "in this view" — the start may be the server's turn
+      // start, which predates this view.
+      title="Elapsed time; not an estimate of completion"
+    >
       {label ? `${label}${separator}` : ''}
       {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
     </span>
