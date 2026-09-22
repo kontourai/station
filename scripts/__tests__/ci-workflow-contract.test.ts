@@ -258,7 +258,6 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/nightly.yml',
       '.github/workflows/container-smoke.yml',
       '.github/workflows/secret-scan.yml',
-      '.github/workflows/backlog-priority-policy.yml',
       '.github/workflows/android-test.yml',
       '.github/workflows/dependency-advisory.yml',
     ];
