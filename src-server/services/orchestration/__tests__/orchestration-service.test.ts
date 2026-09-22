@@ -7931,6 +7931,7 @@ describe('OrchestrationService', () => {
 
     test('applies a per-agent turn-stall window override resolved through the real AgentExecutionConfig seam', async () => {
       vi.useFakeTimers();
+      vi.mocked(orchestrationTurnStallDetections.add).mockClear();
       try {
         const bounded = new OrchestrationService({
           adapterRegistry: createRegistry([bedrock]),

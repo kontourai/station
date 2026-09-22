@@ -4731,6 +4731,113 @@ describe('Orchestration Routes', () => {
       });
     });
 
+    test('pages a ten-session conversation past the route cursor cap without Invalid event window', async () => {
+      // The conversation cursor embedded every lineage session id, so past
+      // ~7 sessions the second page 400'd (`Invalid event window`): the
+      // route schema caps `cursor` at 512 chars while the server minted
+      // ~627. Ten UUID sessions traverse five pages; every one must 200 and
+      // recover every turn.
+      const sessionIds = Array.from(
+        { length: 10 },
+        (_, index) =>
+          `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      );
+      const [rootId] = sessionIds;
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: rootId,
+        status: 'closed',
+        createdAt: '2026-08-24T02:00:00.000Z',
+        updatedAt: '2026-08-24T02:00:01.000Z',
+      });
+      for (const [index, threadId] of sessionIds.entries()) {
+        if (index > 0) {
+          eventStore.reserveNextConversationSession({
+            conversationId: rootId,
+            predecessorSessionId: sessionIds[index - 1],
+            proposedSessionId: threadId,
+            createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:00.000Z`,
+          });
+          eventStore.upsertSession({
+            provider: 'claude',
+            threadId,
+            status: 'closed',
+            createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:00.000Z`,
+            updatedAt: `2026-08-24T02:${String(index).padStart(2, '0')}:01.000Z`,
+          });
+        }
+        const turnId = `long-lineage-route-turn-${index}`;
+        eventStore.appendEvent({
+          eventId: `${turnId}-configured`,
+          provider: 'claude',
+          threadId,
+          createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:02.000Z`,
+          method: 'session.configured',
+          sessionId: threadId,
+          metadata: { userId: 'owner-user' },
+        });
+        eventStore.appendEvent({
+          eventId: `${turnId}-started`,
+          provider: 'claude',
+          threadId,
+          turnId,
+          createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:03.000Z`,
+          method: 'turn.started',
+          prompt: `route question ${index}`,
+        });
+        eventStore.appendEvent({
+          eventId: `${turnId}-completed`,
+          provider: 'claude',
+          threadId,
+          turnId,
+          createdAt: `2026-08-24T02:${String(index).padStart(2, '0')}:04.000Z`,
+          method: 'turn.completed',
+          outputText: `route answer ${index}`,
+        });
+      }
+      const app = createOrchestrationRoutes(service, {
+        eventBus,
+        logger: { debug: vi.fn() },
+        getUserId: () => 'owner-user',
+      });
+
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      for (let page = 0; page < 10; page += 1) {
+        const query = cursor
+          ? `?turnLimit=2&cursor=${encodeURIComponent(cursor)}`
+          : '?turnLimit=2';
+        const response = await app.request(
+          `/conversations/${rootId}/event-window${query}`,
+        );
+        expect(response.status).toBe(200);
+        const body = await readJson(response);
+        const data = (
+          body as {
+            data: {
+              events: Array<{ event: { eventId: string; method: string } }>;
+              nextCursor?: string;
+              hasMore: boolean;
+            };
+          }
+        ).data;
+        for (const item of data.events) seen.add(item.event.eventId);
+        cursor = data.nextCursor;
+        if (cursor) expect(cursor.length).toBeLessThanOrEqual(512);
+        if (!data.hasMore) break;
+        expect(cursor).toBeDefined();
+      }
+      expect(cursor).toBeUndefined();
+      // Every turn.started/turn.completed round-trips. (The oldest session's
+      // turn-less session.configured sits before the oldest selected turn
+      // start, outside the turn-bounded range — the same boundary the
+      // neighboring root-conversation test pins at 3 of 4 events.)
+      const turnEvents = [...seen].filter((id) =>
+        /-(started|completed)$/.test(id),
+      );
+      expect(turnEvents).toHaveLength(20);
+    });
+
     test.each([
       ['reserved', undefined],
       ['failed', 'failed'],

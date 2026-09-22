@@ -1,4 +1,5 @@
 import {
+  createHash,
   createHmac,
   randomBytes,
   randomUUID,
@@ -1070,6 +1071,77 @@ interface EventWindowCursor {
   newestTurnId?: string;
 }
 
+/**
+ * A lineage pin names the immutable lineage prefix a cursor was minted
+ * against WITHOUT embedding every session id: the cursor grows with the
+ * lineage otherwise (one ~36-char id per continued session), and past ~7
+ * sessions the route's 512-char cursor cap rejects the server's own cursor
+ * with `Invalid event window` on the next page. `size` is the pinned prefix
+ * length; `hash` authenticates it against the live lineage at decode time,
+ * so a cursor minted for one conversation can never page another's prefix.
+ */
+interface LineagePin {
+  lineageSize: number;
+  lineageHash: string;
+}
+
+/** 128-bit lineage authenticator: collision-infeasible, cursor-compact. */
+const LINEAGE_HASH_HEX_CHARS = 32;
+
+function hashLineageThreadIds(threadIds: readonly string[]): string {
+  return createHash('sha256')
+    .update(threadIds.join('\0'), 'utf8')
+    .digest('hex')
+    .slice(0, LINEAGE_HASH_HEX_CHARS);
+}
+
+function pinLineageThreadIds(threadIds: readonly string[]): LineagePin {
+  return {
+    lineageSize: threadIds.length,
+    lineageHash: hashLineageThreadIds(threadIds),
+  };
+}
+
+/**
+ * Resolve the immutable lineage prefix a cursor pins: cursors minted before
+ * the pin carry the ids themselves (accepted unchanged); newer ones carry
+ * the pin and resolve against the live lineage. Either way the result is
+ * the pinned prefix, or the cursor is invalid. A continuation that appended
+ * a child since the cursor was minted keeps paging the pinned prefix; the
+ * next head reload discovers the child separately.
+ */
+function resolvePinnedLineagePrefix(
+  parsed: Record<string, unknown>,
+  threadIds: readonly string[],
+): string[] | undefined {
+  if (parsed.threadIds !== undefined) {
+    if (
+      !Array.isArray(parsed.threadIds) ||
+      parsed.threadIds.length === 0 ||
+      !parsed.threadIds.every((id: unknown) => typeof id === 'string') ||
+      parsed.threadIds.length > threadIds.length ||
+      (parsed.threadIds as string[]).some(
+        (id: string, index: number) => id !== threadIds[index],
+      )
+    ) {
+      return undefined;
+    }
+    return [...(parsed.threadIds as string[])];
+  }
+  if (
+    !Number.isSafeInteger(parsed.lineageSize) ||
+    typeof parsed.lineageHash !== 'string' ||
+    (parsed.lineageSize as number) < 1 ||
+    (parsed.lineageSize as number) > threadIds.length ||
+    (parsed.lineageHash as string).length !== LINEAGE_HASH_HEX_CHARS
+  ) {
+    return undefined;
+  }
+  const prefix = threadIds.slice(0, parsed.lineageSize as number);
+  if (hashLineageThreadIds(prefix) !== parsed.lineageHash) return undefined;
+  return [...prefix];
+}
+
 /** Opaque global-sequence cursor for an ordered conversation lineage window. */
 interface ConversationEventWindowCursor {
   threadIds: string[];
@@ -1084,7 +1156,11 @@ interface ConversationEventWindowCursor {
 function encodeConversationEventWindowCursor(
   cursor: ConversationEventWindowCursor,
 ): string {
-  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+  const { threadIds, ...rest } = cursor;
+  return Buffer.from(
+    JSON.stringify({ ...rest, ...pinLineageThreadIds(threadIds) }),
+    'utf8',
+  ).toString('base64url');
 }
 
 function decodeConversationEventWindowCursor(
@@ -1097,24 +1173,37 @@ function decodeConversationEventWindowCursor(
     if (
       !parsed ||
       typeof parsed !== 'object' ||
-      !Array.isArray(parsed.threadIds) ||
-      parsed.threadIds.length === 0 ||
-      !parsed.threadIds.every((id: unknown) => typeof id === 'string') ||
       !Number.isSafeInteger(parsed.beforeGlobalSequence) ||
       !Number.isSafeInteger(parsed.watermark) ||
       parsed.beforeGlobalSequence < 1 ||
       parsed.watermark < parsed.beforeGlobalSequence ||
-      parsed.threadIds.length > threadIds.length ||
-      parsed.threadIds.some(
-        (id: string, index: number) => id !== threadIds[index],
-      ) ||
       (parsed.olderTurnsRemain !== undefined &&
         typeof parsed.olderTurnsRemain !== 'boolean') ||
       !validConversationRangeCursor(parsed)
     ) {
       throw new Error('invalid');
     }
-    return parsed as ConversationEventWindowCursor;
+    const pinned = resolvePinnedLineagePrefix(
+      parsed as Record<string, unknown>,
+      threadIds,
+    );
+    if (!pinned) throw new Error('invalid');
+    // Rebuild explicitly: the pin fields and any other unknown members of
+    // the opaque token must not ride along into the reader.
+    const cursor: ConversationEventWindowCursor = {
+      threadIds: pinned,
+      beforeGlobalSequence: parsed.beforeGlobalSequence,
+      watermark: parsed.watermark,
+    };
+    if (parsed.rangeStartGlobalSequence !== undefined)
+      cursor.rangeStartGlobalSequence = parsed.rangeStartGlobalSequence;
+    if (parsed.rangeEndExclusive !== undefined)
+      cursor.rangeEndExclusive = parsed.rangeEndExclusive;
+    if (parsed.afterGlobalSequence !== undefined)
+      cursor.afterGlobalSequence = parsed.afterGlobalSequence;
+    if (parsed.olderTurnsRemain !== undefined)
+      cursor.olderTurnsRemain = parsed.olderTurnsRemain;
+    return cursor;
   } catch {
     throw new Error('Conversation event window cursor is invalid');
   }
@@ -6246,26 +6335,29 @@ export class EventStore {
   ): PersistedRuntimeEventWindow {
     type Cursor = {
       kind: 'newest-event-window-v1';
-      threadIds: string[];
       watermark: number;
       before: number;
       rangeStart?: number;
       olderTurnsRemain?: boolean;
     };
     let cursor: Cursor | undefined;
+    let ids: string[];
     if (options.cursor) {
       const value = JSON.parse(
         Buffer.from(options.cursor, 'base64url').toString('utf8'),
       );
+      // Cursors minted before the lineage pin carry the ids themselves;
+      // newer ones resolve the pinned prefix against the live lineage.
+      const pinned =
+        value && typeof value === 'object'
+          ? resolvePinnedLineagePrefix(
+              value as Record<string, unknown>,
+              threadIds,
+            )
+          : undefined;
       if (
-        !value ||
-        value.kind !== 'newest-event-window-v1' ||
-        !Array.isArray(value.threadIds) ||
-        !value.threadIds.length ||
-        !value.threadIds.every(
-          (id: unknown, index: number) =>
-            typeof id === 'string' && id === threadIds[index],
-        ) ||
+        value?.kind !== 'newest-event-window-v1' ||
+        !pinned ||
         !Number.isSafeInteger(value.watermark) ||
         value.watermark < 0 ||
         !Number.isSafeInteger(value.before) ||
@@ -6279,9 +6371,21 @@ export class EventStore {
           typeof value.olderTurnsRemain !== 'boolean')
       )
         throw new Error('Invalid newest event window cursor');
-      cursor = value;
+      cursor = {
+        kind: 'newest-event-window-v1',
+        watermark: value.watermark,
+        before: value.before,
+        ...(value.rangeStart !== undefined
+          ? { rangeStart: value.rangeStart }
+          : {}),
+        ...(value.olderTurnsRemain !== undefined
+          ? { olderTurnsRemain: value.olderTurnsRemain }
+          : {}),
+      };
+      ids = pinned;
+    } else {
+      ids = [...threadIds];
     }
-    const ids = cursor?.threadIds ?? [...threadIds];
     if (!ids.length || new Set(ids).size !== ids.length)
       throw new Error('Invalid event window lineage');
     const placeholders = ids.map(() => '?').join(', ');
@@ -6381,11 +6485,11 @@ export class EventStore {
         if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
       }
       const hasMore = moreInRange || olderTurnsRemain;
-      const next: Cursor | undefined =
+      const nextCursorValue =
         hasMore && oldest
           ? {
-              kind: 'newest-event-window-v1',
-              threadIds: ids,
+              kind: 'newest-event-window-v1' as const,
+              ...pinLineageThreadIds(ids),
               watermark,
               before: moreInRange ? oldest.globalSequence : rangeStart,
               ...(moreInRange ? { rangeStart, olderTurnsRemain } : {}),
@@ -6394,9 +6498,9 @@ export class EventStore {
       const result = {
         events: events.reverse(),
         hasMore,
-        ...(next
+        ...(nextCursorValue
           ? {
-              nextCursor: Buffer.from(JSON.stringify(next)).toString(
+              nextCursor: Buffer.from(JSON.stringify(nextCursorValue)).toString(
                 'base64url',
               ),
             }
