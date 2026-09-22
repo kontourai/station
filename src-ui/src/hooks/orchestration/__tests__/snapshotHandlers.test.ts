@@ -524,3 +524,94 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
     );
   });
 });
+
+// #2303: a Station conversation is ONE chat keyed by its conversation id
+// (`muse:C`) but MANY execution threads — the root plus one
+// `muse:C:session:<uuid>` child per continuation. The snapshot lists execution
+// threads, and each row carries the conversation it belongs to
+// (`conversationId`, stamped from the session's own `session.started`
+// metadata — root and children alike). The fixture is keyed the way a real
+// reopened conversation is (`commitConversationOpen`): store key and
+// `conversationId` are the conversation, `currentSessionId` is the child the
+// open resolved to — here an OLDER child, because a newer turn started a new
+// child after the open. A fixture keyed by the running child's thread id
+// passes whether or not the defect exists and is deliberately not written.
+describe('#2303: a turn running in a lineage child reseeds its conversation chat', () => {
+  const ROOT = 'muse:C';
+  const OLD_CHILD = 'muse:C:session:old';
+  const LIVE_CHILD = 'muse:C:session:live';
+
+  const rootRow = {
+    provider: 'muse' as const,
+    threadId: ROOT,
+    status: 'idle',
+    hasActiveTurn: false,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:00:00.000Z',
+    lastEventAt: '2026-09-22T17:01:00.000Z',
+  };
+  const oldChildRow = {
+    provider: 'muse' as const,
+    threadId: OLD_CHILD,
+    status: 'idle',
+    hasActiveTurn: false,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:10:00.000Z',
+    lastEventAt: '2026-09-22T17:12:00.000Z',
+  };
+  const liveChildRow = {
+    provider: 'muse' as const,
+    threadId: LIVE_CHILD,
+    status: 'running',
+    hasActiveTurn: true,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:40:00.000Z',
+    lastEventAt: '2026-09-22T17:52:00.000Z',
+  };
+
+  beforeEach(() => {
+    rehydrateChatSession.mockClear();
+    updateChat.mockClear();
+    chats = {
+      [ROOT]: {
+        provider: 'muse',
+        agentSlug: 'muse-agent',
+        conversationId: ROOT,
+        currentSessionId: OLD_CHILD,
+        orchestrationSessionStarted: true,
+        status: 'idle',
+      },
+    };
+  });
+
+  for (const isReconnectFallback of [false, true]) {
+    test(`${isReconnectFallback ? 'a reconnect-fallback' : 'a first'} snapshot reads the conversation's turn as in flight, not idle`, () => {
+      applyOrchestrationSnapshot(
+        { sessions: [rootRow, oldChildRow, liveChildRow] },
+        { apiBase: 'http://api', isReconnectFallback },
+      );
+
+      const chat = chats[ROOT];
+      expect(chat.orchestrationTurnOpen).toBe(true);
+      expect(chat.status).toBe('sending');
+      expect(chat.orchestrationStatus).toBe('running');
+      // Live events for the running child route through
+      // `getChatForExecutionSession`, which matches `currentSessionId`.
+      expect(chat.currentSessionId).toBe(LIVE_CHILD);
+      // The conversation chat is never marked exited because its own key is
+      // the (idle) root rather than the live child.
+      expect(chat.orchestrationStatus).not.toBe('exited');
+      // No chat was fabricated under an execution-thread key.
+      expect(Object.keys(chats)).toEqual([ROOT]);
+    });
+  }
+
+  test('row order does not matter: an idle root listed AFTER the live child cannot overwrite it', () => {
+    applyOrchestrationSnapshot(
+      { sessions: [liveChildRow, oldChildRow, rootRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+    expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
+  });
+});
