@@ -115,7 +115,7 @@ export class SyntheticLiveSurfaceProducer implements LiveSurfaceProducer {
   }
 }
 
-export function syntheticFrameBody(seq: number): Uint8Array {
+function syntheticFrameBody(seq: number): Uint8Array {
   const body = new Uint8Array(8);
   body.set([seq % 256, (seq * 3) % 256, (seq * 7) % 256, 255], 0);
   new DataView(body.buffer).setUint32(4, seq);

@@ -87,7 +87,7 @@ export interface UseLiveSurfaceResult {
   retry: () => void;
 }
 
-export const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
+const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
 ] as const;
 

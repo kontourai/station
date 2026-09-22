@@ -33,7 +33,7 @@ export interface LiveSurfacePoint {
 }
 
 /** Where the image is drawn inside the element box (letterboxed, centred). */
-export function containRect(
+function containRect(
   box: LiveSurfaceBox,
   frame: Pick<LiveSurfaceFrameGeometry, 'width' | 'height'>,
 ): LiveSurfaceBox & { scale: number } {

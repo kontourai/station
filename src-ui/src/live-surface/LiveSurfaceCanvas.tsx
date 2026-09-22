@@ -54,7 +54,7 @@ export interface LiveSurfaceCanvasProps {
 }
 
 /** Heartbeats arrive every ~5 s; two missed ones is a stall worth saying. */
-export const LIVE_SURFACE_STALL_MS = 12_000;
+const LIVE_SURFACE_STALL_MS = 12_000;
 const DOUBLE_CLICK_MS = 500;
 const DOUBLE_CLICK_SLOP_PX = 4;
 

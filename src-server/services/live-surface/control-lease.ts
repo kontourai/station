@@ -34,8 +34,8 @@ import type {
  * `human-controlling`; once it lapses the lease expires and an agent may
  * claim. Configurable per registry.
  */
-export const LIVE_SURFACE_HUMAN_HOLD_MS = 30_000;
-export const LIVE_SURFACE_AGENT_LEASE_TTL_MS = 60_000;
+const LIVE_SURFACE_HUMAN_HOLD_MS = 30_000;
+const LIVE_SURFACE_AGENT_LEASE_TTL_MS = 60_000;
 
 export interface LiveSurfaceControlLeaseOptions {
   now?: () => number;
