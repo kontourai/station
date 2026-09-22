@@ -75,6 +75,31 @@ function requestsTo(apiBase: string) {
   );
 }
 
+type ScriptedFailure = 'unauthorized' | 'network';
+/**
+ * Scripts the first responses for ONE apiBase; everything else, and every
+ * later request, gets an open stream. Per-URL on purpose: earlier tests'
+ * streams stay registered, and a credential-change wake resumes every parked
+ * stream on the origin — a shared `mockImplementationOnce` queue would be
+ * consumed by whichever woke first (this is how an injection once went
+ * uncaught).
+ */
+function script(apiBase: string, steps: ScriptedFailure[] | 'always-401') {
+  const queue = steps === 'always-401' ? [] : [...steps];
+  fetchMock.mockImplementation(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith(apiBase)) {
+        if (steps === 'always-401') return new Response('', { status: 401 });
+        const next = queue.shift();
+        if (next === 'unauthorized') return new Response('', { status: 401 });
+        if (next === 'network') throw new TypeError('network down');
+      }
+      return openSseResponse(SNAPSHOT, init?.signal);
+    },
+  );
+}
+
 async function settle() {
   for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
 }
@@ -160,9 +185,7 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
 
   test('a stream stopped by a 401 is re-armed by a credential change, as the SAME stream', async () => {
     const apiBase = 'http://recovery.test/terminal';
-    fetchMock.mockImplementationOnce(
-      async () => new Response('', { status: 401 }),
-    );
+    script(apiBase, ['unauthorized']);
     ensureOrchestrationEventStream(apiBase);
     await settle();
     expect(requestsTo(apiBase)).toHaveLength(1);
@@ -229,7 +252,7 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
 
   test('recovery signals retry a parked (401) stream at most once per floor interval', async () => {
     const apiBase = 'http://recovery.test/parked-floor';
-    fetchMock.mockImplementation(async () => new Response('', { status: 401 }));
+    script(apiBase, 'always-401');
     ensureOrchestrationEventStream(apiBase);
     await settle();
     expect(requestsTo(apiBase)).toHaveLength(1);
@@ -248,11 +271,7 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
 
   test('a stream resumed from its park is no longer treated as parked', async () => {
     const apiBase = 'http://recovery.test/unpark';
-    fetchMock
-      .mockImplementationOnce(async () => new Response('', { status: 401 }))
-      .mockImplementationOnce(async () => {
-        throw new TypeError('network down');
-      });
+    script(apiBase, ['unauthorized', 'network']);
     ensureOrchestrationEventStream(apiBase);
     await settle();
 
@@ -271,13 +290,16 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
 
   test('a stream whose loop ends without an abort is replaced too', async () => {
     const apiBase = 'http://recovery.test/rejected-loop';
-    fetchMock.mockImplementationOnce(async () => {
-      throw new TypeError('network down');
-    });
+    script(apiBase, ['network']);
     // The UI's onError throwing inside the SDK's catch rejects the loop
-    // without ever aborting the connection.
-    settleSemanticDeliveryBuffer.mockImplementationOnce(() => {
-      throw new Error('handler failure');
+    // without ever aborting the connection. Scoped to this apiBase, like the
+    // fetch script, so another test's stream cannot consume the throw.
+    let thrown = false;
+    settleSemanticDeliveryBuffer.mockImplementation((base: unknown) => {
+      if (base === apiBase && !thrown) {
+        thrown = true;
+        throw new Error('handler failure');
+      }
     });
     ensureOrchestrationEventStream(apiBase);
     await settle();
