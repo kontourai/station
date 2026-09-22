@@ -2,10 +2,59 @@
  * Mobile layout regression tests — verifies mobile-first CSS changes at Pixel 7 viewport.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { mockEmptyKnowledgeRegistry } from '../helpers/knowledge-setup';
 import { dismissSetupLauncher } from '../helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
+
+/**
+ * Reaches Settings the way a phone user does, asserting each control on the
+ * way is a real, uncovered touch target.
+ *
+ * #2221 removed the phone-only Settings gear from `.app-toolbar`: on a phone
+ * the header's `Toggle menu` opens the sidebar drawer, whose footer owns
+ * Settings (`ProjectSidebarFooter`). Both taps are asserted rather than only
+ * the destination, so a regression that shrinks either control below the
+ * touch floor, or lets an overlay (the knowledge nudge, a backdrop) sit on top
+ * of it, fails here instead of reaching Settings by some other route.
+ */
+async function openSettingsFromMobileDrawer(page: Page): Promise<void> {
+  const toggle = page
+    .locator('.app-toolbar')
+    .getByRole('button', { name: 'Toggle menu' });
+  await expect(toggle).toBeVisible({ timeout: 10_000 });
+  await expectUncoveredTouchTarget(toggle);
+  await toggle.click();
+
+  const settings = page
+    .locator('#mobile-navigation')
+    .getByRole('button', { name: 'Settings', exact: true });
+  await expect(settings).toBeVisible({ timeout: 10_000 });
+  // The drawer slides in; poll the hit test until the transition settles
+  // rather than measuring a mid-animation frame.
+  await expect.poll(() => isTopmostAtCenter(settings)).toBe(true);
+  await expectUncoveredTouchTarget(settings);
+  await settings.click();
+}
+
+async function isTopmostAtCenter(control: Locator): Promise<boolean> {
+  return control.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    return hit !== null && (hit === element || element.contains(hit));
+  });
+}
+
+async function expectUncoveredTouchTarget(control: Locator): Promise<void> {
+  const bounds = await control.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(await isTopmostAtCenter(control)).toBe(true);
+}
 
 test.describe('Android — Mobile Layout', () => {
   /**
@@ -101,25 +150,7 @@ test.describe('Android — Mobile Layout', () => {
       ),
     ).toBe(false);
 
-    const settings = page.locator('.app-toolbar').getByTitle(/Settings/);
-    await expect(settings).toBeVisible({ timeout: 10_000 });
-    const bounds = await settings.boundingBox();
-    expect(bounds).not.toBeNull();
-    expect(bounds?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-    expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-    expect(
-      await page.evaluate(
-        ({ x, y }) =>
-          Boolean(
-            document.elementFromPoint(x, y)?.closest('[title*="Settings"]'),
-          ),
-        {
-          x: (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
-          y: (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2,
-        },
-      ),
-    ).toBe(true);
-    await settings.click();
+    await openSettingsFromMobileDrawer(page);
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
 
@@ -203,11 +234,7 @@ test.describe('Android — Mobile Layout', () => {
     );
 
     await page.goto('/');
-    const settingsButton = page.locator(
-      '.app-toolbar button[title^="Settings"]',
-    );
-    await expect(settingsButton).toBeVisible();
-    await settingsButton.click();
+    await openSettingsFromMobileDrawer(page);
 
     await expect(page.locator('.settings__section-nav')).toBeVisible();
     await page.getByRole('link', { name: 'System', exact: true }).click();
