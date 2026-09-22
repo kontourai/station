@@ -125,12 +125,13 @@ names the deadline instead of suggesting a retry.
 
 Out of scope pending #2300: a Muse child that emits `run_terminal` and then
 keeps running. The adapter stops reading its stdout at that terminal, and
-`settleTurn` neither clears nor re-arms the idle deadline, and its callback
-has no settled-turn guard. So a lingering child is reaped by whatever idle
-deadline (or declared total) was armed when the turn settled — but a turn
-that settles while a tool is in flight has no idle deadline armed, and its
-lingering child is not reaped until it exits or the user stops it.
-Changing that post-terminal handling belongs to #2300.
+`settleTurn` does not clear the idle deadline, and its callback has no
+settled-turn guard, so a lingering child is reaped one idle window on (or
+at a declared total), as it was before #2308. A turn that settles with a
+tool in flight had its idle deadline disarmed; settling closes those tools
+and re-arms it one full window from settle, so the lingering child is
+reaped on that same schedule. Changing what happens after the terminal
+belongs to #2300.
 
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says

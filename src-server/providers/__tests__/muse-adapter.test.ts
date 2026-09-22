@@ -2348,6 +2348,38 @@ describe('MuseAdapter tool events', () => {
       vi.useRealTimers();
     });
 
+    test('baseline: a child lingering after run_terminal is reaped one idle window after its last activity', async () => {
+      // Pins origin/main's behaviour (verified there before this branch's
+      // change): settle does not clear the idle timer, so it reaps the child.
+      vi.useFakeTimers();
+      const { harness, emit } = await startTurn('thread-linger-base');
+      await emit(LINES[54]!); // run_terminal; the child never exits
+      await vi.advanceTimersByTimeAsync(900);
+      expect(harness.processes[0].killed).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(harness.processes[0].killed).toBe(true);
+      expect(harness.released).toBe(1);
+    });
+
+    test('a child lingering after run_terminal with a tool in flight is still reaped one idle window after settle', async () => {
+      vi.useFakeTimers();
+      const { harness, emit } = await startTurn('thread-linger-tool');
+      await emit(...LINES.slice(0, 26)); // bash tool started, never resolves
+      await vi.advanceTimersByTimeAsync(5_000);
+      await emit(LINES[54]!); // run_terminal; the child never exits
+      await vi.advanceTimersByTimeAsync(900);
+      expect(harness.processes[0].killed).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(harness.processes[0].killed).toBe(true);
+      expect(harness.released).toBe(1);
+      const events = await drain(harness.iterator, 6, 'linger with tool');
+      expect(events.slice(3).map((e) => [e.method, e.status])).toEqual([
+        ['tool.started', undefined],
+        ['tool.completed', 'unresolved'],
+        ['turn.completed', undefined],
+      ]);
+    });
+
     test('parallel tools: idle stays disarmed until the LAST open call resolves', async () => {
       vi.useFakeTimers();
       const { harness, emit } = await startTurn('thread-parallel');

@@ -1508,6 +1508,16 @@ export class MuseAdapter implements ProviderAdapterShape {
         output: UNRESOLVED_TURN_TOOL_OUTPUT,
       });
     }
+    // Parity with the pre-#2308 schedule for a settled turn: there, the idle
+    // timer was always pending at settle, so a child that lingers after its
+    // terminal was reaped one idle window on. A turn that settles with a
+    // tool in flight had that timer disarmed; the tools are closed just
+    // above, so it is restored here — from now, the same rule a tool's
+    // result follows (the in-flight time was work, not silence). What the
+    // timer does after settle is unchanged and belongs to #2300.
+    if (openToolCalls.length > 0 && !turn.idleTimeoutHandle) {
+      this.scheduleIdleTimer(record, turn);
+    }
 
     switch (outcome.kind) {
       case 'aborted':
@@ -1707,6 +1717,18 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     if (turn.settled) return;
     if (turn.openToolCalls.size > 0) return;
+    this.scheduleIdleTimer(record, turn);
+  }
+
+  /**
+   * Starts the idle timer `idleLimitMs` from now. Only `armIdleDeadline`
+   * (live turns) and `settleTurn` (the tool-in-flight restoration below)
+   * call it; neither changes what the callback does.
+   */
+  private scheduleIdleTimer(
+    record: MuseSessionRecord,
+    turn: MuseActiveTurn,
+  ): void {
     const idleLimitMs = turn.idleLimitMs;
     const handle = setTimeout(() => {
       const lastActivityIso = new Date(turn.lastProgressAt).toISOString();
