@@ -62,9 +62,12 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
  * that exercise the transport's OWN behaviour — streams, authentication and
  * native transport order, credential wake, timeouts, origin headers, failure
  * mapping, request authority, portability. As with every explicit-boundary
- * edge in this manifest, the transport's CONSUMERS are then covered by
- * full-regression (the required completion gate for promotions), not before
- * merge. That is the trade: stated here, not hidden.
+ * edge in this manifest, the transport's CONSUMERS' unit and component
+ * suites are then covered by full-regression (the required completion gate
+ * for promotions), not before merge. Before merge they are still covered at
+ * the type level (the typecheck lanes) and by the browser journeys in
+ * fast-checks' `test:e2e:pr-smoke`. That is the trade: stated here, not
+ * hidden.
  *
  * Deliberately NOT a `test-full` lane. Any lane switches the whole diff to
  * deferred execution (`executionSelection` in `run-changed-verification.mjs`):
@@ -1475,20 +1478,31 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
         `supplemental impact edge may not declare exceptions: ${edge.pattern}`,
       );
     for (const excepted of edge?.except ?? []) {
-      if (excepted.endsWith('/**') || !matches(edge.pattern, excepted))
+      if (excepted.includes('*'))
+        errors.push(
+          `impact edge exception must be an exact path: ${edge.pattern} except ${excepted}`,
+        );
+      else if (!matches(edge.pattern, excepted))
         errors.push(
           `impact edge exception outside its pattern: ${edge.pattern} except ${excepted}`,
         );
-      // An excepted path must still have an owner, or removing it from this
-      // edge silently narrows it to whatever broader edge is left.
+      // An excepted path must still have an EXPLICIT owner, or it falls back
+      // to whatever broader edge is left — usually a `related` one, which
+      // re-selects the very graph the exception exists to keep out. The owner
+      // must be unconditional (`whenAll` can leave the path unowned), carry
+      // tests, and add neither `related` (re-adds the graph) nor a lane (any
+      // lane defers execution of the whole diff).
       else if (
         !manifest.some(
           (other) =>
             other !== edge &&
             !other.supplemental &&
+            !other.whenAll &&
+            !other.related &&
+            !other.lanes?.length &&
             !other.except?.includes(excepted) &&
             matches(other.pattern, excepted) &&
-            (other.tests?.length || other.lanes?.length),
+            other.tests?.length,
         )
       )
         errors.push(

@@ -491,13 +491,13 @@ describe('changed verification selection', () => {
       'impact edge exception outside its pattern: packages/sdk/src/client/** except packages/sdk/src/clients/http.ts',
     ],
     [
-      'a glob-shaped entry',
+      'a wildcard entry',
       {
         pattern: 'packages/sdk/src/client/**',
-        except: ['packages/sdk/src/client/http.ts/**'],
+        except: ['packages/sdk/src/client/*.ts'],
         related: true,
       },
-      'impact edge exception outside its pattern: packages/sdk/src/client/** except packages/sdk/src/client/http.ts/**',
+      'impact edge exception must be an exact path: packages/sdk/src/client/** except packages/sdk/src/client/*.ts',
     ],
     [
       'an excepted path no other edge owns',
@@ -529,6 +529,52 @@ describe('changed verification selection', () => {
       ).toContain(message);
     },
   );
+  test.each([
+    ['conditional', { whenAll: ['packages/sdk/src/queries.ts'] }],
+    ['related', { related: true }],
+    ['lane-carrying', { lanes: ['test-full'] }],
+  ])('a %s owner does not own an excepted path', (_name, shape) => {
+    // Each shape lets the excepted path fall back to (or re-add) the graph,
+    // or defer the whole diff, so none may stand in for an explicit owner.
+    const withoutOwner = TEST_IMPACT_MANIFEST.filter(
+      (edge) => edge.pattern !== 'packages/sdk/src/client/http.ts',
+    );
+    expect(
+      validateTestImpactManifest([
+        ...withoutOwner,
+        {
+          pattern: 'packages/sdk/src/client/http.ts',
+          tests: ['packages/sdk/src/__tests__/fetch-sse.test.ts'],
+          ...shape,
+          reason: 'owner-shape guard',
+        },
+      ]),
+    ).toContain(
+      'impact edge exception has no explicit owner: packages/sdk/src/client/** except packages/sdk/src/client/http.ts',
+    );
+  });
+  test('the SDK transport edge names exactly its own-behaviour suites', () => {
+    // Pinned in full: trimming a suite from the list is a coverage loss that
+    // a sampled arrayContaining would not notice.
+    expect(
+      selectChangedVerification(['packages/sdk/src/client/http.ts'])
+        .tests.map((entry) => entry.path)
+        .sort(),
+    ).toEqual([
+      'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+      'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+      'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+      'packages/sdk/src/__tests__/client-origin.test.ts',
+      'packages/sdk/src/__tests__/client-request-timeout.test.ts',
+      'packages/sdk/src/__tests__/fetch-sse.test.ts',
+      'packages/sdk/src/__tests__/request-inspection.test.ts',
+      'packages/sdk/src/__tests__/scoped-request-authority.test.ts',
+      'packages/sdk/src/__tests__/scoped-request-invocation-boundaries.test.tsx',
+      'src-ui/src/__tests__/useServerEvents-authority-stability.test.tsx',
+      'src-ui/src/contexts/__tests__/ApiBaseContext.credential-wake.test.tsx',
+      'src-ui/src/contexts/__tests__/ApiBaseContext.native-transport-order.test.tsx',
+    ]);
+  });
   test('selects portable client source scans and accepted-turn CLI consumers', () => {
     // bounded-response.ts / client-origin.ts / http.ts are the transport:
     // see the SDK transport test above.
