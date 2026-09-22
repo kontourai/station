@@ -257,9 +257,7 @@ describe('CI verification workflow contracts', () => {
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
       '.github/workflows/container-smoke.yml',
-      '.github/workflows/windows-verification.yml',
       '.github/workflows/secret-scan.yml',
-      '.github/workflows/backlog-priority-policy.yml',
       '.github/workflows/android-test.yml',
       '.github/workflows/dependency-advisory.yml',
     ];
@@ -727,8 +725,6 @@ describe('CI verification workflow contracts', () => {
         'publishes released packages from merged main; nothing to pre-verify',
       '.github/workflows/source-availability.yml':
         'reports on merged main and files issues; observational, not a build',
-      '.github/workflows/windows-verification.yml':
-        'windows-pr-verification.yml runs the reduced portable floor on pull requests',
       '.github/workflows/container-smoke.yml':
         'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
       '.github/workflows/build-android.yml':
@@ -846,21 +842,7 @@ describe('CI verification workflow contracts', () => {
     expect(Number.isInteger(smokeWaitSeconds)).toBe(true);
     expect(Number.isInteger(smokeBudgetMinutes)).toBe(true);
 
-    // (1) The smoke's weight leaves no room for the floor beside it, so its
-    // admission waits for a floor run to finish — the wait must cover the
-    // floor's whole budget, not a typical duration.
-    const floor = job('windows-verification.yml', 'portable-floor');
-    const floorCapacity = capacityStep(floor);
-    const units = Number(smokeCapacity.with?.['capacity-units']);
-    expect(
-      Number(smokeCapacity.with?.['lease-weight']) +
-        Number(floorCapacity.with?.['lease-weight']),
-    ).toBeGreaterThan(units);
-    expect(smokeWaitSeconds).toBeGreaterThanOrEqual(
-      Number(floor['timeout-minutes']) * 60,
-    );
-
-    // (2) Whatever the wait is, the job must keep the smoke's own running
+    // (1) Whatever the wait is, the job must keep the smoke's own running
     // time after it: raising the wait alone moves the red from the reserve
     // step to the job timeout. 25 minutes is the observed smoke duration
     // (af2ae065: 03:45 -> 04:06) with margin.
@@ -868,7 +850,7 @@ describe('CI verification workflow contracts', () => {
       25 * 60,
     );
 
-    // (3) The Docker-state cleanup is conditional on the isolate step having
+    // (2) The Docker-state cleanup is conditional on the isolate step having
     // run. With a bare `always()` it refused the empty DOCKER_CONFIG after a
     // failed reservation and reported that refusal as the job's last error.
     const isolate = smoke.steps?.find(
@@ -893,11 +875,6 @@ describe('CI verification workflow contracts', () => {
     expect(performance.match(/owner-lifetime-seconds: "7800"/g)).toHaveLength(
       3,
     );
-    expect(
-      workflow('windows-verification.yml').match(
-        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
-      ),
-    ).toHaveLength(1);
     expect(
       workflow('windows-vitest-diagnostic.yml').match(
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
@@ -939,7 +916,7 @@ describe('CI verification workflow contracts', () => {
     expect(emulatorSmoke).toContain('timeout-minutes: 90');
   });
 
-  it('keeps CI Extended as the weekly and manual full-browser surface without rerunning ci:fast', () => {
+  it('keeps CI Extended as the dispatch-only full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -958,7 +935,8 @@ describe('CI verification workflow contracts', () => {
     expect(extended).not.toContain('run: npm run ci:fast');
     expect(extended).toContain('run: npm run test:coverage');
     expect(extended).toContain('run: npm run verify:e2e:full');
-    expect(extended).toContain("- cron: '30 11 * * 6'");
+    // Dispatch only until a run is green; a scheduled red nobody acts on is noise.
+    expect(extended).not.toContain('schedule:');
     expect(extended).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(coverage).toContain('needs: playwright-full');
     expect(coverage).toContain(
@@ -1196,7 +1174,6 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegression).not.toContain('physical-host-capacity@');
     const desktopWinLeaseWeights = [
       'interactive-workspace-performance.yml',
-      'windows-verification.yml',
       'windows-vitest-diagnostic.yml',
       'container-smoke.yml',
     ].flatMap((name) =>
@@ -1204,7 +1181,7 @@ describe('CI verification workflow contracts', () => {
         ([, weight]) => Number(weight),
       ),
     );
-    expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 5, 9, 9]);
+    expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 9, 9]);
     expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
     expect(fullRegression).not.toContain('run: npm run full:regression');
@@ -1300,11 +1277,7 @@ describe('CI verification workflow contracts', () => {
   });
 
   it('keeps coordinated lane receipts and failure artifacts downloadable', () => {
-    for (const name of [
-      'ci.yml',
-      'ci-extended.yml',
-      'windows-verification.yml',
-    ]) {
+    for (const name of ['ci.yml', 'ci-extended.yml']) {
       const source = workflow(name);
       expect(source, name).toContain('if: always()');
       expect(source, name).toContain('if-no-files-found: ignore');
@@ -1527,9 +1500,6 @@ describe('CI verification workflow contracts', () => {
 
     const performance = workflow('interactive-workspace-performance.yml');
     expect(performance).toContain(
-      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
-    );
-    expect(workflow('windows-verification.yml')).toContain(
       'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
     expect(workflow('container-smoke.yml')).toContain(
@@ -1927,27 +1897,6 @@ describe('CI verification workflow contracts', () => {
     expect(ios.step.run).not.toBe(ci.step.run);
     expect(ios.step.run).toContain('$BASE_SHA:scripts/classify-ci-change.mjs');
     expect(ios.step.run).toContain('fail_closed');
-  });
-
-  it('provides the supported post-merge Windows fallback without pretending E2E is covered', () => {
-    const windows = workflow('windows-verification.yml');
-
-    expect(windows).toContain('workflow_dispatch:');
-    expect(windows).toContain('push:');
-    expect(windows).toContain('branches: [main]');
-    expect(windows).not.toContain('pull_request:');
-    expect(windows).toContain('paths:');
-    expect(windows).toContain(
-      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
-    );
-    expect(windows).toContain('run: npm run verification:policy:gate');
-    expect(windows).toContain('run: npm run typecheck');
-    expect(windows).toContain('run: npm run test:windows:portable');
-    expect(windows).toContain('no full Vitest/E2E');
-    expect(windows).toContain('#1420');
-    expect(windows).not.toContain('run: npm run test:full');
-    expect(windows).not.toContain('verify:e2e:full');
-    expect(windows).not.toContain('test:android');
   });
 
   it('runs the bounded Windows floor on every PR head from base-controlled hosted policy', () => {

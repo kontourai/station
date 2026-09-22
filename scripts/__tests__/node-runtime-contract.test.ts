@@ -59,7 +59,6 @@ describe('Node runtime contract', () => {
       '.github/workflows/ci.yml',
       '.github/workflows/ci-extended.yml',
       '.github/workflows/android-test.yml',
-      '.github/workflows/windows-verification.yml',
       '.github/workflows/build-android.yml',
       '.github/workflows/pages.yml',
       '.github/workflows/publish-packages.yml',
