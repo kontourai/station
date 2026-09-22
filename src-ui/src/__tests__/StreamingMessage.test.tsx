@@ -519,6 +519,27 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     view.unmount();
   });
 
+  test("a mounted row that sees the next turn's start (no clear in between) restarts for that turn", () => {
+    // Row up for turn 1, which started 12 minutes before this mount.
+    const view = renderRow(Date.parse(serverStart));
+    expect(view.container.textContent).toContain('Working for 12:00');
+    act(() => {
+      vi.advanceTimersByTime(600_000);
+    });
+    // Turn 2's `turn.started` lands while turn 1's row is still mounted.
+    view.rerender(
+      <StreamingMessage
+        sessionId={chatId}
+        agentIcon={<div />}
+        agentIconStyle={{}}
+        fontSize={14}
+        turnStartedAt={Date.now() - 5_000}
+      />,
+    );
+    expect(view.container.textContent).toContain('Working for 0:05');
+    view.unmount();
+  });
+
   test("the sender's row keeps counting when a later server start lands, rather than jumping back", () => {
     // Mounted at send (the fake clock's now), before the turn has started.
     const view = renderRow(undefined);
