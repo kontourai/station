@@ -109,6 +109,56 @@ function hasOpenTurn(events: CanonicalRuntimeEvent[]): boolean {
   return activeTurnIdForEvents(events) !== undefined;
 }
 
+/**
+ * The turn facts that end a Draft (#2310). `turn.completed` is counted beside
+ * `turn.started` because the conversation history's own message count
+ * (`EventStore.projectConversationHistoryEvent`) counts exactly these two: a
+ * log holding either has messages, and "has messages" must not be decided two
+ * different ways.
+ */
+export const DRAFT_ENDING_TURN_METHODS = [
+  'turn.started',
+  'turn.completed',
+] as const;
+
+/**
+ * #2310: whether a session is a Draft — see `OrchestrationSessionSummary.draft`.
+ *
+ * `conversationTurnObserved` is the LINEAGE answer (`EventStore.
+ * conversationTurnObservedForThreads`): did any Session of this thread's
+ * conversation record a turn. `undefined` means the caller did not ask, and
+ * the result is then `undefined` too unless the thread's own events already
+ * settle it — a missing lineage read must never become a Draft claim, because
+ * a continuation child with no turns of its own is exactly the shape that
+ * would be mislabelled.
+ */
+export function deriveSessionDraft(input: {
+  events: readonly CanonicalRuntimeEvent[];
+  session: Pick<
+    ProviderSession,
+    'controlMode' | 'attachedSource' | 'continuationSourceThreadId'
+  >;
+  delegated: boolean;
+  conversationTurnObserved?: boolean;
+}): boolean | undefined {
+  // History that did not arrive through a local turn: followed from another
+  // app, adopted from one, or dispatched by Station with its prompt in hand.
+  if (
+    input.session.controlMode === 'read-only-attached' ||
+    input.session.attachedSource !== undefined ||
+    input.session.continuationSourceThreadId !== undefined ||
+    input.delegated
+  ) {
+    return false;
+  }
+  const ownTurn = input.events.some((event) =>
+    (DRAFT_ENDING_TURN_METHODS as readonly string[]).includes(event.method),
+  );
+  if (ownTurn) return false;
+  if (input.conversationTurnObserved === undefined) return undefined;
+  return !input.conversationTurnObserved;
+}
+
 export function trackOrchestrationSession(options: {
   threadProviders: Map<string, EngineId>;
   sessionReadModel: Map<string, ProviderSession>;
@@ -295,6 +345,13 @@ export function buildOrchestrationSessionSummary(options: {
    * same prompt two different ways.
    */
   conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
+  /**
+   * #2310: whether any Session in this thread's conversation lineage recorded
+   * a turn (`EventStore.conversationTurnObservedForThreads`). Omitted means
+   * the lineage was not consulted, and the summary then makes no Draft claim
+   * (`draft` stays absent unless the thread's own events rule it out).
+   */
+  conversationTurnObserved?: boolean;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   if (!base) {
@@ -325,6 +382,14 @@ export function buildOrchestrationSessionSummary(options: {
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const controlMode = base.controlMode ?? 'station-owned';
+  const draft = deriveSessionDraft({
+    events,
+    session: { ...base, controlMode },
+    delegated: delegation !== undefined,
+    ...(options.conversationTurnObserved !== undefined
+      ? { conversationTurnObserved: options.conversationTurnObserved }
+      : {}),
+  });
   const {
     projectSlug: lifecycleProjectSlug,
     assignedAgentSlug,
@@ -426,6 +491,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelLaunchPlan ? { modelLaunchPlan } : {}),
     ...(reportedModel ? { reportedModel } : {}),
     hasActiveTurn: hasOpenTurn(events),
+    ...(draft !== undefined ? { draft } : {}),
   };
 }
 

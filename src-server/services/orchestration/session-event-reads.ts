@@ -29,6 +29,18 @@ function eventWindowSessionSummary(
   return publicSummary;
 }
 
+/** #2310: the lineage half of the Draft fold; absent without a store. */
+function conversationTurnObservedOption(
+  eventStore: EventStore | undefined,
+  threadId: string,
+): { conversationTurnObserved?: boolean } {
+  return eventStore
+    ? {
+        conversationTurnObserved: eventStore.conversationTurnObserved(threadId),
+      }
+    : {};
+}
+
 interface SessionEventReadsDeps {
   eventStore?: EventStore;
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
@@ -163,6 +175,7 @@ export class SessionEventReads {
           loaded,
           events: projectionEvents.map((event) => event.payload),
           eventCount: this.deps.eventStore?.countEventsByThread(threadId),
+          ...conversationTurnObservedOption(this.deps.eventStore, threadId),
           turnProgress: this.deps.readTurnProgress(threadId),
           answerability: this.deps.observeAnswerability(
             threadId,
@@ -222,6 +235,7 @@ export class SessionEventReads {
       loaded,
       events: projectionEvents.map((event) => event.payload),
       eventCount: this.deps.eventStore?.countEventsByThread(threadId),
+      ...conversationTurnObservedOption(this.deps.eventStore, threadId),
       turnProgress: this.deps.readTurnProgress(threadId),
       answerability: this.deps.observeAnswerability(
         threadId,

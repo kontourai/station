@@ -330,4 +330,69 @@ describe('ensureOrchestrationEventStream — session read-model freshness', () =
     );
     expect(invalidateQueries).not.toHaveBeenCalled();
   });
+
+  // #2310: a Draft (nothing ever sent) sits outside "Active now". Its first
+  // `turn.started` is the only moment that changes, so it must re-read the
+  // projection — and a first turn that lands inside the throttle window of
+  // some other session's terminal event must be deferred, not dropped, or the
+  // promotion stays unseen until an unrelated refetch.
+  it('re-reads the read-model on turn.started, deferring one that lands inside the window', async () => {
+    // Clear any window a preceding test opened.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const invalidateQueries = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-other-session-done', 'turn.completed') +
+              terminalFrame('evt-first-turn', 'turn.started'),
+          ),
+        ),
+    );
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-readmodel-first-turn.example.test',
+      { invalidateQueries } as never,
+    );
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(2),
+    );
+    // The terminal event refreshed immediately; the turn.started fell inside
+    // its window...
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    // ...and still refreshes once the window closes.
+    await vi.waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(2), {
+      timeout: 2000,
+    });
+    expect(invalidateQueries).toHaveBeenLastCalledWith({
+      queryKey: ['orchestration-sessions'],
+    });
+  });
+
+  it('re-reads the read-model on a lone turn.started', async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const invalidateQueries = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-lone-first-turn', 'turn.started'),
+          ),
+        ),
+    );
+
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-readmodel-lone-turn.example.test',
+      { invalidateQueries } as never,
+    );
+    await vi.waitFor(() =>
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['orchestration-sessions'],
+      }),
+    );
+  });
 });

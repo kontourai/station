@@ -1803,12 +1803,18 @@ export class OrchestrationService {
               summaryThreadId,
             )?.payload
           : undefined;
+        const conversationTurnObserved = summaryThreadId
+          ? this.options.eventStore?.conversationTurnObserved(summaryThreadId)
+          : undefined;
         const session = buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: [...events],
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
+            : {}),
+          ...(conversationTurnObserved !== undefined
+            ? { conversationTurnObserved }
             : {}),
           turnProgress: this.turnProgress.read(
             persisted?.threadId ?? loaded?.threadId ?? '',
@@ -3272,6 +3278,10 @@ export class OrchestrationService {
       eventStore?.conversationRootFirstPromptedTurnForThreads(
         readableThreadIds,
       ) ?? new Map<string, PersistedRuntimeEvent>();
+    // #2310: the lineage half of the Draft fold, batched beside the reads
+    // above for the same reason — one query for the whole list.
+    const conversationTurnObservedByThread =
+      eventStore?.conversationTurnObservedForThreads(readableThreadIds);
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -3289,11 +3299,16 @@ export class OrchestrationService {
         const loaded = this.sessionReadModel.get(threadId);
         const conversationFirstPromptedTurn =
           conversationFirstPromptedTurnByThread.get(threadId)?.payload;
+        const conversationTurnObserved =
+          conversationTurnObservedByThread?.get(threadId);
         return buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: events.map((event) => event.payload),
           eventCount,
+          ...(conversationTurnObserved !== undefined
+            ? { conversationTurnObserved }
+            : {}),
           turnProgress: this.turnProgress.read(threadId),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
@@ -3592,11 +3607,16 @@ export class OrchestrationService {
       this.options.eventStore?.conversationRootFirstPromptedTurn(
         threadId,
       )?.payload;
+    const conversationTurnObserved =
+      this.options.eventStore?.conversationTurnObserved(threadId);
     return {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
         events,
+        ...(conversationTurnObserved !== undefined
+          ? { conversationTurnObserved }
+          : {}),
         turnProgress: this.turnProgress.read(threadId),
         ...(conversationFirstPromptedTurn
           ? { conversationFirstPromptedTurn }

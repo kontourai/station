@@ -30,6 +30,7 @@ export type SessionLaneId =
   | 'needsYou'
   | 'activeNow'
   | 'recentlyFinished'
+  | 'drafts'
   | 'earlier';
 
 /** Reading order: what is blocked on you, then what is moving, then history. */
@@ -37,6 +38,7 @@ export const SESSION_LANE_ORDER: readonly SessionLaneId[] = [
   'needsYou',
   'activeNow',
   'recentlyFinished',
+  'drafts',
   'earlier',
   'external',
 ];
@@ -45,6 +47,7 @@ export const SESSION_LANE_LABELS: Record<SessionLaneId, string> = {
   needsYou: 'Needs you',
   activeNow: 'Active now',
   recentlyFinished: 'Recently finished',
+  drafts: 'Drafts',
   earlier: 'Earlier',
   external: 'From other apps',
 };
@@ -134,6 +137,8 @@ export function partitionSessionLanes({
     needsYou: resolve(partition.active.filter(needsYou)),
     activeNow: resolve(partition.active.filter((item) => !needsYou(item))),
     recentlyFinished: resolve(partition.recentlyFinished),
+    // #2310: never-prompted sessions, out of "Active now" but still listed.
+    drafts: resolve(partition.drafts ?? []),
     // The snoozed bucket is folded in rather than dropped: this surface has no
     // snooze store today (see NO_SNOOZE), and a bucket that is silently
     // discarded is how rows vanish the day one is introduced.

@@ -708,6 +708,25 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * silently kill an in-flight External-agent subprocess.
    */
   hasActiveTurn?: boolean;
+  /**
+   * #2310: true when this session is a **Draft** — it exists, but no turn has
+   * ever started anywhere in its CONVERSATION's lineage (the root Session and
+   * every continuation/handoff child), and it carries no history from
+   * elsewhere: not a read-only attached session, not an adopted continuation,
+   * not a Station-dispatched delegation (whose prompt exists by
+   * construction). The first `turn.started` in the lineage makes it false.
+   *
+   * Lineage-aware on purpose: a continuation child minted for the NEXT turn,
+   * or a root whose turns all ran in children, has zero turns of its own and
+   * is not a draft.
+   *
+   * `false` is a derived "not a draft". ABSENT means the reader that built
+   * this summary did not consult the lineage, so no draft claim is made — a
+   * consumer must test `=== true`, never `!== false`.
+   *
+   * Unrelated to composer draft text (unsent input kept per device).
+   */
+  draft?: boolean;
 }
 
 export interface OrchestrationSessionDetail {

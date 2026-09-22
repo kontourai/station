@@ -182,6 +182,7 @@ import {
 } from './native-invocation-runs.js';
 import {
   clientOriginIdentity,
+  DRAFT_ENDING_TURN_METHODS,
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
 import {
@@ -7323,6 +7324,72 @@ export class EventStore {
       if (event) result.set(threadId, event);
     }
     return result;
+  }
+
+  /**
+   * #2310: for each thread, whether ANY Session of its conversation — the
+   * root and every continuation/handoff child — recorded a turn
+   * (`turn.started`/`turn.completed`, the pair the conversation history counts
+   * as messages). This is the lineage half of the Draft derivation
+   * (`deriveSessionDraft`): a child minted for the next turn, or a root whose
+   * turns all ran in children, has no turn of its own and is still not a
+   * draft.
+   *
+   * Every thread asked about gets an entry. A thread with no lineage row is
+   * its own conversation (the store registers every persisted Session as the
+   * root of one — `upsertSession`/`markSessionClosed`), so it is answered from
+   * its own events. Chunked like
+   * {@link conversationRootFirstPromptedTurnForThreads}, and for the same
+   * reason: the caller is the batched session-list read, and a per-row lookup
+   * there would restore the cost archive#4466 removed.
+   */
+  conversationTurnObservedForThreads(
+    threadIds: readonly string[],
+  ): Map<string, boolean> {
+    const unique = [...new Set(threadIds)];
+    const result = new Map<string, boolean>(
+      unique.map((threadId) => [threadId, false]),
+    );
+    const methods = DRAFT_ENDING_TURN_METHODS.map(() => '?').join(', ');
+    for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
+      const rows = this.db
+        .prepare(
+          `WITH asked(thread_id, conversation_id) AS (
+             SELECT candidate.value,
+                    COALESCE(lineage.conversation_id, candidate.value)
+             FROM json_each(?) candidate
+             LEFT JOIN orchestration_conversation_sessions lineage
+               ON lineage.session_id = candidate.value
+           ),
+           member(thread_id, session_id) AS (
+             SELECT thread_id, thread_id FROM asked
+             UNION
+             SELECT thread_id, conversation_id FROM asked
+             UNION
+             SELECT asked.thread_id, sibling.session_id
+             FROM asked
+             INNER JOIN orchestration_conversation_sessions sibling
+               ON sibling.conversation_id = asked.conversation_id
+           )
+           SELECT DISTINCT member.thread_id AS thread_id
+           FROM member
+           WHERE EXISTS (
+             SELECT 1 FROM orchestration_events event
+             WHERE event.thread_id = member.session_id
+               AND event.method IN (${methods})
+           )`,
+        )
+        .all(JSON.stringify(chunk), ...DRAFT_ENDING_TURN_METHODS) as Array<{
+        thread_id: string;
+      }>;
+      for (const row of rows) result.set(row.thread_id, true);
+    }
+    return result;
+  }
+
+  /** Single-thread {@link conversationTurnObservedForThreads}. */
+  conversationTurnObserved(threadId: string): boolean {
+    return this.conversationTurnObservedForThreads([threadId]).get(threadId)!;
   }
 
   reserveNextConversationSession(input: {

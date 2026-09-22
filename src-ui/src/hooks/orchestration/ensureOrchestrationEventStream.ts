@@ -30,16 +30,27 @@ const activeSources = new Map<string, FetchSseConnection>();
  * failure. The chip and the reason were reading two different sources.
  *
  * The fix is to keep the one derivation current, not to add a second local
- * fold. Only a session-ending event triggers it, and at most once a second, so
- * a chatty stream cannot turn this into a refetch loop.
+ * fold. Only a turn-boundary event triggers it, at most once a second, so a
+ * chatty stream cannot turn this into a refetch loop.
+ *
+ * #2310: `turn.started` is a boundary too. A session nothing has been sent to
+ * reads as a Draft (the server's lineage fold), outside "Active now"; its
+ * first turn must promote it on every open client without a reload, and no
+ * other frame re-reads the projection at that moment. A refresh that lands
+ * inside the throttle window is deferred to the window's end rather than
+ * dropped — dropping it could leave that promotion unseen until the next
+ * unrelated refetch.
  */
-const TERMINAL_METHODS: ReadonlySet<string> = new Set([
+const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
+  'turn.started',
   'runtime.error',
   'session.exited',
   'turn.completed',
   'turn.aborted',
 ]);
+const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
 let lastSessionReadModelRefreshAt = 0;
+let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
 /**
  * The app's one `QueryClient`, recorded by whichever caller has it.
  *
@@ -52,15 +63,25 @@ let lastSessionReadModelRefreshAt = 0;
  * same premise the parameter's own docblock already rests on).
  */
 let sharedQueryClient: QueryClient | undefined;
-function refreshSessionReadModelOnTerminal(
+function refreshSessionReadModelOnFact(
   queryClient: QueryClient | undefined,
   event: OrchestrationEvent,
 ): void {
   const client = queryClient ?? sharedQueryClient;
-  if (!client || !TERMINAL_METHODS.has(event.method)) return;
-  const now = Date.now();
-  if (now - lastSessionReadModelRefreshAt < 1000) return;
-  lastSessionReadModelRefreshAt = now;
+  if (!client || !SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
+  const elapsed = Date.now() - lastSessionReadModelRefreshAt;
+  if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
+    // One deferred refresh covers every fact that arrives in the window.
+    if (deferredSessionReadModelRefresh === undefined) {
+      deferredSessionReadModelRefresh = setTimeout(() => {
+        deferredSessionReadModelRefresh = undefined;
+        lastSessionReadModelRefreshAt = Date.now();
+        void client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+      }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
+    }
+    return;
+  }
+  lastSessionReadModelRefreshAt = Date.now();
   void client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
 }
 
@@ -155,7 +176,7 @@ export function ensureOrchestrationEventStream(
           payload.provenance,
           payload.conversation,
         );
-        refreshSessionReadModelOnTerminal(queryClient, payload.event);
+        refreshSessionReadModelOnFact(queryClient, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
       ) {
