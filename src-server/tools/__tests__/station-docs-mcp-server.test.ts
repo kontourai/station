@@ -99,6 +99,20 @@ describe('station-docs content', () => {
     expect(body.toLowerCase()).toMatch(/explain/);
   });
 
+  test('no topic claims an agent can install plugins, and the install topics name where a person approves one', () => {
+    // station-control's install_plugin refuses with operator-approval-required
+    // (station-control-platform-tools.ts). Docs claiming the default agent
+    // installs plugins send an engine to promise an action it cannot take.
+    for (const topic of STATION_DOCS_TOPICS) {
+      expect(topic.body, topic.id).not.toMatch(/install(ing)? plugins/i);
+    }
+    for (const id of ['station-docs', 'builtin-assistant']) {
+      const body = findStationDocsTopic(id)?.body ?? '';
+      expect(body, id).toContain('station plugin install');
+      expect(body, id).toContain('Plugins page');
+    }
+  });
+
   test('no topic claims to describe the reader’s own Station', () => {
     // A content-level check on the same boundary the tool descriptions state:
     // shipped prose must never present itself as live state.
