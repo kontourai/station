@@ -188,7 +188,7 @@ interface ActiveAuthorityClient {
   queryClient: QueryClient;
 }
 
-function createAuthorityClient(): QueryClient {
+export function createAuthorityClient(): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {

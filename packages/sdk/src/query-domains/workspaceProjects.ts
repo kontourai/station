@@ -43,6 +43,7 @@ import {
 import {
   type MutationOptions,
   type QueryConfig,
+  refetchOnMountWhenInvalidated,
   useApiMutation,
   useApiQuery,
 } from '../query-core';
@@ -282,7 +283,12 @@ export function useProjectWorkspacePanesQuery(
       const apiBase = await _getApiBase();
       return listProjectWorkspacePanes(apiBase, projectSlug);
     },
-    { ...config, enabled: !!projectSlug && (config?.enabled ?? true) },
+    {
+      // Installed plugins contribute descriptors from outside this tab (#2319).
+      refetchOnMount: refetchOnMountWhenInvalidated,
+      ...config,
+      enabled: !!projectSlug && (config?.enabled ?? true),
+    },
   );
 }
 
