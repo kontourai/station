@@ -1065,7 +1065,13 @@ describe('OrchestrationService', () => {
         threadId: child,
         method: 'session.configured',
       }),
-    ).toEqual({ conversationId: root, currentSessionId: child });
+    ).toEqual({
+      conversationId: root,
+      currentSessionId: child,
+      // #2309: the rebinding frame also carries the conversation's activity
+      // (nothing committed on either child yet).
+      activity: { conversationId: root, asOfSequence: 0 },
+    });
     const lookup = vi.spyOn(eventStore, 'conversationForSession');
     expect(
       service.conversationStreamBinding({
@@ -1074,6 +1080,125 @@ describe('OrchestrationService', () => {
       }),
     ).toBeUndefined();
     expect(lookup).not.toHaveBeenCalled();
+  });
+
+  test('#2309: a client connected through a turn and one that reconnects after it read the same conversation activity', async () => {
+    const root = 'activity-reconnect-root';
+    const child = `${root}:session:child`;
+    const createdAt = '2026-09-22T09:00:00.000Z';
+    for (const threadId of [root, child]) {
+      if (threadId === child)
+        eventStore.reserveNextConversationSession({
+          conversationId: root,
+          predecessorSessionId: root,
+          proposedSessionId: child,
+          createdAt,
+        });
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { agentSlug: 'claude', userId: 'owner-user' },
+      });
+    }
+    // Client A is connected: its frames are bound as each event commits.
+    const frameA = (event: CanonicalRuntimeEvent) => {
+      eventStore.appendEvent(event);
+      return service.conversationStreamBinding(event);
+    };
+    frameA({
+      eventId: 'child-turn-started',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:01.000Z',
+      method: 'turn.started',
+      prompt: 'work',
+    });
+    const lastA = frameA({
+      eventId: 'child-tool-started',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:02.000Z',
+      method: 'tool.started',
+      itemId: 'call-1',
+      toolCallId: 'call-1',
+      toolName: 'Bash',
+    } as CanonicalRuntimeEvent);
+    expect(lastA?.activity).toMatchObject({
+      conversationId: root,
+      openTurn: { turnId: 'child-turn', threadId: child },
+      runningTools: [{ name: 'Bash', callId: 'call-1' }],
+    });
+
+    // Client B connects afterwards with no cursor: the snapshot rows carry
+    // the same activity, running tool included, with no further events.
+    const snapshot = await service.listSessionReadModel();
+    for (const threadId of [root, child])
+      expect(
+        snapshot.find((session) => session.threadId === threadId)
+          ?.conversationActivity,
+      ).toEqual(lastA?.activity);
+    // So does a process that never saw the live events (a restart).
+    const restarted = new OrchestrationService({
+      adapterRegistry: createRegistry([]),
+      eventBus: new EventBus(),
+      eventStore,
+      listProjects: () => [],
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      expect(
+        (
+          await restarted.listSessionReadModel(
+            personalReadAuthority('owner-user'),
+          )
+        ).find((session) => session.threadId === root)?.conversationActivity,
+      ).toEqual(lastA?.activity);
+    } finally {
+      await restarted.shutdown();
+    }
+
+    const completed = frameA({
+      eventId: 'child-tool-completed',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:03.000Z',
+      method: 'tool.completed',
+      itemId: 'call-1',
+      toolCallId: 'call-1',
+      toolName: 'Bash',
+      status: 'success',
+    } as CanonicalRuntimeEvent);
+    expect(completed?.activity?.runningTools).toBeUndefined();
+    const closed = frameA({
+      eventId: 'child-turn-completed',
+      provider: 'claude',
+      threadId: child,
+      turnId: 'child-turn',
+      createdAt: '2026-09-22T09:00:04.000Z',
+      method: 'turn.completed',
+    } as CanonicalRuntimeEvent);
+    expect(closed?.activity?.openTurn).toBeUndefined();
+    expect(closed!.activity!.asOfSequence).toBeGreaterThan(
+      lastA!.activity!.asOfSequence,
+    );
+    const converged = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === root,
+    )?.conversationActivity;
+    expect(converged).toEqual(closed?.activity);
   });
 
   test('public session metadata cannot mint a room execution binding', async () => {

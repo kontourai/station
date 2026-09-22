@@ -223,6 +223,7 @@ import {
   type ConversationOpenResolver,
   createConversationOpenResolver,
 } from './conversation-open-resolver.js';
+import { ConversationTurnActivityProjection } from './conversation-turn-activity.js';
 import { CooperativeStop } from './cooperative-stop.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
 import {
@@ -1330,6 +1331,13 @@ export class OrchestrationService {
    * it).
    */
   private readonly turnProgress: TurnProgressTracker;
+  /**
+   * #2309: the conversation activity projection. Absent without an event
+   * store: it folds committed events and has nothing to fold without one.
+   */
+  private readonly conversationActivity:
+    | ConversationTurnActivityProjection
+    | undefined;
   /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
   private readonly transcriptReadEventStore: EventStore | undefined;
@@ -1581,6 +1589,13 @@ export class OrchestrationService {
         ),
       logger: options.logger,
     });
+    this.conversationActivity = options.eventStore
+      ? new ConversationTurnActivityProjection({
+          eventStore: options.eventStore,
+          readTurnProgress: (threadId) => this.turnProgress.read(threadId),
+          logger: options.logger,
+        })
+      : undefined;
     this.transcriptReads = new SessionTranscriptReads({
       transcriptOwnerConstraint: (authority) =>
         this.sessionAuthz.transcriptOwnerConstraint(authority),
@@ -1641,6 +1656,8 @@ export class OrchestrationService {
       canUserReadSession: (threadId, authority) =>
         this.canUserReadSession(threadId, authority),
       readTurnProgress: (threadId) => this.turnProgress.read(threadId),
+      readConversationActivity: (threadId) =>
+        this.conversationActivity?.readForThread(threadId),
       observeAnswerability: (threadId, provider, observedAt) =>
         this.observeAnswerability(threadId, provider, observedAt),
       readSession: (threadId, authority) =>
@@ -1931,6 +1948,8 @@ export class OrchestrationService {
           this.sessionReadModel.get(threadId),
         observeAnswerability: (threadId, provider, observedAt) =>
           this.observeAnswerability(threadId, provider, observedAt),
+        readConversationActivity: (conversationId) =>
+          this.conversationActivity?.readConversation(conversationId),
         ownerlessPersonalAccess:
           options.ownerlessSessionAccess === 'single-user-compat',
       });
@@ -2008,6 +2027,9 @@ export class OrchestrationService {
           continuationPending:
             detail.session.hasActiveTurn === true &&
             isConversationContinuationControlEligible(detail),
+          ...(detail.session.conversationActivity
+            ? { activity: detail.session.conversationActivity }
+            : {}),
         };
       },
       reportUnavailable: (error) =>
@@ -2927,6 +2949,7 @@ export class OrchestrationService {
     }
     // archive#2959: never leave a watchdog timer outliving this service.
     this.turnProgress.dispose();
+    this.conversationActivity?.dispose();
     await this.recoveryCoordinator?.dispose();
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
@@ -3272,6 +3295,24 @@ export class OrchestrationService {
       eventStore?.conversationRootFirstPromptedTurnForThreads(
         readableThreadIds,
       ) ?? new Map<string, PersistedRuntimeEvent>();
+    // #2309: seed unseen threads from the batched read above instead of a
+    // second per-thread read, and fold each conversation once per request.
+    this.conversationActivity?.primeThreads(eventsByThread);
+    const activityByConversation = new Map<
+      string,
+      ReturnType<ConversationTurnActivityProjection['readConversation']>
+    >();
+    const conversationActivityFor = (threadId: string) => {
+      const conversationId =
+        this.conversationActivity?.conversationIdForThread(threadId);
+      if (!conversationId || !this.conversationActivity) return undefined;
+      let activity = activityByConversation.get(conversationId);
+      if (!activity) {
+        activity = this.conversationActivity.readConversation(conversationId);
+        activityByConversation.set(conversationId, activity);
+      }
+      return activity;
+    };
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -3289,12 +3330,14 @@ export class OrchestrationService {
         const loaded = this.sessionReadModel.get(threadId);
         const conversationFirstPromptedTurn =
           conversationFirstPromptedTurnByThread.get(threadId)?.payload;
+        const conversationActivity = conversationActivityFor(threadId);
         return buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: events.map((event) => event.payload),
           eventCount,
           turnProgress: this.turnProgress.read(threadId),
+          ...(conversationActivity ? { conversationActivity } : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
             : {}),
@@ -3592,12 +3635,15 @@ export class OrchestrationService {
       this.options.eventStore?.conversationRootFirstPromptedTurn(
         threadId,
       )?.payload;
+    const conversationActivity =
+      this.conversationActivity?.readForThread(threadId);
     return {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
         events,
         turnProgress: this.turnProgress.read(threadId),
+        ...(conversationActivity ? { conversationActivity } : {}),
         ...(conversationFirstPromptedTurn
           ? { conversationFirstPromptedTurn }
           : {}),
@@ -3642,6 +3688,15 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * The conversation routing sibling of one SSE frame. A `session.started`/
+   * `session.configured` frame from the conversation's CURRENT child carries
+   * the rebinding the client acts on (unchanged). #2309: turn, tool and
+   * terminal frames — and at most one coalesced frame per second per
+   * execution child — carry the conversation's activity after that event
+   * committed. Runs per frame per subscriber; the activity path is map reads
+   * once a conversation's threads are seeded.
+   */
   conversationStreamBinding(event: {
     threadId: string;
     method?: string;
@@ -3652,7 +3707,7 @@ export class OrchestrationService {
       event.method !== 'session.started' &&
       event.method !== 'session.configured'
     )
-      return undefined;
+      return this.conversationActivity?.streamBinding(event);
     const lineage = this.options.eventStore?.conversationForSession(
       event.threadId,
     );
@@ -3660,9 +3715,12 @@ export class OrchestrationService {
     const { conversationId } = lineage;
     const currentSessionId = this.currentConversationSessionId(conversationId);
     if (currentSessionId !== event.threadId) return undefined;
+    const activity =
+      this.conversationActivity?.readConversation(conversationId);
     return {
       conversationId,
       currentSessionId,
+      ...(activity ? { activity } : {}),
     };
   }
 

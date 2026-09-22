@@ -8,6 +8,7 @@ import type {
   AgentRunFailureKind,
   AgentRunStatus,
   AgentRunSummary,
+  ConversationTurnActivity,
   OrchestrationDelegationContext,
   OrchestrationSessionSummary,
   TurnProgressObservation,
@@ -283,6 +284,8 @@ export function buildOrchestrationSessionSummary(options: {
   answerability: SessionAnswerabilityObservation;
   /** Process-local watchdog observation; never reconstructed from event time. */
   turnProgress?: TurnProgressObservation;
+  /** #2309: the conversation activity projection's read for this thread. */
+  conversationActivity?: ConversationTurnActivity;
   /**
    * The CONVERSATION's first prompted turn, supplied only when this thread is a
    * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
@@ -409,6 +412,9 @@ export function buildOrchestrationSessionSummary(options: {
         }
       : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
+    ...(options.conversationActivity
+      ? { conversationActivity: options.conversationActivity }
+      : {}),
     ...(delegation ? { delegation } : {}),
     ...(inputOrigin ? { inputOrigin } : {}),
     ...(displayTitle ? { displayTitle } : {}),

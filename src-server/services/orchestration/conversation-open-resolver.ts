@@ -11,6 +11,7 @@ import type {
   ConversationListItem,
   ConversationOpenExecution,
   ConversationOpenResolution,
+  ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
@@ -35,6 +36,8 @@ export function createConversationOpenResolver(deps: {
     answerability: ConversationListItem['answerability'];
     canContinue: boolean;
     continuationPending?: boolean;
+    /** #2309: the conversation's activity, read with the current child. */
+    activity?: ConversationTurnActivity;
   } | null>;
   reportUnavailable?(error: unknown): void;
 }): ConversationOpenResolver {
@@ -96,6 +99,7 @@ export function createConversationOpenResolver(deps: {
           ...(!current.canContinue && current.continuationPending
             ? { continuationPending: true }
             : {}),
+          ...(current.activity ? { activity: current.activity } : {}),
           answerability: current.answerability,
           recoveryActions: [],
         };

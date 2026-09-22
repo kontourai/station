@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConversationHistoryReadService } from '../conversation-history-read-service.js';
+import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventStore } from '../event-store.js';
 
 function readServiceOptions(eventStore: EventStore) {
@@ -495,6 +496,80 @@ describe('ConversationHistoryReadService', () => {
         messageCount: 3,
       }),
     ]);
+  });
+
+  test('#2309: a turn with more than 1,000 events since it started still reads running in the inbox', () => {
+    const threadId = 'long-turn';
+    const at = '2026-08-08T15:00:00.000Z';
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId,
+      status: 'running',
+      createdAt: at,
+      updatedAt: at,
+    });
+    eventStore.appendEvent({
+      eventId: `${threadId}-started`,
+      provider: 'claude',
+      threadId,
+      createdAt: at,
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+    });
+    eventStore.appendEvent({
+      eventId: `${threadId}-turn`,
+      provider: 'claude',
+      threadId,
+      createdAt: at,
+      method: 'turn.started',
+      turnId: 'long',
+      prompt: 'a long turn',
+    });
+    for (let index = 0; index < 1_001; index += 1)
+      eventStore.appendEvent({
+        eventId: `${threadId}-delta-${index}`,
+        provider: 'claude',
+        threadId,
+        createdAt: at,
+        turnId: 'long',
+        method: 'content.text-delta',
+        itemId: 'item',
+        delta: 'x',
+      });
+    const authority = sessionReadAuthorityFromRequest(
+      'owner-alpha',
+      undefined,
+      undefined,
+    );
+    // The tail fold this carrier used before: its 1,000-event window no
+    // longer holds the `turn.started`, so the turn reads not running.
+    expect(
+      new ConversationHistoryReadService(readServiceOptions(eventStore)).list({
+        authority,
+        limit: 10,
+      }).items[0]?.hasActiveTurn,
+    ).toBe(false);
+
+    const projection = new ConversationTurnActivityProjection({
+      eventStore,
+      readTurnProgress: () => undefined,
+      logger: { warn: vi.fn() },
+    });
+    try {
+      const [item] = new ConversationHistoryReadService({
+        ...readServiceOptions(eventStore),
+        readConversationActivity: (conversationId) =>
+          projection.readConversation(conversationId),
+      }).list({ authority, limit: 10 }).items;
+      expect(item?.hasActiveTurn).toBe(true);
+      expect(item?.activity?.openTurn).toMatchObject({
+        turnId: 'long',
+        threadId,
+      });
+    } finally {
+      projection.dispose();
+    }
   });
 
   test('includes a true NULL-owner record only when single-user compatibility is enabled and the authority check permits it', () => {
