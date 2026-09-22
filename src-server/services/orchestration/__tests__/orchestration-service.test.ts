@@ -55,7 +55,10 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
-import { ProviderTurnEndedError } from '../../../providers/adapter-shape.js';
+import {
+  ProviderTurnEndedError,
+  SendTurnRefusedError,
+} from '../../../providers/adapter-shape.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
@@ -12634,6 +12637,70 @@ describe('OrchestrationService', () => {
 
     expect(bedrock.sendTurn).not.toHaveBeenCalled();
     expect(chatAttachmentsDispatched.add).not.toHaveBeenCalled();
+  });
+
+  test('sendTurn surfaces an adapter pre-effect refusal honestly instead of indeterminate', async () => {
+    // A live ACP engine (e.g. grok) whose handshake reports
+    // `promptCapabilities.image: false` passes the static declared
+    // capability gate and then refuses the turn inside `adapter.sendTurn`
+    // — before any provider effect. That refusal must reach the caller
+    // with its message and a `rejected` receipt, never as
+    // `foreground_message_indeterminate`.
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-refused-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new SendTurnRefusedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-refused-turn',
+          input: 'inspect this',
+          attachments: [
+            {
+              kind: 'image',
+              name: 'screen.png',
+              mimeType: 'image/png',
+              size: 5,
+              dataUrl: 'data:image/png;base64,aGVsbG8=',
+            },
+          ],
+        },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    expect(dispatchError.message).toContain(
+      'did not advertise image attachment support',
+    );
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.code).toBeUndefined();
+    expect(dispatchError.outcome).toBeUndefined();
+
+    // The refusal retired its turn boundary instead of leaving an
+    // indeterminate row behind, so the thread stays usable: a follow-up
+    // text turn dispatches normally.
+    const followUp = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-refused-turn', input: 'plain follow-up' },
+    });
+    expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
   });
 
   describe('station#1885 — station-agent image attachments', () => {
