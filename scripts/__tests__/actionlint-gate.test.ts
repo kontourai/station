@@ -2770,3 +2770,63 @@ describe('the real workflow corpus', () => {
     expect(reusableCapacityJobs).toBe(0);
   });
 });
+
+describe('trusted Rust caches stay out of pull-request workflows', () => {
+  const RUST_CACHE_PREFIX = 'Swatinem/rust-cache@';
+  type WorkflowDocument = {
+    on: Record<string, unknown>;
+    jobs: Record<string, { steps: Array<Record<string, unknown>> }>;
+  };
+  function workflowDocument(file: string) {
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    expect(workflow, file).toBeTruthy();
+    return structuredClone(workflow?.document) as WorkflowDocument;
+  }
+
+  test('the push-only Android build caches Rust dependencies from main only', () => {
+    const file = '.github/workflows/build-android.yml';
+    const android = workflowDocument(file);
+    expect(Object.keys(android.on).sort()).toEqual([
+      'push',
+      'workflow_dispatch',
+    ]);
+    const cache = android.jobs['build-android-verification'].steps.find(
+      (step) => String(step.uses).startsWith(RUST_CACHE_PREFIX),
+    );
+    expect(cache?.uses).toMatch(/^Swatinem\/rust-cache@[0-9a-f]{40}$/);
+    expect((cache?.with as Record<string, unknown>)['save-if']).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ github.ref == 'refs/heads/main' }}",
+    );
+    expect(
+      persistentRunnerPolicyFindings([{ file, document: android }]),
+    ).toEqual([]);
+  });
+
+  test.each([
+    '.github/workflows/desktop-rust.yml',
+    '.github/workflows/windows-pr-verification.yml',
+    '.github/workflows/build-ios.yml',
+  ])('rejects the same Rust cache in the pull-request workflow %s', (file) => {
+    const document = workflowDocument(file);
+    const android = workflowDocument('.github/workflows/build-android.yml');
+    const cache = android.jobs['build-android-verification'].steps.find(
+      (step) => String(step.uses).startsWith(RUST_CACHE_PREFIX),
+    );
+    const [jobId, job] = Object.entries(document.jobs).find(([, candidate]) =>
+      JSON.stringify(candidate).includes('actions/checkout@'),
+    ) as [string, { steps: Array<Record<string, unknown>> }];
+    const before = persistentRunnerPolicyFindings([{ file, document }]);
+    job.steps.push(structuredClone(cache) as Record<string, unknown>);
+    const after = persistentRunnerPolicyFindings([{ file, document }]);
+    expect(before.filter((finding) => finding.jobId === jobId)).toEqual([]);
+    expect(after).toContainEqual({
+      file,
+      jobId,
+      message:
+        'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+    });
+  });
+});
