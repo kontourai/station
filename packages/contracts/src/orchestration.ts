@@ -576,12 +576,16 @@ export interface TerminalAttribution {
     | 'no_output'
     | 'exit'
     /**
-     * #2310 review M1: the session's only send was refused before anything
-     * started (a rejected or failed `sendTurn` receipt, no turn or output
-     * anywhere in the conversation). Derived from command receipts, since a
-     * pre-send refusal publishes no runtime event.
+     * #2310 review M1/F2: the conversation's only sends did not take and no
+     * activity has been recorded since. Derived from `sendTurn` command
+     * receipts, since a send that does not take publishes no runtime event.
+     * `send_refused`: Station refused a send before it started (an
+     * execution-phase refusal; authorization refusals never count).
+     * `send_failed`: a send failed without that certainty — it may have
+     * reached the provider — and nothing has been recorded since.
      */
-    | 'send_refused';
+    | 'send_refused'
+    | 'send_failed';
   detail?: string;
 }
 
@@ -724,9 +728,12 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * adopted continuation, a Station-dispatched delegation (its prompt exists
    * by construction), or a fork target (it carries copied messages).
    *
-   * A send that was attempted and refused before anything started is not a
-   * Draft either: that session reads `lifecycleState: 'failed'` with
-   * `terminalAttribution.kind: 'send_refused'`.
+   * A send that was attempted and did not take is not a Draft either: with
+   * no activity recorded since, that session reads `lifecycleState:
+   * 'failed'` with `terminalAttribution.kind` `send_refused` or
+   * `send_failed` and the same reason in `blockedReason`. A send refused for
+   * authorization or ownership (a caller who cannot act on the session)
+   * changes nothing.
    *
    * Lineage-aware on purpose: a continuation child minted for the NEXT turn,
    * or a root whose turns all ran in children, has no activity of its own and

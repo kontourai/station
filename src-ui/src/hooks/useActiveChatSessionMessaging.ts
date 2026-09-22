@@ -2,6 +2,7 @@ import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   type ChatHttpError,
@@ -134,10 +135,13 @@ function rejectedSendRollback(
 }
 
 /**
- * #2310 review H1: whether the cached session list still describes one of
- * these identities as a Draft. Read-only; `undefined` ids are skipped.
+ * #2310 review H1/F4: whether the cached session list still describes one of
+ * these identities as having never taken a send — a Draft, or a Failed row
+ * whose only failure is that its sends did not take (`send_refused` /
+ * `send_failed`). Either answer is stale the moment a send is accepted, so
+ * the send path must re-read the list. Read-only; `undefined` ids skipped.
  */
-function cachedSummaryIsDraft(
+function cachedSummaryAwaitsFirstTurn(
   queryClient: ReturnType<typeof useQueryClient>,
   ids: ReadonlyArray<string | undefined>,
 ): boolean {
@@ -148,10 +152,10 @@ function cachedSummaryIsDraft(
     ]) ?? [];
   return cached.some(
     (session) =>
-      session.draft === true &&
       (wanted.has(session.threadId) ||
         (session.conversationId !== undefined &&
-          wanted.has(session.conversationId))),
+          wanted.has(session.conversationId))) &&
+      (session.draft === true || isFirstSendFailure(session)),
   );
 }
 
@@ -436,14 +440,15 @@ export function useSendMessage(
         // the new child in a pre-child cache and falsely reports "Session
         // record missing" even though that record is durable on the server.
         //
-        // #2310 review H1: also when the cached list still calls this
-        // conversation a Draft. Opening a Draft marks the chat started, so
-        // neither condition above fires on its first send, and every surface
-        // would keep reading "nothing was ever sent" from the pre-send cache.
+        // #2310 review H1/F4: also when the cached list still calls this
+        // conversation a Draft, or Failed only because its earlier sends did
+        // not take. Opening either marks the chat started, so neither
+        // condition above fires on this send, and every surface would keep
+        // the pre-send answer.
         if (
           !currentState?.orchestrationSessionStarted ||
           currentState.currentSessionId !== receipt.sessionId ||
-          cachedSummaryIsDraft(queryClient, [
+          cachedSummaryAwaitsFirstTurn(queryClient, [
             receipt.sessionId,
             receipt.conversationId,
             currentState?.conversationId,

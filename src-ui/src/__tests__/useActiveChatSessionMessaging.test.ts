@@ -1549,6 +1549,36 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
   });
 
+  // #2310 review F4: a Failed row whose only failure is that its sends did
+  // not take is stale the moment a retry is accepted.
+  it('invalidates the session list when the cached summary is a first-send failure', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      orchestrationSessionStarted: true,
+      currentSessionId: sessionId,
+    });
+    cachedSessionList = [
+      {
+        threadId: sessionId,
+        draft: false,
+        lifecycleState: 'queued',
+        terminalAttribution: {
+          kind: 'send_refused',
+          detail: 'Station refused the send before it started.',
+        },
+      },
+    ];
+    try {
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(sessionId, 'codex', sessionId, 'retry');
+      });
+    } finally {
+      cachedSessionList = [];
+    }
+
+    expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
+  });
+
   it('does not invalidate for a cached summary that is not a Draft', async () => {
     activeChatsStore.updateChat(sessionId, {
       orchestrationSessionStarted: true,

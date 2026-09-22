@@ -10,6 +10,7 @@ import type {
   AgentRunSummary,
   OrchestrationDelegationContext,
   OrchestrationSessionSummary,
+  TerminalAttribution,
   TurnProgressObservation,
 } from '@kontourai/station-contracts/orchestration';
 import type {
@@ -141,13 +142,31 @@ export interface ConversationDraftFacts {
   /** Any `sendTurn` receipt in the lineage was accepted. */
   sendAccepted: boolean;
   /**
-   * Any `sendTurn` receipt in the lineage was `rejected` (a pre-send refusal,
-   * #2302) or `failed` (how the same refusal was recorded before #2302).
+   * Any `sendTurn` receipt in the lineage was `rejected` by an EXECUTION-
+   * phase refusal — the session's authorized caller was refused after the
+   * authorization gate (e.g. an adapter pre-send refusal, #2302). A receipt
+   * written for an authorization or ownership refusal (tenant mismatch, a
+   * caller who cannot read the session, quarantine, a peer-delegation
+   * record, a read-only attached session) never counts: a caller who cannot
+   * act on the session must not be able to change its owner's view of it
+   * (#2310 review F3). Receipts written before that phase was recorded are
+   * not counted either, because they cannot be told apart.
    */
-  sendRefused: boolean;
+  sendRejected: boolean;
+  /**
+   * Any `sendTurn` receipt in the lineage `failed`. Only the post-
+   * authorization dispatch path writes that status. It covers a genuinely
+   * indeterminate send (the provider may have accepted it —
+   * `SessionTurnStartIndeterminateError`) as well as a pre-#2302 refusal, so
+   * it is worded as "no activity recorded since", never "nothing ran".
+   */
+  sendFailed: boolean;
   /** The conversation is a fork target: it carries copied messages. */
   hasCopiedHistory: boolean;
 }
+
+/** How the only sends in a conversation ended, when none took (review F2). */
+export type FirstSendOutcome = 'refused' | 'failed';
 
 export interface SessionDraftVerdict {
   /**
@@ -156,10 +175,12 @@ export interface SessionDraftVerdict {
    */
   draft: boolean | undefined;
   /**
-   * Review M1 (owner decision): a send was attempted, refused, and nothing
-   * ever started. That is not a Draft — it is a failure the user must see.
+   * Review M1 (owner decision): a send was attempted, did not take, and no
+   * activity has been recorded since. That is not a Draft — it is a failure
+   * the user must see. `refused` when Station refused a send before it
+   * started; `failed` when a send failed without that certainty.
    */
-  firstSendRefused: boolean;
+  firstSendOutcome?: FirstSendOutcome;
 }
 
 /**
@@ -180,7 +201,7 @@ export function deriveSessionDraft(input: {
   delegated: boolean;
   facts?: ConversationDraftFacts;
 }): SessionDraftVerdict {
-  const notDraft = { draft: false, firstSendRefused: false } as const;
+  const notDraft = { draft: false } as const;
   // History that did not arrive through a local turn: followed from another
   // app, adopted from one, or dispatched by Station with its prompt in hand.
   if (
@@ -195,16 +216,77 @@ export function deriveSessionDraft(input: {
     return notDraft;
   }
   const facts = input.facts;
-  if (!facts) return { draft: undefined, firstSendRefused: false };
+  if (!facts) return { draft: undefined };
   if (facts.activityObserved || facts.hasCopiedHistory) return notDraft;
   if (facts.sendAccepted) return notDraft;
-  if (facts.sendRefused) return { draft: false, firstSendRefused: true };
-  return { draft: true, firstSendRefused: false };
+  // A certain refusal outranks an uncertain failure for the wording.
+  if (facts.sendRejected) return { draft: false, firstSendOutcome: 'refused' };
+  if (facts.sendFailed) return { draft: false, firstSendOutcome: 'failed' };
+  return { draft: true };
 }
 
-/** The reason a refused first send carries into its Failed row (review M1). */
-export const FIRST_SEND_REFUSED_DETAIL =
-  'Sending the first message failed before anything started. Nothing ran in this session.';
+/**
+ * The attribution each first-send outcome carries into its Failed row
+ * (review F2). Two kinds rather than one kind with two details, so a reader
+ * can tell a certain refusal from an uncertain failure without parsing prose.
+ * Neither detail says "nothing ran": a `failed` send may have reached the
+ * provider.
+ */
+export const FIRST_SEND_ATTRIBUTION = {
+  refused: {
+    kind: 'send_refused',
+    detail: 'Station refused the send before it started.',
+  },
+  failed: {
+    kind: 'send_failed',
+    detail: 'The send failed and no activity has been recorded since.',
+  },
+} as const satisfies Record<FirstSendOutcome, TerminalAttribution>;
+
+/**
+ * Review M1/F1: a conversation whose only sends did not take reads Failed,
+ * with the reason on every surface that reads one — `terminalAttribution` for
+ * the row notice, and `blockedReason` for the dock banner, the session detail
+ * pane (`sessionFailureText`) and the bell item (`buildSessionFailedItem`).
+ * The event fold cannot see it: a send that does not take publishes no event,
+ * only a command receipt.
+ *
+ * `lifecycleState` is deliberately NOT rewritten. It is the event fold, and
+ * control paths read it as runtime truth: conversation continuation reserves
+ * a NEW child session for a stopped (failed) current session, and manual
+ * lifecycle transitions validate from it. Rewriting it made a display fact
+ * re-route the user's retry. Instead the shared attention fold
+ * (`sessionAttentionDisposition`, `isFirstSendFailure` in
+ * `@kontourai/station-contracts/session-attention`) reads the `send_refused`
+ * / `send_failed` attribution as Failed, so the row label, the bell and the
+ * failure surfaces agree while `lifecycleState`, `previousLifecycleState` and
+ * the transition fields keep describing the last event, consistently.
+ *
+ * An outcome the fold already recorded — failed, completed, canceled — is
+ * left exactly as it is.
+ */
+export function foldFirstSendOutcome<
+  L extends {
+    lifecycleState: SessionLifecycleState;
+    blockedReason?: string;
+    terminalAttribution?: TerminalAttribution;
+  },
+>(folded: L, outcome: FirstSendOutcome | undefined): L {
+  if (
+    !outcome ||
+    folded.lifecycleState === 'failed' ||
+    folded.lifecycleState === 'completed' ||
+    folded.lifecycleState === 'canceled'
+  ) {
+    return folded;
+  }
+  const attribution = FIRST_SEND_ATTRIBUTION[outcome];
+  return {
+    ...folded,
+    blockedReason: attribution.detail,
+    terminalAttribution: { kind: attribution.kind, detail: attribution.detail },
+  };
+}
 
 export function trackOrchestrationSession(options: {
   threadProviders: Map<string, EngineId>;
@@ -429,7 +511,7 @@ export function buildOrchestrationSessionSummary(options: {
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const controlMode = base.controlMode ?? 'station-owned';
-  const { draft, firstSendRefused } = deriveSessionDraft({
+  const { draft, firstSendOutcome } = deriveSessionDraft({
     events,
     session: { ...base, controlMode },
     delegated: delegation !== undefined,
@@ -437,25 +519,7 @@ export function buildOrchestrationSessionSummary(options: {
       ? { facts: options.conversationDraftFacts }
       : {}),
   });
-  // Review M1 (owner decision): a session whose only send was refused before
-  // anything started is Failed, with the reason on the row — not an idle
-  // session and not a Draft. The event fold cannot see it: a pre-send refusal
-  // publishes no event, only a rejected command receipt. An outcome the fold
-  // already recorded (failed, completed, canceled) is left as it is.
-  const lifecycle =
-    firstSendRefused &&
-    foldedLifecycle.lifecycleState !== 'failed' &&
-    foldedLifecycle.lifecycleState !== 'completed' &&
-    foldedLifecycle.lifecycleState !== 'canceled'
-      ? {
-          ...foldedLifecycle,
-          lifecycleState: 'failed' as const,
-          terminalAttribution: {
-            kind: 'send_refused' as const,
-            detail: FIRST_SEND_REFUSED_DETAIL,
-          },
-        }
-      : foldedLifecycle;
+  const lifecycle = foldFirstSendOutcome(foldedLifecycle, firstSendOutcome);
   const {
     projectSlug: lifecycleProjectSlug,
     assignedAgentSlug,

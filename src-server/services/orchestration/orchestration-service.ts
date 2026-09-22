@@ -233,6 +233,7 @@ import {
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
 import type { EventBus } from './event-bus.js';
 import type {
+  CommandRefusalPhase,
   ConversationForkProvenance,
   EventStore,
   PersistedRuntimeEvent,
@@ -5102,7 +5103,7 @@ export class OrchestrationService {
         }),
       );
       const rejectedReceipt = { ...receipt, status: 'rejected' as const };
-      this.persistReceipt(rejectedReceipt);
+      this.persistReceipt(rejectedReceipt, 'authorization');
       throw new OrchestrationCommandDispatchError(
         `Tenant execution context does not match session: ${commandThreadId}`,
         rejectedReceipt,
@@ -5128,7 +5129,7 @@ export class OrchestrationService {
       )
     ) {
       const rejectedReceipt = { ...receipt, status: 'rejected' as const };
-      this.persistReceipt(rejectedReceipt);
+      this.persistReceipt(rejectedReceipt, 'authorization');
       throw new OrchestrationCommandDispatchError(
         `Session not found: ${commandThreadId}`,
         rejectedReceipt,
@@ -5137,7 +5138,7 @@ export class OrchestrationService {
 
     if (this.quarantinedThreads.has(commandThreadId)) {
       const rejectedReceipt = { ...receipt, status: 'rejected' as const };
-      this.persistReceipt(rejectedReceipt);
+      this.persistReceipt(rejectedReceipt, 'authorization');
       throw new OrchestrationCommandDispatchError(
         `Session is unavailable: ${commandThreadId}`,
         rejectedReceipt,
@@ -5146,7 +5147,7 @@ export class OrchestrationService {
 
     if (this.isPeerDelegationActivityRecord(commandThreadId)) {
       const rejectedReceipt = { ...receipt, status: 'rejected' as const };
-      this.persistReceipt(rejectedReceipt);
+      this.persistReceipt(rejectedReceipt, 'authorization');
       throw new OrchestrationCommandDispatchError(
         PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR,
         rejectedReceipt,
@@ -5162,7 +5163,7 @@ export class OrchestrationService {
         source: 'attached',
       });
       const rejectedReceipt = { ...receipt, status: 'rejected' as const };
-      this.persistReceipt(rejectedReceipt);
+      this.persistReceipt(rejectedReceipt, 'authorization');
       throw new OrchestrationCommandDispatchError(
         ATTACHED_SESSION_READ_ONLY_ERROR,
         rejectedReceipt,
@@ -6530,7 +6531,10 @@ export class OrchestrationService {
             ? ('rejected' as const)
             : ('failed' as const),
       };
-      this.persistReceipt(failedReceipt);
+      // Every refusal that reaches this catch passed the authorization gate
+      // above: it is evidence about the session, not about the caller
+      // (#2310 review F3).
+      this.persistReceipt(failedReceipt, 'execution');
       throw new OrchestrationCommandDispatchError(
         errorMessage(error),
         failedReceipt,
@@ -7298,8 +7302,21 @@ export class OrchestrationService {
     });
   }
 
-  private persistReceipt(receipt: OrchestrationCommandReceipt): void {
-    this.options.eventStore?.appendCommandReceipt(receipt);
+  /**
+   * `refusalPhase` is recorded only for a `rejected` receipt: 'authorization'
+   * when the caller may not act on the session at all, 'execution' when an
+   * authorized command was refused after that gate. Only the latter is
+   * evidence about the session (#2310 review F3 — a caller who cannot read a
+   * session must not be able to flip its owner's Draft to Failed).
+   */
+  private persistReceipt(
+    receipt: OrchestrationCommandReceipt,
+    refusalPhase?: CommandRefusalPhase,
+  ): void {
+    this.options.eventStore?.appendCommandReceipt(
+      receipt,
+      refusalPhase ? { refusalPhase } : {},
+    );
   }
 
   private trackSession(

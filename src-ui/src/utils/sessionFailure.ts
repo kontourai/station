@@ -1,3 +1,4 @@
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
 
@@ -25,18 +26,29 @@ export const NO_FAILURE_DETAIL_RECORDED =
 /** What the session record itself carries about this session's identity. */
 type SessionFailureFacts = Pick<
   OrchestrationSessionSummary,
-  'lifecycleState' | 'status' | 'blockedReason'
+  'lifecycleState' | 'status' | 'blockedReason' | 'terminalAttribution'
 >;
 
 /**
  * A session the serving Station folded to `failed`. `lifecycleState` is the
  * lifecycle fold; `status` is the coarse provider process state, read only
  * when no lifecycle fold is present.
+ *
+ * #2310: or one whose only sends did not take (`isFirstSendFailure`). The
+ * server leaves `lifecycleState` as the event fold for that case — control
+ * paths read it as runtime truth — and says so through the attribution, which
+ * the shared attention fold also reads, so the banner agrees with the label.
  */
 export function isFailedSession(
-  session: Pick<SessionFailureFacts, 'lifecycleState' | 'status'>,
+  session: Pick<
+    SessionFailureFacts,
+    'lifecycleState' | 'status' | 'terminalAttribution'
+  >,
 ): boolean {
-  return (session.lifecycleState ?? session.status) === 'failed';
+  return (
+    (session.lifecycleState ?? session.status) === 'failed' ||
+    isFirstSendFailure(session)
+  );
 }
 
 /** The most recent runtime.error's own message, from the live feed — the

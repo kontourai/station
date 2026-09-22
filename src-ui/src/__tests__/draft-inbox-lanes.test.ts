@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { sessionStatusWord } from '../utils/session-state';
+import { sessionFailureText } from '../utils/sessionFailure';
 import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
 import { partitionSessionLanes } from '../views/sessions/sessions-lane-model';
@@ -240,28 +241,41 @@ describe('Draft sessions are not "Active now" (#2310)', () => {
     expect(after.label).not.toBe('Draft');
   });
 
-  // Review M1: the recorded grok thread's sends were refused and nothing
-  // started. The server folds that to Failed with a send_refused reason; the
-  // row leaves Active now through the terminal lane and says why.
-  test('a refused first send is Failed with its reason, not a Draft and not active', () => {
-    const refused: OrchestrationSessionSummary = {
+  // Review M1/F1/F2: the recorded grok thread's sends did not take and no
+  // activity followed. The server keeps the event fold (`queued`) and says so
+  // through the attribution and `blockedReason`; every client surface reads
+  // that as Failed, with the reason, out of Active now.
+  describe.each([
+    {
+      kind: 'send_refused' as const,
+      detail: 'Station refused the send before it started.',
+    },
+    {
+      kind: 'send_failed' as const,
+      detail: 'The send failed and no activity has been recorded since.',
+    },
+  ])('a first send that did not take ($kind)', ({ kind, detail }) => {
+    const sendFailure: OrchestrationSessionSummary = {
       ...SERVER_DRAFT,
-      lifecycleState: 'failed',
       draft: false,
-      terminalAttribution: {
-        kind: 'send_refused',
-        detail:
-          'Sending the first message failed before anything started. Nothing ran in this session.',
-      },
+      blockedReason: detail,
+      terminalAttribution: { kind, detail },
     };
-    const { items, idsIn } = inboxGroups([refused]);
-    expect(items[0]?.lifecycleLabel).toBe('Failed');
-    expect(items[0]?.failureNotice).toContain('first message failed');
-    expect(idsIn('active')).toEqual([]);
-    expect(idsIn('drafts')).toEqual([]);
-    // A terminal lane: "Just finished" while it lingers, "Earlier" after
-    // (this fixture is two hours old, so Earlier).
-    expect([...idsIn('settled'), ...idsIn('earlier')]).toEqual([THREAD]);
+
+    test('is Failed with its reason, not a Draft and not active', () => {
+      const { items, idsIn } = inboxGroups([sendFailure]);
+      expect(items[0]?.lifecycleLabel).toBe('Failed');
+      expect(items[0]?.failureNotice).toBe(detail);
+      expect(idsIn('active')).toEqual([]);
+      expect(idsIn('drafts')).toEqual([]);
+      // A terminal lane: "Just finished" while it lingers, "Earlier" after
+      // (this fixture is two hours old, so Earlier).
+      expect([...idsIn('settled'), ...idsIn('earlier')]).toEqual([THREAD]);
+    });
+
+    test('the dock banner and session detail say why (sessionFailureText)', () => {
+      expect(sessionFailureText(sendFailure)).toBe(detail);
+    });
   });
 
   test('Home and the Sessions list file the Draft the same way', () => {

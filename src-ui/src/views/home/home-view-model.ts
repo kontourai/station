@@ -1,6 +1,7 @@
 import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
@@ -885,7 +886,8 @@ export function buildActiveChatTaskItems({
   for (const session of sessions) {
     const entry: ChatSessionCorrelation = {
       hasActiveTurn: session.hasActiveTurn === true,
-      failed: session.lifecycleState === 'failed',
+      failed:
+        session.lifecycleState === 'failed' || isFirstSendFailure(session),
       draft: session.draft === true,
       updatedAt: session.updatedAt,
     };

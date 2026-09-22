@@ -2,14 +2,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionAttentionDisposition } from '@kontourai/station-contracts/session-attention';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import type { ProviderSession } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { receiptBus } from '../../infra/receipt-bus.js';
+import { buildSessionFailedItem } from '../../projects/attention-projection.js';
 import { EventBus } from '../event-bus.js';
-import { EventStore } from '../event-store.js';
+import { type CommandRefusalPhase, EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
@@ -346,7 +348,8 @@ describe('Draft lifecycle derivation (#2310)', () => {
     const none = {
       activityObserved: false,
       sendAccepted: false,
-      sendRefused: false,
+      sendRejected: false,
+      sendFailed: false,
       hasCopiedHistory: false,
     };
     expect(Object.fromEntries(batched)).toEqual({
@@ -360,21 +363,30 @@ describe('Draft lifecycle derivation (#2310)', () => {
     threadId: string,
     status: 'accepted' | 'rejected' | 'failed',
     n: number,
+    refusalPhase?: CommandRefusalPhase,
   ): void {
-    store.appendCommandReceipt({
-      commandId: `cmd-${threadId}-${n}`,
-      threadId,
-      commandType: 'sendTurn',
-      status,
-      createdAt: at(2_000 + n),
-    });
+    store.appendCommandReceipt(
+      {
+        commandId: `cmd-${threadId}-${n}`,
+        threadId,
+        commandType: 'sendTurn',
+        status,
+        createdAt: at(2_000 + n),
+      },
+      refusalPhase ? { refusalPhase } : {},
+    );
   }
 
-  describe('a send was attempted (review M1)', () => {
+  const REFUSED = 'Station refused the send before it started.';
+  const FAILED = 'The send failed and no activity has been recorded since.';
+
+  describe('a send was attempted (review M1, F1, F2, F3, F5)', () => {
     // The nightly home recorded exactly this for grok-build:1790099828990:
-    // one accepted startSession, then three FAILED sendTurn receipts (the
-    // pre-#2302 spelling of a pre-send refusal) and no turn, ever.
-    test('refused sends with nothing started read Failed, with the reason', () => {
+    // one accepted startSession, then three FAILED sendTurn receipts and no
+    // activity, ever. `failed` is written for a genuinely indeterminate send
+    // too (the provider may have accepted it), so the wording never says
+    // "nothing ran".
+    test('failed sends with no activity since read Failed, with the reason on every surface', () => {
       const session = upsert(ROOT);
       seedNeverPrompted(ROOT);
       receipt(ROOT, 'failed', 1);
@@ -383,40 +395,145 @@ describe('Draft lifecycle derivation (#2310)', () => {
 
       const summary = summaryFor(ROOT, session);
       expect(summary.draft).toBe(false);
-      expect(summary.lifecycleState).toBe('failed');
+      // The event fold is left alone: control paths read it as runtime truth.
+      expect(summary.lifecycleState).toBe('queued');
       expect(summary.terminalAttribution).toEqual({
-        kind: 'send_refused',
-        detail: expect.stringContaining('first message failed'),
+        kind: 'send_failed',
+        detail: FAILED,
       });
+      // F1: the dock banner / session detail read `blockedReason`...
+      expect(summary.blockedReason).toBe(FAILED);
+      // ...and the shared fold every label and the bell use reads Failed.
+      expect(sessionAttentionDisposition(summary)).toEqual({ state: 'failed' });
+      // F1: the bell item carries the reason as its body.
+      expect(buildSessionFailedItem(summary).body).toBe(FAILED);
     });
 
-    test('a #2302 rejected receipt reads the same way', () => {
+    test('an execution-phase rejection reads "refused", and outranks a failure for the wording', () => {
       const session = upsert(ROOT);
       seedNeverPrompted(ROOT);
-      receipt(ROOT, 'rejected', 1);
-      expect(summaryFor(ROOT, session).lifecycleState).toBe('failed');
+      receipt(ROOT, 'failed', 1);
+      receipt(ROOT, 'rejected', 2, 'execution');
+      const summary = summaryFor(ROOT, session);
+      expect(summary.terminalAttribution).toEqual({
+        kind: 'send_refused',
+        detail: REFUSED,
+      });
+      expect(summary.blockedReason).toBe(REFUSED);
     });
 
-    test('an accepted send whose turn has not started yet is not a Draft, and not Failed', () => {
+    test('an authorization refusal, or a rejection with no recorded phase, changes nothing (F3)', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      receipt(ROOT, 'rejected', 1, 'authorization');
+      receipt(ROOT, 'rejected', 2);
+      const summary = summaryFor(ROOT, session);
+      expect(summary.draft).toBe(true);
+      expect(summary.terminalAttribution).toBeUndefined();
+      expect(summary.blockedReason).toBeUndefined();
+    });
+
+    test('a caller who cannot read the session cannot flip its Draft to Failed (F3, real dispatch)', async () => {
+      upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      const instance = await service();
+
+      await expect(
+        instance.dispatch(
+          { type: 'sendTurn', input: { threadId: ROOT, input: 'hello' } },
+          { userId: 'human:local:someone-else' },
+        ),
+      ).rejects.toThrow(`Session not found: ${ROOT}`);
+      // The refusal WAS recorded — the guard is in what counts, not in
+      // whether the receipt exists.
+      expect(
+        store
+          .listCommandReceipts(ROOT)
+          .filter((entry) => entry.commandType === 'sendTurn')
+          .map((entry) => entry.status),
+      ).toEqual(['rejected']);
+
+      const sessions = await instance.listSessionReadModel(
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      const owner = sessions.find((entry) => entry.threadId === ROOT);
+      expect(owner?.draft).toBe(true);
+      expect(owner?.terminalAttribution).toBeUndefined();
+    });
+
+    test('an accepted send ends the Draft without claiming a failure', () => {
       const session = upsert(ROOT);
       seedNeverPrompted(ROOT);
       receipt(ROOT, 'failed', 1);
       receipt(ROOT, 'accepted', 2);
       const summary = summaryFor(ROOT, session);
       expect(summary.draft).toBe(false);
-      expect(summary.lifecycleState).toBe('queued');
       expect(summary.terminalAttribution).toBeUndefined();
+      expect(summary.blockedReason).toBeUndefined();
+    });
+
+    test('activity landing after a failed send clears the failure (F2)', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      receipt(ROOT, 'failed', 1);
+      expect(summaryFor(ROOT, session).terminalAttribution?.kind).toBe(
+        'send_failed',
+      );
+      // The indeterminate send had in fact reached the provider.
+      append({
+        threadId: ROOT,
+        method: 'turn.started',
+        turnId: 'late-turn',
+        prompt: 'the send that looked failed',
+      });
+      const summary = summaryFor(ROOT, session);
+      expect(summary.draft).toBe(false);
+      expect(summary.terminalAttribution).toBeUndefined();
+      expect(summary.blockedReason).toBeUndefined();
+      expect(sessionAttentionDisposition(summary).state).toBe('active');
     });
 
     test('a refused send in a conversation that already ran turns changes nothing', () => {
       const session = upsert(ROOT);
       seedNeverPrompted(ROOT);
       turn(ROOT, 'turn-1');
-      receipt(ROOT, 'rejected', 1);
+      receipt(ROOT, 'rejected', 1, 'execution');
       const summary = summaryFor(ROOT, session);
       expect(summary.draft).toBe(false);
       expect(summary.lifecycleState).toBe('completed');
       expect(summary.terminalAttribution?.kind).not.toBe('send_refused');
+    });
+
+    // F5: the fold's own outcome is never overwritten.
+    test('a session the event fold already failed keeps its own cause', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      append({
+        threadId: ROOT,
+        method: 'runtime.error',
+        message: 'engine boom',
+      });
+      receipt(ROOT, 'rejected', 1, 'execution');
+      const summary = summaryFor(ROOT, session);
+      expect(summary.lifecycleState).toBe('failed');
+      expect(summary.terminalAttribution?.kind).not.toBe('send_refused');
+      expect(summary.blockedReason).not.toBe(REFUSED);
+    });
+
+    test('a session the event fold already stopped stays finished, not Failed', () => {
+      const session = upsert(ROOT);
+      seedNeverPrompted(ROOT);
+      append({
+        threadId: ROOT,
+        method: 'session.exited',
+        exitKind: 'graceful',
+        reason: 'user stop',
+      });
+      receipt(ROOT, 'failed', 1);
+      const summary = summaryFor(ROOT, session);
+      expect(summary.lifecycleState).toBe('canceled');
+      expect(summary.terminalAttribution?.kind).not.toBe('send_failed');
+      expect(sessionAttentionDisposition(summary).state).toBe('finished');
     });
   });
 

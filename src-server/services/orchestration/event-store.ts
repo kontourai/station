@@ -1543,6 +1543,12 @@ export class VoiceTurnStartupUnavailableError extends Error {
  * constructor whose migration dies on a corrupt store translates that verdict
  * into this error, with the raw SQLite failure as `cause`.
  */
+/**
+ * #2310 review F3: the phase that refused a `rejected` command. Server-
+ * internal (persisted, never returned on a receipt).
+ */
+export type CommandRefusalPhase = 'authorization' | 'execution';
+
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
 
@@ -7335,9 +7341,11 @@ export class EventStore {
    * (the root and every continuation/handoff child):
    *
    * - `activityObserved`: any turn fact, or any `content.*`/`tool.*` event;
-   * - `sendAccepted` / `sendRefused`: the `sendTurn` command receipts, which
-   *   are the only record of a send refused before anything started (#2302 —
-   *   a pre-send refusal publishes no event);
+   * - `sendAccepted` / `sendRejected` / `sendFailed`: the `sendTurn` command
+   *   receipts, which are the only record of a send that did not take (a
+   *   refused send publishes no event). Only EXECUTION-phase rejections
+   *   count (`refusal_phase = 'execution'`); an authorization or ownership
+   *   refusal says nothing about the session (#2310 review F3);
    * - `hasCopiedHistory`: the conversation is the target of a
    *   `conversation.forked` fact, so it carries copied messages.
    *
@@ -7348,11 +7356,22 @@ export class EventStore {
    * its own conversation (the store registers every persisted Session as the
    * root of one — `upsertSession`/`markSessionClosed`). Chunked like
    * {@link conversationRootFirstPromptedTurnForThreads}, and for the same
-   * reason: the caller is the batched session-list read. Cost per chunk: the
-   * activity probes are range seeks on `(thread_id, method, sequence)`, the
-   * fork probe uses `idx_events_method`, and the receipt probe scans
-   * `orchestration_command_receipts`, which has no thread index — one scan per
-   * chunk, of a table that grows by one row per command.
+   * reason: the caller is the batched session-list read.
+   *
+   * Cost, per `EXPLAIN QUERY PLAN` on a copy of a real home (#2310 review
+   * F6), per chunk:
+   * - activity: one SEEK on `thread_id` per lineage member through the
+   *   covering index `idx_events_history_projection`; the method predicate
+   *   (turn facts plus the `content.`/`tool.` ranges) is FILTERED over that
+   *   member's index entries, not sought. `EXISTS` stops at the first hit, so
+   *   a member with activity costs little; a quiet member costs its (small)
+   *   event count.
+   * - receipts: `orchestration_command_receipts` has no thread index, so the
+   *   `sendTurn` rows are SCANNED and grouped once (materialized), then probed
+   *   per member through an automatic index. The scan grows by one row per
+   *   command.
+   * - forks: a SEEK on `idx_events_method` for `conversation.forked`.
+   * Measured: 6.2 ms warm, 40.7 ms cold, over 276 threads.
    */
   conversationDraftFactsForThreads(
     threadIds: readonly string[],
@@ -7364,14 +7383,16 @@ export class EventStore {
         {
           activityObserved: false,
           sendAccepted: false,
-          sendRefused: false,
+          sendRejected: false,
+          sendFailed: false,
           hasCopiedHistory: false,
         },
       ]),
     );
     const turnMethods = DRAFT_ENDING_TURN_METHODS.map(() => '?').join(', ');
-    // A half-open range per prefix ('content.' <= m < 'content/') is an index
-    // seek; LIKE would not be.
+    // A half-open range per prefix ('content.' <= m < 'content/'), not LIKE:
+    // it is exact regardless of case_sensitive_like. The plan filters it over
+    // the member's index entries rather than seeking (see the docblock).
     const prefixRanges = DRAFT_ENDING_METHOD_PREFIXES.map(
       () => '(event.method >= ? AND event.method < ?)',
     ).join(' OR ');
@@ -7399,10 +7420,11 @@ export class EventStore {
              INNER JOIN orchestration_conversation_sessions sibling
                ON sibling.conversation_id = asked.conversation_id
            ),
-           sends(thread_id, accepted, refused) AS (
+           sends(thread_id, accepted, rejected, failed) AS (
              SELECT thread_id,
                     MAX(status = 'accepted'),
-                    MAX(status IN ('rejected', 'failed'))
+                    MAX(status = 'rejected' AND refusal_phase = 'execution'),
+                    MAX(status = 'failed')
              FROM orchestration_command_receipts
              WHERE command_type = 'sendTurn'
              GROUP BY thread_id
@@ -7421,10 +7443,15 @@ export class EventStore {
                WHERE member.thread_id = asked.thread_id
              ), 0) AS send_accepted,
              COALESCE((
-               SELECT MAX(sends.refused) FROM member
+               SELECT MAX(sends.rejected) FROM member
                INNER JOIN sends ON sends.thread_id = member.session_id
                WHERE member.thread_id = asked.thread_id
-             ), 0) AS send_refused,
+             ), 0) AS send_rejected,
+             COALESCE((
+               SELECT MAX(sends.failed) FROM member
+               INNER JOIN sends ON sends.thread_id = member.session_id
+               WHERE member.thread_id = asked.thread_id
+             ), 0) AS send_failed,
              EXISTS (
                SELECT 1 FROM orchestration_events fork
                WHERE fork.method = 'conversation.forked'
@@ -7441,14 +7468,16 @@ export class EventStore {
         thread_id: string;
         activity_observed: number;
         send_accepted: number;
-        send_refused: number;
+        send_rejected: number;
+        send_failed: number;
         has_copied_history: number;
       }>;
       for (const row of rows) {
         result.set(row.thread_id, {
           activityObserved: row.activity_observed === 1,
           sendAccepted: row.send_accepted === 1,
-          sendRefused: row.send_refused === 1,
+          sendRejected: row.send_rejected === 1,
+          sendFailed: row.send_failed === 1,
           hasCopiedHistory: row.has_copied_history === 1,
         });
       }
@@ -9711,12 +9740,22 @@ export class EventStore {
     });
   }
 
-  appendCommandReceipt(receipt: OrchestrationCommandReceipt): void {
+  /**
+   * `refusalPhase` (#2310 review F3) is server-internal and never read back
+   * onto the public receipt: it records whether a `rejected` command was
+   * refused at the authorization gate or after it, so a derivation that
+   * reads receipts as evidence about a session (`conversationDraftFacts`)
+   * can ignore refusals that say nothing about the session itself.
+   */
+  appendCommandReceipt(
+    receipt: OrchestrationCommandReceipt,
+    options: { refusalPhase?: CommandRefusalPhase } = {},
+  ): void {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO orchestration_command_receipts
-          (command_id, thread_id, command_type, status, created_at, client_origin)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+          (command_id, thread_id, command_type, status, created_at, client_origin, refusal_phase)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         receipt.commandId,
@@ -9725,6 +9764,7 @@ export class EventStore {
         receipt.status,
         receipt.createdAt,
         receipt.clientOrigin ? JSON.stringify(receipt.clientOrigin) : null,
+        receipt.status === 'rejected' ? (options.refusalPhase ?? null) : null,
       );
   }
 
