@@ -387,6 +387,19 @@ export type ChatUIState = {
    * allow-list below never reads it), exactly like `openTurnId`.
    */
   openTurnShellSuperseded?: boolean;
+  /**
+   * #2304: when the open turn started, in epoch ms, from the SERVER's
+   * `turn.started.createdAt` — stamped by `turn.started`, or seeded from the
+   * bounded window's `turn.started` when this client attached to a turn that
+   * was already running. The "Working for" clock derives from this, so a
+   * remount (navigation, dock teardown, virtualizer drop) keeps counting the
+   * turn instead of restarting at 0:00 from the component's own mount.
+   *
+   * Cleared whenever `orchestrationTurnOpen` goes false (`mergeChatUpdates`),
+   * so a closed turn's start can never be read as the next turn's. Session-
+   * scoped bookkeeping, deliberately NOT persisted, like `openTurnId`.
+   */
+  openTurnStartedAt?: number;
   orchestrationHistoryRevision?: number;
   messages?: ChatMessage[];
   ephemeralMessages?: EphemeralMessage[];
@@ -918,6 +931,12 @@ export function mergeChatUpdates(
     ...current,
     ...nextUpdates,
     ...(bounded.kept ? { queuedMessages: bounded.kept } : {}),
+    // #2304: one clearing site for every writer that closes the turn fold
+    // (terminal events, session exit, snapshot reseed, conversation switch),
+    // so a closed turn's start time cannot leak into the next open turn.
+    ...(nextUpdates.orchestrationTurnOpen === false
+      ? { openTurnStartedAt: undefined }
+      : {}),
   };
   const shouldPersist =
     'conversationId' in nextUpdates ||

@@ -10,6 +10,7 @@ import { extractUIBlocks } from '../../utils/uiBlocks';
 import { upsertToolResultBlocks } from './messageParts';
 import { requestReplayHistory, useReplayHistory } from './replay/history';
 import { isReplayThread } from './replay/replay-registry';
+import { parseTurnStartedAt } from './turnHandlers';
 import { useSessionEventWindow } from './useSessionEventWindow';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -52,6 +53,43 @@ function isLiveSupplementalMessage(message: ChatMessage): boolean {
           part.type === 'flow-gate-verdict',
       ),
   );
+}
+
+const TURN_TERMINAL_METHODS = new Set([
+  'turn.completed',
+  'turn.aborted',
+  'runtime.error',
+]);
+
+/**
+ * #2304: the server's start time for the turn still open at the end of this
+ * window, or undefined when the window cannot say. A client that attached to
+ * an already-running turn never saw its `turn.started` live, so the bounded
+ * read is the only place that start exists. Undefined when the newest
+ * `turn.started` is outside the page, already terminated in it, or names a
+ * different turn than the one the live fold knows is open.
+ */
+function openTurnStartFromWindow(
+  events: readonly { event: CanonicalRuntimeEvent }[],
+  threadId: string,
+  openTurnId: string | undefined,
+): number | undefined {
+  let open: { turnId?: string; createdAt: string } | undefined;
+  for (const { event } of events) {
+    if (event.threadId !== threadId) continue;
+    if (event.method === 'turn.started' && event.inputKind !== 'steer') {
+      open = { turnId: event.turnId, createdAt: event.createdAt };
+    } else if (
+      open &&
+      TURN_TERMINAL_METHODS.has(event.method) &&
+      event.turnId === open.turnId
+    ) {
+      open = undefined;
+    }
+  }
+  if (!open) return undefined;
+  if (openTurnId && open.turnId !== openTurnId) return undefined;
+  return parseTurnStartedAt(open.createdAt);
 }
 
 function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
@@ -150,6 +188,37 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.currentSessionId,
     session.id,
     window.currentSessionId,
+  ]);
+  // #2304: seed the open turn's server start when this client attached to a
+  // turn already running (fresh load, reconnect), so the "Working for" clock
+  // reads the turn's duration rather than this view's. A live `turn.started`
+  // stamps it directly and wins; the fold closing clears it.
+  const executionSessionId = session.currentSessionId ?? session.id;
+  useEffect(() => {
+    if (!enabled || replay || !session.orchestrationTurnOpen) return;
+    if (session.openTurnStartedAt !== undefined) return;
+    const startedAt = openTurnStartFromWindow(
+      window.events,
+      executionSessionId,
+      session.openTurnId,
+    );
+    if (startedAt === undefined) return;
+    const latest = activeChatsStore.getSnapshot()[session.id];
+    if (
+      !latest?.orchestrationTurnOpen ||
+      latest.openTurnStartedAt !== undefined
+    )
+      return;
+    activeChatsStore.updateChat(session.id, { openTurnStartedAt: startedAt });
+  }, [
+    enabled,
+    replay,
+    executionSessionId,
+    session.id,
+    session.openTurnId,
+    session.openTurnStartedAt,
+    session.orchestrationTurnOpen,
+    window.events,
   ]);
   const checkpointKey = `${apiBase}\0${session.id}\0${checkpointRevision}`;
   const [changedFilesState, setChangedFilesState] = useState<{
@@ -326,7 +395,14 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           ?.clientId
       : undefined;
     const claimedProjectedUsers = new Set<number>();
-    const hiddenProjectedUsers = new Set<number>();
+    // The live prompt row, keyed by the index of the canonical row it stands
+    // in for. It takes that row's PLACE rather than being appended in its own
+    // group (#2304): the projection emits a turn's prompt before the
+    // assistant row that turn produced, and both carry the turn's single
+    // `turn.started` stamp, so the merge's timestamp sort ties and falls back
+    // to input order. Appended after the projection, the prompt lost that tie
+    // to its own turn's activity row and rendered below it.
+    const liveProjectedUsers = new Map<number, ChatMessage>();
     const pendingUsers = session.messages.filter((message) => {
       if (message.role !== 'user' || !message.clientId) return false;
       const match = projected.findIndex(
@@ -341,15 +417,18 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       claimedProjectedUsers.add(match);
       // The local row owns the prompt's stable identity until the turn has
       // settled. If the bounded newest page already contains turn.started,
-      // suppress that one canonical duplicate during the live interval.
+      // the local row replaces that one canonical duplicate — in the
+      // canonical row's position — during the live interval.
       if (active && message.clientId === currentPendingClientId) {
-        hiddenProjectedUsers.add(match);
-        return true;
+        liveProjectedUsers.set(match, {
+          ...message,
+          id: message.id ?? message.clientId,
+        });
       }
       return false;
     });
-    let visibleProjected = projected.filter(
-      (_message, index) => !hiddenProjectedUsers.has(index),
+    let visibleProjected = projected.map(
+      (message, index) => liveProjectedUsers.get(index) ?? message,
     );
     // Flow events and provider notices are appended by the single app-wide
     // orchestration stream. They are not turn rows, so the bounded turn

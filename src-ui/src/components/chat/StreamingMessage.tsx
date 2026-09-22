@@ -36,6 +36,13 @@ export type StreamingMessageProps = {
   /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
   elapsedMs?: number;
+  /**
+   * #2304: when the open turn started, from the server's `turn.started`
+   * (`ChatUIState.openTurnStartedAt`). The "Working for" count derives from
+   * it so a remount keeps the turn's real duration; absent, the row counts
+   * from its own mount as before.
+   */
+  turnStartedAt?: number;
   suppressActivity?: boolean;
   statusLabel?: string;
   /**
@@ -84,6 +91,7 @@ export function StreamingMessageView({
   renderReasoning,
   activityHint,
   elapsedMs,
+  turnStartedAt,
   suppressActivity,
   statusLabel,
   attributionAgent,
@@ -223,7 +231,17 @@ export function StreamingMessageView({
                   `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
                 }
                 separator={statusLabel ? ' · ' : ' '}
-                startedAt={waitingSince}
+                // A status label ("Waiting for approval") names a wait that
+                // began after the turn did, so only the working count reads
+                // the turn's server start.
+                startedAt={
+                  statusLabel ? waitingSince : (turnStartedAt ?? waitingSince)
+                }
+                title={
+                  !statusLabel && turnStartedAt !== undefined
+                    ? 'Time since this turn started; not an estimate of completion'
+                    : undefined
+                }
                 elapsedMs={elapsedMs}
               />
             </div>
