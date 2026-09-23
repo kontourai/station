@@ -524,8 +524,8 @@ The CLI writes a mode-0600 typed invitation file under a private directory;
 the one-use secret never enters a query string or CLI output. The browser
 contract can encode it into a `/connections/computers#relay-invite=...`
 fragment. The browser's Broker routes form accepts that link or the CLI's
-private JSON invitation after
-that browser already has independently approved Station-key trust; it does not
+private JSON invitation after that browser already has independently approved
+Station-key trust; it does not
 auto-consume an incoming fragment or establish that trust. Keep the CLI's JSON
 file private and deliver it through an operator-approved channel. Invitations
 expire within five minutes. A redeemed grant lasts at most 30 days and permits

@@ -32,6 +32,13 @@ test.each([
         join(app, 'build.gradle.kts'),
         `android { namespace = "${namespace}" }`,
       );
+      // The shared bootstrap also restores permissions after Android init.
+      // Keep this fixture shaped like a generated project so inset coverage
+      // exercises the real caller without silently skipping its manifest step.
+      writeFileSync(
+        join(app, 'src/main/AndroidManifest.xml'),
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>',
+      );
       for (let build = 0; build < 2; build++) {
         writeFileSync(
           activity,
@@ -41,6 +48,11 @@ test.each([
         expect(readFileSync(activity, 'utf8')).toContain(
           'StationAndroidInsetsBridge.install(webView, this)',
         );
+        expect(
+          readFileSync(join(app, 'src/main/AndroidManifest.xml'), 'utf8').match(
+            /android.permission.CAMERA/g,
+          ),
+        ).toHaveLength(1);
         const bridge = readFileSync(
           join(dirname(activity), 'StationAndroidInsetsBridge.kt'),
           'utf8',

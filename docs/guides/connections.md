@@ -55,8 +55,8 @@ selected as direct Station connections or CLI defaults. The CLI also refuses
 
 In the browser, **Manage Stations → Broker routes** can accept a one-time
 invitation link or the operator's private JSON invitation after this browser
-already holds an independently approved
-Station signing key. Enter the Station application origin separately, then
+already holds an independently approved Station signing key. Enter the Station
+application origin separately, then
 select the saved route. The routing grant stays in browser IndexedDB, outside
 the saved Station entry. A selected route uses an encrypted browser channel for
 the Station handshake and application requests; a missing grant, retired key or
