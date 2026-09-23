@@ -480,6 +480,39 @@ describe('dependency lifecycle policy', () => {
       return { error, exec, logs, pause };
     }
 
+    it('reports attempts on stderr so a JSON-on-stdout caller stays parseable', () => {
+      // verify-node-pty-prebuild.mjs calls the handshake with its defaults and
+      // then prints its report as JSON alone on stdout, which CI tees into
+      // proof.json. Drive the real default logger in a real process.
+      const moduleUrl = new URL(
+        '../lib/dependency-lifecycle-policy.mjs',
+        import.meta.url,
+      ).href;
+      const script = `
+        const { verifyNodePtyHandshake } = await import(${JSON.stringify(moduleUrl)});
+        const pass = ${JSON.stringify(PASS)};
+        let calls = 0;
+        verifyNodePtyHandshake('/fixture/node-pty', {
+          pause: () => {},
+          exec: () => {
+            calls += 1;
+            if (calls === 1) throw Object.assign(new Error('ETIMEDOUT'), { code: 'ETIMEDOUT', stderr: '' });
+            return pass;
+          },
+        });
+        console.log(JSON.stringify({ package: 'node-pty' }, null, 2));
+      `;
+      const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', script],
+        { encoding: 'utf8', timeout: 20_000, windowsHide: true },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ package: 'node-pty' });
+      expect(result.stderr).toMatch(/attempt 1\/3 timed out/);
+      expect(result.stderr).toMatch(/passed on attempt 2\/3/);
+    });
+
     it('retries an outer spawn timeout and reports each attempt', () => {
       const { error, exec, logs, pause } = run([outerTimeout, PASS]);
       expect(error).toBeUndefined();

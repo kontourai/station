@@ -124,7 +124,9 @@ export function verifyNodePtyHandshake(
   packageRoot,
   {
     exec = executeNodePty,
-    log = console.log,
+    // stderr: the prebuild verifier promises JSON alone on stdout, and CI
+    // tees that stdout straight into proof.json.
+    log = console.error,
     pause = pauseSync,
     attempts = PTY_HANDSHAKE_ATTEMPTS,
   } = {},
