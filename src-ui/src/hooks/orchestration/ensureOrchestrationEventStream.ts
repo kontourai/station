@@ -221,10 +221,10 @@ function refreshSessionReadModelOnFact(
     if (deferredSessionReadModelRefresh === undefined) {
       deferredSessionReadModelRefresh = setTimeout(() => {
         deferredSessionReadModelRefresh = undefined;
-        const target = currentStreamQueryClient(apiBase);
-        if (!target) return;
         lastSessionReadModelRefreshAt = Date.now();
-        void target.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+        void currentStreamQueryClient(apiBase)?.invalidateQueries({
+          queryKey: ['orchestration-sessions'],
+        });
       }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
     }
     return;
