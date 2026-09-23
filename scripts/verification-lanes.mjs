@@ -161,6 +161,9 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
   }),
 ]);
 
+/** The coordinated `test-coverage` lane deadline (see the lane entry). */
+export const COVERAGE_LANE_TIMEOUT_MS = 100 * 60_000;
+
 export const FULL_REGRESSION_TIMEOUT_MS = FULL_REGRESSION_PHASES.reduce(
   (total, phase) => total + phase.timeoutMs,
   0,
@@ -377,13 +380,20 @@ export const LANES = Object.freeze([
     completion: false,
     diagnostic: true,
     weight: 90,
-    timeoutMs: 25 * 60_000,
+    // One process over the whole corpus reached 25 minutes after 33 files
+    // (#2325). The lane now runs the resource-profiled slices, each fenced at
+    // its own scaled phase deadline. This bounds the whole run: the serial
+    // corpus measured ~32 minutes on a 4-vCPU hosted runner (merge-queue run
+    // 35825621531), so 100 minutes leaves 2x headroom over a 1.5x coverage
+    // overhead while fitting, with setup, inside the fleet job's 125-minute
+    // physical-host-capacity limit (scripts/actionlint-gate.mjs).
+    timeoutMs: COVERAGE_LANE_TIMEOUT_MS,
     ownedOutputs: Object.freeze(['coverage/', 'packages/cli/dist/']),
     manifest: MANIFEST_NONE,
     trigger: 'explicit coverage / risk',
-    scope: 'serialized coverage corpus + dogfood-reconcile',
+    scope: 'resource-profiled coverage slices, merged, thresholds on the merge',
     description:
-      'Coverage diagnostic (trigger: explicit coverage/risk). Scope: the serialized Vitest coverage corpus plus dogfood-reconcile. Evidence: diagnostic. Invalidation: command-only; owns coverage/ and packages/cli/dist/ from the package bundle test.',
+      'Coverage diagnostic (trigger: explicit coverage/risk). Scope: every resource-profiled Vitest corpus slice (including dogfood-reconcile) with coverage, merged into one report whose thresholds are enforced; a missing slice refuses the merge. Evidence: diagnostic. Invalidation: command-only; owns coverage/ and packages/cli/dist/ from the package bundle test.',
   }),
   Object.freeze({
     id: 'verify-static',

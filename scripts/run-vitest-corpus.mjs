@@ -146,7 +146,17 @@ export function descriptorFiles(groups, descriptor) {
     : files;
 }
 
-function corpusDescriptors(groupName, shard) {
+/**
+ * The resource-profiled execution plan: every ordinary hash shard, then each
+ * serialized group, in canonical order. With no selector this is the whole
+ * corpus, each file reached by exactly one entry (the groups are an exact
+ * partition, and the ordinary shards are Vitest's own exhaustive hash split).
+ *
+ * @param {string} [groupName]
+ * @param {string} [shard]
+ * @returns {ReadonlyArray<{ name: string; maxWorkers: number; noFileParallelism?: boolean; shard?: string; resultName?: string }>}
+ */
+export function corpusDescriptors(groupName, shard) {
   if (!groupName)
     return [...ORDINARY_SHARD_DESCRIPTORS, ...VITEST_CORPUS_GROUPS.slice(1)];
   if (groupName === 'ordinary') {
@@ -185,10 +195,42 @@ export function groupFiles(groups, name) {
   return groups[keys[name]];
 }
 
+/**
+ * Coverage arguments for one corpus slice. Each slice writes only istanbul
+ * JSON into its own directory, and the configured thresholds are neutralised
+ * here because one slice exercises a fraction of the code: they are enforced
+ * once, on the merged report (scripts/run-coverage-corpus.mjs). Vitest's
+ * default `reportOnFailure: false` stays in force, so a slice whose tests
+ * failed leaves no report and the merge refuses it.
+ */
+export function coverageSliceArguments(reportsDirectory) {
+  if (typeof reportsDirectory !== 'string' || reportsDirectory.length === 0)
+    throw new Error('coverage slice requires a reports directory');
+  return [
+    '--coverage.enabled=true',
+    '--coverage.reporter=json',
+    `--coverage.reportsDirectory=${reportsDirectory}`,
+    '--coverage.clean=true',
+    '--coverage.thresholds.lines=0',
+    '--coverage.thresholds.functions=0',
+    '--coverage.thresholds.branches=0',
+    '--coverage.thresholds.statements=0',
+  ];
+}
+
+/**
+ * @param {{ name: string; maxWorkers: number; noFileParallelism?: boolean; shard?: string }} group
+ * @param {readonly string[]} files
+ * @param {{ root?: string; ordinaryExcludes?: readonly string[]; coverageDirectory?: string }} [options]
+ */
 export function buildVitestCommand(
   group,
   files,
-  { root = process.cwd(), ordinaryExcludes = ordinaryVitestExcludes() } = {},
+  {
+    root = process.cwd(),
+    ordinaryExcludes = ordinaryVitestExcludes(),
+    coverageDirectory,
+  } = {},
 ) {
   if (!Array.isArray(files) || files.length === 0) {
     throw new Error(`Vitest group '${group.name}' has no discovered tests`);
@@ -197,6 +239,9 @@ export function buildVitestCommand(
     resolve(root, 'node_modules/vitest/vitest.mjs'),
     'run',
     `--maxWorkers=${group.maxWorkers}`,
+    ...(coverageDirectory === undefined
+      ? []
+      : coverageSliceArguments(coverageDirectory)),
   ];
   if (group.name === 'ordinary') {
     if (!ORDINARY_SHARD_DESCRIPTORS.some(({ shard }) => shard === group.shard))
@@ -336,6 +381,7 @@ export async function runVitestGroup(
     waitForSettlement = waitForSuiteSettlement,
     spawnProcess = spawn,
     signal,
+    coverageDirectory,
   } = {},
 ) {
   const resultName = group.resultName ?? group.name;
@@ -345,7 +391,7 @@ export async function runVitestGroup(
       `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
     );
   }
-  const args = buildVitestCommand(group, files, { root });
+  const args = buildVitestCommand(group, files, { root, coverageDirectory });
   const label = `Vitest corpus ${resultName}`;
   let execution;
   try {
@@ -503,7 +549,18 @@ export async function runVitestCorpus({
   groupName,
   shard,
   keepGoing = false,
+  // Coverage mode: each slice writes its istanbul JSON under
+  // `<coverageRoot>/<result name>/`. There is no Windows coverage path; the
+  // serialized fallback runs one undifferentiated corpus.
+  coverageRoot,
+  // Multiplies each cataloged group deadline in keep-going mode, for work
+  // (coverage instrumentation) that is slower than the canonical phase.
+  timeoutScale = 1,
 } = {}) {
+  if (coverageRoot !== undefined && platform === 'win32')
+    throw new Error('Vitest corpus coverage is not supported on Windows');
+  if (!(Number.isFinite(timeoutScale) && timeoutScale >= 1))
+    throw new Error('Vitest corpus timeoutScale must be a finite number >= 1');
   if (signal?.aborted) {
     const result = terminalFailure(
       'vitest-corpus',
@@ -549,7 +606,7 @@ export async function runVitestCorpus({
     const timer = groupController
       ? setTimeout(
           () => groupController.abort('group execution deadline'),
-          phase.timeoutMs,
+          phase.timeoutMs * timeoutScale,
         )
       : null;
     let result;
@@ -567,6 +624,14 @@ export async function runVitestCorpus({
           : await runGroup(descriptor, files, {
               root,
               signal: groupController?.signal ?? signal,
+              ...(coverageRoot === undefined
+                ? {}
+                : {
+                    coverageDirectory: resolve(
+                      coverageRoot,
+                      descriptor.resultName ?? descriptor.name,
+                    ),
+                  }),
             });
     } finally {
       if (timer !== null) clearTimeout(timer);

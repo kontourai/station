@@ -239,7 +239,7 @@
     "version-packages": "changeset version && npm run dependencies:lock && npm run dependencies:check && npm run lockfile-sync:gate",
     "publish-packages": "changeset publish",
     "test:coverage": "node scripts/run-verification.mjs request test-coverage",
-    "test:coverage:raw": "vitest run --coverage --maxWorkers=1 --exclude='scripts/__tests__/station-dogfood-reconcile*.test.ts' && npm run test:dogfood-reconcile",
+    "test:coverage:raw": "node scripts/check-full-regression-browser.mjs && node scripts/run-coverage-corpus.mjs",
     "test:connected-agents": "node scripts/run-connected-agent-tests.mjs",
     "proof:phase1-no-aws-startup": "node scripts/proof-phase1-no-aws-startup.mjs",
     "verify:cli-e2e": "node scripts/cli-agent-e2e.mjs",

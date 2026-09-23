@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildVitestCommand,
   buildWindowsSerializedCommand,
+  coverageSliceArguments,
   descriptorFiles,
   emitResult,
   ORDINARY_SHARD_COUNT,
@@ -799,5 +800,118 @@ describe('process-heavy sharding across machines', () => {
     });
     expect(result.passed).toBe(true);
     expect(result.name).toBe('process-heavy-2-of-2');
+  });
+});
+
+describe('coverage slices', () => {
+  it('adds per-slice coverage output with thresholds deferred to the merge', () => {
+    const plain = buildVitestCommand(VITEST_CORPUS_GROUPS[2], ['a.test.ts']);
+    expect(plain.some((arg) => arg.startsWith('--coverage'))).toBe(false);
+    const command = buildVitestCommand(VITEST_CORPUS_GROUPS[2], ['a.test.ts'], {
+      coverageDirectory: '/tmp/slices/process-exclusive',
+    });
+    expect(command).toEqual(
+      expect.arrayContaining([
+        '--maxWorkers=1',
+        '--no-file-parallelism',
+        '--coverage.enabled=true',
+        '--coverage.reporter=json',
+        '--coverage.reportsDirectory=/tmp/slices/process-exclusive',
+        '--coverage.thresholds.lines=0',
+        '--coverage.thresholds.functions=0',
+        '--coverage.thresholds.branches=0',
+        '--coverage.thresholds.statements=0',
+      ]),
+    );
+    // Vitest must stay free to suppress a failed slice's report.
+    expect(command.some((arg) => arg.includes('reportOnFailure'))).toBe(false);
+    expect(() => coverageSliceArguments('')).toThrow(/reports directory/);
+  });
+
+  it('gives every slice its own report directory and a scaled group deadline', async () => {
+    const { FULL_REGRESSION_PHASES } = await import(
+      '../verification-lanes.mjs'
+    );
+    const directories: string[] = [];
+    const result = await runVitestCorpus({
+      groups: GROUPS,
+      platform: 'linux',
+      keepGoing: true,
+      coverageRoot: '/tmp/cov/shards',
+      onResult: () => {},
+      runGroup: async (group, _files, options) => {
+        directories.push(String(options?.coverageDirectory));
+        return { name: group.name, passed: true, status: 0 };
+      },
+    });
+    expect(result.passed).toBe(true);
+    expect(directories).toHaveLength(14);
+    expect(new Set(directories).size).toBe(14);
+    expect(directories[0].replaceAll('\\', '/')).toBe(
+      '/tmp/cov/shards/ordinary-1-of-8',
+    );
+    expect(directories.at(-1)?.replaceAll('\\', '/')).toBe(
+      '/tmp/cov/shards/dogfood-reconcile',
+    );
+
+    vi.useFakeTimers();
+    let observed: AbortSignal | undefined;
+    const run = runVitestCorpus({
+      groups: GROUPS,
+      platform: 'linux',
+      keepGoing: true,
+      coverageRoot: '/tmp/cov/shards',
+      timeoutScale: 1.5,
+      onResult: () => {},
+      runGroup: async (group, _files, { signal }) => {
+        observed = signal;
+        return new Promise((resolve) =>
+          signal!.addEventListener(
+            'abort',
+            () =>
+              resolve({
+                name: group.name,
+                passed: false,
+                status: null,
+                cancelled: true,
+                error: 'group expired',
+              }),
+            { once: true },
+          ),
+        );
+      },
+    });
+    try {
+      const budget = FULL_REGRESSION_PHASES.find(
+        (phase) => phase.id === 'test-full-ordinary-1-of-8',
+      )!.timeoutMs;
+      // The canonical deadline alone no longer expires a coverage slice.
+      await vi.advanceTimersByTimeAsync(budget);
+      expect(observed?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(budget / 2);
+      expect(observed?.aborted).toBe(true);
+      expect((await run).passed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses coverage on the Windows serialized fallback and a shrinking deadline', async () => {
+    await expect(
+      runVitestCorpus({
+        groups: GROUPS,
+        platform: 'win32',
+        coverageRoot: '/tmp/cov/shards',
+        onResult: () => {},
+      }),
+    ).rejects.toThrow(/not supported on Windows/);
+    await expect(
+      runVitestCorpus({
+        groups: GROUPS,
+        platform: 'linux',
+        timeoutScale: 0.5,
+        onResult: () => {},
+      }),
+    ).rejects.toThrow(/timeoutScale/);
   });
 });
