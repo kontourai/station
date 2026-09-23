@@ -12,6 +12,34 @@ export interface BrokerConnectorLifecycle {
   poll(signal: AbortSignal): Promise<unknown>;
   withdraw(signal: AbortSignal): Promise<void>;
 }
+export type SelfHostedBrokerStatusState =
+  | 'starting'
+  | 'registered'
+  | 'reconnecting'
+  | 'failed'
+  | 'withdrawn';
+export type SelfHostedBrokerStatusPhase =
+  | 'registration'
+  | 'heartbeat'
+  | 'renewal'
+  | 'offer_poll'
+  | 'withdrawal';
+export type SelfHostedBrokerStatusReason =
+  | 'transient_request'
+  | 'transient_offer_read'
+  | 'revision_conflict'
+  | 'lease_expired'
+  | 'operation_failed'
+  | 'withdrawal_failed'
+  | 'shutdown_requested'
+  | 'application_stopped';
+/** Content-free broker registration lifecycle fact. It does not assert that
+ * the Station application is reachable or ready. */
+export interface SelfHostedBrokerStatus {
+  state: SelfHostedBrokerStatusState;
+  phase: SelfHostedBrokerStatusPhase;
+  reason?: SelfHostedBrokerStatusReason;
+}
 export interface SelfHostedBrokerRuntimeOptions {
   origin: string;
   configuredOrigin: string;
@@ -23,6 +51,8 @@ export interface SelfHostedBrokerRuntimeOptions {
   withdrawTimeoutMs?: number;
   operationSettleMs?: number;
   retryDelayMs?: number;
+  /** Host-owned, best-effort lifecycle diagnostics; never authority. */
+  observeStatus?: (status: SelfHostedBrokerStatus) => void;
 }
 
 const DEFAULT_WITHDRAW_TIMEOUT_MS = 5_000;
@@ -57,6 +87,7 @@ export class SelfHostedBrokerRuntime {
   #failure: unknown;
   #hasFailure = false;
   #shutdownRequested = false;
+  #status: SelfHostedBrokerStatusState | undefined;
   #detachApplicationAbort: (() => void) | undefined;
   constructor(private readonly options: SelfHostedBrokerRuntimeOptions) {
     if (
@@ -90,10 +121,12 @@ export class SelfHostedBrokerRuntime {
   start() {
     return (this.#start ??= (async () => {
       if (this.#shutdownRequested) throw this.#abortReason();
+      this.#report('starting', 'registration');
       this.#linkApplicationAbort();
       try {
         const started = await this.#registerWithRecovery();
         if (this.#abort.signal.aborted) throw this.#abortReason();
+        this.#report('registered', 'registration');
         // Observed lease expiry bounds every future deadline: never renew
         // after a known expiry.
         let knownExpiry: number | undefined =
@@ -106,7 +139,10 @@ export class SelfHostedBrokerRuntime {
             ?.expiresAt;
           if (typeof expiresAt === 'number') knownExpiry = expiresAt;
         };
-        const settleLoop = (work: Promise<void>): Promise<void> =>
+        const settleLoop = (
+          work: Promise<void>,
+          phase: SelfHostedBrokerStatusPhase,
+        ): Promise<void> =>
           work.then(
             () => {
               this.#unlinkApplicationAbort();
@@ -123,6 +159,7 @@ export class SelfHostedBrokerRuntime {
                 this.#retireAutomatically();
                 return;
               }
+              this.#report('failed', phase, this.#reason(error));
               this.#recordFailure(error);
               if (!this.#abort.signal.aborted) this.#abort.abort(error);
               this.#retireAutomatically();
@@ -133,13 +170,19 @@ export class SelfHostedBrokerRuntime {
         // settled before withdrawal. Control recovery remains lease-bounded.
         const control = settleLoop(
           this.#runControl(() => knownExpiry, onExpiry),
+          'renewal',
         );
-        const poller = settleLoop(this.#runPoll(() => knownExpiry));
+        const poller = settleLoop(
+          this.#runPoll(() => knownExpiry),
+          'offer_poll',
+        );
         this.#loops = [control, poller];
         this.#loopsDone = Promise.allSettled(this.#loops).then(() => undefined);
         void this.#loopsDone;
       } catch (error) {
         this.#unlinkApplicationAbort();
+        if (!this.#isCleanAbortCancellation(error))
+          this.#report('failed', 'registration', this.#reason(error));
         if (!this.#abort.signal.aborted) this.#abort.abort(error);
         let withdrawError: unknown;
         try {
@@ -166,7 +209,10 @@ export class SelfHostedBrokerRuntime {
       if (expiry !== undefined && now >= expiry)
         throw new Error('broker_runtime_lease_expired');
       if (now >= heartbeat) {
-        const result = await this.#registerWithRecovery(knownExpiry);
+        const result = await this.#registerWithRecovery(
+          knownExpiry,
+          'heartbeat',
+        );
         onExpiry(result);
         heartbeat = Date.now() + this.options.heartbeatMs;
       }
@@ -187,6 +233,7 @@ export class SelfHostedBrokerRuntime {
   }
   async #registerWithRecovery(
     knownExpiry?: () => number | undefined,
+    phase: SelfHostedBrokerStatusPhase = 'registration',
   ): Promise<unknown> {
     let attempts = 0;
     while (true) {
@@ -202,6 +249,7 @@ export class SelfHostedBrokerRuntime {
       } catch (error) {
         if (this.#abort.signal.aborted) throw error;
         if (!(error instanceof BrokerTransientRequestError)) throw error;
+        this.#report('reconnecting', phase, 'transient_request');
         // Before the first successful registration there is no trusted lease
         // deadline. Keep startup attempts finite instead of retrying forever.
         attempts++;
@@ -237,10 +285,13 @@ export class SelfHostedBrokerRuntime {
           )
         )
           throw error;
+        this.#report('reconnecting', 'renewal', this.#reason(error));
         attempts++;
         if (expiry === undefined && attempts >= 3) throw error;
         await this.#retryWait(attempts, expiry);
-        onExpiry(await this.#registerWithRecovery(knownExpiry));
+        onExpiry(await this.#registerWithRecovery(knownExpiry, 'renewal'));
+        if (this.#status === 'reconnecting')
+          this.#report('registered', 'renewal');
       }
     }
   }
@@ -273,12 +324,15 @@ export class SelfHostedBrokerRuntime {
           } catch (error) {
             if (this.#abort.signal.aborted) throw error;
             if (!(error instanceof BrokerOfferReadTransientError)) throw error;
+            this.#report('reconnecting', 'offer_poll', 'transient_offer_read');
             attempts++;
             const expiry = knownExpiry();
             if (expiry === undefined && attempts >= 3) throw error;
             await this.#retryWait(attempts, expiry);
           }
         }
+        if (this.#status === 'reconnecting')
+          this.#report('registered', 'offer_poll');
         poll = Date.now() + this.options.pollMs;
       }
       if (this.#abort.signal.aborted || this.options.application.signal.aborted)
@@ -365,6 +419,47 @@ export class SelfHostedBrokerRuntime {
       this.#failure = error;
     }
   }
+  #reason(error: unknown): SelfHostedBrokerStatusReason {
+    if (error instanceof BrokerTransientRequestError)
+      return 'transient_request';
+    if (error instanceof BrokerOfferReadTransientError)
+      return 'transient_offer_read';
+    if (error instanceof Error) {
+      if (error.message === 'broker_request_refused_409')
+        return 'revision_conflict';
+      if (error.message === 'broker_runtime_lease_expired')
+        return 'lease_expired';
+    }
+    return 'operation_failed';
+  }
+  #withdrawReason(): SelfHostedBrokerStatusReason {
+    if (this.#shutdownRequested) return 'shutdown_requested';
+    if (this.options.application.signal.aborted) return 'application_stopped';
+    return 'operation_failed';
+  }
+  #report(
+    state: SelfHostedBrokerStatusState,
+    phase: SelfHostedBrokerStatusPhase,
+    reason?: SelfHostedBrokerStatusReason,
+  ): void {
+    this.#status = state;
+    const observer = this.options.observeStatus;
+    if (!observer) return;
+    try {
+      const result: unknown = observer(
+        Object.freeze({ state, phase, ...(reason ? { reason } : {}) }),
+      );
+      if (
+        result !== null &&
+        (typeof result === 'object' || typeof result === 'function') &&
+        typeof (result as { then?: unknown }).then === 'function'
+      )
+        void Promise.resolve(result).catch(() => {});
+    } catch {
+      // Diagnostics are host-owned observers and cannot change authority,
+      // recovery, or cleanup.
+    }
+  }
   #isCleanAbortCancellation(error: unknown): boolean {
     if (!this.#abort.signal.aborted) return false;
     // Identity only: a distinct Error object with the same message is a real
@@ -397,12 +492,20 @@ export class SelfHostedBrokerRuntime {
           operation,
           this.#operationSettleMs,
         );
-        if (!settled)
+        if (!settled) {
+          this.#report('failed', 'withdrawal', 'withdrawal_failed');
           throw new Error('broker_runtime_withdraw_unconfirmed', {
             cause: error,
           });
-        throw await this.#settledRejectionOr(operation, error);
+        }
+        try {
+          throw await this.#settledRejectionOr(operation, error);
+        } catch (settledError) {
+          this.#report('failed', 'withdrawal', 'withdrawal_failed');
+          throw settledError;
+        }
       }
+      this.#report('withdrawn', 'withdrawal', this.#withdrawReason());
     })());
   }
   async #joinAbortable(

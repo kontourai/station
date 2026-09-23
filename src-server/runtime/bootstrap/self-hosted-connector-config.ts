@@ -17,7 +17,10 @@ import type { ApprovedStationConnectionTrust } from '@kontourai/station-contract
 import type { VirtualApplication } from '../../services/connections/virtual-application.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { createSelfHostedBrokerPionRuntime } from './self-hosted-broker-pion-runtime.js';
-import type { SelfHostedBrokerRuntime } from './self-hosted-broker-runtime.js';
+import type {
+  SelfHostedBrokerRuntime,
+  SelfHostedBrokerStatus,
+} from './self-hosted-broker-runtime.js';
 import type { StationRuntimeOptions } from './station-runtime.js';
 
 /**
@@ -232,6 +235,7 @@ function loadPrivateRef(path: string, code: string): ValidatedRef {
 export function loadSelfHostedBrokerConnectorConfig(options?: {
   homeDir?: string;
   env?: NodeJS.ProcessEnv;
+  observeStatus?: (status: SelfHostedBrokerStatus) => void;
 }): SelfHostedConnectorFactory | null {
   const env = options?.env ?? process.env;
   const configPath = env[SELF_HOSTED_CONNECTOR_CONFIG_ENV];
@@ -498,7 +502,7 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
     },
     selfHostedBrokerConnector: {
       create: (application: VirtualApplication) =>
-        factoryCreateRuntime(snapshot, application),
+        factoryCreateRuntime(snapshot, application, options?.observeStatus),
     },
   };
 }
@@ -523,6 +527,7 @@ function factoryCreateRuntime(
     homeDir: string;
   },
   application: VirtualApplication,
+  observeStatus?: (status: SelfHostedBrokerStatus) => void,
 ): SelfHostedBrokerRuntime {
   const store = new ConnectionSigningKeyStore(snapshot.homeDir);
   const trust = createConnectorTrustOwner(snapshot.homeDir);
@@ -557,6 +562,7 @@ function factoryCreateRuntime(
       pollMs: 1_000,
       maxPeerLifetimeMs: snapshot.maxPeerLifetimeMs,
       maxPeers: snapshot.maxPeers,
+      observeStatus,
     },
     application,
   );

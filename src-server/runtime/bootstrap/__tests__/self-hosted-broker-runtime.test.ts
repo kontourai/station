@@ -91,6 +91,51 @@ describe('self-hosted broker runtime lifecycle', () => {
     await runtime.shutdown();
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
+  test('reports content-free lifecycle transitions without claiming application readiness', async () => {
+    const f = fixture();
+    const statuses: unknown[] = [];
+    f.connector.register
+      .mockRejectedValueOnce(
+        new BrokerTransientRequestError(new TypeError('private server detail')),
+      )
+      .mockResolvedValueOnce({ expiresAt: Date.now() + 60_000 });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      retryDelayMs: 1,
+      observeStatus: (status) => statuses.push(status),
+    });
+    await runtime.start();
+    expect(statuses).toEqual([
+      { state: 'starting', phase: 'registration' },
+      {
+        state: 'reconnecting',
+        phase: 'registration',
+        reason: 'transient_request',
+      },
+      { state: 'registered', phase: 'registration' },
+    ]);
+    expect(JSON.stringify(statuses)).not.toContain('private server detail');
+    expect(f.options.application.fetch).not.toHaveBeenCalled();
+    await runtime.shutdown();
+    expect(statuses.at(-1)).toEqual({
+      state: 'withdrawn',
+      phase: 'withdrawal',
+      reason: 'shutdown_requested',
+    });
+  });
+  test('a throwing status observer cannot change broker registration or cleanup', async () => {
+    const f = fixture();
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      observeStatus: async () => {
+        throw new Error('observer failure');
+      },
+    });
+    await expect(runtime.start()).resolves.toBeUndefined();
+    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    expect(f.connector.register).toHaveBeenCalledOnce();
+    expect(f.connector.withdraw).toHaveBeenCalledOnce();
+  });
   test('does not retry a permanent registration refusal', async () => {
     const f = fixture();
     f.connector.register.mockRejectedValueOnce(

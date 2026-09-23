@@ -16,7 +16,10 @@ import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-b
 import { SelfHostedBrokerConnector } from '../../services/connections/self-hosted-broker-connector.js';
 import type { BrokerCredential } from '../../services/connections/self-hosted-broker-service.js';
 import type { VirtualApplication } from '../../services/connections/virtual-application.js';
-import { SelfHostedBrokerRuntime } from './self-hosted-broker-runtime.js';
+import {
+  SelfHostedBrokerRuntime,
+  type SelfHostedBrokerStatus,
+} from './self-hosted-broker-runtime.js';
 
 function fingerprint(sdp: string) {
   const values = [...sdp.matchAll(/^a=fingerprint:sha-256 (.+)$/gm)].map(
@@ -64,6 +67,7 @@ export interface SelfHostedBrokerPionRuntimeInput {
   pollMs: number;
   maxPeerLifetimeMs: number;
   maxPeers: number;
+  observeStatus?: (status: SelfHostedBrokerStatus) => void;
 }
 export interface SelfHostedBrokerPionRuntimeDependencies {
   startAdapter: typeof startPionApplicationAdapter;
@@ -455,5 +459,6 @@ export function createSelfHostedBrokerPionRuntime(
     heartbeatMs,
     renewMs,
     pollMs,
+    observeStatus: input.observeStatus,
   });
 }
