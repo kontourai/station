@@ -93,7 +93,12 @@ export function InstallPreviewModal({
                     >
                       {component.type}
                     </span>
-                    <span>{component.id}</span>
+                    <span>{component.name || component.id}</span>
+                    {component.name && (
+                      <span className="plugins__preview-component-id">
+                        {component.id}
+                      </span>
+                    )}
                   </Checkbox>
                 </div>
                 {component.conflict && (
@@ -104,12 +109,20 @@ export function InstallPreviewModal({
                       : ''}
                   </span>
                 )}
-                {!skippable && (
-                  <span className="plugins__preview-conflict-tag">
-                    Required package declaration — resolve the conflict before
-                    install
-                  </span>
-                )}
+                {/* Non-skippable only means the package cannot install without
+                    this declaration. It blocks install only when the server
+                    also reported a conflict for it (see hasBlockingConflict). */}
+                {!skippable &&
+                  (component.conflict ? (
+                    <span className="plugins__preview-conflict-tag">
+                      Required package declaration — resolve the conflict before
+                      install
+                    </span>
+                  ) : (
+                    <span className="plugins__preview-required-tag">
+                      Required
+                    </span>
+                  ))}
               </div>
             );
           })}
