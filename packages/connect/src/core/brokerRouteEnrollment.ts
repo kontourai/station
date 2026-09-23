@@ -450,7 +450,7 @@ function readWithOperation<T>(
 }
 
 /**
- * IndexedDB custody isolated from Station profiles and application credentials.
+ * IndexedDB custody isolated from saved Stations and application credentials.
  * One active grant is stored per broker, Station enrollment, and browser origin.
  */
 export class IndexedDbBrowserRoutingGrantStorage

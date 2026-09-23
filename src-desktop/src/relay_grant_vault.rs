@@ -547,7 +547,7 @@ fn owner_for_route(
 ) -> Result<RelayGrantOwner, String> {
     validate_route(route)?;
     if profile_name.is_empty() || profile_name.len() > 128 {
-        return Err("invalid relay Station profile name".to_string());
+        return Err("invalid saved Station name".to_string());
     }
     let contents = super::read_station_profile_contents(app)?;
     let store = super::parse_station_profile_store(&contents)?;
@@ -555,11 +555,11 @@ fn owner_for_route(
         .profiles
         .iter()
         .find(|profile| profile.name.eq_ignore_ascii_case(profile_name))
-        .ok_or_else(|| "relay Station profile is unavailable".to_string())?;
+        .ok_or_else(|| "saved Station is unavailable".to_string())?;
     let saved_route = profile
         .relay_route
         .as_ref()
-        .ok_or_else(|| "saved Station profile has no relay route".to_string())?;
+        .ok_or_else(|| "saved Station has no relay route".to_string())?;
     if saved_route.broker_origin != route.broker_origin
         || saved_route.station_id != route.station_id
         || saved_route.enrollment_id != route.enrollment_id
@@ -569,7 +569,7 @@ fn owner_for_route(
     let client_instance_id = profile
         .client_instance_id
         .clone()
-        .ok_or_else(|| "relay Station profile has no client instance id".to_string())?;
+        .ok_or_else(|| "saved Station has no client instance id".to_string())?;
     let owner = RelayGrantOwner {
         channel: super::native_app_channel(&app.config().identifier, cfg!(debug_assertions))
             .to_string(),
