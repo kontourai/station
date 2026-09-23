@@ -211,6 +211,10 @@ test('a fullscreen pane bound to another Project leaves the draft alone', async 
   });
 
   expect(claimed).toBe(false);
+  // Every picker open bumps its request epoch and remounts it, so a pane
+  // that wrongly took this request would have unmounted the open picker by
+  // now. It is still the same mounted picker.
+  expect(screen.getByRole('dialog', { name: 'New chat picker' })).toBeTruthy();
   // Whatever re-rendered, the picker still offers this pane's own Project
   // and draft; the request for `pulse` was left for another pane.
   for (const props of pickerProps.slice(before)) {
