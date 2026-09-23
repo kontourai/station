@@ -121,7 +121,7 @@ export const STATIC_GATE_INPUT_PREFIXES = Object.freeze([
  * `typecheck:examples` chain that examples-conformance checks coverage
  * against, so editing it alone can uncover an example.
  */
-export const STATIC_GATE_INPUT_FILES = Object.freeze(['package.json']);
+const STATIC_GATE_INPUT_FILES = Object.freeze(['package.json']);
 
 /** Does one repo-relative path feed any of these gates? */
 export function isStaticGateInput(path) {

@@ -74,7 +74,7 @@ export type GitDirectoryVerdict =
   | { verdict: 'inside' | 'linked-worktree' }
   | { verdict: 'outside'; reason: string };
 
-export async function gitDirectoryInsideProject(
+async function gitDirectoryInsideProject(
   target: string,
   projectRoot: string,
 ): Promise<GitDirectoryVerdict> {
