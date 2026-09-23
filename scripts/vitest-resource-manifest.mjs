@@ -124,6 +124,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
   'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
+  // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
+  'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.

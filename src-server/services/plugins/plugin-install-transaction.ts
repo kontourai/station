@@ -129,10 +129,10 @@ import {
   PluginInstallationPending,
   type PluginInstallationService,
 } from './plugin-installation-service.js';
+import { readUntrustedPluginManifestSyncWithFormat } from './plugin-manifest-bounded-read.js';
 import {
   readPluginManifestFile,
   readPluginManifestFileSync,
-  readPluginManifestFileWithFormat,
 } from './plugin-manifest-loader.js';
 import {
   type CapturedPluginPermissionArtifact,
@@ -3106,8 +3106,10 @@ async function installPluginFromSourceUnderContext(
   let releaseInstallPublication: (() => Promise<void>) | undefined;
   let leaveInstallGraph: (() => void) | undefined;
   try {
+    // The staged source is untrusted: install refuses exactly the manifests
+    // preview refuses (#2342), through the same bounded reader.
     const { manifest, format: manifestFormat } =
-      await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
+      readUntrustedPluginManifestSyncWithFormat(join(tempDir, 'plugin.json'));
     const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
     if (
