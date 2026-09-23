@@ -320,6 +320,18 @@ export type ChatUIState = {
    * Session-scoped and not persisted.
    */
   sendAwaitingTurnStart?: boolean;
+  /**
+   * #2309: the turn the record showed open when the current send window
+   * began (a stopped turn not yet aborted, typically). That turn opening
+   * again in the record is not this send's acknowledgement. Not persisted.
+   */
+  sendAwaitingPriorTurnId?: string;
+  /**
+   * #2309: a queue drain has popped this chat's head and not dispatched it
+   * yet (`queueDrain.ts`). A second trigger for the same turn end must not
+   * pop the next one meanwhile. Session-scoped, not persisted.
+   */
+  queueDrainSettling?: boolean;
   /** #2309: see `ConversationActivityCarrier.stopSettledTurnId`. Not persisted. */
   stopSettledTurnId?: string;
   /**
@@ -975,11 +987,26 @@ export function mergeChatUpdates(
   ) {
     chat.conversationActivity = undefined;
   }
-  // The optimistic send window closes when the server shows the turn open or
-  // the composer is no longer sending. See `sendAwaitingTurnStart`.
-  if (chat.status !== 'sending' || chat.conversationActivity?.openTurn) {
+  // The optimistic send window closes when the server shows THIS send's turn
+  // open, or the composer is no longer sending. See `sendAwaitingTurnStart`.
+  // A turn that was already open when the window began is not this send's
+  // turn: after a settled Stop the record still names the stopped turn until
+  // its `turn.aborted` lands, and closing on it would leave a gap in which a
+  // second Enter dispatches a second turn.
+  if (nextUpdates.sendAwaitingTurnStart === true) {
+    chat.sendAwaitingPriorTurnId =
+      current.conversationActivity?.openTurn?.turnId;
+  }
+  const openTurnId = chat.conversationActivity?.openTurn?.turnId;
+  if (
+    chat.status !== 'sending' ||
+    (openTurnId !== undefined &&
+      openTurnId !== chat.sendAwaitingPriorTurnId &&
+      openTurnId !== chat.stopSettledTurnId)
+  ) {
     chat.sendAwaitingTurnStart = undefined;
   }
+  if (!chat.sendAwaitingTurnStart) chat.sendAwaitingPriorTurnId = undefined;
   // A settled Stop names one turn; once the record shows a different open
   // turn (or none), the note has done its job.
   if (

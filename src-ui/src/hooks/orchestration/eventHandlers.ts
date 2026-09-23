@@ -20,7 +20,10 @@ import {
   handleWorkflowStateChangedEvent,
 } from './governanceHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
-import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import {
+  drainQueuedMessageOnTurnCompleted,
+  noteTurnEndedWithoutDrain,
+} from './queueDrain';
 import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import {
@@ -118,6 +121,20 @@ export function handleOrchestrationEvent(
   // frames never feed it: a recorded record would land on the live chat of
   // the same conversation.
   if (conversation?.activity && !isReplayThread(event.threadId)) {
+    // A turn end that must not fire a queued follow-up is noted BEFORE the
+    // record that closes the turn is applied, because that record's closing
+    // is what the queue drain listens to (`drainQueuedMessagesOnOpenTurnClosed`).
+    if (event.method === 'turn.aborted')
+      noteTurnEndedWithoutDrain(event.turnId);
+    if (
+      event.method === 'runtime.error' &&
+      isDeferredRetriableTurnError(event)
+    ) {
+      const failedTurnId = event.details?.turnId ?? event.turnId;
+      noteTurnEndedWithoutDrain(
+        typeof failedTurnId === 'string' ? failedTurnId : undefined,
+      );
+    }
     activeChatsStore.applyConversationActivity(conversation.activity);
   }
   recordReplayRuntime(apiBase, event, provenance);

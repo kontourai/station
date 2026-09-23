@@ -2,9 +2,13 @@ import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/sessi
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { activeChatsStore } from '../../contexts/active-chats-store';
+import {
+  activeChatsStore,
+  type OpenTurnClosure,
+} from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
 
@@ -84,6 +88,42 @@ function isDefinitiveClientRejection(error: unknown): boolean {
  * other refusal changes what is sent, and a button that repeats a
  * deterministic failure is worse than no button.
  */
+/**
+ * #2309: turns whose end must NOT fire a queued follow-up: an explicit Stop
+ * (`turn.aborted`; auto-sending right after the user asked the turn to stop
+ * is the undecided UX call archive#3451 left alone) and a deferred-retriable
+ * failure (the turn may still resolve). Noted from the witnessed event so the
+ * record-driven drain can honour the same exclusions. Bounded: only the most
+ * recent turn ends matter.
+ */
+const turnsEndedWithoutDrain = new Set<string>();
+const TURNS_ENDED_WITHOUT_DRAIN_MAX = 200;
+
+export function noteTurnEndedWithoutDrain(turnId: string | undefined): void {
+  if (!turnId) return;
+  turnsEndedWithoutDrain.add(turnId);
+  if (turnsEndedWithoutDrain.size > TURNS_ENDED_WITHOUT_DRAIN_MAX) {
+    const oldest = turnsEndedWithoutDrain.values().next().value;
+    if (oldest !== undefined) turnsEndedWithoutDrain.delete(oldest);
+  }
+}
+
+/**
+ * #2309: drain when the server record stops showing the chat's open turn.
+ * This reaches the turn wherever it ran: after a reload the chat can still
+ * name the root session while a lineage child runs the turn, and that
+ * child's `turn.completed` then routes to no chat at all, stranding the
+ * queue. The exclusions of the event-driven drain still apply.
+ */
+export function drainQueuedMessagesOnOpenTurnClosed(
+  apiBase: string,
+  closure: OpenTurnClosure,
+): void {
+  if (closure.stoppedHere) return;
+  if (turnsEndedWithoutDrain.has(closure.turnId)) return;
+  drainQueuedMessageOnTurnCompleted(apiBase, closure.chatKey);
+}
+
 export function drainQueuedMessageOnTurnCompleted(
   apiBase: string,
   threadId: string,
@@ -92,6 +132,14 @@ export function drainQueuedMessageOnTurnCompleted(
   if (isReplayThread(threadId)) return;
   const chat = activeChatsStore.getSnapshot()[threadId];
   if (
+    // #2309: the drain now has two triggers for one turn end (the witnessed
+    // terminal event and the server record closing the turn), and each pops
+    // the queue head; the second must not pop the next message while the
+    // first is still settling.
+    chat?.queueDrainSettling ||
+    // #2309: a turn the server still shows open (a newer one, or this
+    // drain's own send awaiting its turn) is not a turn end to drain on.
+    serverTurnLive(chat) === true ||
     !chat?.queuedMessages?.length ||
     chat.isEditingQueue ||
     (chat.queuedMessageFailure?.reviewReason === 'execution-binding-changed' &&
@@ -120,9 +168,22 @@ export function drainQueuedMessageOnTurnCompleted(
   activeChatsStore.updateChat(threadId, {
     queuedMessages: remainingQueue,
     queuedMessageFailure: undefined,
+    queueDrainSettling: true,
   });
 
   setTimeout(async () => {
+    try {
+      await dispatchDrainedHead();
+    } finally {
+      if (activeChatsStore.getSnapshot()[threadId]?.queueDrainSettling) {
+        activeChatsStore.updateChat(threadId, {
+          queueDrainSettling: undefined,
+        });
+      }
+    }
+  }, 100);
+
+  async function dispatchDrainedHead() {
     let dispatchForeground: typeof import('../../lib/foregroundMessageDispatch').dispatchForeground;
     try {
       ({ dispatchForeground } = await import(
@@ -331,5 +392,5 @@ export function drainQueuedMessageOnTurnCompleted(
                 }`,
         });
       });
-  }, 100);
+  }
 }

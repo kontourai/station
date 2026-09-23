@@ -1092,7 +1092,7 @@ export function chatSessionIsLive(
         orchestrationSessionStarted?: boolean;
         orchestrationStatus?: string;
         orchestrationTurnOpen?: boolean;
-      } & Pick<ConversationActivityCarrier, 'conversationActivity'>)
+      } & ConversationActivityCarrier)
     | null,
 ): boolean {
   if (!session) return false;
@@ -1101,7 +1101,7 @@ export function chatSessionIsLive(
   // only when it did not.
   if (
     session.conversationActivity
-      ? session.conversationActivity.openTurn !== undefined
+      ? serverTurnLive(session) === true
       : session.orchestrationTurnOpen === true
   )
     return true;

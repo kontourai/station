@@ -4,10 +4,12 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import {
   handleOrchestrationEvent,
   settleSemanticDeliveryBuffer,
 } from './eventHandlers';
+import { drainQueuedMessagesOnOpenTurnClosed } from './queueDrain';
 import {
   recordReplayConnection,
   recordReplaySnapshot,
@@ -119,6 +121,11 @@ export function ensureOrchestrationEventStream(
 ) {
   if (queryClient) sharedQueryClient = queryClient;
   if (activeSources.has(apiBase)) return;
+  // #2309: a queued follow-up drains when the server record closes the
+  // chat's open turn, wherever that turn ran. One listener per stream.
+  const stopDrainOnTurnClose = activeChatsStore.onOpenTurnClosed((closure) =>
+    drainQueuedMessagesOnOpenTurnClosed(apiBase, closure),
+  );
   // archive#1092: dedup guard against duplicate/overlapping frames on a
   // sequence-cursor resume. Applying a stale duplicate here would
   // reapply deltas (e.g. `content.text-delta`) into already-updated chat
@@ -240,6 +247,7 @@ export function ensureOrchestrationEventStream(
       setStreamConnectionState(apiBase, 'closed');
       authenticatedStream.close();
       activeSources.delete(apiBase);
+      stopDrainOnTurnClose();
     },
   });
 

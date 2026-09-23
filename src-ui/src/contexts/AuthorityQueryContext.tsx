@@ -139,6 +139,7 @@ import {
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 import { AuthorityPersistenceContext } from './AuthorityPersistenceContext';
+import { activeChatsStore } from './active-chats-store';
 
 export interface AuthorityObservationRequest {
   apiBase: string;
@@ -351,6 +352,8 @@ export function AuthorityQueryProvider({
         activeRef.current = null;
         setActive(null);
         retireAuthorityClient(previous.queryClient);
+        // #2309: another Station's activity sequences are not comparable.
+        activeChatsStore.clearConversationActivity();
       }
       return;
     }
@@ -362,7 +365,10 @@ export function AuthorityQueryProvider({
     };
     activeRef.current = next;
     setActive(next);
-    if (previous) retireAuthorityClient(previous.queryClient);
+    if (previous) {
+      retireAuthorityClient(previous.queryClient);
+      activeChatsStore.clearConversationActivity();
+    }
   }, [verifiedNamespace]);
 
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the

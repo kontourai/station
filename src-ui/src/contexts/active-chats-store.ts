@@ -35,6 +35,26 @@ export type {
   ChatUIState,
 } from './active-chats-state';
 
+/** #2309: a chat's server record stopped showing the turn it showed open. */
+export type OpenTurnClosure = {
+  chatKey: string;
+  turnId: string;
+  /** This client's own Stop settled that turn (`stopSettledTurnId`). */
+  stoppedHere: boolean;
+};
+type OpenTurnClosedListener = (closure: OpenTurnClosure) => void;
+
+function openTurnClosure(
+  chatKey: string,
+  before: ChatUIState,
+  after: ChatUIState,
+): OpenTurnClosure | undefined {
+  const turnId = before.conversationActivity?.openTurn?.turnId;
+  if (!turnId || after.conversationActivity?.openTurn?.turnId === turnId)
+    return undefined;
+  return { chatKey, turnId, stoppedHere: before.stopSettledTurnId === turnId };
+}
+
 // Constructed in unit tests via dynamic import; the app uses the singleton below.
 export class ActiveChatsStore {
   private chats: ActiveChatsMap = {};
@@ -65,6 +85,7 @@ export class ActiveChatsStore {
    * waiting for the next carrier.
    */
   private activityByConversation = new Map<string, ConversationTurnActivity>();
+  private openTurnClosedListeners = new Set<OpenTurnClosedListener>();
 
   constructor(options: ActiveChatsStoreOptions = {}) {
     this.storageKey = options.storageKey ?? 'activeChats';
@@ -189,6 +210,7 @@ export class ActiveChatsStore {
     const newest = newerConversationActivity(known, activity);
     if (!newest || newest === known) return;
     this.activityByConversation.set(activity.conversationId, newest);
+    const closed: OpenTurnClosure[] = [];
     let changed = false;
     for (const [key, chat] of Object.entries(this.chats)) {
       if (chat.conversationId !== activity.conversationId) continue;
@@ -198,8 +220,50 @@ export class ActiveChatsStore {
       if (next.conversationActivity === chat.conversationActivity) continue;
       this.chats[key] = next;
       changed = true;
+      const closure = openTurnClosure(key, chat, next);
+      if (closure) closed.push(closure);
     }
     if (changed) this.notify(false);
+    this.announceClosures(closed);
+  }
+
+  /**
+   * #2309: be told when a chat's server record stops showing the turn it
+   * showed open. That transition is the one signal every device sees for
+   * every lineage child, so the queued-follow-up drain keys on it rather than
+   * only on a `turn.completed` this client happened to route to the chat.
+   */
+  onOpenTurnClosed(listener: OpenTurnClosedListener): () => void {
+    this.openTurnClosedListeners.add(listener);
+    return () => this.openTurnClosedListeners.delete(listener);
+  }
+
+  /**
+   * #2309: forget every server record. Records are per Station: after the
+   * tab's authority changes, another Station's sequences are not comparable,
+   * and keep-newest would otherwise reject its lower ones for the tab's life.
+   */
+  clearConversationActivity() {
+    this.activityByConversation.clear();
+    let changed = false;
+    for (const [key, chat] of Object.entries(this.chats)) {
+      if (!chat.conversationActivity) continue;
+      this.chats[key] = {
+        ...chat,
+        conversationActivity: undefined,
+        sendAwaitingTurnStart: undefined,
+        sendAwaitingPriorTurnId: undefined,
+        stopSettledTurnId: undefined,
+      };
+      changed = true;
+    }
+    if (changed) this.notify(false);
+  }
+
+  private announceClosures(closed: readonly OpenTurnClosure[]) {
+    for (const closure of closed) {
+      for (const listener of this.openTurnClosedListeners) listener(closure);
+    }
   }
 
   /** The newest record this store holds for a conversation. */
@@ -254,7 +318,9 @@ export class ActiveChatsStore {
       current,
       updates,
     );
-    this.chats[targetSessionId!] = this.withKnownActivity(chat);
+    const next = this.withKnownActivity(chat);
+    this.chats[targetSessionId!] = next;
+    const closure = openTurnClosure(targetSessionId!, current, next);
     if (
       chat.conversationActivity &&
       chat.conversationActivity !== current.conversationActivity
@@ -286,6 +352,7 @@ export class ActiveChatsStore {
       );
     }
     this.notify(shouldPersist);
+    if (closure) this.announceClosures([closure]);
   }
 
   /**
