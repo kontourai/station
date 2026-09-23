@@ -7,6 +7,10 @@ export function ElapsedWait({
   label = 'Waiting',
   separator = ' · ',
 }: {
+  /**
+   * Epoch ms the wait began. It may come from another clock (a server
+   * timestamp): a start ahead of this clock reads 0:00, never negative.
+   */
   startedAt?: number;
   elapsedMs?: number;
   label?: string;
@@ -27,7 +31,9 @@ export function ElapsedWait({
     <span
       className="elapsed-wait"
       aria-live="off"
-      title="Time waiting in this view; not an estimate of completion"
+      // #2304: not "in this view" — the start may be the server's turn
+      // start, which predates this view.
+      title="Elapsed time; not an estimate of completion"
     >
       {label ? `${label}${separator}` : ''}
       {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}

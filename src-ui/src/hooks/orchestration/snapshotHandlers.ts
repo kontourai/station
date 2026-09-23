@@ -63,6 +63,15 @@ function turnIsOpen(session: { hasActiveTurn?: boolean }): boolean {
  * a message (settled turn). For an open turn `openTurnShellSuperseded` hands
  * that turn's rendering to the projection until `turn.started` opens the next
  * one — see `useActiveChatTranscript`'s suppression filter.
+ *
+ * #2304: the open turn's start (`openTurnStartedAt`) is dropped with the
+ * shell, for the same reason. The fold reseeds `orchestrationTurnOpen` from
+ * `hasActiveTurn` without ever passing through `false`, so a turn that
+ * completed inside the gap, followed by the next one starting, would
+ * otherwise leave the finished turn's start on the "Working for" clock.
+ * `useActiveChatTranscript` re-derives it from the refetched window. Until it
+ * does, the streaming row states no working duration: it cannot tell the
+ * same turn still running from a different turn started in the gap.
  */
 function reconnectCatchUpUpdates(
   chat: Pick<ChatUIState, 'orchestrationHistoryRevision'> | undefined,
@@ -71,7 +80,9 @@ function reconnectCatchUpUpdates(
   return {
     orchestrationHistoryRevision: (chat?.orchestrationHistoryRevision ?? 0) + 1,
     streamingMessage: undefined,
-    ...(hasOpenTurn ? { openTurnShellSuperseded: true } : {}),
+    ...(hasOpenTurn
+      ? { openTurnShellSuperseded: true, openTurnStartedAt: undefined }
+      : {}),
   };
 }
 

@@ -536,6 +536,8 @@ export const e2eManifest = [
   {
     path: 'tests/agents-new-cli-turn.spec.ts',
     bucket: 'smoke-live',
+    // Disabled in CI until #2318 (scripts/lib/account-requirement.mjs).
+    requiresAccount: 'a signed-in Claude Code or Codex CLI',
     surface: 'Agents',
     tierTarget: 'full',
     primary: true,
@@ -546,6 +548,8 @@ export const e2eManifest = [
   {
     path: 'tests/agents-new-muse-echo-turn.spec.ts',
     bucket: 'smoke-live',
+    // Disabled in CI until #2318 (scripts/lib/account-requirement.mjs).
+    requiresAccount: 'an installed, authenticated Muse CLI',
     surface: 'Agents',
     tierTarget: 'full',
     primary: true,
@@ -904,6 +908,8 @@ export const e2eManifest = [
   {
     path: 'tests/workspace-pane-host-actions-live.spec.ts',
     bucket: 'smoke-live',
+    // Disabled in CI until #2318 (scripts/lib/account-requirement.mjs).
+    requiresAccount: 'an installed, authenticated Muse CLI',
     surface: 'Plugins',
     tierTarget: 'full',
     primary: true,
@@ -2048,6 +2054,22 @@ export function listE2ESourceFiles(rootDir = process.cwd()) {
   return files.sort();
 }
 
+/**
+ * `requiresAccount` names the signed-in account a spec needs; CI skips such a
+ * spec before it starts (scripts/lib/account-requirement.mjs, until #2318).
+ * A declaration that names nothing would disable coverage for no stated
+ * reason, so it is refused.
+ */
+export function requiresAccountErrors(entry) {
+  if (!('requiresAccount' in entry)) return [];
+  return typeof entry.requiresAccount === 'string' &&
+    entry.requiresAccount.trim()
+    ? []
+    : [
+        `${entry.path} declares requiresAccount without naming the account it needs.`,
+      ];
+}
+
 export function validateE2EManifest({
   rootDir = process.cwd(),
   readFile,
@@ -2093,6 +2115,7 @@ export function validateE2EManifest({
     if (!entry.rationale) {
       errors.push(`${entry.path} is missing a rationale.`);
     }
+    errors.push(...requiresAccountErrors(entry));
     if (entry.bucket === 'quarantine' && !entry.replacement) {
       errors.push(`${entry.path} is quarantined without replacement coverage.`);
     }
