@@ -29,6 +29,13 @@
   color: var(--accent-warning, var(--text-primary));
 }
 
+/* Direct children inherit index.css's shared mobile 44px/wrap floor. */
+.live-surface__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
 .live-surface__claim {
   min-height: 44px;
   min-width: 44px;
@@ -61,7 +68,12 @@
   width: 100%;
 }
 
-/* Focus target for keys, text and IME; invisible, and never takes pointers. */
+/*
+ * Focus target for keys, text and IME; invisible, and never takes pointers.
+ * Its own outline is NOT suppressed (it is simply not visible at opacity 0);
+ * the visible focus ring is drawn on the stage by the :has(:focus-visible)
+ * rule above, around the surface the keys go to.
+ */
 .live-surface__keyboard {
   background: transparent;
   border: 0;
@@ -70,7 +82,6 @@
   height: 1px;
   left: 0;
   opacity: 0;
-  outline: none;
   overflow: hidden;
   padding: 0;
   pointer-events: none;

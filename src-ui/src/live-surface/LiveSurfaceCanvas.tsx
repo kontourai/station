@@ -481,24 +481,26 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         >
           {controller.text}
         </p>
-        {controller.tone !== 'you' && surface.status === 'live' ? (
-          <Button
-            size="sm"
-            className="live-surface__claim"
-            onClick={() => void surface.claimControl()}
-          >
-            Take control
-          </Button>
-        ) : null}
-        {surface.status === 'unavailable' || surface.status === 'denied' ? (
-          <Button
-            size="sm"
-            className="live-surface__claim"
-            onClick={surface.retry}
-          >
-            Try again
-          </Button>
-        ) : null}
+        <div className="live-surface__actions">
+          {controller.tone !== 'you' && surface.status === 'live' ? (
+            <Button
+              size="sm"
+              className="live-surface__claim"
+              onClick={() => void surface.claimControl()}
+            >
+              Take control
+            </Button>
+          ) : null}
+          {surface.status === 'unavailable' || surface.status === 'denied' ? (
+            <Button
+              size="sm"
+              className="live-surface__claim"
+              onClick={surface.retry}
+            >
+              Try again
+            </Button>
+          ) : null}
+        </div>
       </div>
       {surface.wedged && surface.status === 'live' ? (
         <p className="live-surface__notice" role="status">

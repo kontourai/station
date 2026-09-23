@@ -11,6 +11,9 @@
  * emits.
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   encodeLiveSurfaceRecord,
   type LiveSurfaceControlLease,
@@ -825,6 +828,46 @@ describe('LiveSurfaceCanvas', () => {
         clickCount: 1,
       },
     ]);
+  });
+
+  // Responsive-action-surface inventory evidence. jsdom computes no layout,
+  // so this does NOT measure 44px: it checks the link the inventory entry
+  // claims — the toolbar's buttons are DIRECT children of an `__actions` row,
+  // and index.css's shared mobile floor selects exactly that and declares the
+  // 44px minimums (the same derivation WorkspacePaneAvailabilityList uses).
+  test('toolbar actions sit directly inside the row the shared mobile 44px floor selects', async () => {
+    const h = harness();
+    await renderLive(h);
+    const take = screen.getByRole('button', { name: 'Take control' });
+    const row = take.parentElement!;
+    expect(row.className).toContain('__actions');
+    for (const button of Array.from(row.querySelectorAll('button')))
+      expect(button.parentElement).toBe(row);
+
+    const indexCss = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../index.css'),
+      'utf8',
+    );
+    const mobileBlock = indexCss.slice(
+      indexCss.indexOf(
+        '@media (max-width: 768px), (max-height: 540px) and (pointer: coarse)',
+      ),
+    );
+    const COMBINATOR = '> :is(button, a, .button, [role="button"])';
+    const floors: { selectors: string; body: string }[] = [];
+    for (let at = mobileBlock.indexOf(COMBINATOR); at > -1; ) {
+      floors.push({
+        selectors: mobileBlock.slice(Math.max(0, at - 400), at),
+        body: mobileBlock.slice(at, mobileBlock.indexOf('\n  }', at)),
+      });
+      at = mobileBlock.indexOf(COMBINATOR, at + 1);
+    }
+    const shared = floors.find((rule) =>
+      rule.selectors.includes('[class*="__actions"]'),
+    );
+    expect(shared, 'no shared __actions touch-floor rule').toBeDefined();
+    expect(shared?.body).toContain('min-height: 44px');
+    expect(shared?.body).toContain('min-width: 44px');
   });
 
   test('a 404 is a terminal "not available" state with no reconnect', async () => {
