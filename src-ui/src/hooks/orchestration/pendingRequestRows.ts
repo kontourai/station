@@ -1,5 +1,8 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { APPROVAL_TERMINAL_METHODS } from '@kontourai/station-shared/runtime-event-projection';
+import {
+  approvalRetiredBy,
+  isSubagentApprovalRequest,
+} from '@kontourai/station-shared/runtime-event-projection';
 import { toolRequestFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import type { ChatMessage } from '../../types';
 
@@ -20,9 +23,9 @@ const requestKey = (threadId: string, requestId: string) =>
 
 /**
  * Approval requests in this window that are still open: no `request.resolved`
- * for them, and their session has not ended a turn or exited since they
- * opened (an answer would have nothing left to unblock) — the same rule the
- * projection uses to retire a bound card (`APPROVAL_TERMINAL_METHODS`). Keyed by thread AND
+ * for them, and nothing since has retired them (`approvalRetiredBy`: a session
+ * exit, or — for a main-thread request — the end of its turn). This is the
+ * same rule the projection uses to retire a bound card. Keyed by thread AND
  * request id: a conversation window folds every session in its lineage.
  */
 export function openApprovalRequests(
@@ -38,9 +41,16 @@ export function openApprovalRequests(
         open.set(requestKey(event.threadId, event.requestId), event);
     } else if (event.method === 'request.resolved') {
       open.delete(requestKey(event.threadId, event.requestId));
-    } else if (APPROVAL_TERMINAL_METHODS.has(event.method)) {
+    } else {
       for (const [entry, request] of open) {
-        if (request.threadId === event.threadId) open.delete(entry);
+        if (
+          request.threadId === event.threadId &&
+          approvalRetiredBy(
+            event.method,
+            isSubagentApprovalRequest(request.payload),
+          )
+        )
+          open.delete(entry);
       }
     }
   }

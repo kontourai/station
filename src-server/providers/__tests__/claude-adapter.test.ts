@@ -2491,6 +2491,118 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
+    test('an interrupt spares a live background subagent’s request, and still settles the main thread’s', async () => {
+      const threadId = 'thread-background-approval';
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const until = async (predicate: (event: any) => boolean) => {
+        for (let seen = 0; seen < 30; seen++) {
+          const event = (await iterator.next()).value;
+          if (predicate(event)) return event;
+        }
+        throw new Error('expected event never arrived');
+      };
+      await adapter.startSession({ provider: 'claude', threadId });
+      const turn = await adapter.sendTurn({ threadId, input: 'research it' });
+      await until((event) => event.method === 'turn.started');
+      controlled.push({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-bg',
+        tool_use_id: 'toolu-bg',
+        description: 'Deep research',
+        uuid: 'u-1',
+        session_id: 's-1',
+      });
+      controlled.push({
+        type: 'system',
+        subtype: 'task_updated',
+        task_id: 'task-bg',
+        patch: { is_backgrounded: true },
+        uuid: 'u-2',
+        session_id: 's-1',
+      });
+      await until((event) => event.method === 'tool.started');
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const signal = new AbortController().signal;
+      const subagentPermission = canUseTool(
+        'Bash',
+        { command: 'npm test' },
+        {
+          signal,
+          toolUseID: 'toolu-sub',
+          agentID: 'agent-bg',
+          suggestions: [],
+        },
+      );
+      const subagentOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+      const mainPermission = canUseTool(
+        'Write',
+        { file_path: 'a.ts' },
+        { signal, toolUseID: 'toolu-main', suggestions: [] },
+      );
+      const mainOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+
+      await adapter.interruptTurn(threadId, turn.turnId);
+      await expect(mainPermission).resolves.toMatchObject({ behavior: 'deny' });
+      expect(
+        await until((event) => event.method === 'request.resolved'),
+      ).toMatchObject({ requestId: mainOpened.requestId, status: 'cancelled' });
+      expect(
+        await until((event) => event.method === 'turn.aborted'),
+      ).toBeTruthy();
+
+      // The background subagent is still running: its request is still live
+      // and answerable.
+      await adapter.respondToRequest(
+        threadId,
+        subagentOpened.requestId,
+        'accept',
+      );
+      await expect(subagentPermission).resolves.toMatchObject({
+        behavior: 'allow',
+      });
+      await adapter.stopSession(threadId);
+    });
+
+    test('with no background task live, an interrupt settles a subagent’s request too', async () => {
+      const threadId = 'thread-foreground-subagent-approval';
+      mockQuery.mockReturnValue(createControlledMockQuery());
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({ provider: 'claude', threadId });
+      await iterator.next();
+      await iterator.next();
+      const turn = await adapter.sendTurn({ threadId, input: 'delegate it' });
+      await iterator.next();
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const permission = canUseTool(
+        'Bash',
+        { command: 'npm test' },
+        {
+          signal: new AbortController().signal,
+          toolUseID: 'toolu-fg-sub',
+          agentID: 'agent-fg',
+          suggestions: [],
+        },
+      );
+      const opened = (await iterator.next()).value;
+      await adapter.interruptTurn(threadId, turn.turnId);
+      await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+      expect((await iterator.next()).value).toMatchObject({
+        method: 'request.resolved',
+        requestId: opened.requestId,
+        status: 'cancelled',
+      });
+      await adapter.stopSession(threadId);
+    });
+
     test('an SDK abort of the gated call settles the open request', async () => {
       const threadId = 'thread-aborted-approval';
       const controller = new AbortController();

@@ -128,6 +128,8 @@ type PendingRequest = {
   suggestions?: PermissionUpdate[];
   toolInput: Record<string, unknown>;
   toolName: string;
+  /** The SDK agent id when a subagent, not the main thread, asked (#2316). */
+  agentId?: string;
 };
 
 /** The command Station resolves on PATH for this engine. */
@@ -1640,8 +1642,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private cancelPendingRequests(
     record: ClaudeSessionRecord,
     threadId: string,
+    options: { spareSubagents?: boolean } = {},
   ): void {
-    for (const requestId of [...record.pendingRequests.keys()]) {
+    for (const [requestId, pending] of [...record.pendingRequests]) {
+      if (options.spareSubagents && pending.agentId) continue;
       this.cancelPendingRequest(record, threadId, requestId);
     }
   }
@@ -1663,7 +1667,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // #2316: the interrupted turn's open approvals can never run their call.
     // Settle them (request.resolved, cancelled) BEFORE turn.aborted, so no
     // later answer lands on them and no grant is minted for them.
-    this.cancelPendingRequests(record, threadId);
+    //
+    // Except a live background subagent's: `perTaskStopAffordance` (declared
+    // in buildOptions) makes an interrupt spare background tasks, so their
+    // requests are still waiting on a real call. Which subagent asked is not
+    // tied to a task id here, so while any background task is live every
+    // subagent request is spared; a foreground subagent the interrupt does
+    // kill has its `canUseTool` aborted by the SDK, which settles it through
+    // the signal listener. With no background task live, nothing survives
+    // the interrupt and every request is settled.
+    this.cancelPendingRequests(record, threadId, {
+      spareSubagents: [...(record.activeTasks?.values() ?? [])].some(
+        (task) => (task as { backgrounded?: boolean }).backgrounded === true,
+      ),
+    });
     // A rejected control promise does not prove the engine ignored the
     // interrupt. Keep the exact-turn marker armed until the SDK result stream
     // confirms what happened; a second Stop must not clear the first one's
@@ -2359,6 +2376,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             suggestions: options.suggestions,
             toolInput,
             toolName,
+            ...(options.agentID ? { agentId: options.agentID } : {}),
           });
           // #2316: the SDK aborts this callback when the call it gates is
           // abandoned; the request is then settled, never left answerable.

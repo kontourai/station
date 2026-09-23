@@ -2355,3 +2355,74 @@ describe('#2316 a bound card is retired when its request can no longer be answer
     });
   });
 });
+
+describe('#2316 retired and cancelled cards, and subagent requests', () => {
+  const card = (events: CanonicalRuntimeEvent[]) =>
+    projectRuntimeEventsToMessages(events)
+      .flatMap((message) => message.parts)
+      .find(
+        (part) => part.type === 'tool-invocation' && part.toolCallId === 'c1',
+      );
+  const opened = (payload: Record<string, unknown>) => [
+    ev({ method: 'turn.started', turnId: 't-1', prompt: 'Run it' }),
+    ev({
+      method: 'tool.started',
+      turnId: 't-1',
+      toolCallId: 'c1',
+      toolName: 'Bash',
+      arguments: { command: 'ls' },
+    }),
+    ev({
+      method: 'request.opened',
+      requestId: 'req-c1',
+      requestType: 'approval',
+      payload: { toolName: 'Bash', toolCallId: 'c1', ...payload },
+    }),
+  ];
+
+  it('marks a card retired by its turn end as cancelled', () => {
+    expect(
+      card([
+        ...opened({}),
+        ev({ method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' }),
+      ]),
+    ).toMatchObject({
+      needsApproval: false,
+      cancelled: true,
+      state: 'cancelled',
+    });
+  });
+
+  it('marks a card settled as cancelled as cancelled', () => {
+    expect(
+      card([
+        ...opened({}),
+        ev({
+          method: 'request.resolved',
+          requestId: 'req-c1',
+          status: 'cancelled',
+        }),
+      ]),
+    ).toMatchObject({
+      needsApproval: false,
+      cancelled: true,
+      state: 'cancelled',
+    });
+  });
+
+  it('keeps a subagent request open across the main turn end, and retires it on session exit', () => {
+    const subagent = opened({ agentId: 'agent-bg' });
+    expect(
+      card([...subagent, ev({ method: 'turn.completed', turnId: 't-1' })]),
+    ).toMatchObject({ needsApproval: true });
+    expect(
+      card([
+        ...subagent,
+        ev({ method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' }),
+      ]),
+    ).toMatchObject({ needsApproval: true });
+    expect(
+      card([...subagent, ev({ method: 'session.exited', exitCode: 0 })]),
+    ).toMatchObject({ needsApproval: false, cancelled: true });
+  });
+});

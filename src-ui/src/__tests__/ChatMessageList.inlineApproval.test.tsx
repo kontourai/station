@@ -499,14 +499,13 @@ describe('#2316 inline approval card', () => {
       ).toHaveLength(1);
     });
 
-    test('offers nothing once the request is resolved, its turn has ended or its session exited', async () => {
+    test('offers nothing once the request is resolved or its session exited', async () => {
       for (const settle of [
         {
           method: 'request.resolved',
           requestId: 'req-subagent',
           status: 'approved',
         },
-        { method: 'turn.completed', turnId: 'turn-1' },
         { method: 'session.exited', exitCode: 0 },
       ]) {
         cleanup();
@@ -523,6 +522,61 @@ describe('#2316 inline approval card', () => {
           screen.queryByRole('region', { name: 'Approvals waiting on you' }),
         ).toBeNull();
       }
+    });
+
+    test.each([
+      ['completed', { method: 'turn.completed', turnId: 'turn-1' }],
+      [
+        'aborted',
+        { method: 'turn.aborted', turnId: 'turn-1', reason: 'interrupted' },
+      ],
+    ])(
+      'stays answerable after the MAIN turn %s — a background subagent outlives it',
+      async (_name, end) => {
+        sequence = 0;
+        windowEvents.current = [
+          ...subagentBashAwaitingApproval(),
+          runtimeEvent(end),
+        ];
+        stubFetch(() => Response.json({ success: true, data: {} }));
+        renderCard();
+        const strip = await screen.findByRole('region', {
+          name: 'Approvals waiting on you',
+        });
+        expect(
+          within(strip).getByRole('button', { name: 'Deny' }),
+        ).toBeTruthy();
+      },
+    );
+
+    test('a main-thread request with no card is retired by its turn end', async () => {
+      sequence = 0;
+      windowEvents.current = [
+        runtimeEvent({
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt: 'Go',
+        }),
+        // Codex-shaped: no tool name, no call id, no agent id.
+        runtimeEvent({
+          method: 'request.opened',
+          requestId: 'req-codex',
+          requestType: 'approval',
+          title: 'rm -rf build',
+          payload: { command: 'rm -rf build' },
+        }),
+        runtimeEvent({
+          method: 'turn.aborted',
+          turnId: 'turn-1',
+          reason: 'interrupted',
+        }),
+      ];
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+      await screen.findByText('Go');
+      expect(
+        screen.queryByRole('region', { name: 'Approvals waiting on you' }),
+      ).toBeNull();
     });
 
     test('is offered in the pending-approvals strip, never as a transcript message', async () => {
@@ -711,8 +765,28 @@ describe('#2316 inline approval card', () => {
       expect(
         screen.queryByRole('region', { name: 'Approvals waiting on you' }),
       ).toBeNull();
+      // It says it never ran, rather than reading as a call with no result.
+      expect(screen.getByText('Cancelled')).toBeTruthy();
+      expect(screen.queryByText('No result recorded')).toBeNull();
     },
   );
+
+  test('a card whose request was settled as cancelled reads Cancelled', async () => {
+    sequence = 0;
+    windowEvents.current = [
+      ...claudeBashAwaitingApproval(),
+      runtimeEvent({
+        method: 'request.resolved',
+        requestId: 'req-claude-b',
+        status: 'cancelled',
+      }),
+    ];
+    stubFetch(() => Response.json({ success: true, data: {} }));
+    renderCard();
+    expect(await screen.findByText('Cancelled')).toBeTruthy();
+    expect(screen.queryByText('No result recorded')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+  });
 
   test('a request on the turn the live streaming shell holds is answerable from the strip', async () => {
     const calls = stubFetch(() => Response.json({ success: true, data: {} }));

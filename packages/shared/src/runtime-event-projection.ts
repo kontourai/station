@@ -95,16 +95,46 @@ export function observedAssistantMessageId(
 }
 
 /**
- * #2316: events after which an approval still open on that thread can no
- * longer be answered — the call it gated will never run. The projection
- * retires such a card, and the UI's pending-approvals strip applies the same
- * rule, so no consumer offers buttons for a dead request.
+ * #2316: a request raised by a subagent rather than the main thread. Claude
+ * stamps the SDK's agent id on it (`claude-adapter.ts` `canUseTool`).
  */
-export const APPROVAL_TERMINAL_METHODS: ReadonlySet<string> = new Set([
-  'turn.completed',
-  'turn.aborted',
-  'session.exited',
-]);
+export function isSubagentApprovalRequest(
+  payload: Record<string, unknown> | undefined,
+): boolean {
+  return typeof payload?.agentId === 'string' && payload.agentId.length > 0;
+}
+
+/**
+ * #2316: whether an event on a request's thread retires that request while it
+ * is still open — the call it gated can no longer run, so answering it must
+ * not be offered. The projection retires bound cards with this and the UI's
+ * pending-approvals strip applies it too, so no consumer disagrees.
+ *
+ * A session exit retires everything. The end of the MAIN turn does not
+ * retire a subagent's request: Station declares Claude's per-task stop
+ * affordance, under which background subagents outlive the turn (and its
+ * interrupt), so their approvals stay live until their own
+ * `request.resolved` — which the adapter publishes whenever it settles one.
+ */
+export function approvalRetiredBy(
+  method: string,
+  subagentRequest: boolean,
+): boolean {
+  if (method === 'session.exited') return true;
+  if (subagentRequest) return false;
+  return method === 'turn.completed' || method === 'turn.aborted';
+}
+
+/**
+ * #2316: a card whose request can no longer be answered, or was settled as
+ * cancelled: it never ran, and says so ("Cancelled") rather than reading as a
+ * call with "No result recorded".
+ */
+function retireApprovalCard(part: MessagePart): void {
+  part.needsApproval = false;
+  part.cancelled = true;
+  if (part.state === 'awaiting-approval') part.state = 'cancelled';
+}
 
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
@@ -138,7 +168,10 @@ export function projectRuntimeEventsToMessages(
   // #2316: every card still awaiting its answer, across turns, keyed by the
   // requesting thread AND request id (a lineage window folds several
   // sessions, whose request ids are only unique per session).
-  const openApprovalParts = new Map<string, MessagePart>();
+  const openApprovalParts = new Map<
+    string,
+    { part: MessagePart; subagent: boolean }
+  >();
   const approvalKey = (threadId: string, requestId: string) =>
     `${threadId}\u0000${requestId}`;
   /**
@@ -383,13 +416,15 @@ export function projectRuntimeEventsToMessages(
   };
 
   for (const ev of events) {
-    if (APPROVAL_TERMINAL_METHODS.has(ev.method)) {
-      // A turn that ended (or a session that exited) with a card still
-      // awaiting approval retires it: the request is dead, and answering it
-      // must not be offered.
-      for (const [key, part] of openApprovalParts) {
-        if (part.approvalThreadId !== ev.threadId) continue;
-        part.needsApproval = false;
+    if (
+      ev.method === 'turn.completed' ||
+      ev.method === 'turn.aborted' ||
+      ev.method === 'session.exited'
+    ) {
+      for (const [key, open] of openApprovalParts) {
+        if (open.part.approvalThreadId !== ev.threadId) continue;
+        if (!approvalRetiredBy(ev.method, open.subagent)) continue;
+        retireApprovalCard(open.part);
         openApprovalParts.delete(key);
       }
     }
@@ -819,7 +854,10 @@ export function projectRuntimeEventsToMessages(
           target.approvalEventId = ev.eventId;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
-          openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), target);
+          openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
+            part: target,
+            subagent: isSubagentApprovalRequest(ev.payload),
+          });
         }
         break;
       }
@@ -827,16 +865,14 @@ export function projectRuntimeEventsToMessages(
         const key = approvalKey(ev.threadId, ev.requestId);
         // The request's own card first — its turn may already be emitted.
         const target =
-          openApprovalParts.get(key) ?? approvalTargets.get(ev.requestId);
+          openApprovalParts.get(key)?.part ?? approvalTargets.get(ev.requestId);
         openApprovalParts.delete(key);
         if (target) {
           target.needsApproval = false;
-          target.approvalStatus =
-            ev.status === 'approved'
-              ? 'user-approved'
-              : ev.status === 'denied'
-                ? 'user-denied'
-                : undefined;
+          if (ev.status === 'approved') target.approvalStatus = 'user-approved';
+          else if (ev.status === 'denied')
+            target.approvalStatus = 'user-denied';
+          else retireApprovalCard(target);
         }
         break;
       }
