@@ -22,6 +22,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -148,6 +149,18 @@ function stir(file: string): void {
     new Date(),
     new Date(Date.now() + 5_000 + Math.random() * 60_000),
   );
+}
+
+/** The operator's other repository, outside the Project. */
+function otherRepository(): string {
+  const other = join(root, 'operator-other');
+  if (existsSync(other)) return other;
+  mkdirSync(other);
+  plain(other, ['init', '-q', '-b', 'main']);
+  writeFileSync(join(other, 'work.txt'), 'operator work\n');
+  plain(other, ['add', '.']);
+  plain(other, ['commit', '-q', '-m', 'operator work']);
+  return other;
 }
 
 /** A repository whose working tree is dirty, ready to commit. */
@@ -387,6 +400,23 @@ describe.skipIf(process.platform === 'win32')(
       expect(plain(project, ['branch', '--show-current'])).toBe('main');
     });
 
+    test('an include of a named pipe answers 504 on status, log and branches instead of hanging', async () => {
+      const fifo = join(root, 'never.gitconfig');
+      execFileSync('mkfifo', [fifo]);
+      plain(project, ['config', 'include.path', fifo]);
+      const app = makeApp();
+      for (const route of ['status', 'log', 'branches']) {
+        const started = Date.now();
+        const res = await app.request(
+          `/git/${route}?path=${encodeURIComponent(project)}`,
+        );
+        const json = (await res.json()) as { code?: string };
+        expect(res.status, route).toBe(504);
+        expect(json.code, route).toBe('git-timeout');
+        expect(Date.now() - started, route).toBeLessThan(25_000);
+      }
+    }, 120_000);
+
     test('ordinary repositories pass: gh-cloned, husky, VS Code and branch settings', async () => {
       plain(project, ['config', 'remote.origin.gh-resolved', 'base']);
       plain(project, ['config', 'core.hooksPath', '.husky/_']);
@@ -505,6 +535,84 @@ describe.skipIf(process.platform === 'win32')(
       expect(commit.json.code).toBe('git-dir-outside-project');
       expect(plain(other, ['rev-parse', 'lane'])).toBe(laneHead);
     });
+
+    test("a real .git whose objects, refs and index link into another repository is refused (the reviewer's layout)", async () => {
+      const other = otherRepository();
+      const otherHead = head(other);
+      rmSync(join(project, '.git'), { recursive: true, force: true });
+      mkdirSync(join(project, '.git'));
+      writeFileSync(join(project, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+      writeFileSync(
+        join(project, '.git', 'config'),
+        '[core]\n\trepositoryformatversion = 0\n\tbare = false\n',
+      );
+      for (const entry of ['objects', 'refs', 'index']) {
+        symlinkSync(join(other, '.git', entry), join(project, '.git', entry));
+      }
+      writeFileSync(join(project, 'member.txt'), 'member payload\n');
+
+      const res = await post('/git/commit', {
+        projectSlug: 'acme',
+        message: 'routine commit',
+      });
+      expect(res.status).toBe(403);
+      expect(res.json.code).toBe('git-dir-outside-project');
+      expect(head(other)).toBe(otherHead);
+    });
+
+    test.each([
+      'objects',
+      'refs',
+      'packed-refs',
+      'index',
+      'HEAD',
+      'logs',
+      'config',
+      'config.worktree',
+      'commondir',
+      'worktrees',
+      'info',
+      'hooks',
+      'shallow',
+      'modules',
+      'refs/heads',
+      'refs/remotes',
+      'refs/tags',
+      'objects/info',
+      'objects/pack',
+    ])('a linked .git/%s is refused', async (entry) => {
+      const other = otherRepository();
+      const target = join(project, '.git', entry);
+      rmSync(target, { recursive: true, force: true });
+      mkdirSync(join(target, '..'), { recursive: true });
+      symlinkSync(join(other, '.git', 'HEAD'), target);
+      dirty();
+
+      const res = await post('/git/commit', {
+        projectSlug: 'acme',
+        message: entry,
+      });
+      expect(res.status).toBe(403);
+      expect(res.json.code).toBe('git-dir-outside-project');
+    });
+
+    test.each(['alternates', 'http-alternates'])(
+      'an objects/info/%s file is refused',
+      async (name) => {
+        const other = otherRepository();
+        writeFileSync(
+          join(project, '.git', 'objects', 'info', name),
+          `${join(other, '.git', 'objects')}\n`,
+        );
+        dirty();
+        const res = await post('/git/commit', {
+          projectSlug: 'acme',
+          message: name,
+        });
+        expect(res.status).toBe(403);
+        expect(res.json.code).toBe('git-dir-outside-project');
+      },
+    );
 
     test('a genuine linked worktree as the Project folder is accepted', async () => {
       const main = join(root, 'main-checkout');
@@ -727,6 +835,16 @@ describe.skipIf(process.platform === 'win32')(
         plain(evil, ['rev-parse', '--verify', '--quiet', 'refs/heads/main']),
       ).toBe('');
       expect(bareHead()).toBe('');
+    });
+
+    test('a remote nickname with a slash (team/fork) is an ordinary remote and pushes', async () => {
+      plain(project, ['remote', 'add', 'team/fork', REMOTE_URL]);
+      const res = await post('/git/push', {
+        projectSlug: 'acme',
+        remote: 'team/fork',
+      });
+      expect(res.status, JSON.stringify(res.json)).toBe(200);
+      expect(bareHead()).toBe(head());
     });
 
     test('an option-looking remote name or branch is refused as a bad request', async () => {

@@ -65,7 +65,8 @@ export type CodingGitRefusal =
  * genuine linked worktree: its git directory is `<common>/worktrees/<name>`
  * OUTSIDE the Project, whose `gitdir` back-pointer names `<target>/.git`.
  * A member cannot write that file, so they cannot forge the exception.
- * A symlinked `.git` is refused outright.
+ * A symlinked `.git` is refused outright, and so is a real one whose OWN
+ * entries lead elsewhere (`redirectedGitEntry`).
  */
 export async function gitDirectoryInsideProject(
   target: string,
@@ -98,6 +99,11 @@ export async function gitDirectoryInsideProject(
   }
   const inside = (path: string) =>
     path === projectRoot || path.startsWith(projectRoot + sep);
+  // A directory inside the Project is member-writable: its entries may be
+  // symlinks into, or alternates of, another repository.
+  for (const dir of new Set([gitDir, commonDir])) {
+    if (inside(dir) && (await redirectedGitEntry(dir))) return 'outside';
+  }
   if (inside(gitDir) && inside(commonDir)) return 'inside';
   if (inside(gitDir) || dirname(dirname(gitDir)) !== commonDir) {
     return 'outside';
@@ -112,6 +118,68 @@ export async function gitDirectoryInsideProject(
   } catch {
     return 'outside';
   }
+}
+
+/**
+ * Entries of a git directory that git reads or writes as part of the
+ * repository. A symlink in place of any of them makes a real `.git`
+ * directory act on another repository: review round 2 made `project/.git`
+ * a real directory holding its own HEAD and config with `objects`, `refs`
+ * and `index` linked to the operator's other repository, and Commit
+ * created a commit on that repository's `main`.
+ */
+const GIT_DIR_ENTRIES = [
+  'objects',
+  'refs',
+  'packed-refs',
+  'index',
+  'HEAD',
+  'logs',
+  'config',
+  'config.worktree',
+  'commondir',
+  'gitdir',
+  'worktrees',
+  'info',
+  'hooks',
+  'shallow',
+  'modules',
+  // One level down, where a real top-level directory can still hold a
+  // link: the ref namespaces a commit or push writes, and the object
+  // store's own metadata.
+  'refs/heads',
+  'refs/remotes',
+  'refs/tags',
+  'objects/info',
+  'objects/pack',
+];
+
+/**
+ * True when `gitDir` borrows another repository's storage: one of
+ * `GIT_DIR_ENTRIES` is a symbolic link, or the object store names
+ * alternates (`objects/info/alternates`, `http-alternates`), which make
+ * git read, and build commits on, another repository's objects. Stated
+ * limit: individual loose refs and object fan-out directories are not
+ * walked; git replaces a ref file by rename rather than writing through
+ * it, and a linked fan-out directory can only add objects elsewhere.
+ */
+async function redirectedGitEntry(gitDir: string): Promise<boolean> {
+  for (const entry of GIT_DIR_ENTRIES) {
+    try {
+      if ((await lstat(join(gitDir, entry))).isSymbolicLink()) return true;
+    } catch {
+      // Absent: nothing to follow.
+    }
+  }
+  for (const alternates of ['alternates', 'http-alternates']) {
+    try {
+      await lstat(join(gitDir, 'objects', 'info', alternates));
+      return true;
+    } catch {
+      // Absent: the ordinary case.
+    }
+  }
+  return false;
 }
 
 export type CodingGitOutcome<T> =
@@ -133,7 +201,8 @@ export class CodingGitCommandError extends Error {
  * terminal, where `.gitignore` mistakes are visible. */
 const MAX_COMMIT_PATHS = 5000;
 const MAX_DETAIL = 4000;
-const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// git allows `/` in a remote name (`team/fork`).
+const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 const BRANCH_NAME = /^[A-Za-z0-9._][A-Za-z0-9._/-]*$/;
 
 function repositoryArgs(root: string): string[] {
@@ -298,14 +367,33 @@ function addPaths(root: string, paths: readonly string[]): Promise<void> {
       },
     );
     let stderr = '';
+    let killed = false;
+    // Bounded like every other call here: a hook or filter that never
+    // returns must not hold the request open.
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill();
+    }, 120_000);
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (chunk: string) => {
       if (stderr.length < MAX_DETAIL) stderr += chunk;
     });
-    child.on('error', reject);
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
     child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new CodingGitCommandError('add', stderr.trim()));
+      clearTimeout(timer);
+      if (code === 0 && !killed) resolve();
+      else
+        reject(
+          new CodingGitCommandError(
+            'add',
+            killed
+              ? 'git add did not finish in time and was stopped'
+              : stderr.trim(),
+          ),
+        );
     });
     child.stdin?.end(`${paths.join('\0')}\0`);
   });
@@ -435,7 +523,11 @@ export async function pushRepository(
     (await configValue(root, 'remote.pushDefault')) ??
     (await configValue(root, `branch.${branch}.remote`)) ??
     'origin';
-  if (!REMOTE_NAME.test(remote)) {
+  if (
+    !REMOTE_NAME.test(remote) ||
+    remote.includes('..') ||
+    remote.endsWith('/')
+  ) {
     return { ok: false, refusal: { code: 'invalid-remote-name' } };
   }
   // The address as the repository configures it. Not `remote get-url`,

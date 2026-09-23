@@ -54,8 +54,9 @@ const WRITE_REFUSED = [
   // A remote whose NAME is an address (`remote."https://host/x.git".url`):
   // `git push -- <that address>` reads it as that remote, so its
   // `url`/`pushurl` would redirect a push to an address Station validated.
-  // A remote nickname never contains `/` or `:`.
-  /^remote\.[^\n]*[/:][^\n]*\.[^.]+$/,
+  // Every address Station validates contains `:` (`https://`, `ssh://`,
+  // `git@host:`); a nickname may contain `/` (`team/fork`) but never `:`.
+  /^remote\.[^\n]*:[^\n]*\.[^.]+$/,
   /^gpg\./,
 ];
 

@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CheckpointRefStore } from '../../services/checkpoints/checkpoint-ref-store.js';
 import {
   execGit,
+  execGitContextCommand,
   execGitSync,
   gitEnv,
   gitSubcommand,
@@ -620,6 +621,67 @@ describe.skipIf(process.platform === 'win32')(
       ).rejects.toThrow();
       expect(existsSync(operatorMarker)).toBe(true);
       expect(existsSync(repoMarker)).toBe(false);
+    });
+
+    test("the operator's GIT_SSH program is used for ssh (it would otherwise lose to the batch core.sshCommand)", async () => {
+      const repo = initRepo();
+      const operatorMarker = join(sandbox(), 'operator-git-ssh');
+      const repoMarker = join(sandbox(), 'repo-ssh');
+      vi.stubEnv('GIT_SSH_COMMAND', '');
+      vi.stubEnv('GIT_SSH', markerScript(sandbox(), operatorMarker));
+      plainGit(repo, [
+        'config',
+        'core.sshCommand',
+        markerScript(sandbox(), repoMarker),
+      ]);
+      plainGit(repo, [
+        'remote',
+        'add',
+        'origin',
+        'ssh://git@example.invalid/team/repo.git',
+      ]);
+
+      await expect(
+        execGit(['ls-remote', 'origin'], { cwd: repo, timeout: 20_000 }),
+      ).rejects.toThrow();
+      expect(existsSync(operatorMarker)).toBe(true);
+      expect(existsSync(repoMarker)).toBe(false);
+    });
+
+    test("a tool that runs git (gh, glab) passes the hardening to it, merged with the caller's own config pairs", async () => {
+      const repo = initRepo();
+      const marker = join(sandbox(), 'gh-fsmonitor-ran');
+      plainGit(repo, [
+        'config',
+        'core.fsmonitor',
+        markerScript(sandbox(), marker),
+      ]);
+      // A stand-in for `gh pr create`, which runs `git status` in the repo.
+      const tool = join(sandbox(), 'gh');
+      writeFileSync(
+        tool,
+        '#!/bin/sh\ngit status --porcelain >/dev/null\ngit rev-parse --short HEAD\n',
+      );
+      chmodSync(tool, 0o755);
+      execFileSync(tool, [], { cwd: repo, env: plainEnv() });
+      expect(existsSync(marker), 'control: plain env lets the plant run').toBe(
+        true,
+      );
+      rmSync(marker);
+
+      const { stdout } = await execGitContextCommand(tool, [], {
+        cwd: repo,
+        encoding: 'utf-8',
+        env: {
+          ...process.env,
+          GIT_CONFIG_COUNT: '1',
+          GIT_CONFIG_KEY_0: 'core.abbrev',
+          GIT_CONFIG_VALUE_0: '12',
+        },
+      });
+      expect(existsSync(marker)).toBe(false);
+      // The caller's own pair survived the merge.
+      expect(stdout.trim()).toHaveLength(12);
     });
 
     test('inherited GIT_INDEX_FILE and GIT_CONFIG_PARAMETERS do not reach git; a caller-supplied index does', async () => {

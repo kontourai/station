@@ -88,7 +88,7 @@
  *    work identity it would in a terminal; the repository's own scopes
  *    (`local`, `worktree`) and the command line are dropped.
  *    - Credentials: a command-scope `credential.helper=` (passed as
- *      `GIT_CONFIG_COUNT` pairs, see `networkEnv`) clears every helper
+ *      `GIT_CONFIG_COUNT` pairs, see `credentialSettings`) clears every helper
  *      collected from config files, then the operator's
  *      `credential.*.helper|useHttpPath|username` settings are re-added in
  *      the order plain git reads them, empty resets included. So a
@@ -440,40 +440,72 @@ function hardenedArgs(
  * ssh. A repository's `core.sshCommand` never gets a say: the environment
  * variable set here outranks every config file.
  */
+/** POSIX single-quoting, which git's `sh -c` for `GIT_SSH_COMMAND` reads. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function operatorSshEnv(settings: OperatorNetworkSettings): NodeJS.ProcessEnv {
   const inheritedCommand = process.env.GIT_SSH_COMMAND;
   if (inheritedCommand) return { GIT_SSH_COMMAND: inheritedCommand };
   const inheritedProgram = process.env.GIT_SSH;
   if (inheritedProgram) {
-    return { GIT_SSH: inheritedProgram, GIT_SSH_COMMAND: undefined };
+    // `GIT_SSH` ranks BELOW `core.sshCommand` in git, so the batch-mode
+    // `-c core.sshCommand` would silently replace it. Carried as
+    // `GIT_SSH_COMMAND` (which outranks config) naming the same program,
+    // shell-quoted; git's ssh-variant detection (plink, tortoiseplink)
+    // reads the program name either way.
+    return { GIT_SSH_COMMAND: shellQuote(inheritedProgram) };
   }
   return { GIT_SSH_COMMAND: settings.sshCommand ?? SSH_BATCH_COMMAND };
 }
 
-/**
- * The environment additions for a network command: the ssh choice, and the
- * credential settings as `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`, which git
- * reads as command-line scope exactly like `-c`, in order, after a
- * `credential.helper=` that clears every helper collected from config files
- * (including the repository's). Passed in the environment rather than argv
- * because a failed command's error message quotes its argv, and a helper
- * setting can carry a token; the environment is never quoted.
- */
+/** The ssh choice for a network command (`operatorSshEnv`). */
 function networkEnv(
   settings: OperatorNetworkSettings | null,
 ): NodeJS.ProcessEnv {
   if (settings === null) return {};
-  const credentials = ['credential.helper=', ...settings.credentials];
-  const env: NodeJS.ProcessEnv = {
-    ...operatorSshEnv(settings),
-    GIT_CONFIG_COUNT: String(credentials.length),
+  return operatorSshEnv(settings);
+}
+
+/**
+ * Appends `key=value` settings to `env` as `GIT_CONFIG_COUNT`/`KEY_n`/
+ * `VALUE_n` pairs, after any pairs `env` already carries. git reads them as
+ * command-line scope, exactly like `-c`, in order; and they reach every git
+ * a tool spawns, which `-c` in that tool's argv could not.
+ */
+function appendConfigPairs(
+  env: NodeJS.ProcessEnv,
+  settings: readonly string[],
+): NodeJS.ProcessEnv {
+  if (settings.length === 0) return env;
+  const existing = Number.parseInt(env.GIT_CONFIG_COUNT ?? '0', 10);
+  const start = Number.isInteger(existing) && existing > 0 ? existing : 0;
+  const next: NodeJS.ProcessEnv = {
+    ...env,
+    GIT_CONFIG_COUNT: String(start + settings.length),
   };
-  credentials.forEach((setting, index) => {
+  settings.forEach((setting, offset) => {
     const equals = setting.indexOf('=');
-    env[`GIT_CONFIG_KEY_${index}`] = setting.slice(0, equals);
-    env[`GIT_CONFIG_VALUE_${index}`] = setting.slice(equals + 1);
+    next[`GIT_CONFIG_KEY_${start + offset}`] = setting.slice(0, equals);
+    next[`GIT_CONFIG_VALUE_${start + offset}`] = setting.slice(equals + 1);
   });
-  return env;
+  return next;
+}
+
+/**
+ * The credential settings for a network command: a `credential.helper=`
+ * that clears every helper collected from config files (including the
+ * repository's), then the operator's own. Passed as environment pairs
+ * rather than argv because a failed command's error message quotes its
+ * argv, and a helper setting can carry a token.
+ */
+function credentialSettings(
+  settings: OperatorNetworkSettings | null,
+): string[] {
+  return settings === null
+    ? []
+    : ['credential.helper=', ...settings.credentials];
 }
 
 function needsOperatorSettings(args: readonly string[]): boolean {
@@ -513,19 +545,26 @@ export async function execGit(
     : null;
   return execFileAsync('git', hardenedArgs(args, hardening), {
     ...execOptions,
-    env: mergeEnv(
-      hardenedGitEnv(execOptions.env, hardening),
-      networkEnv(operator),
+    env: appendConfigPairs(
+      mergeEnv(
+        hardenedGitEnv(execOptions.env, hardening),
+        networkEnv(operator),
+      ),
+      credentialSettings(operator),
     ),
     windowsHide: true,
   }) as Promise<{ stdout: string; stderr: string }>;
 }
 
 /**
- * Promisified command execution for tools (such as `gh`) which discover a
- * repository from their cwd. It shares git's environment scrub and the
- * hardening variables, which reach any git such a tool spawns; the `-c`
- * settings cannot be passed through another program's argv.
+ * Promisified command execution for tools (such as `gh` and `glab`) which
+ * run git themselves (`gh pr create` runs `git status` in the repository).
+ * Every git such a tool spawns inherits the scrubbed environment, the
+ * hardening variables, AND the hardening settings, carried as
+ * `GIT_CONFIG_COUNT` pairs (git reads them like `-c`). What it cannot
+ * carry: the `--ignore-submodules` flag the runner adds to git's own
+ * argv; `diff.ignoreSubmodules` is set, which a `.gitmodules`
+ * `ignore = none` can override for a submodule. Hooks stay off regardless.
  */
 export function execGitContextCommand(
   command: string,
@@ -534,7 +573,7 @@ export function execGitContextCommand(
 ): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync(command, args, {
     ...opts,
-    env: hardenedGitEnv(opts.env),
+    env: appendConfigPairs(hardenedGitEnv(opts.env), hardeningSettings({})),
     windowsHide: true,
   }) as Promise<{ stdout: string; stderr: string }>;
 }
@@ -550,9 +589,12 @@ export function execGitSync(
     : null;
   return execFileSync('git', hardenedArgs(args, hardening), {
     ...execOptions,
-    env: mergeEnv(
-      hardenedGitEnv(execOptions.env, hardening),
-      networkEnv(operator),
+    env: appendConfigPairs(
+      mergeEnv(
+        hardenedGitEnv(execOptions.env, hardening),
+        networkEnv(operator),
+      ),
+      credentialSettings(operator),
     ),
     windowsHide: true,
   });
@@ -566,9 +608,12 @@ export function spawnGit(args: string[], opts: Hardened<SpawnOptions> = {}) {
     : null;
   return spawn('git', hardenedArgs(args, hardening), {
     ...spawnOptions,
-    env: mergeEnv(
-      hardenedGitEnv(spawnOptions.env, hardening),
-      networkEnv(operator),
+    env: appendConfigPairs(
+      mergeEnv(
+        hardenedGitEnv(spawnOptions.env, hardening),
+        networkEnv(operator),
+      ),
+      credentialSettings(operator),
     ),
     windowsHide: true,
   });

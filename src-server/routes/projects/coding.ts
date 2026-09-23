@@ -48,19 +48,64 @@ function validatePath(raw: string | undefined): string {
 }
 
 /**
+ * Bounds on every git call these routes make (#2363 review round 2). A
+ * repository's own config can make git wait forever (an `include.path` of
+ * a named pipe blocked status, log and branches indefinitely); on the
+ * deadline `execFile` kills the child and the route answers 504 instead of
+ * holding the request open. Quick: rev-parse and ref checks. Read: status,
+ * log, branches. Diff reads every changed file. Checkout writes the tree.
+ */
+const GIT_QUICK_TIMEOUT_MS = 10_000;
+const GIT_READ_TIMEOUT_MS = 20_000;
+const GIT_DIFF_TIMEOUT_MS = 30_000;
+const GIT_CHECKOUT_TIMEOUT_MS = 60_000;
+
+class GitTimeoutError extends Error {
+  constructor() {
+    super(
+      'git did not answer in time and was stopped. The repository may be very large, or its configuration names something that never answers (such as an include of a pipe)',
+    );
+    this.name = 'GitTimeoutError';
+  }
+}
+
+/** `execFile` marks a child it killed on its deadline. */
+function timedOut(error: unknown): boolean {
+  const failure = error as { killed?: unknown; signal?: unknown };
+  return failure?.killed === true || failure?.signal === 'SIGTERM';
+}
+
+/** The route answer for a git call that failed: 504 on a deadline. */
+function gitFailure(c: Context, error: unknown): Response {
+  if (error instanceof GitTimeoutError || timedOut(error)) {
+    return c.json(
+      {
+        success: false,
+        error: new GitTimeoutError().message,
+        code: 'git-timeout',
+      },
+      504,
+    );
+  }
+  return c.json({ success: false, error: errorMessage(error) }, 400);
+}
+
+/**
  * Fast-path detect whether `dir` is inside a git work tree. Returns false for
  * non-repos instead of letting `git` reject with "fatal: not a git repository"
  * (which the UI would surface as a 400 error). `git rev-parse` is cheap and
- * never mutates.
+ * never mutates. A deadline is NOT "not a repository": it throws.
  */
 async function isInsideWorkTree(dir: string): Promise<boolean> {
   try {
     const { stdout } = await execGit(['rev-parse', '--is-inside-work-tree'], {
       cwd: dir,
       encoding: 'utf-8',
+      timeout: GIT_QUICK_TIMEOUT_MS,
     });
     return stdout.trim() === 'true';
-  } catch {
+  } catch (error) {
+    if (timedOut(error)) throw new GitTimeoutError();
     return false;
   }
 }
@@ -120,6 +165,7 @@ async function isBranchName(dir: string, branch: string): Promise<boolean> {
     await execGit(['check-ref-format', `refs/heads/${branch}`], {
       cwd: dir,
       encoding: 'utf-8',
+      timeout: GIT_QUICK_TIMEOUT_MS,
     });
     return true;
   } catch {
@@ -452,6 +498,7 @@ export function createCodingRoutes(
         cwd: dir,
         encoding: 'utf-8' as const,
         windowsHide: true,
+        timeout: GIT_READ_TIMEOUT_MS,
       };
 
       const [branchOut, statusOut, logOut, trackingOut, topLevelOut, remotes] =
@@ -542,7 +589,7 @@ export function createCodingRoutes(
         },
       });
     } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
+      return gitFailure(c, e);
     }
   });
 
@@ -561,6 +608,7 @@ export function createCodingRoutes(
         await execGit(['log', `-${count}`, '--format=%H|%an|%ar|%s'], {
           cwd: dir,
           encoding: 'utf-8',
+          timeout: GIT_READ_TIMEOUT_MS,
         })
       ).stdout;
       const commits = raw
@@ -577,7 +625,7 @@ export function createCodingRoutes(
         });
       return c.json({ success: true, data: commits });
     } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
+      return gitFailure(c, e);
     }
   });
 
@@ -596,11 +644,12 @@ export function createCodingRoutes(
         await execGit(['diff'], {
           cwd: dir,
           encoding: 'utf-8',
+          timeout: GIT_DIFF_TIMEOUT_MS,
         })
       ).stdout;
       return c.json({ success: true, data: { diff } });
     } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
+      return gitFailure(c, e);
     }
   });
 
@@ -617,7 +666,7 @@ export function createCodingRoutes(
             '-a',
             '--format=%(refname:short)|%(objectname:short)|%(committerdate:relative)|%(HEAD)',
           ],
-          { cwd: dir, encoding: 'utf-8' },
+          { cwd: dir, encoding: 'utf-8', timeout: GIT_READ_TIMEOUT_MS },
         )
       ).stdout;
       const branches = raw
@@ -634,7 +683,7 @@ export function createCodingRoutes(
         });
       return c.json({ success: true, data: branches });
     } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
+      return gitFailure(c, e);
     }
   });
 
@@ -651,7 +700,7 @@ export function createCodingRoutes(
           try {
             const { stdout } = await execGit(
               ['rev-parse', '--abbrev-ref', 'HEAD'],
-              { cwd: root, encoding: 'utf-8' },
+              { cwd: root, encoding: 'utf-8', timeout: GIT_QUICK_TIMEOUT_MS },
             );
             branch = stdout.trim();
           } catch {
@@ -674,7 +723,7 @@ export function createCodingRoutes(
         },
       });
     } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
+      return gitFailure(c, e);
     }
   });
 
@@ -698,7 +747,12 @@ export function createCodingRoutes(
       // #2363: `checkout` runs repository-defined smudge filters.
       const refusal = await readRefusal(dir);
       if (refusal) return c.json(refusal, 409);
-      const opts = { cwd: dir, encoding: 'utf-8' as const, windowsHide: true };
+      const opts = {
+        cwd: dir,
+        encoding: 'utf-8' as const,
+        windowsHide: true,
+        timeout: GIT_CHECKOUT_TIMEOUT_MS,
+      };
       await execGit(
         create
           ? ['checkout', '-b', branch, '--end-of-options']
@@ -711,7 +765,7 @@ export function createCodingRoutes(
       );
       return c.json({ success: true, data: { branch: stdout.trim() } });
     } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
+      return gitFailure(c, e);
     }
   });
 
