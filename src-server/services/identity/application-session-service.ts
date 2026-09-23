@@ -368,6 +368,19 @@ export class ApplicationSessionService {
       )
       .run(record.authorityKey);
   }
+  /** Server recovery only: remove one never-committed relay continuation authority. */
+  discardUncommittedAuthority(authorityKey: string): number {
+    if (this.closed) throw new ApplicationSessionRefusal('unavailable');
+    if (!/^[0-9a-f-]{36}$/i.test(authorityKey))
+      throw new ApplicationSessionRefusal('invalid');
+    return Number(
+      this.db
+        .prepare(
+          "DELETE FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
+        )
+        .run(authorityKey).changes,
+    );
+  }
   close(): void {
     if (!this.closed) {
       this.closed = true;

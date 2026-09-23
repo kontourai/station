@@ -27,6 +27,10 @@ export function pnpmInvocation(options?: {
       argv0?: string;
     },
   ) => string;
+  /** Receives each retried probe attempt; defaults to stderr. */
+  log?: (line: string) => void;
+  /** Test seam for the pause between retried probe attempts. */
+  pause?: (ms: number) => void;
 }): { command: string; args: string[]; argv0?: string };
 export function pnpmCommand(
   args: string[],

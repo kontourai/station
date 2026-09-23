@@ -1,0 +1,459 @@
+name: Merge-queue regression
+
+# Runs the canonical full-regression phases against the merge queue's
+# synthesized candidate (latest main + the queued PR), split across hosted
+# runners so the ~38-minute serial lane fits the queue in ~20 minutes. A PR
+# that would turn Nightly's full regression red is then held in the queue
+# instead of reaching main.
+#
+# Phase commands come from FULL_REGRESSION_PHASES through
+# scripts/run-full-regression-phases.mjs; this file names phase ids only, and
+# scripts/__tests__/ci-workflow-contract.test.ts fails when the ids here stop
+# covering FULL_REGRESSION_PHASES exactly. This is diagnostic evidence, not a
+# completion receipt: `npm run full:regression` and the promotion workflows
+# are unchanged.
+#
+# Every corpus selection passes --exclude-quarantined, which drops the files
+# in QUARANTINED_VITEST_FILES (scripts/vitest-resource-manifest.mjs) from the
+# queue only. Nightly's canonical full:regression still runs them; see
+# "Test quarantine" in docs/guides/testing.md.
+#
+# pull_request_target exists only so the aggregate check reports (as skipped)
+# on every PR once the ruleset requires it. Every job is skipped for that
+# event, so no candidate code runs under pull_request_target.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: merge-queue-regression-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static and app builds
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
+        with:
+          node-version-file: .nvmrc
+
+      # verify-static runs gate:workflows, which exits 2 without actionlint.
+      - name: Install pinned actionlint
+        timeout-minutes: 5
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
+      - run: npm run dependencies:ci
+        timeout-minutes: 15
+
+      - name: Run full-regression phases
+        env:
+          PHASES: --phase=repo-governance --phase=sdk-builds --phase=verify-static --phase=app-builds
+        run: |
+          set -o pipefail
+          read -r -a phases <<< "$PHASES"
+          node scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \
+            | tee "$RUNNER_TEMP/merge-queue-regression.log"
+
+      - name: Retain failure diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: merge-queue-regression-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/merge-queue-regression.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ordinary:
+    name: Ordinary corpus ${{ matrix.slice }}
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slice: 1-2 of 8
+            phases: --phase=test-full-ordinary-1-of-8 --phase=test-full-ordinary-2-of-8 --exclude-quarantined
+          - slice: 3-4 of 8
+            phases: --phase=test-full-ordinary-3-of-8 --phase=test-full-ordinary-4-of-8 --exclude-quarantined
+          - slice: 5-6 of 8
+            phases: --phase=test-full-ordinary-5-of-8 --phase=test-full-ordinary-6-of-8 --exclude-quarantined
+          - slice: 7-8 of 8
+            phases: --phase=test-full-ordinary-7-of-8 --phase=test-full-ordinary-8-of-8 --exclude-quarantined
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+        timeout-minutes: 15
+
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
+
+      - name: Install Chromium for full-corpus browser assertions
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              installed=true
+              break
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
+
+      # The canonical lane runs these phases, then verify-static (whose
+      # prepare step builds connect and the CLI bundle), before any corpus.
+      - name: Prepare the corpus prerequisites
+        run: |
+          node scripts/run-full-regression-phases.mjs --phase=browser-prerequisite --phase=sdk-builds
+          npm run prepare:verify-static
+
+      - name: Run full-regression phases
+        env:
+          PHASES: ${{ matrix.phases }}
+        run: |
+          set -o pipefail
+          read -r -a phases <<< "$PHASES"
+          node scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \
+            | tee "$RUNNER_TEMP/merge-queue-regression.log"
+
+      - name: List failing test files
+        if: failure()
+        run: |
+          grep -E '^[[:space:]]*(FAIL|×)[[:space:]]' "$RUNNER_TEMP/merge-queue-regression.log" \
+            | sort -u > "$RUNNER_TEMP/merge-queue-regression-failures.txt" || true
+
+      - name: Retain failure diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: merge-queue-regression-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/merge-queue-regression.log
+            ${{ runner.temp }}/merge-queue-regression-failures.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  process-heavy:
+    name: Process-heavy corpus ${{ matrix.slice }}
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slice: 1 of 2
+            phases: --phase=test-full-process-heavy --process-heavy-shard=1/2 --exclude-quarantined
+          - slice: 2 of 2
+            phases: --phase=test-full-process-heavy --process-heavy-shard=2/2 --exclude-quarantined
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+        timeout-minutes: 15
+
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
+
+      - name: Install Chromium for full-corpus browser assertions
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              installed=true
+              break
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
+
+      - name: Prepare the corpus prerequisites
+        run: |
+          node scripts/run-full-regression-phases.mjs --phase=browser-prerequisite --phase=sdk-builds
+          npm run prepare:verify-static
+
+      - name: Run full-regression phases
+        env:
+          PHASES: ${{ matrix.phases }}
+        run: |
+          set -o pipefail
+          read -r -a phases <<< "$PHASES"
+          node scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \
+            | tee "$RUNNER_TEMP/merge-queue-regression.log"
+
+      - name: List failing test files
+        if: failure()
+        run: |
+          grep -E '^[[:space:]]*(FAIL|×)[[:space:]]' "$RUNNER_TEMP/merge-queue-regression.log" \
+            | sort -u > "$RUNNER_TEMP/merge-queue-regression-failures.txt" || true
+
+      - name: Retain failure diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: merge-queue-regression-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/merge-queue-regression.log
+            ${{ runner.temp }}/merge-queue-regression-failures.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  exclusive:
+    name: Exclusive corpora
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+        timeout-minutes: 15
+
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
+
+      - name: Install Chromium for full-corpus browser assertions
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              installed=true
+              break
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
+
+      - name: Prepare the corpus prerequisites
+        run: |
+          node scripts/run-full-regression-phases.mjs --phase=browser-prerequisite --phase=sdk-builds
+          npm run prepare:verify-static
+
+      # These groups serialize against themselves; they run in order here.
+      - name: Run full-regression phases
+        env:
+          PHASES: --phase=test-full-process-exclusive --phase=test-full-coordinator-exclusive --phase=test-full-credential-ledger-exclusive --phase=test-full-shared-output --phase=test-full-dogfood-reconcile --exclude-quarantined
+        run: |
+          set -o pipefail
+          read -r -a phases <<< "$PHASES"
+          node scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \
+            | tee "$RUNNER_TEMP/merge-queue-regression.log"
+
+      - name: List failing test files
+        if: failure()
+        run: |
+          grep -E '^[[:space:]]*(FAIL|×)[[:space:]]' "$RUNNER_TEMP/merge-queue-regression.log" \
+            | sort -u > "$RUNNER_TEMP/merge-queue-regression-failures.txt" || true
+
+      - name: Retain failure diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: merge-queue-regression-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/merge-queue-regression.log
+            ${{ runner.temp }}/merge-queue-regression-failures.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Not a full-regression phase: the Playwright Android viewport suite
+  # otherwise runs only after an Android build on main.
+  android-viewport:
+    name: Mobile Playwright (Android viewport)
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        timeout-minutes: 5
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+        timeout-minutes: 15
+
+      # The public Android suite owns its isolated Station instance, build,
+      # ports, reports, and cleanup.
+      - name: Install Playwright browsers
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          installed=false
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              installed=true
+              break
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          if [[ "$installed" != true ]]; then
+            echo "::error::Playwright install failed after 3 attempts"
+            exit 1
+          fi
+
+      - name: Run Android viewport tests
+        env:
+          PW_REPORTER: line,html
+        run: npm run test:android
+
+      - name: Retain failure diagnostics
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: merge-queue-regression-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  merge-queue-regression:
+    name: Merge-queue regression
+    if: always() && github.event_name != 'pull_request_target'
+    needs: [static, ordinary, process-heavy, exclusive, android-viewport]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every regression job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null

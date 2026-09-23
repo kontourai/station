@@ -1503,6 +1503,91 @@ describe('StationAgentAdapter', () => {
     });
   });
 
+  test('#2316: a stale request refuses allow-for-session without minting the tool grant', async () => {
+    const eventBus = new EventBus();
+    const approvalRegistry = new ApprovalRegistry(
+      { info: vi.fn(), warn: vi.fn() },
+      { eventBus },
+    );
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      ),
+      approvalRegistry,
+      eventBus,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      threadId: 'task-stale',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'task-stale', input: 'Write it' });
+
+    // Opened on the adapter, but its registry entry is gone (the registry
+    // entry settled or expired elsewhere): the adapter's entry is stale.
+    streamController.enqueue(
+      encoder.encode(
+        `data: ${JSON.stringify({
+          type: 'tool-approval-request',
+          approvalId: 'stale-approval',
+          toolName: 'repo_write',
+        })}\n\n`,
+      ),
+    );
+    const untilOpened = async (requestId: string) => {
+      for (let seen = 0; seen < 20; seen++) {
+        const [event] = await nextEvents(iterator, 1);
+        if (event?.method === 'request.opened' && event.requestId === requestId)
+          return event;
+      }
+      throw new Error(`request.opened ${requestId} never arrived`);
+    };
+    await untilOpened('stale-approval');
+    await expect(
+      adapter.respondToRequest(
+        'task-stale',
+        'stale-approval',
+        'acceptForSession',
+      ),
+    ).rejects.toThrow('Stale Station agent approval request: stale-approval');
+
+    // The next call to the same tool must still ask.
+    const next = approvalRegistry.register('fresh-approval', {
+      metadata: {
+        source: 'runtime',
+        title: 'repo_write',
+        conversationId: 'task-stale',
+      },
+    });
+    streamController.enqueue(
+      encoder.encode(
+        `data: ${JSON.stringify({
+          type: 'tool-approval-request',
+          approvalId: 'fresh-approval',
+          toolName: 'repo_write',
+        })}\n\n`,
+      ),
+    );
+    await untilOpened('fresh-approval');
+    // A minted grant would have resolved it on arrival (trackApproval).
+    expect(approvalRegistry.has('fresh-approval')).toBe(true);
+    approvalRegistry.resolve('fresh-approval', false);
+    await expect(next).resolves.toBe(false);
+    await adapter.stopSession('task-stale');
+  });
+
   test('routes scoped approvals through the shared registry and remembers allow-for-session', async () => {
     const eventBus = new EventBus();
     const approvalRegistry = new ApprovalRegistry(

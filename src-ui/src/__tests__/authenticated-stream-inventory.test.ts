@@ -8,6 +8,8 @@ const PROTECTED_STREAM_CONSUMERS = [
   'src-ui/src/hooks/useServerEvents.ts',
   'src-ui/src/hooks/orchestration/useSessionEventStream.ts',
   'src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts',
+  // #90: a binary frame stream, not SSE, but the same auth boundary rule.
+  'src-ui/src/live-surface/useLiveSurface.ts',
 ];
 
 describe('protected browser stream inventory', () => {

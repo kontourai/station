@@ -125,6 +125,7 @@ export function HeaderActions({
   const {
     status: connStatus,
     reason: connReason,
+    failureStreak: connFailureStreak,
     recheck: connRecheck,
   } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -145,6 +146,7 @@ export function HeaderActions({
     status: connStatus,
     reason: connReason,
     pendingApproval: pendingApproval !== null,
+    failureStreak: connFailureStreak,
   });
   const { data: attention } = useAttentionQuery(apiBase);
   const notificationDestination = APP_DESTINATION_REGISTRY.get('notifications');
@@ -247,6 +249,7 @@ export function HeaderActions({
       // `ConnectionIndicatorState` rather than an unsafe cast.
       'awaiting-approval': 'Awaiting approval',
       'needs-repair': 'Needs re-pairing',
+      busy: 'Station is busy',
     }[connState];
   // The sidecar fact is about the locally supervised bundled server, not about
   // which Station the active connection points at — they are independent, so a

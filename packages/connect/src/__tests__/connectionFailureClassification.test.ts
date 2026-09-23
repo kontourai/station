@@ -47,6 +47,7 @@ describe('classifyConnectionFailure', () => {
       'unreachable',
       'server-restarted',
       'host-unavailable',
+      'busy',
     ] as const) {
       expect(classifyConnectionFailure(reason)).toBe('transient');
     }
@@ -146,6 +147,7 @@ describe('classifyNativeTransportRefusal', () => {
       'binding_changed',
       'credential_missing',
       'credential_store_unreadable',
+      'transport_capacity',
     ];
     for (const code of codesExpectedInRustSource) {
       expect(NATIVE_PROFILE_AUTHORITY_SOURCE).toContain(`"${code}"`);
@@ -179,6 +181,26 @@ describe('classifyNativeTransportRefusal', () => {
       expect(classifyNativeTransportRefusal(nativeRefusal(code))).toBeNull();
     },
   );
+
+  /**
+   * station#2327 — a full desktop request queue is a Station slow to give
+   * this device a turn, not an unreachable address. The broker refuses it
+   * locally, before any network attempt, so no network reason may be derived
+   * from it either.
+   */
+  it('classifies a saturated native request queue as busy (station#2327)', () => {
+    expect(
+      classifyNativeTransportRefusal(nativeRefusal('transport_capacity')),
+    ).toBe('busy');
+  });
+
+  it('keys busy on the code, not on the capacity message text (station#2327)', () => {
+    expect(
+      classifyNativeTransportRefusal(
+        new Error('native Station request queue capacity reached'),
+      ),
+    ).toBeNull();
+  });
 
   it('returns null for an Error with no code property (a not-yet-converted native command)', () => {
     expect(
@@ -319,6 +341,7 @@ describe('connectionFailureNeedsDecision', () => {
     'host-unavailable',
     'undetermined',
     'awaiting-approval',
+    'busy',
   ] as const)('leaves %s to the indicator, with no banner', (reason) => {
     expect(connectionFailureNeedsDecision(reason)).toBe(false);
   });

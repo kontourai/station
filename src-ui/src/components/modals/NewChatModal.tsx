@@ -449,7 +449,10 @@ export function NewChatModal({
       draftContext?.items.filter((item) =>
         selectedDraftContextIds.includes(item.id),
       ) || [];
-    const initialMessage = buildCodingChatInitialMessage(draftItems);
+    const initialMessage = buildCodingChatInitialMessage(
+      draftItems,
+      draftContext?.framing,
+    );
     const defaultEffectiveModel = defaultEffectiveModelForAgent(agent);
     const choice = modelChoices[modelChoiceKey(agent)];
     if (

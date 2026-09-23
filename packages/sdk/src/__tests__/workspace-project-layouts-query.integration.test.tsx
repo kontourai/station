@@ -11,6 +11,7 @@ import { _setApiBase } from '../api-core';
 import { setClientCredentialResolver } from '../client/http';
 import {
   useAvailableProjectLayoutsQuery,
+  useProjectLayoutsQuery,
   useProjectWorkspacePanesQuery,
 } from '../query-domains/workspaceProjects';
 import { telemetry } from '../telemetry';
@@ -328,5 +329,135 @@ describe('available project layouts query lifecycle', () => {
       reason: 'authentication',
       cached: 1,
     });
+  });
+});
+
+/**
+ * #2319 — a plugin installed OUTSIDE this tab (CLI, another tab or device, an
+ * agent) must reach the pane catalog. Every refresh path — a plugin lifecycle
+ * server event, an in-tab install, the reconnect sync — goes through
+ * `invalidateQueries`, which only refetches a query observed at that moment.
+ * These run on Station's own query defaults (`refetchOnMount: false`), which
+ * is what made a catalog invalidated while unmounted stay old on the next
+ * mount.
+ */
+describe('pane catalog revalidates on mount after an unobserved invalidation (#2319)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function stationDefaultsClient(): QueryClient {
+    // Mirrors `createAuthorityClient` in src-ui AuthorityQueryContext.
+    return new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 5 * 60 * 1000,
+          gcTime: 10 * 60 * 1000,
+          refetchOnWindowFocus: false,
+          refetchOnMount: false,
+          retry: false,
+        },
+      },
+    });
+  }
+
+  function paneCatalog(descriptorIds: string[]) {
+    return {
+      projectId: 'project-alpha',
+      projectSlug: 'alpha',
+      descriptors: descriptorIds.map((id) => ({ id })),
+      instances: [],
+    };
+  }
+
+  function descriptorIds(data: unknown): string[] {
+    return (
+      (data as { descriptors?: Array<{ id: string }> } | undefined)
+        ?.descriptors ?? []
+    ).map((descriptor) => descriptor.id);
+  }
+
+  test('a catalog invalidated while no view observed it refetches on the next mount', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        catalogResponse(
+          paneCatalog(['builtin-files', 'plugin:connected-pulse:pane']),
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    // The catalog the tab already held (restored or fetched earlier) — fresh
+    // by age, so only the invalidation can make it refetch.
+    client.setQueryData(
+      ['projects', 'alpha', 'panes'],
+      paneCatalog(['builtin-files']),
+    );
+    // A plugin lifecycle event / install mutation lands while unmounted.
+    await client.invalidateQueries({ queryKey: ['projects'] });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const { result } = renderHook(
+      () => useProjectWorkspacePanesQuery('alpha'),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() =>
+      expect(descriptorIds(result.current.data)).toContain(
+        'plugin:connected-pulse:pane',
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://station.example.test/api/projects/alpha/panes',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  test('an untouched cached catalog keeps the cache-first default: remounts do not refetch', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(catalogResponse(paneCatalog(['builtin-files'])));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    // Old by age (past staleTime), as a persisted snapshot usually is. A
+    // blanket `refetchOnMount: true` would refetch it — offline, that turns a
+    // painted workspace into an error state.
+    client.setQueryData(
+      ['projects', 'alpha', 'panes'],
+      paneCatalog(['builtin-files']),
+      { updatedAt: Date.now() - 60 * 60 * 1000 },
+    );
+
+    for (let mount = 0; mount < 3; mount += 1) {
+      const view = renderHook(() => useProjectWorkspacePanesQuery('alpha'), {
+        wrapper: wrapperFor(client),
+      });
+      expect(descriptorIds(view.result.current.data)).toEqual([
+        'builtin-files',
+      ]);
+      view.unmount();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('other queries keep the client default: an invalidated project layouts list does not refetch on mount', async () => {
+    _setApiBase('https://station.example.test');
+    const fetchMock = vi.fn().mockResolvedValue(catalogResponse([]));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = stationDefaultsClient();
+    client.setQueryData(['projects', 'alpha', 'layouts'], []);
+    await client.invalidateQueries({ queryKey: ['projects'] });
+
+    const { result } = renderHook(() => useProjectLayoutsQuery('alpha'), {
+      wrapper: wrapperFor(client),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(result.current.data).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

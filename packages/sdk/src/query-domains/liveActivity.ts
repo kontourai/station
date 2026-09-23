@@ -36,7 +36,10 @@ export const LIVE_ACTIVITY_POLL_INTERVAL_MS = 10_000;
 export function useLiveActivityQuery() {
   return useQuery<LiveActivityProjection | null>({
     queryKey: liveActivityQueries.current().queryKey,
-    queryFn: async () => (await fetchLiveActivity(await _getApiBase())) ?? null,
+    // station#2327: forward the signal so a cancelled poll releases its
+    // place in the desktop broker's queue instead of waiting it out.
+    queryFn: async ({ signal }) =>
+      (await fetchLiveActivity(await _getApiBase(), signal)) ?? null,
     staleTime: LIVE_ACTIVITY_POLL_INTERVAL_MS,
     refetchInterval: LIVE_ACTIVITY_POLL_INTERVAL_MS,
   });

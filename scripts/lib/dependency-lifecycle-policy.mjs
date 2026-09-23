@@ -78,6 +78,108 @@ function pauseSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * Per-attempt bound for an install-time probe child (`pnpm --version`,
+ * esbuild `--version`, a no-build-fallback `require`). These were 10s, and
+ * a starved hosted runner overran that before the child printed anything:
+ * the macOS iOS job in run 35818909873 spent 2m14s just starting `npm run
+ * dependencies:ci` (04:41:01.77 -> 04:43:15.88, after `brew install` sat
+ * silent for 2m24s), then `pnpm --version` died with `spawnSync ... pnpm
+ * ETIMEDOUT` ~12.4s later. On hosted Windows #2340 measured the first cold
+ * Node child at 3965ms against ~160ms warm. A warm probe finishes in well
+ * under a second, so 30s (three times the old bound) only matters when the
+ * host is stalled, and a deterministic hang still fails within
+ * 3 x 30s + 2 x 2s, far inside the 600s/1200s install bound.
+ */
+const COLD_START_PROBE_TIMEOUT_MS = 30_000;
+/**
+ * A stall is usually a transient phase of the runner (a bottle pour, a
+ * simulator preboot, a sibling install), so a fresh attempt after a pause can
+ * succeed where extending one attempt would keep waiting on a wedged child.
+ */
+const COLD_START_PROBE_ATTEMPTS = 3;
+const COLD_START_PROBE_RETRY_PAUSE_MS = 2_000;
+
+/** @param {unknown} value */
+function isEmptyOutput(value) {
+  if (value == null) return true;
+  return String(value).trim() === '';
+}
+
+/**
+ * The one environmental signature: our own spawn bound fired (`ETIMEDOUT`,
+ * which Node reports alongside the kill signal, usually SIGTERM) before the
+ * child wrote anything. A bare SIGTERM without ETIMEDOUT came from someone
+ * else (a cancelled job, an OOM killer) and is not ours to retry. A child
+ * that timed out AFTER writing output started fine and then hung, and a
+ * non-zero exit is a verdict; neither is retried.
+ * @param {any} error
+ */
+function isSilentSpawnTimeout(error) {
+  return (
+    error != null &&
+    typeof error === 'object' &&
+    error.code === 'ETIMEDOUT' &&
+    isEmptyOutput(error.stdout) &&
+    isEmptyOutput(error.stderr)
+  );
+}
+
+/**
+ * Run an install-time probe with a cold-start allowance and a bounded retry
+ * of the silent-timeout signature only (#2315). `run` receives the
+ * per-attempt timeout and performs one spawn; whatever it returns is the
+ * probe's result, and the caller judges that result (for example a wrong
+ * version) itself, so a wrong answer is never retried. Attempts are reported
+ * on stderr: callers such as the prebuild verifier print JSON alone on stdout.
+ * @template T
+ * @param {string} label
+ * @param {(timeoutMs: number) => T} run
+ * @param {ColdStartProbeOptions} [options]
+ * @returns {T}
+ */
+export function runColdStartProbe(
+  label,
+  run,
+  {
+    log = console.error,
+    pause = pauseSync,
+    attempts = COLD_START_PROBE_ATTEMPTS,
+  } = {},
+) {
+  for (let attempt = 1; ; attempt += 1) {
+    const startedAt = Date.now();
+    let result;
+    try {
+      result = run(COLD_START_PROBE_TIMEOUT_MS);
+    } catch (error) {
+      const elapsed = Date.now() - startedAt;
+      if (!isSilentSpawnTimeout(error) || attempt >= attempts) {
+        if (attempt > 1)
+          log(
+            `[dependency-lifecycle] ${label} failed on attempt ${attempt}/${attempts} after ${elapsed}ms`,
+          );
+        throw error;
+      }
+      log(
+        `[dependency-lifecycle] ${label} attempt ${attempt}/${attempts} timed out after ${elapsed}ms with no output (code=ETIMEDOUT signal=${String(/** @type {any} */ (error).signal ?? 'none')}); retrying`,
+      );
+      pause(COLD_START_PROBE_RETRY_PAUSE_MS);
+      continue;
+    }
+    if (attempt > 1)
+      log(
+        `[dependency-lifecycle] ${label} completed on attempt ${attempt}/${attempts} in ${Date.now() - startedAt}ms`,
+      );
+    return result;
+  }
+}
+
+/**
+ * Injection seams for install-time probes; production callers pass nothing.
+ * @typedef {{ log?: (line: string) => void, pause?: (ms: number) => void, attempts?: number }} ColdStartProbeOptions
+ */
+
 export function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (value && typeof value === 'object')
@@ -918,11 +1020,20 @@ export function preflightLifecycleArtifactTargets(
     );
 }
 
+/**
+ * @param {string} root
+ * @param {any} entry
+ * @param {NodeJS.Platform} [platform]
+ * @param {string} [arch]
+ * @param {ColdStartProbeOptions & { exec?: typeof execFileSync }} [probe]
+ *   test seams for the child-process proofs; production passes nothing.
+ */
 export function verifyArtifact(
   root,
   entry,
   platform = process.platform,
   arch = process.arch,
+  { exec = execFileSync, ...probe } = {},
 ) {
   if (!platformMatches(entry, platform, arch))
     return {
@@ -970,11 +1081,18 @@ export function verifyArtifact(
       : executable;
     const args =
       command === process.execPath ? [executable, '--version'] : ['--version'];
-    const version = execFileSync(command, args, {
-      encoding: 'utf8',
-      timeout: 10_000,
-      windowsHide: true,
-    }).trim();
+    const version = String(
+      runColdStartProbe(
+        `esbuild --version for ${entry.path}`,
+        (timeout) =>
+          exec(command, args, {
+            encoding: 'utf8',
+            timeout,
+            windowsHide: true,
+          }),
+        probe,
+      ),
+    ).trim();
     if (version !== entry.version)
       throw new Error(`esbuild artifact version drift for ${entry.path}`);
   }
@@ -1008,10 +1126,18 @@ export function verifyArtifact(
     stop();
   }
   if (entry.artifact.proof === 'no-build-fallback')
-    execFileSync(
-      process.execPath,
-      ['-e', 'require(process.argv[1])', entry.artifact.capability],
-      { cwd: packageRoot, stdio: 'ignore', timeout: 10_000, windowsHide: true },
+    // stdio is ignored, so every timeout of this probe is silent: a
+    // deterministic hang still fails after the bounded attempts, and a
+    // non-zero exit (the capability failed to load) is never retried.
+    runColdStartProbe(
+      `no-build fallback require for ${entry.path}`,
+      (timeout) =>
+        exec(
+          process.execPath,
+          ['-e', 'require(process.argv[1])', entry.artifact.capability],
+          { cwd: packageRoot, stdio: 'ignore', timeout, windowsHide: true },
+        ),
+      probe,
     );
   return {
     skipped: false,
