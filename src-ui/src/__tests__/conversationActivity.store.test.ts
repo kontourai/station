@@ -402,3 +402,17 @@ describe('#2309 the optimistic send window', () => {
     expect(client.isTurnStreamLive(chatOf(client))).toBe(false);
   });
 });
+
+describe('#2309 review F5: chatSessionIsLive honours a settled Stop', () => {
+  test('the stopped turn does not keep the session live for the send path', async () => {
+    const client = await loadClient();
+    const { chatSessionIsLive } = await import('../utils/execution');
+    client.applyOrchestrationSnapshot(reloadSnapshot(openActivity(500)));
+    expect(chatSessionIsLive(chatOf(client))).toBe(true);
+    client.store.updateChat(CONVERSATION, {
+      stopSettledTurnId: TURN,
+      orchestrationStatus: 'exited',
+    });
+    expect(chatSessionIsLive(chatOf(client))).toBe(false);
+  });
+});
