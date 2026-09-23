@@ -345,6 +345,7 @@ export function AuthorityQueryProvider({
   // old client's data.
   const [active, setActive] = useState<ActiveAuthorityClient | null>(null);
   const activeRef = useRef<ActiveAuthorityClient | null>(null);
+  const lastVerifiedNamespaceRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!verifiedNamespace) {
       const previous = activeRef.current;
@@ -352,11 +353,19 @@ export function AuthorityQueryProvider({
         activeRef.current = null;
         setActive(null);
         retireAuthorityClient(previous.queryClient);
-        // #2309: another Station's activity sequences are not comparable.
-        activeChatsStore.clearConversationActivity();
       }
       return;
     }
+    // #2309: another Station's activity sequences are not comparable, so the
+    // records go when the verified authority CHANGES — not when it is only
+    // unverified for a moment during a re-verify of the same one.
+    if (
+      lastVerifiedNamespaceRef.current !== undefined &&
+      lastVerifiedNamespaceRef.current !== verifiedNamespace
+    ) {
+      activeChatsStore.clearConversationActivity();
+    }
+    lastVerifiedNamespaceRef.current = verifiedNamespace;
     if (activeRef.current?.namespace === verifiedNamespace) return;
     const previous = activeRef.current;
     const next: ActiveAuthorityClient = {
@@ -365,10 +374,7 @@ export function AuthorityQueryProvider({
     };
     activeRef.current = next;
     setActive(next);
-    if (previous) {
-      retireAuthorityClient(previous.queryClient);
-      activeChatsStore.clearConversationActivity();
-    }
+    if (previous) retireAuthorityClient(previous.queryClient);
   }, [verifiedNamespace]);
 
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the
