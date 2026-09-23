@@ -53,6 +53,17 @@ wired into the ordinary client, these records remain unconnected and cannot be
 selected as direct Station connections or CLI defaults. The CLI also refuses
 `--station` and `STATION_TARGET` when they name one of these inert routes.
 
+One broker can serve several Stations, and one Station can be reached through
+more than one route. A broker route belongs beneath the Station it reaches; it
+is not another Station or a person. A short-lived invitation can enroll one
+Device's separate routing grant without sharing the operator's long-lived
+broker credential. That grant permits signaling only. The Device must still
+approve the Station signing key independently and complete Station account,
+Device and Project authorization. The Station operator must explicitly allow
+the Device's application Origin; possession of an invitation does not change
+that allowlist. See the [local broker lab](local-collaboration-lab.md#separate-self-hosted-broker-and-production-browser-consumer)
+for the source-level pilot and its current UI/native limits.
+
 Native Desktop and the CLI share a strict saved-profile file. An older build
 that predates broker-route metadata refuses the updated file instead of
 discarding fields it does not understand. Update both clients that use the

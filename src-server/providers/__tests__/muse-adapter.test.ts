@@ -1422,7 +1422,7 @@ describe('Muse startup-provider override', () => {
     return harness.spawnArgs[0];
   }
 
-  test('unset: the argv is byte-identical to the one Station has always built', async () => {
+  test("unset: the argv is Station's default build, with no --provider", async () => {
     // The literal, not a subset — the claim is that the default path did not
     // move, so a `--provider` appearing anywhere fails here.
     expect(await argvForEnv({})).toEqual([
@@ -1434,6 +1434,8 @@ describe('Muse startup-provider override', () => {
       'muse-spark-1.2-contributor',
       '--workspace',
       '/tmp/project',
+      '--approval-mode',
+      'never',
       '--',
       'ping',
     ]);
@@ -1450,6 +1452,8 @@ describe('Muse startup-provider override', () => {
       'echo',
       '--workspace',
       '/tmp/project',
+      '--approval-mode',
+      'never',
       '--',
       'ping',
     ]);
@@ -1471,6 +1475,8 @@ describe('Muse startup-provider override', () => {
       'muse-spark-1.2-contributor',
       '--workspace',
       '/tmp/project',
+      '--approval-mode',
+      'never',
       '--',
       'ping',
     ]);
@@ -1508,6 +1514,8 @@ describe('Muse startup-provider override', () => {
       'muse-spark-1.2-contributor',
       '--workspace',
       '/tmp/project',
+      '--approval-mode',
+      'never',
       '--',
       'ping',
     ]);
@@ -1689,6 +1697,8 @@ describe('Muse startup-provider override', () => {
           'muse-spark-1.2-contributor',
           '--workspace',
           '/tmp/project',
+          '--approval-mode',
+          'never',
           '--',
           'ping',
         ]);

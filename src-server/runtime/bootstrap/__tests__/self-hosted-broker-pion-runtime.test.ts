@@ -127,6 +127,7 @@ async function harness(
     maxPeers?: number;
     wrongIssuer?: boolean;
     application?: VirtualApplication;
+    offerBrowserOrigin?: string;
     observeStatus?: (status: {
       state: string;
       phase: string;
@@ -178,6 +179,7 @@ async function harness(
             nonce: NONCE,
             offerSdp: OFFER_SDP,
             expiresAt: Date.now() + 60_000,
+            browserOrigin: options.offerBrowserOrigin ?? scope.browserOrigin,
           },
         ],
       });
@@ -356,130 +358,136 @@ describe('self-hosted broker pion factory', () => {
     expect(h.closeCalls).toBe(1);
   });
 
-  test('copies only an admitted Pion peer fact onto VAI fresh requests and aborts it on retirement', async () => {
-    const app = new Hono();
-    let sawFacts: ReturnType<typeof readVerifiedVirtualApplicationRequest>;
-    let requestSignal: AbortSignal | undefined;
-    let unblock!: () => void;
-    const blocked = new Promise<void>((resolve) => {
-      unblock = resolve;
-    });
-    app.post('/relay-enrollment-test', async (c) => {
-      sawFacts = readVerifiedVirtualApplicationRequest(c.req.raw);
-      if (sawFacts) {
-        requestSignal = c.req.raw.signal;
-        await blocked;
-      }
-      return c.json({ admitted: !!sawFacts });
-    });
-    const owner = new VirtualApplicationIngress(
-      'https://station.example',
-      readVerifiedPionApplicationRequest,
-    );
-    owner.bind({ fetch: (request) => app.fetch(request) });
-    const application = owner.activate();
-    const { h, runtime } = await harness({ application });
-    await runtime.start();
-    try {
-      await waitFor(() => h.capturedProof !== undefined);
-      const rawChannel = {
-        send: vi.fn(),
-        close: vi.fn(),
-        subscribe: () => () => undefined,
-      };
-      h.acceptCallback!(rawChannel as never);
-      const mod = (await import(
-        '@kontourai/station-connect/application-channel'
-      )) as unknown as {
-        __captured: Array<{
-          application: {
-            fetch(request: Request): Promise<Response>;
-          };
-        }>;
-      };
-      await waitFor(() => mod.__captured.length > 0);
-      const dispatch = mod.__captured.at(-1)!.application.fetch;
-      const request = new Request(
-        'https://station.example/relay-enrollment-test',
-        {
-          method: 'POST',
-          headers: { Origin: 'https://browser.example' },
-          body: '{}',
-        },
+  test.each(['https://browser.example', 'https://zach.example'])(
+    'copies only an admitted Pion peer fact for %s and aborts it on retirement',
+    async (clientOrigin) => {
+      const app = new Hono();
+      let sawFacts: ReturnType<typeof readVerifiedVirtualApplicationRequest>;
+      let requestSignal: AbortSignal | undefined;
+      let unblock!: () => void;
+      const blocked = new Promise<void>((resolve) => {
+        unblock = resolve;
+      });
+      app.post('/relay-enrollment-test', async (c) => {
+        sawFacts = readVerifiedVirtualApplicationRequest(c.req.raw);
+        if (sawFacts) {
+          requestSignal = c.req.raw.signal;
+          await blocked;
+        }
+        return c.json({ admitted: !!sawFacts });
+      });
+      const owner = new VirtualApplicationIngress(
+        'https://station.example',
+        readVerifiedPionApplicationRequest,
       );
-      const pending = dispatch(request);
-      await waitFor(() => requestSignal !== undefined);
-      expect(readVerifiedPionApplicationRequest(request)).toMatchObject({
-        stationId: h.trust.stationId,
-        connectionEnrollmentId: h.trust.enrollmentId,
-        routingGeneration: h.trust.generation,
-        connectionId: CLIENT_ID,
-        browserOrigin: 'https://browser.example',
+      owner.bind({ fetch: (request) => app.fetch(request) });
+      const application = owner.activate();
+      const { h, runtime } = await harness({
+        application,
+        offerBrowserOrigin: clientOrigin,
       });
-      expect(readVerifiedVirtualApplicationRequest(request)).toBeUndefined();
-      expect(sawFacts).toMatchObject({
-        stationId: h.trust.stationId,
-        connectionEnrollmentId: h.trust.enrollmentId,
-        routingGeneration: h.trust.generation,
-        connectionId: CLIENT_ID,
-        clientOrigin: 'https://browser.example',
-        requestOrigin: 'https://station.example',
-      });
-
-      const direct = await app.fetch(
-        new Request('https://station.example/relay-enrollment-test', {
-          method: 'POST',
-          headers: {
-            Origin: 'https://browser.example',
-            'X-Pion-Verified': 'true',
+      await runtime.start();
+      try {
+        await waitFor(() => h.capturedProof !== undefined);
+        const rawChannel = {
+          send: vi.fn(),
+          close: vi.fn(),
+          subscribe: () => () => undefined,
+        };
+        h.acceptCallback!(rawChannel as never);
+        const mod = (await import(
+          '@kontourai/station-connect/application-channel'
+        )) as unknown as {
+          __captured: Array<{
+            application: {
+              fetch(request: Request): Promise<Response>;
+            };
+          }>;
+        };
+        await waitFor(() => mod.__captured.length > 0);
+        const dispatch = mod.__captured.at(-1)!.application.fetch;
+        const request = new Request(
+          'https://station.example/relay-enrollment-test',
+          {
+            method: 'POST',
+            headers: { Origin: clientOrigin },
+            body: '{}',
           },
-          body: '{}',
-        }),
-      );
-      expect(direct.status).toBe(200);
-      expect(((await direct.json()) as { admitted: boolean }).admitted).toBe(
-        false,
-      );
-      const genericVirtual = await application.fetch(
-        new Request('https://station.example/relay-enrollment-test', {
-          method: 'POST',
-          headers: { Origin: 'https://browser.example' },
-          body: '{}',
-        }),
-      );
-      expect(genericVirtual.status).toBe(200);
-      expect(
-        ((await genericVirtual.json()) as { admitted: boolean }).admitted,
-      ).toBe(false);
+        );
+        const pending = dispatch(request);
+        await waitFor(() => requestSignal !== undefined);
+        expect(readVerifiedPionApplicationRequest(request)).toMatchObject({
+          stationId: h.trust.stationId,
+          connectionEnrollmentId: h.trust.enrollmentId,
+          routingGeneration: h.trust.generation,
+          connectionId: CLIENT_ID,
+          browserOrigin: clientOrigin,
+        });
+        expect(readVerifiedVirtualApplicationRequest(request)).toBeUndefined();
+        expect(sawFacts).toMatchObject({
+          stationId: h.trust.stationId,
+          connectionEnrollmentId: h.trust.enrollmentId,
+          routingGeneration: h.trust.generation,
+          connectionId: CLIENT_ID,
+          clientOrigin,
+          requestOrigin: 'https://station.example',
+        });
 
-      const wrongOrigin = await dispatch(
-        new Request('https://station.example/relay-enrollment-test', {
-          method: 'POST',
-          headers: { Origin: 'https://attacker.example' },
-          body: '{}',
-        }),
-      );
-      expect(wrongOrigin.status).toBe(403);
+        const direct = await app.fetch(
+          new Request('https://station.example/relay-enrollment-test', {
+            method: 'POST',
+            headers: {
+              Origin: clientOrigin,
+              'X-Pion-Verified': 'true',
+            },
+            body: '{}',
+          }),
+        );
+        expect(direct.status).toBe(200);
+        expect(((await direct.json()) as { admitted: boolean }).admitted).toBe(
+          false,
+        );
+        const genericVirtual = await application.fetch(
+          new Request('https://station.example/relay-enrollment-test', {
+            method: 'POST',
+            headers: { Origin: clientOrigin },
+            body: '{}',
+          }),
+        );
+        expect(genericVirtual.status).toBe(200);
+        expect(
+          ((await genericVirtual.json()) as { admitted: boolean }).admitted,
+        ).toBe(false);
 
-      h.current = null;
-      const stale = await dispatch(
-        new Request('https://station.example/relay-enrollment-test', {
-          method: 'POST',
-          headers: { Origin: 'https://browser.example' },
-          body: '{}',
-        }),
-      );
-      expect(stale.status).toBe(503);
-      await expect(pending).rejects.toThrow();
-      expect(requestSignal?.aborted).toBe(true);
-      unblock();
-    } finally {
-      unblock();
-      h.live = false;
-      await runtime.shutdown().catch(() => undefined);
-      owner.stop();
-    }
-  });
+        const wrongOrigin = await dispatch(
+          new Request('https://station.example/relay-enrollment-test', {
+            method: 'POST',
+            headers: { Origin: 'https://attacker.example' },
+            body: '{}',
+          }),
+        );
+        expect(wrongOrigin.status).toBe(403);
+
+        h.current = null;
+        const stale = await dispatch(
+          new Request('https://station.example/relay-enrollment-test', {
+            method: 'POST',
+            headers: { Origin: clientOrigin },
+            body: '{}',
+          }),
+        );
+        expect(stale.status).toBe(503);
+        await expect(pending).rejects.toThrow();
+        expect(requestSignal?.aborted).toBe(true);
+        unblock();
+      } finally {
+        unblock();
+        h.live = false;
+        await runtime.shutdown().catch(() => undefined);
+        owner.stop();
+      }
+    },
+  );
 
   test('wrong-issuer proof fails publication and releases capacity', async () => {
     const { h, runtime, startAdapter } = await harness({

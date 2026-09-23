@@ -92,3 +92,39 @@
 .pairing-error p + p {
   color: var(--text-secondary, #999);
 }
+
+/* Native WebKit select chrome ignores much of the input treatment. Keep the
+   native keyboard/menu behavior while explicitly owning the closed control. */
+.pairing-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 10px 40px 10px 12px;
+  border: 1px solid var(--border-primary, #555);
+  border-radius: 8px;
+  background-color: var(--bg-primary, #111);
+  color: var(--text-primary, #eee);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-secondary, #aaa) 50%),
+    linear-gradient(135deg, var(--text-secondary, #aaa) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.pairing-select:focus-visible {
+  outline: 2px solid var(--accent-primary, #8b5cf6);
+  outline-offset: 2px;
+}
+.pairing-select option {
+  background: var(--bg-primary, #111);
+  color: var(--text-primary, #eee);
+}

@@ -309,6 +309,14 @@ jobs:
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"; apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
           "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
           "$aapt" dump badging "$apk" | grep -F "package: name='io.kontourai.station.nightly'"
+          # A source declaration is insufficient: init regenerates the manifest.
+          for permission in CAMERA RECORD_AUDIO MODIFY_AUDIO_SETTINGS; do
+            "$aapt" dump permissions "$apk" | grep -Fx "uses-permission: name='android.permission.$permission'"
+          done
+          for attribute in allowBackup fullBackupContent; do
+            "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E "android:$attribute.*0x0$"
+          done
+          "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -F 'android:dataExtractionRules'
           node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
           node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
           node scripts/check-android-16kb-alignment.mjs "$apk"

@@ -178,6 +178,37 @@ const iceProvider = () => ({
 });
 
 describe('browser relay consumer (public boundary)', () => {
+  test('grant trust rotation after an async trust read refuses broker signaling', async () => {
+    const { keys, trust, trustRecord } = await trustFixture();
+    const base = brokerStub(trust, keys, ANSWER);
+    const open = vi.fn(base.open);
+    const assertCredentialBoundToTrust = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const broker = {
+      ...base,
+      open,
+      assertCredentialBoundToTrust,
+    };
+    const createPeer = vi.fn(() => fakePeer(OFFER, []) as never);
+    const connection = createBrowserPionConnection({
+      broker: broker as never,
+      applicationOrigin: 'https://app.example',
+      trustRecord,
+      trustStore: { isCurrent: async () => true },
+      ice: iceProvider() as never,
+      createPeer,
+    });
+
+    await expect(
+      connection.connect(new AbortController().signal),
+    ).rejects.toThrow('browser_transport_grant_trust_retired');
+    expect(assertCredentialBoundToTrust).toHaveBeenCalledTimes(2);
+    expect(createPeer).toHaveBeenCalledOnce();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   test('positive complete connect reaches remote description and publishes snapshot', async () => {
     const { keys, trust, trustRecord } = await trustFixture();
     const channels: unknown[] = [];
