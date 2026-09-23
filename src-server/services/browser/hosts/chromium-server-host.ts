@@ -404,6 +404,8 @@ interface Running {
   unsubscribe: Array<() => void>;
   /** Target.createTarget calls in flight (their targets are not yet known). */
   creating: number;
+  /** Every target id this host created, from the moment createTarget answers. */
+  created: Set<string>;
   /** Page targets awaiting the untracked-target check. */
   pendingUntracked: Map<string, NodeJS.Timeout>;
 }
@@ -465,6 +467,8 @@ export class ChromiumServerHost implements BrowserHost {
         'Target.createTarget',
         { url: ABOUT_BLANK },
       ));
+      // Known as ours before the (possibly slow) attach completes.
+      running.created.add(targetId);
     } finally {
       running.creating -= 1;
     }
@@ -594,6 +598,7 @@ export class ChromiumServerHost implements BrowserHost {
       popups: new Map(),
       unsubscribe: [],
       creating: 0,
+      created: new Set(),
       pendingUntracked: new Map(),
     };
     void launch.exited.then((reason) => {
@@ -763,11 +768,14 @@ export class ChromiumServerHost implements BrowserHost {
     targetId: string,
     url: string,
   ): void {
-    if (running.targets.has(targetId) || running.pendingUntracked.has(targetId))
-      return;
+    const ours = () =>
+      running.created.has(targetId) ||
+      running.targets.has(targetId) ||
+      running.popups.has(targetId);
+    if (ours() || running.pendingUntracked.has(targetId)) return;
     const check = () => {
       running.pendingUntracked.delete(targetId);
-      if (running.targets.has(targetId) || running.popups.has(targetId)) return;
+      if (ours()) return;
       if (running.creating > 0) {
         // One of our own creates may still be answering with this id.
         running.pendingUntracked.set(

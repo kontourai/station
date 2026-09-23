@@ -30,7 +30,17 @@ interface SentCall {
   sessionId?: string;
 }
 
-function fakeTransport(respond: (call: SentCall) => unknown = () => ({})) {
+interface FakeHooks {
+  /** Runs when a target is created, before createTarget answers. */
+  onCreate?: (targetId: string) => void;
+  /** Awaited before attachToTarget answers. */
+  beforeAttach?: () => Promise<void>;
+}
+
+function fakeTransport(
+  respond: (call: SentCall) => unknown = () => ({}),
+  hooks: FakeHooks = {},
+) {
   const calls: SentCall[] = [];
   const listeners = new Map<string, Set<(p: unknown, s?: string) => void>>();
   let resolveClosed!: () => void;
@@ -44,9 +54,11 @@ function fakeTransport(respond: (call: SentCall) => unknown = () => ({})) {
       calls.push(call);
       if (method === 'Target.createTarget') {
         targetSeq += 1;
+        hooks.onCreate?.(`T${targetSeq}`);
         return { targetId: `T${targetSeq}` } as R;
       }
       if (method === 'Target.attachToTarget') {
+        await hooks.beforeAttach?.();
         return {
           sessionId: `S-${(params as { targetId: string }).targetId}`,
         } as R;
@@ -84,8 +96,8 @@ afterEach(async () => {
     rmSync(dir, { recursive: true, force: true });
 });
 
-function harness(respond?: (call: SentCall) => unknown) {
-  const fake = fakeTransport(respond);
+function harness(respond?: (call: SentCall) => unknown, hooks?: FakeHooks) {
+  const fake = fakeTransport(respond, hooks);
   let exit!: (reason: string) => void;
   const exited = new Promise<string>((r) => {
     exit = r;
@@ -391,6 +403,25 @@ describe('ChromiumServerHost with a fake browser', () => {
       kind: 'untracked-target-closed',
       targetId: 'X',
       url: 'view-source:https://a.example/',
+    });
+  });
+
+  test('our own target is never mistaken for an untracked one, however slow the attach', async () => {
+    let emitCreated: ((id: string) => void) | undefined;
+    const { host, profileDir, calls, emit } = harness(undefined, {
+      onCreate: (id) => emitCreated?.(id),
+      beforeAttach: () => new Promise((r) => setTimeout(r, 1_300)),
+    });
+    emitCreated = (id) =>
+      emit('Target.targetCreated', {
+        targetInfo: { targetId: id, type: 'page', url: 'about:blank' },
+      });
+    const target = await host.openTarget({ profileDir, viewport: VIEWPORT });
+    await new Promise((r) => setTimeout(r, 1_200));
+    expect(calls).not.toContainEqual({
+      method: 'Target.closeTarget',
+      params: { targetId: target.targetId },
+      sessionId: undefined,
     });
   });
 
