@@ -4,6 +4,7 @@ import { SyntheticLiveSurfaceProducer } from '../../../__test-utils__/synthetic-
 import type { LiveSurfaceHeldInput } from '../producer.js';
 import {
   claimAgentControl,
+  claimHumanControl,
   dispatchAgentInput,
   dispatchHumanInput,
   type LiveSurfaceAuthorizer,
@@ -524,5 +525,37 @@ describe('live surface registry', () => {
         clickCount: 1,
       },
     ]);
+  });
+  test("another controller's stuck press does not keep a new holder live", async () => {
+    const { producer, entry } = setup(() => true, {
+      lease: { humanHoldMs: 10 },
+    });
+    // The agent's down is slow to dispatch (but within the timeout), so the
+    // handoff's cancel of it waits behind it.
+    producer.dispatchImpl = () => sleep(150);
+    const fence = await agentFence(entry);
+    const agentRun = dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      press('down', 7, 8),
+      press('up', 7, 8),
+    ]);
+    await sleep(5);
+    // A human takes control with the button (not a click): nothing pressed.
+    expect(claimHumanControl(entry, human).ok).toBe(true);
+    await sleep(40); // past the human's hold; the agent's down is still held
+    expect(entry.lease.snapshot().holder).toBeNull();
+    await agentRun;
+  });
+
+  test('a wedged surface never extends a human hold', async () => {
+    const { producer, entry } = setup(() => true, {
+      lease: { humanHoldMs: 30 },
+      dispatchTimeoutMs: 10,
+    });
+    // The human's own down never returns (a dialog): wedged, and their press
+    // can never be released, so it must not keep them live.
+    producer.dispatchImpl = () => new Promise(() => {});
+    await dispatchHumanInput(entry, human, 0, [press('down', 7, 8)]);
+    await sleep(80);
+    expect(entry.lease.snapshot().holder).toBeNull();
   });
 });

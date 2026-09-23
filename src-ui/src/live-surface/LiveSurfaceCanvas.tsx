@@ -203,6 +203,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     now,
   });
   const { sendInput } = surface;
+  const surfaceRef = useRef(surface);
+  surfaceRef.current = surface;
   const canInteract = surface.status === 'live' && frameSize !== null;
 
   // A once-a-second clock for the honest age line, only while it can matter.
@@ -217,6 +219,8 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const heldRef = useRef(new Set<LiveSurfacePointerButton>());
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const heldPointerTypeRef = useRef<{ pointerType?: 'touch' | 'pen' }>({});
+  /** Keys this client pressed (as key events) and has not released. */
+  const heldKeysRef = useRef(new Map<string, { key: string; code: string }>());
 
   const toSurface = useCallback(
     (clientX: number, clientY: number, clamp = false) => {
@@ -297,6 +301,50 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   };
 
   /** The gesture was taken away (cancel, lost capture): release what's held. */
+  /**
+   * This client is about to stop seeing its own input's release (focus
+   * left, the page was hidden or is being unloaded): release everything it
+   * holds NOW, as ordinary ups, while it still holds control. Otherwise the
+   * surface keeps a key or button down until the server's hold ceiling. If
+   * it no longer holds control there is nothing to send: the server
+   * cancelled its presses at the handoff.
+   */
+  const releaseEverything = () => {
+    const current = surfaceRef.current;
+    const holder = current.lease?.holder;
+    const self = current.self;
+    const holding =
+      holder?.kind === 'human' &&
+      !!self &&
+      holder.principal === self.principal &&
+      holder.device === self.device;
+    const keys = [...heldKeysRef.current.values()];
+    heldKeysRef.current.clear();
+    if (!holding) {
+      heldRef.current.clear();
+      return;
+    }
+    releaseHeld();
+    if (keys.length > 0)
+      sendInput(
+        keys.map(({ key, code }) => ({ kind: 'key', type: 'up', key, code })),
+      );
+  };
+  const releaseEverythingRef = useRef(releaseEverything);
+  releaseEverythingRef.current = releaseEverything;
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') releaseEverythingRef.current();
+    };
+    const onPageHide = () => releaseEverythingRef.current();
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, []);
+
   const releaseHeld = () => {
     const point = lastPointRef.current;
     if (!point || heldRef.current.size === 0) return;
@@ -378,6 +426,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     };
     const modifiers = modifiersOf(event);
     if (modifiers) input.modifiers = modifiers;
+    const id = event.code || event.key;
+    if (type === 'down')
+      heldKeysRef.current.set(id, { key: event.key, code: event.code });
+    else heldKeysRef.current.delete(id);
     sendInput([input]);
   };
 
@@ -492,6 +544,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
             composingRef.current = true;
           }}
           onCompositionEnd={onCompositionEnd}
+          onBlur={() => releaseEverything()}
         />
         {statusText ? (
           <p className="live-surface__status" role="status">

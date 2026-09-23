@@ -44,6 +44,13 @@ const LIVE_SURFACE_AGENT_LEASE_TTL_MS = 60_000;
 export interface LiveSurfaceControlLeaseOptions {
   now?: () => number;
   humanHoldMs?: number;
+  /**
+   * The most a held press can keep a human live, measured from their last
+   * input or claim (default 4 x humanHoldMs). A press that is never released
+   * — the tab closed, the phone slept, the relay dropped, Cmd+Tab while
+   * holding Meta — must not lock agents out forever.
+   */
+  maxHumanHoldMs?: number;
   agentTtlMs?: number;
 }
 
@@ -108,13 +115,16 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   /** Whether the holder has anything pressed right now (the registry). */
-  private holding: () => boolean = () => false;
+  private holding: (holder: LiveSurfaceController) => boolean = () => false;
   private readonly listeners = new Set<
     (lease: LiveSurfaceControlLease) => void
   >();
   private readonly handoffListeners = new Set<LiveSurfaceHandoffListener>();
   private readonly now: () => number;
   private readonly humanHoldMs: number;
+  private readonly maxHumanHoldMs: number;
+  /** When the current human holder last claimed or sent input. */
+  private lastHumanActivityAt = 0;
   private readonly agentTtlMs: number;
 
   constructor(
@@ -123,6 +133,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   ) {
     this.now = options.now ?? Date.now;
     this.humanHoldMs = options.humanHoldMs ?? LIVE_SURFACE_HUMAN_HOLD_MS;
+    this.maxHumanHoldMs = options.maxHumanHoldMs ?? this.humanHoldMs * 4;
     this.agentTtlMs = options.agentTtlMs ?? LIVE_SURFACE_AGENT_LEASE_TTL_MS;
   }
 
@@ -188,6 +199,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     if (this.disposed)
       return { ok: false, code: 'surface-closed', lease: this.view() };
     this.expireIfDue();
+    this.lastHumanActivityAt = this.now();
     this.setHolder({ ...human }, this.now() + this.humanHoldMs);
     return { ok: true, lease: this.view() };
   }
@@ -282,11 +294,13 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   }
 
   /**
-   * Whether the current holder has anything pressed. A human holding a
-   * button or key is live however long the hold lasts: the lease never
-   * lapses mid-drag or mid-long-press.
+   * Whether `holder` has anything pressed that IT dispatched. A human
+   * holding a button or key stays live, so the lease does not lapse
+   * mid-drag or mid-long-press — up to `maxHumanHoldMs` after their last
+   * input, when it lapses and the press is cancelled. The probe answers
+   * false while the surface is wedged.
    */
-  setHoldProbe(probe: () => boolean): void {
+  setHoldProbe(probe: (holder: LiveSurfaceController) => boolean): void {
     this.holding = probe;
   }
 
@@ -300,9 +314,14 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   private expireIfDue(): void {
     if (!this.holder || this.expiresAt === null || this.now() < this.expiresAt)
       return;
-    if (this.holder.kind === 'human' && this.holding()) {
-      // Still pressing: still live. Extend rather than lapse.
-      this.expiresAt = this.now() + this.humanHoldMs;
+    const ceiling = this.lastHumanActivityAt + this.maxHumanHoldMs;
+    if (
+      this.holder.kind === 'human' &&
+      this.now() < ceiling &&
+      this.holding(this.holder)
+    ) {
+      // Still pressing: still live — but never past the ceiling.
+      this.expiresAt = Math.min(this.now() + this.humanHoldMs, ceiling);
       this.scheduleExpiry();
       return;
     }

@@ -709,6 +709,124 @@ describe('LiveSurfaceCanvas', () => {
     expect(h.inputs).toHaveLength(1);
   });
 
+  test('losing focus releases held keys and buttons while this client holds control', async () => {
+    const h = harness();
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    const canvas = screen.getByTestId('live-surface-canvas');
+    const keyboard = screen.getByLabelText(
+      'Keyboard input for Browser: example.com',
+    );
+    fireEvent.pointerDown(canvas, {
+      clientX: 10,
+      clientY: 20,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush(); // this client now holds control (the reply says so)
+    fireEvent.keyDown(keyboard, { key: 'Shift', code: 'ShiftLeft' });
+    await flush();
+    fireEvent.blur(keyboard);
+    await flush();
+    expect(h.inputs.flatMap((batch) => batch.events).slice(2)).toEqual([
+      {
+        kind: 'pointer',
+        type: 'up',
+        x: 10,
+        y: 20,
+        button: 'left',
+        clickCount: 1,
+      },
+      { kind: 'key', type: 'up', key: 'Shift', code: 'ShiftLeft' },
+    ]);
+  });
+
+  test('hiding the page releases held input; a client that lost control sends nothing', async () => {
+    const h = harness();
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    const canvas = screen.getByTestId('live-surface-canvas');
+    fireEvent.pointerDown(canvas, {
+      clientX: 10,
+      clientY: 20,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('hidden');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await flush();
+    expect(h.inputs.flatMap((batch) => batch.events)).toHaveLength(2);
+    expect(h.inputs[1]?.events[0]).toMatchObject({
+      type: 'up',
+      button: 'left',
+    });
+    visibility.mockRestore();
+    // Visible again: the stream resumes on a new connection.
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await flush();
+    const resumed = h.streams.at(-1)!;
+    await resumed.push(frameRecord(2, 1));
+    // Press again (this client holds control), then another person takes
+    // over: a later page hide has nothing to send — the server cancelled
+    // this client's press at that handoff.
+    fireEvent.pointerDown(canvas, {
+      clientX: 10,
+      clientY: 20,
+      button: 2,
+      pointerId: 2,
+    });
+    await flush();
+    await resumed.push(
+      stateRecord(
+        lease(9, {
+          kind: 'human',
+          principal: 'human:local:other',
+          device: 'device:x',
+        }),
+      ),
+    );
+    const before = h.inputs.length;
+    await act(async () => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    await flush();
+    expect(h.inputs.length).toBe(before);
+  });
+
+  test('pagehide releases a held button while this client holds control', async () => {
+    const h = harness();
+    await renderLive(h);
+    layoutCanvas({ left: 0, top: 0, width: 640, height: 400 });
+    fireEvent.pointerDown(screen.getByTestId('live-surface-canvas'), {
+      clientX: 10,
+      clientY: 20,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    await act(async () => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    await flush();
+    expect(h.inputs[1]?.events).toEqual([
+      {
+        kind: 'pointer',
+        type: 'up',
+        x: 10,
+        y: 20,
+        button: 'left',
+        clickCount: 1,
+      },
+    ]);
+  });
+
   test('a 404 is a terminal "not available" state with no reconnect', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

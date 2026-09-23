@@ -252,7 +252,7 @@ describe('live surface control lease', () => {
     let pressing = true;
     state.setHoldProbe(() => pressing);
     state.claimForHumanInput(alice, 0);
-    clock.t = 5_000; // long past humanHoldMs, but still holding
+    clock.t = 3_500; // well past humanHoldMs, inside the 4x ceiling, holding
     expect(state.snapshot()).toMatchObject({ holder: alice });
     expect(state.claimForAgent(agent.principal, agent.sessionId)).toMatchObject(
       {
@@ -261,9 +261,9 @@ describe('live surface control lease', () => {
       },
     );
     pressing = false; // released: the hold runs from here and then lapses
-    clock.t = 5_999;
+    clock.t = 3_999;
     expect(state.snapshot()).toMatchObject({ holder: alice });
-    clock.t = 6_000;
+    clock.t = 4_000;
     expect(state.snapshot()).toMatchObject({ holder: null });
   });
 
@@ -280,5 +280,33 @@ describe('live surface control lease', () => {
         code: 'surface-closed',
         lease: { holder: null, expiresAt: null },
       });
+  });
+  test('a press that is never released lapses at the ceiling, 4x the hold by default', () => {
+    const { state, clock } = lease(); // humanHoldMs 1_000
+    state.setHoldProbe(() => true); // the up never comes
+    state.claimForHumanInput(alice, 0);
+    clock.t = 3_999;
+    expect(state.snapshot()).toMatchObject({ holder: alice });
+    clock.t = 4_000;
+    expect(state.snapshot()).toMatchObject({ holder: null });
+    // An agent may now claim: no permanent lock-out.
+    expect(state.claimForAgent(agent.principal, agent.sessionId).ok).toBe(true);
+  });
+
+  test('the ceiling is configurable and counts from the last input, not the first', () => {
+    const clock = { t: 0 };
+    const state = new LiveSurfaceControlLeaseState('surface-1', {
+      now: () => clock.t,
+      humanHoldMs: 1_000,
+      maxHumanHoldMs: 2_500,
+    });
+    state.setHoldProbe(() => true);
+    state.claimForHumanInput(alice, 0);
+    clock.t = 2_000;
+    state.claimForHumanInput(alice, 1); // fresh input: the ceiling moves to 4_500
+    clock.t = 4_499;
+    expect(state.snapshot()).toMatchObject({ holder: alice });
+    clock.t = 4_500;
+    expect(state.snapshot()).toMatchObject({ holder: null });
   });
 });

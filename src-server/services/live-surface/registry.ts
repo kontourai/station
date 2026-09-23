@@ -86,35 +86,58 @@ const DEFAULT_DISPATCH_TIMEOUT_MS = 10_000;
  * control changes hands, or is released, whatever is held is cancelled
  * (never completed; see `cancelHeld`).
  */
+/** One controller, as a comparable string (who dispatched a press). */
+function controllerKey(controller: LiveSurfaceController): string {
+  return controller.kind === 'human'
+    ? `human\u0000${controller.principal}\u0000${controller.device ?? ''}`
+    : `agent\u0000${controller.principal}\u0000${controller.sessionId}`;
+}
+
 class PressedInput {
-  /** Each held button, with the pointer type its down was dispatched as. */
+  /**
+   * Each held button: the pointer type its down was dispatched as, and the
+   * controller that dispatched it (so one controller's stuck press never
+   * keeps a different holder live).
+   */
   private readonly buttons = new Map<
     LiveSurfacePointerButton,
-    LiveSurfacePointerType
+    { pointerType: LiveSurfacePointerType; owner: string }
   >();
-  private readonly keys = new Map<string, { key: string; code: string }>();
+  private readonly keys = new Map<
+    string,
+    { key: string; code: string; owner: string }
+  >();
   private pointer = { x: 0, y: 0 };
   private pointerType: LiveSurfacePointerType = 'mouse';
 
-  record(event: LiveSurfaceInput): void {
+  record(event: LiveSurfaceInput, controller: LiveSurfaceController): void {
+    const owner = controllerKey(controller);
     if (event.kind === 'pointer') {
       this.pointer = { x: event.x, y: event.y };
       if (event.type === 'down')
         this.pointerType = event.pointerType ?? 'mouse';
       if (event.type === 'down' && event.button)
-        this.buttons.set(event.button, event.pointerType ?? 'mouse');
+        this.buttons.set(event.button, {
+          pointerType: event.pointerType ?? 'mouse',
+          owner,
+        });
       if (event.type === 'up' && event.button)
         this.buttons.delete(event.button);
     } else if (event.kind === 'key') {
       const id = event.code || event.key;
       if (event.type === 'down')
-        this.keys.set(id, { key: event.key, code: event.code });
+        this.keys.set(id, { key: event.key, code: event.code, owner });
       else this.keys.delete(id);
     }
   }
 
-  hasAny(): boolean {
-    return this.buttons.size > 0 || this.keys.size > 0;
+  /** Whether `controller` itself has anything pressed. */
+  hasAnyFrom(controller: LiveSurfaceController): boolean {
+    const owner = controllerKey(controller);
+    for (const button of this.buttons.values())
+      if (button.owner === owner) return true;
+    for (const key of this.keys.values()) if (key.owner === owner) return true;
+    return false;
   }
 
   /** Everything held, then forget it; null when nothing is held. */
@@ -122,10 +145,12 @@ class PressedInput {
     if (this.buttons.size === 0 && this.keys.size === 0) return null;
     const held: LiveSurfaceHeldInput = {
       buttons: [...this.buttons.keys()],
-      keys: [...this.keys.values()],
+      keys: [...this.keys.values()].map(({ key, code }) => ({ key, code })),
       pointer: { ...this.pointer },
       pointerType: this.pointerType,
-      buttonPointerTypes: Object.fromEntries(this.buttons),
+      buttonPointerTypes: Object.fromEntries(
+        [...this.buttons].map(([button, held]) => [button, held.pointerType]),
+      ),
     };
     this.buttons.clear();
     this.keys.clear();
@@ -243,8 +268,12 @@ export class LiveSurfaceRegistry {
     // synchronously at the claim: AHEAD of the new controller's first batch
     // and behind the old controller's current one.
     lease.onHandoff(() => cancelHeld(entry));
-    // A human who is still pressing something stays live (never lapses).
-    lease.setHoldProbe(() => own.pressed.hasAny());
+    // A human still pressing something THEY dispatched stays live (up to the
+    // lease's ceiling) — never on another controller's stuck press, and
+    // never while the surface is wedged (a press that cannot be released).
+    lease.setHoldProbe(
+      (holder) => own.orphan === null && own.pressed.hasAnyFrom(holder),
+    );
     // Control lapsing to NOBODY — release or expiry — cancels held input too.
     lease.onChange((next) => {
       if (next.holder === null) cancelHeld(entry);
@@ -401,7 +430,7 @@ async function dispatchFenced(
     if (!check.ok) return { ...check, accepted };
     // Recorded as SENT: an event in flight at a takeover, or one that times
     // out and lands later, is still accounted for by the cancel.
-    own.pressed.record(event);
+    own.pressed.record(event, controller);
     const outcome = await dispatchWithTimeout(entry, () =>
       entry.producer.dispatch(event),
     );
