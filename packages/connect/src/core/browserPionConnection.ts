@@ -173,16 +173,10 @@ export function createBrowserPionConnection(input: {
     const isOwned = () =>
       attemptController === owned && attemptGeneration === generation;
     const assertGrantBinding = () => {
-      const assertion = (
-        broker as SelfHostedBrokerBrowserClient & {
-          assertCredentialBoundToTrust?: (
-            record: DeviceConnectionTrustRecord,
-          ) => Promise<boolean | undefined>;
-        }
-      ).assertCredentialBoundToTrust;
+      const assertion = broker.assertCredentialBoundToTrust;
       // Direct broker stubs are the legacy fixture/lab path. Production
       // routing grants always expose the binding guard through the client.
-      return assertion
+      return typeof assertion === 'function'
         ? assertion.call(broker, trustRecord)
         : Promise.resolve(undefined);
     };
