@@ -19,6 +19,7 @@ import {
   listRegisteredWorktrees,
   pruneStaleTransferBaselines,
   TRANSFER_BASELINE_PREFIX,
+  touchTransferBaselineMarker,
   transferBaselineShaFromPath,
 } from './lib/transfer-baselines.mjs';
 import { assertInstalledDependenciesMatchLockfile } from './lib/verification-environment-preflight.mjs';
@@ -185,12 +186,15 @@ function prepareBaseline(
   // Keep the base being prepared AND the current origin/main tip: an explicit
   // older --base must not delete the baseline every other session needs.
   const keepShas = [baseSha, originMainSha(candidateRoot)];
-  const reclaim = (kept) =>
-    prune({
+  const reclaim = (kept) => {
+    // The session that prepared this is about to install or push with it.
+    touchTransferBaselineMarker(kept);
+    return prune({
       repoRoot: candidateRoot,
       keepShas,
       excludePaths: [kept, candidateRoot],
     });
+  };
   if (existsSync(target)) {
     exactRoot(target, 'prepared baseline', baseSha);
     console.log(`Prepared baseline already valid: ${target}`);
@@ -353,6 +357,8 @@ export function runTransferCapture({
     candidateRoot,
     'scripts/orchestration-transfer-capture.tsconfig.json',
   );
+  if (resolve(targetRoot) !== resolve(candidateRoot))
+    touchTransferBaselineMarker(resolve(targetRoot));
   const result = spawn(
     process.execPath,
     [tsx, capture, targetRoot, output, baseSha, candidateRoot],
@@ -606,6 +612,9 @@ function runTransferGateInner(options) {
     console.log(
       `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} (liveness guard only; not a measured budget)`,
     );
+  // Mark first so a sibling session's prune sees this gate even while it
+  // runs checks that never name the baseline in argv or cwd.
+  touchTransferBaselineMarker(resolve(options.baselineRoot));
   const baselineRoot = exactRoot(options.baselineRoot, 'baseline', baseSha);
   exactRoot(candidateRoot, 'candidate', candidateSha);
   const outputDir = resolve(candidateRoot, options.outputDir);

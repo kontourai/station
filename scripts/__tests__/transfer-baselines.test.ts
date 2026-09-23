@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   realpathSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -15,6 +16,7 @@ import {
   pruneStaleTransferBaselines,
   TRANSFER_BASELINE_PREFIX,
   TRANSFER_BASELINE_PRUNE_ENV,
+  touchTransferBaselineMarker,
 } from '../lib/transfer-baselines.mjs';
 import { runTransferGate } from '../orchestration-transfer-gate.mjs';
 
@@ -81,11 +83,22 @@ function fixture() {
   mkdirSync(lanes, { recursive: true });
   const baselinePath = (sha: string, parent = lanes) =>
     join(parent, `${TRANSFER_BASELINE_PREFIX}${sha.slice(0, 12)}`);
-  const addDetached = (path: string, sha: string) => {
+  // Worktrees are backdated past the recent-use window unless `fresh`, so a
+  // test about liveness is not silently answered by the creation time.
+  const addDetached = (path: string, sha: string, { fresh = false } = {}) => {
     git(primary, ['worktree', 'add', '--detach', path, sha]);
+    if (!fresh) backdate(path);
     return path;
   };
   return { root, primary, lanes, old1, old2, tip, baselinePath, addDetached };
+}
+
+/** Push a worktree's creation evidence (`.git` file, admin dir) 2h back. */
+function backdate(path: string) {
+  const old = new Date(Date.now() - 2 * 60 * 60_000);
+  const admin = git(path, ['rev-parse', '--absolute-git-dir']);
+  for (const target of [join(path, '.git'), admin])
+    utimesSync(target, old, old);
 }
 
 function registered(primary: string) {
@@ -264,6 +277,56 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
       { path: second, reason: 'started meanwhile' },
     ]);
     expect(registered(f.primary)).toContain(second);
+  });
+
+  test('a stale baseline a sibling gate marked recently, or one just created, is kept (review M1)', () => {
+    const f = fixture();
+    // Old worktree, but a gate in another session is using it right now via
+    // STATION_TRANSFER_BASELINE_ROOT: no cwd, no argv, only the marker.
+    const marked = f.addDetached(f.baselinePath(f.old1), f.old1);
+    expect(touchTransferBaselineMarker(marked)).toBe(true);
+    // Created moments ago by another session that is still installing.
+    const fresh = f.addDetached(f.baselinePath(f.old2), f.old2, {
+      fresh: true,
+    });
+    const outcome = pruneStaleTransferBaselines({
+      repoRoot: f.primary,
+      keepShas: [f.tip],
+      env: {},
+      log: () => {},
+      pathsInUse: () => new Map(),
+    });
+    expect(outcome.pruned).toEqual([]);
+    expect(outcome.kept.map((entry) => entry.path).sort()).toEqual(
+      [marked, fresh].sort(),
+    );
+    for (const entry of outcome.kept)
+      expect(entry.reason).toMatch(/^used or created \d+ min ago$/);
+    // The marker must not dirty the tree the gate refuses when dirty.
+    expect(git(marked, ['status', '--porcelain'])).toBe('');
+  });
+
+  test('the gate marks its baseline at the start of a run, before any root check', () => {
+    const f = fixture();
+    const baseline = f.addDetached(f.baselinePath(f.old1), f.old1);
+    expect(() =>
+      runTransferGate({
+        candidateRoot: f.primary,
+        baselineRoot: baseline,
+        base: f.tip,
+        outputDir: '.kontourai/orchestration-transfer-gate',
+        prepareBaseline: false,
+      }),
+    ).toThrow(/baseline root is/);
+    const outcome = pruneStaleTransferBaselines({
+      repoRoot: f.primary,
+      keepShas: [f.tip],
+      env: {},
+      log: () => {},
+      pathsInUse: () => new Map(),
+    });
+    expect(outcome.pruned).toEqual([]);
+    expect(outcome.kept[0]?.reason).toMatch(/^used or created/);
   });
 
   test(`${TRANSFER_BASELINE_PRUNE_ENV}=0 opts out: nothing is removed`, () => {

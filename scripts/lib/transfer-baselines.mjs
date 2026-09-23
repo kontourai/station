@@ -2,11 +2,14 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   readdirSync,
+  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
+  writeFileSync,
 } from 'node:fs';
-import { basename, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { sanitizedGitEnvironment } from './git-environment.mjs';
 
 /**
@@ -36,6 +39,71 @@ export const TRANSFER_BASELINE_PREFIX = '4294-transfer-baseline-';
 
 /** Set to `0`/`false`/`off`/`no` to keep stale baselines (opt-out). */
 export const TRANSFER_BASELINE_PRUNE_ENV = 'STATION_TRANSFER_BASELINE_PRUNE';
+
+/**
+ * A baseline used or created this recently is never pruned. A sibling
+ * session's gate reads its baseline from STATION_TRANSFER_BASELINE_ROOT and
+ * its capture child runs from the candidate, so a live gate can be invisible
+ * to a cwd/argv probe; the gate therefore touches a marker at the start of
+ * every run and before every baseline capture. A whole pre-push hook takes
+ * minutes on a loaded host (three ~28s captures plus typecheck lanes), and a
+ * freshly prepared baseline then waits through a multi-minute dependency
+ * install, so 30 minutes leaves wide margin while still reclaiming the
+ * baselines that pile up over a day.
+ */
+export const TRANSFER_BASELINE_RECENT_USE_MS = 30 * 60_000;
+
+const LAST_USED_MARKER = 'station-transfer-gate-last-used';
+
+/**
+ * The worktree's private git admin directory (`.git/worktrees/<name>`),
+ * read from its `.git` file. The marker lives there, not in the working tree,
+ * because the gate refuses a baseline whose `git status` shows anything.
+ */
+function worktreeAdminDir(root) {
+  try {
+    const pointer = readFileSync(join(root, '.git'), 'utf8').match(
+      /^gitdir:\s*(.+?)\s*$/m,
+    );
+    return pointer ? resolve(root, pointer[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Record that a transfer gate is using `root` now. Best effort. */
+export function touchTransferBaselineMarker(root) {
+  const admin = worktreeAdminDir(root);
+  if (!admin) return false;
+  try {
+    writeFileSync(
+      join(admin, LAST_USED_MARKER),
+      `${new Date().toISOString()}\n`,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The most recent sign of use or creation: the gate's marker, the admin
+ * directory, or the `.git` file (both written when the worktree is added).
+ */
+function lastUseMs(root) {
+  const admin = worktreeAdminDir(root);
+  const candidates = [join(root, '.git')];
+  if (admin) candidates.push(admin, join(admin, LAST_USED_MARKER));
+  let latest = 0;
+  for (const path of candidates) {
+    try {
+      latest = Math.max(latest, statSync(path).mtimeMs);
+    } catch {
+      // Absent marker: never used by a gate that knew to mark it.
+    }
+  }
+  return latest;
+}
 
 /**
  * The base SHA a path names, or null when the path is not a baseline.
@@ -353,6 +421,8 @@ export function pruneStaleTransferBaselines({
   runGitRemove = /** @type {GitRemove} */ (gitWorktreeRemove),
   remove = (path) => removeWorktree(repoRoot, path, runGitRemove),
   prune = () => gitSync(repoRoot, ['worktree', 'prune']),
+  now = Date.now,
+  recentUseMs = TRANSFER_BASELINE_RECENT_USE_MS,
 }) {
   /** @type {{ pruned: string[], kept: { path: string, reason: string }[], failed: { path: string, error: string }[], skipped: string | null }} */
   const outcome = { pruned: [], kept: [], failed: [], skipped: null };
@@ -375,6 +445,13 @@ export function pruneStaleTransferBaselines({
   });
   if (stale.length === 0) return outcome;
   for (const worktree of stale) {
+    const idleMs = now() - lastUseMs(worktree.path);
+    if (idleMs < recentUseMs) {
+      const reason = `used or created ${Math.max(0, Math.round(idleMs / 60_000))} min ago`;
+      outcome.kept.push({ path: worktree.path, reason });
+      log(`Kept stale transfer baseline (${reason}): ${worktree.path}`);
+      continue;
+    }
     // Probe immediately before EACH removal, not once for the loop: a
     // removal takes seconds, and a session can start using the next tree in
     // that time. One lsof costs ~0.15-0.4s.
