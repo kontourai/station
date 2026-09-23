@@ -759,8 +759,9 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    *
    * Freshness: a client learns that a Draft ended only by re-reading the
    * summary. The sending device re-reads on its own send; other devices depend
-   * on the event stream refreshing the session read-model while a Chat dock
-   * for that Station is mounted (#2307; superseded by #2309 Phase B).
+   * on the event stream refreshing the session read-model while a Chat pane
+   * (docked or full-screen) for that Station is mounted (#2307; superseded by
+   * #2309 Phase B).
    *
    * Unrelated to composer draft text (unsent input kept per device).
    */

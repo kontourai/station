@@ -180,8 +180,16 @@ let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
  * runs. A retired authority's subtree unmounts before (or in the same commit
  * as) `retireAuthorityClient`, so its client stops receiving invalidations
  * and reconnect refetches at that point, and a stream whose apiBase has no
- * mounted dock writes into no cache at all rather than into another
- * authority's.
+ * mounted dock writes into no cache at all.
+ *
+ * The registry is keyed by apiBase, not by authority. A principal switch on
+ * the SAME apiBase does not by itself reconnect a live stream (credential
+ * change only wakes a parked one), so until that connection cycles, facts it
+ * carries under the previous principal invalidate the new authority's client.
+ * Invalidation carries no payload — the new client refetches under its own
+ * credential — so the effect is spurious refetches, not cross-authority data;
+ * a reconnect-fallback snapshot always arrives on a fresh connect, which does
+ * carry the current credential.
  *
  * A list, not a slot: more than one dock can mount at once (a docked and a
  * full-screen Chat share one authority's client), and releasing one of them
