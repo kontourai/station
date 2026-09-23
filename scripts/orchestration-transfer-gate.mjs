@@ -14,6 +14,13 @@ import {
   sanitizedGitEnvironment,
 } from './lib/git-environment.mjs';
 import { collectVerificationProvenance } from './lib/test-reliability.mjs';
+import {
+  findReusableBaseline,
+  listRegisteredWorktrees,
+  pruneStaleTransferBaselines,
+  TRANSFER_BASELINE_PREFIX,
+  transferBaselineShaFromPath,
+} from './lib/transfer-baselines.mjs';
 import { assertInstalledDependenciesMatchLockfile } from './lib/verification-environment-preflight.mjs';
 import {
   assertDeterministicBaseline,
@@ -129,13 +136,82 @@ function sameProvenance(left, right, label) {
   }
 }
 
-function prepareBaseline(candidateRoot, baselineRoot, baseSha) {
+/**
+ * The documented post-install check, run in the baseline's OWN checkout, plus
+ * the exact-root checks the gate itself will apply. Reuse must never hand back
+ * a tree the next gate run would refuse.
+ */
+function verifyReusableBaseline(root, baseSha) {
+  exactRoot(root, 'reusable baseline', baseSha);
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/dependency-lifecycle.mjs', 'verify'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      env: transferGitEnvironment(),
+      windowsHide: true,
+    },
+  );
+  if (result.status !== 0)
+    fail(
+      `dependencies:verify failed in ${root}: ${(result.stderr || result.stdout || '').trim().slice(-400)}`,
+    );
+}
+
+function originMainSha(candidateRoot) {
+  try {
+    return git(candidateRoot, [
+      'rev-parse',
+      '--verify',
+      'origin/main^{commit}',
+    ]);
+  } catch {
+    return null;
+  }
+}
+
+function prepareBaseline(
+  candidateRoot,
+  baselineRoot,
+  baseSha,
+  {
+    verifyReusable = (root) => verifyReusableBaseline(root, baseSha),
+    prune = pruneStaleTransferBaselines,
+  } = {},
+) {
   if (!baselineRoot) fail('--prepare-baseline requires --baseline-root');
   const target = resolve(baselineRoot);
+  // Keep the base being prepared AND the current origin/main tip: an explicit
+  // older --base must not delete the baseline every other session needs.
+  const keepShas = [baseSha, originMainSha(candidateRoot)];
+  const reclaim = (kept) =>
+    prune({
+      repoRoot: candidateRoot,
+      keepShas,
+      excludePaths: [kept, candidateRoot],
+    });
   if (existsSync(target)) {
     exactRoot(target, 'prepared baseline', baseSha);
     console.log(`Prepared baseline already valid: ${target}`);
-    return;
+    reclaim(target);
+    return { baselineRoot: target, reused: true };
+  }
+  const reusable = findReusableBaseline({
+    worktrees: listRegisteredWorktrees(candidateRoot),
+    baseSha,
+    verify: verifyReusable,
+    log: (line) => console.log(line),
+  });
+  if (reusable) {
+    console.log(
+      `Reusing existing baseline at ${baseSha} (dependencies verified): ${reusable}`,
+    );
+    console.log(
+      `  Run the gate with ${TRANSFER_BASELINE_ROOT_ENV}=${reusable}; nothing was created at ${target}.`,
+    );
+    reclaim(reusable);
+    return { baselineRoot: reusable, reused: true };
   }
   mkdirSync(dirname(target), { recursive: true });
   const result = spawnSync(
@@ -153,6 +229,8 @@ function prepareBaseline(candidateRoot, baselineRoot, baseSha) {
   console.log(
     'The gate never installs dependencies; rerun after that command succeeds.',
   );
+  reclaim(target);
+  return { baselineRoot: target, reused: false };
 }
 
 // Liveness only: a hung child cannot hold a pre-push forever. This is not a
@@ -214,29 +292,9 @@ export function primaryCheckoutRoot(candidateRoot) {
   }
 }
 
-/**
- * The one place a baseline's directory name is spelled.
- *
- * Exported because `scripts/worktree-hygiene.mjs` has to recognise these to
- * report them, and a prefix restated in two files is the drift this repository
- * has been bitten by before. A reader of the inventory cannot otherwise tell a
- * regenerable baseline from a bisect or a review pin: both are detached HEADs.
- */
-export const TRANSFER_BASELINE_PREFIX = '4294-transfer-baseline-';
-
-/**
- * The base SHA a path names, or null when the path is not a baseline.
- *
- * Deliberately derives nothing from the filesystem: this answers "what does
- * this NAME claim", so a caller can compare that claim against the worktree's
- * actual HEAD rather than trusting the directory name.
- */
-export function transferBaselineShaFromPath(path) {
-  const name = basename(String(path).replace(/[/]+$/, ''));
-  if (!name.startsWith(TRANSFER_BASELINE_PREFIX)) return null;
-  const sha = name.slice(TRANSFER_BASELINE_PREFIX.length);
-  return /^[0-9a-f]{12}$/.test(sha) ? sha : null;
-}
+// Naming lives with reuse/pruning (#2355); re-exported because
+// `scripts/worktree-hygiene.mjs` and tests read it from the gate.
+export { TRANSFER_BASELINE_PREFIX, transferBaselineShaFromPath };
 
 /**
  * Where a baseline belongs relative to a given checkout root: a sibling of the
@@ -531,8 +589,13 @@ function runTransferGateInner(options) {
   const baseSha = git(candidateRoot, ['rev-parse', options.base]);
   const candidateSha = git(candidateRoot, ['rev-parse', 'HEAD']);
   if (options.prepareBaseline) {
-    prepareBaseline(candidateRoot, options.baselineRoot, baseSha);
-    return { prepared: true };
+    const prepared = prepareBaseline(
+      candidateRoot,
+      options.baselineRoot,
+      baseSha,
+      options.prepareDependencies,
+    );
+    return { prepared: true, ...prepared };
   }
   if (!options.baselineRoot)
     fail(missingBaselineRootMessage(baseSha, candidateRoot));

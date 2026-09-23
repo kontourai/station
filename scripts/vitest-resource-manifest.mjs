@@ -210,6 +210,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',
+  // #2355: creates real linked worktrees, removes them with `git worktree
+  // remove`, and holds one open with a live child process whose cwd is inside
+  // it, because the in-use probe (lsof/proc/ps) is the behavior under test.
+  'scripts/__tests__/transfer-baselines.test.ts',
   // station#4294: owns a real loopback listener, fresh HTTP sockets, a
   // streaming SDK transport, and a temporary SQLite EventStore.  The test's
   // barriers are stream facts, never a wall-clock budget, but the host
