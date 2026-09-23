@@ -91,12 +91,20 @@ describe.skipIf(process.platform === 'win32')(
     test(
       'a FIFO import fails promptly and names the importing file',
       async () => {
+        // Under node_modules, which the pre-build sweep skips, so this reaches
+        // the onLoad check on every loaded file.
         const dir = pluginFolder();
         writeFileSync(
           join(dir, 'src', 'index.tsx'),
-          "import value from './pipe';\nexport const components = { pulse: () => value };\n",
+          "import value from 'piped';\nexport const components = { pulse: () => value };\n",
         );
-        mkfifo(join(dir, 'src', 'pipe.ts'));
+        const pkg = join(dir, 'node_modules', 'piped');
+        mkdirSync(pkg, { recursive: true });
+        writeFileSync(
+          join(pkg, 'package.json'),
+          JSON.stringify({ name: 'piped', main: 'index.js' }),
+        );
+        mkfifo(join(pkg, 'index.js'));
         const result = await buildPluginDraft({
           pluginDir: dir,
           outdir: join(tempDir('station-fifo-out-'), '1'),
@@ -109,6 +117,26 @@ describe.skipIf(process.platform === 'win32')(
           text: expect.stringContaining('not a regular file'),
           file: 'src/index.tsx',
           line: 1,
+        });
+      },
+      BUILD_TEST_TIMEOUT_MS,
+    );
+
+    test(
+      'a FIFO among the sources is refused by the pre-build sweep, naming it',
+      async () => {
+        const dir = pluginFolder();
+        writeFileSync(join(dir, 'src', 'index.tsx'), 'export {};\n');
+        mkfifo(join(dir, 'src', 'pipe.ts'));
+        const result = await buildPluginDraft({
+          pluginDir: dir,
+          outdir: join(tempDir('station-fifo-out-'), '1'),
+          registrationKey: 'k',
+          manifest,
+        });
+        expect(result).toMatchObject({
+          ok: false,
+          diagnostics: [{ file: 'src/pipe.ts' }],
         });
       },
       BUILD_TEST_TIMEOUT_MS,
