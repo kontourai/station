@@ -179,6 +179,38 @@ describe('Notes over the knowledge API', () => {
     expect(editor().value).toBe('# Beta body');
   });
 
+  test('says so and offers Retry when a note body fails to load', () => {
+    const view = renderNotes();
+    const refetch = vi.fn();
+    let failed = true;
+    sdk.content.mockImplementation((_slug: string, docId: string | null) =>
+      failed
+        ? { data: undefined, isError: true, refetch }
+        : { data: docId ? BODIES[docId] : undefined, refetch },
+    );
+
+    fireEvent.click(screen.getByText('Beta kickoff'));
+    expect(editor().readOnly).toBe(true);
+    expect(screen.getByRole('alert').textContent).toContain(
+      'could not be loaded',
+    );
+    // Actions that read the note's text wait for it, without claiming to be
+    // mid-action.
+    const vault = screen.getByRole('button', { name: /vault/i });
+    const enhance = screen.getByRole('button', { name: /enhance/i });
+    expect(vault.hasAttribute('disabled')).toBe(true);
+    expect(enhance.hasAttribute('disabled')).toBe(true);
+    expect(vault.textContent).not.toContain('Saving');
+    expect(enhance.textContent).not.toContain('Enhancing');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+
+    failed = false;
+    view.rerender(<Notes />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(editor().value).toBe('# Beta body');
+  });
+
   test('keeps the text of a note it just created when the new body arrives', async () => {
     renderNotes();
     sdk.save.mutateAsync.mockResolvedValue({

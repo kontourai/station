@@ -176,6 +176,7 @@ export function Notes() {
   }, [content, enhanceNote, showToast]);
 
   const handleVault = useCallback(async () => {
+    if (bodyLoading) return;
     if (!hasVault || !selected) {
       showToast('No vault configured', 'warning');
       return;
@@ -190,7 +191,15 @@ export function Notes() {
     } catch {
       showToast('Failed to save to vault', 'error');
     }
-  }, [hasVault, selected, content, frontmatter, vaultSave, showToast]);
+  }, [
+    bodyLoading,
+    hasVault,
+    selected,
+    content,
+    frontmatter,
+    vaultSave,
+    showToast,
+  ]);
 
   const handleDelete = useCallback(async () => {
     if (!selected) return;
@@ -270,14 +279,23 @@ export function Notes() {
           hasNote={hasNote}
           dirty={dirty}
           saving={saveNote.isPending || updateNote.isPending}
-          enhancing={enhanceNote.isPending || bodyLoading}
+          enhancing={enhanceNote.isPending}
           vaulting={vaultSave.isPending}
+          bodyLoading={bodyLoading}
           onNew={handleNew}
           onSave={handleSave}
           onEnhance={handleEnhance}
           onVault={handleVault}
           onDelete={handleDelete}
         />
+        {bodyLoading && noteContent.isError && (
+          <div className="notes-editor-error" role="alert">
+            <p>This note's text could not be loaded.</p>
+            <button type="button" onClick={() => void noteContent.refetch()}>
+              Retry
+            </button>
+          </div>
+        )}
         {hasNote ? (
           <NoteEditor
             content={content}

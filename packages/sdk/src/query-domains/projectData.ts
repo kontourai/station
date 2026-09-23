@@ -175,7 +175,9 @@ function knowledgeDocContentKey(projectSlug: string, docId: string) {
 
 /**
  * A deleted document's body is gone. Drop its cache entry rather than
- * invalidating it: a mounted reader would refetch a guaranteed 404.
+ * invalidating it, so no later reader is served the deleted text. A reader
+ * still mounted on that document will fetch once more (and get a 404) on its
+ * next render; callers stop reading a document they delete.
  */
 function forgetKnowledgeDocBodies(
   queryClient: QueryClient,
