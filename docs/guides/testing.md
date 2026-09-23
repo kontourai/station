@@ -936,6 +936,17 @@ enforces that partition for any persistent Linux job. See
 [the private-runner partition guide](private-runner-partition.md) before
 changing fleet labels or adding a capacity-leased workflow.
 
+### Merge-queue regression (required)
+
+`Merge-queue regression` is a required check (since 2026-09-23). On every queue
+candidate it runs Nightly's full-regression phases, sharded across hosted jobs
+by `scripts/run-full-regression-phases.mjs`, plus the Android viewport suite.
+On pull requests it reports skipped, which the ruleset counts as passing. A red
+aggregate names real failing tests in the failed job's log: diagnose the test
+and fix it at source rather than requeueing until green. If the same failure
+appears on unrelated candidates, main itself is red, so fix main first. Flaky
+tests go through the quarantine policy below.
+
 ### Test quarantine
 
 The merge-queue regression gate (`.github/workflows/merge-queue-regression.yml`)
