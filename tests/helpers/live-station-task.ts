@@ -341,6 +341,14 @@ export async function createTaskFromProject(
   branch: string,
 ): Promise<string> {
   await page.goto(`${live.ui}/projects/${slug}`);
+  // A navigation the old page cancels (a history traversal from a dialog
+  // unmounting mid-`goto`) resolves without error and leaves the page where it
+  // was. Say so here, rather than as a missing branch label on the wrong page
+  // (Windows reference run 35865166445).
+  await expect(
+    page,
+    'goto was superseded before the Project page loaded',
+  ).toHaveURL((url) => url.pathname === `/projects/${slug}`);
   const gitStatus = await apiJson<{
     success: boolean;
     data: { isRepo: boolean; branch?: string };
