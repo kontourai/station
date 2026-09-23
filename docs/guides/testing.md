@@ -363,6 +363,14 @@ physical Windows
 workflow remains a separate post-merge hardware-reference diagnostic and does
 not replace the PR gate.
 
+The floor's desktop Rust compile (`cargo test --no-run`) runs only when the
+candidate changes an input that crate reads: `src-desktop/`, any Cargo
+manifest, lockfile or toolchain file, and the few outside files the crate
+pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
+classifier is taken from the base commit, and every failure to classify
+compiles. The job, and so the required check, runs either way. TypeScript is
+not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
+
 The hosted Windows floor always uploads its existing redacted verification
 receipts and output, including failed runs. A cleanup record with one surviving
 owned child is a boolean failure to prove settlement, not an enumerated live PID.
