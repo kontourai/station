@@ -112,6 +112,14 @@ export function handleOrchestrationEvent(
         conversationOpenFailed: false,
       });
   }
+  // #2309: the binding's activity is the conversation's record AS OF
+  // DELIVERY, so it is applied on arrival, before the event itself is
+  // dispatched (possibly later, through the semantic delivery buffer). Replay
+  // frames never feed it: a recorded record would land on the live chat of
+  // the same conversation.
+  if (conversation?.activity && !isReplayThread(event.threadId)) {
+    activeChatsStore.applyConversationActivity(conversation.activity);
+  }
   recordReplayRuntime(apiBase, event, provenance);
   // archive#1301: ingest BEFORE the `if (!chat) return` guard below —
   // a delegate session's events arrive on the delegate's own threadId, which

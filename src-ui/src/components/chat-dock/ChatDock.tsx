@@ -50,6 +50,7 @@ import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
@@ -520,6 +521,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isFetching: orchestrationSessionsFetching,
     isError: orchestrationSessionsFailed,
     refetch: refetchOrchestrationSessions,
+    isFetchedAfterMount: orchestrationSessionsFetchedAfterMount,
   } = useOrchestrationSessionsQuery();
   // The inbox rows' hover cards resolve git facts against the row's local
   // session working directory (only local sessions have one worth answering:
@@ -537,6 +539,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const openChatItems = useOpenChats(agents, orchestrationSessions);
   const inventory = useConversationInventoryQuery();
+  useConversationActivityFeed({
+    sessions: orchestrationSessions,
+    sessionsFetchedAfterMount: orchestrationSessionsFetchedAfterMount,
+    conversations: inventory.data,
+    conversationsFetchedAfterMount: inventory.isFetchedAfterMount,
+  });
   const taskItemsPending =
     orchestrationSessionsStatus === 'pending' ||
     inventory.isPending ||

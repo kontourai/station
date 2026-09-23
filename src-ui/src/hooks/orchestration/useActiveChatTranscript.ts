@@ -4,6 +4,7 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { useEffect, useMemo, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
+import { serverTurnLive } from '../../utils/conversation-activity';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../utils/sessionFailure';
 import { extractUIBlocks } from '../../utils/uiBlocks';
@@ -313,12 +314,19 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
       }));
+    // #2309: the server's record when it sent one; the legacy fold otherwise.
     const active =
-      session.orchestrationTurnOpen ||
-      isSessionExecutionActive({
-        orchestrationStatus: session.orchestrationStatus,
+      serverTurnLive({
+        conversationActivity: session.conversationActivity,
         status: session.status,
-      });
+        sendAwaitingTurnStart: session.sendAwaitingTurnStart,
+        stopSettledTurnId: session.stopSettledTurnId,
+      }) ??
+      (session.orchestrationTurnOpen ||
+        isSessionExecutionActive({
+          orchestrationStatus: session.orchestrationStatus,
+          status: session.status,
+        }));
     const currentPendingClientId = active
       ? [...session.messages]
           .reverse()
@@ -493,6 +501,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.orchestrationStatus,
     session.orchestrationTurnOpen,
     session.status,
+    session.conversationActivity,
+    session.sendAwaitingTurnStart,
+    session.stopSettledTurnId,
     changedFilesByTurn,
     window.events,
     window.sessionLineage,

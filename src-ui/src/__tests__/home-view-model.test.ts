@@ -3,6 +3,7 @@ import type {
   TaskRecord,
 } from '@kontourai/station-sdk';
 import { describe, expect, test } from 'vitest';
+import { createDefaultChatState } from '../contexts/active-chats-state';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 import {
   buildActiveChatTaskItems,
@@ -1976,4 +1977,86 @@ test('Open chats labels use the exact current child model instead of a persisted
   });
   expect(row?.model).toBe('opus-reported');
   expect(row?.modelLabel).toBe('opus-reported');
+});
+
+describe('#2309 Home running state reads the conversation activity record', () => {
+  const conversationId = 'claude:conv-home-2309';
+  const childThread = `${conversationId}:session:child`;
+  const activity: NonNullable<
+    OrchestrationSessionSummary['conversationActivity']
+  > = {
+    conversationId,
+    asOfSequence: 90,
+    openTurn: {
+      turnId: 'turn-home',
+      threadId: childThread,
+      startedAt: '2026-09-22T18:55:25.000Z',
+    },
+  };
+  const base: OrchestrationSessionSummary = {
+    threadId: conversationId,
+    conversationId,
+    provider: 'claude',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'running',
+    createdAt: '2026-09-22T18:00:00Z',
+    // The idle root is the NEWEST row by updatedAt (a metadata write after
+    // the child started), which is what the per-row correlation keyed on.
+    updatedAt: '2026-09-22T18:58:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 4,
+    hasActiveTurn: false,
+  };
+  const chat = createDefaultChatState(
+    {
+      agentSlug: 'claude',
+      agentName: 'Claude Code',
+      title: 'Lineage chat',
+      conversationId,
+    },
+    10,
+  );
+
+  test('a turn running in a lineage child reads Running, even when the idle root row is newest', () => {
+    const [row] = buildActiveChatTaskItems({
+      chats: { [conversationId]: { ...chat, orchestrationStatus: 'running' } },
+      agents: [],
+      sessions: [
+        { ...base, conversationActivity: activity },
+        {
+          ...base,
+          threadId: childThread,
+          updatedAt: '2026-09-22T18:55:25Z',
+          hasActiveTurn: true,
+          conversationActivity: activity,
+        },
+      ],
+    });
+    expect(row?.lifecycleLabel).toBe('Running');
+  });
+
+  test("the chat's own record wins over a stale local sending", () => {
+    const closed = {
+      conversationId,
+      asOfSequence: 120,
+      lastActivityAt: '2026-09-22T18:59:00Z',
+    };
+    const [row] = buildActiveChatTaskItems({
+      chats: {
+        [conversationId]: {
+          ...chat,
+          // The terminal frame was missed: status still says sending.
+          status: 'sending',
+          orchestrationStatus: 'running',
+          conversationActivity: closed,
+        },
+      },
+      agents: [],
+      sessions: [{ ...base, conversationActivity: closed }],
+    });
+    expect(row?.lifecycleLabel).toBe('Recent');
+  });
 });

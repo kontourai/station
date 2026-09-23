@@ -179,6 +179,9 @@ export function drainQueuedMessageOnTurnCompleted(
     );
     activeChatsStore.updateChat(threadId, {
       status: 'sending',
+      // #2309: this drain's dispatch is the optimistic window until the
+      // server reports its turn open.
+      sendAwaitingTurnStart: true,
       messages,
     });
 

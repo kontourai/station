@@ -84,7 +84,8 @@ const EMPTY_STRING_LIST: string[] = [];
  * so passing it through `as any` (the old code) left every message key
  * namespaced under the literal "undefined". Only the fields the transcript
  * actually reads (id, agentSlug, agentName, conversationId, messages,
- * status/orchestrationStatus, isProcessingStep, pendingApprovals) come from
+ * status/orchestrationStatus, isProcessingStep, pendingApprovals, and the
+ * #2309 activity record with its send/stop window) come from
  * live state; everything else the type requires but the transcript ignores
  * is a stable constant so an unrelated composer update (e.g. `input`) can't
  * change this object's shallow-equality outcome.
@@ -115,6 +116,12 @@ export function buildTranscriptSession(
     orchestrationStatus: state.orchestrationStatus,
     pendingApprovals: state.pendingApprovals,
     isProcessingStep: state.isProcessingStep,
+    // #2309: the server's record drives this panel's liveness and working
+    // clock exactly as it drives the dock's, so a reload mid-turn shows the
+    // turn's real duration here too (the panel has no window seed of its own).
+    conversationActivity: state.conversationActivity,
+    sendAwaitingTurnStart: state.sendAwaitingTurnStart,
+    stopSettledTurnId: state.stopSettledTurnId,
   };
 }
 

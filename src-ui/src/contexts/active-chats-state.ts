@@ -1,6 +1,7 @@
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
+  ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
 import type {
   ApprovalMode,
@@ -15,6 +16,10 @@ import type {
   FileAttachment,
   UnsentMessageRecord,
 } from '../types';
+import {
+  newerConversationActivity,
+  serverTurnLive,
+} from '../utils/conversation-activity';
 
 export type { UnsentMessageRecord } from '../types';
 
@@ -304,6 +309,30 @@ export type ChatUIState = {
    * Session-scoped and not persisted — a dispatch cannot outlive its page.
    */
   pendingClientTurnId?: string;
+  /**
+   * #2309: this composer submitted a turn and the server has not reported it
+   * open yet. Set by the send paths together with `status: 'sending'`, and
+   * cleared by `mergeChatUpdates` the moment the server's activity shows an
+   * open turn or `status` leaves `'sending'`, and by the witnessed
+   * `turn.started`. It is the only client-local liveness once a server
+   * activity record exists: a `status: 'sending'` outside this window (the
+   * event handlers set it for any turn they witness) proves nothing.
+   * Session-scoped and not persisted.
+   */
+  sendAwaitingTurnStart?: boolean;
+  /** #2309: see `ConversationActivityCarrier.stopSettledTurnId`. Not persisted. */
+  stopSettledTurnId?: string;
+  /**
+   * #2309: the server's activity record for this chat's conversation, the
+   * newest by `asOfSequence` across every carrier. Liveness, Stop/steer
+   * targeting and the working clock read it; the legacy fields below
+   * (`orchestrationTurnOpen`, `openTurnId`) remain only as the fallback for a
+   * server that does not send one. Written through
+   * `ActiveChatsStore.applyConversationActivity` or any `updateChat`, which
+   * both keep the newest copy (`mergeChatUpdates`). Not persisted: a reload
+   * reads it fresh from the server.
+   */
+  conversationActivity?: ConversationTurnActivity;
   agentSlug?: string;
   agentName?: string;
   title?: string;
@@ -628,16 +657,26 @@ function readTimestamp(value: BackendTimestampMessage['timestamp']): number {
  */
 export function isTurnInFlight(
   chat:
-    | Pick<ChatUIState, 'abortController' | 'status' | 'orchestrationTurnOpen'>
+    | (Pick<
+        ChatUIState,
+        'abortController' | 'status' | 'orchestrationTurnOpen'
+      > &
+        Pick<
+          ChatUIState,
+          'conversationActivity' | 'sendAwaitingTurnStart' | 'stopSettledTurnId'
+        >)
     | null
     | undefined,
 ): boolean {
   if (!chat) return false;
-  return (
-    !!chat.abortController ||
-    chat.status === 'sending' ||
-    !!chat.orchestrationTurnOpen
-  );
+  if (chat.abortController) return true;
+  // #2309: with a server record the three signals collapse to two — the
+  // server's open turn (any device's, any lineage child's) and this
+  // composer's own unacknowledged send. The legacy fold below is only for a
+  // server that sends no record.
+  const server = serverTurnLive(chat);
+  if (server !== undefined) return server;
+  return chat.status === 'sending' || !!chat.orchestrationTurnOpen;
 }
 
 export function createDefaultChatState(
@@ -914,11 +953,41 @@ export function mergeChatUpdates(
     nextUpdates.queuedMessages !== undefined
       ? boundQueuedMessages(nextUpdates.queuedMessages)
       : { kept: undefined, dropped: [] as string[] };
-  const chat = {
+  const chat: ChatUIState = {
     ...current,
     ...nextUpdates,
     ...(bounded.kept ? { queuedMessages: bounded.kept } : {}),
   };
+  // #2309: a chat's activity record never regresses. Every writer (the
+  // store's carrier seam, an open-resolution patch, a snapshot) passes
+  // through here, so the keep-newest rule holds for all of them rather than
+  // for whichever caller remembered it. An update that omits the field, or
+  // passes `undefined`, leaves the current record alone.
+  chat.conversationActivity = newerConversationActivity(
+    current.conversationActivity,
+    nextUpdates.conversationActivity,
+  );
+  // A record describes ONE conversation. When the chat now names a different
+  // one (or none), the old record is not about it.
+  if (
+    chat.conversationActivity &&
+    chat.conversationActivity.conversationId !== chat.conversationId
+  ) {
+    chat.conversationActivity = undefined;
+  }
+  // The optimistic send window closes when the server shows the turn open or
+  // the composer is no longer sending. See `sendAwaitingTurnStart`.
+  if (chat.status !== 'sending' || chat.conversationActivity?.openTurn) {
+    chat.sendAwaitingTurnStart = undefined;
+  }
+  // A settled Stop names one turn; once the record shows a different open
+  // turn (or none), the note has done its job.
+  if (
+    chat.stopSettledTurnId !== undefined &&
+    chat.conversationActivity?.openTurn?.turnId !== chat.stopSettledTurnId
+  ) {
+    chat.stopSettledTurnId = undefined;
+  }
   const shouldPersist =
     'conversationId' in nextUpdates ||
     'title' in nextUpdates ||
@@ -1044,6 +1113,11 @@ export function assignConversationIdState(
   return {
     ...chat,
     conversationId,
+    // #2309: a record describes one conversation; see `mergeChatUpdates`.
+    ...(chat.conversationActivity &&
+    chat.conversationActivity.conversationId !== conversationId
+      ? { conversationActivity: undefined }
+      : {}),
   };
 }
 

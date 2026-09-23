@@ -126,6 +126,8 @@ export function handleTurnStartedEvent(
     }
     store.updateChat(event.threadId, {
       pendingClientTurnId: undefined,
+      // #2309: a witnessed turn start closes the optimistic send window.
+      sendAwaitingTurnStart: undefined,
       status: 'sending',
       orchestrationTurnOpen: true,
       openTurnId: event.turnId ?? currentChat?.openTurnId,
@@ -202,6 +204,9 @@ export function handleTurnStartedEvent(
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over
     pendingClientTurnId: undefined,
+    // #2309: a witnessed turn start closes the optimistic send window, even
+    // when the frame's as-of-delivery activity already shows the turn ended.
+    sendAwaitingTurnStart: undefined,
     status: 'sending',
     orchestrationTurnOpen: true,
     // archive#1410: the identity of the turn whose text is about to be

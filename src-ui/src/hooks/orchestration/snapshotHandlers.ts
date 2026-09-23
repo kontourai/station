@@ -30,6 +30,29 @@ function turnIsOpen(session: { hasActiveTurn?: boolean }): boolean {
   return session.hasActiveTurn !== false;
 }
 
+type SnapshotRow = OrchestrationSnapshotPayload['sessions'][number];
+
+/**
+ * #2309: is a turn open for the CONVERSATION this row belongs to? A chat is
+ * keyed by its conversation, but its row here can be the root session while
+ * a lineage child runs the turn; the row's own `hasActiveTurn` then says
+ * "idle" about a conversation that is working. The row's
+ * `conversationActivity` answers for every child. Rows from an older server
+ * keep the per-row fold.
+ */
+function rowTurnIsOpen(session: SnapshotRow): boolean {
+  return session.conversationActivity
+    ? session.conversationActivity.openTurn !== undefined
+    : turnIsOpen(session);
+}
+
+/** The explicit verdict for the legacy fold, or undefined when none was sent. */
+function rowTurnVerdict(session: SnapshotRow): boolean | undefined {
+  if (session.conversationActivity)
+    return session.conversationActivity.openTurn !== undefined;
+  return session.hasActiveTurn;
+}
+
 /**
  * archive#3352: the per-thread catch-up half of a reconnect-fallback snapshot,
  * merged into that thread's ONE `updateChat` call below.
@@ -141,7 +164,7 @@ export function buildOrchestrationSnapshotSyncPlan(
           // re-strand the streaming shell after a reconnect — the exact
           // symptom archive#1005 fixed on the live-event path.
           orchestrationStatus:
-            session.status === 'running' && !turnIsOpen(session)
+            session.status === 'running' && !rowTurnIsOpen(session)
               ? 'idle'
               : session.status,
           // Reseed the client turn fold only from an EXPLICIT server
@@ -151,11 +174,14 @@ export function buildOrchestrationSnapshotSyncPlan(
           // conservative default into the long-lived fold: nothing would
           // ever clear it and an attach-only 'running' would re-engage the
           // shell (closure-round). Absent field → fold untouched.
-          ...(session.hasActiveTurn === undefined
+          ...(rowTurnVerdict(session) === undefined
             ? {}
-            : { orchestrationTurnOpen: session.hasActiveTurn }),
+            : { orchestrationTurnOpen: rowTurnVerdict(session) }),
+          // #2309: liveness itself is the conversation's activity record
+          // (applied to the store before this plan runs); this keeps the
+          // coarse fields consistent with it for readers that still use them.
           status:
-            session.status === 'running' && turnIsOpen(session)
+            session.status === 'running' && rowTurnIsOpen(session)
               ? 'sending'
               : 'idle',
         } satisfies Partial<ChatUIState>,
@@ -231,8 +257,18 @@ export function applyOrchestrationSnapshot(
   const plan = buildOrchestrationSnapshotSyncPlan(payload, snapshot);
   const isReconnectFallback = options?.isReconnectFallback === true;
   const openTurnThreadIds = new Set(
-    payload.sessions.filter(turnIsOpen).map((session) => session.threadId),
+    payload.sessions.filter(rowTurnIsOpen).map((session) => session.threadId),
   );
+  // #2309: every row carries its conversation's activity. Feed the store
+  // first, keyed by conversation, so a chat whose key matches no row (or
+  // matches only the idle root while a lineage child runs the turn) still
+  // reads the server's answer, and so the plan's writes below merge onto it.
+  // A replayed snapshot never feeds the live store.
+  if (!replayId) {
+    for (const session of payload.sessions) {
+      activeChatsStore.applyConversationActivity(session.conversationActivity);
+    }
+  }
 
   for (const { threadId, updates } of plan.sessionUpdates) {
     // One write per thread. Each `updateChat` copies the whole chat map and

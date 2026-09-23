@@ -318,6 +318,12 @@ export interface ChatSession {
   openTurnId?: string;
   /** See ChatUIState.openTurnShellSuperseded (active-chats-state.ts). */
   openTurnShellSuperseded?: boolean;
+  /** #2309: see ChatUIState.conversationActivity (active-chats-state.ts). */
+  conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
+  /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
+  sendAwaitingTurnStart?: boolean;
+  /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
+  stopSettledTurnId?: string;
   /** Incremented only when bounded persisted history must reconcile. */
   orchestrationHistoryRevision?: number;
   inputHistory: string[];

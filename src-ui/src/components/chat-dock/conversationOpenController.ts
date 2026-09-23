@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { ChatUIState } from '../../contexts/active-chats-state';
+import { newerConversationActivity } from '../../utils/conversation-activity';
 
 export type ConversationOpenRecovery = {
   conversation: ConversationListItem;
@@ -232,7 +233,15 @@ export function conversationOpenPatch(
             'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
         }
       : {};
+  // #2309: the resolution's own activity read is fresher than the row's copy;
+  // `mergeChatUpdates` keeps whichever is newest of these and what the chat
+  // already holds.
+  const activity = newerConversationActivity(
+    resolution.conversation.activity,
+    resolved?.activity,
+  );
   return {
+    ...(activity ? { conversationActivity: activity } : {}),
     conversationOpenPending: pendingChoice,
     conversationOpenFailed: unknownReplacement,
     conversationOpenState: resolution,
