@@ -16,6 +16,10 @@ ships with this ADR, and every module it calls *planned* does not exist yet.
 Where a rule is an engineering addition rather than an owner decision, the
 text says so.
 
+Related: [#2339](https://github.com/kontourai/station/pull/2339), a separate
+fix that requires a Station origin for browser WebSocket upgrades on
+loopback.
+
 Issue references follow `AGENTS.md`. Bare numbers of #550 and above refer to
 this repository. #90 and #121–#125 are below 550 but belong to this
 repository too, so they are linked in full on first mention. `archive#` names
@@ -346,10 +350,11 @@ frames to catch up. Improving relay throughput is separate work that overlaps
   loopback listeners.** An agent's own tools may already reach the network.
   A page loaded in this browser is untrusted code running from the Station
   host's network position.
-  - **The terminal and voice WebSocket listeners** trust loopback peers, and
-    a page in the host's browser would be one. A separate, pre-existing fix is in flight for
-    that listener behaviour. The rule below is required whether or not that
-    fix lands.
+  - **The terminal and voice WebSocket listeners** admitted credential-free
+    loopback peers without an `Origin` check until
+    [#2339](https://github.com/kontourai/station/pull/2339). A page in the
+    host's browser would have been such a peer. The rule below does not rely
+    on that fix and stays unconditional.
   - **Lesser loopback locality.** `isSameMachineBrowserCaller` in
     `runtime-routes.ts` grants presentation and log-read locality to
     loopback callers on the UI-bootstrap path.
