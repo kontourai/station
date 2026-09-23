@@ -165,6 +165,47 @@ vi.mock('../workspacePaneRendererSelection', async (importOriginal) => ({
 import { WorkspacePaneRouteView } from '../WorkspacePaneRouteView';
 
 describe('WorkspacePaneRouteView', () => {
+  test('qualifies an "unavailable" answer drawn from a catalog whose refresh failed (#2345)', () => {
+    const entries = catalogMock.entries;
+    const mock = catalogMock as typeof catalogMock & {
+      data?: unknown;
+      isRefetchError?: boolean;
+    };
+    catalogMock.entries = [
+      {
+        ...entries[0]!,
+        instance: {
+          instanceId: 'cross-project-console',
+          boundContext: { projectId: 'project-b' },
+        },
+      },
+    ];
+    mock.isError = true;
+    mock.isRefetchError = true;
+    mock.data = { projectId: 'project-uuid', descriptors: [], instances: [] };
+    try {
+      render(
+        <WorkspacePaneRouteView
+          projectSlug="demo"
+          descriptorId="builtin:flow-run-console"
+          instanceId="cross-project-console"
+        />,
+      );
+
+      expect(
+        screen.getByText('This pane belongs to a different Project.'),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('status', { name: 'Pane list not refreshed' }),
+      ).toBeTruthy();
+    } finally {
+      catalogMock.entries = entries;
+      mock.isError = false;
+      mock.isRefetchError = false;
+      mock.data = undefined;
+    }
+  });
+
   test('rejects an available occurrence scoped to another Project before mounting', () => {
     catalogMock.entries = [
       {

@@ -6,7 +6,7 @@ import type {
 import { withWorkspacePaneInstanceLayoutBinding } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import { useProjectLayoutQuery } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
@@ -212,6 +212,18 @@ export function WorkspacePaneRouteView({
     />
   ) : null;
 
+  // The states below are facts about the catalog too ("unavailable",
+  // "cannot mount"), so a failed refresh qualifies them the same way.
+  const withRefreshNotice = (state: ReactNode) =>
+    refreshNotice ? (
+      <>
+        {refreshNotice}
+        {state}
+      </>
+    ) : (
+      state
+    );
+
   const matchingMcpResourceFailure =
     mcpResourceFailure?.descriptorId === entry.descriptor.id &&
     mcpResourceFailure.instanceId === entry.instance?.instanceId &&
@@ -268,7 +280,7 @@ export function WorkspacePaneRouteView({
     requiresSelectedLayout &&
     !layoutSlug
   ) {
-    return (
+    return withRefreshNotice(
       <ErrorState
         title="Workspace pane needs a selected layout"
         description="Open a Project layout to use this pane with its configured workspace."
@@ -282,7 +294,7 @@ export function WorkspacePaneRouteView({
             Back to Project
           </button>
         }
-      />
+      />,
     );
   }
 
@@ -291,11 +303,11 @@ export function WorkspacePaneRouteView({
     entry.instance &&
     !isWorkspacePaneInstanceOwnedByProject(entry.instance, catalog.projectId)
   ) {
-    return (
+    return withRefreshNotice(
       <ErrorState
         title="Workspace pane unavailable"
         description="This pane belongs to a different Project."
-      />
+      />,
     );
   }
 
@@ -303,11 +315,11 @@ export function WorkspacePaneRouteView({
     return <SkeletonList count={1} label="Opening this pane" />;
   }
   if (requiresSelectedLayout && layoutSlug && !layoutQuery.data) {
-    return (
+    return withRefreshNotice(
       <ErrorState
         title="Workspace pane unavailable"
         description="The selected layout no longer resolves for this Project."
-      />
+      />,
     );
   }
   const boundInstance =
@@ -315,11 +327,11 @@ export function WorkspacePaneRouteView({
       ? withWorkspacePaneInstanceLayoutBinding(entry.instance, layoutQuery.data)
       : entry.instance;
   if (entry.instance && requiresSelectedLayout && !boundInstance) {
-    return (
+    return withRefreshNotice(
       <ErrorState
         title="Workspace pane unavailable"
         description="Station could not bind this pane to the selected layout."
-      />
+      />,
     );
   }
 
@@ -431,11 +443,11 @@ export function WorkspacePaneRouteView({
         ? boundInstance.boundContext.contribution.provenance.pluginId
         : undefined;
     if (trustedPluginLayout && (!owningPluginName || !catalog.projectSlug)) {
-      return (
+      return withRefreshNotice(
         <ErrorState
           title="Workspace pane unavailable"
           description="Station could not bind this plugin pane to its owning Project and plugin."
-        />
+        />,
       );
     }
     return (
@@ -471,7 +483,7 @@ export function WorkspacePaneRouteView({
   }
 
   if (entry.availability.state === 'available') {
-    return (
+    return withRefreshNotice(
       <ErrorState
         title="Workspace pane cannot mount"
         description="This pane is not registered by the current host build."
@@ -485,7 +497,7 @@ export function WorkspacePaneRouteView({
             Back to Project
           </button>
         }
-      />
+      />,
     );
   }
 
