@@ -345,6 +345,28 @@ describe('history: the commit is a child of the remote tip (owner decision)', ()
     expect(heads(bare)).toBe(`refs/heads/main ${moved}`);
   });
 
+  test('the remote rewound during the publish is refused too, not fast-forwarded over', async () => {
+    const older = seedRemote({ 'README.md': 'v1\n' });
+    const tip = seedRemote({ 'README.md': 'v2\n' }, 'v2');
+    const published = await publishPlugin(folder, REQUEST, {
+      ...OPTIONS,
+      testHooks: {
+        // Someone force-pushes main back to its parent. A plain push would
+        // still fast-forward (the older tip is an ancestor of the new
+        // commit) and bring the dropped commit back.
+        beforePush: () => {
+          git(bare, ['update-ref', 'refs/heads/main', older]);
+        },
+      },
+    });
+    expect(git(bare, ['rev-parse', `${tip}^`])).toBe(older);
+    expect(published).toEqual({
+      ok: false,
+      refusal: { code: 'remote-moved' },
+    });
+    expect(heads(bare)).toBe(`refs/heads/main ${older}`);
+  });
+
   test('a branch created by someone else during a first publish is refused', async () => {
     let created = '';
     const published = await publishPlugin(folder, REQUEST, {
