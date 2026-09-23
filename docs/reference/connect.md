@@ -324,8 +324,10 @@ rejected.
 Use the paired-device inventory in the same host panel to revoke one device.
 Revocation is checked by the shared HTTP/SSE/WebSocket credential verifier and
 takes effect immediately without rotating the operator credential or revoking
-other devices. Paired credentials cannot administer pairing offers or revoke
-other devices. `station environment credential rotate` rotates operator
+other devices. Ordinary paired credentials cannot administer pairing offers or
+revoke other devices. The native desktop’s local grant, minted using proof of
+Station-home possession, can manage pairing within its current scope. Browser
+launcher grants do not inherit that authority. `station environment credential rotate` rotates operator
 bootstrap authority without silently exporting it; `station environment reset`
 changes the environment ID and clears all paired-device authority. If a web
 session is revoked or its site data is cleared, pair again.
