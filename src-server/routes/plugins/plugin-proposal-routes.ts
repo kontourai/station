@@ -31,9 +31,9 @@ import type {
   PluginProposalDigestUnavailableReason,
 } from '@kontourai/station-contracts/plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { observePluginTreeAsync } from '@kontourai/station-shared/plugin-tree-digest';
 import { type Context, Hono } from 'hono';
-import type { PrincipalRef } from '../../services/identity/principal-resolver.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type PluginLifecycleProposalService,

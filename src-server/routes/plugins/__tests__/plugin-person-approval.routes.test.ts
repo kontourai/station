@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import type { AgentConfigurationMutationRunner } from '../../../runtime/types.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
@@ -203,7 +204,9 @@ function writePlugin(dir: string, name: string) {
 
 function createHarness(
   home: string,
-  options: { applyConfigurationMutation?: unknown } = {},
+  options: {
+    applyConfigurationMutation?: AgentConfigurationMutationRunner;
+  } = {},
 ) {
   const app = new Hono<{ Bindings: TestBindings }>();
   configureRuntimeHttp({
@@ -836,10 +839,9 @@ describe('#2323 S5: completing a proposal through the ordinary routes', () => {
     const source = join(root, 'src-plugin');
     writePlugin(source, 'proposed-plugin');
     writePlugin(join(pluginsDir, 'installed-plugin'), 'installed-plugin');
-    const applyConfigurationMutation = vi.fn(
-      async (operation: (begin: () => void, activation: unknown) => unknown) =>
-        operation(() => {}, { status: 'pending', reason: 'queued' }),
-    );
+    const applyConfigurationMutation: AgentConfigurationMutationRunner = async (
+      operation,
+    ) => operation(() => {}, { status: 'pending', reason: 'queued' });
     const { request, proposals } = createHarness(home, {
       applyConfigurationMutation,
     });

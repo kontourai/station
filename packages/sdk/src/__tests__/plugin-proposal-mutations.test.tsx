@@ -48,7 +48,11 @@ test('install, update and remove carry the proposal id; the plain forms do not',
     await act(async () => {
       await result.current.install.mutateAsync({
         source: '/plugin',
-        consent: { permissions: [], contentDigest: 'sha256:x' },
+        consent: {
+          permissions: [],
+          contentDigest: 'sha256:x',
+          dependencies: [],
+        },
         proposalId: 'p-install',
       });
       await result.current.update.mutateAsync({

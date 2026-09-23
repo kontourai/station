@@ -530,7 +530,10 @@ export class PluginLifecycleProposalService {
   ): Promise<{ proposal: PluginLifecycleProposal; deduplicated: boolean }> {
     const rationale = normalizeProposalRationale(input.rationale);
     const draft = this.draftFor(input);
-    return this.mutate((data) => {
+    return this.mutate<{
+      proposal: PluginLifecycleProposal;
+      deduplicated: boolean;
+    }>((data) => {
       const open = data.proposals.filter(
         (proposal) => proposal.status === 'open',
       );
@@ -586,7 +589,7 @@ export class PluginLifecycleProposalService {
       completion.kind === 'install'
         ? { kind: completion.kind, source: completion.source }
         : { kind: completion.kind, pluginName: completion.pluginName };
-    return this.mutate((data) => {
+    return this.mutate<PluginProposalCompletionOutcome>((data) => {
       const current = data.proposals.find((proposal) => proposal.id === id);
       if (!current) return { result: { status: 'not-found' as const } };
       if (current.status !== 'open') {
