@@ -668,6 +668,29 @@ export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
 export const MUSE_LINGERING_CHILD_REAPED_CODE = 'muse-lingering-child-reaped';
 
 /**
+ * #2300: `runtime.warning` code for a Muse turn held open for background
+ * work (see the Muse adapter) that ended without muse delivering the
+ * result: its follow-up run ended without completing, the process exited
+ * first, or a declared turn budget expired. The turn itself still closes
+ * with `turn.completed` — never `runtime.error`, whose "Send again" would
+ * re-launch the work — so this warning is where the terminal, reason, or
+ * exit code is recorded. It is persisted in the session's event log (the
+ * session diagnostics log shows it) and toasted live; the transcript does
+ * not render it.
+ */
+export const MUSE_HELD_TURN_UNFINISHED_CODE = 'muse-held-turn-unfinished';
+
+/**
+ * #2300: refusal code for a Muse send that arrived while the previous
+ * turn had already ended but its `muse exec` process had not yet exited,
+ * and did not exit within the adapter's short wait. The previous process
+ * still owns the session's `--session-id`, so the send is refused rather
+ * than run concurrently — retryable, not a definitive rejection: the same
+ * send succeeds once the process is gone.
+ */
+export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned

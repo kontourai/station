@@ -127,22 +127,39 @@ Background work (#2300). Muse's `workflow` tool returns
 `{"status":"launched","taskId":…}` at once and runs the workflow in the
 background; `muse exec` then reaches `run_terminal` but keeps running until
 the task settles, and delivers the result in an automatic follow-up run
-before it exits. A completed `run_terminal` while such a task is pending
-therefore holds the turn open: the task is a tool row
-(`toolCallId: muse-task:<taskId>`, settled by the task's final
-`task_lifecycle` phase), the follow-up run's text and tools are published on
-the same turn, and `turn.completed` fires once, at the last run's terminal,
-with the composed text. No second `turn.started` is minted. The idle bound is
-not armed while a task is pending, so a held turn has no post-terminal budget:
-it ends when Muse finishes it or the user presses Stop (which ends the
-background work and closes its row `cancelled`). A held turn that ends any
-other way closes pending rows `unresolved` and the turn with `turn.completed`
-(`finishReason` from the terminal, or `other` when the child exits), never
-`runtime.error`. A turn that launched nothing still settles at its first
-`run_terminal`, and a child that lingers after it is still reaped one idle
-window on. If the turn ended with background rows closed `unresolved` and
-the child is later reaped, the reap is announced as a `runtime.warning`
-(`muse-lingering-child-reaped`) rather than done silently.
+(`command_accepted` from `muse-runtime-background-terminal`) before it exits.
+A completed `run_terminal` while the turn is still owed such a report — a
+task pending, or settled but not yet reported by a follow-up run — therefore
+holds the turn open: the task is a tool row
+(`toolCallId: muse-task:<taskId>`, named `<tool>_background`, settled by the
+task's final `task_lifecycle` phase), the follow-up run's text and tools are
+published on the same turn, and `turn.completed` fires once, at the last
+run's terminal, with the composed text. No second `turn.started` is minted.
+
+Neither the idle bound nor any other Station-chosen bound applies while a
+task is pending or the turn is held, whatever the turn's declared
+`idleLimitMs` says: a held turn runs until Muse finishes it or someone
+presses Stop (which signals the process group and closes pending rows
+`cancelled`). A held turn with no user to press Stop — a delegated or
+Station-initiated turn — therefore runs until Muse finishes it. A total
+budget a server-owned caller declares still applies; none does in
+production. A held turn that ends any other way (a follow-up terminal that
+did not complete, the child exiting first, a declared budget) closes
+pending rows `unresolved`, publishes a `runtime.warning`
+(`muse-held-turn-unfinished`, carrying Muse's terminal and reason, or the
+exit code or signal) and closes the turn with `turn.completed`
+(`finishReason` from the terminal, or `other`), never `runtime.error`. That
+warning is persisted in the event log and shown in the session diagnostics
+log and as a toast; the transcript does not render it.
+
+A turn that launched nothing still settles at its first `run_terminal`, and
+a child that lingers after it is still reaped one idle window on. If the
+turn ended with background rows closed `unresolved` and the child is later
+reaped, the reap is announced as a `runtime.warning`
+(`muse-lingering-child-reaped`) rather than done silently. A send that
+arrives while the previous turn has ended but its process is still exiting
+waits up to 5 seconds for it; past that it is refused with the retryable
+code `muse_turn_slot_releasing`, which the client's queue keeps for retry.
 
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says

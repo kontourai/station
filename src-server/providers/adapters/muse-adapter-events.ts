@@ -114,7 +114,20 @@ type MuseTurnEffect =
        */
       toolCallId: string | null;
     }
+  /**
+   * #2300: `command_accepted` for muse's automatic follow-up run — the run
+   * that reports background work which settled before it was submitted.
+   */
+  | { kind: 'background-follow-up' }
   | { kind: 'ignored' };
+
+/**
+ * #2300: the `command_accepted.client_id` muse stamps on the run it submits
+ * by itself to report settled background work (live capture, muse
+ * 1.3.0-R3401.1). Every run a user submits carries `client_id: null`.
+ */
+export const MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID =
+  'muse-runtime-background-terminal';
 
 /**
  * Maps a muse terminal to a canonical `finishReason`.
@@ -160,7 +173,11 @@ export function mapMuseFinishReason(
  * - `command_accepted`, `session_run_linked`, `turn_input_user`, `run_started`,
  *   `run_model_configured`, `task_stream_linked` restate what Station already
  *   published from `startSession`/`sendTurn`; re-emitting them duplicates
- *   transcript rows.
+ *   transcript rows. The one exception is a `command_accepted` whose
+ *   `client_id` is {@link MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID}: nothing
+ *   Station sent caused it, and it marks the start of the follow-up run that
+ *   reports settled background work (#2300), so it becomes a
+ *   `background-follow-up` effect (no event of its own).
  * - `tool_result` is mapped to `tool-completed`: it carries `call_id`, plus
  *   `correlation_facts.{tool_name,outcome}` and the result `text`.
  * - `task_lifecycle` (proposed/accepted/scheduled/side_effect_intent/started/
@@ -199,6 +216,11 @@ export function mapMuseFinishReason(
  */
 export function translateMuseRecord(record: MuseRecord): MuseTurnEffect {
   switch (record.payloadKind) {
+    case 'command_accepted':
+      return extractStringField(record.payload, 'client_id') ===
+        MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID
+        ? { kind: 'background-follow-up' }
+        : { kind: 'ignored' };
     case 'run_output_delta': {
       const delta = extractStringField(record.payload, 'text');
       if (delta === null || delta === '') return { kind: 'ignored' };

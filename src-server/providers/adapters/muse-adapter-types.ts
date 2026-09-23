@@ -209,6 +209,22 @@ export interface MuseActiveTurn {
     { toolCallId: string; toolName: string; announcedAt: number }
   >;
   /**
+   * #2300: background tasks that reached a final phase with no follow-up run
+   * submitted for them yet (cleared by the follow-up's `command_accepted`,
+   * client id `muse-runtime-background-terminal`). Muse delivers every settled task's
+   * result in an automatic follow-up run, so while this is non-empty a
+   * completed `run_terminal` still holds the turn — even when the task
+   * settled BEFORE the run that launched it ended.
+   */
+  awaitingReportTasks: Set<string>;
+  /**
+   * #2300: resolves once the turn's slot is freed (`finishTurn`). A send
+   * that arrives while the previous turn is settled but its child is still
+   * exiting waits on this, bounded, instead of being refused outright.
+   */
+  slotReleased: Promise<void>;
+  resolveSlotReleased: () => void;
+  /**
    * #2300: how many completed runs this turn has held open for pending
    * background work. Non-zero means muse's automatic follow-up run is being
    * delivered on this turn: a child exit now closes the turn with

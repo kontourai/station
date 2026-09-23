@@ -56,6 +56,78 @@ describe('projectRuntimeEventsToMessages', () => {
       'Here is the complete answer.',
     ]);
   });
+  // #2300: an engine whose `outputText` is the WHOLE turn's text (Muse)
+  // must be reconciled against every text part the turn emitted, not just
+  // the text after its last tool row.
+  const wholeTurn = (turnId: string, deltas: string[], outputText: string) => [
+    ev({ method: 'turn.started', turnId, prompt: 'go' }),
+    ev({ method: 'content.text-delta', turnId, delta: deltas[0] }),
+    ev({
+      method: 'tool.started',
+      turnId,
+      toolCallId: `${turnId}-call`,
+      toolName: 'bash',
+    }),
+    ev({
+      method: 'tool.completed',
+      turnId,
+      toolCallId: `${turnId}-call`,
+      toolName: 'bash',
+      status: 'success',
+      output: 'done',
+    }),
+    ...deltas
+      .slice(1)
+      .map((delta) => ev({ method: 'content.text-delta', turnId, delta })),
+    ev({ method: 'turn.completed', turnId, outputText }),
+  ];
+  const texts = (messages: ReturnType<typeof projectRuntimeEventsToMessages>) =>
+    messages
+      .at(-1)
+      ?.parts.filter((part) => part.type === 'text')
+      .map((part) => part.text);
+
+  it('#2300: an outputText equal to all emitted text (before and after a tool) adds nothing', () => {
+    expect(
+      texts(
+        projectRuntimeEventsToMessages(
+          wholeTurn('whole', ['Before.', 'ok'], 'Before.ok'),
+        ),
+      ),
+    ).toEqual(['Before.', 'ok']);
+  });
+
+  it('#2300: an outputText extending the emitted text appends only the missing suffix', () => {
+    // The follow-up's text reached only the terminal: nothing streamed after
+    // the tool row.
+    expect(
+      texts(
+        projectRuntimeEventsToMessages(
+          wholeTurn('suffix', ['Launching.'], 'Launching.\n\nFinished.'),
+        ),
+      ),
+    ).toEqual(['Launching.', '\n\nFinished.']);
+    // A strict prefix still open in the buffer is extended in place.
+    expect(
+      texts(
+        projectRuntimeEventsToMessages(
+          wholeTurn('open', ['Before.', 'Aft'], 'Before.After.'),
+        ),
+      ),
+    ).toEqual(['Before.', 'After.']);
+  });
+
+  it('#2300: with nothing streamed, the outputText is the text', () => {
+    expect(
+      texts(
+        projectRuntimeEventsToMessages([
+          ev({ method: 'turn.started', turnId: 'none', prompt: 'go' }),
+          ev({ method: 'turn.completed', turnId: 'none', outputText: 'Hi.' }),
+        ]),
+      ),
+    ).toEqual(['Hi.']);
+  });
+
   it('preserves simultaneous terminal results sharing one toolCallId by event identity', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({

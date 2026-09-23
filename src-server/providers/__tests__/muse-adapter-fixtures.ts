@@ -81,7 +81,9 @@ export const MUSE_13_BASH_CALL_ID = 'call_01a0cab25b8574738854e0ab29288aac';
  * now `/workspace/muse-probe`) and the persisted workflow script path under
  * the user's muse session store (lines 27 and 29, now under
  * `/home/user/.local/share/muse/sessions/`), inside JSON strings that stay
- * validly escaped. `scriptBytes`/`scriptHash` still describe the original
+ * validly escaped. Line numbers here are 1-based; the tests index the array
+ * 0-based, so the launch `tool_result` on line 29 is `[28]` there, and line
+ * 28 (the workflow task's `completed`) carries no path and is unchanged. `scriptBytes`/`scriptHash` still describe the original
  * script. Timing is not in the file: the live run took 104 s (first
  * `run_terminal` at ~15 s, the task's completion at ~83 s, the follow-up
  * run's terminal at ~104 s); tests inject whatever timing they exercise.

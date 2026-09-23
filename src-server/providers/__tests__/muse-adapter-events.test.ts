@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildMuseExecArgs,
+  MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID,
   MUSE_LAUNCH_RESULT_MAX_CHARS,
   mapMuseFinishReason,
   museBackgroundTaskRowId,
@@ -590,5 +591,24 @@ describe('parseMuseLaunchedBackgroundTask (#2300)', () => {
     expect(
       parseMuseLaunchedBackgroundTask('workflow', `${atBound} `),
     ).toBeNull();
+  });
+});
+
+describe('background follow-up marker (#2300)', () => {
+  test("only muse's own follow-up command_accepted is surfaced", () => {
+    const followUp = MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES[32]!;
+    expect(followUp).toContain(
+      `"client_id":"${MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID}"`,
+    );
+    expect(translate(followUp)).toEqual({ kind: 'background-follow-up' });
+    // The user's own submission (client_id null) stays ignored.
+    expect(translate(MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES[0]!)).toEqual({
+      kind: 'ignored',
+    });
+    expect(
+      translate(
+        followUp.replace(MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID, 'someone-else'),
+      ),
+    ).toEqual({ kind: 'ignored' });
   });
 });
