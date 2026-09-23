@@ -803,7 +803,16 @@ export class StationRuntime {
       this.orchestrationService
         ? createStationControlCallerRecordResolver(
             stationControlCallerRecordSources({
-              orchestrationService: this.orchestrationService,
+              orchestrationService: {
+                resolveSessionActingPrincipal: (threadId) =>
+                  this.orchestrationService.resolveSessionActingPrincipal(
+                    threadId,
+                  ),
+                latestStartedMetadataOfThread: (threadId) =>
+                  this.orchestrationService.latestStartedMetadataOfThread(
+                    threadId,
+                  ),
+              },
               eventStore: this.orchestrationEventStore,
               getProject: (slug) => this.storageAdapter.getProject(slug),
             }),

@@ -1548,7 +1548,16 @@ export function configureRuntimeRoutes(
   const resolveStationControlCallerRecord =
     createStationControlCallerRecordResolver(
       stationControlCallerRecordSources({
-        orchestrationService: context.orchestrationService,
+        orchestrationService: {
+          resolveSessionActingPrincipal: (threadId) =>
+            context.orchestrationService.resolveSessionActingPrincipal(
+              threadId,
+            ),
+          latestStartedMetadataOfThread: (threadId) =>
+            context.orchestrationService.latestStartedMetadataOfThread(
+              threadId,
+            ),
+        },
         eventStore: context.orchestrationEventStore,
         getProject: (slug) => context.storageAdapter.getProject(slug),
       }),
