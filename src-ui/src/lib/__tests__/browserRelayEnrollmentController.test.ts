@@ -17,7 +17,7 @@ import {
   createRelayEnrollmentKey,
   digestRelayEnrollmentBundle,
 } from '@kontourai/station-sdk/relay-enrollment';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BrowserRelayEnrollmentController,
   type BrowserRelayEnrollmentRoute,
@@ -77,14 +77,15 @@ function makeRoute(
 }
 
 function requestTransport(
-  handler: (request: Request) => Promise<Response>,
+  handler: (request: Request, init?: RequestInit) => Promise<Response>,
 ): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    expect(input).toBeInstanceOf(URL);
     const request =
       input instanceof Request && init === undefined
         ? input
         : new Request(input, init);
-    return handler(request);
+    return handler(request, init);
   }) as typeof fetch;
 }
 
@@ -93,19 +94,32 @@ function proofClaims(compact: string) {
   return JSON.parse(atob(payload)) as Record<string, unknown>;
 }
 
+async function proofDigest(compact: string) {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(compact)),
+  );
+  return btoa(String.fromCharCode(...digest))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+afterEach(() => vi.useRealTimers());
+
 describe('browser relay fresh enrollment controller', () => {
   it('keeps the client un-enrolled until signed activation succeeds', async () => {
     const steps: string[] = [];
     let challenge: RelayEnrollmentChallenge | undefined;
     let delivery: RelayEnrollmentDeliveredResponse | undefined;
     let finalizeCount = 0;
-    const handler = vi.fn(async (request: Request) => {
+    const handler = vi.fn(async (request: Request, init?: RequestInit) => {
       const url = new URL(request.url);
       const body = await request.json();
       steps.push(url.pathname);
       expect(url.origin).toBe(applicationOrigin);
       expect(request.method).toBe('POST');
-      expect(request.headers.get('Origin')).toBe(window.location.origin);
+      const origin = new Headers(init?.headers).get('Origin');
+      expect(origin).toBe(window.location.origin);
       if (url.pathname === RELAY_ENROLLMENT_BEGIN_PATH) {
         // The public key in the request is rebound to the returned challenge.
         const publicKey = body.publicKey;
@@ -131,7 +145,7 @@ describe('browser relay fresh enrollment controller', () => {
         expect(body.proof).toContain('.');
         expect(proofClaims(body.proof as string)).toMatchObject({
           stationId,
-          clientOrigin: request.headers.get('Origin'),
+          clientOrigin: origin,
           htm: 'POST',
           htu: `${applicationOrigin}${RELAY_ENROLLMENT_LOGIN_PATH}`,
         });
@@ -201,7 +215,7 @@ describe('browser relay fresh enrollment controller', () => {
           state: 'active',
           enrollmentId: challenge!.enrollmentId,
           deviceId: delivery!.bundle.deviceId,
-          receiptDigest: opaque('R'),
+          receiptDigest: await proofDigest(body.proof as string),
           receiptExpiresAt: new Date(Date.now() + 60_000).toISOString(),
         });
       }
@@ -397,7 +411,106 @@ describe('browser relay fresh enrollment controller', () => {
     expect(controller.state).toBe('cancelled');
   });
 
-  it('removes provisional custody and never reports success when activation is refused', async () => {
+  it('aborts a stalled response body when the Station challenge expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T12:00:00.000Z'));
+    let challenge: RelayEnrollmentChallenge | undefined;
+    let finalizeStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      finalizeStarted = resolve;
+    });
+    const handler = vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (path === RELAY_ENROLLMENT_BEGIN_PATH) {
+        const body = await request.json();
+        const publicKey =
+          body.publicKey as RelayEnrollmentChallenge['publicKey'];
+        challenge = {
+          version: RELAY_ENROLLMENT_VERSION,
+          stationId,
+          requestOrigin: applicationOrigin,
+          clientOrigin: window.location.origin,
+          enrollmentId: opaque('E'),
+          publicKey,
+          keyThumbprint: await thumbprint({ publicKey } as Awaited<
+            ReturnType<typeof createRelayEnrollmentKey>
+          >),
+          nonce: opaque('N'),
+          purpose: 'login',
+          expiresAt: new Date(Date.now() + 5_000).toISOString(),
+        };
+        return json(challenge, 201);
+      }
+      if (path === RELAY_ENROLLMENT_LOGIN_PATH)
+        return json(
+          {
+            version: RELAY_ENROLLMENT_VERSION,
+            state: 'pending',
+            enrollmentId: challenge!.enrollmentId,
+            requestId: 'request-1',
+            expiresAt: challenge!.expiresAt,
+          },
+          202,
+        );
+      if (path === RELAY_ENROLLMENT_FINALIZE_PATH) {
+        finalizeStarted();
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            pull: () => new Promise<void>(() => {}),
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error('Expired enrollment must not continue.');
+    });
+    const staged = vi.fn();
+    const controller = new BrowserRelayEnrollmentController({
+      route: makeRoute(requestTransport(handler)),
+      stageApprovedBundle: async () => {
+        staged();
+      },
+      publishAuthority: async () => {},
+      removeProvisionalAuthority: async () => {},
+    });
+    const enrollment = controller.enroll({
+      username: 'zach',
+      password: 'secret',
+    });
+    const rejection = expect(enrollment).rejects.toBeTruthy();
+    await started;
+    await vi.advanceTimersByTimeAsync(5_000);
+    await rejection;
+    expect(handler).toHaveBeenCalledTimes(3);
+    expect(staged).not.toHaveBeenCalled();
+    expect(controller.state).toBe('failed');
+  });
+
+  it('rejects oversized JSON before parsing or sending login credentials', async () => {
+    const handler = vi.fn(
+      async () =>
+        new Response('x'.repeat(16 * 1024 + 1), {
+          status: 201,
+          headers: { 'Content-Length': String(16 * 1024 + 1) },
+        }),
+    );
+    const staged = vi.fn();
+    const controller = new BrowserRelayEnrollmentController({
+      route: makeRoute(requestTransport(handler)),
+      stageApprovedBundle: async () => {
+        staged();
+      },
+      publishAuthority: async () => {},
+      removeProvisionalAuthority: async () => {},
+    });
+    await expect(
+      controller.enroll({ username: 'zach', password: 'secret' }),
+    ).rejects.toThrow(/response is too large/);
+    expect(handler).toHaveBeenCalledOnce();
+    expect(staged).not.toHaveBeenCalled();
+    expect(controller.state).toBe('failed');
+  });
+
+  it('removes staged custody when Station returns the wrong activation receipt digest', async () => {
     let challenge: RelayEnrollmentChallenge | undefined;
     let delivery: RelayEnrollmentDeliveredResponse | undefined;
     let finalizeCount = 0;
@@ -474,10 +587,16 @@ describe('browser relay fresh enrollment controller', () => {
         };
         return json(delivery);
       }
-      return json(
-        { error: { code: 'relay_enrollment_approval_required' } },
-        409,
-      );
+      if (url.pathname === RELAY_ENROLLMENT_ACTIVATE_PATH)
+        return json({
+          version: RELAY_ENROLLMENT_VERSION,
+          state: 'active',
+          enrollmentId: challenge!.enrollmentId,
+          deviceId: delivery!.bundle.deviceId,
+          receiptDigest: opaque('R'),
+          receiptExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+        });
+      return json({ error: { code: 'not_found' } }, 404);
     });
     const transport = requestTransport(handler);
     const states: string[] = [];
@@ -499,7 +618,7 @@ describe('browser relay fresh enrollment controller', () => {
     });
     await expect(
       controller.enroll({ username: 'zach', password: 'secret' }),
-    ).rejects.toThrow(/approval_required/);
+    ).rejects.toThrow(/did not confirm Device activation/);
     expect(staged).toHaveBeenCalledOnce();
     expect(published).not.toHaveBeenCalled();
     expect(removed).toHaveBeenCalledOnce();
@@ -590,7 +709,7 @@ describe('browser relay fresh enrollment controller', () => {
           state: 'active',
           enrollmentId: challenge!.enrollmentId,
           deviceId: delivery!.bundle.deviceId,
-          receiptDigest: opaque('R'),
+          receiptDigest: await proofDigest(body.proof as string),
           receiptExpiresAt: new Date(Date.now() + 60_000).toISOString(),
         });
       throw new Error('Unexpected enrollment endpoint.');

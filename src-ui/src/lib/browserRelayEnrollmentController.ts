@@ -47,6 +47,7 @@ export interface BrowserRelayEnrollmentControllerOptions {
     stageId: string,
     bundle: RelayEnrollmentContinuationBundle,
     key: RelayEnrollmentKey,
+    signal: AbortSignal,
   ): Promise<void>;
   /** Publish staged authority only after Station's signed activation receipt is validated. */
   publishAuthority(
@@ -55,6 +56,7 @@ export interface BrowserRelayEnrollmentControllerOptions {
     key: RelayEnrollmentKey,
     receipt: RelayEnrollmentActivatedResponse,
     isRouteCurrent: () => boolean,
+    signal: AbortSignal,
   ): Promise<void>;
   /** Remove the exact staged or just-published authority, including partial writes. */
   removeProvisionalAuthority(stageId: string): Promise<void>;
@@ -72,6 +74,8 @@ export interface BrowserRelayEnrollmentCredentials {
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_CEREMONY_MS = 5 * 60_000;
+const MAX_RESPONSE_BYTES = 16 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -203,6 +207,84 @@ async function defaultWait(milliseconds: number, signal: AbortSignal) {
   });
 }
 
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+    };
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+async function boundedJson(response: Response, signal: AbortSignal) {
+  const declaredLength = Number(response.headers.get('Content-Length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
+    void response.body?.cancel().catch(() => {});
+    throw new Error('Station relay enrollment response is too large.');
+  }
+  if (!response.body)
+    throw new Error('Station relay enrollment returned an empty response.');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await abortable(reader.read(), signal);
+      if (done) break;
+      length += value.byteLength;
+      if (length > MAX_RESPONSE_BYTES) {
+        void reader.cancel().catch(() => {});
+        throw new Error('Station relay enrollment response is too large.');
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    void reader.cancel(error).catch(() => {});
+    throw error;
+  }
+  try {
+    reader.releaseLock();
+  } catch {
+    // A cancelled pending read may still own the lock; this reader is discarded.
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+    ) as unknown;
+  } catch {
+    throw new Error('Station relay enrollment returned invalid JSON.');
+  }
+}
+
+async function digestProof(proof: string) {
+  const bytes = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(proof)),
+  );
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 /**
  * Runs a fresh browser-client ceremony over one already selected, trusted
  * encrypted route. Staged custody is removed on every failure; callers may
@@ -232,46 +314,76 @@ export class BrowserRelayEnrollmentController {
     outerSignal?.addEventListener('abort', abortFromOuter, { once: true });
     if (outerSignal?.aborted) abortFromOuter();
     let provisionalStageId: string | null = null;
+    let deadlineExpired = false;
+    const now = this.options.now ?? Date.now;
+    let expiresAtMs = now() + MAX_CEREMONY_MS;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
     let state: BrowserRelayEnrollmentState = 'failed';
     const setState = (next: BrowserRelayEnrollmentState) => {
       this.stateValue = next;
       this.options.onState?.(next);
     };
     const assertCurrent = () => {
+      if (now() >= expiresAtMs) {
+        deadlineExpired = true;
+        controller.abort(
+          new DOMException('Relay enrollment expired.', 'TimeoutError'),
+        );
+      }
       controller.signal.throwIfAborted();
       if (!this.options.route.isCurrent())
         throw new Error('The selected encrypted Station route changed.');
     };
-    const post = async (path: string, body: unknown) => {
+    const armDeadline = () => {
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+      deadlineTimer = setTimeout(
+        () => {
+          deadlineExpired = true;
+          controller.abort(
+            new DOMException('Relay enrollment expired.', 'TimeoutError'),
+          );
+        },
+        Math.max(0, expiresAtMs - now()),
+      );
+    };
+    armDeadline();
+    const post = async (
+      path: string,
+      body: unknown,
+      expectedStatus: number,
+    ) => {
       assertCurrent();
       const url = new URL(path, this.options.route.applicationOrigin);
-      const request = new Request(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Origin: this.options.route.clientOrigin,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      const response = await this.options.route.transport(request);
+      const response = await abortable(
+        this.options.route.transport(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: this.options.route.clientOrigin,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        }),
+        controller.signal,
+      );
+      assertCurrent();
+      const responseBody = await boundedJson(response, controller.signal);
       assertCurrent();
       if (!response.ok) {
         let code = `HTTP ${response.status}`;
-        try {
-          const error = await response.json();
-          if (
-            isRecord(error) &&
-            isRecord(error.error) &&
-            typeof error.error.code === 'string'
-          )
-            code = error.error.code;
-        } catch {
-          // Status remains the bounded diagnostic when no error envelope exists.
-        }
+        if (
+          isRecord(responseBody) &&
+          isRecord(responseBody.error) &&
+          typeof responseBody.error.code === 'string'
+        )
+          code = responseBody.error.code;
         throw new Error(`Station relay enrollment refused: ${code}.`);
       }
-      return response.json() as Promise<unknown>;
+      if (response.status !== expectedStatus)
+        throw new Error(
+          'Station returned an unexpected relay enrollment status.',
+        );
+      return responseBody;
     };
 
     try {
@@ -287,11 +399,17 @@ export class BrowserRelayEnrollmentController {
       const key = await createRelayEnrollmentKey();
       assertCurrent();
       const challenge = parseChallenge(
-        await post(RELAY_ENROLLMENT_BEGIN_PATH, { publicKey: key.publicKey }),
+        await post(
+          RELAY_ENROLLMENT_BEGIN_PATH,
+          { publicKey: key.publicKey },
+          201,
+        ),
         this.options.route,
         key,
-        (this.options.now ?? Date.now)(),
+        now(),
       );
+      expiresAtMs = Math.min(expiresAtMs, Date.parse(challenge.expiresAt));
+      armDeadline();
       const loginProof = await createRelayEnrollmentLoginProof(
         key,
         challenge,
@@ -303,7 +421,7 @@ export class BrowserRelayEnrollmentController {
           ).toString(),
           clientOrigin: challenge.clientOrigin,
         },
-        (this.options.now ?? Date.now)(),
+        now(),
       );
       assertCurrent();
       const submittedCredentials = {
@@ -313,11 +431,15 @@ export class BrowserRelayEnrollmentController {
       credentials.password = '';
       credentials.username = '';
       const pending = parsePending(
-        await post(RELAY_ENROLLMENT_LOGIN_PATH, {
-          enrollmentId: challenge.enrollmentId,
-          proof: loginProof,
-          credentials: submittedCredentials,
-        }),
+        await post(
+          RELAY_ENROLLMENT_LOGIN_PATH,
+          {
+            enrollmentId: challenge.enrollmentId,
+            proof: loginProof,
+            credentials: submittedCredentials,
+          },
+          202,
+        ),
         challenge,
       );
       setState('awaiting-approval');
@@ -338,12 +460,13 @@ export class BrowserRelayEnrollmentController {
             ).toString(),
             clientOrigin: challenge.clientOrigin,
           },
-          (this.options.now ?? Date.now)(),
+          now(),
         );
-        result = (await post(RELAY_ENROLLMENT_FINALIZE_PATH, {
-          enrollmentId: challenge.enrollmentId,
-          proof,
-        })) as RelayEnrollmentFinalizeResponse;
+        result = (await post(
+          RELAY_ENROLLMENT_FINALIZE_PATH,
+          { enrollmentId: challenge.enrollmentId, proof },
+          200,
+        )) as RelayEnrollmentFinalizeResponse;
         if (
           result.version !== RELAY_ENROLLMENT_VERSION ||
           result.enrollmentId !== pending.enrollmentId
@@ -356,15 +479,12 @@ export class BrowserRelayEnrollmentController {
             'enrollmentId,expiresAt,state,version' ||
           result.state !== 'pending' ||
           !Number.isFinite(Date.parse(result.expiresAt)) ||
-          Date.parse(result.expiresAt) <= (this.options.now ?? Date.now)() ||
+          Date.parse(result.expiresAt) <= now() ||
           Date.parse(result.expiresAt) > Date.parse(challenge.expiresAt)
         )
           throw new Error('Station returned an invalid approval response.');
         await wait(
-          Math.min(
-            interval,
-            Date.parse(result.expiresAt) - (this.options.now ?? Date.now)(),
-          ),
+          Math.min(interval, Date.parse(result.expiresAt) - now()),
           controller.signal,
         );
       }
@@ -373,17 +493,21 @@ export class BrowserRelayEnrollmentController {
         result,
         challenge,
         this.options.route,
-        (this.options.now ?? Date.now)(),
+        now(),
       );
       const digest = await digestRelayEnrollmentBundle(delivery.bundle);
       assertCurrent();
       if (digest !== delivery.bundleDigest)
         throw new Error('Station delivered a bundle with an invalid digest.');
       provisionalStageId = challenge.enrollmentId;
-      await this.options.stageApprovedBundle(
-        provisionalStageId,
-        delivery.bundle,
-        key,
+      await abortable(
+        this.options.stageApprovedBundle(
+          provisionalStageId,
+          delivery.bundle,
+          key,
+          controller.signal,
+        ),
+        controller.signal,
       );
       assertCurrent();
       setState('activating');
@@ -399,16 +523,21 @@ export class BrowserRelayEnrollmentController {
           ).toString(),
           clientOrigin: challenge.clientOrigin,
         },
-        (this.options.now ?? Date.now)(),
+        now(),
       );
-      const activatedValue = await post(RELAY_ENROLLMENT_ACTIVATE_PATH, {
-        enrollmentId: challenge.enrollmentId,
-        activationNonce: delivery.activationNonce,
-        deviceId: delivery.bundle.deviceId,
-        authorityKey: delivery.bundle.continuation.authorityKey,
-        bundleDigest: delivery.bundleDigest,
-        proof: activationProof,
-      });
+      const expectedReceiptDigest = await digestProof(activationProof);
+      const activatedValue = await post(
+        RELAY_ENROLLMENT_ACTIVATE_PATH,
+        {
+          enrollmentId: challenge.enrollmentId,
+          activationNonce: delivery.activationNonce,
+          deviceId: delivery.bundle.deviceId,
+          authorityKey: delivery.bundle.continuation.authorityKey,
+          bundleDigest: delivery.bundleDigest,
+          proof: activationProof,
+        },
+        200,
+      );
       assertCurrent();
       if (
         !isRecord(activatedValue) ||
@@ -418,21 +547,24 @@ export class BrowserRelayEnrollmentController {
         activatedValue.state !== 'active' ||
         activatedValue.enrollmentId !== challenge.enrollmentId ||
         activatedValue.deviceId !== delivery.bundle.deviceId ||
-        !OPAQUE.test(String(activatedValue.receiptDigest)) ||
+        activatedValue.receiptDigest !== expectedReceiptDigest ||
         !Number.isFinite(Date.parse(String(activatedValue.receiptExpiresAt))) ||
-        Date.parse(String(activatedValue.receiptExpiresAt)) <=
-          (this.options.now ?? Date.now)()
+        Date.parse(String(activatedValue.receiptExpiresAt)) <= now()
       )
         throw new Error('Station did not confirm Device activation.');
       const receipt =
         activatedValue as unknown as RelayEnrollmentActivatedResponse;
       assertCurrent();
-      await this.options.publishAuthority(
-        provisionalStageId!,
-        delivery.bundle,
-        key,
-        receipt,
-        () => this.options.route.isCurrent() && !controller.signal.aborted,
+      await abortable(
+        this.options.publishAuthority(
+          provisionalStageId!,
+          delivery.bundle,
+          key,
+          receipt,
+          () => this.options.route.isCurrent() && !controller.signal.aborted,
+          controller.signal,
+        ),
+        controller.signal,
       );
       assertCurrent();
       state = 'enrolled';
@@ -447,10 +579,12 @@ export class BrowserRelayEnrollmentController {
           // The failed state still refuses protected requests; caller can retry cleanup.
         }
       }
-      state = controller.signal.aborted ? 'cancelled' : 'failed';
+      state =
+        controller.signal.aborted && !deadlineExpired ? 'cancelled' : 'failed';
       setState(state);
       throw error;
     } finally {
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
       outerSignal?.removeEventListener('abort', abortFromOuter);
       if (this.activeController === controller) this.activeController = null;
     }
