@@ -825,10 +825,19 @@ jq '.health, .recoveryHistory[-1], .failedCandidates[-1], .active, .previous' "$
 
 A failed candidate is retained in `failedCandidates` with its phase and error.
 The public UI proxy owns `GET /api/system/readiness`: it returns structured
-`200 ready` only when the supervisor state and a short live API identity probe
-agree. During backend loss it returns structured `503 unavailable`, browser
-navigations receive a minimal recovery document instead of a healthy-looking
-SPA shell, and failed backend proxy calls return structured 503 responses.
+`200 ready` only when the supervisor state and a live API identity probe agree.
+The probe waits 2.5 seconds by default; a caller with a longer deadline states
+it in the `x-station-readiness-budget-ms` request header (clamped to 60
+seconds), which Station's own status and supervisor probes do. During backend
+loss — a refused or failed connection, a non-200 answer, or an answer carrying
+a different boot identity, which fails at once without waiting on the budget —
+it returns structured `503 unavailable`, browser navigations receive a minimal
+recovery document instead of a healthy-looking SPA shell, and failed backend
+proxy calls return structured 503 responses. When the backend accepted the
+connection but did not confirm its identity within the budget, it returns
+structured `503 {"ready":false,"status":"degraded"}`: still not ready, because
+a busy backend and a wedged one look the same from here, but browser
+navigations keep receiving the app instead of the recovery document.
 
 `health.status` is `unavailable` while a required listener is missing,
 `recovering` while the exact recorded release is restarting, and `ready` only

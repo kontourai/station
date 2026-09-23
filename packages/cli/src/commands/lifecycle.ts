@@ -453,6 +453,22 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // timeout once a streaming SSE response is confirmed, while still
   // protecting non-SSE responses that hang mid-body.
   const PROXY_UPSTREAM_TIMEOUT_MS = 30_000;
+  // #263: the live readiness check's budget for the sibling backend's
+  // `/api/system/identity` answer. It used to be 750ms against a call measured
+  // at 0.12s-29s on a healthy, loaded host (every sample a correct 200), so a
+  // live Station was reported unavailable whenever the host was busy. The
+  // default is seconds-scale but stays under the 3s/4s client deadlines of the
+  // callers that send no budget of their own (`station status`, the container
+  // health check), so they receive a classified answer instead of aborting.
+  // A caller with a longer deadline — the supervisor's 10s steady and 45s
+  // confirmation probes — says so in READINESS_BUDGET_REQUEST_HEADER (the same
+  // literal as the module's exported READINESS_BUDGET_HEADER, repeated because
+  // this source is serialized into a standalone process); the clamp bounds
+  // what an unauthenticated caller can make this proxy hold open.
+  const READINESS_IDENTITY_BUDGET_MS = 2_500;
+  const READINESS_IDENTITY_BUDGET_MIN_MS = 100;
+  const READINESS_IDENTITY_BUDGET_MAX_MS = 60_000;
+  const READINESS_BUDGET_REQUEST_HEADER = 'x-station-readiness-budget-ms';
   const securityHeaders = (nonce: string) => ({
     'Content-Security-Policy': [
       "default-src 'none'",
@@ -788,23 +804,51 @@ export function uiRequestHandler(deps: UiServerDeps) {
       if (fd !== undefined) fs.closeSync(fd);
     }
   };
+  const readinessBudgetMs = (req: import('node:http').IncomingMessage) => {
+    const raw = req.headers[READINESS_BUDGET_REQUEST_HEADER];
+    if (typeof raw !== 'string' || !/^\d{1,9}$/.test(raw)) {
+      return READINESS_IDENTITY_BUDGET_MS;
+    }
+    return Math.min(
+      READINESS_IDENTITY_BUDGET_MAX_MS,
+      Math.max(READINESS_IDENTITY_BUDGET_MIN_MS, Number(raw)),
+    );
+  };
+  // #263: three outcomes, because the probe observes three different things.
+  //  - 'ready': the backend answered 200 with this exact boot triple.
+  //  - 'unavailable': nothing is declared ready, the connection was refused or
+  //    errored, the backend answered anything but a 200, or it answered with a
+  //    DIFFERENT boot triple (a lost port race). A mismatch is decided the
+  //    moment the answer arrives and never waits on the budget — that
+  //    fail-closed answer is the safety property this check exists for.
+  //  - 'degraded': the connection to the backend port was established but no
+  //    complete answer arrived within the budget. That is the busy-host shape
+  //    measured in #263, and it is NOT identity evidence: a wedged event loop
+  //    or a foreign process looks the same. So it never becomes `ready`; it is
+  //    reported distinctly, and only the navigation gate treats it as usable.
+  //    A connect that never completed is still 'unavailable' — nothing was
+  //    observed answering at all.
   const checkLiveReady = (
     tenantId: string | undefined,
-    callback: (ready: boolean) => void,
+    budgetMs: number,
+    callback: (state: 'ready' | 'degraded' | 'unavailable') => void,
   ) => {
     if (!declaredReady()) {
-      callback(false);
+      callback('unavailable');
       return;
     }
     if (!internalApiToken) {
-      callback(false);
+      callback('unavailable');
       return;
     }
     let settled = false;
-    const finish = (ready: boolean) => {
+    let connected = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const finish = (state: 'ready' | 'degraded' | 'unavailable') => {
       if (settled) return;
       settled = true;
-      callback(ready);
+      if (deadline) clearTimeout(deadline);
+      callback(state);
     };
     const request = http.request(
       {
@@ -812,7 +856,6 @@ export function uiRequestHandler(deps: UiServerDeps) {
         port: upstreamPort,
         path: '/api/system/identity',
         method: 'GET',
-        timeout: 750,
         // This connection is made only to the sibling loopback backend. Use
         // the per-boot internal credential instead of treating loopback as
         // authority: it recreates this UI process's own internal token and, in
@@ -837,16 +880,27 @@ export function uiRequestHandler(deps: UiServerDeps) {
                 (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
                   identity?.sha &&
                 upstreamIdentity?.bootId === identity?.bootId &&
-                upstreamIdentity?.instanceId === identity?.instanceId,
+                upstreamIdentity?.instanceId === identity?.instanceId
+                ? 'ready'
+                : 'unavailable',
             );
           } catch {
-            finish(false);
+            finish('unavailable');
           }
         });
       },
     );
-    request.once('timeout', () => request.destroy());
-    request.once('error', () => finish(false));
+    // A pooled keep-alive socket arrives already connected; a fresh one
+    // reports it through `connect`.
+    request.once('socket', (socket) => {
+      if (!socket.connecting) connected = true;
+      else socket.once('connect', () => (connected = true));
+    });
+    deadline = setTimeout(() => {
+      finish(connected ? 'degraded' : 'unavailable');
+      request.destroy();
+    }, budgetMs);
+    request.once('error', () => finish('unavailable'));
     request.end();
   };
   const unavailable = (
@@ -890,15 +944,28 @@ export function uiRequestHandler(deps: UiServerDeps) {
       return;
     }
     if (pathname === '/api/system/readiness') {
-      checkLiveReady(tenantId, (ready) => {
-        if (!ready) unavailable(res, false);
-        else {
-          res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-store',
-          });
-          res.end(JSON.stringify({ ready: true, status: 'ready' }));
+      checkLiveReady(tenantId, readinessBudgetMs(req), (state) => {
+        if (state === 'unavailable') {
+          unavailable(res, false);
+          return;
         }
+        // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
+        // confirmed, and a checker that reads only the status code (a load
+        // balancer, an orchestrator probe) cannot tell a busy backend from a
+        // wedged one — a 200 here would report a hung event loop healthy
+        // forever. Every in-repo checker requires `status: 'ready'`, so the
+        // body is where the distinction lives for anything that can read it.
+        res.writeHead(state === 'ready' ? 200 : 503, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
+        res.end(
+          JSON.stringify(
+            state === 'ready'
+              ? { ready: true, status: 'ready' }
+              : { ready: false, status: 'degraded' },
+          ),
+        );
       });
       return;
     }
@@ -906,8 +973,15 @@ export function uiRequestHandler(deps: UiServerDeps) {
       (req.method === 'GET' || req.method === 'HEAD') &&
       (req.headers.accept ?? '').startsWith('text/html');
     if (readinessFile && isNavigation) {
-      checkLiveReady(tenantId, (ready) =>
-        ready ? serve(req, res, tenantId) : unavailable(res, true),
+      // #263: a degraded backend still gets the app shell. The recovery
+      // document is for a backend that is down or is not ours; replacing the
+      // whole UI because the host is slow is what made a running Station look
+      // dead. Serving the shell grants nothing new: API calls are proxied (and
+      // bounded) exactly as they are for any other page load.
+      checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, (state) =>
+        state === 'unavailable'
+          ? unavailable(res, true)
+          : serve(req, res, tenantId),
       );
       return;
     }
@@ -3331,6 +3405,22 @@ async function probeIdentityOnce(
 }
 
 /**
+ * The request header a readiness caller uses to state its own deadline to the
+ * UI proxy (#263). Repeated as a literal inside `uiRequestHandler`, whose
+ * source is serialized into a standalone process where module bindings do not
+ * exist; `lifecycle.test.ts` drives both ends with this exact name.
+ */
+export const READINESS_BUDGET_HEADER = 'x-station-readiness-budget-ms';
+
+/**
+ * Most of the caller's deadline, leaving the rest for the proxy to write its
+ * answer and the answer to arrive before the caller aborts.
+ */
+export function readinessBudgetForProbeTimeout(timeoutMs: number): number {
+  return Math.max(1, Math.floor(timeoutMs * 0.8));
+}
+
+/**
  * Ask the UI child to attest that its exact sibling backend is ready. The UI
  * owns the per-boot credential and compares the backend boot triple before it
  * returns `ready`, so service/status callers do not need to persist or recover
@@ -3346,10 +3436,30 @@ async function probeBackendReadinessOnce(
     () => controller.abort(),
     Math.max(1, Math.floor(timeoutMs)),
   );
+  // #263: tell the UI proxy how long this caller will wait, so its live
+  // identity check can use most of it and still answer inside it. Without
+  // this the supervisor's 45s confirmation probe got the proxy's fixed budget
+  // and could never observe a backend that answers in, say, 20s.
+  const budgetHeaders = {
+    ...headers,
+    [READINESS_BUDGET_HEADER]: String(
+      readinessBudgetForProbeTimeout(timeoutMs),
+    ),
+  };
   try {
-    const response = await requestIdentity(url, controller.signal, headers);
+    const response = await requestIdentity(
+      url,
+      controller.signal,
+      budgetHeaders,
+    );
     if (response.status === 401 || response.status === 403)
       return 'http-auth-refused';
+    // A 503 `{ ready: false, status: 'degraded' }` (#263: the backend accepted
+    // the connection but did not confirm its identity in time) deliberately
+    // stays 'unreachable'. That outcome is defined as "no answer, and not
+    // death evidence", which is exactly what degraded is, and the supervisor
+    // already decides slow-vs-dead from the socket for it. It must not become
+    // 'ok': a wedged event loop is degraded too.
     if (!response.ok) return 'unreachable';
     const readiness = (await response.json()) as {
       ready?: unknown;

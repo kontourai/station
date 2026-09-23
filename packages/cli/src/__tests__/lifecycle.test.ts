@@ -2523,6 +2523,64 @@ describe('lifecycle instance state', () => {
     });
   });
 
+  it('#263: states its deadline to the readiness proxy and keeps a degraded answer out of ok', async () => {
+    ensureDir(TEST_CWD);
+    writeInstanceState({
+      bootId: '11111111-1111-4111-8111-111111111111',
+      build: {
+        branch: 'main',
+        builtAt: '2026-08-03T00:00:00.000Z',
+        sha: 'a'.repeat(40),
+      },
+      instanceName: 'degraded-probe',
+      serverPid: process.pid,
+      serverPort: 3252,
+      uiPid: process.pid,
+      uiPort: 5284,
+    });
+    const readinessHeaders: Array<Record<string, string>> = [];
+    const fetchMock = vi.fn(
+      (url: string | URL | Request, init?: RequestInit) => {
+        const pathname = new URL(String(url)).pathname;
+        if (pathname === '/api/system/readiness') {
+          readinessHeaders.push(init?.headers as Record<string, string>);
+          return Promise.resolve(
+            new Response(JSON.stringify({ ready: false, status: 'degraded' }), {
+              status: 503,
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              instanceId: 'degraded-probe',
+              sha: 'a'.repeat(40),
+              bootId: '11111111-1111-4111-8111-111111111111',
+            }),
+            { status: 200 },
+          ),
+        );
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { lifecycle } = await loadLifecycleModule();
+
+    await expect(
+      lifecycle.collectInstanceStatus('degraded-probe', {
+        probeTimeoutMs: 45_000,
+      }),
+    ).resolves.toMatchObject({
+      healthy: false,
+      server: { listening: true, probe: 'unreachable', reachable: false },
+      ui: { probe: 'ok', reachable: true },
+    });
+    // 80% of the supervisor's 45s confirmation budget, not the proxy's 2.5s.
+    expect(readinessHeaders).toHaveLength(1);
+    expect(readinessHeaders[0]?.['x-station-readiness-budget-ms']).toBe(
+      '36000',
+    );
+  });
+
   it('marks a port that still accepts connections as listening when probes fail', async () => {
     ensureDir(TEST_CWD);
     writeInstanceState({
@@ -4562,6 +4620,151 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     expect(identityHeaders?.['x-station-internal-tenant']).toBeUndefined();
   });
 
+  describe('#263: live readiness separates a slow backend from a down or foreign one', () => {
+    const identity = {
+      instanceId: 'phone',
+      sha: 'a'.repeat(40),
+      bootId: '11111111-1111-4111-8111-111111111111',
+    };
+    const declareReady = () => {
+      uiDir = mkdtempSync(join(tmpdir(), 'station-ui-ready-263-'));
+      writeFileSync(
+        join(uiDir, 'index.html'),
+        '<head></head><body>healthy app</body>',
+      );
+      const readinessFile = join(uiDir, 'state.json');
+      writeFileSync(
+        readinessFile,
+        JSON.stringify({ health: { status: 'ready', sha: identity.sha } }),
+        { mode: 0o600 },
+      );
+      return readinessFile;
+    };
+    const answerIdentityAfter =
+      (delayMs: number, answered = identity) =>
+      (
+        _req: import('node:http').IncomingMessage,
+        res: import('node:http').ServerResponse,
+      ) => {
+        setTimeout(() => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(answered));
+        }, delayMs);
+      };
+    const readiness = (headers: Record<string, string> = {}) =>
+      fetch(`http://127.0.0.1:${serverModule.port}/api/system/readiness`, {
+        headers,
+      });
+    const navigate = () =>
+      fetch(`http://127.0.0.1:${serverModule.port}/projects`, {
+        headers: { Accept: 'text/html' },
+      });
+
+    it('reports a backend that answers correctly in 1.2s as ready — well past the old 750ms budget', async () => {
+      const readinessFile = declareReady();
+      await startUpstream(answerIdentityAfter(1_200));
+      serverModule = await startServer({ readinessFile, identity });
+
+      // No caller budget: this is the proxy's own default, which the issue
+      // measured a healthy loaded host blowing through at 0.73s-29s.
+      const response = await readiness();
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        ready: true,
+        status: 'ready',
+      });
+    }, 15_000);
+
+    it('answers a connected backend that does not confirm identity in time with a distinct 503 degraded, and still serves the app shell', async () => {
+      const readinessFile = declareReady();
+      // Accepts the connection and never answers: the busy-host shape.
+      await startUpstream(() => {});
+      serverModule = await startServer({ readinessFile, identity });
+
+      const response = await readiness({
+        'x-station-readiness-budget-ms': '300',
+      });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({
+        ready: false,
+        status: 'degraded',
+      });
+      expect(upstreamHits).toEqual(['/api/system/identity']);
+
+      // The navigation gate is the one consumer that treats degraded as
+      // usable: a slow host must not replace the whole UI with the recovery
+      // document that means "down or not ours".
+      const page = await navigate();
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain('healthy app');
+      expect(html).not.toContain('Station is recovering');
+    }, 15_000);
+
+    it('keeps a refused connection unavailable, with the recovery document for navigation', async () => {
+      const readinessFile = declareReady();
+      // Bind and close to obtain a port that refuses connections.
+      await startUpstream(() => {});
+      await new Promise<void>((r) => upstream!.close(() => r()));
+      upstream = null;
+      serverModule = await startServer({ readinessFile, identity });
+
+      const response = await readiness({
+        'x-station-readiness-budget-ms': '5000',
+      });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
+      const page = await navigate();
+      expect(page.status).toBe(503);
+      expect(await page.text()).toContain('Station is recovering');
+    }, 15_000);
+
+    it('fails an identity mismatch closed at once, without waiting on the budget', async () => {
+      const readinessFile = declareReady();
+      await startUpstream(
+        answerIdentityAfter(0, {
+          ...identity,
+          bootId: '22222222-2222-4222-8222-222222222222',
+        }),
+      );
+      serverModule = await startServer({ readinessFile, identity });
+
+      const started = Date.now();
+      const response = await readiness({
+        'x-station-readiness-budget-ms': '30000',
+      });
+      // Decided by the answer, not the 30s budget.
+      expect(Date.now() - started).toBeLessThan(10_000);
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
+      const page = await navigate();
+      expect(page.status).toBe(503);
+      expect(await page.text()).toContain('Station is recovering');
+    }, 15_000);
+
+    it("honours a caller's longer budget, so a long confirmation probe can observe a slow backend", async () => {
+      const readinessFile = declareReady();
+      // Slower than the 2.5s default, inside the caller's stated 6s.
+      await startUpstream(answerIdentityAfter(3_500));
+      serverModule = await startServer({ readinessFile, identity });
+
+      const response = await readiness({
+        'x-station-readiness-budget-ms': '6000',
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        ready: true,
+        status: 'ready',
+      });
+    }, 15_000);
+  });
+
   it('station#3752: forwards the BROWSER Host as its own attestation, discarding any client-supplied copy', async () => {
     uiDir = mkdtempSync(join(tmpdir(), 'station-ui-forwarded-host-'));
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
@@ -5353,6 +5556,11 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       // `Function.prototype.toString` into this child. An imported constant would
       // be `undefined` here, and every other test in this file would still pass.
       if (req.url === '/api/system/identity') {
+        // #263: the readiness check's own identity call (the proxy's `local`
+        // attestation) is held open instead, so the degraded answer below is
+        // produced by the serialized handler too — its budget constants are
+        // same-function locals for the same reason as the envelope.
+        if (req.headers['x-station-proxy-caller'] === 'local') return;
         req.socket.destroy();
         return;
       }
@@ -5387,14 +5595,14 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
     });
 
     try {
-      const request = (path: string) =>
+      const request = (path: string, headers: Record<string, string> = {}) =>
         new Promise<{ body: string; status: number }>((resolve, reject) => {
           const client = nodeRequest(
             {
               host: '127.0.0.1',
               port: uiPort,
               path,
-              headers: { Host: 'alpha.example.test' },
+              headers: { Host: 'alpha.example.test', ...headers },
             },
             (response) => {
               let body = '';
@@ -5441,6 +5649,16 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       expect(JSON.parse(unavailableRes.body)).toEqual({
         ready: false,
         status: 'unavailable',
+      });
+      expect(stderr).toBe('');
+
+      const degradedRes = await request('/api/system/readiness', {
+        'x-station-readiness-budget-ms': '300',
+      });
+      expect(degradedRes.status).toBe(503);
+      expect(JSON.parse(degradedRes.body)).toEqual({
+        ready: false,
+        status: 'degraded',
       });
       expect(stderr).toBe('');
     } finally {
