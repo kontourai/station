@@ -68,6 +68,10 @@ const TYPECHECK_INPUT_FILES = Object.freeze([
   // verdict without changing a source file.
   'scripts/typecheck-aggregate.mjs',
   'scripts/lib/npm-lane-aggregate.mjs',
+  // Every lane compiles through the slot runner, which also chooses the
+  // incremental flags.
+  'scripts/tsc-slot.mjs',
+  'scripts/lib/typecheck-host-slots.mjs',
 ]);
 
 export const TYPECHECK_INPUT_PREFIXES = Object.freeze(['patches/']);
