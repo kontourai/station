@@ -130,11 +130,18 @@ test('explicit account approval persists only the provider-verified candidate', 
     candidate: pending.accountCandidate,
     sessionId: 'session-123',
   });
+  expect(
+    service.approvedAccountBindingForRequest(pending.requestId),
+  ).toBeUndefined();
   service.confirmRequest(
     pending.requestId,
     { kind: 'presented-credential' },
     { ...approver, kind: 'account' },
   );
+  expect(service.approvedAccountBindingForRequest(pending.requestId)).toEqual({
+    candidate: pending.accountCandidate,
+    sessionId: 'session-123',
+  });
   const result = service.exchange({
     offerId: offer.offerId,
     proof: offer.challenge,

@@ -101,6 +101,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'published only from the `@kontourai/station-sdk/setup-imports-query` subpath to keep the capability-gated setup-import workflow out of the root entry bundle graph.',
   'secret-bindings':
     'published only from the `@kontourai/station-sdk/secret-bindings-query` subpath for the access-managed, lazy Integrations surface; deliberately excluded from the root barrel to avoid eager bytes.',
+  pluginLocalSources:
+    '#2323 S4: the operator-only local plugin source status, published only from the `@kontourai/station-sdk/plugin-local-sources-query` subpath for the lazy Plugins view; kept out of the root barrel so the app entry does not carry it.',
   'plugin-mutations':
     'implementation detail folded into plugins.ts via `export *`.',
   'plugin-queries':

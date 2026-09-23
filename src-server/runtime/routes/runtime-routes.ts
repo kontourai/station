@@ -1,6 +1,7 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -26,6 +27,11 @@ import {
   deploymentAccountPrincipal,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import {
+  RelayEnrollmentRefusal,
+  type RelayEnrollmentService,
+} from '../../services/identity/relay-enrollment-service.js';
+import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import type {
   ProjectMembershipAuthority,
@@ -43,6 +49,7 @@ export {
 
 import {
   createHash,
+  createHmac,
   randomBytes,
   randomUUID,
   timingSafeEqual,
@@ -82,6 +89,7 @@ import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -217,12 +225,17 @@ import {
 } from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
+import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
+import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
+import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
+import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
@@ -355,6 +368,7 @@ import {
 } from '../../services/flow/survey-flow-review-service.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
   PrincipalUnresolvedError,
   resolvePrincipal as resolveStationPrincipal,
 } from '../../services/identity/principal-resolver.js';
@@ -399,7 +413,9 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
@@ -566,6 +582,7 @@ export interface ConfigureRuntimeRoutesContext {
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
   applicationSessions?: ApplicationSessionService;
+  relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
@@ -708,8 +725,15 @@ interface ConfigureRuntimeRoutesResult {
   webPushService: WebPushService;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /**
+   * Where live-surface producers register (#90). Undefined on hosted or
+   * multi-tenant deployments, where the routes are not mounted at all.
+   */
+  liveSurfaceRegistry?: LiveSurfaceRegistry;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
+  /** Epic #2323 S3: stops draft watchers and removes built drafts on shutdown. */
+  pluginDraftService?: Pick<PluginDraftService, 'dispose'>;
 }
 
 /**
@@ -866,6 +890,38 @@ export {
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
 
+/**
+ * Epic #2323 S2 (owner decision: any Project member may author a plugin).
+ * The Project read guard refuses every non-GET from a deployment account
+ * that is only a member, because Project routes mutate the Project. The
+ * plugin scaffold is the one write a member may make: it writes only into
+ * the folder the Project already names, only while that folder is empty,
+ * never overwrites, and installs nothing. Matched on the exact leaf so no
+ * sibling path, trailing slash or deeper segment rides on it. The route
+ * itself still validates the slug.
+ */
+export function isProjectMemberPluginScaffold(method: string, path: string) {
+  return (
+    method === 'POST' && /^\/api\/projects\/[^/]+\/plugin-scaffold$/.test(path)
+  );
+}
+
+/**
+ * Epic #2323 S3 (owner decision: any Project member may author and preview a
+ * plugin draft). The Project read guard refuses every non-GET from a
+ * deployment account that is only a member, because project routes mutate the
+ * Project. Starting a draft lease does not: it reads the Project folder and
+ * writes a build into host-owned storage, never into the Project. It is the
+ * one POST a member may make here, matched exactly so no sibling leaf can
+ * ride on it.
+ */
+export function isProjectMemberDraftLease(method: string, path: string) {
+  return (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
+  );
+}
+
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
@@ -873,7 +929,9 @@ export function configureRuntimeRoutes(
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
+  let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
+  let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   let browserService: BrowserService | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
   const runtimeSecurity = {
@@ -900,6 +958,12 @@ export function configureRuntimeRoutes(
           : undefined,
     resolveCredentialDeviceId: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.id,
+    // #2323 S5: person-only plugin lifecycle routes refuse delegation grants.
+    resolveCredentialDeviceKind: (credential: string) => {
+      const kind =
+        context.environmentSecurityService.identifyDevice(credential)?.kind;
+      return kind === 'delegation' || kind === 'device' ? kind : undefined;
+    },
     resolvePairingSource: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.source,
     resolveCredentialLocality: (credential: string) =>
@@ -1388,6 +1452,7 @@ export function configureRuntimeRoutes(
       resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
         .resolve,
       accountAuthentication: context.deploymentAuthentication?.service,
+      relayEnrollment: context.relayEnrollment,
     },
   );
   // station#1423. ONE service instance for both families: the operator mints
@@ -1588,6 +1653,7 @@ export function configureRuntimeRoutes(
           context.environmentSecurityService,
         ),
       accountAuthentication: context.deploymentAuthentication?.service,
+      relayEnrollment: context.relayEnrollment,
     },
   );
 
@@ -1690,6 +1756,17 @@ export function configureRuntimeRoutes(
     ),
   );
   context.app.route('/api/users', createUserRoutes());
+  // One instance for the plugin routes (which complete proposals) and the
+  // proposal routes (which create and dismiss them). The attention
+  // projection reads the same file through its own instance; the store is
+  // stateless per call, so they agree.
+  const pluginLifecycleProposals = new PluginLifecycleProposalService(
+    context.configLoader.getProjectHomeDir(),
+  );
+  // One installation journal for the plugin routes and the source status
+  // routes below, so both read the same selections.
+  const packageMcpJournal =
+    context.orchestrationEventStore?.createPackageMcpAdmissionJournal();
   context.app.route(
     '/api/plugins',
     createPluginRoutes(
@@ -1698,8 +1775,7 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         consentChannel: context.consentChannel,
-        packageMcpJournal:
-          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        packageMcpJournal,
         registryTrustPolicyAuthority: context.orchestrationEventStore
           ? createLocalRegistryTrustPolicyAuthority(
               context.configLoader.getProjectHomeDir(),
@@ -1757,8 +1833,33 @@ export function configureRuntimeRoutes(
             }
           },
         },
+        proposals: pluginLifecycleProposals,
       },
     ),
+  );
+  // #2323 S5: agent-authored plugin lifecycle asks. Its own family, not a
+  // `/api/plugins` leaf: `DELETE /api/plugins/:name` would otherwise own
+  // any path segment a proposal route used.
+  context.app.route(
+    '/api/plugin-proposals',
+    createPluginProposalRoutes({
+      proposals: pluginLifecycleProposals,
+      pluginsDir: join(context.configLoader.getProjectHomeDir(), 'plugins'),
+      logger: context.logger,
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+    }),
+  );
+  // #2323 S4: whether a Project folder still holds an installed local
+  // plugin's code. Its own family for the same reason as the proposals.
+  context.app.route(
+    '/api/plugin-sources',
+    createPluginSourceStatusRoutes({
+      projectHomeDir: context.configLoader.getProjectHomeDir(),
+      journal: packageMcpJournal ?? null,
+      listProjects: () => context.projectService.listProjects(),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      logger: context.logger,
+    }),
   );
   context.app.route('/api/fs', createFsRoutes());
   context.app.route(
@@ -2054,6 +2155,54 @@ export function configureRuntimeRoutes(
         }),
         { isRequestPrincipalCurrent },
       ),
+    );
+  }
+  // Live surfaces (#90) stream a server-side screen (Chromium now, a device
+  // later) and accept its input: personal operator hosts only, like the
+  // device routes above. With no producer registered the routes are inert.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    const liveSurfaceCallerKey = randomBytes(32);
+    liveSurfaceRegistry = new LiveSurfaceRegistry({
+      hub: {
+        onError: (message, error) =>
+          context.logger.warn(message, {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      },
+    });
+    context.app.route(
+      '/api/live-surfaces',
+      createLiveSurfaceRoutes(liveSurfaceRegistry, {
+        isRequestPrincipalCurrent,
+        // Only a HUMAN may drive a surface over HTTP; agents claim through
+        // the registry with their verified session. In personal mode every
+        // credential — including the per-boot internal token the
+        // station-control MCP child presents — resolves to the operator's
+        // human principal, so the principal kind alone refuses nothing:
+        // refuse agent-originated credentials explicitly.
+        // TODO(#122): replace these two checks with the first-class
+        // `isAgentOriginatedRequest` once it lands.
+        resolveHumanCaller: (c) => {
+          const runtime = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          if (!runtime || runtime.kind === 'internal') return null;
+          if (
+            resolveInboundDeviceKindForRequest(c.req.raw, (credential) =>
+              context.environmentSecurityService.identifyDevice(credential),
+            ) === 'delegation'
+          )
+            return null;
+          const principal = resolveSubscriberPrincipal(c as never);
+          if (principal?.kind !== 'human') return null;
+          // The client the human acts from: the paired device, else the one
+          // credential — as an HMAC under a key minted for this boot, so the
+          // id broadcast to other viewers is not a stable digest of a secret
+          // (an unsalted hash is an offline-checkable fingerprint of it).
+          const device = runtime.deviceId
+            ? `device:${runtime.deviceId}`
+            : `credential:${createHmac('sha256', liveSurfaceCallerKey).update(runtime.credential).digest('base64url').slice(0, 22)}`;
+          return { principal: principal.id, device };
+        },
+      }),
     );
   }
   context.app.route(
@@ -3336,7 +3485,12 @@ export function configureRuntimeRoutes(
   };
   const projectReadGuard = async (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0] & {
-      req: { method: string; param(name: string): string; raw: Request };
+      req: {
+        method: string;
+        path: string;
+        param(name: string): string;
+        raw: Request;
+      };
       json: (body: unknown, status: 403 | 404) => Response;
       res: Response;
     },
@@ -3351,7 +3505,16 @@ export function configureRuntimeRoutes(
         c.req.raw,
         c.req.param('slug'),
       );
-      if (restricted && c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      if (
+        restricted &&
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        !isProjectMemberPluginScaffold(
+          c.req.method,
+          new URL(c.req.raw.url).pathname,
+        ) &&
+        !isProjectMemberDraftLease(c.req.method, c.req.path)
+      ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
           403,
@@ -3382,6 +3545,28 @@ export function configureRuntimeRoutes(
   };
   context.app.use('/api/projects/:slug', projectReadGuard);
   context.app.use('/api/projects/:slug/*', projectReadGuard);
+  // Epic #2323 S3: plugin draft preview. Personal hosts only — the draft runs
+  // in-process in a viewer's tab, which is the loopback plugin runtime, and a
+  // shared tenant host has no such runtime. Mounted behind the Project read
+  // guard above, so a deployment account must be a member of the Project.
+  if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    pluginDraftService = new PluginDraftService({
+      draftsRoot: join(
+        context.configLoader.getProjectHomeDir(),
+        'plugin-drafts',
+      ),
+      emitRebuilt: (event) =>
+        context.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, event),
+      logger: context.logger,
+    });
+    context.app.route(
+      '/api/projects',
+      createPluginDraftRoutes({
+        service: pluginDraftService,
+        resolveProjectDirectory: (slug) => resolveWorkspacePath(slug),
+      }),
+    );
+  }
   // #2061: the personal scope. Ownership comes from
   // `resolveOrchestrationRequestPrincipal` — the SAME memoized, fail-closed
   // resolver every other identity-bearing route in this file reads — so no
@@ -3516,6 +3701,15 @@ export function configureRuntimeRoutes(
         },
       },
     ),
+  );
+  // Epic #2323 S2. Mounted here, after the Project read guard above and
+  // under its `/api/projects/:slug/*` prefix, so that guard (with its one
+  // exact member exemption) and the pairing scope table both apply.
+  context.app.route(
+    '/api/projects/:slug/plugin-scaffold',
+    createPluginScaffoldRoutes(context.projectService, {
+      requestPrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    }),
   );
   context.app.route(
     '/api/providers',
@@ -4563,6 +4757,36 @@ export function configureRuntimeRoutes(
             }
           },
         }),
+      // Epic #2323 S3: a draft revision event names a Project, so it reaches
+      // only subscribers who may read that Project — the same membership
+      // check the Project read guard applies to the draft routes themselves.
+      // A caller with no deployment account is the operator or a paired
+      // device, which that guard also admits for every Project.
+      canReadPluginDraftEvent: async (data, c) => {
+        const projectSlug = (data as { projectSlug?: unknown } | undefined)
+          ?.projectSlug;
+        if (typeof projectSlug !== 'string' || !projectSlug) return false;
+        try {
+          const request = c.req.raw;
+          // The membership authority compares the account against this
+          // request's resolved principal, which the /api/projects/* guards
+          // record before they run. /events has no such guard, so record
+          // it here; without it every member was refused (S3 verifier G4).
+          roomRequestPrincipals.set(
+            request,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const authority = await authenticatedProjectMember(request);
+          if (!authority) return true;
+          await context.projectMembership!.requireProjectRead(
+            projectSlug,
+            authority,
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      },
       canReadNotificationEvent: (_event, data, authority) => {
         const record = data as Record<string, unknown> | undefined;
         const sessionId = notificationSessionIdentity(record);
@@ -4657,6 +4881,21 @@ export function configureRuntimeRoutes(
     '/api/attention',
     createAttentionRoutes(attentionProjection, {
       readAuthorityForRequest,
+      // #2323 S5 review M6: plugin proposals are addressed to the operator,
+      // decided by the same resolver `/api/plugin-proposals` reads.
+      // Station's own agents resolve as the operator too; they see none
+      // (#2323 S5 delta review).
+      viewerIsOperator: (c) => {
+        if (isNonPersonCaller(c.req.raw)) return false;
+        try {
+          return (
+            resolveOrchestrationRequestPrincipal(c).id ===
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          );
+        } catch {
+          return false;
+        }
+      },
       // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
       // SAME two gates the middleware applies to an approve/deny request, in
       // the same order: the pairing family's authority boundary
@@ -4754,7 +4993,9 @@ export function configureRuntimeRoutes(
     webPushService,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    liveSurfaceRegistry,
     browserService,
+    ...(pluginDraftService ? { pluginDraftService } : {}),
   };
 }
 
@@ -5287,6 +5528,7 @@ export function configureDevicePairingPublicRoutes(
      */
     resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
     accountAuthentication?: DeploymentAuthenticationService;
+    relayEnrollment?: RelayEnrollmentService;
   } = {},
 ): void {
   if (options.authFailureAudit && !options.authFailureSourceId) {
@@ -5444,13 +5686,31 @@ export function configureDevicePairingPublicRoutes(
     if (!timingSafeSecretEqual(body.secret, localGrantSecret))
       return c.json({ error: 'local_grant_forbidden' }, 403);
     try {
-      if (body.action === 'list')
+      if (body.action === 'list') {
+        try {
+          await options.relayEnrollment?.cleanupExpired();
+        } catch {
+          return c.json({ error: 'pairing_unavailable' }, 503);
+        }
         return c.json({ requests: pairing.listRequests() });
+      }
       const requestId = body.requestId as string;
-      const result =
-        body.action === 'approve'
-          ? pairing.confirmRequest(requestId, { kind: 'local-grant' })
-          : pairing.denyRequest(requestId);
+      let result: DevicePairingRequest;
+      if (body.action === 'approve') {
+        result = pairing.confirmRequest(requestId, { kind: 'local-grant' });
+      } else if (pairing.isRelayEnrollmentRequest(requestId)) {
+        if (!options.relayEnrollment)
+          return c.json({ error: 'person_binding_unavailable' }, 409);
+        const request = pairing
+          .listRequests()
+          .find((item) => item.requestId === requestId);
+        if (!request) throw new DevicePairingError('request_not_found');
+        if (!(await options.relayEnrollment.denyRequest(requestId)))
+          throw new DevicePairingError('request_not_found');
+        result = { ...request, status: 'denied' };
+      } else {
+        result = pairing.denyRequest(requestId);
+      }
       options.audit?.({
         event:
           body.action === 'approve'
@@ -6110,6 +6370,58 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'origin_forbidden' }, 403);
     }
     try {
+      // An enrollment-owned offer can only be finalized through the
+      // key-bound relay activation protocol. The legacy public exchange has
+      // no attempt proof or delivery ACK, so it must never mint this Device.
+      if (pairing.isRelayEnrollmentRequest(body.requestId)) {
+        deviceSessionExchanges.add(1, {
+          outcome: 'denied',
+          reason: 'relay_enrollment_finalize_required',
+        });
+        failureLimiter.finalize(admission.admission, 'pending');
+        return c.json({ error: 'relay_enrollment_finalize_required' }, 409);
+      }
+      // Approval binds an account candidate to the Device, but the provider
+      // session may be revoked before the requester exchanges its credential.
+      // Recheck at the minting boundary so a stale approved request cannot
+      // create an account-bound Device after logout or provider revocation.
+      const candidate = pairing.approvedAccountBindingForRequest(
+        body.requestId,
+      );
+      if (candidate) {
+        const authentication = options.accountAuthentication;
+        const verified = authentication
+          ? await authentication.verifySessionReference(
+              candidate.sessionId,
+              c.req.raw.signal,
+            )
+          : { kind: 'unavailable' as const };
+        const currentCandidate = pairing.approvedAccountBindingForRequest(
+          body.requestId,
+        );
+        if (
+          verified.kind !== 'authenticated' ||
+          verified.issuer !== candidate.candidate.issuer ||
+          verified.session.subject !== candidate.candidate.subject ||
+          authentication?.describe().issuer !== candidate.candidate.issuer ||
+          currentCandidate === undefined ||
+          currentCandidate.sessionId !== candidate.sessionId ||
+          currentCandidate.candidate.issuer !== candidate.candidate.issuer ||
+          currentCandidate.candidate.subject !== candidate.candidate.subject
+        ) {
+          deviceSessionExchanges.add(1, {
+            outcome: 'denied',
+            reason: 'account_session_unavailable',
+          });
+          // A revoked or changed account session is a failed credential
+          // exchange, so it consumes the existing source failure budget.
+          failureLimiter.finalize(admission.admission, 'failure');
+          return c.json({ error: 'person_binding_unavailable' }, 409);
+        }
+      }
+      // Provider adapters can ignore AbortSignal and finish after the caller
+      // disconnects. Never mint a Device that the requester cannot receive.
+      c.req.raw.signal.throwIfAborted();
       const { replacement, ...result } = pairing.exchange({
         offerId: body.offerId,
         proof: body.proof,
@@ -6294,6 +6606,7 @@ export function configureDevicePairingHostRoutes(
      */
     isRequestPrincipalCurrent: (request: Request) => boolean;
     accountAuthentication?: DeploymentAuthenticationService;
+    relayEnrollment?: RelayEnrollmentService;
   },
 ): void {
   const audit = options.audit;
@@ -6366,9 +6679,14 @@ export function configureDevicePairingHostRoutes(
       );
     }
   });
-  app.get('/api/pairing/requests', (c) =>
-    c.json({ requests: pairing.listRequests() }),
-  );
+  app.get('/api/pairing/requests', async (c) => {
+    try {
+      await options.relayEnrollment?.cleanupExpired();
+    } catch {
+      return c.json({ error: 'pairing_unavailable' }, 503);
+    }
+    return c.json({ requests: pairing.listRequests() });
+  });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
     const requestId = c.req.param('requestId');
     // station#1490: the ONLY caller-identity signal this handler has. The
@@ -6393,6 +6711,7 @@ export function configureDevicePairingHostRoutes(
             kind: 'verified-ingress' | 'account';
           }
         | undefined;
+      let relayConfirmation: DevicePairingRequest | undefined;
       if (c.req.raw.body !== null) {
         const body = await readPairingOfferJson(
           c.req.raw,
@@ -6456,46 +6775,82 @@ export function configureDevicePairingHostRoutes(
           ) {
             return c.json({ error: 'approval_requires_operator' }, 403);
           }
-          const candidate = pairing.accountCandidateForRequest(requestId);
-          if (!candidate || !options.accountAuthentication) {
-            return c.json({ error: 'person_binding_unavailable' }, 409);
-          }
-          const verified =
-            await options.accountAuthentication.verifySessionReference(
-              candidate.sessionId,
-              c.req.raw.signal,
-            );
-          if (
-            verified.kind !== 'authenticated' ||
-            options.accountAuthentication.describe().issuer !==
-              candidate.candidate.issuer ||
-            verified.session.subject !== candidate.candidate.subject
-          ) {
-            return c.json({ error: 'person_binding_unavailable' }, 409);
-          }
-          if (
-            options.isApprovalCurrent?.(c.req.raw) !== true ||
-            actor.authority !== 'operator-credential' ||
-            options.verifyOperatorCredential?.(actor.credential) !== true
-          ) {
-            return c.json({ error: 'approval_requires_operator' }, 403);
-          }
-          bindingApproval = {
-            principalId: resolveStationPrincipal(
+          if (pairing.isRelayEnrollmentRequest(requestId)) {
+            if (!options.relayEnrollment)
+              return c.json({ error: 'person_binding_unavailable' }, 409);
+            const principalId = resolveStationPrincipal(
               identifyIngress(c),
               'personal',
               { verifiedOperatorCredential: true },
               undefined,
-            ).id,
-            kind: 'account',
-          };
+            ).id;
+            try {
+              relayConfirmation =
+                await options.relayEnrollment.confirmOperatorBinding({
+                  requestId,
+                  approval,
+                  principalId,
+                  signal: c.req.raw.signal,
+                  isApprovalCurrent: () =>
+                    options.isApprovalCurrent?.(c.req.raw) === true &&
+                    options.verifyOperatorCredential?.(actor.credential) ===
+                      true,
+                });
+            } catch (error) {
+              if (error instanceof RelayEnrollmentRefusal) {
+                const code = error.code;
+                const status =
+                  code === 'approval_required'
+                    ? 403
+                    : code === 'expired'
+                      ? 410
+                      : code === 'invalid'
+                        ? 400
+                        : 409;
+                return c.json({ error: `relay_enrollment_${code}` }, status);
+              }
+              throw error;
+            }
+          } else {
+            const candidate = pairing.accountCandidateForRequest(requestId);
+            if (!candidate || !options.accountAuthentication) {
+              return c.json({ error: 'person_binding_unavailable' }, 409);
+            }
+            const verified =
+              await options.accountAuthentication.verifySessionReference(
+                candidate.sessionId,
+                c.req.raw.signal,
+              );
+            if (
+              verified.kind !== 'authenticated' ||
+              options.accountAuthentication.describe().issuer !==
+                candidate.candidate.issuer ||
+              verified.session.subject !== candidate.candidate.subject
+            ) {
+              return c.json({ error: 'person_binding_unavailable' }, 409);
+            }
+            if (
+              options.isApprovalCurrent?.(c.req.raw) !== true ||
+              actor.authority !== 'operator-credential' ||
+              options.verifyOperatorCredential?.(actor.credential) !== true
+            ) {
+              return c.json({ error: 'approval_requires_operator' }, 403);
+            }
+            bindingApproval = {
+              principalId: resolveStationPrincipal(
+                identifyIngress(c),
+                'personal',
+                { verifiedOperatorCredential: true },
+                undefined,
+              ).id,
+              kind: 'account',
+            };
+          }
         }
       }
-      const request = pairing.confirmRequest(
-        requestId,
-        approval,
-        bindingApproval,
-      );
+      const request =
+        relayConfirmation ??
+        pairing.confirmRequest(requestId, approval, bindingApproval);
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'approved',
@@ -6518,7 +6873,9 @@ export function configureDevicePairingHostRoutes(
       }
       return c.json({
         ...request,
-        ...(bindingApproval ? { personBindingApproved: true } : {}),
+        ...(bindingApproval || relayConfirmation
+          ? { personBindingApproved: true }
+          : {}),
       });
     } catch (error) {
       if (
@@ -6551,9 +6908,23 @@ export function configureDevicePairingHostRoutes(
       );
     }
   });
-  app.delete('/api/pairing/requests/:requestId', (c) => {
+  app.delete('/api/pairing/requests/:requestId', async (c) => {
     try {
-      const request = pairing.denyRequest(c.req.param('requestId'));
+      const requestId = c.req.param('requestId');
+      let request: DevicePairingRequest;
+      if (pairing.isRelayEnrollmentRequest(requestId)) {
+        if (!options.relayEnrollment)
+          return c.json({ error: 'person_binding_unavailable' }, 409);
+        const pending = pairing
+          .listRequests()
+          .find((item) => item.requestId === requestId);
+        if (!pending) throw new DevicePairingError('request_not_found');
+        if (!(await options.relayEnrollment.denyRequest(requestId)))
+          throw new DevicePairingError('request_not_found');
+        request = { ...pending, status: 'denied' };
+      } else {
+        request = pairing.denyRequest(requestId);
+      }
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'denied',

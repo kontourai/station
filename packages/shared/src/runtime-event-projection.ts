@@ -94,6 +94,50 @@ export function observedAssistantMessageId(
     : null;
 }
 
+/**
+ * #2316: a request raised by a subagent rather than the main thread. Claude
+ * stamps the SDK's agent id on it (`claude-adapter.ts` `canUseTool`).
+ */
+export function isSubagentApprovalRequest(
+  payload: Record<string, unknown> | undefined,
+): boolean {
+  return typeof payload?.agentId === 'string' && payload.agentId.length > 0;
+}
+
+/**
+ * #2316: whether an event on a request's thread retires that request while it
+ * is still open — the call it gated can no longer run, so answering it must
+ * not be offered. The projection retires bound cards with this and the UI's
+ * pending-approvals strip applies it too, so no consumer disagrees.
+ *
+ * A session exit or a turn abort retires everything — including a boot
+ * recovery's `turn.aborted` (`recoveryTerminal`), after which no process
+ * holds the request at all, and an interrupt, on which the Claude adapter
+ * settles every open request anyway. Only the MAIN turn's completion spares
+ * a subagent's request: Station declares Claude's per-task stop affordance,
+ * under which a background subagent outlives the turn, so its approval can
+ * still be live; the adapter publishes its `request.resolved` when it
+ * settles it (at the latest when no subagent task is live).
+ */
+export function approvalRetiredBy(
+  method: string,
+  subagentRequest: boolean,
+): boolean {
+  if (method === 'session.exited' || method === 'turn.aborted') return true;
+  return method === 'turn.completed' && !subagentRequest;
+}
+
+/**
+ * #2316: a card whose request can no longer be answered, or was settled as
+ * cancelled: it never ran, and says so ("Cancelled") rather than reading as a
+ * call with "No result recorded".
+ */
+function retireApprovalCard(part: MessagePart): void {
+  part.needsApproval = false;
+  part.cancelled = true;
+  if (part.state === 'awaiting-approval') part.state = 'cancelled';
+}
+
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
   options: { stableIds?: boolean } = {},
@@ -123,6 +167,19 @@ export function projectRuntimeEventsToMessages(
   let turnIdentity: string | undefined;
   let turnAnchorEventId: string | undefined;
   let approvalTargets = new Map<string, MessagePart>();
+  // #2316: every card still awaiting its answer, across turns, keyed by the
+  // requesting thread AND request id (a lineage window folds several
+  // sessions, whose request ids are only unique per session).
+  const openApprovalParts = new Map<
+    string,
+    { part: MessagePart; subagent: boolean }
+  >();
+  // #2316: the session whose `tool.started` created each tool part. Call ids
+  // are only unique per session, and a lineage window folds several, so an
+  // exact-id approval binds only a part from the request's own session.
+  const toolPartThread = new WeakMap<MessagePart, string>();
+  const approvalKey = (threadId: string, requestId: string) =>
+    `${threadId}\u0000${requestId}`;
   /**
    * station#1410: adopt a terminal event's turn id ONLY when it is plausibly
    * about the content we have buffered.
@@ -365,6 +422,18 @@ export function projectRuntimeEventsToMessages(
   };
 
   for (const ev of events) {
+    if (
+      ev.method === 'turn.completed' ||
+      ev.method === 'turn.aborted' ||
+      ev.method === 'session.exited'
+    ) {
+      for (const [key, open] of openApprovalParts) {
+        if (open.part.approvalThreadId !== ev.threadId) continue;
+        if (!approvalRetiredBy(ev.method, open.subagent)) continue;
+        retireApprovalCard(open.part);
+        openApprovalParts.delete(key);
+      }
+    }
     switch (ev.method) {
       case 'turn.started': {
         if (ev.inputKind === 'steer') {
@@ -538,6 +607,7 @@ export function projectRuntimeEventsToMessages(
           state: 'call',
         };
         toolsByCallId.set(ev.toolCallId, part);
+        toolPartThread.set(part, ev.threadId);
         parts.push(part);
         break;
       }
@@ -758,32 +828,65 @@ export function projectRuntimeEventsToMessages(
       case 'request.opened': {
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
-        const target = [...toolsByCallId.values()]
-          .reverse()
-          .find(
-            (part) =>
-              (typeof toolCallId === 'string' &&
-                part.toolCallId === toolCallId) ||
-              (typeof toolName === 'string' && part.toolName === toolName),
-          );
+        // #2316: a request id is answerable only by the session that minted
+        // it. A conversation window folds every session in its lineage, and a
+        // name-only match could bind one session's open request onto another
+        // session's same-named call (or onto the wrong one of two parallel
+        // same-named calls) — a card whose buttons answered a request other
+        // than the one it sat beside. Bind by the exact call id when the
+        // adapter reports one. The name fallback, for adapters that report no
+        // id, is confined to the thread whose turn is being folded and never
+        // takes a call already awaiting a different request.
+        const exact =
+          typeof toolCallId === 'string'
+            ? toolsByCallId.get(toolCallId)
+            : undefined;
+        const target =
+          typeof toolCallId === 'string'
+            ? exact &&
+              (toolPartThread.get(exact) ?? ev.threadId) === ev.threadId
+              ? exact
+              : undefined
+            : typeof toolName === 'string' &&
+                (turnSessionId === undefined || turnSessionId === ev.threadId)
+              ? [...toolsByCallId.values()]
+                  .reverse()
+                  .find(
+                    (part) =>
+                      part.toolName === toolName &&
+                      !(
+                        part.needsApproval === true &&
+                        part.approvalId !== undefined &&
+                        part.approvalId !== ev.requestId
+                      ),
+                  )
+              : undefined;
         if (target) {
           target.needsApproval = true;
           target.approvalId = ev.requestId;
+          target.approvalThreadId = ev.threadId;
+          target.approvalEventId = ev.eventId;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
+          openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
+            part: target,
+            subagent: isSubagentApprovalRequest(ev.payload),
+          });
         }
         break;
       }
       case 'request.resolved': {
-        const target = approvalTargets.get(ev.requestId);
+        const key = approvalKey(ev.threadId, ev.requestId);
+        // The request's own card first — its turn may already be emitted.
+        const target =
+          openApprovalParts.get(key)?.part ?? approvalTargets.get(ev.requestId);
+        openApprovalParts.delete(key);
         if (target) {
           target.needsApproval = false;
-          target.approvalStatus =
-            ev.status === 'approved'
-              ? 'user-approved'
-              : ev.status === 'denied'
-                ? 'user-denied'
-                : undefined;
+          if (ev.status === 'approved') target.approvalStatus = 'user-approved';
+          else if (ev.status === 'denied')
+            target.approvalStatus = 'user-denied';
+          else retireApprovalCard(target);
         }
         break;
       }

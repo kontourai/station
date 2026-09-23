@@ -1,0 +1,106 @@
+/*
+ * Live surface chrome (#90). Co-located with the component so it rides the
+ * lazy pane chunk that mounts it, not the eager `index.css`.
+ */
+
+.live-surface {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  height: 100%;
+  min-height: 0;
+}
+
+.live-surface__toolbar {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.live-surface__controller {
+  flex: 1 1 12rem;
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.live-surface__controller--agent {
+  color: var(--accent-warning, var(--text-primary));
+}
+
+/* Direct children inherit index.css's shared mobile 44px/wrap floor. */
+.live-surface__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.live-surface__claim {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.live-surface__notice {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.live-surface__stage {
+  background: var(--bg-secondary, #111);
+  border-radius: var(--radius-md, 6px);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.live-surface__stage:has(.live-surface__keyboard:focus-visible) {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.live-surface__canvas {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  touch-action: none;
+  width: 100%;
+}
+
+/*
+ * Focus target for keys, text and IME; invisible, and never takes pointers.
+ * Its own outline is NOT suppressed (it is simply not visible at opacity 0);
+ * the visible focus ring is drawn on the stage by the :has(:focus-visible)
+ * rule above, around the surface the keys go to.
+ */
+.live-surface__keyboard {
+  background: transparent;
+  border: 0;
+  caret-color: transparent;
+  color: transparent;
+  height: 1px;
+  left: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0;
+  pointer-events: none;
+  position: absolute;
+  resize: none;
+  top: 0;
+  width: 1px;
+}
+
+.live-surface__status {
+  /* Remote pixels vary independently of the app theme; keep this caption
+     readable over any image instead of inheriting a theme overlay. */
+  background: rgb(0 0 0 / 0.6);
+  border-radius: var(--radius-sm, 4px);
+  bottom: var(--space-2, 8px);
+  color: #fff;
+  font-size: 0.8125rem;
+  left: var(--space-2, 8px);
+  margin: 0;
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  position: absolute;
+}

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 type ApprovalToastOptions = {
   toolName: string;
   toolPreview?: string;
-  actions: Array<{ label: string }>;
+  actions: Array<{ label: string; onClick: () => void }>;
 };
 
 const showToolApproval = vi.fn((_options: ApprovalToastOptions) => 'toast-1');
@@ -21,6 +21,7 @@ vi.mock('../../../contexts/active-chats-store', () => ({
 }));
 
 const { handleRequestOpenedEvent } = await import('../approvalHandlers');
+const { resolveOrchestrationRequest } = await import('@kontourai/station-sdk');
 
 function requestOpened(payload: Record<string, unknown> | undefined) {
   return {
@@ -202,4 +203,38 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     expect(approvalToast().toolPreview).toBeUndefined();
   });
+});
+
+describe('#2316: the toast answers the exact prompt it shows', () => {
+  beforeEach(() => {
+    showToolApproval.mockClear();
+    vi.mocked(resolveOrchestrationRequest).mockClear();
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+    });
+  });
+
+  test.each([
+    [0, 'accept'],
+    [1, 'acceptForSession'],
+    [2, 'decline'],
+  ] as const)(
+    'action %i sends %s bound to the request event id',
+    (index, decision) => {
+      handleRequestOpenedEvent(
+        'http://localhost:1',
+        requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
+      );
+      approvalToast().actions[index]?.onClick();
+      expect(resolveOrchestrationRequest).toHaveBeenCalledWith({
+        apiBase: 'http://localhost:1',
+        threadId: 'thread-1',
+        requestId: 'req-1',
+        expectedRequestEventId: 'evt-1',
+        decision,
+      });
+    },
+  );
 });

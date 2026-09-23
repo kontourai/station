@@ -1,5 +1,14 @@
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  registerPluginValidateRoutes,
+  validatePluginSource,
+} from '../../routes/plugins/plugin-validate-routes.js';
 
 /**
  * archive#167 Wave 3: characterization tests for `station-control-platform-tools.ts`'s
@@ -372,9 +381,364 @@ describe('station-control platform tools (characterization)', () => {
     const payload = JSON.parse(result.content[0].text);
     expect(payload.installed).toBe(false);
     expect(payload.reason).toBe('operator-approval-required');
-    expect(payload.message).toContain('Plugins page');
-    expect(payload.message).toContain('station plugin install');
+    // #2323 S5: it names the tool that can act, which proposes.
+    expect(payload.message).toContain('propose_plugin_install');
     // The route is never reached: nothing to refuse, nothing to roll back.
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * #2323 S5. The three proposing tools make exactly one request, to the
+   * proposal route, and none to a plugin lifecycle route. Driven end to end
+   * through the real auth boundary, so the proposal's `principal: 'agent'`
+   * is what the boundary derived from station-control's own headers.
+   */
+  describe('proposing tools (#2323 S5)', () => {
+    async function withProposalServer(
+      run: (ctx: {
+        root: string;
+        pluginsDir: string;
+        proposals: import('../../services/plugins/plugin-lifecycle-proposals.js').PluginLifecycleProposalService;
+      }) => Promise<void>,
+    ) {
+      const root = mkdtempSync(join(tmpdir(), 'station-s5-propose-tool-'));
+      try {
+        const home = join(root, 'home');
+        const pluginsDir = join(home, 'plugins');
+        mkdirSync(join(pluginsDir, 'installed-plugin'), { recursive: true });
+        writeFileSync(
+          join(pluginsDir, 'installed-plugin', 'plugin.json'),
+          JSON.stringify({ name: 'installed-plugin', version: '1.0.0' }),
+        );
+        const { configureRuntimeHttp } = await import(
+          '../../runtime/bootstrap/runtime-http.js'
+        );
+        const { PluginLifecycleProposalService } = await import(
+          '../../services/plugins/plugin-lifecycle-proposals.js'
+        );
+        const { createPluginProposalRoutes } = await import(
+          '../../routes/plugins/plugin-proposal-routes.js'
+        );
+        const { LOCAL_OPERATOR_PRINCIPAL_ID } = await import(
+          '../../services/identity/principal-resolver.js'
+        );
+        const noop = () => {};
+        const logger = {
+          info: noop,
+          warn: noop,
+          error: noop,
+          debug: noop,
+          trace: noop,
+          fatal: noop,
+          child() {
+            return this;
+          },
+          setLevel: noop,
+          getLevel: () => 'info' as const,
+        };
+        const app = new Hono();
+        configureRuntimeHttp({
+          app: app as never,
+          logger,
+          eventBus: { emit: noop },
+          security: {
+            verifyCredential: () => false,
+            resolveGrantedScope: () => undefined,
+            allowedOrigins: [],
+          },
+        } as never);
+        const proposals = new PluginLifecycleProposalService(home);
+        // A request to any other route (a lifecycle route, say) answers in
+        // JSON, so a tool that reached one fails on WHICH path it asked for,
+        // not on a parse error.
+        app.notFound((c) =>
+          c.json({ success: false, error: 'not mounted in this test' }, 404),
+        );
+        app.route(
+          '/api/plugin-proposals',
+          createPluginProposalRoutes({
+            proposals,
+            pluginsDir,
+            logger,
+            // station-control's internal caller resolves as the operator,
+            // and is still answered as an agent (delta review HIGH).
+            resolvePrincipal: () => ({
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              kind: 'human',
+              display: 'Operator',
+            }),
+          }),
+        );
+        fetchMock.mockImplementation(async (input, init) => {
+          const url = new URL(String(input));
+          expect(url.origin).toBe(API_BASE);
+          return app.request(
+            `${url.pathname}${url.search}`,
+            init as RequestInit,
+            {
+              incoming: { socket: { remoteAddress: '127.0.0.1' } },
+            } as never,
+          );
+        });
+        await run({ root, pluginsDir, proposals });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+
+    const requestedPaths = () =>
+      fetchMock.mock.calls.map(([input, init]) => [
+        (init as RequestInit | undefined)?.method ?? 'GET',
+        new URL(String(input)).pathname,
+      ]);
+
+    test('propose_plugin_install records an install proposal and installs nothing', async () => {
+      await withProposalServer(async ({ root, proposals }) => {
+        const source = join(root, 'my-pulse');
+        mkdirSync(source);
+        writeFileSync(
+          join(source, 'plugin.json'),
+          JSON.stringify({ name: 'my-pulse', version: '1.0.0' }),
+        );
+        const tools = await registerTools();
+
+        const result = await tools.propose_plugin_install({
+          source: `  ${source} `,
+          rationale: 'Adds the pulse pane you asked for.',
+          _sourceContext: { agentSlug: 'station', conversationId: 'conv-9' },
+        });
+
+        const payload = JSON.parse(result.content[0].text);
+        expect(requestedPaths()).toEqual([['POST', '/api/plugin-proposals']]);
+        // The agent is answered with the id and status alone (delta review
+        // HIGH); what was recorded is read from the store.
+        expect(payload).toMatchObject({
+          installed: false,
+          success: true,
+          deduplicated: false,
+        });
+        expect(payload.proposal).toStrictEqual({
+          id: expect.any(String),
+          status: 'open',
+        });
+        expect(proposals.get(payload.proposal.id)).toMatchObject({
+          kind: 'install',
+          source,
+          status: 'open',
+          author: {
+            principal: 'agent',
+            agentSlug: 'station',
+            conversationId: 'conv-9',
+          },
+        });
+        expect(payload.message).toMatch(/nothing was changed/);
+        expect(proposals.listOpen()).toHaveLength(1);
+
+        // Asking twice is one ask.
+        const again = JSON.parse(
+          (
+            await tools.propose_plugin_install({
+              source,
+              rationale: 'Again.',
+            })
+          ).content[0].text,
+        );
+        expect(again.deduplicated).toBe(true);
+        expect(proposals.listOpen()).toHaveLength(1);
+      });
+    });
+
+    test('update_plugin and remove_plugin record proposals and call no lifecycle route', async () => {
+      await withProposalServer(async ({ proposals }) => {
+        const tools = await registerTools();
+
+        const update = JSON.parse(
+          (
+            await tools.update_plugin({
+              name: 'installed-plugin',
+              rationale: 'v2 fixes the crash.',
+            })
+          ).content[0].text,
+        );
+        const remove = JSON.parse(
+          (await tools.remove_plugin({ name: 'installed-plugin' })).content[0]
+            .text,
+        );
+
+        expect(requestedPaths()).toEqual([
+          ['POST', '/api/plugin-proposals'],
+          ['POST', '/api/plugin-proposals'],
+        ]);
+        expect(update).toMatchObject({ updated: false, success: true });
+        expect(remove).toMatchObject({ removed: false, success: true });
+        expect(proposals.get(update.proposal.id)).toMatchObject({
+          kind: 'update',
+          pluginName: 'installed-plugin',
+        });
+        expect(proposals.get(remove.proposal.id)).toMatchObject({
+          kind: 'remove',
+          pluginName: 'installed-plugin',
+          rationale: 'An agent asked to remove this plugin.',
+        });
+        expect(
+          proposals
+            .listOpen()
+            .map((entry) => entry.kind)
+            .sort(),
+        ).toEqual(['remove', 'update']);
+      });
+    });
+
+    test('a proposal for a plugin that is not installed relays the route refusal', async () => {
+      await withProposalServer(async ({ proposals }) => {
+        const tools = await registerTools();
+        const payload = JSON.parse(
+          (await tools.remove_plugin({ name: 'not-installed' })).content[0]
+            .text,
+        );
+        expect(payload).toMatchObject({
+          removed: false,
+          success: false,
+          code: 'plugin-not-installed',
+        });
+        expect(proposals.listOpen()).toEqual([]);
+      });
+    });
+  });
+
+  /**
+   * #2323 S1. The tool is driven end to end: its handler, the station-control
+   * HTTP client, and the real `/api/plugins/validate` route mounted where
+   * `plugins.ts` mounts it. Only the network hop is replaced, by handing the
+   * request to that Hono app.
+   */
+  test('validate_plugin refuses a remote, network or relative source with the route’s own result, making no request', async () => {
+    const tools = await registerTools();
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-refuse-'));
+    try {
+      const home = join(root, 'home');
+      mkdirSync(join(home, 'plugins'), { recursive: true });
+      const deps = {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir: join(home, 'plugins'),
+        projectHomeDir: home,
+      };
+      for (const [source, code] of [
+        ['https://example.invalid/owner/plugin.git', 'remote-source-refused'],
+        ['git@example.invalid:owner/plugin.git', 'remote-source-refused'],
+        ['\\\\attacker\\share\\plugin', 'network-path-refused'],
+        ['/net/attacker/plugin', 'network-path-refused'],
+        ['./my-plugin', 'source-not-absolute'],
+      ] as const) {
+        const payload = JSON.parse(
+          (await tools.validate_plugin({ source })).content[0].text,
+        );
+        // Same codes and the same shape as the route, not a tool dialect.
+        expect(payload, source).toEqual(
+          await validatePluginSource(source, deps),
+        );
+        expect(payload.diagnostics, source).toEqual([
+          expect.objectContaining({ code }),
+        ]);
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('validate_plugin trims a padded source, answering exactly as the HTTP route does', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-trim-'));
+    try {
+      const home = join(root, 'home');
+      mkdirSync(join(home, 'plugins'), { recursive: true });
+      const plugins = new Hono();
+      registerPluginValidateRoutes(plugins, {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir: join(home, 'plugins'),
+        projectHomeDir: home,
+      });
+      const app = new Hono().route('/api/plugins', plugins);
+      const tools = await registerTools();
+      for (const source of [
+        '  https://example.invalid/owner/plugin.git  ',
+        '\t/net/attacker/plugin\n',
+        '  ./my-plugin ',
+      ]) {
+        const viaTool = JSON.parse(
+          (await tools.validate_plugin({ source })).content[0].text,
+        );
+        const viaRoute = await (
+          await app.request('/api/plugins/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source }),
+          })
+        ).json();
+        expect(viaTool, JSON.stringify(source)).toEqual(viaRoute);
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('validate_plugin reaches the validate route and relays its diagnostics', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-tool-'));
+    try {
+      const home = join(root, 'home');
+      const pluginsDir = join(home, 'plugins');
+      mkdirSync(pluginsDir, { recursive: true });
+      const source = join(root, 'author', 'tool-pulse');
+      mkdirSync(join(source, 'src'), { recursive: true });
+      writeFileSync(
+        join(source, 'plugin.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'tool-pulse',
+          version: '1.0.0',
+          extensions: {
+            'io.kontourai.station': {
+              schemaVersion: '1.0',
+              // Missing: the tool must relay the route's refusal.
+              entrypoint: './src/missing.tsx',
+            },
+          },
+        }),
+      );
+      const plugins = new Hono();
+      registerPluginValidateRoutes(plugins, {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir,
+        projectHomeDir: home,
+      });
+      const app = new Hono().route('/api/plugins', plugins);
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = new URL(String(input));
+        expect(url.origin).toBe(API_BASE);
+        return app.request(url.pathname, init as RequestInit);
+      });
+      const tools = await registerTools();
+
+      const result = await tools.validate_plugin({ source });
+
+      const payload = JSON.parse(result.content[0].text);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `${API_BASE}/api/plugins/validate`,
+      );
+      expect(payload.valid).toBe(false);
+      expect(payload.plugin).toMatchObject({ name: 'tool-pulse' });
+      expect(payload.diagnostics).toEqual([
+        expect.objectContaining({ code: 'entrypoint-missing' }),
+      ]);
+      expect(payload).not.toHaveProperty('contentDigest');
+      expect(readdirSync(pluginsDir)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

@@ -218,7 +218,7 @@ import {
 import {
   ConversationLineage,
   canResolveConversationContinuation,
-  isConversationContinuationControlEligible,
+  isConversationContinuationPending,
 } from './conversation-lineage.js';
 import {
   type ConversationOpenResolver,
@@ -2025,9 +2025,7 @@ export class OrchestrationService {
           // does not become writable merely because the selected Agent has a
           // provider today.
           canContinue: canResolveConversationContinuation(detail),
-          continuationPending:
-            detail.session.hasActiveTurn === true &&
-            isConversationContinuationControlEligible(detail),
+          continuationPending: isConversationContinuationPending(detail),
         };
       },
       reportUnavailable: (error) =>

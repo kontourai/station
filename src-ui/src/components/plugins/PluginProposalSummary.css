@@ -1,0 +1,24 @@
+/* #2323 S5: host and path on their own rows, the agent's words set apart. */
+.plugin-proposal-summary__source {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 8px;
+  margin: 4px 0;
+}
+
+.plugin-proposal-summary__source dt {
+  color: var(--text-muted);
+}
+
+.plugin-proposal-summary__source dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+}
+
+.plugin-proposal-summary__rationale {
+  margin: 4px 0 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-primary);
+  overflow-wrap: anywhere;
+}
