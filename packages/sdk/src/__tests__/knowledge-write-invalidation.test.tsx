@@ -2,10 +2,13 @@
  * @vitest-environment jsdom
  *
  * #2343 review MEDIUM-1 and HIGH-1: every knowledge-document write refreshes
- * the same views. Save and delete used to refresh only the document list, so
- * a created note never reached the namespace tree or a filtered listing, and
- * a deleted one stayed in both. Update refreshed the listings but not the
+ * the same listings. Save and delete used to refresh only the document list,
+ * so a created note never reached the namespace tree or a filtered listing,
+ * and a deleted one stayed in both. Update refreshed the listings but not the
  * document's cached body, so a reader of that body saw the pre-edit text.
+ *
+ * Bodies are handled per write: an update seeds the written body and then
+ * refetches it; a delete drops the body instead of refetching a 404.
  *
  * Driven through the real mutation hooks and the real read hooks on a real
  * QueryClient, counting fetches of each MOUNTED view: `invalidateQueries`
@@ -61,8 +64,10 @@ function mountViews() {
     }),
     { wrapper },
   );
-  return { views, wrapper };
+  return { views, wrapper, client };
 }
+
+const BODY_KEY = ['knowledge', 'doc-content', SLUG, 'doc-1'];
 
 async function settled(views: ReturnType<typeof mountViews>['views']) {
   await waitFor(() => {
@@ -82,7 +87,11 @@ function fetchCounts() {
 
 beforeEach(() => vi.clearAllMocks());
 
-const writes = [
+const writes: Array<{
+  name: string;
+  run: (wrapper: ReturnType<typeof mountViews>['wrapper']) => Promise<void>;
+  body: 'untouched' | 'removed' | 'refetched';
+}> = [
   {
     name: 'save',
     run: async (wrapper: ReturnType<typeof mountViews>['wrapper']) => {
@@ -93,7 +102,7 @@ const writes = [
         m.result.current.mutateAsync({ filename: 'a.md', content: 'x' }),
       );
     },
-    refreshesBody: false,
+    body: 'untouched',
   },
   {
     name: 'delete',
@@ -103,7 +112,7 @@ const writes = [
       });
       await act(() => m.result.current.mutateAsync('doc-1'));
     },
-    refreshesBody: true,
+    body: 'removed',
   },
   {
     name: 'bulk delete',
@@ -113,7 +122,7 @@ const writes = [
       });
       await act(() => m.result.current.mutateAsync(['doc-1', 'doc-2']));
     },
-    refreshesBody: true,
+    body: 'removed',
   },
   {
     name: 'update',
@@ -125,14 +134,14 @@ const writes = [
         m.result.current.mutateAsync({ docId: 'doc-1', content: 'edited' }),
       );
     },
-    refreshesBody: true,
+    body: 'refetched',
   },
 ];
 
 describe('a knowledge-document write refreshes every view of the namespace', () => {
   for (const write of writes) {
-    test(`${write.name} refetches the mounted tree and filtered listing${write.refreshesBody ? ', and the written body' : ''}`, async () => {
-      const { views, wrapper } = mountViews();
+    test(`${write.name} refetches the mounted tree and filtered listing; the body is ${write.body}`, async () => {
+      const { views, wrapper, client } = mountViews();
       await settled(views);
       const before = fetchCounts();
 
@@ -143,9 +152,43 @@ describe('a knowledge-document write refreshes every view of the namespace', () 
         expect(after.tree).toBe(before.tree + 1);
         expect(after.filtered).toBe(before.filtered + 1);
       });
+      // A deleted body is dropped, never refetched: that fetch is a 404.
       expect(fetchCounts().body).toBe(
-        before.body + (write.refreshesBody ? 1 : 0),
+        before.body + (write.body === 'refetched' ? 1 : 0),
       );
+      if (write.body === 'removed') {
+        expect(client.getQueryCache().find({ queryKey: BODY_KEY })).toBe(
+          undefined,
+        );
+      } else {
+        expect(client.getQueryData(BODY_KEY)).toBeDefined();
+      }
     });
   }
+});
+
+describe('an update seeds the body it wrote', () => {
+  test('a reader that mounts while the refetch is in flight gets the saved body', async () => {
+    const { views, wrapper } = mountViews();
+    await settled(views);
+    expect(views.result.current.body.data).toBe('body');
+    // The post-save refetch never answers, as on a slow connection.
+    api.fetchKnowledgeDocContent.mockImplementation(
+      () => new Promise<string>(() => {}),
+    );
+
+    const m = renderHook(() => useKnowledgeUpdateMutation(SLUG, NS), {
+      wrapper,
+    });
+    await act(() =>
+      m.result.current.mutateAsync({ docId: 'doc-1', content: 'saved text' }),
+    );
+
+    // Switching back to the note mounts a fresh reader of its body.
+    const reader = renderHook(
+      () => useKnowledgeDocContentQuery(SLUG, 'doc-1', NS),
+      { wrapper },
+    );
+    expect(reader.result.current.data).toBe('saved text');
+  });
 });
