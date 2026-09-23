@@ -67,7 +67,7 @@ const SCOPE_PATTERN =
 const SOURCE_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 /** CI tooling that imports test infrastructure by design (#2333). */
-export function isExemptPath(repoPath) {
+function isExemptPath(repoPath) {
   const posix = toPosix(repoPath);
   return (
     posix.startsWith('scripts/') ||
@@ -137,7 +137,7 @@ const ALIASES = Object.freeze([
  * The repo-relative path a specifier names before extension resolution, or
  * null for a bare package specifier this gate does not follow.
  */
-export function lexicalTarget(importerRepoPath, specifier) {
+function lexicalTarget(importerRepoPath, specifier) {
   const bare = specifier.split(/[?#]/, 1)[0];
   if (
     bare.startsWith('./') ||
@@ -172,7 +172,7 @@ const JS_TO_TS = Object.freeze({
 });
 
 /** Candidate files, in resolution order, for a lexical target. */
-export function resolutionCandidates(target) {
+function resolutionCandidates(target) {
   const candidates = [target];
   const ext = path.posix.extname(target);
   for (const mapped of JS_TO_TS[ext] ?? [])
@@ -197,7 +197,7 @@ function isFile(absolute) {
  * on disk matches, the lexical target stands in for it: an unresolvable
  * `../__tests__/x` still names an ignored directory.
  */
-export function resolveTarget(root, importerRepoPath, specifier) {
+function resolveTarget(root, importerRepoPath, specifier) {
   const target = lexicalTarget(importerRepoPath, specifier);
   if (target === null) return null;
   const resolved = resolutionCandidates(target).find((candidate) =>
@@ -213,7 +213,7 @@ function lineNumberAt(content, index) {
 }
 
 /** Findings for one product file: each import that lands on an ignored path. */
-export function scanFile({ root, repoPath, content, isIgnored }) {
+function scanFile({ root, repoPath, content, isIgnored }) {
   const findings = [];
   for (const { specifier, index } of extractModuleSpecifiers(
     content,
