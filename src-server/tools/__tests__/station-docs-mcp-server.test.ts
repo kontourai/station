@@ -125,6 +125,8 @@ describe('station-docs plugin-authoring topic', () => {
     return found!;
   };
   const paragraphs = () => topic().body.split('\n\n');
+  /** install/installs/installing/installed/installation … plugin(s), one clause. */
+  const install = /\binstall(?:s|ing|ed|ation)?\b[^.;:\n]*?\bplugins?\b/i;
 
   /** The paragraph that starts with `heading`, as written in the body. */
   const paragraph = (heading: string) => {
@@ -300,19 +302,69 @@ describe('station-docs plugin-authoring topic', () => {
     );
   });
 
-  test('no topic claims station-control or an agent installs plugins', () => {
-    // Any sentence about installing a plugin must, in the same sentence,
-    // either refuse it or name the person as the one who installs. Catches
-    // "install plugins", "installs plugins", "installing plugins" and
-    // "install a plugin".
-    const install = /\binstall(?:s|ing)?\s+(?:a\s+|the\s+)?plugins?\b/i;
-    const refusal = /\b(?:not|never|refuses?|cannot|person)\b/i;
-    for (const entry of STATION_DOCS_TOPICS) {
-      for (const sentence of entry.body.split(/(?<=[.:])\s+/)) {
-        if (install.test(sentence)) {
-          expect(sentence, entry.id).toMatch(refusal);
-        }
-      }
+  test('every sentence pairing install with plugin is one a person approved, word for word', () => {
+    // An explicit allow-list, not a heuristic. Any sentence that pairs
+    // install/installs/installing/installed/installation with plugin(s) in
+    // the same clause, whatever sits between them ("install your plugin"),
+    // must appear below verbatim. A new or reworded one fails until someone
+    // adds it on purpose, which is the review this guard exists to force: a
+    // docs line saying an agent installs plugins is exactly the claim
+    // station-control refuses.
+    const PERMITTED = [
+      [
+        'station-docs',
+        'Installing a plugin is not among them: a person approves every install (see the `plugin-authoring` topic).',
+      ],
+      [
+        'builtin-assistant',
+        'It does not install plugins: `install_plugin` refuses, because a person approves every install, on a preview, in the Plugins view or the `station` CLI.',
+      ],
+      [
+        'skills',
+        'Skills are installed and browsed from the registry alongside agents, tool servers, and plugins.',
+      ],
+      [
+        'plugins',
+        'The registry is the unified place to browse and install agents, skills, integrations, and plugins, with an install lifecycle that includes updates and removal.',
+      ],
+      [
+        'plugin-authoring',
+        'Station builds the bundle itself when the plugin is installed, so a plugin ships source, not a `dist/` folder.',
+      ],
+      [
+        'plugin-authoring',
+        'Pane ids and renderer ids are opaque strings, but they are global across every installed plugin: follow the `pane:plugin%3A<plugin-name>:<group>:<name>` and `renderer:plugin%3A<plugin-name>:<renderer kind>:<name>` pattern above so yours cannot collide, write the parts you choose in lowercase, and give every pane its own `id` and its own `rendererId`.',
+      ],
+      [
+        'plugin-authoring',
+        'For local typechecking, `npm install @kontourai/station-sdk react @types/react typescript` in the plugin folder is enough.',
+      ],
+      [
+        'plugin-authoring',
+        'Agents must not install plugins, and `install_plugin` refuses.',
+      ],
+      [
+        'plugin-authoring',
+        'A person installs from Plugins → Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
+      ],
+    ];
+    const found = STATION_DOCS_TOPICS.flatMap((entry) =>
+      entry.body
+        .split(/(?<=[.!?])\s+|\n+/)
+        .filter((sentence) => install.test(sentence))
+        .map((sentence) => [entry.id, sentence]),
+    );
+    expect(found).toEqual(PERMITTED);
+  });
+
+  test('the install guard catches the phrasings the allow-list exists for', () => {
+    for (const claim of [
+      'The assistant installs plugins for a person.',
+      'It can install plugins, not just list them.',
+      'Ask the agent to install your plugin.',
+      'The agent installed the new plugin.',
+    ]) {
+      expect(install.test(claim), claim).toBe(true);
     }
   });
 });

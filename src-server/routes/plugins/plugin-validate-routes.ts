@@ -13,11 +13,14 @@
  *
  * Four properties matter, and each is structural rather than a convention:
  *
- * 1. **Local folders only.** The source must be an absolute path to a folder
- *    on this host. A git or other URL is refused before anything is fetched:
- *    the agent tool that calls this is auto-approved as read-only, and a
- *    clone would be network egress (with the user's SSH keys) on an agent's
- *    say-so. A person checks a git source with the install preview.
+ * 1. **Local folders only: no fetch or clone, and network filesystem paths
+ *    are refused.** The source must be an absolute path to a folder on this
+ *    host. A git or other URL, a UNC or device path, and a macOS automount
+ *    path (`/net/…`, `/Network/…`) are refused by string checks before any
+ *    filesystem call (`plugin-validate-source.ts`): the agent tool that calls
+ *    this is auto-approved as read-only, and a clone or a stat of a network
+ *    path would be egress (SSH keys, NTLM credentials) on an agent's say-so.
+ *    A person checks a git source with the install preview.
  * 2. **It cannot become the first half of an install.** `POST /install`
  *    takes the operator's decision about specific bytes: a content digest, a
  *    grant revision, the permission set. This response carries no digest, no
@@ -53,7 +56,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import type {
   ConflictInfo,
   PluginComponent,
@@ -78,6 +81,12 @@ import {
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
 } from '../../services/plugins/plugin-source.js';
+import {
+  type PluginValidateDiagnostic,
+  type PluginValidateResult,
+  pluginValidateResult,
+  refusePluginValidateSource,
+} from '../../services/plugins/plugin-validate-source.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -86,46 +95,13 @@ import {
   validate,
 } from '../schemas/schemas.js';
 
+export type {
+  PluginValidateDiagnostic,
+  PluginValidateResult,
+} from '../../services/plugins/plugin-validate-source.js';
+
 /** Far above any real manifest; low enough that a hostile file cannot stall the route. */
 export const PLUGIN_VALIDATE_MANIFEST_MAX_BYTES = 1024 * 1024;
-
-export interface PluginValidateDiagnostic {
-  level: 'error' | 'warning';
-  code: string;
-  message: string;
-  /** Where in the package the problem is, when the check knows. */
-  component?: string;
-  /** Context-safety findings, for a blocked manifest or prompt file. */
-  findings?: unknown[];
-}
-
-export interface PluginValidateResult {
-  /** True when no diagnostic is an error. */
-  valid: boolean;
-  source: string;
-  format?: 'legacy' | 'agent-plugin-1.0';
-  plugin?: {
-    name: string;
-    version: string;
-    displayName?: string;
-    description?: string;
-  };
-  diagnostics: PluginValidateDiagnostic[];
-  components: PluginComponent[];
-  conflicts: ConflictInfo[];
-  /**
-   * What an install will ask a person to approve. Informational: it is not a
-   * consent basis, and `/install` refuses it without the digest of reviewed
-   * bytes, which this route never computes.
-   */
-  permissions?: {
-    required: string[];
-    tiers: Array<{ permission: string; tier: string }>;
-  };
-  entrypoint?: { path: string; present: boolean };
-  bundle: { checked: false; reason: string };
-  note: string;
-}
 
 interface PluginValidateRouteDeps {
   agentsDir: string;
@@ -133,15 +109,6 @@ interface PluginValidateRouteDeps {
   pluginsDir: string;
   projectHomeDir: string;
 }
-
-const BUNDLE_NOT_CHECKED =
-  'Validation does not build. Station builds the bundle when a person installs the plugin; a build error is reported then.';
-
-const VALIDATE_NOTE =
-  'Validation only. Nothing was installed, copied, or built, and dependencies were not resolved. A person installs a plugin from Plugins → Install plugin (or `station plugin install <source>`) after reviewing its preview and permissions.';
-
-const REMOTE_SOURCE_REFUSED =
-  'validate checks local folders; to check a git source, a person can run the install preview (Plugins → Install plugin).';
 
 export function registerPluginValidateRoutes(
   app: Hono,
@@ -152,17 +119,6 @@ export function registerPluginValidateRoutes(
     const result = await validatePluginSource(source, deps);
     return c.json(result);
   });
-}
-
-/**
- * A URL, an scp-style `user@host:path`, or anything else that names a
- * remote. Checked before the path test so the refusal says why.
- */
-function looksRemote(source: string): boolean {
-  return (
-    /^[a-z][a-z0-9+.-]*:\/\//i.test(source) ||
-    /^[^/\\\s]+@[^/\\\s]+:/.test(source)
-  );
 }
 
 type ManifestRead =
@@ -251,37 +207,15 @@ export async function validatePluginSource(
   deps: PluginValidateRouteDeps,
 ): Promise<PluginValidateResult> {
   const diagnostics: PluginValidateDiagnostic[] = [];
-  const base = {
-    source,
-    diagnostics,
-    components: [] as PluginComponent[],
-    conflicts: [] as ConflictInfo[],
-    bundle: { checked: false as const, reason: BUNDLE_NOT_CHECKED },
-    note: VALIDATE_NOTE,
-  };
   const finish = (
-    extra: Partial<PluginValidateResult> = {},
-  ): PluginValidateResult => ({
-    ...base,
-    ...extra,
-    valid: !diagnostics.some((entry) => entry.level === 'error'),
-  });
+    extra: Partial<Omit<PluginValidateResult, 'valid' | 'diagnostics'>> = {},
+  ): PluginValidateResult => pluginValidateResult(source, diagnostics, extra);
 
-  if (looksRemote(source)) {
-    diagnostics.push({
-      level: 'error',
-      code: 'remote-source-refused',
-      message: REMOTE_SOURCE_REFUSED,
-    });
-    return finish();
-  }
-  if (!isAbsolute(source)) {
-    diagnostics.push({
-      level: 'error',
-      code: 'source-not-absolute',
-      message:
-        'Pass the absolute path of the plugin folder (the folder that contains plugin.json).',
-    });
+  // String checks only, before any filesystem call: a stat of a UNC or
+  // automount path is itself a network connection.
+  const refused = refusePluginValidateSource(source);
+  if (refused) {
+    diagnostics.push(refused);
     return finish();
   }
   let isDirectory = false;
@@ -352,7 +286,13 @@ export async function validatePluginSource(
       ),
     );
 
-    const blocked = scanPluginPromptFileSafety(pluginDir, manifest.name);
+    // Hand the scan the manifest already read under the bounds above; left
+    // to itself it re-opens plugin.json unbounded and following links.
+    const blocked = scanPluginPromptFileSafety(
+      pluginDir,
+      manifest.name,
+      manifest,
+    );
     for (const file of blocked) {
       diagnostics.push({
         level: 'error',

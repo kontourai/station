@@ -3017,8 +3017,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // read override like `/api/projects/:slug/file-preview`. That override is
     // justified there by "no caller-supplied root"; this route takes one:
     // the body names an arbitrary absolute host path, and validate reads and
-    // returns the manifest found there. (It refuses git and other remote
-    // sources outright, so it makes no outbound request.) Its sibling
+    // returns the manifest found there. (It never fetches or clones, and it
+    // refuses UNC, device and automount paths before any filesystem call.)
+    // Its sibling
     // `/preview`, which reads the same, is family-inherited here too. A
     // read-only paired device gains nothing it should have from reaching it;
     // the agent tool calls it with the local operator credential either way.

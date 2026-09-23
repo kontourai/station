@@ -1,4 +1,3 @@
-import { isAbsolute } from 'node:path';
 import {
   createIntegration,
   deleteIntegration,
@@ -9,6 +8,10 @@ import {
 } from '@kontourai/station-sdk/client';
 import { z } from 'zod';
 
+import {
+  pluginValidateResult,
+  refusePluginValidateSource,
+} from '../services/plugins/plugin-validate-source.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import {
   api,
@@ -233,7 +236,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // It is auto-approved as read-only, so it takes LOCAL folders only: a git
     // URL would make it a network fetch on an agent's say-so. The route
     // refuses those too; refusing here as well means no request is made.
-    'Check a local plugin folder for authoring errors without installing it: the manifest, its Workspace Panes, prompt-file safety, and conflicts with what is already installed. Returns diagnostics. Local folders only (an absolute path); it does not fetch git sources, resolve dependencies, install, or build the bundle. A person installs from Plugins → Install plugin after reviewing the preview. Read the station-docs topic `plugin-authoring` for the format.',
+    'Check a local plugin folder for authoring errors without installing it: the manifest, its Workspace Panes, prompt-file safety, and conflicts with what is already installed. Returns diagnostics. Local folders only (an absolute path); it refuses git URLs and network paths, and it does not resolve dependencies, install, or build the bundle. A person installs from Plugins → Install plugin after reviewing the preview. Read the station-docs topic `plugin-authoring` for the format.',
     {
       source: z
         .string()
@@ -242,26 +245,20 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
           'Absolute path to the local plugin folder (the one containing plugin.json)',
         ),
     },
-    async ({ source }) =>
-      isAbsolute(source)
-        ? jsonToolResult(
-            await api('/api/plugins/validate', {
-              method: 'POST',
-              body: JSON.stringify({ source }),
-            }),
-          )
-        : jsonToolResult({
-            valid: false,
-            source,
-            diagnostics: [
-              {
-                level: 'error',
-                code: 'local-folder-required',
-                message:
-                  'validate checks local folders by absolute path; to check a git source, a person can run the install preview (Plugins → Install plugin).',
-              },
-            ],
-          }),
+    async ({ source }) => {
+      // The route's own refusal, applied here so a refused source makes no
+      // request at all; same codes and the same result shape either way.
+      const refused = refusePluginValidateSource(source);
+      if (refused) {
+        return jsonToolResult(pluginValidateResult(source, [refused]));
+      }
+      return jsonToolResult(
+        await api('/api/plugins/validate', {
+          method: 'POST',
+          body: JSON.stringify({ source }),
+        }),
+      );
+    },
   );
 
   server.tool(

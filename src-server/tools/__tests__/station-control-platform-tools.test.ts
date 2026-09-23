@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { registerPluginValidateRoutes } from '../../routes/plugins/plugin-validate-routes.js';
+import {
+  registerPluginValidateRoutes,
+  validatePluginSource,
+} from '../../routes/plugins/plugin-validate-routes.js';
 
 /**
  * archive#167 Wave 3: characterization tests for `station-control-platform-tools.ts`'s
@@ -390,22 +393,40 @@ describe('station-control platform tools (characterization)', () => {
    * `plugins.ts` mounts it. Only the network hop is replaced, by handing the
    * request to that Hono app.
    */
-  test('validate_plugin refuses a git or relative source without making any request', async () => {
+  test('validate_plugin refuses a remote, network or relative source with the route’s own result, making no request', async () => {
     const tools = await registerTools();
-    for (const source of [
-      'https://example.invalid/owner/plugin.git',
-      'git@example.invalid:owner/plugin.git',
-      './my-plugin',
-    ]) {
-      const payload = JSON.parse(
-        (await tools.validate_plugin({ source })).content[0].text,
-      );
-      expect(payload.valid, source).toBe(false);
-      expect(payload.diagnostics, source).toEqual([
-        expect.objectContaining({ code: 'local-folder-required' }),
-      ]);
+    const root = mkdtempSync(join(tmpdir(), 'station-validate-refuse-'));
+    try {
+      const home = join(root, 'home');
+      mkdirSync(join(home, 'plugins'), { recursive: true });
+      const deps = {
+        agentsDir: join(home, 'agents'),
+        logger: { debug() {}, error() {}, info() {}, warn() {} } as any,
+        pluginsDir: join(home, 'plugins'),
+        projectHomeDir: home,
+      };
+      for (const [source, code] of [
+        ['https://example.invalid/owner/plugin.git', 'remote-source-refused'],
+        ['git@example.invalid:owner/plugin.git', 'remote-source-refused'],
+        ['\\\\attacker\\share\\plugin', 'network-path-refused'],
+        ['/net/attacker/plugin', 'network-path-refused'],
+        ['./my-plugin', 'source-not-absolute'],
+      ] as const) {
+        const payload = JSON.parse(
+          (await tools.validate_plugin({ source })).content[0].text,
+        );
+        // Same codes and the same shape as the route, not a tool dialect.
+        expect(payload, source).toEqual(
+          await validatePluginSource(source, deps),
+        );
+        expect(payload.diagnostics, source).toEqual([
+          expect.objectContaining({ code }),
+        ]);
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('validate_plugin reaches the validate route and relays its diagnostics', async () => {

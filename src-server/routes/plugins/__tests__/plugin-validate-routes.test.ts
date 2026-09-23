@@ -41,10 +41,36 @@ vi.mock(
   },
 );
 
+// The filesystem calls that could open a network connection (a stat of a UNC
+// or automount path) or re-read plugin.json. Delegating spies: behaviour is
+// the real module's, and each call is recorded.
+const fsSpies = vi.hoisted(() => ({
+  statSync: vi.fn(),
+  lstatSync: vi.fn(),
+  openSync: vi.fn(),
+  readFileSync: vi.fn(),
+  realpathSync: vi.fn(),
+  existsSync: vi.fn(),
+}));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  for (const [name, spy] of Object.entries(fsSpies)) {
+    spy.mockImplementation((actual as Record<string, any>)[name]);
+  }
+  return { ...actual, ...fsSpies };
+});
+
 beforeEach(() => {
   execGit.mockClear();
   fetchPluginSource.mockClear();
+  for (const spy of Object.values(fsSpies)) spy.mockClear();
 });
+
+function fsCalls(): unknown[] {
+  return Object.entries(fsSpies).flatMap(([name, spy]) =>
+    spy.mock.calls.map((args) => [name, args[0]]),
+  );
+}
 
 /**
  * #2323 S1. `POST /validate` is an authoring check: the diagnostics must be
@@ -591,5 +617,63 @@ describe('POST /api/plugins/validate', () => {
         message: expect.stringContaining('/name'),
       }),
     ]);
+  });
+  test.each([
+    ['a UNC path', '\\\\attacker\\share\\plugin'],
+    ['a forward-slash UNC path', '//attacker/share/plugin'],
+    ['a \\\\?\\UNC\\ device path', '\\\\?\\UNC\\attacker\\share\\plugin'],
+    ['a \\\\.\\ device path', '\\\\.\\pipe\\plugin'],
+    ['a macOS /net automount path', '/net/attacker/plugin'],
+    ['a macOS /Network automount path', '/Network/Servers/attacker/plugin'],
+  ])('%s is refused before any filesystem call', async (_label, source) => {
+    const { home } = makeHome();
+    const app = createApp(home);
+    for (const spy of Object.values(fsSpies)) spy.mockClear();
+
+    const { body } = await validateSource(app, source);
+
+    expect(body.valid).toBe(false);
+    expect(body.diagnostics).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        code: 'network-path-refused',
+      }),
+    ]);
+    expect(fsCalls()).toEqual([]);
+    expect(fetchPluginSource).not.toHaveBeenCalled();
+  });
+
+  test('the filesystem spies are live: a local folder is stat-ed', async () => {
+    // Control for the refusal test above, so "no call" cannot pass vacuously.
+    const { root, home } = makeHome();
+    const source = writePlugin(
+      join(root, 'author', 'local-control'),
+      agentPluginManifest('local-control'),
+    );
+    for (const spy of Object.values(fsSpies)) spy.mockClear();
+    await validateSource(createApp(home), source);
+    expect(fsSpies.statSync).toHaveBeenCalledWith(source);
+  });
+
+  test('plugin.json is opened once, through the bounded read, and never re-read by the prompt scan', async () => {
+    const { root, home } = makeHome();
+    const source = writePlugin(
+      join(root, 'author', 'one-read'),
+      agentPluginManifest('one-read'),
+    );
+    for (const spy of Object.values(fsSpies)) spy.mockClear();
+
+    const { body } = await validateSource(createApp(home), source);
+
+    expect(body.valid).toBe(true);
+    const manifestPath = join(source, 'plugin.json');
+    const reads = [
+      ...fsSpies.readFileSync.mock.calls,
+      ...fsSpies.openSync.mock.calls,
+    ].filter(([path]) => path === manifestPath);
+    expect(reads).toHaveLength(1);
+    expect(fsSpies.readFileSync.mock.calls.map(([path]) => path)).not.toContain(
+      manifestPath,
+    );
   });
 });
