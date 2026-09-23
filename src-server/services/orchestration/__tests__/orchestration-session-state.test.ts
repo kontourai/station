@@ -1171,6 +1171,9 @@ describe('orchestration-session-state', () => {
       lastEventAt: '2026-04-11T00:00:05.000Z',
       lastEventMethod: 'turn.completed',
       hasActiveTurn: false,
+      // #2310: the thread's own turn settles "not a Draft" without the
+      // lineage read this caller does not supply.
+      draft: false,
       lifecycleState: 'completed',
       previousLifecycleState: 'running',
       transitionReason: 'turn_completed',
