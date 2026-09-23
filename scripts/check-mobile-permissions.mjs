@@ -11,6 +11,8 @@ const REQUIRED_ANDROID_PERMISSIONS = new Set([
 ]);
 const REQUIRED_ANDROID_OPTIONAL_FEATURES = new Set([
   'android.hardware.camera.any',
+  'android.hardware.camera',
+  'android.hardware.camera.autofocus',
   'android.hardware.microphone',
 ]);
 const REQUIRED_IOS_USAGE_DESCRIPTIONS = new Map([

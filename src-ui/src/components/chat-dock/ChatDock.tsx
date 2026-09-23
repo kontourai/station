@@ -16,6 +16,7 @@ import {
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import {
@@ -1908,9 +1909,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     focusSession: focusSessionInPane,
   });
 
-  useEffect(() => {
-    ensureOrchestrationEventStream(apiBase);
-  }, [apiBase]);
+  // #2307: this pane renders inside `AuthorityQueryProvider`'s protected
+  // subtree, so this is the ACTIVE authority's client, and an authority change
+  // remounts the subtree with a fresh one. Registering it here (and releasing
+  // it on unmount) is what lets the stream's session read-model refresh and
+  // reconnect refetch write into the right cache — see
+  // `ensureOrchestrationEventStream`'s `streamQueryClients`.
+  const queryClient = useQueryClient();
+  useEffect(
+    () => ensureOrchestrationEventStream(apiBase, queryClient),
+    [apiBase, queryClient],
+  );
 
   // station#1048: whether the app toolbar is genuinely gone (not merely
   // collapsed/half-open) — the one state `ChatDockMobileHeader`'s drawer

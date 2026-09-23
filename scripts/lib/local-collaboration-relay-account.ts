@@ -662,6 +662,7 @@ export async function startRelayAccountStation(
     prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
     ownedBrokerTcpPort?: number;
     publicOrigin?: string;
+    additionalBrowserOrigins?: readonly string[];
     onStationReady?: (
       station: Awaited<ReturnType<typeof startAccountLabStation>>,
     ) => void;
@@ -706,6 +707,12 @@ export async function startRelayAccountStation(
         virtualApplicationOrigin: browserOrigin,
         port: options.port,
         ...(options.publicOrigin ? { publicOrigin: options.publicOrigin } : {}),
+        ...(options.additionalBrowserOrigins
+          ? {
+              additionalVirtualApplicationOrigins:
+                options.additionalBrowserOrigins,
+            }
+          : {}),
         prepareSelfHostedBrokerConfig: options.prepareSelfHostedBrokerConfig,
         ownedBrokerTcpPort: options.ownedBrokerTcpPort,
       },
