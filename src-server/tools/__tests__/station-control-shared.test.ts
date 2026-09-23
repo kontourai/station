@@ -12,6 +12,7 @@ import {
   controlRequestOptions,
   INTERNAL_CONTROL_CALLER_BINDING_HEADER,
   resolveControlApiBase,
+  STATION_CONTROL_ORIGIN_HEADER,
   setRuntimeControlApiBase,
   withStationControlExecutionContext,
 } from '../station-control-shared.js';
@@ -60,6 +61,11 @@ describe('station-control shared helpers', () => {
       // exactly what should stop a build (archive#4292). Its value is a
       // random 32-byte binding, so only its presence is asserted.
       [INTERNAL_CONTROL_CALLER_BINDING_HEADER]: expect.any(String),
+      // Station #90 lane D: announced here deliberately. Marks the request as a
+      // station-control agent tool call (`isAgentOriginatedRequest`); it
+      // can only restrict. No caller credential: this test process is not a
+      // stdio child with one installed, nor inside an HTTP MCP request.
+      [STATION_CONTROL_ORIGIN_HEADER]: 'agent-tool',
     });
   });
 

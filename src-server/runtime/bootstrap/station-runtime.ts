@@ -398,6 +398,11 @@ import { StrandsFramework } from '../frameworks/strands-adapter.js';
 import { releaseAllNativeStationControlClients } from '../frameworks/strands-tool-loader.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
+import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
+import {
   buildStationControlMcpUrl,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
@@ -799,6 +804,31 @@ export class StationRuntime {
     // this closure is only invoked at `startSession` time, well after
     // construction completes.
     getStationControlEnv: () => stationControlSpawnEnv(this.port),
+    // Station #90 lane D (station #122): station-control runs IN-PROCESS for
+    // Claude (`station-control-in-process.ts`), so neither the internal API
+    // token nor a caller token ever reaches the CLI's `--mcp-config` argv.
+    // The record resolver is read lazily: the orchestration service is
+    // assigned after this field initializer runs.
+    ...claudeInProcessStationControlOptions(() =>
+      this.orchestrationService
+        ? createStationControlCallerRecordResolver(
+            stationControlCallerRecordSources({
+              orchestrationService: {
+                resolveSessionActingPrincipal: (threadId) =>
+                  this.orchestrationService.resolveSessionActingPrincipal(
+                    threadId,
+                  ),
+                firstStartedMetadataOfThread: (threadId) =>
+                  this.orchestrationService.firstStartedMetadataOfThread(
+                    threadId,
+                  ),
+              },
+              eventStore: this.orchestrationEventStore,
+              getProject: (slug) => this.storageAdapter.getProject(slug),
+            }),
+          )
+        : undefined,
+    ),
     // `this.logger` is not assigned until later in the constructor body
     // (field initializers run first) — wrap it in a lazily-evaluated shim
     // rather than capturing `this.logger` (which would freeze in as
