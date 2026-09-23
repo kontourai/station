@@ -185,30 +185,25 @@ let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
  *
  * A list, not a slot: more than one dock can mount at once (a docked and a
  * full-screen Chat share one authority's client), and releasing one of them
- * must not unregister the other. The last live registration wins.
+ * must not unregister the other. Each registration is its own entry, so a
+ * release removes exactly that one; the last live entry for an apiBase wins.
  */
-const streamQueryClients = new Map<string, QueryClient[]>();
+const streamQueryClients: { apiBase: string; queryClient: QueryClient }[] = [];
 
 function currentStreamQueryClient(apiBase: string): QueryClient | undefined {
-  return streamQueryClients.get(apiBase)?.at(-1);
+  return streamQueryClients.filter((entry) => entry.apiBase === apiBase).at(-1)
+    ?.queryClient;
 }
 
 function registerStreamQueryClient(
   apiBase: string,
   queryClient: QueryClient,
 ): () => void {
-  const registrations = streamQueryClients.get(apiBase) ?? [];
-  registrations.push(queryClient);
-  streamQueryClients.set(apiBase, registrations);
-  let released = false;
+  const registration = { apiBase, queryClient };
+  streamQueryClients.push(registration);
   return () => {
-    if (released) return;
-    released = true;
-    const current = streamQueryClients.get(apiBase);
-    const index = current?.lastIndexOf(queryClient) ?? -1;
-    if (!current || index === -1) return;
-    current.splice(index, 1);
-    if (current.length === 0) streamQueryClients.delete(apiBase);
+    const index = streamQueryClients.indexOf(registration);
+    if (index !== -1) streamQueryClients.splice(index, 1);
   };
 }
 
@@ -249,7 +244,7 @@ export function resetSessionReadModelRefreshForTests(): void {
   }
   deferredSessionReadModelRefresh = undefined;
   lastSessionReadModelRefreshAt = 0;
-  streamQueryClients.clear();
+  streamQueryClients.length = 0;
 }
 
 /**
@@ -355,11 +350,10 @@ export function ensureOrchestrationEventStream(
         cursor.adopt(raw.id);
         const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
         recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
-        const snapshotQueryClient = currentStreamQueryClient(apiBase);
         applyOrchestrationSnapshot(payload, {
           apiBase,
           isReconnectFallback: hasReceivedSnapshot,
-          ...(snapshotQueryClient ? { queryClient: snapshotQueryClient } : {}),
+          queryClient: currentStreamQueryClient(apiBase),
         });
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
