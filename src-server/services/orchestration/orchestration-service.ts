@@ -39,6 +39,7 @@ import type {
   OrchestrationSessionEventWindow,
   OrchestrationSessionSummary,
   SessionBoardItem,
+  SetApprovalModeResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -47,6 +48,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
+  ApprovalMode,
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
@@ -73,6 +75,7 @@ import {
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
+  SessionApprovalModeSetEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
@@ -204,6 +207,7 @@ import {
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
+import { ApprovalPosture, approvalKnobSupported } from './approval-posture.js';
 import { AttachedSessionAdoption } from './attached-session-adoption.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import {
@@ -637,6 +641,15 @@ interface OrchestrationServiceOptions {
   resolveStationDefaultWorkspaceIsolation?: () => Promise<
     WorkspaceIsolationMode | undefined
   >;
+  /**
+   * #2409: the approval posture a Default pick resolves to — the engine
+   * connection's own `approvalMode`, else `AppConfig.defaultApprovalMode`.
+   * Loaded per call, like the workspace default above.
+   */
+  resolveStationDefaultApprovalMode?: (input: {
+    connectionId?: string;
+    provider: EngineId;
+  }) => Promise<ApprovalMode | undefined>;
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -1360,6 +1373,8 @@ export class OrchestrationService {
     WorkspaceIsolationMode | undefined
   >;
   readonly sessionCommands: SessionCommandModule;
+  /** #2436: the conversation's server-ordered approval posture. */
+  private readonly approvalPosture: ApprovalPosture;
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
   /** Authoritative inventory-to-session open state; routes do not restitch it. */
@@ -1608,6 +1623,10 @@ export class OrchestrationService {
       options.resolveProjectSessionDirectory;
     this.resolveStationDefaultWorkspaceIsolation =
       options.resolveStationDefaultWorkspaceIsolation;
+    this.approvalPosture = new ApprovalPosture({
+      store: options.eventStore,
+      resolveStationDefault: options.resolveStationDefaultApprovalMode,
+    });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
       workspaceForCall: (facts) => facts.workspaceRoot,
@@ -4704,7 +4723,27 @@ export class OrchestrationService {
           latestStartedMetadata: (threadId) =>
             this.latestStartedMetadataOfThread(threadId),
         },
-        prepareStart: async (input, context, internal, adapter) => {
+        prepareStart: async (carriedInput, context, internal, adapter) => {
+          // #2436: the session starts in the conversation's recorded posture
+          // (a continuation child, a handoff), or in a decision the starting
+          // send carries — Claude's full-access grant exists only at spawn.
+          // The send's turn records that decision once the session exists.
+          const { setApprovalMode: startDecision, ...uncarriedInput } =
+            carriedInput;
+          const startModelOptions = await this.approvalPosture.resolve({
+            threadId: uncarriedInput.threadId,
+            provider: adapter.provider,
+            ...(typeof uncarriedInput.metadata?.connectionId === 'string'
+              ? { connectionId: uncarriedInput.metadata.connectionId }
+              : {}),
+            modelOptions: uncarriedInput.modelOptions,
+            ...(startDecision ? { carriedDecision: startDecision } : {}),
+          });
+          const { modelOptions: _startOptions, ...startWithoutOptions } =
+            uncarriedInput;
+          const input: typeof uncarriedInput = startModelOptions
+            ? { ...startWithoutOptions, modelOptions: startModelOptions }
+            : startWithoutOptions;
           // #484 correction: a handoff-reserved child of a portable-marked
           // predecessor starts with no portable admission (the handoff seam
           // carries none), so it refuses here — before cwd resolution and
@@ -5121,6 +5160,7 @@ export class OrchestrationService {
     | ProviderTurnStartResult
     | SteerTurnResult
     | InterruptTurnResult
+    | SetApprovalModeResult
     | undefined
   > {
     const response = await this.dispatchWithReceipt(command, context, internal);
@@ -5129,6 +5169,7 @@ export class OrchestrationService {
       | ProviderTurnStartResult
       | SteerTurnResult
       | InterruptTurnResult
+      | SetApprovalModeResult
       | undefined;
   }
 
@@ -5183,6 +5224,7 @@ export class OrchestrationService {
       | ProviderTurnStartResult
       | SteerTurnResult
       | InterruptTurnResult
+      | SetApprovalModeResult
       | undefined
     >
   > {
@@ -5360,10 +5402,12 @@ export class OrchestrationService {
           const {
             reviewIsolation: _untrustedReviewIsolation,
             expectedInputRequest: _expectedInputRequest,
+            setApprovalMode: carriedApprovalDecision,
             ...publicTurnInput
           } = command.input as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
+            setApprovalMode?: ApprovalMode;
           };
           // archive#895 wave C: an engine with no native systemPrompt
           // channel gets its authored prompt delivered by prepending it
@@ -5436,6 +5480,34 @@ export class OrchestrationService {
               adapter,
               turnInput,
             );
+          // #2436: a decision this turn carries is recorded on RECEIPT,
+          // before the turn applies, so it is ordered exactly like a
+          // `setApprovalMode` command. Then the conversation's latest
+          // recorded posture replaces whatever the turn carried — on every
+          // path that sends a turn (#2418), not only the composer's.
+          if (
+            carriedApprovalDecision &&
+            approvalKnobSupported(adapter.provider)
+          ) {
+            this.recordApprovalMode(
+              turnInput.threadId,
+              adapter.provider,
+              carriedApprovalDecision,
+              context,
+            );
+          }
+          {
+            const modelOptions = await this.approvalPosture.resolve({
+              threadId: turnInput.threadId,
+              provider: adapter.provider,
+              connectionId: this.sessionConnectionIds.get(turnInput.threadId),
+              modelOptions: turnInput.modelOptions,
+            });
+            const { modelOptions: _previous, ...withoutOptions } = turnInput;
+            turnInput = modelOptions
+              ? { ...withoutOptions, modelOptions }
+              : withoutOptions;
+          }
           const unsupportedTurnOptions = unsupportedModelOptionKeys(
             adapter.provider,
             turnInput.modelOptions,
@@ -6589,6 +6661,30 @@ export class OrchestrationService {
           this.persistReceipt(receipt);
           return { receipt, result: undefined };
         }
+        case 'setApprovalMode': {
+          // #2436: a posture decision is recorded, not applied: the next
+          // session start or turn start applies it, whatever path sends
+          // that turn. Authorization above is the same as every command on
+          // this session (the tier that already sends `approvalMode` on a
+          // turn), so this grants no authority that did not exist.
+          const provider = this.threadProviderForPosture(command.threadId);
+          if (!provider) {
+            throw new Error(`Session not found: ${command.threadId}`);
+          }
+          if (!approvalKnobSupported(provider)) {
+            throw new SendTurnRefusedError(
+              'This engine has no approval control.',
+            );
+          }
+          const result = this.recordApprovalMode(
+            command.threadId,
+            provider,
+            command.approvalMode,
+            context,
+          );
+          this.persistReceipt(receipt);
+          return { receipt, result };
+        }
         case 'stopSession': {
           // archive#3493 residual 1: a Stop that lands mid-materialisation
           // must tear down the engine that is starting, not report success
@@ -7380,6 +7476,50 @@ export class OrchestrationService {
     return this.options.adapterRegistry.get(provider);
   }
 
+  /** The engine a session runs on, live or dormant; undefined if unknown. */
+  private threadProviderForPosture(threadId: string): EngineId | undefined {
+    return (
+      this.threadProviders.get(threadId) ??
+      this.sessionReadModel.get(threadId)?.provider ??
+      this.options.eventStore?.readSessionByThread(threadId)?.provider
+    );
+  }
+
+  /**
+   * #2436: record one approval-posture decision on `threadId` as a
+   * `session.approval-mode-set` event. The event store assigns its global
+   * sequence, which is the order every client folds and the order
+   * `ApprovalPosture.resolve` applies.
+   */
+  private recordApprovalMode(
+    threadId: string,
+    provider: EngineId,
+    approvalMode: ApprovalMode,
+    context?: { clientOrigin?: ClientOrigin; principal?: PrincipalRef },
+  ): SetApprovalModeResult {
+    const eventId = crypto.randomUUID();
+    this.projectAndPublishEvent(
+      withClientOrigin<SessionApprovalModeSetEvent>(
+        {
+          eventId,
+          provider,
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'session.approval-mode-set',
+          sessionId: threadId,
+          approvalMode,
+          ...(context?.principal ? { principal: context.principal } : {}),
+        },
+        context?.clientOrigin,
+      ),
+    );
+    const sequence = this.readEventGlobalSequence(eventId);
+    if (sequence === undefined) {
+      throw new Error('The approval mode could not be recorded.');
+    }
+    return { threadId, approvalMode, sequence };
+  }
+
   private commandProvider(command: OrchestrationCommand): EngineId | null {
     if (command.type === 'adoptSession') {
       return (
@@ -7644,10 +7784,19 @@ export class OrchestrationService {
     // the watchdog sees progress at the engine's rate rather than the publish
     // rate. Observing the merged event again would reset the window twice for
     // one stretch of text.
-    if (!isCoalescableDelta(event)) this.turnProgress.observe(event);
+    // A posture decision is not engine progress: counting it would reset a
+    // stalled turn's window (#2436).
+    if (
+      !isCoalescableDelta(event) &&
+      event.method !== 'session.approval-mode-set'
+    )
+      this.turnProgress.observe(event);
     this.threadProviders.set(event.threadId, event.provider);
     if (event.method === 'session.exited') {
       this.clientOriginTurns.clearThread(event.threadId);
+      // #2409: a respawned engine starts at whatever its start resolves, so
+      // nothing Station set on the exited one is still in effect.
+      this.approvalPosture.forgetThread(event.threadId);
     }
     if (
       event.method === 'turn.completed' ||
@@ -7973,6 +8122,18 @@ export class OrchestrationService {
         this.trackSession(session, adapter),
       logger: this.options.logger,
       resolveSessionAgent: this.options.resolveSessionAgent,
+      applyApprovalPosture: async (adapter, input, connectionId) => {
+        const modelOptions = await this.approvalPosture.resolve({
+          threadId: input.threadId,
+          provider: adapter.provider,
+          ...(connectionId ? { connectionId } : {}),
+          modelOptions: input.modelOptions,
+        });
+        const { modelOptions: _previous, ...withoutOptions } = input;
+        return modelOptions
+          ? { ...withoutOptions, modelOptions }
+          : withoutOptions;
+      },
       // Round 4 (Codex): recovery bypassed the credential pin entirely, so a
       // restarted session ran a pinned agent on the connection's account.
       applyCredentialProfile: (input) =>

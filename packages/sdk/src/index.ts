@@ -683,6 +683,7 @@ export {
   type SystemStatus,
   saveFeedbackRating,
   sendOrchestrationTurn,
+  setOrchestrationApprovalMode,
   shouldRetryLayoutCatalog,
   shouldRetryProjectLayout,
   shouldRetrySystemStatus,

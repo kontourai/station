@@ -3,6 +3,7 @@ import type { AttentionRequestReference } from './attention.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type {
+  ApprovalMode,
   AttachedSessionSourceMetadata,
   ModelLaunchPlan,
   ProviderSendTurnInput,
@@ -39,6 +40,14 @@ export interface OrchestrationSendTurnInput
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */
   expectedInputRequest?: AttentionRequestReference;
+  /**
+   * #2436: an approval-posture decision this send carries (a pick made before
+   * the chat had a session, or while this client was offline). The service
+   * records it as a `session.approval-mode-set` when it RECEIVES the turn,
+   * before applying the turn, so it is ordered by server receipt like any
+   * `setApprovalMode` command. Never forwarded to an adapter.
+   */
+  setApprovalMode?: ApprovalMode;
 }
 
 /**
@@ -49,7 +58,15 @@ export interface OrchestrationSendTurnInput
 export type OrchestrationStartSessionInput = Omit<
   ProviderSessionStartInput,
   'credentialProfileRef' | 'reviewIsolation'
->;
+> & {
+  /**
+   * #2436: an approval-posture decision carried by the send that starts this
+   * session. The session spawns in it (Claude's full-access grant exists
+   * only at spawn) and the service records it once the session exists. See
+   * {@link OrchestrationSendTurnInput.setApprovalMode}.
+   */
+  setApprovalMode?: ApprovalMode;
+};
 
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
@@ -81,7 +98,28 @@ export type OrchestrationCommand =
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
-  | { type: 'stopSession'; threadId: string };
+  | { type: 'stopSession'; threadId: string }
+  | {
+      /**
+       * #2436: record the conversation's approval posture. Ordered by server
+       * receipt; applied at the next session start or turn start, whatever
+       * path sends it. Result: {@link SetApprovalModeResult}.
+       */
+      type: 'setApprovalMode';
+      threadId: string;
+      approvalMode: ApprovalMode;
+    };
+
+/** What a `setApprovalMode` command recorded, and where it sits in order. */
+export interface SetApprovalModeResult {
+  threadId: string;
+  approvalMode: ApprovalMode;
+  /**
+   * The recorded event's server global sequence: the SSE `id` its frame
+   * carries. Clients order posture decisions by it, never by arrival.
+   */
+  sequence: number;
+}
 
 /**
  * How long the orchestration service waits for the engine to acknowledge a

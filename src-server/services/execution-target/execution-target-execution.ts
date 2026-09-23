@@ -19,6 +19,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
+  ApprovalMode,
   EngineId,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
@@ -76,6 +77,13 @@ export interface ForegroundMessageInput {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /**
+   * #2436: an approval-posture decision this send carries (made before the
+   * chat had a session, or while its client was offline). It rides the
+   * session start, which spawns in it, and the turn, which records it on
+   * receipt before applying it.
+   */
+  setApprovalMode?: ApprovalMode;
   /** Opaque, expiring capability returned by a critical admission challenge. */
   /** Server-owned fixed-route identity for durable automatic queue replay. */
   automaticBackground?: true;
@@ -284,14 +292,14 @@ export interface ExecutionTargetExecutionDependencies
   ) => Promise<ExecutionSessionBinding | null>;
   startSession: (
     access: EnvironmentAccess,
-    input: ProviderSessionStartInput,
+    input: ProviderSessionStartInput & { setApprovalMode?: ApprovalMode },
     context?: {
       resourceAdmissionIntent?: 'queued_background';
     },
   ) => Promise<{ commandId: string; sessionId: string } | undefined>;
   sendTurn: (
     access: EnvironmentAccess,
-    input: ProviderSendTurnInput,
+    input: ProviderSendTurnInput & { setApprovalMode?: ApprovalMode },
     context?: { clientOrigin?: ClientOrigin; principal?: PrincipalRef },
   ) => Promise<{ turnId: string }>;
   /**
@@ -633,7 +641,12 @@ export async function executeForegroundMessage(
       throw new Error('Worktree provisioning did not return a workspace path');
     }
     try {
-      const sessionStartInput: ProviderSessionStartInput = {
+      const sessionStartInput: ProviderSessionStartInput & {
+        setApprovalMode?: ApprovalMode;
+      } = {
+        ...(input.setApprovalMode
+          ? { setApprovalMode: input.setApprovalMode }
+          : {}),
         threadId: sessionId,
         provider: resolved.provider,
         ...(worktree
@@ -879,6 +892,9 @@ export async function executeForegroundMessage(
         : {}),
       ...(resolved.modelOptions
         ? { modelOptions: { ...resolved.modelOptions } }
+        : {}),
+      ...(input.setApprovalMode
+        ? { setApprovalMode: input.setApprovalMode }
         : {}),
     },
     input.clientOrigin || input.principal

@@ -41,6 +41,10 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import {
+  APPROVAL_MODES,
+  type ApprovalMode,
+} from '@kontourai/station-contracts/provider';
+import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -340,6 +344,17 @@ const stopSessionCommandSchema = z.object({
   threadId: z.string().min(1),
 });
 
+// #2436: a posture decision, recorded and ordered by the server; applied at
+// the next session start or turn start whatever path sends it.
+const approvalModeSchema = z.enum(
+  APPROVAL_MODES as unknown as [ApprovalMode, ...ApprovalMode[]],
+);
+const setApprovalModeCommandSchema = z.object({
+  type: z.literal('setApprovalMode'),
+  threadId: z.string().min(1).max(512),
+  approvalMode: approvalModeSchema,
+});
+
 const sessionTransitionSchema = z.object({
   state: z.enum(SESSION_LIFECYCLE_STATES),
   reason: z
@@ -364,6 +379,7 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   steerTurnCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
+  setApprovalModeCommandSchema,
 ]);
 
 const environmentRefSchema = z.discriminatedUnion('kind', [
@@ -509,6 +525,9 @@ export const foregroundMessageObjectSchema = z.object({
     .max(CHAT_ATTACHMENT_MAX_COUNT)
     .optional(),
   clientTurnId: z.string().min(1).max(200).optional(),
+  // #2436: a posture decision this send carries (a pick made before the chat
+  // had a session, or while offline). Recorded on receipt, before the turn.
+  setApprovalMode: approvalModeSchema.optional(),
 });
 
 const agentDelegationContextSchema = z.object({
@@ -569,6 +588,9 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
   .omit({
     target: true,
     conversationId: true,
+    // The continuation seam does not carry a posture decision; a turn it
+    // sends applies the recorded posture like every other (#2418).
+    setApprovalMode: true,
   })
   .extend({
     // A continuation is remote-capable. Never silently strip a current-host
@@ -715,6 +737,8 @@ interface ForegroundMessageRequest {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
+  setApprovalMode?: ApprovalMode;
   userId: string;
   /**
    * archive#4075 stage 2: the dispatching caller's resolved `PrincipalRef`,

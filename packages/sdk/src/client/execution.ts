@@ -36,6 +36,12 @@ export interface ForegroundMessageInput {
   clientTurnId?: string;
   /** Uses the fixed, more-restrictive automatic replay route. */
   automaticBackground?: boolean;
+  /**
+   * #2436: an approval-posture decision this send carries (a pick made before
+   * the chat had a session, or while offline). The server records it on
+   * receipt, before the turn applies.
+   */
+  setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
 }
 
 export interface ForegroundMessageReceipt {
@@ -183,7 +189,7 @@ export async function sendExecutionMessage(
 
 export type ContinueForegroundMessageInput = Omit<
   ForegroundMessageInput,
-  'target' | 'conversationId'
+  'target' | 'conversationId' | 'setApprovalMode'
 > & { environment?: EnvironmentRef; model?: ExecutionModelRequest };
 
 /** Continue an existing conversation through its server-verified Agent binding. */

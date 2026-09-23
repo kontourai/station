@@ -889,6 +889,29 @@ export async function interruptOrchestrationTurn(input: {
   );
 }
 
+/**
+ * #2436: record the conversation's approval posture. The server orders it by
+ * receipt and applies it at the next session start or turn start, whatever
+ * path sends that turn; every client folds it from the event stream. The
+ * result's `sequence` is the recorded event's server global sequence.
+ */
+export async function setOrchestrationApprovalMode(input: {
+  threadId: string;
+  approvalMode: import('@kontourai/station-contracts/provider').ApprovalMode;
+  apiBase?: string;
+}): Promise<
+  import('@kontourai/station-contracts/orchestration').SetApprovalModeResult
+> {
+  return dispatchOrchestrationCommand(
+    {
+      type: 'setApprovalMode',
+      threadId: input.threadId,
+      approvalMode: input.approvalMode,
+    },
+    input.apiBase,
+  );
+}
+
 /** Add user input to the currently open turn; this never queues a future turn. */
 export async function steerOrchestrationTurn(input: {
   threadId: string;

@@ -219,11 +219,17 @@ default is looser.
   decision.
 - **A Default pick** records `connection-default`. At a start or turn, that
   resolves to a concrete posture in this order:
-  1. The engine connection's own `approvalMode`, then `AppConfig.defaultApprovalMode`.
-     The server reads both through the new
+  1. `AppConfig.defaultApprovalMode`. The server reads it through the new
      `resolveStationDefaultApprovalMode` option, wired like
      `resolveStationDefaultWorkspaceIsolation`
      (`runtime-initialize.ts:605`) and loaded per call.
+     - The option's signature also accepts the connection id. The engine
+       connection's own `config.approvalMode` is not consulted on the server
+       yet, because the only server reader of it is the full
+       connection-inventory listing, and that is too heavy to run on every
+       turn start.
+     - The chip shows whatever the engine reports as applied once a turn has
+       run, so what it names cannot drift from what the engine did (§8).
   2. If neither is set and Station has put a concrete posture on this live
      thread, the result is **`ask`**. This is the engine's own standard mode:
      Claude's `default` permission mode, and Codex's
@@ -409,6 +415,11 @@ now follow that later decision. That is the ordering the owner decided on.
   Station. A carried `setApprovalMode` is forwarded only as far as that
   Station's own contract accepts it, and an older remote Station ignores it.
   Posture on a remote conversation is not covered.
+- **A connection's own approval default is not read on the server.** A Default
+  pick resolves to the Station default, or to `ask` (§4.3). If an engine
+  connection sets its own `config.approvalMode`, the chip still displays that
+  value until the first turn reports what the engine applied. This is a
+  display gap, and it errs toward the stricter posture.
 - **The posture is not added to the session-summary snapshot.** A client that
   reconnects through a snapshot folds the posture from the next event, or from
   its own command result. The engine is correct either way, because the

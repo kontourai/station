@@ -1309,6 +1309,17 @@ export interface RecoveredSessionStartOptions {
     input: ProviderSessionStartInput,
   ) => Promise<ProviderSessionStartInput>;
   /**
+   * #2436: the conversation's recorded approval posture for the respawned
+   * engine. Without it a dormant thread restarted with NO `modelOptions`, so
+   * its posture was lost and Claude's spawn-only full-access grant could
+   * never return.
+   */
+  applyApprovalPosture?: (
+    adapter: ProviderAdapterShape,
+    input: ProviderSessionStartInput,
+    connectionId: string | undefined,
+  ) => Promise<ProviderSessionStartInput>;
+  /**
    * archive#3549 review round 4 (independent, Codex), HIGH: recovery applied
    * `resolveSessionAgent` but NOT the agent's credential-profile pin, and
    * called `adapter.startSession` directly — so a pinned agent whose session
@@ -1425,6 +1436,13 @@ export async function startRecoveredOrchestrationSession(options: {
         ? recoveredMetadata.connectionId
         : undefined;
     await deps.assertAdapterReady(adapter, recoveredConnectionId);
+    if (deps.applyApprovalPosture) {
+      startInput = await deps.applyApprovalPosture(
+        adapter,
+        startInput,
+        recoveredConnectionId,
+      );
+    }
     if (deps.resolveSessionAgent) {
       try {
         startInput = await deps.resolveSessionAgent(startInput);
