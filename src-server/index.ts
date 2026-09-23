@@ -29,6 +29,7 @@ import {
   resolveRuntimePort,
 } from './runtime/bootstrap/runtime-port.js';
 import { createRuntimeProcessLifecycle } from './runtime/bootstrap/runtime-process-lifecycle.js';
+import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-broker-runtime.js';
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
@@ -121,6 +122,12 @@ async function main() {
 
   const connector = loadSelfHostedBrokerConnectorConfig({
     homeDir: projectHomeDir,
+    observeStatus: (status: SelfHostedBrokerStatus) => {
+      const message = 'Self-hosted relay lifecycle status';
+      const detail = { ...status };
+      if (status.state === 'failed') logger.warn(message, detail);
+      else logger.info(message, detail);
+    },
   });
 
   const runtime = new StationRuntime({

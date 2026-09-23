@@ -102,7 +102,15 @@ interface Harness {
 }
 
 async function harness(
-  options: { maxPeers?: number; wrongIssuer?: boolean } = {},
+  options: {
+    maxPeers?: number;
+    wrongIssuer?: boolean;
+    observeStatus?: (status: {
+      state: string;
+      phase: string;
+      reason?: string;
+    }) => void;
+  } = {},
 ) {
   const pair = await keys();
   const wrong = options.wrongIssuer ? await keys() : null;
@@ -246,6 +254,7 @@ async function harness(
       pollMs: 1_000,
       maxPeerLifetimeMs: 60_000,
       maxPeers: options.maxPeers ?? 4,
+      observeStatus: options.observeStatus,
     },
     application as never,
     { startAdapter: startAdapter as never },
@@ -279,6 +288,22 @@ async function waitFor(
 }
 
 describe('self-hosted broker pion factory', () => {
+  test('forwards lifecycle status through Pion composition without implying application readiness', async () => {
+    const statuses: Array<{ state: string; phase: string }> = [];
+    const { runtime } = await harness({
+      observeStatus: ({ state, phase }) => statuses.push({ state, phase }),
+    });
+    await runtime.start();
+    expect(statuses.slice(0, 2)).toEqual([
+      { state: 'starting', phase: 'registration' },
+      { state: 'registered', phase: 'registration' },
+    ]);
+    await runtime.shutdown();
+    expect(statuses.at(-1)).toEqual({
+      state: 'withdrawn',
+      phase: 'withdrawal',
+    });
+  });
   test('admits with fresh-clone trust and publishes a cryptographically valid proof', async () => {
     const { h, runtime } = await harness();
     await runtime.start();
