@@ -1056,6 +1056,38 @@ account cookies, proof verification or membership logic. See the
 [application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
 for expiry, origin, replay and revocation behavior.
 
+### Fresh relay enrollment proof helpers
+
+`@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,
+`restoreRelayEnrollmentKey`, and `createRelayEnrollmentLoginProof` for the
+versioned fresh relay-account ceremony. The signing key is non-extractable
+P-256 custody, and the proof binds the Station, configured client Origin,
+enrollment attempt, key thumbprint, nonce, method, path, purpose, and short
+expiry. Keep the key in platform credential custody. The login proof authorizes
+only a provider-side candidate identity; the operator must still approve the
+account binding, and the server separately activates a narrow Device after a
+signed delivery acknowledgment. The SDK helper does not transport cookies,
+Device credentials, or continuations.
+
+```ts
+import {
+  createRelayEnrollmentKey,
+  createRelayEnrollmentLoginProof,
+} from '@kontourai/station-sdk/relay-enrollment';
+
+const key = await createRelayEnrollmentKey();
+const proof = await createRelayEnrollmentLoginProof(key, challenge, {
+  method: 'POST',
+  url: `${stationOrigin}/.well-known/station/v1/relay/enrollment/login`,
+  clientOrigin,
+});
+```
+
+The enrollment wire shapes live in
+`@kontourai/station-contracts/relay-enrollment`. This proof is distinct from
+application-session proof and cannot establish an ordinary authenticated
+account session.
+
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project
 shape or a validated `MemberProjectView` from

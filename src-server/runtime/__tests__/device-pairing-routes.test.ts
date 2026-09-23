@@ -99,6 +99,27 @@ const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const REMOTE_PEER = '100.96.12.7';
 const homes: string[] = [];
 
+function markProviderPending(
+  journal: ReturnType<typeof openRelayEnrollmentJournal>,
+  enrollmentId: string,
+  providerSessionId: string,
+  issuer: string,
+  subject: string,
+) {
+  journal.transition({
+    enrollmentId,
+    expectedStates: ['challenge'],
+    nextState: 'provider-creating',
+    patch: { issuer, loginJti: 'L'.repeat(22) },
+  });
+  return journal.transition({
+    enrollmentId,
+    expectedStates: ['provider-creating'],
+    nextState: 'provider-pending',
+    patch: { providerSessionId, issuer, subject },
+  });
+}
+
 type TestBindings = HttpBindings & {
   incoming: HttpBindings['incoming'] & {
     socket: HttpBindings['incoming']['socket'] & { remoteAddress?: string };
@@ -803,12 +824,14 @@ describe('device pairing routes', () => {
       nonce: 'N'.repeat(43),
       expiresAt: Date.now() + 60_000,
     });
-    journal?.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: { providerSessionId, issuer, subject },
-    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
     const access = harness.pairing.requestRelayEnrollmentAccess({
       enrollmentId,
       endpoint: 'https://station.example.test',
@@ -892,12 +915,14 @@ describe('device pairing routes', () => {
       nonce: 'N'.repeat(43),
       expiresAt: Date.now() + 60_000,
     });
-    journal?.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: { providerSessionId, issuer, subject },
-    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
     const access = harness.pairing.requestRelayEnrollmentAccess({
       enrollmentId,
       endpoint: 'https://station.example.test',
@@ -981,12 +1006,14 @@ describe('device pairing routes', () => {
       nonce: 'N'.repeat(43),
       expiresAt: Date.now() + 60_000,
     });
-    journal?.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: { providerSessionId, issuer, subject },
-    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
     const access = harness.pairing.requestRelayEnrollmentAccess({
       enrollmentId,
       endpoint: 'https://station.example.test',
@@ -1098,12 +1125,14 @@ describe('device pairing routes', () => {
       nonce: 'N'.repeat(43),
       expiresAt: now + 1_000,
     });
-    journal?.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: { providerSessionId, issuer, subject },
-    });
+    if (journal)
+      markProviderPending(
+        journal,
+        enrollmentId,
+        providerSessionId,
+        issuer,
+        subject,
+      );
     const access = harness.pairing.requestRelayEnrollmentAccess({
       enrollmentId,
       endpoint: 'https://station.example.test',

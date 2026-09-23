@@ -60,7 +60,8 @@
     "./input-reply": "./src/client/input-reply.ts",
     "./local-accounts": "./src/client/local-accounts.ts",
     "./authority-observation": "./src/client/authority-observation.ts",
-    "./application-session": "./src/client/application-session.ts"
+    "./application-session": "./src/client/application-session.ts",
+    "./relay-enrollment": "./src/client/relay-enrollment.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",

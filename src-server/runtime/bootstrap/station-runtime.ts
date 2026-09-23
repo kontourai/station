@@ -443,6 +443,7 @@ import {
   checkOllamaAvailability,
   getActiveRuntimeProjectSlug,
 } from './runtime-startup.js';
+import { readVerifiedPionApplicationRequest } from './self-hosted-broker-pion-runtime.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
@@ -3223,6 +3224,7 @@ export class StationRuntime {
     const virtualApplication = this.virtualApplicationConfiguration
       ? new VirtualApplicationIngress(
           this.virtualApplicationConfiguration.origin,
+          readVerifiedPionApplicationRequest,
         )
       : undefined;
     this.virtualApplication = virtualApplication;

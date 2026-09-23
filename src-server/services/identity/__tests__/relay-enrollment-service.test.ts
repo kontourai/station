@@ -55,6 +55,25 @@ function reserve(journal: ReturnType<typeof journalAt>, enrollmentId: string) {
   });
 }
 
+function markProviderPending(
+  journal: ReturnType<typeof journalAt>,
+  enrollmentId: string,
+  patch: { providerSessionId: string; issuer: string; subject: string },
+) {
+  journal.transition({
+    enrollmentId,
+    expectedStates: ['challenge'],
+    nextState: 'provider-creating',
+    patch: { issuer: patch.issuer, loginJti: 'L'.repeat(22) },
+  });
+  return journal.transition({
+    enrollmentId,
+    expectedStates: ['provider-creating'],
+    nextState: 'provider-pending',
+    patch,
+  });
+}
+
 describe('RelayEnrollmentService startup recovery', () => {
   test('cleans a challenge-only record when no enrollment provider is configured', async () => {
     const home = await createHome();
@@ -83,15 +102,10 @@ describe('RelayEnrollmentService startup recovery', () => {
     const journal = journalAt(home);
     const enrollmentId = 'b'.repeat(43);
     reserve(journal, enrollmentId);
-    journal.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'provider-session',
-        issuer: 'https://accounts.example.test',
-        subject: 'subject-1',
-      },
+    markProviderPending(journal, enrollmentId, {
+      providerSessionId: 'provider-session',
+      issuer: 'https://accounts.example.test',
+      subject: 'subject-1',
     });
 
     await expect(
@@ -112,20 +126,58 @@ describe('RelayEnrollmentService startup recovery', () => {
     journal.close();
   });
 
+  test('recovery discards a provider-creating attempt by enrollment ID without a session ID', async () => {
+    const home = await createHome();
+    const journal = journalAt(home);
+    const enrollmentId = 'k'.repeat(43);
+    reserve(journal, enrollmentId);
+    journal.transition({
+      enrollmentId,
+      expectedStates: ['challenge'],
+      nextState: 'provider-creating',
+      patch: {
+        issuer: 'https://accounts.example.test',
+        loginJti: 'L'.repeat(22),
+      },
+    });
+    const discard = vi.fn(async () => {});
+    const service = new RelayEnrollmentService({
+      stationId,
+      requestOrigin: origin,
+      allowedClientOrigins: [origin],
+      authentication: {
+        describe: () => ({ issuer: 'https://accounts.example.test' }),
+        pendingEnrollmentCapabilities: () => ({ available: true }),
+        discardPendingEnrollment: discard,
+      } as never,
+      pairing: {} as never,
+      journal,
+      now: () => 100,
+    });
+
+    await service.recoverBeforeAdmission();
+    expect(discard).toHaveBeenCalledOnce();
+    expect(discard).toHaveBeenCalledWith(
+      enrollmentId,
+      undefined,
+      expect.any(AbortSignal),
+    );
+    expect(journal.get(enrollmentId)).toMatchObject({
+      state: 'failed',
+      terminalReason: 'recovery-required',
+    });
+    service.close();
+  });
+
   test('never revokes a provider session through a different issuer', async () => {
     const home = await createHome();
     const journal = journalAt(home);
     const enrollmentId = 'g'.repeat(43);
     reserve(journal, enrollmentId);
-    journal.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'colliding-session-id',
-        issuer: 'https://old-identity.example.test',
-        subject: 'subject-1',
-      },
+    markProviderPending(journal, enrollmentId, {
+      providerSessionId: 'colliding-session-id',
+      issuer: 'https://old-identity.example.test',
+      subject: 'subject-1',
     });
     const discard = vi.fn(async () => {});
     const revoke = vi.fn(async () => {});
@@ -161,15 +213,10 @@ describe('RelayEnrollmentService startup recovery', () => {
     const journal = journalAt(home);
     const enrollmentId = 'c'.repeat(43);
     reserve(journal, enrollmentId);
-    journal.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'provider-session',
-        issuer: 'https://accounts.example.test',
-        subject: 'subject-1',
-      },
+    markProviderPending(journal, enrollmentId, {
+      providerSessionId: 'provider-session',
+      issuer: 'https://accounts.example.test',
+      subject: 'subject-1',
     });
     const discarded = vi.fn(async () => {});
     const revoked = vi.fn(async () => {});
@@ -209,15 +256,10 @@ describe('RelayEnrollmentService startup recovery', () => {
     const journal = journalAt(home);
     const enrollmentId = 'e'.repeat(43);
     reserve(journal, enrollmentId);
-    journal.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'provider-session',
-        issuer: 'https://accounts.example.test',
-        subject: 'account-subject',
-      },
+    markProviderPending(journal, enrollmentId, {
+      providerSessionId: 'provider-session',
+      issuer: 'https://accounts.example.test',
+      subject: 'account-subject',
     });
     const pairing = new DevicePairingService({
       homeDir: home,
@@ -351,15 +393,10 @@ describe('RelayEnrollmentService startup recovery', () => {
     const journal = journalAt(home);
     const enrollmentId = 'f'.repeat(43);
     reserve(journal, enrollmentId);
-    journal.transition({
-      enrollmentId,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'racing-provider-session',
-        issuer: 'https://accounts.example.test',
-        subject: 'racing-subject',
-      },
+    markProviderPending(journal, enrollmentId, {
+      providerSessionId: 'racing-provider-session',
+      issuer: 'https://accounts.example.test',
+      subject: 'racing-subject',
     });
     const pairing = new DevicePairingService({
       homeDir: home,
