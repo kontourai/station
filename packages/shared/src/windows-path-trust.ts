@@ -142,6 +142,15 @@ foreach ($target in @($request.targets)) {
     Assert-CurrentUserDacl $path $directory ($policy -eq 'execution-safe')
   } else { throw 'Station trust received an invalid operation' }
 }
+if ($operation -eq 'ensure') {
+  # Prove every boundary just written by reading each ACL back from disk.
+  # This is the same assertion the 'verify' operation makes, run after all
+  # targets are set; doing it here instead of in a second PowerShell process
+  # halves the cold starts that time out on loaded Windows hosts (#2315).
+  foreach ($target in @($request.targets)) {
+    Assert-CurrentUserDacl ([string]$target.path) ([string]$target.kind -eq 'directory') ([string]$target.policy -eq 'execution-safe')
+  }
+}
 [Console]::Out.Write('{"trusted":true}')
 `;
 
@@ -230,8 +239,9 @@ export function ensureWindowsDirectoriesTrusted(
       `Windows current-user ACL setup failed: ${result.error?.message ?? result.stderr?.trim() ?? `exit ${result.status}`}`,
     );
   }
+  // The ensure program re-reads and asserts every ACL it set before it
+  // reports success, so no second verification process is needed.
   parseWindowsTrustResult(result.stdout);
-  assertWindowsPathsTrusted(run, targets);
 }
 
 /** Harden an existing file (or create/harden a directory) before it is used. */
@@ -249,6 +259,7 @@ export function hardenWindowsPathsTrusted(
       `Windows current-user ACL setup failed: ${result.error?.message ?? result.stderr?.trim() ?? `exit ${result.status}`}`,
     );
   }
+  // The ensure program re-reads and asserts every ACL it set before it
+  // reports success, so no second verification process is needed.
   parseWindowsTrustResult(result.stdout);
-  assertWindowsPathsTrusted(run, targets);
 }

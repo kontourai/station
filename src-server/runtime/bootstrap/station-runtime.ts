@@ -370,6 +370,7 @@ interface AgentConfigurationGeneration {
 }
 
 import { getCachedUser } from '../../routes/system/auth.js';
+import type { BrowserService } from '../../services/browser/browser-service.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import {
   ActionOperationService,
@@ -677,6 +678,8 @@ export class StationRuntime {
   private kitLifecycleReady: Promise<void> = Promise.resolve();
   private notificationService?: NotificationService;
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
+  private browserService?: BrowserService;
   private taskRoomAcceptanceControl?: TaskRoomAcceptanceControl;
   private metricsLog: Array<{
     timestamp: number;
@@ -3890,6 +3893,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      browserService,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -3996,6 +4000,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.browserService = browserService;
   }
 
   /**
@@ -4469,6 +4474,12 @@ export class StationRuntime {
       const retirement = await this.runtimeSearch.close();
       if (retirement.state !== 'closed')
         failures.push(new Error('Task search reader shutdown pending'));
+    }
+    try {
+      await this.browserService?.shutdown();
+      this.browserService = undefined;
+    } catch (error) {
+      failures.push(error);
     }
     try {
       await this.discordGatewayService?.stop();
