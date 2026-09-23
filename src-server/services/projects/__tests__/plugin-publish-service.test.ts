@@ -19,6 +19,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   linkSync,
@@ -613,6 +614,32 @@ describe('special entries', () => {
     expect(heads(bare)).toBe('');
   });
 
+  test('an ignored file whose name git cannot hold (Finder’s Icon\\r) does not block the publish', async () => {
+    // GitHub's macOS .gitignore template ignores it as `Icon?`.
+    writeFileSync(join(folder, '.gitignore'), 'Icon?\n');
+    writeFileSync(join(folder, 'Icon\r'), '');
+    const published = await publishPlugin(folder, REQUEST, OPTIONS);
+    expect(published.ok).toBe(true);
+    expect(Object.keys(pushedFiles()).sort()).toEqual([
+      '.gitignore',
+      'index.ts',
+      'plugin.json',
+    ]);
+  });
+
+  test('an ignored folder whose name git cannot hold does not block the publish', async () => {
+    writeFileSync(join(folder, '.gitignore'), 'bad*\n');
+    mkdirSync(join(folder, 'bad\\dir'));
+    writeFileSync(join(folder, 'bad\\dir', 'a.ts'), 'x\n');
+    const published = await publishPlugin(folder, REQUEST, OPTIONS);
+    expect(published.ok).toBe(true);
+    expect(Object.keys(pushedFiles()).sort()).toEqual([
+      '.gitignore',
+      'index.ts',
+      'plugin.json',
+    ]);
+  });
+
   test('a .git entry in any case, at any depth, is never read or published', async () => {
     mkdirSync(join(folder, 'sub', '.GIT'), { recursive: true });
     writeFileSync(join(folder, 'sub', '.GIT', 'config'), `${SECRET}\n`);
@@ -754,6 +781,44 @@ describe('a writer racing the read (round 3: symlinked parent)', () => {
           if (path !== 'lib/a.ts') return;
           rmSync(join(folder, 'lib'));
           renameSync(join(root, 'lib.real'), join(folder, 'lib'));
+        },
+      },
+    });
+    expect(published).toEqual({
+      ok: false,
+      refusal: { code: 'folder-changed', paths: ['lib/a.ts'] },
+    });
+    expect(heads(bare)).toBe('');
+  });
+
+  test('a second hard link added after the read is refused', async () => {
+    plantLib();
+    const published = await publishPlugin(folder, REQUEST, {
+      ...OPTIONS,
+      testHooks: {
+        afterRead: (path) => {
+          if (path === 'lib/a.ts') {
+            linkSync(join(folder, 'lib', 'a.ts'), join(root, 'second-name'));
+          }
+        },
+      },
+    });
+    expect(published).toEqual({
+      ok: false,
+      refusal: { code: 'linked-file', paths: ['lib/a.ts'] },
+    });
+    expect(heads(bare)).toBe('');
+  });
+
+  test('a file that grows between its size check and its read is refused', async () => {
+    plantLib();
+    const published = await publishPlugin(folder, REQUEST, {
+      ...OPTIONS,
+      testHooks: {
+        afterStat: (path) => {
+          if (path === 'lib/a.ts') {
+            appendFileSync(join(folder, 'lib', 'a.ts'), 'appended\n');
+          }
         },
       },
     });

@@ -102,6 +102,8 @@ const DEFAULT_SNAPSHOT_LIMITS: SnapshotLimits = {
  */
 export interface SnapshotHooks {
   beforeOpen?: (path: string) => Promise<void> | void;
+  /** After the open descriptor was checked, before a byte is read. */
+  afterStat?: (path: string) => Promise<void> | void;
   afterRead?: (path: string) => Promise<void> | void;
 }
 
@@ -276,6 +278,7 @@ export async function snapshotPluginFolder(
       }
       if (status.nlink !== 1) return 'linked';
       if (status.size > budget) throw new TooLarge();
+      await options.hooks?.afterStat?.(path);
       // One byte more than `lstat` reported, so growth is observable.
       const buffer = Buffer.alloc(status.size + 1);
       let filled = 0;
@@ -306,6 +309,9 @@ export async function snapshotPluginFolder(
     if (!after?.isFile() || after.dev !== seen.dev || after.ino !== seen.ino) {
       throw new FolderChanged(path);
     }
+    // And it still has no other name: one added after the read would hold
+    // these same bytes somewhere Station never looked.
+    if (after.nlink !== 1) return 'linked';
     return bytes;
   };
 
@@ -335,6 +341,9 @@ export async function snapshotPluginFolder(
             continue;
           }
           const status = await lstat(absolute(path)).catch(() => null);
+          // The entry was looked up through the directories the walk
+          // recorded, not through one swapped in for the lookup.
+          await verifyChain(directory, path);
           if (!status) {
             // A name that is not valid UTF-8 cannot be looked up again by
             // the name Node decoded; anything else vanished mid-walk.
@@ -390,26 +399,34 @@ export async function snapshotPluginFolder(
         }
       }
 
-      // A name git cannot hold is refused by name before it reaches the
-      // ignore skeleton (whose guard would otherwise fail without naming
-      // it). Such a name is refused even if `.gitignore` would exclude it.
-      const judged = candidates.filter((candidate) => {
-        if (unsafeRelativePathReason(candidate.path) === null) return true;
-        unsafe.push(candidate.path);
-        return false;
-      });
-      for (const candidate of judged) {
-        if (candidate.kind === 'directory') {
+      // A name git cannot hold is judged by `.gitignore` like any other
+      // (`check-ignore -z` takes any bytes), and refused, by name, only when
+      // it is NOT ignored: Finder's `Icon\r`, ignored by GitHub's macOS
+      // template as `Icon?`, must not block a publish. An unsafe DIRECTORY
+      // is not laid out in the ignore skeleton, so it is asked about as a
+      // bare path. That can only err towards refusing it: a pattern that
+      // matches directories only (`name/`) does not match a path git sees
+      // as a file, and an unmatched unsafe name is refused.
+      for (const candidate of candidates) {
+        if (
+          candidate.kind === 'directory' &&
+          unsafeRelativePathReason(candidate.path) === null
+        ) {
           await oracle.directory(candidate.path);
         }
       }
       const ignored = await oracle.ignored(
-        judged.map((candidate) => candidate.path),
+        candidates.map((candidate) => candidate.path),
       );
+      const judged = candidates.filter((candidate) => {
+        if (ignored.has(candidate.path)) return false;
+        if (unsafeRelativePathReason(candidate.path) === null) return true;
+        unsafe.push(candidate.path);
+        return false;
+      });
 
       const next: string[] = [];
       for (const candidate of judged) {
-        if (ignored.has(candidate.path)) continue;
         if (candidate.kind === 'directory') {
           directories.set(candidate.path, candidate.identity);
           next.push(candidate.path);
