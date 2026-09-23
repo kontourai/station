@@ -101,6 +101,28 @@ describe('self-hosted broker runtime lifecycle', () => {
     await runtime.shutdown();
     expect(f.connector.withdraw).toHaveBeenCalledOnce();
   });
+  test('keeps an unregistered connector recoverable beyond its initial retry window', async () => {
+    const f = fixture();
+    f.connector.register
+      .mockRejectedValueOnce(
+        new BrokerTransientRequestError(new TypeError('offline')),
+      )
+      .mockRejectedValueOnce(
+        new BrokerTransientRequestError(new TypeError('offline')),
+      )
+      .mockRejectedValueOnce(
+        new BrokerTransientRequestError(new TypeError('offline')),
+      )
+      .mockResolvedValueOnce({ expiresAt: Date.now() + 60_000 });
+    const runtime = new SelfHostedBrokerRuntime({
+      ...f.options,
+      retryDelayMs: 1,
+    });
+    await runtime.start();
+    expect(f.connector.register).toHaveBeenCalledTimes(4);
+    expect(f.connector.withdraw).not.toHaveBeenCalled();
+    await runtime.shutdown();
+  });
   test('reports content-free lifecycle transitions without claiming application readiness', async () => {
     const f = fixture();
     const statuses: unknown[] = [];
