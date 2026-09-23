@@ -1569,6 +1569,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // bounded redraw and close every live tool row before awaiting the child;
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
+    this.cancelPendingRequests(record, threadId);
     await record.process.cancel();
     if (!this.ownsActiveTurn(threadId, record, targetTurnId)) {
       return {
@@ -1760,6 +1761,31 @@ export class AcpAdapter implements ProviderAdapterShape {
       sessionId: threadId,
       reason,
     });
+  }
+
+  /**
+   * #2316: a cancelled prompt's open permission requests can never run their
+   * call (ACP answers an outstanding `session/request_permission` with
+   * `cancelled` after `session/cancel`). Settle them, so no later answer lands
+   * on a dead request and no session grant is minted for it.
+   */
+  private cancelPendingRequests(
+    record: AcpSessionRecord,
+    threadId: string,
+  ): void {
+    for (const [requestId, pending] of record.pendingRequests) {
+      pending.resolve('cancel');
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: mapAcpDecisionToApprovalStatus('cancel'),
+      });
+    }
+    record.pendingRequests.clear();
   }
 
   private prepareRecordForStop(record: AcpSessionRecord): void {
@@ -2453,6 +2479,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
+    this.cancelPendingRequests(record, threadId);
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();

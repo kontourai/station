@@ -1042,6 +1042,10 @@ describe('ClaudeAdapter', () => {
     expect(opened.value).toMatchObject({
       method: 'request.opened',
       requestType: 'approval',
+      // #2316: the SDK's tool_use id rides along, so the transcript binds the
+      // card to this exact call (the id `tool.started` carries), not to the
+      // newest same-named call.
+      payload: { toolName: 'Read', toolCallId: 'tool-use-1' },
     });
 
     await adapter.respondToRequest(
@@ -2402,6 +2406,368 @@ describe('ClaudeAdapter', () => {
     await expect(adapter.listSessions()).resolves.toEqual([
       expect.objectContaining({ status: 'ready' }),
     ]);
+  });
+
+  describe('#2316: an abandoned approval is settled, never answerable later', () => {
+    async function openedBashRequest(threadId: string, signal: AbortSignal) {
+      mockQuery.mockReturnValue(createControlledMockQuery());
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({ provider: 'claude', threadId });
+      await iterator.next(); // session.started
+      await iterator.next(); // session.configured
+      const turn = await adapter.sendTurn({ threadId, input: 'run it' });
+      await iterator.next(); // turn.started
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const permission = canUseTool(
+        'Bash',
+        { command: 'rm -rf build' },
+        { signal, toolUseID: 'toolu-abandoned', suggestions: [] },
+      );
+      const opened = (await iterator.next()).value;
+      expect(opened).toMatchObject({ method: 'request.opened' });
+      return { adapter, iterator, turn, canUseTool, permission, opened };
+    }
+
+    async function expectNoGrant(
+      adapter: ClaudeAdapter,
+      iterator: AsyncIterator<any>,
+      threadId: string,
+      canUseTool: any,
+      requestId: string,
+    ) {
+      // The late answer is refused, before anything is granted…
+      await expect(
+        adapter.respondToRequest(threadId, requestId, 'acceptForSession'),
+      ).rejects.toThrow(`Unknown Claude permission request: ${requestId}`);
+      // …so the next Bash call still asks.
+      const next = canUseTool(
+        'Bash',
+        { command: 'ls' },
+        {
+          signal: new AbortController().signal,
+          toolUseID: 'toolu-next',
+          suggestions: [],
+        },
+      );
+      const race = await Promise.race([
+        next.then(() => ({ kind: 'auto-allowed' })),
+        iterator.next().then((event) => ({ kind: 'event', event })),
+      ]);
+      expect(race).toMatchObject({
+        kind: 'event',
+        event: { value: { method: 'request.opened' } },
+      });
+    }
+
+    test('an interrupt settles the open request before turn.aborted', async () => {
+      const threadId = 'thread-interrupted-approval';
+      const { adapter, iterator, turn, canUseTool, permission, opened } =
+        await openedBashRequest(threadId, new AbortController().signal);
+
+      await expect(
+        adapter.interruptTurn(threadId, turn.turnId),
+      ).resolves.toMatchObject({ outcome: 'cancelled' });
+      await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+      const settled = [
+        (await iterator.next()).value,
+        (await iterator.next()).value,
+      ];
+      expect(settled).toMatchObject([
+        {
+          method: 'request.resolved',
+          requestId: opened.requestId,
+          status: 'cancelled',
+        },
+        { method: 'turn.aborted', reason: 'interrupted' },
+      ]);
+      await expectNoGrant(
+        adapter,
+        iterator,
+        threadId,
+        canUseTool,
+        opened.requestId,
+      );
+      await adapter.stopSession(threadId);
+    });
+
+    test('an interrupt settles every request — a live background subagent’s included — and a late answer grants nothing', async () => {
+      const threadId = 'thread-background-approval';
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const until = async (predicate: (event: any) => boolean) => {
+        for (let seen = 0; seen < 30; seen++) {
+          const event = (await iterator.next()).value;
+          if (predicate(event)) return event;
+        }
+        throw new Error('expected event never arrived');
+      };
+      await adapter.startSession({ provider: 'claude', threadId });
+      const turn = await adapter.sendTurn({ threadId, input: 'research it' });
+      await until((event) => event.method === 'turn.started');
+      controlled.push({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-bg',
+        tool_use_id: 'toolu-bg',
+        description: 'Deep research',
+        uuid: 'u-1',
+        session_id: 's-1',
+      });
+      controlled.push({
+        type: 'system',
+        subtype: 'task_updated',
+        task_id: 'task-bg',
+        patch: { is_backgrounded: true },
+        uuid: 'u-2',
+        session_id: 's-1',
+      });
+      await until((event) => event.method === 'tool.started');
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const signal = new AbortController().signal;
+      const subagentPermission = canUseTool(
+        'Bash',
+        { command: 'npm test' },
+        {
+          signal,
+          toolUseID: 'toolu-sub',
+          agentID: 'agent-bg',
+          suggestions: [],
+        },
+      );
+      const subagentOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+      const mainPermission = canUseTool(
+        'Write',
+        { file_path: 'a.ts' },
+        { signal, toolUseID: 'toolu-main', suggestions: [] },
+      );
+      const mainOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+
+      await adapter.interruptTurn(threadId, turn.turnId);
+      await expect(mainPermission).resolves.toMatchObject({ behavior: 'deny' });
+      await expect(subagentPermission).resolves.toMatchObject({
+        behavior: 'deny',
+      });
+      const settled = [
+        await until((event) => event.method === 'request.resolved'),
+        await until((event) => event.method === 'request.resolved'),
+      ];
+      expect(settled.map((event) => event.requestId).sort()).toEqual(
+        [mainOpened.requestId, subagentOpened.requestId].sort(),
+      );
+      expect(settled.every((event) => event.status === 'cancelled')).toBe(true);
+      expect(
+        await until((event) => event.method === 'turn.aborted'),
+      ).toBeTruthy();
+
+      // The late "Allow Bash for this session" is refused before any grant…
+      await expect(
+        adapter.respondToRequest(
+          threadId,
+          subagentOpened.requestId,
+          'acceptForSession',
+        ),
+      ).rejects.toThrow('Unknown Claude permission request');
+      // …so the subagent's next Bash call still asks.
+      const next = canUseTool(
+        'Bash',
+        { command: 'ls' },
+        {
+          signal,
+          toolUseID: 'toolu-next',
+          agentID: 'agent-bg',
+          suggestions: [],
+        },
+      );
+      const race = await Promise.race([
+        next.then(() => ({ kind: 'auto-allowed' })),
+        until((event) => event.method === 'request.opened').then(() => ({
+          kind: 'asked',
+        })),
+      ]);
+      expect(race).toEqual({ kind: 'asked' });
+      await adapter.stopSession(threadId);
+    });
+
+    test('when the last subagent task ends, its leftover requests are settled; the main thread’s are not', async () => {
+      const threadId = 'thread-task-ended-approval';
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const until = async (predicate: (event: any) => boolean) => {
+        for (let seen = 0; seen < 30; seen++) {
+          const event = (await iterator.next()).value;
+          if (predicate(event)) return event;
+        }
+        throw new Error('expected event never arrived');
+      };
+      await adapter.startSession({ provider: 'claude', threadId });
+      await adapter.sendTurn({ threadId, input: 'research it' });
+      await until((event) => event.method === 'turn.started');
+      controlled.push({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-bg',
+        tool_use_id: 'toolu-bg',
+        description: 'Deep research',
+        uuid: 'u-1',
+        session_id: 's-1',
+      });
+      await until((event) => event.method === 'tool.started');
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const signal = new AbortController().signal;
+      const subagentPermission = canUseTool(
+        'Bash',
+        { command: 'npm test' },
+        {
+          signal,
+          toolUseID: 'toolu-sub',
+          agentID: 'agent-bg',
+          suggestions: [],
+        },
+      );
+      const subagentOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+      void canUseTool(
+        'Write',
+        { file_path: 'a.ts' },
+        { signal, toolUseID: 'toolu-main', suggestions: [] },
+      );
+      const mainOpened = await until(
+        (event) => event.method === 'request.opened',
+      );
+
+      // The subagent's task ends without its request ever being answered.
+      controlled.push({
+        type: 'system',
+        subtype: 'task_updated',
+        task_id: 'task-bg',
+        patch: { status: 'completed' },
+        uuid: 'u-2',
+        session_id: 's-1',
+      });
+      await expect(subagentPermission).resolves.toMatchObject({
+        behavior: 'deny',
+      });
+      expect(
+        await until((event) => event.method === 'request.resolved'),
+      ).toMatchObject({
+        requestId: subagentOpened.requestId,
+        status: 'cancelled',
+      });
+      await expect(
+        adapter.respondToRequest(
+          threadId,
+          subagentOpened.requestId,
+          'acceptForSession',
+        ),
+      ).rejects.toThrow('Unknown Claude permission request');
+      // The main thread's request is not a subagent's: still answerable.
+      await adapter.respondToRequest(threadId, mainOpened.requestId, 'decline');
+      await adapter.stopSession(threadId);
+    });
+
+    test('a main-thread request under a named Station agent carries no agentId', async () => {
+      const threadId = 'thread-named-agent-approval';
+      mockQuery.mockReturnValue(createControlledMockQuery());
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId,
+        agent: { name: 'Plugin Author', prompt: 'You author plugins.' },
+      } as never);
+      await iterator.next();
+      await iterator.next();
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      void canUseTool(
+        'Bash',
+        { command: 'ls' },
+        {
+          signal: new AbortController().signal,
+          toolUseID: 'toolu-main',
+          suggestions: [],
+        },
+      );
+      const opened = (await iterator.next()).value;
+      expect(opened).toMatchObject({ method: 'request.opened' });
+      // The SDK sets `agentID` only "if running within the context of a
+      // sub-agent" (sdk.d.ts); the adapter never derives it from the Station
+      // agent, so a named agent's own calls are never read as a subagent's.
+      expect(opened.payload).not.toHaveProperty('agentId');
+      await adapter.stopSession(threadId);
+    });
+
+    test('with no background task live, an interrupt settles a subagent’s request too', async () => {
+      const threadId = 'thread-foreground-subagent-approval';
+      mockQuery.mockReturnValue(createControlledMockQuery());
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({ provider: 'claude', threadId });
+      await iterator.next();
+      await iterator.next();
+      const turn = await adapter.sendTurn({ threadId, input: 'delegate it' });
+      await iterator.next();
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const permission = canUseTool(
+        'Bash',
+        { command: 'npm test' },
+        {
+          signal: new AbortController().signal,
+          toolUseID: 'toolu-fg-sub',
+          agentID: 'agent-fg',
+          suggestions: [],
+        },
+      );
+      const opened = (await iterator.next()).value;
+      await adapter.interruptTurn(threadId, turn.turnId);
+      await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+      expect((await iterator.next()).value).toMatchObject({
+        method: 'request.resolved',
+        requestId: opened.requestId,
+        status: 'cancelled',
+      });
+      await adapter.stopSession(threadId);
+    });
+
+    test('an SDK abort of the gated call settles the open request', async () => {
+      const threadId = 'thread-aborted-approval';
+      const controller = new AbortController();
+      const { adapter, iterator, canUseTool, permission, opened } =
+        await openedBashRequest(threadId, controller.signal);
+
+      controller.abort();
+      // A bounded wait: a regression reads as "never settled", not as a
+      // 30-second suite timeout.
+      const settled = await Promise.race([
+        permission,
+        new Promise((resolve) =>
+          setTimeout(() => resolve('NOT_SETTLED_AFTER_ABORT'), 1_000),
+        ),
+      ]);
+      expect(settled).toMatchObject({ behavior: 'deny' });
+      expect((await iterator.next()).value).toMatchObject({
+        method: 'request.resolved',
+        requestId: opened.requestId,
+        status: 'cancelled',
+      });
+      await expectNoGrant(
+        adapter,
+        iterator,
+        threadId,
+        canUseTool,
+        opened.requestId,
+      );
+      await adapter.stopSession(threadId);
+    });
   });
 
   test('an interrupt rejection leaves the stopped-result drop armed (#921)', async () => {

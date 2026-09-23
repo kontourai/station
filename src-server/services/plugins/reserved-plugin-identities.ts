@@ -41,6 +41,8 @@ export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([
   'install',
   'preview',
   'reload',
+  // #2323 S1 mounted `POST /api/plugins/validate` (plugin-validate-routes.ts).
+  'validate',
   // #2095 mounted `/api/plugins/visibility` (plugin-visibility-routes.ts) and
   // did not reserve the name, which is the rot the paragraph above predicts:
   // the scan went red on main and the list stayed silent in the plugin's

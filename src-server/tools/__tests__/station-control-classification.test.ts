@@ -13,6 +13,7 @@ import {
   bareControlToolName,
   classifyControlTool,
   isClassifiedControlTool,
+  SC_MUTATING_TOOLS,
   SC_READ_ONLY_TOOLS,
 } from '../../runtime/tools/runtime-control-tools.js';
 import { registerAgentTools } from '../station-control-agent-tools.js';
@@ -64,6 +65,11 @@ describe('station-control tool classification', () => {
         'install_skill',
         'install_registry_integration',
         'install_plugin',
+        // #2323 S5: they record a proposal (a durable write), so they are
+        // not auto-approved as readers.
+        'propose_plugin_install',
+        'update_plugin',
+        'remove_plugin',
         'add_job',
         'run_job',
         'update_config',
@@ -94,8 +100,22 @@ describe('station-control tool classification', () => {
         'list_review_receipts',
         'get_review_receipt',
         'list_projects',
+        // #2323 S1: validation reads the folder in place, writes nothing and
+        // returns nothing an install can consume, so it needs no
+        // platform-mutation approval.
+        'validate_plugin',
       ]),
     );
+  });
+
+  test('no tool is listed as both read-only and mutating', () => {
+    // `classifyControlTool` checks the read-only set first, so a name in both
+    // lists would silently classify read-only (auto-approved). Pin the lists
+    // themselves, not the classifier's answer.
+    const mutating = new Set(SC_MUTATING_TOOLS);
+    expect(SC_READ_ONLY_TOOLS.filter((tool) => mutating.has(tool))).toEqual([]);
+    expect(SC_READ_ONLY_TOOLS.length).toBeGreaterThan(10);
+    expect(SC_MUTATING_TOOLS.length).toBeGreaterThan(10);
   });
 
   test('classification handles loader-prefixed names', () => {

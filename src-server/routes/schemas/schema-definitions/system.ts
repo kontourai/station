@@ -117,6 +117,54 @@ export const pluginPreviewSchema = z.object({
 });
 
 /**
+ * `POST /api/plugins/validate` (#2323 S1) names a source only. It has no
+ * registry form and no consent field, because it is an authoring check and
+ * never the first half of an install.
+ */
+export const pluginValidateSchema = z
+  .object({
+    source: z.string().trim().min(1).max(4096),
+  })
+  .strict();
+
+/**
+ * `POST /api/plugin-proposals` (#2323 S5): an agent asks a person to install,
+ * update or remove a plugin. No consent field, by construction: a proposal is
+ * an ask, and the person's decision is taken later on the ordinary preview.
+ *
+ * `_sourceContext` is the agent/conversation the tool call reported
+ * (`mcp-manager.ts` stamps it for Station's own agents). The route honours it
+ * only for Station's internal caller class, and only as display provenance.
+ */
+const pluginProposalSourceContextSchema = z
+  .object({
+    agentSlug: z.string().trim().min(1).max(128).optional(),
+    conversationId: z.string().trim().min(1).max(256).optional(),
+    attestation: z.string().min(1).max(128).optional(),
+  })
+  .strict()
+  .optional();
+
+export const pluginProposalCreateSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('install'),
+      source: z.string().trim().min(1).max(4096),
+      rationale: z.string().trim().min(1).max(2000),
+      _sourceContext: pluginProposalSourceContextSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.enum(['update', 'remove']),
+      pluginName: z.string().trim().min(1).max(128),
+      rationale: z.string().trim().min(1).max(2000),
+      _sourceContext: pluginProposalSourceContextSchema,
+    })
+    .strict(),
+]);
+
+/**
  * `consent` is the operator's pre-install decision (archive#4288): the derived
  * permission set they were shown, the digest of the bytes they were shown, and
  * the dependency ids that decision named. It is `optional()` here only so the
@@ -183,6 +231,13 @@ export const pluginInstallSchema = z.object({
   source: z.string().min(1),
   skip: z.array(z.string()).optional(),
   consent: pluginInstallConsentSchema.optional(),
+  /**
+   * #2323 S5: the plugin lifecycle proposal this install completes. Carries
+   * no authority: the install is decided by `consent` exactly as without it,
+   * and the proposal is marked completed only after the install succeeded
+   * and only when it asked for this source.
+   */
+  proposalId: z.string().uuid().optional(),
 });
 
 /**

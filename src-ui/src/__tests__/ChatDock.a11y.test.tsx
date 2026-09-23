@@ -297,3 +297,20 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     ).toMatch(/setActiveProjectSlug/);
   });
 });
+
+// Epic #2323 S2 review M2: a composer-draft request is claimed by exactly
+// one pane, and a pane bound to another Project never takes it. The
+// decision is `claimComposerDraftRequest` (behavior-tested with real event
+// listeners in `composerDraftRequest.test.ts`); this pins that the dock's
+// listener consults it, with its own scope, before opening its picker.
+describe('ChatDock composer-draft claim wiring (#2323 S2)', () => {
+  test('the draft branch claims the request with this pane scope before opening the picker', () => {
+    const branch = extractBalancedBody(source, 'if (detail.composerDraft)');
+    expect(branch).toMatch(
+      /const claimed = claimComposerDraftRequest\(event, \{\s*hasImmutableProjectScope,\s*projectSlug,\s*\}\);\s*if \(!claimed\) return;/,
+    );
+    expect(branch.indexOf('claimComposerDraftRequest')).toBeLessThan(
+      branch.indexOf('setShowNewChatModal(true)'),
+    );
+  });
+});

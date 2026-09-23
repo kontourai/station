@@ -23,6 +23,7 @@ import {
   WORKSPACE_TRUST_PANE_SOURCE_ID,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { resolveWorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
+import { WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-plugin-draft-pane';
 import { WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-spatial-board';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -46,6 +47,9 @@ const FIXED_PROJECT_PANE_DESCRIPTOR_IDS = [
   // binds NO project (see the projectless assertion below), which is why it
   // is named here rather than folded into a count.
   WORKSPACE_DEVICE_PANE_DESCRIPTOR_ID,
+  // Epic #2323 S3: the Plugin preview pane is offered in every Project, so
+  // the route declares it and issues its one Project-bound occurrence.
+  WORKSPACE_PLUGIN_DRAFT_PANE_DESCRIPTOR_ID,
 ];
 
 /**

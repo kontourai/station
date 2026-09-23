@@ -935,6 +935,9 @@ export function ChatDockBody({
             emptyState: historyFailureNotice,
             historyNotice: historyElisionNotice,
             hasOlderMessages: transcript.enabled && transcript.hasMore,
+            // #2316: the pending-approvals strip derives from the window's
+            // events inside the lazily loaded list.
+            approvalEvents: transcript.enabled ? transcript.events : undefined,
             historyLoading: transcript.loading,
             suppressActivity: Boolean(streamStatus),
             onLoadOlder: transcript.loadOlder,

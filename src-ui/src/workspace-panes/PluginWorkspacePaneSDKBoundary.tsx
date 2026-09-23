@@ -12,7 +12,14 @@ export function PluginWorkspacePaneSDKBoundary({
 }: {
   children: ReactNode;
   layout: LayoutDefinition;
-  pluginName: string;
+  /**
+   * The installed plugin this pane belongs to. Absent for a plugin DRAFT
+   * preview (epic #2323 S3): a draft is not installed, so it must not carry
+   * an installed plugin's request identity (and whatever grants that name
+   * holds); its requests go out as the viewer's own, which is what the
+   * preview's disclosure tells the viewer before they run it.
+   */
+  pluginName?: string;
   projectSlug: string;
 }) {
   const activeTabId = layout.tabs[0]?.id;

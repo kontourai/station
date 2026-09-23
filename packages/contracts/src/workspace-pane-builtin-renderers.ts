@@ -37,6 +37,9 @@ export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   'workspace-trust',
   'workspace-browser-preview',
   'workspace-file-preview',
+  // A Project's plugin draft, previewed without installing it (epic #2323
+  // S3). Its descriptor lives in `workspace-plugin-draft-pane.ts`.
+  'workspace-plugin-draft',
   // One pull request as its own dock tab (#2049). Its descriptor lives in
   // `workspace-pull-request-pane.ts`; the renderer mounts the same review
   // surface the Diff pane's list opens.

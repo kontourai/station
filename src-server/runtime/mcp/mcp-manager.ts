@@ -19,6 +19,10 @@ import type { ConfigLoader } from '../../domain/config-loader.js';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { toolServerOAuthRedirectUrl } from '../../services/plugins/mcp-service.js';
+import {
+  type AttestedProposalSubject,
+  attestProposalSourceContext,
+} from '../../services/plugins/plugin-proposal-provenance.js';
 import { ToolServerCredentialStore } from '../../services/plugins/tool-server-credential-store.js';
 import {
   captureToolServerOperationFailure,
@@ -810,6 +814,35 @@ export function getNormalizedToolName(
   return resolveNormalizedToolName(originalName, toolNameReverseMapping);
 }
 
+/**
+ * #2323 S5: station-control tools that record a plugin lifecycle proposal
+ * for a person. They carry `_sourceContext` so the review can say which
+ * agent in which conversation asked.
+ */
+const PLUGIN_PROPOSAL_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'propose_plugin_install',
+  'update_plugin',
+  'remove_plugin',
+]);
+
+/**
+ * The kind and target a proposal tool call asks for, from the tool's own
+ * arguments: `source` for `propose_plugin_install`, `name` for the other
+ * two. The same values the tool sends the route as `source` / `pluginName`.
+ */
+function proposalSubjectOf(
+  controlName: string,
+  args: Record<string, unknown>,
+): AttestedProposalSubject | null {
+  if (controlName === 'propose_plugin_install') {
+    return typeof args.source === 'string'
+      ? { kind: 'install', target: args.source }
+      : null;
+  }
+  const kind = controlName === 'update_plugin' ? 'update' : 'remove';
+  return typeof args.name === 'string' ? { kind, target: args.name } : null;
+}
+
 export function wrapDelegationAwareTools(
   tools: Tool<any>[],
   options: {
@@ -836,7 +869,8 @@ export function wrapDelegationAwareTools(
       controlName !== 'continue_task' &&
       controlName !== 'respond_to_task_request' &&
       controlName !== 'interrupt_task' &&
-      controlName !== 'update_skill'
+      controlName !== 'update_skill' &&
+      !PLUGIN_PROPOSAL_TOOL_NAMES.has(controlName)
     ) {
       return tool;
     }
@@ -885,6 +919,32 @@ export function wrapDelegationAwareTools(
             agentSlug: options.agentSlug,
             ...(parentConversationId
               ? { conversationId: parentConversationId }
+              : {}),
+          };
+        }
+        if (PLUGIN_PROPOSAL_TOOL_NAMES.has(controlName)) {
+          // #2323 S5: who proposed, for the person reviewing it. Always
+          // overwritten, never `??=`: this runtime knows the agent and
+          // conversation, and a model-written value is not that fact.
+          // The attestation lets the route tell this stamp from a
+          // model-written `_sourceContext` (#2323 S5 review M3), and it is
+          // bound to this call's kind and target, so it vouches for this
+          // proposal and no other (delta review). A call without a string
+          // target gets no attestation: the route refuses it anyway.
+          const subject = proposalSubjectOf(controlName, nextArgs);
+          nextArgs._sourceContext = {
+            agentSlug: options.agentSlug,
+            ...(parentConversationId
+              ? { conversationId: parentConversationId }
+              : {}),
+            ...(subject
+              ? {
+                  attestation: attestProposalSourceContext(
+                    options.agentSlug,
+                    parentConversationId,
+                    subject,
+                  ),
+                }
               : {}),
           };
         }
