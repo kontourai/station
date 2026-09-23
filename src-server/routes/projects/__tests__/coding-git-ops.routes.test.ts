@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { FileTreeService } from '../../../services/projects/file-tree-service.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createCodingRoutes } from '../coding.js';
@@ -13,7 +14,19 @@ import { createCodingRoutes } from '../coding.js';
  */
 
 // The git endpoints never touch FileTreeService, so a bare stub is sufficient.
-const app = createCodingRoutes({} as unknown as FileTreeService);
+// Commit and push are operator-only and act on the Project's own folder
+// (#2363); `coding-git-security.routes.test.ts` covers those refusals.
+let repo: string;
+const app = createCodingRoutes({} as unknown as FileTreeService, {
+  resolveProjectFolder: (slug) => (slug === 'acme' ? repo : undefined),
+  visibility: {
+    resolvePrincipal: () => ({
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      kind: 'human',
+      display: 'Operator',
+    }),
+  },
+});
 
 function git(cwd: string, ...args: string[]): string {
   return (execGitSync(args, { cwd, encoding: 'utf-8' }) as string).trim();
@@ -29,7 +42,6 @@ async function post(path: string, body: unknown) {
 }
 
 describe('coding git-ops routes (real git, no mocks)', () => {
-  let repo: string;
   let bare: string;
 
   beforeAll(() => {
@@ -74,7 +86,7 @@ describe('coding git-ops routes (real git, no mocks)', () => {
     writeFileSync(join(repo, 'file.txt'), 'change\n');
 
     const res = await post('/git/commit', {
-      path: repo,
+      projectSlug: 'acme',
       message: 'add file.txt',
     });
     expect(res.status).toBe(200);
@@ -84,26 +96,23 @@ describe('coding git-ops routes (real git, no mocks)', () => {
     expect(git(repo, 'log', '-1', '--format=%s')).toBe('add file.txt');
   });
 
-  test('push to a local-path remote is refused by the transport allowlist (#2363)', async () => {
-    // A push to a local path runs the TARGET repository's hooks, so Station's
-    // git allows only https and ssh. The bare remote here is a local path.
+  test('push to a local-path remote is refused before git runs (#2363)', async () => {
+    // A push to a local path runs the TARGET repository's hooks. The bare
+    // remote here is a local path, so the route refuses it by address.
     const res = await post('/git/push', {
-      path: repo,
+      projectSlug: 'acme',
       remote: 'origin',
       branch: 'main',
       setUpstream: true,
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     expect(res.json.success).toBe(false);
-    expect(res.json.error).toContain("transport 'file' not allowed");
+    expect(res.json.code).toBe('remote-unsupported-transport');
 
     expect(() =>
       execGitSync(
         ['--git-dir', bare, 'rev-parse', '--verify', 'refs/heads/main'],
-        {
-          encoding: 'utf-8',
-          stdio: 'pipe',
-        },
+        { encoding: 'utf-8', stdio: 'pipe' },
       ),
     ).toThrow();
   });

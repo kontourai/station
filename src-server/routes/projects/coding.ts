@@ -5,16 +5,27 @@ const exec = promisify(execCb);
 
 import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { basename, join, relative, resolve } from 'node:path';
-import { Hono } from 'hono';
+import { basename, join, relative, resolve, sep } from 'node:path';
+import { type Context, Hono, type Next } from 'hono';
 import {
   type CheckoutRemoteReader,
   readCheckoutRemotes,
 } from '../../services/projects/checkout-remote-reader.js';
+import {
+  CodingGitCommandError,
+  type CodingGitRefusal,
+  commitRepository,
+  pushRepository,
+} from '../../services/projects/coding-git-actions.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
+import { checkRepositoryConfig } from '../../services/projects/git-repository-config.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
+import {
+  operatorOnly,
+  type PluginPrincipalResolution,
+} from '../plugins/plugin-identity-enumeration.js';
 import {
   errorMessage,
   execCommandSchema,
@@ -99,6 +110,87 @@ async function discoverRepos(
   return roots;
 }
 
+const CONFIG_REFUSED_MESSAGE =
+  "This repository's own .git/config sets options that run programs or redirect a push, and Station runs git here with this computer's credentials. Remove them (listed in `keys`), or use git from a terminal";
+
+/**
+ * The read-side refusal (#2363): a repository whose own config defines a
+ * filter or diff driver is not run `status`, `diff` or `checkout` against,
+ * because those commands run the driver. `null` means go ahead.
+ */
+async function readRefusal(dir: string) {
+  const verdict = await checkRepositoryConfig(dir, 'read');
+  if (verdict.ok) return null;
+  return verdict.code === 'repository-config-refused'
+    ? {
+        success: false as const,
+        error: CONFIG_REFUSED_MESSAGE,
+        code: verdict.code,
+        keys: verdict.keys,
+      }
+    : {
+        success: false as const,
+        error: "git could not read this repository's configuration",
+        code: verdict.code,
+      };
+}
+
+/** One sentence per refusal; the route never words git's own output. */
+function refusalMessage(refusal: CodingGitRefusal): string {
+  switch (refusal.code) {
+    case 'repository-config-refused':
+      return CONFIG_REFUSED_MESSAGE;
+    case 'repository-config-unreadable':
+      return "git could not read this repository's configuration";
+    case 'secrets':
+      return `Not committed: ${refusal.files
+        .map((file) => `${file.path} (${file.reason})`)
+        .join(
+          ', ',
+        )} look${refusal.files.length === 1 ? 's' : ''} like secrets. Add them to .gitignore or remove them, then commit again`;
+    case 'nothing-to-commit':
+      return 'There is nothing to commit';
+    case 'too-many-changes':
+      return 'More than 5000 files would be committed. Add build output and dependencies to .gitignore, or commit from a terminal';
+    case 'detached-head':
+      return 'The repository is not on a branch (detached HEAD). Check out a branch, then push';
+    case 'invalid-branch':
+      return 'That is not a branch Station can push';
+    case 'invalid-remote-name':
+      return 'That is not a valid remote name';
+    case 'remote-missing':
+      return `This repository has no remote named ${refusal.remote}`;
+    case 'remote-local-host':
+      return `Not pushed: ${refusal.remote} (${refusal.url}) is on this computer or a local-only address`;
+    case 'remote-credentials-in-url':
+      return `Not pushed: ${refusal.remote}'s address contains a password or token. Remove it; Station pushes with this computer's own git credentials`;
+    case 'remote-unsupported-transport':
+      return `Not pushed: ${refusal.remote} (${refusal.url}) is not an https:// or SSH address. Local paths, file://, http:// and git remote helpers (such as ext::) are refused`;
+    default:
+      return `Not pushed: ${refusal.remote}'s address is not one Station can push to`;
+  }
+}
+
+/** Refusals that describe the request rather than the repository's state. */
+const REQUEST_REFUSALS = new Set<CodingGitRefusal['code']>([
+  'invalid-branch',
+  'invalid-remote-name',
+]);
+
+function refusalResponse(c: Context, refusal: CodingGitRefusal): Response {
+  const { code } = refusal;
+  return c.json(
+    {
+      success: false,
+      error: refusalMessage(refusal),
+      code,
+      ...('keys' in refusal ? { keys: refusal.keys } : {}),
+      ...('files' in refusal ? { files: refusal.files } : {}),
+    },
+    REQUEST_REFUSALS.has(code) ? 400 : 409,
+  );
+}
+
 export function createCodingRoutes(
   fileTreeService: FileTreeService,
   deps: {
@@ -112,10 +204,119 @@ export function createCodingRoutes(
      * the reader supplied.
      */
     readRemotes?: CheckoutRemoteReader;
+    /**
+     * A Project's working directory, by slug (#2363). Commit and push run
+     * only in the Project's own folder or a repository inside it; a request
+     * path outside it is refused. Absent means no composition supplied it,
+     * and both routes refuse.
+     */
+    resolveProjectFolder?: (slug: string) => string | undefined;
+    /** The request's principal, for the operator check on commit and push.
+     * Absent means both routes refuse (`operatorOnly`'s contract). */
+    visibility?: PluginPrincipalResolution;
+    /**
+     * TEST ONLY: let the push use git's `file` transport, so a test's
+     * global `insteadOf` can route a validated https remote to a bare
+     * repository on disk. Construction throws outside Vitest.
+     */
+    testOnlyAllowFileTransport?: true;
   } = {},
 ) {
+  if (deps.testOnlyAllowFileTransport && process.env.VITEST !== 'true') {
+    throw new Error(
+      'testOnlyAllowFileTransport is for tests and cannot be enabled here',
+    );
+  }
   const readRemotes = deps.readRemotes ?? readCheckoutRemotes;
   const app = new Hono();
+
+  // #2363: commit and push run with this computer's git credentials and
+  // signing, so they are the host owner's act. The check runs before body
+  // validation, so a non-operator learns nothing about the request shape.
+  const requireOperator =
+    (what: string) =>
+    (c: Context, next: Next): Response | Promise<Response> =>
+      operatorOnly(
+        deps.visibility,
+        what,
+      )(async () => {
+        await next();
+        return c.res;
+      })(c);
+
+  /**
+   * The repository a commit or push acts on: the Project's folder, or a
+   * repository INSIDE it that the toolbar selected (a multi-repo
+   * workspace). Resolved through symlinks on both sides, so a link inside
+   * the Project cannot lead outside it. Anything else is refused.
+   */
+  const projectRepository = (
+    c: Context,
+    slug: string,
+    requested: string | undefined,
+  ): string | Response => {
+    const configured = deps.resolveProjectFolder?.(slug)?.trim();
+    if (!configured) {
+      return c.json(
+        {
+          success: false,
+          error: 'This Project has no working directory',
+          code: 'no-working-directory',
+        },
+        409,
+      );
+    }
+    let projectRoot: string;
+    let target: string;
+    try {
+      projectRoot = realpathSync(resolve(expandTilde(configured)));
+      target = requested
+        ? realpathSync(resolve(expandTilde(requested)))
+        : projectRoot;
+    } catch {
+      return c.json(
+        {
+          success: false,
+          error: 'That folder does not exist',
+          code: 'folder-missing',
+        },
+        409,
+      );
+    }
+    if (target !== projectRoot && !target.startsWith(projectRoot + sep)) {
+      return c.json(
+        {
+          success: false,
+          error: "That folder is not part of this Project's working directory",
+          code: 'outside-project',
+        },
+        403,
+      );
+    }
+    if (!existsSync(join(target, '.git'))) {
+      return c.json(
+        {
+          success: false,
+          error: 'That folder is not the root of a git repository',
+          code: 'not-a-repository',
+        },
+        409,
+      );
+    }
+    return target;
+  };
+
+  const commandFailure = (c: Context, error: unknown) =>
+    c.json(
+      {
+        success: false,
+        error:
+          error instanceof CodingGitCommandError
+            ? error.message
+            : errorMessage(error),
+      },
+      400,
+    );
 
   app.get('/files', (c) => {
     codingOps.add(1, { operation: 'files' });
@@ -217,6 +418,9 @@ export function createCodingRoutes(
       if (!(await isInsideWorkTree(dir))) {
         return c.json({ success: true, data: { isRepo: false } });
       }
+      // #2363: `status` runs a repository-defined clean filter.
+      const refusal = await readRefusal(dir);
+      if (refusal) return c.json(refusal, 409);
 
       const opts = {
         cwd: dir,
@@ -359,6 +563,9 @@ export function createCodingRoutes(
       if (!(await isInsideWorkTree(dir))) {
         return c.json({ success: true, data: { diff: '' } });
       }
+      // #2363: `diff` runs repository-defined filters and diff drivers.
+      const refusal = await readRefusal(dir);
+      if (refusal) return c.json(refusal, 409);
       const diff = (
         await execGit(['diff'], {
           cwd: dir,
@@ -450,6 +657,9 @@ export function createCodingRoutes(
     try {
       const { path, branch, create } = getBody(c);
       const dir = validatePath(path);
+      // #2363: `checkout` runs repository-defined smudge filters.
+      const refusal = await readRefusal(dir);
+      if (refusal) return c.json(refusal, 409);
       const opts = { cwd: dir, encoding: 'utf-8' as const, windowsHide: true };
       await execGit(
         create ? ['checkout', '-b', branch] : ['checkout', branch],
@@ -465,43 +675,50 @@ export function createCodingRoutes(
     }
   });
 
-  app.post('/git/commit', validate(gitCommitSchema), async (c) => {
-    codingOps.add(1, { operation: 'git-commit' });
-    try {
-      const { path, message } = getBody(c);
-      const dir = validatePath(path);
-      const opts = { cwd: dir, encoding: 'utf-8' as const, windowsHide: true };
-      await execGit(['add', '-A'], opts);
-      await execGit(['commit', '-m', message], opts);
-      const { stdout } = await execGit(['rev-parse', 'HEAD'], opts);
-      return c.json({ success: true, data: { sha: stdout.trim() } });
-    } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
-    }
-  });
+  app.post(
+    '/git/commit',
+    requireOperator('commit from Station'),
+    validate(gitCommitSchema),
+    async (c) => {
+      codingOps.add(1, { operation: 'git-commit' });
+      const { projectSlug, path, message } = getBody(c);
+      const repository = projectRepository(c, projectSlug, path);
+      if (repository instanceof Response) return repository;
+      try {
+        const outcome = await commitRepository(repository, message);
+        if (!outcome.ok) return refusalResponse(c, outcome.refusal);
+        return c.json({ success: true, data: outcome.value });
+      } catch (e: unknown) {
+        return commandFailure(c, e);
+      }
+    },
+  );
 
-  app.post('/git/push', validate(gitPushSchema), async (c) => {
-    codingOps.add(1, { operation: 'git-push' });
-    try {
-      const { path, remote, branch, setUpstream } = getBody(c);
-      const dir = validatePath(path);
-      const opts = { cwd: dir, encoding: 'utf-8' as const, windowsHide: true };
-      const args = ['push'];
-      if (setUpstream) args.push('-u');
-      if (remote) args.push(remote);
-      if (branch) args.push(branch);
-      const { stdout, stderr } = await execGit(args, opts);
-      return c.json({
-        success: true,
-        data: {
-          output: stdout.trim(),
-          diagnostics: stderr ? 'suppressed' : 'none',
-        },
-      });
-    } catch (e: unknown) {
-      return c.json({ success: false, error: errorMessage(e) }, 400);
-    }
-  });
+  app.post(
+    '/git/push',
+    requireOperator('push from Station'),
+    validate(gitPushSchema),
+    async (c) => {
+      codingOps.add(1, { operation: 'git-push' });
+      const { projectSlug, path, remote, branch, setUpstream } = getBody(c);
+      const repository = projectRepository(c, projectSlug, path);
+      if (repository instanceof Response) return repository;
+      try {
+        const outcome = await pushRepository(
+          repository,
+          { remote, branch, setUpstream },
+          { allowFileProtocol: deps.testOnlyAllowFileTransport === true },
+        );
+        if (!outcome.ok) return refusalResponse(c, outcome.refusal);
+        return c.json({
+          success: true,
+          data: { output: outcome.value.output, remote: outcome.value.remote },
+        });
+      } catch (e: unknown) {
+        return commandFailure(c, e);
+      }
+    },
+  );
 
   app.post('/exec', validate(execCommandSchema), async (c) => {
     codingOps.add(1, { operation: 'exec' });

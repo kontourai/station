@@ -4359,7 +4359,15 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
     }),
   );
-  context.app.route('/api/coding', createCodingRoutes(context.fileTreeService));
+  // #2363: commit and push are operator-only and act on a Project's own
+  // folder, resolved here rather than taken from the request.
+  context.app.route(
+    '/api/coding',
+    createCodingRoutes(context.fileTreeService, {
+      resolveProjectFolder: resolveWorkspacePath,
+      visibility: { resolvePrincipal: resolveOrchestrationRequestPrincipal },
+    }),
+  );
   context.app.route(
     '/api/templates',
     createTemplateRoutes(context.storageAdapter),
