@@ -21,7 +21,7 @@ import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 const activeSources = new Map<string, FetchSseConnection>();
 let drainApiBase: string | undefined;
-let stopDrainOnTurnClose: (() => void) | undefined;
+let drainListenerRegistered = false;
 
 /**
  * V3 the chat dock's failure banner reads the
@@ -129,10 +129,13 @@ export function ensureOrchestrationEventStream(
   // would drain the same turn end once per Station ever connected, the first
   // of them through a retired authority.
   drainApiBase = apiBase;
-  stopDrainOnTurnClose ??= activeChatsStore.onOpenTurnClosed((closure) => {
-    if (drainApiBase)
-      drainQueuedMessagesOnOpenTurnClosed(drainApiBase, closure);
-  });
+  if (!drainListenerRegistered) {
+    drainListenerRegistered = true;
+    activeChatsStore.onOpenTurnClosed((closure) => {
+      if (drainApiBase)
+        drainQueuedMessagesOnOpenTurnClosed(drainApiBase, closure);
+    });
+  }
   // archive#1092: dedup guard against duplicate/overlapping frames on a
   // sequence-cursor resume. Applying a stale duplicate here would
   // reapply deltas (e.g. `content.text-delta`) into already-updated chat
