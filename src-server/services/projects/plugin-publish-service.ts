@@ -40,6 +40,7 @@ import {
   withExportWorkspace,
 } from './plugin-publish-export.js';
 import {
+  isGitFileNamed,
   type SnapshotFile,
   type SnapshotHooks,
   type SnapshotLimits,
@@ -222,7 +223,9 @@ function findSecrets(files: readonly SnapshotFile[]): PluginPublishSecret[] {
  */
 function filterAttributeFiles(files: readonly SnapshotFile[]): string[] {
   return files
-    .filter((file) => file.path.split('/').at(-1) === '.gitattributes')
+    .filter((file) =>
+      isGitFileNamed(file.path.split('/').at(-1) ?? '', '.gitattributes'),
+    )
     .filter((file) =>
       file.bytes
         .toString('utf8')

@@ -174,6 +174,18 @@ class FolderChanged extends Error {
   }
 }
 
+class TooLarge extends Error {
+  constructor() {
+    super('files to publish exceed the size limit');
+  }
+}
+
+/** A name git reads as `.gitignore`/`.gitattributes` on a case-insensitive
+ * filesystem (and Station treats as one everywhere). */
+export function isGitFileNamed(name: string, gitName: string): boolean {
+  return name.toLowerCase() === gitName;
+}
+
 const OPEN_FLAGS =
   constants.O_RDONLY |
   (constants.O_NOFOLLOW ?? 0) |
@@ -232,10 +244,16 @@ export async function snapshotPluginFolder(
   const linked: string[] = [];
   let totalBytes = 0;
 
-  /** Opens and reads one file the walk saw, once. */
+  /**
+   * Opens and reads one file the walk saw, once, and never more than
+   * `budget` bytes: a file larger than what remains of the size limit is
+   * refused before a byte of it is read, and one that grows while it is
+   * read is refused as changed.
+   */
   const readOnce = async (
     path: string,
     seen: Identity,
+    budget: number,
   ): Promise<Buffer | 'linked'> => {
     await options.hooks?.beforeOpen?.(path);
     let handle: Awaited<ReturnType<typeof open>>;
@@ -257,7 +275,22 @@ export async function snapshotPluginFolder(
         throw new FolderChanged(path);
       }
       if (status.nlink !== 1) return 'linked';
-      bytes = await handle.readFile();
+      if (status.size > budget) throw new TooLarge();
+      // One byte more than `lstat` reported, so growth is observable.
+      const buffer = Buffer.alloc(status.size + 1);
+      let filled = 0;
+      while (filled < buffer.length) {
+        const { bytesRead } = await handle.read(
+          buffer,
+          filled,
+          buffer.length - filled,
+          filled,
+        );
+        if (bytesRead === 0) break;
+        filled += bytesRead;
+      }
+      if (filled > status.size) throw new FolderChanged(path);
+      bytes = buffer.subarray(0, filled);
     } finally {
       await handle.close();
     }
@@ -266,6 +299,13 @@ export async function snapshotPluginFolder(
       ? path.slice(0, path.lastIndexOf('/'))
       : '';
     await verifyChain(parent, path);
+    // The file's own name must still be the file that was read: the open
+    // descriptor's identity says which file the bytes came from, this says
+    // it is still the one in the folder under that name.
+    const after = await lstat(absolute(path)).catch(() => null);
+    if (!after?.isFile() || after.dev !== seen.dev || after.ino !== seen.ino) {
+      throw new FolderChanged(path);
+    }
     return bytes;
   };
 
@@ -278,6 +318,7 @@ export async function snapshotPluginFolder(
         kind: 'file' | 'directory';
         identity: Identity;
         executable: boolean;
+        multiplyLinked?: boolean;
       }> = [];
       /** `.gitignore` bytes, read once and reused if it is published. */
       const alreadyRead = new Map<string, Buffer>();
@@ -312,10 +353,23 @@ export async function snapshotPluginFolder(
               executable: false,
             });
           } else if (status.isFile()) {
-            if (name === '.gitignore') {
+            // Refused as the walk sees it (below, once `.gitignore` has had
+            // its say), not only on the open descriptor: a link removed
+            // between the two would pass the later check while the parent
+            // it is read through is swapped.
+            const multiplyLinked = status.nlink !== 1;
+            if (isGitFileNamed(name, '.gitignore')) {
+              if (multiplyLinked) {
+                linked.push(path);
+                continue;
+              }
               // Read before this level's entries are judged, because its
               // rules judge them.
-              const bytes = await readOnce(path, identity);
+              const bytes = await readOnce(
+                path,
+                identity,
+                limits.maxBytes - totalBytes,
+              );
               if (bytes === 'linked') {
                 linked.push(path);
                 continue;
@@ -328,6 +382,7 @@ export async function snapshotPluginFolder(
               kind: 'file',
               identity,
               executable: (status.mode & 0o111) !== 0,
+              multiplyLinked,
             });
           } else {
             skipped.push({ path, reason: 'special-file' });
@@ -335,25 +390,33 @@ export async function snapshotPluginFolder(
         }
       }
 
-      for (const candidate of candidates) {
+      // A name git cannot hold is refused by name before it reaches the
+      // ignore skeleton (whose guard would otherwise fail without naming
+      // it). Such a name is refused even if `.gitignore` would exclude it.
+      const judged = candidates.filter((candidate) => {
+        if (unsafeRelativePathReason(candidate.path) === null) return true;
+        unsafe.push(candidate.path);
+        return false;
+      });
+      for (const candidate of judged) {
         if (candidate.kind === 'directory') {
           await oracle.directory(candidate.path);
         }
       }
       const ignored = await oracle.ignored(
-        candidates.map((candidate) => candidate.path),
+        judged.map((candidate) => candidate.path),
       );
 
       const next: string[] = [];
-      for (const candidate of candidates) {
+      for (const candidate of judged) {
         if (ignored.has(candidate.path)) continue;
-        if (unsafeRelativePathReason(candidate.path) !== null) {
-          unsafe.push(candidate.path);
-          continue;
-        }
         if (candidate.kind === 'directory') {
           directories.set(candidate.path, candidate.identity);
           next.push(candidate.path);
+          continue;
+        }
+        if (candidate.multiplyLinked) {
+          linked.push(candidate.path);
           continue;
         }
         if (files.length >= limits.maxFiles) {
@@ -361,7 +424,11 @@ export async function snapshotPluginFolder(
         }
         const bytes =
           alreadyRead.get(candidate.path) ??
-          (await readOnce(candidate.path, candidate.identity));
+          (await readOnce(
+            candidate.path,
+            candidate.identity,
+            limits.maxBytes - totalBytes,
+          ));
         if (bytes === 'linked') {
           linked.push(candidate.path);
           continue;
@@ -380,6 +447,7 @@ export async function snapshotPluginFolder(
     if (error instanceof FolderChanged) {
       return refusal({ code: 'folder-changed', paths: [error.path] });
     }
+    if (error instanceof TooLarge) return refusal({ code: 'too-large' });
     return refusal({ code: 'folder-unreadable' });
   }
 

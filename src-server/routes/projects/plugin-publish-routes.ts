@@ -62,6 +62,8 @@ const REFUSAL_MESSAGES: Record<PluginPublishRefusalCode, string> = {
     'git has no name and email on this computer. Set user.name and user.email in your global git config, then publish again',
   'remote-moved':
     'The branch on the remote changed while publishing, so nothing was pushed. Publish again to build on its new tip',
+  'remote-unsupported':
+    'That server only offers git’s old “dumb” HTTP protocol, which Station cannot publish through. Use the repository’s SSH address, or a host that serves git over smart HTTP',
   'remote-auth-failed':
     'The remote refused this computer’s git credentials. Check that you can push to it with git from this computer',
   'remote-unreachable':

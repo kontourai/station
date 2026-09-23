@@ -32,6 +32,8 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  truncateSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -78,6 +80,7 @@ const { inspectPluginPublish, publishPlugin, summarizePluginPublish } =
 const { unsafeRelativePathReason } = await import(
   '../plugin-publish-snapshot.js'
 );
+const { exportFailureCode } = await import('../plugin-publish-export.js');
 
 const REMOTE_URL = 'https://git.example.test/acme/pulse.git';
 const ATTACKER_URL = 'https://git.example.test/acme/attacker.git';
@@ -345,6 +348,47 @@ describe('history: the commit is a child of the remote tip (owner decision)', ()
     expect(heads(bare)).toBe(`refs/heads/main ${moved}`);
   });
 
+  test.each([
+    ['deleted', false],
+    ['deleted and collected', true],
+  ])(
+    'the branch %s during the publish is refused as moved',
+    async (_label, collect) => {
+      seedRemote({ 'README.md': 'v1\n' });
+      const published = await publishPlugin(folder, REQUEST, {
+        ...OPTIONS,
+        testHooks: {
+          beforePush: () => {
+            git(bare, ['update-ref', '-d', 'refs/heads/main']);
+            if (collect) {
+              git(bare, ['reflog', 'expire', '--expire=now', '--all']);
+              git(bare, ['gc', '--quiet', '--prune=now']);
+            }
+          },
+        },
+      });
+      expect(published).toEqual({
+        ok: false,
+        refusal: { code: 'remote-moved' },
+      });
+      expect(heads(bare)).toBe('');
+    },
+  );
+
+  test('a server that cannot serve a shallow fetch (dumb HTTP) is named, not a generic failure', () => {
+    expect(
+      exportFailureCode({
+        stderr:
+          'fatal: dumb http transport does not support shallow capabilities',
+      }),
+    ).toBe('remote-unsupported');
+    expect(
+      exportFailureCode({
+        stderr: ' ! [remote rejected] x -> main (shallow update not allowed)',
+      }),
+    ).toBe('remote-moved');
+  });
+
   test('the remote rewound during the publish is refused too, not fast-forwarded over', async () => {
     const older = seedRemote({ 'README.md': 'v1\n' });
     const tip = seedRemote({ 'README.md': 'v2\n' }, 'v2');
@@ -477,6 +521,44 @@ describe('what may be published', () => {
     ]);
   });
 
+  test('an upper-case .GITATTRIBUTES naming a filter is refused too', async () => {
+    writeFileSync(join(folder, '.GITATTRIBUTES'), '*.bin filter=lfs -text\n');
+    writeFileSync(join(folder, 'big.bin'), 'RAW\n');
+    const published = await publishPlugin(folder, REQUEST, OPTIONS);
+    expect(published).toEqual({
+      ok: false,
+      refusal: { code: 'filter-attributes', paths: ['.GITATTRIBUTES'] },
+    });
+    expect(heads(bare)).toBe('');
+  });
+
+  test('an upper-case .GITIGNORE is honoured', async () => {
+    writeFileSync(join(folder, '.GITIGNORE'), 'private-notes.md\n');
+    writeFileSync(join(folder, 'private-notes.md'), 'notes\n');
+    const published = await publishPlugin(folder, REQUEST, OPTIONS);
+    expect(published.ok).toBe(true);
+    expect(Object.keys(pushedFiles()).sort()).toEqual([
+      '.GITIGNORE',
+      'index.ts',
+      'plugin.json',
+    ]);
+  });
+
+  test('a file larger than the size limit is refused without being read', async () => {
+    // Sparse: 1 GiB on paper, nothing on disk.
+    const big = join(folder, 'big.bin');
+    writeFileSync(big, '');
+    truncateSync(big, 1024 * 1024 * 1024);
+    const read: string[] = [];
+    const published = await publishPlugin(folder, REQUEST, {
+      ...OPTIONS,
+      testHooks: { afterRead: (path) => void read.push(path) },
+    });
+    expect(published).toEqual({ ok: false, refusal: { code: 'too-large' } });
+    expect(read).not.toContain('big.bin');
+    expect(heads(bare)).toBe('');
+  });
+
   test('executable bits are published', async () => {
     writeFileSync(join(folder, 'run.sh'), '#!/bin/sh\n', { mode: 0o755 });
     await publishPlugin(folder, REQUEST, OPTIONS);
@@ -516,6 +598,17 @@ describe('special entries', () => {
     expect(published).toEqual({
       ok: false,
       refusal: { code: 'unsafe-path', paths: ['bad\nname.ts'] },
+    });
+    expect(heads(bare)).toBe('');
+  });
+
+  test('a folder with a name git cannot hold is refused, named', async () => {
+    mkdirSync(join(folder, 'bad\\dir'));
+    writeFileSync(join(folder, 'bad\\dir', 'a.ts'), 'x\n');
+    const published = await publishPlugin(folder, REQUEST, OPTIONS);
+    expect(published).toEqual({
+      ok: false,
+      refusal: { code: 'unsafe-path', paths: ['bad\\dir'] },
     });
     expect(heads(bare)).toBe('');
   });
@@ -598,6 +691,72 @@ describe('a writer racing the read (round 3: symlinked parent)', () => {
     });
     expect(lstatSync(join(folder, 'lib')).isDirectory() || swapped).toBe(true);
     if (swapped) restore();
+    expect(published).toEqual({
+      ok: false,
+      refusal: { code: 'folder-changed', paths: ['lib/a.ts'] },
+    });
+    expect(heads(bare)).toBe('');
+  });
+
+  /** Review of #2374, MEDIUM: the link count was checked only on the open
+   * descriptor. The in-folder hard link is removed just before the open (so
+   * the count reads 1) and the parent swapped for a link to where the
+   * other name lives, then swapped back after the read. */
+  test('a hard link removed and its parent swapped before the open is refused at the walk', async () => {
+    mkdirSync(join(folder, 'lib'));
+    linkSync(join(outside, 'a.ts'), join(folder, 'lib', 'a.ts'));
+    let swapped = false;
+    const published = await publishPlugin(folder, REQUEST, {
+      ...OPTIONS,
+      testHooks: {
+        beforeOpen: (path) => {
+          if (path !== 'lib/a.ts') return;
+          unlinkSync(join(folder, 'lib', 'a.ts'));
+          renameSync(join(folder, 'lib'), join(root, 'lib.real'));
+          symlinkSync(outside, join(folder, 'lib'));
+          swapped = true;
+        },
+        afterRead: (path) => {
+          if (path !== 'lib/a.ts') return;
+          rmSync(join(folder, 'lib'));
+          renameSync(join(root, 'lib.real'), join(folder, 'lib'));
+          swapped = false;
+        },
+      },
+    });
+    if (swapped) {
+      rmSync(join(folder, 'lib'));
+      renameSync(join(root, 'lib.real'), join(folder, 'lib'));
+    }
+    expect(published).toEqual({
+      ok: false,
+      refusal: { code: 'linked-file', paths: ['lib/a.ts'] },
+    });
+    expect(heads(bare)).toBe('');
+  });
+
+  test('a file moved out of the folder during the read is refused', async () => {
+    plantLib();
+    const published = await publishPlugin(folder, REQUEST, {
+      ...OPTIONS,
+      testHooks: {
+        // Moved (same inode, one link) out through a swapped parent, and
+        // the parent put back without it: only the file's own name,
+        // looked up again after the read, is gone.
+        beforeOpen: (path) => {
+          if (path !== 'lib/a.ts') return;
+          mkdirSync(join(root, 'lens'));
+          renameSync(join(folder, 'lib', 'a.ts'), join(root, 'lens', 'a.ts'));
+          renameSync(join(folder, 'lib'), join(root, 'lib.real'));
+          symlinkSync(join(root, 'lens'), join(folder, 'lib'));
+        },
+        afterRead: (path) => {
+          if (path !== 'lib/a.ts') return;
+          rmSync(join(folder, 'lib'));
+          renameSync(join(root, 'lib.real'), join(folder, 'lib'));
+        },
+      },
+    });
     expect(published).toEqual({
       ok: false,
       refusal: { code: 'folder-changed', paths: ['lib/a.ts'] },

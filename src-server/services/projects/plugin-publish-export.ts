@@ -127,7 +127,13 @@ export function ignoreOracle(workspace: ExportWorkspace): IgnoreOracle {
         directory === ''
           ? join(workspace.skeleton, '.gitignore')
           : join(inSkeleton(directory), '.gitignore');
-      await writeFile(target, bytes, { mode: 0o600 });
+      // Appended, with a separating newline: on a case-sensitive
+      // filesystem `.gitignore` and `.GITIGNORE` can both exist, and both
+      // count.
+      await writeFile(target, Buffer.concat([bytes, Buffer.from('\n')]), {
+        mode: 0o600,
+        flag: 'a',
+      });
     },
     async ignored(paths) {
       if (paths.length === 0) return new Set();
@@ -357,6 +363,7 @@ export async function pushCommit(
 /** Why a network or plumbing step failed, from git's own words. */
 export type ExportFailureCode =
   | 'remote-moved'
+  | 'remote-unsupported'
   | 'remote-auth-failed'
   | 'remote-unreachable'
   | 'git-timeout'
@@ -374,8 +381,16 @@ export function exportFailureCode(error: unknown): ExportFailureCode {
   const output = [failure.stdout, failure.stderr]
     .filter((text): text is string => typeof text === 'string')
     .join('\n');
+  // A server that speaks only git's old "dumb" HTTP protocol cannot serve
+  // the depth-1 fetch this publish is built on.
+  if (/dumb http transport does not support shallow/i.test(output)) {
+    return 'remote-unsupported';
+  }
+  // `shallow update not allowed`: the branch the commit was built on is no
+  // longer on the remote (deleted, or rewound and collected) between the
+  // fetch and the push.
   if (
-    /\[rejected\]|stale info|non-fast-forward|fetch first|updates were rejected|couldn't find remote ref/i.test(
+    /\[rejected\]|stale info|non-fast-forward|fetch first|updates were rejected|couldn't find remote ref|shallow update not allowed/i.test(
       output,
     )
   ) {
