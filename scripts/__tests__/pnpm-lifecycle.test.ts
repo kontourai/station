@@ -169,7 +169,7 @@ describe('pnpm lifecycle boundary', () => {
           cwd: root,
           env: { PATH: bin, COREPACK_ENABLE_NETWORK: '0' },
           encoding: 'utf8',
-          timeout: 10_000,
+          timeout: 30_000,
           windowsHide: true,
         },
       },
@@ -182,6 +182,80 @@ describe('pnpm lifecycle boundary', () => {
         exec: () => '11.24.0\n',
       }),
     ).toThrow('does not match');
+  });
+  // #2315 follow-up: run 35818909873 died on `spawnSync .../pnpm ETIMEDOUT`
+  // with nothing written. The probe retries exactly that, and nothing else.
+  it('retries a silent pnpm --version stall, then refuses a wrong pin at once', () => {
+    const { root } = fixture();
+    const bin = join(root, 'native bin');
+    mkdirSync(bin);
+    const executable = join(bin, 'pnpm.exe');
+    writeFileSync(executable, 'native executable fixture');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ packageManager: 'pnpm@11.25.0' }),
+    );
+    const stall = () =>
+      Object.assign(new Error(`spawnSync ${executable} ETIMEDOUT`), {
+        code: 'ETIMEDOUT',
+        signal: 'SIGTERM',
+        stdout: '',
+        stderr: '',
+      });
+    const logs: string[] = [];
+    const pauses: number[] = [];
+    const answers: Array<string | (() => Error)> = [stall, '11.25.0\n'];
+    let probes = 0;
+    expect(
+      pnpmInvocation({
+        cwd: root,
+        env: { PATH: bin },
+        platform: 'win32',
+        log: (line) => logs.push(line),
+        pause: (ms) => pauses.push(ms),
+        exec: () => {
+          probes += 1;
+          const next = answers.shift()!;
+          if (typeof next === 'function') throw next();
+          return next;
+        },
+      }),
+    ).toEqual({ command: executable, args: [] });
+    expect(probes).toBe(2);
+    expect(pauses).toHaveLength(1);
+    expect(logs[0]).toMatch(/pnpm --version attempt 1\/3 timed out/);
+
+    let wrongProbes = 0;
+    expect(() =>
+      pnpmInvocation({
+        cwd: root,
+        env: { PATH: bin },
+        platform: 'win32',
+        log: () => {},
+        pause: () => {},
+        exec: () => {
+          wrongProbes += 1;
+          return '11.24.0\n';
+        },
+      }),
+    ).toThrow('does not match');
+    expect(wrongProbes).toBe(1);
+
+    let hangs = 0;
+    expect(() =>
+      pnpmInvocation({
+        cwd: root,
+        env: { PATH: bin },
+        platform: 'win32',
+        log: () => {},
+        pause: () => {},
+        exec: () => {
+          hangs += 1;
+          throw stall();
+        },
+      }),
+    ).toThrow('ETIMEDOUT');
+    expect(hangs).toBe(3);
   });
   it('accepts a local-only pnpm lock without package snapshots but refuses absent registry metadata', () => {
     const { root } = fixture();

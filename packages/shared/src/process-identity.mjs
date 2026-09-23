@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs';
 
 // Keep this small and plain-JS so the verification scripts can use the exact
 // same probe when they are launched by node rather than tsx.
+// Deliberately short and not cold-start sized (#2315 inventory): this bound
+// covers probes of ARBITRARY pids on liveness/reclaim paths, some on the
+// server's event loop, and every timeout already fails closed (null birth ->
+// `unavailable`, never proof of reuse). Only the coordinator's own identity,
+// which must publish, gets the long first/retry budgets below.
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS = 1_500;
 export const WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS = 10_000;
 /** @deprecated Use WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS. */

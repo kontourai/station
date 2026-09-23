@@ -51,6 +51,7 @@ import {
   readLifecycleImporters,
   readLifecycleLocks,
   readNodePtyPrebuildManifest,
+  runColdStartProbe,
   stageNodePtyPrebuild,
   validateAllowlist,
   verifyArtifact,
@@ -595,6 +596,313 @@ describe('dependency lifecycle policy', () => {
       expect(
         options.timeout - Number(options.env.STATION_PTY_TIMEOUT_MS),
       ).toBeGreaterThan(3965);
+    });
+  });
+
+  // #2315 follow-up: install-time probes (pnpm/esbuild --version, the
+  // no-build fallback require) died on a starved runner at a fixed 10s before
+  // the child wrote anything. Only that silent-timeout signature is retried.
+  describe('cold-start probe retry', () => {
+    const silentTimeout = () =>
+      Object.assign(new Error('spawnSync /runner/pnpm ETIMEDOUT'), {
+        code: 'ETIMEDOUT',
+        signal: 'SIGTERM',
+        stdout: '',
+        stderr: '',
+      });
+    function probe(outcomes: Array<string | (() => unknown)>) {
+      const logs: string[] = [];
+      const pause = vi.fn();
+      const run = vi.fn((_timeoutMs: number) => {
+        const next = outcomes.shift();
+        if (typeof next === 'function') throw next();
+        return next ?? 'ok';
+      });
+      let error: unknown;
+      let result: unknown;
+      try {
+        result = runColdStartProbe('fixture probe', run, {
+          pause,
+          log: (line: string) => logs.push(line),
+        });
+      } catch (failure) {
+        error = failure;
+      }
+      return { error, result, run, logs, pause };
+    }
+
+    it('retries a silent spawn timeout and reports each attempt', () => {
+      const { error, result, run, logs, pause } = probe([
+        silentTimeout,
+        '11.25.0\n',
+      ]);
+      expect(error).toBeUndefined();
+      expect(result).toBe('11.25.0\n');
+      expect(run).toHaveBeenCalledTimes(2);
+      expect(pause).toHaveBeenCalledTimes(1);
+      expect(logs[0]).toMatch(
+        /fixture probe attempt 1\/3 timed out after \d+ms with no output \(code=ETIMEDOUT signal=SIGTERM\); retrying/,
+      );
+      expect(logs[1]).toMatch(/fixture probe completed on attempt 2\/3/);
+    });
+
+    it('gives every attempt the cold-start allowance, not the old 10s', () => {
+      const { run } = probe(['ok']);
+      expect(run.mock.calls[0]![0]).toBeGreaterThan(10_000);
+    });
+
+    it('stays silent when the first attempt passes', () => {
+      const { logs, run } = probe(['ok']);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(logs).toEqual([]);
+    });
+
+    it('never retries a failing exit that carried output', () => {
+      const failed = () =>
+        Object.assign(new Error('Command failed'), {
+          status: 1,
+          stdout: '',
+          stderr: 'ERR_PNPM_BAD_PM_VERSION',
+        });
+      const { error, run, logs } = probe([failed, 'ok']);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(String((error as Error).message)).toBe('Command failed');
+      expect(logs).toEqual([]);
+    });
+
+    it('never retries a timeout after the child wrote output', () => {
+      // It started; hanging after that is not a slow start.
+      const { error, run } = probe([
+        () => Object.assign(silentTimeout(), { stdout: '11.25' }),
+        'ok',
+      ]);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect((error as { code: string }).code).toBe('ETIMEDOUT');
+    });
+
+    it('never retries a SIGTERM that was not its own timeout', () => {
+      const { run } = probe([
+        () =>
+          Object.assign(new Error('killed'), {
+            signal: 'SIGTERM',
+            stdout: '',
+            stderr: '',
+          }),
+        'ok',
+      ]);
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails closed with the original error when every attempt hangs', () => {
+      const { error, run, logs, pause } = probe([
+        silentTimeout,
+        silentTimeout,
+        silentTimeout,
+        'ok',
+      ]);
+      expect(run).toHaveBeenCalledTimes(3);
+      expect(pause).toHaveBeenCalledTimes(2);
+      expect((error as { code: string }).code).toBe('ETIMEDOUT');
+      expect(logs.at(-1)).toMatch(/fixture probe failed on attempt 3\/3/);
+    });
+
+    // The signature must match what Node really throws, not only a fixture.
+    it('recognizes a real silent child timeout and not a real child that spoke first', () => {
+      const pause = vi.fn();
+      const hang = vi.fn(() =>
+        execFileSync(process.execPath, ['-e', 'setTimeout(() => {}, 20000)'], {
+          encoding: 'utf8',
+          timeout: 300,
+          windowsHide: true,
+        }),
+      );
+      let error: unknown;
+      try {
+        runColdStartProbe('real hang', hang, {
+          attempts: 2,
+          pause,
+          log: () => {},
+        });
+      } catch (failure) {
+        error = failure;
+      }
+      expect(hang).toHaveBeenCalledTimes(2);
+      expect((error as { code: string }).code).toBe('ETIMEDOUT');
+
+      const spoke = vi.fn(() =>
+        execFileSync(
+          process.execPath,
+          ['-e', 'process.stdout.write("x"); setTimeout(() => {}, 20000)'],
+          { encoding: 'utf8', timeout: 1_500, windowsHide: true },
+        ),
+      );
+      expect(() =>
+        runColdStartProbe('real speaker', spoke, {
+          attempts: 2,
+          pause,
+          log: () => {},
+        }),
+      ).toThrow();
+      expect(spoke).toHaveBeenCalledTimes(1);
+
+      const exited = vi.fn(() =>
+        execFileSync(process.execPath, ['-e', 'process.exit(3)'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      );
+      expect(() =>
+        runColdStartProbe('real exit', exited, {
+          attempts: 2,
+          pause,
+          log: () => {},
+        }),
+      ).toThrow();
+      expect(exited).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports attempts on stderr so a JSON-on-stdout caller stays parseable', () => {
+      // Drive the real default logger in a real process, as a caller that
+      // tees stdout into a JSON artifact would.
+      const moduleUrl = new URL(
+        '../lib/dependency-lifecycle-policy.mjs',
+        import.meta.url,
+      ).href;
+      const script = `
+        const { runColdStartProbe } = await import(${JSON.stringify(moduleUrl)});
+        let calls = 0;
+        const version = runColdStartProbe('stdout purity probe', () => {
+          calls += 1;
+          if (calls === 1) throw Object.assign(new Error('ETIMEDOUT'), { code: 'ETIMEDOUT', signal: 'SIGTERM', stdout: '', stderr: '' });
+          return '1.0.0';
+        }, { pause: () => {} });
+        console.log(JSON.stringify({ version }, null, 2));
+      `;
+      const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', script],
+        { encoding: 'utf8', timeout: 20_000, windowsHide: true },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ version: '1.0.0' });
+      expect(result.stderr).toMatch(
+        /stdout purity probe attempt 1\/3 timed out/,
+      );
+      expect(result.stderr).toMatch(/completed on attempt 2\/3/);
+    });
+
+    function probeFixture(artifact: Record<string, string>) {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-probe-'));
+      const packageRoot = resolve(fixtureRoot, 'node_modules', 'fixture-esb');
+      mkdirSync(resolve(packageRoot, 'bin'), { recursive: true });
+      writeFileSync(
+        resolve(packageRoot, 'package.json'),
+        JSON.stringify({ name: 'fixture-esb', version: '1.0.0' }),
+      );
+      writeFileSync(
+        resolve(packageRoot, 'bin', 'esbuild'),
+        '#!/usr/bin/env node\n',
+      );
+      writeFileSync(resolve(packageRoot, 'index.js'), '');
+      const entry = {
+        lock: 'package-lock.json',
+        path: 'node_modules/fixture-esb',
+        name: 'fixture-esb',
+        version: '1.0.0',
+        artifact,
+        platform: { os: [], cpu: [] },
+      };
+      return { fixtureRoot, entry };
+    }
+
+    it('retries a silent esbuild --version stall and still refuses a wrong version', () => {
+      const { fixtureRoot, entry } = probeFixture({
+        path: 'bin/esbuild',
+        proof: 'esbuild-version',
+      });
+      try {
+        const pause = vi.fn();
+        const log = vi.fn();
+        const answers: Array<string | (() => unknown)> = [
+          silentTimeout,
+          '1.0.0\n',
+        ];
+        const exec = vi.fn(() => {
+          const next = answers.shift()!;
+          if (typeof next === 'function') throw next();
+          return next;
+        });
+        const options = { exec: exec as never, pause, log };
+        expect(
+          verifyArtifact(
+            fixtureRoot,
+            entry,
+            process.platform,
+            process.arch,
+            options,
+          ),
+        ).toMatchObject({ skipped: false });
+        expect(exec).toHaveBeenCalledTimes(2);
+        expect(String(log.mock.calls[0]![0])).toContain(
+          'esbuild --version for node_modules/fixture-esb attempt 1/3',
+        );
+
+        const wrong = vi.fn(() => '0.9.0\n');
+        expect(() =>
+          verifyArtifact(fixtureRoot, entry, process.platform, process.arch, {
+            exec: wrong as never,
+            pause,
+            log,
+          }),
+        ).toThrow(/esbuild artifact version drift/);
+        expect(wrong).toHaveBeenCalledTimes(1);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('retries a silent no-build fallback stall and never a failed require', () => {
+      const { fixtureRoot, entry } = probeFixture({
+        path: 'index.js',
+        proof: 'no-build-fallback',
+        capability: './index.js',
+      });
+      try {
+        const pause = vi.fn();
+        const log = vi.fn();
+        let calls = 0;
+        const exec = vi.fn(() => {
+          calls += 1;
+          if (calls === 1) throw silentTimeout();
+          return null;
+        });
+        verifyArtifact(fixtureRoot, entry, process.platform, process.arch, {
+          exec: exec as never,
+          pause,
+          log,
+        });
+        expect(exec).toHaveBeenCalledTimes(2);
+
+        const failing = vi.fn(() => {
+          // stdio is ignored for this probe, so a real failed require has
+          // no output either: it is told apart by its exit, not its silence.
+          throw Object.assign(new Error('Command failed'), {
+            status: 1,
+            stdout: null,
+            stderr: null,
+          });
+        });
+        expect(() =>
+          verifyArtifact(fixtureRoot, entry, process.platform, process.arch, {
+            exec: failing as never,
+            pause,
+            log,
+          }),
+        ).toThrow('Command failed');
+        expect(failing).toHaveBeenCalledTimes(1);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
     });
   });
 
