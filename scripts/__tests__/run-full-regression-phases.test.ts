@@ -67,6 +67,53 @@ describe('full-regression phase driver', () => {
     ]);
   });
 
+  it('forwards --exclude-quarantined to corpus phases only, after any slice', () => {
+    const plan = resolveFullRegressionPhasePlan(
+      parseFullRegressionPhaseArguments([
+        '--phase=sdk-builds',
+        '--phase=test-full-process-heavy',
+        '--phase=test-full-ordinary-1-of-8',
+        '--process-heavy-shard=1/2',
+        '--exclude-quarantined',
+      ]),
+    );
+    expect(plan.map(({ id, args }) => [id, args])).toEqual([
+      ['sdk-builds', ['run', 'proof:sdk-builds']],
+      [
+        'test-full-ordinary-1-of-8',
+        ['run', 'test:full:ordinary:1:raw', '--', '--exclude-quarantined'],
+      ],
+      [
+        'test-full-process-heavy',
+        [
+          'run',
+          'test:full:process-heavy:raw',
+          '--',
+          '--shard=1/2',
+          '--exclude-quarantined',
+        ],
+      ],
+    ]);
+    // Without the flag nothing is forwarded: the canonical command.
+    const canonical = resolveFullRegressionPhasePlan(
+      parseFullRegressionPhaseArguments(['--phase=test-full-shared-output']),
+    );
+    expect(canonical[0].args).toEqual(['run', 'test:full:shared-output:raw']);
+    expect(() =>
+      parseFullRegressionPhaseArguments([
+        '--phase=app-builds',
+        '--exclude-quarantined',
+      ]),
+    ).toThrow(/requires at least one test-full-\* phase/);
+    expect(() =>
+      parseFullRegressionPhaseArguments([
+        '--phase=test-full-shared-output',
+        '--exclude-quarantined',
+        '--exclude-quarantined',
+      ]),
+    ).toThrow(/usage/);
+  });
+
   it('rejects unknown, duplicate, missing, and misapplied selections', () => {
     expect(() => parseFullRegressionPhaseArguments([])).toThrow(/usage/);
     expect(() =>
@@ -278,6 +325,37 @@ describe('full-regression phase driver', () => {
     expect(control).toEqual({ status: 0, error: null });
   }, 120_000);
 
+  it('fails a phase whose output exceeds the canonical 3 MiB per-stream cap, and passes one at the cap', async () => {
+    const cap = 3 * 1024 * 1024;
+    const emit = (bytes: number) => ({
+      id: `output-${bytes}`,
+      args: [
+        'exec',
+        '--',
+        'node',
+        '-e',
+        `process.stdout.write(Buffer.alloc(${bytes}, 0x61))`,
+      ],
+      timeoutMs: 60_000,
+    });
+    const over = sinks();
+    const overOutcome = await runPhaseProcess(emit(cap + 1), {
+      cwd: root,
+      forward: over.forward,
+    });
+    // Every byte was forwarded to the log; only the verdict reflects the cap.
+    expect(Buffer.concat(over.bytes.stdout).length).toBe(cap + 1);
+    expect(overOutcome.status).toBe(0);
+    expect(overOutcome.error).toMatch(
+      /output exceeded the canonical per-stream capture limit/,
+    );
+    const atCap = await runPhaseProcess(emit(cap), {
+      cwd: root,
+      forward: sinks().forward,
+    });
+    expect(atCap).toEqual({ status: 0, error: null });
+  }, 120_000);
+
   it('binds the history ref to the checked-out HEAD, overriding inheritance', async () => {
     const head = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: root,
@@ -415,6 +493,48 @@ describe('workspace mutation check', () => {
     expect(result.passed).toBe(false);
     expect(result.error).toMatch(
       /HEAD moved from [0-9a-f]{40} to [0-9a-f]{40}/,
+    );
+  });
+
+  it('fails a phase that only stages a change, naming the index-only status move', async () => {
+    const { directory, run } = repository();
+    cleanups.push(directory);
+    writeFileSync(join(directory, 'tracked.txt'), 'dirty before\n');
+    // Staging leaves `git diff HEAD` (the workspace digest) byte-identical;
+    // only the porcelain status column moves from worktree to index.
+    const before = snapshotWorkspace(directory);
+    run('add', 'tracked.txt');
+    const after = snapshotWorkspace(directory);
+    run('reset', '--quiet', 'tracked.txt');
+    expect(after.workspaceDigest).toBe(before.workspaceDigest);
+    const result = await runWith(directory, () => run('add', 'tracked.txt'));
+    expect(result.passed).toBe(false);
+    expect(result.error).toContain('M  tracked.txt');
+    expect(result.error).toContain(' M tracked.txt (no longer reported)');
+  });
+
+  it('fails a phase that changes only the dependency digest', async () => {
+    // The lockfile is ignored here, so rewriting it moves neither the status
+    // nor the workspace digest: the dependency digest is the only signal.
+    const { directory, run } = repository();
+    cleanups.push(directory);
+    writeFileSync(join(directory, '.gitignore'), 'package-lock.json\n');
+    run('rm', '--cached', '--quiet', 'package-lock.json');
+    run('add', '.gitignore');
+    run('commit', '--quiet', '-m', 'ignore the lockfile');
+    const before = snapshotWorkspace(directory);
+    writeFileSync(join(directory, 'package-lock.json'), '{"changed":true}\n');
+    const after = snapshotWorkspace(directory);
+    writeFileSync(join(directory, 'package-lock.json'), '{}\n');
+    expect(after.status).toEqual(before.status);
+    expect(after.workspaceDigest).toBe(before.workspaceDigest);
+    expect(after.dependencyDigest).not.toBe(before.dependencyDigest);
+    const result = await runWith(directory, () =>
+      writeFileSync(join(directory, 'package-lock.json'), '{"changed":true}\n'),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.error).toBe(
+      'phase mutated the workspace (the canonical lane fails this): dependency digest changed',
     );
   });
 
