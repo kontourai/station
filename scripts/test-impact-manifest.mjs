@@ -48,6 +48,64 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
   ]),
 );
 
+/**
+ * station#2301: the SDK's HTTP transport — `http.ts` and the two modules it
+ * imports, `bounded-response.ts` and `client-origin.ts` — is imported by every
+ * client fetcher, so each of the three has the SAME import graph: ~771 test
+ * files, 9,035 tests, nearly the whole UI. That cannot fit ci:fast's
+ * affected-test window on a two-core hosted runner (`run-ci-fast.mjs`: the
+ * 720s lane minus its 220s static reserve), so fast-checks died with
+ * "ci:fast exceeded its 12-minute feedback budget" and zero failures,
+ * deterministically, for any change to these files.
+ *
+ * So each gets an explicit boundary instead of the related graph: the suites
+ * that exercise the transport's OWN behaviour — streams, authentication and
+ * native transport order, credential wake, timeouts, origin headers, failure
+ * mapping, request authority, portability. As with every explicit-boundary
+ * edge in this manifest, the transport's CONSUMERS' unit and component
+ * suites are then covered by full-regression (the required completion gate
+ * for promotions), not before merge. Before merge they are still covered at
+ * the type level (the typecheck lanes) and by the browser journeys in
+ * fast-checks' `test:e2e:pr-smoke`. That is the trade: stated here, not
+ * hidden.
+ *
+ * Deliberately NOT a `test-full` lane. Any lane switches the whole diff to
+ * deferred execution (`executionSelection` in `run-changed-verification.mjs`):
+ * it drops the related suites of every OTHER changed file and runs no
+ * explicit test at all above 32 — so a transport change would silently stop
+ * testing the rest of its own pull request.
+ */
+const SDK_TRANSPORT_TESTS = Object.freeze([
+  'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+  'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+  'packages/sdk/src/__tests__/client-origin.test.ts',
+  'packages/sdk/src/__tests__/client-request-timeout.test.ts',
+  'packages/sdk/src/__tests__/fetch-sse.test.ts',
+  'packages/sdk/src/__tests__/request-inspection.test.ts',
+  'packages/sdk/src/__tests__/scoped-request-authority.test.ts',
+  'packages/sdk/src/__tests__/scoped-request-invocation-boundaries.test.tsx',
+  'src-ui/src/__tests__/useServerEvents-authority-stability.test.tsx',
+  'src-ui/src/contexts/__tests__/ApiBaseContext.credential-wake.test.tsx',
+  'src-ui/src/contexts/__tests__/ApiBaseContext.native-transport-order.test.tsx',
+]);
+const SDK_TRANSPORT_PATHS = Object.freeze([
+  'packages/sdk/src/client/bounded-response.ts',
+  'packages/sdk/src/client/client-origin.ts',
+  'packages/sdk/src/client/http.ts',
+]);
+const SDK_TRANSPORT_EDGES = Object.freeze(
+  SDK_TRANSPORT_PATHS.map((pattern) =>
+    Object.freeze({
+      pattern,
+      tests: SDK_TRANSPORT_TESTS,
+      reason:
+        'SDK transport: own-behaviour suites; its import graph is too broad ' +
+        'for the fast lane, so consumers are covered by full-regression (#2301)',
+    }),
+  ),
+);
+
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
@@ -105,11 +163,14 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   },
   {
     pattern: 'packages/sdk/src/client/**',
+    // The transport modules have their own edges: see SDK_TRANSPORT_EDGES.
+    except: SDK_TRANSPORT_PATHS,
     related: true,
     tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
     reason:
       'portable client dependency scan reads source outside the import graph',
   },
+  ...SDK_TRANSPORT_EDGES,
   {
     pattern: 'packages/cli/src/commands/session-client.ts',
     related: true,
@@ -1384,6 +1445,7 @@ export function isEscalationPath(path) {
  *   related?: boolean,
  *   supplemental?: boolean,
  *   whenAll?: readonly string[],
+ *   except?: readonly string[],
  *   reason?: string,
  * }} ImpactEdge
  */
@@ -1407,6 +1469,46 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
       errors.push(
         `supplemental impact edge may only add tests: ${edge.pattern}`,
       );
+    // `except` is an exact-path list. A glob-shaped entry, one its pattern
+    // cannot match, or one on a supplemental edge (whose boundary role it
+    // cannot change) would each leave the path on the broad edge silently —
+    // exactly the typo class this field exists to stop.
+    if (edge?.except?.length && edge.supplemental)
+      errors.push(
+        `supplemental impact edge may not declare exceptions: ${edge.pattern}`,
+      );
+    for (const excepted of edge?.except ?? []) {
+      if (excepted.includes('*'))
+        errors.push(
+          `impact edge exception must be an exact path: ${edge.pattern} except ${excepted}`,
+        );
+      else if (!matches(edge.pattern, excepted))
+        errors.push(
+          `impact edge exception outside its pattern: ${edge.pattern} except ${excepted}`,
+        );
+      // An excepted path must still have an EXPLICIT owner, or it falls back
+      // to whatever broader edge is left — usually a `related` one, which
+      // re-selects the very graph the exception exists to keep out. The owner
+      // must be unconditional (`whenAll` can leave the path unowned), carry
+      // tests, and add neither `related` (re-adds the graph) nor a lane (any
+      // lane defers execution of the whole diff).
+      else if (
+        !manifest.some(
+          (other) =>
+            other !== edge &&
+            !other.supplemental &&
+            !other.whenAll &&
+            !other.related &&
+            !other.lanes?.length &&
+            !other.except?.includes(excepted) &&
+            matches(other.pattern, excepted) &&
+            other.tests?.length,
+        )
+      )
+        errors.push(
+          `impact edge exception has no explicit owner: ${edge.pattern} except ${excepted}`,
+        );
+    }
   }
   // These dynamic seams cannot be inferred from Vitest imports. Deleting one
   // is an unsafe silent narrowing, so validation is intentionally explicit.

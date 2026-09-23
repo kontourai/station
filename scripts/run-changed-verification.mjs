@@ -422,6 +422,7 @@ export function selectChangedVerification(
     const edges = manifest.filter(
       (edge) =>
         matches(edge.pattern, path) &&
+        !edge.except?.includes(path) &&
         (edge.whenAll?.every((required) => changed.has(required)) ?? true),
     );
     // A SUPPLEMENTAL edge only ever adds to `tests`: it is invisible to the
