@@ -3,6 +3,7 @@ import type {
   LiveSurfaceFrameHeader,
   LiveSurfaceInput,
   LiveSurfacePointerButton,
+  LiveSurfacePointerType,
   LiveSurfaceStreamParams,
 } from '@kontourai/station-contracts/live-surface';
 
@@ -14,6 +15,8 @@ export interface LiveSurfaceHeldInput {
   buttons: LiveSurfacePointerButton[];
   keys: { key: string; code: string }[];
   pointer: { x: number; y: number };
+  /** The type of the pointer that pressed: a touch must be cancelled as one. */
+  pointerType: LiveSurfacePointerType;
 }
 
 /**
@@ -33,6 +36,19 @@ export interface LiveSurfaceHeldInput {
  *   an fps-throttle drop, or when a newer frame supersedes it undelivered.
  * - The hub fills the frame header's `epoch` from the lease; whatever the
  *   producer put there is overwritten.
+ *
+ * REQUIRED of every producer (not enforced by types — the surface wedges if
+ * a producer ignores it):
+ * - Handle JavaScript dialogs itself. A page whose handler calls `alert()`
+ *   leaves the input that triggered it pending until the dialog closes (in
+ *   CDP, `Input.dispatchMouseEvent` does not resolve). Subscribe to the
+ *   dialog event and answer it (CDP: `Page.javascriptDialogOpening` →
+ *   `Page.handleJavaScriptDialog`), so input never waits on a dialog nobody
+ *   can see.
+ * - Bound its own dispatch. The registry's dispatch timeout WEDGES the
+ *   surface (input refused `surface-wedged`, and shown to viewers) until
+ *   the stuck dispatch settles; it cannot cancel it. A producer that never
+ *   settles a dispatch leaves the surface wedged forever.
  */
 export interface LiveSurfaceProducer {
   readonly surfaceId: string;
@@ -64,8 +80,9 @@ export interface LiveSurfaceProducer {
    *
    * Without this hook the registry dispatches a neutral cancel: a pointer
    * move to (-1, -1), outside every viewport, then each button's `up` there,
-   * then each key's `up`. A CDP producer can do better (e.g. dispatch the
-   * release with the target removed from hit testing).
+   * then each key's `up`. A CDP producer should do better: for a touch
+   * (`held.pointerType === 'touch'`) dispatch `Input.dispatchTouchEvent`
+   * with `type: 'touchCancel'`, which ends the gesture without a tap.
    */
   cancelHeldInput?(held: LiveSurfaceHeldInput): Promise<void>;
 }

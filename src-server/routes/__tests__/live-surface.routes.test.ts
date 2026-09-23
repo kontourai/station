@@ -31,15 +31,21 @@ const SURFACE = 'browser:session-1';
 const base = `/api/live-surfaces/${encodeURIComponent(SURFACE)}`;
 
 function harness(
-  options: { register?: boolean; authorize?: LiveSurfaceAuthorizer } = {},
+  options: {
+    register?: boolean;
+    authorize?: LiveSurfaceAuthorizer;
+    dispatchTimeoutMs?: number;
+  } = {},
 ) {
   const credentials = new Map([
     ['operator', DEFAULT_GRANT_PAIRING_SCOPE],
     ['viewer', pairingScopePresetString('read-only')],
+    ['viewer2', DEFAULT_GRANT_PAIRING_SCOPE],
   ]);
   const principals = new Map([
     ['operator', 'human:local:operator'],
     ['viewer', 'human:local:viewer'],
+    ['viewer2', 'human:local:second'],
   ]);
   const security = {
     verifyCredential: (value: string) => credentials.has(value),
@@ -69,7 +75,12 @@ function harness(
     eventBus: new EventBus(),
     security,
   } as Parameters<typeof configureRuntimeHttp>[0]);
-  const registry = new LiveSurfaceRegistry({ hub: { heartbeatMs: 60_000 } });
+  const registry = new LiveSurfaceRegistry({
+    hub: { heartbeatMs: 60_000 },
+    ...(options.dispatchTimeoutMs
+      ? { dispatchTimeoutMs: options.dispatchTimeoutMs }
+      : {}),
+  });
   const producer = new SyntheticLiveSurfaceProducer(SURFACE);
   const authorizeCalls: [string, string, string][] = [];
   const authorize: LiveSurfaceAuthorizer =
@@ -215,6 +226,8 @@ describe('live surface routes through runtime authentication', () => {
           principal: 'human:local:operator',
           device: 'credential:operator',
         },
+        wedged: false,
+        wedgedSince: null,
       },
     });
     const entry = h.registry.get(SURFACE)!;
@@ -354,7 +367,7 @@ describe('live surface routes through runtime authentication', () => {
     expect(takeover.status).toBe(200);
     expect(lease.isCurrent(agentFence, agent)).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
     });
   });
 
@@ -572,6 +585,50 @@ describe('live surface routes through runtime authentication', () => {
     expect(h.registry.get(SURFACE)!.lease.snapshot()).toMatchObject({
       epoch: 0,
       holder: null,
+    });
+  });
+  test('a human can take control over HTTP while the surface is wedged; input stays refused (W1c)', async () => {
+    const h = harness({ dispatchTimeoutMs: 20, authorize: () => true });
+    // The page's click handler opened a dialog: the dispatch never returns.
+    h.producer.dispatchImpl = () => new Promise(() => {});
+    const first = await h.request(
+      `${base}/input`,
+      'operator',
+      JSON.stringify({ epoch: 0, events: click(1, 1) }),
+    );
+    expect(first.status).toBe(502);
+    expect(h.registry.get(SURFACE)!.hub.state()).toMatchObject({
+      wedged: true,
+      wedgedSince: expect.any(Number),
+    });
+    const input = await h.request(
+      `${base}/input`,
+      'operator',
+      JSON.stringify({ epoch: 1, events: click(2, 2) }),
+    );
+    expect(input.status).toBe(409);
+    expect(await input.json()).toMatchObject({
+      data: { ok: false, code: 'surface-wedged' },
+    });
+    // The takeover itself does not wait behind the wedge.
+    const claim = await Promise.race([
+      h.request(
+        `${base}/lease`,
+        'viewer2',
+        JSON.stringify({ action: 'claim' }),
+      ),
+      new Promise<'timed-out'>((resolve) =>
+        setTimeout(() => resolve('timed-out'), 2_000),
+      ),
+    ]);
+    expect(claim).not.toBe('timed-out');
+    const response = claim as Response;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        ok: true,
+        lease: { holder: { principal: 'human:local:second' } },
+      },
     });
   });
 });

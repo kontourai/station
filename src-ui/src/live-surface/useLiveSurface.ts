@@ -90,6 +90,8 @@ export interface UseLiveSurfaceResult {
   lastFrameAt: number | null;
   /** Who this viewer is, as the server told it (principal and device). */
   self: LiveSurfaceViewerIdentity | null;
+  /** The server reports the surface is not taking input (see state.wedged). */
+  wedged: boolean;
   inputNotice: LiveSurfaceInputNotice;
   sendInput: (events: LiveSurfaceInput[]) => void;
   claimControl: () => Promise<void>;
@@ -212,6 +214,7 @@ export function useLiveSurface(
   const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
   const [lastFrameAt, setLastFrameAt] = useState<number | null>(null);
   const [self, setSelf] = useState<LiveSurfaceViewerIdentity | null>(null);
+  const [wedged, setWedged] = useState(false);
   const [inputNotice, setInputNotice] = useState<LiveSurfaceInputNotice>(null);
   const [retryToken, setRetryToken] = useState(0);
   const epochRef = useRef(0);
@@ -293,6 +296,7 @@ export function useLiveSurface(
             if (record.kind === 'state') {
               adoptLease(record.state.lease);
               setEffectiveParams(record.state.effectiveParams);
+              setWedged(record.state.wedged === true);
               if (record.state.viewer) {
                 const viewer = record.state.viewer;
                 setSelf((previous) =>
@@ -476,6 +480,7 @@ export function useLiveSurface(
     lastActivityAt,
     lastFrameAt,
     self,
+    wedged,
     inputNotice,
     sendInput,
     claimControl,

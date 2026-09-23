@@ -195,6 +195,8 @@ export class LiveSurfaceHub {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly unsubscribeLease: () => void;
+  private inputHealth: () => { wedged: boolean; wedgedSince: number | null } =
+    () => ({ wedged: false, wedgedSince: null });
 
   constructor(
     readonly producer: LiveSurfaceProducer,
@@ -298,12 +300,27 @@ export class LiveSurfaceHub {
   }
 
   state(viewer?: LiveSurfaceViewerIdentity): LiveSurfaceStreamState {
+    const health = this.inputHealth();
     return {
       surfaceId: this.surfaceId,
       lease: this.lease.snapshot(),
       effectiveParams: this.effectiveParams(),
       ...(viewer ? { viewer: { ...viewer } } : {}),
+      wedged: health.wedged,
+      wedgedSince: health.wedgedSince,
     };
+  }
+
+  /** Where the input side reports whether it is wedged (the registry). */
+  setInputHealth(
+    probe: () => { wedged: boolean; wedgedSince: number | null },
+  ): void {
+    this.inputHealth = probe;
+  }
+
+  /** Re-send the stream state to every viewer (input health changed). */
+  announce(): void {
+    this.markStatePending();
   }
 
   /** @internal A viewer dropped `frame` untaken: ack if nobody else holds it. */

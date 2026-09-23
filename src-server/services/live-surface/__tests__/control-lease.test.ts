@@ -46,7 +46,7 @@ describe('live surface control lease', () => {
     // ...and after its step: fenced. This is what makes the op abort.
     expect(state.isCurrent(agentFence, agent)).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
     });
   });
 
@@ -109,7 +109,7 @@ describe('live surface control lease', () => {
     expect(state.release(agent, { fence: op1.fence! }).ok).toBe(true);
     expect(state.isCurrent(op1.fence!, agent)).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
     });
     // The same session reclaims for operation 2: same viewer epoch...
     const op2 = state.claimForAgent(agent.principal, agent.sessionId).lease;
@@ -117,7 +117,7 @@ describe('live surface control lease', () => {
     // ...but operation 1's straggler is still refused, and 2's passes.
     expect(state.isCurrent(op1.fence!, agent)).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
     });
     expect(state.isCurrent(op2.fence!, agent).ok).toBe(true);
   });
@@ -168,7 +168,7 @@ describe('live surface control lease', () => {
     expect(b.lease).toMatchObject({ epoch: 2, holder: bob });
     expect(state.isCurrent(a.lease.fence!, alice)).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
     });
     // Alice's view is now stale: her next batch is refused, not a takeover.
     expect(state.claimForHumanInput(alice, 1)).toMatchObject({
@@ -223,7 +223,7 @@ describe('live surface control lease', () => {
       state.release(agent, { fence: claimed.lease.fence! - 1 }),
     ).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
     });
     expect(state.release(agent, { fence: claimed.lease.fence! })).toMatchObject(
       {

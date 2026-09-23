@@ -47,12 +47,23 @@ export interface LiveSurfaceControlLeaseOptions {
   agentTtlMs?: number;
 }
 
-export type LiveSurfaceLeaseCheck =
-  | { ok: true; lease: LiveSurfaceControlLease }
+/** A server-produced lease: `fence` is always present (optional on the wire). */
+export type FencedLease = LiveSurfaceControlLease & { fence: number };
+
+export type FencedLeaseResult =
+  | { ok: true; lease: FencedLease }
   | {
       ok: false;
-      code: 'stale-epoch' | 'not-holder';
-      lease: LiveSurfaceControlLease;
+      code: Exclude<LiveSurfaceLeaseResult, { ok: true }>['code'];
+      lease: FencedLease;
+    };
+
+export type LiveSurfaceLeaseCheck =
+  | { ok: true; lease: FencedLease }
+  | {
+      ok: false;
+      code: 'stale-fence' | 'not-holder';
+      lease: FencedLease;
     };
 
 /** Fired when control passes to a different controller (the epoch advanced). */
@@ -79,7 +90,7 @@ export function sameController(
 /** The read-only face of a lease: what automation and the hub may use. */
 export interface LiveSurfaceLeaseReader {
   readonly surfaceId: string;
-  snapshot(): LiveSurfaceControlLease;
+  snapshot(): FencedLease;
   isCurrent(
     fence: number,
     controller?: LiveSurfaceController,
@@ -94,6 +105,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   /** The most recent non-null holder; its reclaim does not advance the epoch. */
   private lastHolder: LiveSurfaceController | null = null;
   private expiresAt: number | null = null;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly listeners = new Set<
     (lease: LiveSurfaceControlLease) => void
   >();
@@ -112,7 +124,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   }
 
   /** Current lease, after applying any pending expiry. */
-  snapshot(): LiveSurfaceControlLease {
+  snapshot(): FencedLease {
     this.expireIfDue();
     return this.view();
   }
@@ -144,7 +156,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   ): LiveSurfaceLeaseCheck {
     this.expireIfDue();
     if (fence !== this.fence)
-      return { ok: false, code: 'stale-epoch', lease: this.view() };
+      return { ok: false, code: 'stale-fence', lease: this.view() };
     if (controller && !sameController(controller, this.holder))
       return { ok: false, code: 'not-holder', lease: this.view() };
     return { ok: true, lease: this.view() };
@@ -159,7 +171,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   claimForHumanInput(
     human: HumanController,
     observedEpoch: number,
-  ): LiveSurfaceLeaseResult {
+  ): FencedLeaseResult {
     this.expireIfDue();
     if (observedEpoch !== this.epoch)
       return { ok: false, code: 'stale-epoch', lease: this.view() };
@@ -167,7 +179,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   }
 
   /** An explicit human claim (the "take control" button): no epoch needed. */
-  claimHuman(human: HumanController): LiveSurfaceLeaseResult {
+  claimHuman(human: HumanController): FencedLeaseResult {
     this.expireIfDue();
     this.setHolder({ ...human }, this.now() + this.humanHoldMs);
     return { ok: true, lease: this.view() };
@@ -178,7 +190,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
    * verified calling session, never from tool arguments. Callers go through
    * the registry's `claimAgentControl`, which authorizes first.
    */
-  claimForAgent(principal: string, sessionId: string): LiveSurfaceLeaseResult {
+  claimForAgent(principal: string, sessionId: string): FencedLeaseResult {
     this.expireIfDue();
     const controller: AgentController = { kind: 'agent', principal, sessionId };
     if (!sameController(controller, this.holder)) {
@@ -192,15 +204,13 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   }
 
   /** Extend the holder's lease. Refused when the fence or holder moved. */
-  renew(
-    controller: LiveSurfaceController,
-    fence: number,
-  ): LiveSurfaceLeaseResult {
+  renew(controller: LiveSurfaceController, fence: number): FencedLeaseResult {
     const check = this.isCurrent(fence, controller);
     if (!check.ok) return check;
     this.expiresAt =
       this.now() +
       (controller.kind === 'human' ? this.humanHoldMs : this.agentTtlMs);
+    this.scheduleExpiry();
     return { ok: true, lease: this.view() };
   }
 
@@ -211,13 +221,12 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   release(
     controller: LiveSurfaceController,
     stamp: { fence: number } | { epoch: number },
-  ): LiveSurfaceLeaseResult {
+  ): FencedLeaseResult {
     this.expireIfDue();
-    const current =
-      'fence' in stamp
-        ? stamp.fence === this.fence
-        : stamp.epoch === this.epoch;
-    if (!current) return { ok: false, code: 'stale-epoch', lease: this.view() };
+    if ('fence' in stamp ? stamp.fence !== this.fence : false)
+      return { ok: false, code: 'stale-fence', lease: this.view() };
+    if ('epoch' in stamp ? stamp.epoch !== this.epoch : false)
+      return { ok: false, code: 'stale-epoch', lease: this.view() };
     if (!sameController(controller, this.holder))
       return { ok: false, code: 'not-holder', lease: this.view() };
     this.setHolder(null, null);
@@ -236,6 +245,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     this.holder = holder;
     if (holder) this.lastHolder = holder;
     this.expiresAt = expiresAt;
+    this.scheduleExpiry();
     if (!changed) return;
     const lease = this.view();
     if (handoff)
@@ -244,12 +254,36 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     for (const listener of [...this.listeners]) listener(lease);
   }
 
+  /**
+   * Expiry is also applied on a timer, not only when someone reads the
+   * lease: a lapse must reach its listeners (which cancel held input) even
+   * on a surface nobody is watching or driving.
+   */
+  private scheduleExpiry(): void {
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = null;
+    if (this.expiresAt === null) return;
+    const delay = Math.max(0, this.expiresAt - this.now());
+    this.expiryTimer = setTimeout(() => {
+      this.expiryTimer = null;
+      this.expireIfDue();
+      if (this.holder && this.expiresAt !== null) this.scheduleExpiry();
+    }, delay);
+    this.expiryTimer.unref?.();
+  }
+
+  /** Stop the expiry timer (registry unregister/dispose). */
+  dispose(): void {
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = null;
+  }
+
   private expireIfDue(): void {
     if (this.holder && this.expiresAt !== null && this.now() >= this.expiresAt)
       this.setHolder(null, null);
   }
 
-  private view(): LiveSurfaceControlLease {
+  private view(): FencedLease {
     return {
       surfaceId: this.surfaceId,
       epoch: this.epoch,

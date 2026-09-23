@@ -3,11 +3,12 @@ import type {
   LiveSurfaceController,
   LiveSurfaceInput,
   LiveSurfaceInputResult,
-  LiveSurfaceLeaseResult,
   LiveSurfacePointerButton,
+  LiveSurfacePointerType,
 } from '@kontourai/station-contracts/live-surface';
 import {
   type AgentController,
+  type FencedLeaseResult,
   type HumanController,
   type LiveSurfaceControlLeaseOptions,
   LiveSurfaceControlLeaseState,
@@ -40,6 +41,15 @@ export type LiveSurfaceAuthorizer = (
  * operation, aborting
  * as "interrupted" when it fails. Every mutation of control goes through the
  * functions below, which authorize first.
+ *
+ * Notes for callers in other lanes:
+ * - The agent identity (`principal`, `sessionId`) and `actingFor` MUST come
+ *   from the VERIFIED calling session and its owner — never from tool
+ *   arguments, request bodies, or anything the model wrote. An
+ *   argument-supplied session id is not authority.
+ * - A human's `device` id is minted per boot for non-device credentials (an
+ *   HMAC under a per-boot key). It distinguishes clients NOW; history,
+ *   audit records and persisted state must not treat it as stable.
  */
 export interface LiveSurfaceEntry {
   readonly producer: LiveSurfaceProducer;
@@ -80,10 +90,13 @@ class PressedInput {
   private readonly buttons = new Set<LiveSurfacePointerButton>();
   private readonly keys = new Map<string, { key: string; code: string }>();
   private pointer = { x: 0, y: 0 };
+  private pointerType: LiveSurfacePointerType = 'mouse';
 
   record(event: LiveSurfaceInput): void {
     if (event.kind === 'pointer') {
       this.pointer = { x: event.x, y: event.y };
+      if (event.type === 'down')
+        this.pointerType = event.pointerType ?? 'mouse';
       if (event.type === 'down' && event.button) this.buttons.add(event.button);
       if (event.type === 'up' && event.button)
         this.buttons.delete(event.button);
@@ -102,6 +115,7 @@ class PressedInput {
       buttons: [...this.buttons],
       keys: [...this.keys.values()],
       pointer: { ...this.pointer },
+      pointerType: this.pointerType,
     };
     this.buttons.clear();
     this.keys.clear();
@@ -115,7 +129,16 @@ const NEUTRAL_POINT = { x: -1, y: -1 };
 function neutralCancelEvents(held: LiveSurfaceHeldInput): LiveSurfaceInput[] {
   const events: LiveSurfaceInput[] = [];
   if (held.buttons.length > 0) {
-    events.push({ kind: 'pointer', type: 'move', ...NEUTRAL_POINT });
+    // A touch keeps its pointer type, so a producer can map it to a touch
+    // cancel rather than a lift.
+    const pointerType =
+      held.pointerType === 'mouse' ? {} : { pointerType: held.pointerType };
+    events.push({
+      kind: 'pointer',
+      type: 'move',
+      ...NEUTRAL_POINT,
+      ...pointerType,
+    });
     for (const button of held.buttons)
       events.push({
         kind: 'pointer',
@@ -123,6 +146,7 @@ function neutralCancelEvents(held: LiveSurfaceHeldInput): LiveSurfaceInput[] {
         ...NEUTRAL_POINT,
         button,
         clickCount: 1,
+        ...pointerType,
       });
   }
   for (const { key, code } of held.keys)
@@ -141,6 +165,8 @@ interface EntryInternals {
    * so nothing ever runs concurrently with the orphaned dispatch.
    */
   orphan: Promise<unknown> | null;
+  /** When the current wedge began (ms), for the viewers' state record. */
+  wedgedSince: number | null;
   dispatchTimeoutMs: number;
   onError: (message: string, error: unknown) => void;
 }
@@ -197,6 +223,7 @@ export class LiveSurfaceRegistry {
       pressed: new PressedInput(),
       chain: Promise.resolve(),
       orphan: null,
+      wedgedSince: null,
       dispatchTimeoutMs:
         this.options.dispatchTimeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS,
       onError: this.options.hub?.onError ?? (() => {}),
@@ -206,10 +233,21 @@ export class LiveSurfaceRegistry {
     // synchronously at the claim: AHEAD of the new controller's first batch
     // and behind the old controller's current one.
     lease.onHandoff(() => cancelHeld(entry));
+    // Control lapsing to NOBODY — release or expiry — cancels held input too.
+    lease.onChange((next) => {
+      if (next.holder === null) cancelHeld(entry);
+    });
+    // Viewers see the wedge in their state record, so a surface that stops
+    // taking input (a page showing a dialog) says so instead of going quiet.
+    hub.setInputHealth(() => ({
+      wedged: own.orphan !== null,
+      wedgedSince: own.wedgedSince,
+    }));
     this.entries.set(producer.surfaceId, entry);
     return async () => {
       if (this.entries.get(producer.surfaceId) !== entry) return;
       this.entries.delete(producer.surfaceId);
+      lease.dispose();
       await hub.dispose();
     };
   }
@@ -225,6 +263,7 @@ export class LiveSurfaceRegistry {
   async dispose(): Promise<void> {
     const entries = [...this.entries.values()];
     this.entries.clear();
+    for (const entry of entries) internals.get(entry)?.lease.dispose();
     await Promise.all(entries.map((entry) => entry.hub.dispose()));
   }
 }
@@ -265,9 +304,14 @@ async function dispatchWithTimeout(
     const orphan: Promise<unknown> = pending
       .catch(() => {})
       .then(() => {
-        if (own.orphan === orphan) own.orphan = null;
+        if (own.orphan !== orphan) return;
+        own.orphan = null;
+        own.wedgedSince = null;
+        entry.hub.announce();
       });
     own.orphan = orphan;
+    own.wedgedSince = Date.now();
+    entry.hub.announce();
     own.onError('live surface producer dispatch timed out; surface wedged', {
       surfaceId: entry.producer.surfaceId,
     });
@@ -393,7 +437,7 @@ export function dispatchHumanInput(
 export function claimHumanControl(
   entry: LiveSurfaceEntry,
   human: HumanController,
-): LiveSurfaceLeaseResult {
+): FencedLeaseResult {
   return internalsOf(entry).lease.claimHuman(human);
 }
 
@@ -402,10 +446,9 @@ export function releaseHumanControl(
   entry: LiveSurfaceEntry,
   human: HumanController,
   epoch: number,
-): LiveSurfaceLeaseResult {
-  const result = internalsOf(entry).lease.release(human, { epoch });
-  if (result.ok) cancelHeld(entry);
-  return result;
+): FencedLeaseResult {
+  // The lapse to no holder cancels held input (the lease's onChange).
+  return internalsOf(entry).lease.release(human, { epoch });
 }
 
 /**
@@ -417,7 +460,7 @@ export async function claimAgentControl(
   entry: LiveSurfaceEntry,
   agent: AgentController,
   actingFor: string,
-): Promise<LiveSurfaceLeaseResult> {
+): Promise<FencedLeaseResult> {
   if (!(await entry.authorize(actingFor, 'control')))
     return { ok: false, code: 'not-authorized', lease: entry.lease.snapshot() };
   return internalsOf(entry).lease.claimForAgent(
@@ -431,10 +474,8 @@ export function releaseAgentControl(
   entry: LiveSurfaceEntry,
   agent: AgentController,
   fence: number,
-): LiveSurfaceLeaseResult {
-  const result = internalsOf(entry).lease.release(agent, { fence });
-  if (result.ok) cancelHeld(entry);
-  return result;
+): FencedLeaseResult {
+  return internalsOf(entry).lease.release(agent, { fence });
 }
 
 /**

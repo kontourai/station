@@ -11,6 +11,7 @@ import {
   parseLiveSurfaceInputBatch,
   parseLiveSurfaceLeaseRequest,
   parseLiveSurfaceStreamParams,
+  parseLiveSurfaceStreamState,
 } from '../live-surface.js';
 
 const frame: LiveSurfaceRecord = {
@@ -258,6 +259,34 @@ describe('live surface wire parsers', () => {
       parseLiveSurfaceLeaseRequest({ action: 'release', epoch: 4 }),
     ).toEqual({ action: 'release', epoch: 4 });
     expect(parseLiveSurfaceLeaseRequest({ action: 'release' })).toBeNull();
+  });
+
+  test('a state record carries the wedge flag strictly', () => {
+    const base = (state as Extract<LiveSurfaceRecord, { kind: 'state' }>).state;
+    const wedged = { ...base, wedged: true, wedgedSince: 1_700_000_000_000 };
+    expect(parseLiveSurfaceStreamState(wedged)).toEqual(wedged);
+    expect(
+      parseLiveSurfaceStreamState({
+        ...base,
+        wedged: false,
+        wedgedSince: null,
+      }),
+    ).toMatchObject({ wedged: false, wedgedSince: null });
+    expect(parseLiveSurfaceStreamState({ ...base, wedged: 'yes' })).toBeNull();
+    expect(
+      parseLiveSurfaceStreamState({ ...base, wedgedSince: -5 }),
+    ).toBeNull();
+  });
+
+  test('a pointer event may name touch or pen, nothing else', () => {
+    const down = { kind: 'pointer', type: 'down', x: 1, y: 1 };
+    expect(parseLiveSurfaceInput({ ...down, pointerType: 'touch' })).toEqual({
+      ...down,
+      pointerType: 'touch',
+    });
+    expect(
+      parseLiveSurfaceInput({ ...down, pointerType: 'stylus' }),
+    ).toBeNull();
   });
 
   test('a lease fence round-trips and must be a non-negative integer', () => {

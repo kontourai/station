@@ -58,6 +58,7 @@ export type LiveSurfaceModifiers = {
 };
 
 export type LiveSurfacePointerButton = 'left' | 'middle' | 'right';
+export type LiveSurfacePointerType = 'mouse' | 'touch' | 'pen';
 
 export type LiveSurfaceInput =
   | {
@@ -70,6 +71,8 @@ export type LiveSurfaceInput =
       deltaX?: number;
       deltaY?: number;
       modifiers?: LiveSurfaceModifiers;
+      /** Absent means mouse. Lets a producer cancel a touch as a touch. */
+      pointerType?: LiveSurfacePointerType;
     }
   | {
       kind: 'key';
@@ -170,6 +173,12 @@ export const LIVE_SURFACE_DEVICE_SCALE_FACTOR_MAX = 16;
 export type LiveSurfaceLeaseRefusalCode =
   /** The caller's epoch is not the current one: it acted on a stale view. */
   | 'stale-epoch'
+  /**
+   * The operation's fencing token is not current: the lease changed hands
+   * (or was released or expired) since the operation claimed it. Distinct
+   * from `stale-epoch`, which is about a viewer's view.
+   */
+  | 'stale-fence'
   /**
    * An agent claim refused because a human holds the lease and is live
    * (within the human hold time since their last input or claim). An agent
@@ -314,6 +323,7 @@ export function parseLiveSurfaceInput(value: unknown): LiveSurfaceInput | null {
           'deltaX',
           'deltaY',
           'modifiers',
+          'pointerType',
         ])
       )
         return null;
@@ -361,6 +371,15 @@ export function parseLiveSurfaceInput(value: unknown): LiveSurfaceInput | null {
         )
           return null;
         out[key] = record[key] as number;
+      }
+      if (record.pointerType !== undefined) {
+        if (
+          record.pointerType !== 'mouse' &&
+          record.pointerType !== 'touch' &&
+          record.pointerType !== 'pen'
+        )
+          return null;
+        out.pointerType = record.pointerType;
       }
       if (modifiers) out.modifiers = modifiers;
       return out;
@@ -616,6 +635,14 @@ export interface LiveSurfaceStreamState {
    * device" from "another person". Server-derived, never client-asserted.
    */
   viewer?: LiveSurfaceViewerIdentity;
+  /**
+   * The surface is not accepting input: a dispatch did not return in time
+   * and has not settled (a page showing a JavaScript dialog does exactly
+   * this). Input is refused `surface-wedged` until it clears. `wedgedSince`
+   * is server time (ms), informational only.
+   */
+  wedged?: boolean;
+  wedgedSince?: number | null;
 }
 
 export interface LiveSurfaceViewerIdentity {
@@ -629,7 +656,18 @@ export function parseLiveSurfaceStreamState(
   const record = plainRecord(value);
   if (
     !record ||
-    !onlyKeys(record, ['surfaceId', 'lease', 'effectiveParams', 'viewer']) ||
+    !onlyKeys(record, [
+      'surfaceId',
+      'lease',
+      'effectiveParams',
+      'viewer',
+      'wedged',
+      'wedgedSince',
+    ]) ||
+    (record.wedged !== undefined && typeof record.wedged !== 'boolean') ||
+    (record.wedgedSince !== undefined &&
+      record.wedgedSince !== null &&
+      !intInRange(record.wedgedSince, 0, Number.MAX_SAFE_INTEGER)) ||
     !isLiveSurfaceId(record.surfaceId) ||
     !isLiveSurfaceStreamParams(record.effectiveParams)
   )
@@ -653,6 +691,10 @@ export function parseLiveSurfaceStreamState(
     lease,
     effectiveParams: { ...record.effectiveParams },
     ...(viewer ? { viewer } : {}),
+    ...(record.wedged === undefined ? {} : { wedged: record.wedged }),
+    ...(record.wedgedSince === undefined
+      ? {}
+      : { wedgedSince: record.wedgedSince as number | null }),
   };
 }
 

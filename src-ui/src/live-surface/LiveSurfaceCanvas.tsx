@@ -72,6 +72,15 @@ function modifiersOf(event: {
   return Object.keys(modifiers).length > 0 ? modifiers : undefined;
 }
 
+/** Mouse is the default on the wire; only touch and pen are named. */
+function pointerTypeOf(event: { pointerType?: string }): {
+  pointerType?: 'touch' | 'pen';
+} {
+  return event.pointerType === 'touch' || event.pointerType === 'pen'
+    ? { pointerType: event.pointerType }
+    : {};
+}
+
 function buttonOf(button: number): LiveSurfacePointerButton | undefined {
   if (button === 0) return 'left';
   if (button === 1) return 'middle';
@@ -207,6 +216,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   /** Buttons this pointer holds down on the surface, and where it last was. */
   const heldRef = useRef(new Set<LiveSurfacePointerButton>());
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const heldPointerTypeRef = useRef<{ pointerType?: 'touch' | 'pen' }>({});
 
   const toSurface = useCallback(
     (clientX: number, clientY: number, clamp = false) => {
@@ -246,11 +256,13 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         : 1;
     lastDownRef.current = { at, x: point.x, y: point.y, count };
     lastPointRef.current = point;
+    heldPointerTypeRef.current = pointerTypeOf(event);
     const input: LiveSurfaceInput = {
       kind: 'pointer',
       type: 'down',
       ...point,
       clickCount: count,
+      ...pointerTypeOf(event),
     };
     const button = buttonOf(event.button);
     if (button) {
@@ -276,6 +288,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       type: 'up',
       ...point,
       clickCount: lastDownRef.current?.count ?? 1,
+      ...pointerTypeOf(event),
     };
     if (button) input.button = button;
     const modifiers = modifiersOf(event);
@@ -293,6 +306,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       ...point,
       button,
       clickCount: 1,
+      ...heldPointerTypeRef.current,
     }));
     heldRef.current.clear();
     sendInput(events);
@@ -306,7 +320,12 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     );
     if (!point) return;
     lastPointRef.current = point;
-    const input: LiveSurfaceInput = { kind: 'pointer', type: 'move', ...point };
+    const input: LiveSurfaceInput = {
+      kind: 'pointer',
+      type: 'move',
+      ...point,
+      ...pointerTypeOf(event),
+    };
     const modifiers = modifiersOf(event);
     if (modifiers) input.modifiers = modifiers;
     sendInput([input]);
@@ -429,6 +448,11 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           </Button>
         ) : null}
       </div>
+      {surface.wedged && surface.status === 'live' ? (
+        <p className="live-surface__notice" role="status">
+          The page is not responding to input (it may be showing a dialog).
+        </p>
+      ) : null}
       {surface.inputNotice === 'control-changed' ? (
         <p className="live-surface__notice" role="status">
           Control changed before your input arrived, so it was not sent.

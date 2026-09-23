@@ -97,7 +97,7 @@ describe('live surface registry', () => {
     const [agentResult, humanResult] = await Promise.all([agentRun, humanRun]);
     expect(agentResult).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
       accepted: 1,
     });
     expect(humanResult).toMatchObject({
@@ -152,6 +152,7 @@ describe('live surface registry', () => {
         buttons: ['left'],
         keys: [{ key: 'shift', code: 'KeySHIFT' }],
         pointer: { x: 5, y: 6 },
+        pointerType: 'mouse',
       },
     ]);
     expect(keysOf(producer.dispatched)).toEqual([
@@ -203,7 +204,7 @@ describe('live surface registry', () => {
     await humanRun;
     expect(result).toMatchObject({
       ok: false,
-      code: 'stale-epoch',
+      code: 'stale-fence',
       accepted: 1,
     });
     expect(producer.dispatched).toEqual([move(1), move(100)]);
@@ -357,5 +358,87 @@ describe('live surface registry', () => {
     for (const id of ['none', 'throws', 'truthy'])
       for (const action of ['view', 'input', 'control'] as const)
         expect(await registry.get(id)!.authorize(OPERATOR, action)).toBe(false);
+  });
+  test('a lease that expires while input is held cancels it, even with nobody reading the lease (W2)', async () => {
+    const { producer, entry } = setup(() => true, {
+      lease: { humanHoldMs: 30 },
+    });
+    await dispatchHumanInput(entry, human, 0, [press('down', 7, 8)]);
+    // Nobody watches or drives the surface: the expiry timer must fire.
+    await sleep(80);
+    await settleChain();
+    expect(keysOf(producer.dispatched)).toEqual([
+      'down@7,8',
+      'move@-1,-1',
+      'up@-1,-1',
+    ]);
+    expect(entry.lease.snapshot().holder).toBeNull();
+  });
+
+  test('a touch is cancelled as a touch: the pointer type rides to the producer', async () => {
+    const { producer, entry } = setup();
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      { ...press('down', 5, 6), pointerType: 'touch' },
+    ]);
+    await dispatchHumanInput(entry, human, 1, [move(9)]);
+    // Default path: the neutral cancel keeps the touch pointer type.
+    expect(producer.dispatched.slice(1, 3)).toEqual([
+      { kind: 'pointer', type: 'move', x: -1, y: -1, pointerType: 'touch' },
+      {
+        kind: 'pointer',
+        type: 'up',
+        x: -1,
+        y: -1,
+        button: 'left',
+        clickCount: 1,
+        pointerType: 'touch',
+      },
+    ]);
+    // Hook path: the producer is told it was a touch.
+    const cancelled: LiveSurfaceHeldInput[] = [];
+    const second = setup();
+    second.producer.cancelHeldInput = async (held) => {
+      cancelled.push(held);
+    };
+    const fence2 = await agentFence(second.entry);
+    await dispatchAgentInput(second.entry, agent, OPERATOR, fence2, [
+      { ...press('down', 5, 6), pointerType: 'touch' },
+    ]);
+    await dispatchHumanInput(second.entry, human, 1, [move(9)]);
+    expect(cancelled[0]?.pointerType).toBe('touch');
+  });
+
+  test('viewers are told when the surface wedges and when it recovers (W1a)', async () => {
+    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 20 });
+    const viewer = entry.hub.attach({
+      maxFps: 10,
+      quality: 70,
+      maxWidth: 640,
+      maxHeight: 640,
+    });
+    expect(await viewer.next()).toMatchObject({
+      kind: 'state',
+      state: { wedged: false, wedgedSince: null },
+    });
+    let finish!: () => void;
+    producer.dispatchImpl = () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    await dispatchHumanInput(entry, human, 0, [move(1)]);
+    // (the human's claim is announced first)
+    const records = [await viewer.next(), await viewer.next()];
+    expect(records.at(-1)).toMatchObject({
+      kind: 'state',
+      state: { wedged: true, wedgedSince: expect.any(Number) },
+    });
+    finish();
+    await settleChain();
+    expect(await viewer.next()).toMatchObject({
+      kind: 'state',
+      state: { wedged: false, wedgedSince: null },
+    });
+    viewer.close();
   });
 });

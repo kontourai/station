@@ -649,6 +649,23 @@ describe('LiveSurfaceCanvas', () => {
     ).toEqual([['down'], ['down'], ['up']]);
   });
 
+  test('a wedged surface says the page is not responding, and clears when it recovers (W1a)', async () => {
+    const h = harness();
+    const stream = await renderLive(h);
+    const notice =
+      'The page is not responding to input (it may be showing a dialog).';
+    expect(screen.queryByText(notice)).toBeNull();
+    const wedged = stateRecord(lease(0));
+    if (wedged.kind === 'state') {
+      wedged.state.wedged = true;
+      wedged.state.wedgedSince = 5;
+    }
+    await stream.push(wedged);
+    expect(screen.getByText(notice)).toBeTruthy();
+    await stream.push(stateRecord(lease(0)));
+    expect(screen.queryByText(notice)).toBeNull();
+  });
+
   test('a 404 is a terminal "not available" state with no reconnect', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
