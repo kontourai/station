@@ -87,6 +87,49 @@ describe('projectRuntimeEventsToMessages', () => {
       ?.parts.filter((part) => part.type === 'text')
       .map((part) => part.text);
 
+  // #2309: provider output after its turn closed (claude:1790098279239 —
+  // deltas with no turn id, no turn.started, no terminal). The client builds
+  // no live stream for it and re-reads the window instead, so THIS fold is
+  // the only place it renders: exactly once, after the turn's answer, and
+  // without the turn's own text reconciled into it twice (#2300).
+  it('#2309: turn-less output after a completed turn renders once, after the answer, with no duplicated suffix', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'done', prompt: 'Start the job' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'done',
+        delta: 'Started it in the background.',
+      }),
+      ev({
+        method: 'turn.completed',
+        turnId: 'done',
+        outputText: 'Started it in the background.',
+      }),
+      ev({
+        method: 'content.text-delta',
+        itemId: 't1:no-turn:msg_1',
+        delta: 'Background job ',
+      }),
+      ev({
+        method: 'content.text-delta',
+        itemId: 't1:no-turn:msg_1',
+        delta: 'finished.',
+      }),
+      ev({ method: 'token-usage.updated', usage: { outputTokens: 4 } }),
+    ]);
+    const texts = messages
+      .filter((message) => message.role === 'assistant')
+      .flatMap((message) =>
+        message.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text),
+      );
+    expect(texts).toEqual([
+      'Started it in the background.',
+      'Background job finished.',
+    ]);
+  });
+
   it('#2300: an outputText equal to all emitted text (before and after a tool) adds nothing', () => {
     expect(
       texts(

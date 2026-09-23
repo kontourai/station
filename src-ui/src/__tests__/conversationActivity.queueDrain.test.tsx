@@ -206,6 +206,19 @@ function connect(apiBase: string, activity: ConversationTurnActivity) {
   });
 }
 
+/**
+ * A reload that resumes the stream by cursor: no snapshot, so nothing adopts
+ * the running child; the chat keeps naming the root, and the record arrives
+ * through another carrier (the event window read).
+ */
+function resumeWithoutSnapshot(
+  apiBase: string,
+  activity: ConversationTurnActivity,
+) {
+  ensureOrchestrationEventStream(apiBase);
+  activeChatsStore.applyConversationActivity(activity);
+}
+
 function chat() {
   const current = activeChatsStore.getSnapshot()[CONVERSATION];
   if (!current) throw new Error('chat missing');
@@ -257,7 +270,7 @@ afterEach(() => {
 describe('#2309 the queue drains on the turn END event, routed by the frame binding', () => {
   test("a lineage child's turn.completed drains the conversation's chat, though the chat names the root", async () => {
     chatWithQueue(['and then summarize it']);
-    connect(API, open(10));
+    resumeWithoutSnapshot(API, open(10));
     // Premise: the child's events route to no chat.
     expect(
       activeChatsStore.getChatKeyForExecutionSession(CHILD),
@@ -276,7 +289,7 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
 
   test("a lineage child's turn.aborted (a Stop elsewhere) does not drain through the binding either", async () => {
     chatWithQueue(['held after the stop']);
-    connect(API, open(12));
+    resumeWithoutSnapshot(API, open(12));
     deliverEvent(API, turnAborted(), closed(13));
     await vi.advanceTimersByTimeAsync(500);
     expect(mocks.dispatchForeground).not.toHaveBeenCalled();
@@ -288,7 +301,7 @@ describe('#2309 the queue drains on the turn END event, routed by the frame bind
     const stationB = `${API}-b`;
     // The chat names the root, so it is the binding-routed path that drains.
     chatWithQueue(['for station A']);
-    connect(stationA, open(20));
+    resumeWithoutSnapshot(stationA, open(20));
     ensureOrchestrationEventStream(stationB);
     ensureOrchestrationEventStream(stationA);
 
@@ -371,7 +384,7 @@ describe('#2309 the binding-routed drain acts only for an unrouted current child
 
   test('a terminal of a child that is no longer current drains nothing', async () => {
     chatWithQueue(['not for a retired child']);
-    connect(API, open(90));
+    resumeWithoutSnapshot(API, open(90));
     const conversation: OrchestrationConversationStreamBinding = {
       conversationId: CONVERSATION,
       // A newer child is current; this frame's child is retired.
@@ -389,7 +402,7 @@ describe('#2309 the binding-routed drain acts only for an unrouted current child
 
   test('a definitive runtime.error on the unrouted current child drains once; a deferred-retriable one does not', async () => {
     chatWithQueue(['after the failure']);
-    connect(API, open(100));
+    resumeWithoutSnapshot(API, open(100));
     deliverEvent(API, runtimeError('codex', true), closed(101));
     await vi.advanceTimersByTimeAsync(500);
     expect(mocks.dispatchForeground).not.toHaveBeenCalled();
