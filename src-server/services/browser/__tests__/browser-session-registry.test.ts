@@ -27,7 +27,13 @@ const AGENT: BrowserSessionActor = {
 };
 
 /** A fake host: one per launch, like the real single-use Chromium host. */
-function fakeHost(id: number, holdOpen?: Promise<void>) {
+interface Holds {
+  /** Read at call time: the gate openTarget / Page.navigate waits on. */
+  open?: () => Promise<void> | undefined;
+  navigate?: () => Promise<void> | undefined;
+}
+
+function fakeHost(id: number, holds: Holds = {}) {
   const exitListeners = new Set<(reason: string) => void>();
   const sent: Array<{ method: string; params?: object; sessionId?: string }> =
     [];
@@ -35,6 +41,7 @@ function fakeHost(id: number, holdOpen?: Promise<void>) {
   const cdp: CdpTransport = {
     async send<R>(method: string, params?: object, sessionId?: string) {
       sent.push({ method, params, sessionId });
+      if (method === 'Page.navigate') await holds.navigate?.();
       return {} as R;
     },
     on: () => () => {},
@@ -48,7 +55,7 @@ function fakeHost(id: number, holdOpen?: Promise<void>) {
     shutdown: vi.fn(async () => {}),
     async openTarget(p: { profileDir: string }) {
       host.profileDirs.push(p.profileDir);
-      if (holdOpen) await holdOpen;
+      await holds.open?.();
       targetSeq += 1;
       return {
         targetId: `H${id}-T${targetSeq}`,
@@ -82,7 +89,7 @@ function harness(
   options: {
     stationHome?: string;
     idleShutdownMs?: number;
-    holdOpen?: Promise<void>;
+    holds?: Holds;
   } = {},
 ) {
   const stationHome =
@@ -94,7 +101,7 @@ function harness(
     stationHome,
     idleShutdownMs: options.idleShutdownMs ?? 1_000,
     createHost: () => {
-      const host = fakeHost(hosts.length + 1, options.holdOpen);
+      const host = fakeHost(hosts.length + 1, options.holds);
       hosts.push(host);
       return host;
     },
@@ -680,33 +687,31 @@ describe('BrowserSessionRegistry', () => {
     expect(hosts[0]?.profileDirs).toHaveLength(5);
   });
 
-  test('concurrency: closing a session while it is still opening leaves nothing running', async () => {
+  test('concurrency: a session closed while its target is opening never loads its URL', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => {
       release = r;
     });
-    // openTarget is held until the close has happened.
-    const { registry, hosts } = harness({ holdOpen: gate });
+    const { registry, hosts } = harness({ holds: { open: () => gate } });
     const pending = registry.createSession({
       projectId: 'alpha',
       projectSlug: 'alpha',
-      url: 'about:blank',
+      url: 'https://example.com/private',
       actor: OPERATOR,
     });
     await new Promise((r) => setTimeout(r, 0));
     const host = hosts[0]!;
     const [opening] = registry.listSessions();
     expect(opening?.state).toBe('opening');
-    const closed = await registry.closeSession(
-      opening!.browserSessionId,
-      OPERATOR,
-    );
-    expect(closed.state).toBe('closed');
+    expect(
+      (await registry.closeSession(opening!.browserSessionId, OPERATOR)).state,
+    ).toBe('closed');
     release();
-    await gate;
     const result = await pending;
     expect(result.state).toBe('closed');
     expect(host.closedTargets).toEqual(['H1-T1']);
+    // The closed session's page was never navigated.
+    expect(host.sent.filter((c) => c.method === 'Page.navigate')).toEqual([]);
     expect(
       registry
         .getSession(result.browserSessionId)
@@ -714,28 +719,56 @@ describe('BrowserSessionRegistry', () => {
     ).toEqual(['created', 'closed']);
   });
 
-  test('concurrency: an idle shutdown due while a create is resolving the host waits for it', async () => {
-    vi.useFakeTimers();
-    const { registry, hosts } = harness({ idleShutdownMs: 1 });
+  test('concurrency: a session closed during its first navigation does not become live', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const { registry, hosts } = harness({ holds: { navigate: () => gate } });
+    const pending = registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'https://example.com/',
+      actor: OPERATOR,
+    });
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+    const [opening] = registry.listSessions();
+    await registry.closeSession(opening!.browserSessionId, OPERATOR);
+    release();
+    const result = await pending;
+    expect(result.state).toBe('closed');
+    expect(hosts[0]?.closedTargets).toEqual(['H1-T1']);
+  });
+
+  test('concurrency: closing another session during an open does not shut the browser down under it', async () => {
+    let gate: Promise<void> | undefined;
+    let release!: () => void;
+    const { registry, hosts } = harness({
+      idleShutdownMs: 1,
+      holds: { open: () => gate },
+    });
     const first = await registry.createSession({
       projectId: 'alpha',
       projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
-    await registry.closeSession(first.browserSessionId, OPERATOR);
-    // The idle timer (1 ms) is armed. Start a create and let the timer fire
-    // before the create's continuation runs.
+    gate = new Promise<void>((r) => {
+      release = r;
+    });
     const second = registry.createSession({
       projectId: 'alpha',
       projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
-    await vi.advanceTimersByTimeAsync(5);
-    const live = await second;
-    expect(live.state).toBe('live');
+    await new Promise((r) => setTimeout(r, 0));
+    // The browser has no live target now, but one is being opened on it.
+    await registry.closeSession(first.browserSessionId, OPERATOR);
+    await new Promise((r) => setTimeout(r, 20));
     expect(hosts[0]?.shutdown).not.toHaveBeenCalled();
+    release();
+    expect((await second).state).toBe('live');
     expect(hosts).toHaveLength(1);
     expect(registry.hasRunningHost('alpha')).toBe(true);
   });

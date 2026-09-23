@@ -606,8 +606,11 @@ export class BrowserSessionRegistry {
       }
       // The state may have changed while the navigation was in flight.
       if ((record.state as BrowserSessionState) === 'closed') {
-        entry.targets.delete(record.browserSessionId);
-        await entry.host.closeTarget(target.targetId).catch(() => {});
+        // closeSession already found and closed the registered target.
+        if (entry.targets.get(record.browserSessionId) === target) {
+          entry.targets.delete(record.browserSessionId);
+          await entry.host.closeTarget(target.targetId).catch(() => {});
+        }
         return;
       }
       record.generation = entry.generation;
