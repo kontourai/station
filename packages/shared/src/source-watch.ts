@@ -63,6 +63,10 @@ export const POLL_ENTRY_BUDGET = 2000;
  */
 export const POLL_SCAN_TIME_BUDGET_MS = 250;
 
+/** Bounds of the backoff before a budget-exceeded scan is retried. */
+export const POLL_REARM_MIN_MS = 30_000;
+export const POLL_REARM_MAX_MS = 10 * 60_000;
+
 const POLL_BUDGET_EXCEEDED = `more than ${POLL_ENTRY_BUDGET} entries or ${POLL_SCAN_TIME_BUDGET_MS}ms per scan`;
 
 /** Directory names never worth scanning inside a plugin source tree. */
@@ -104,6 +108,8 @@ export interface FallbackWatchOptions {
   pollIntervalMs?: number;
   /** Quiet period before a burst of changes fires once; defaults to 200ms. */
   debounceMs?: number;
+  /** First retry delay after a scan exceeds its budget (tests shorten it). */
+  rearmMinMs?: number;
 }
 
 /** One scan pass: relative path → last-modified time. */
@@ -198,6 +204,7 @@ export function watchWithFallback({
   onChange,
   pollIntervalMs = POLL_INTERVAL_MS,
   debounceMs = DEBOUNCE_MS,
+  rearmMinMs = POLL_REARM_MIN_MS,
 }: FallbackWatchOptions): WatchHandle {
   const watchers: { close: () => void }[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -266,19 +273,44 @@ export function watchWithFallback({
   }
 
   // ── mtime fallback ──
-  let snapshot = scanPaths(cwd, paths, accepts);
-  if (snapshot === null) {
+  // A scan that exceeds its budget turns polling off, but not forever: the
+  // tree may shrink, or the slow disk recover. It is retried after a backoff
+  // that doubles up to POLL_REARM_MAX_MS, and polling resumes when a scan
+  // fits again. `status.pollingError` says why it is off meanwhile.
+  let snapshot: Snapshot | null = null;
+  let rearm: ReturnType<typeof setTimeout> | null = null;
+  let rearmDelay = Math.max(rearmMinMs, pollIntervalMs * 15);
+
+  const stopPolling = () => {
+    status.pollingActive = false;
     status.pollingError = POLL_BUDGET_EXCEEDED;
-  } else {
+    if (poller) clearInterval(poller);
+    poller = null;
+    rearm = setTimeout(() => {
+      rearm = null;
+      if (!closed) startPolling();
+    }, rearmDelay);
+    rearm.unref?.();
+    rearmDelay = Math.min(rearmDelay * 2, POLL_REARM_MAX_MS);
+  };
+
+  const startPolling = () => {
+    const first = scanPaths(cwd, paths, accepts);
+    if (first === null) {
+      stopPolling();
+      return;
+    }
+    // Anything that changed while polling was off is a change now.
+    const changedWhileOff = snapshot ? diffSnapshots(snapshot, first) : [];
+    snapshot = first;
     status.pollingActive = true;
+    status.pollingError = null;
+    if (changedWhileOff.length > 0) trigger(changedWhileOff[0]);
     poller = setInterval(() => {
       if (closed) return;
       const next = scanPaths(cwd, paths, accepts);
       if (next === null) {
-        status.pollingActive = false;
-        status.pollingError = POLL_BUDGET_EXCEEDED;
-        if (poller) clearInterval(poller);
-        poller = null;
+        stopPolling();
         return;
       }
       const previous = snapshot ?? next;
@@ -293,7 +325,8 @@ export function watchWithFallback({
     }, pollIntervalMs);
     // A dev-mode convenience is never a reason to hold the process open.
     poller.unref();
-  }
+  };
+  startPolling();
 
   return {
     targets,
@@ -308,6 +341,10 @@ export function watchWithFallback({
       if (poller) {
         clearInterval(poller);
         poller = null;
+      }
+      if (rearm) {
+        clearTimeout(rearm);
+        rearm = null;
       }
       for (const watcher of watchers.splice(0)) {
         try {

@@ -38,7 +38,7 @@ export function createPluginDraftRoutes({
     return dir?.trim() ? dir : undefined;
   };
 
-  app.post('/:slug/plugin-draft/lease', (c) => {
+  app.post('/:slug/plugin-draft/lease', async (c) => {
     const slug = c.req.param('slug');
     const dir = projectDirectory(slug);
     if (!dir) {
@@ -47,7 +47,14 @@ export function createPluginDraftRoutes({
         404,
       );
     }
-    return c.json(service.lease(slug, dir));
+    // `{ "rebuild": true }` builds now even if no change was observed. Any
+    // other body (or none) is an ordinary lease refresh.
+    const body = (await c.req.json().catch(() => undefined)) as
+      | { rebuild?: unknown }
+      | undefined;
+    return c.json(
+      service.lease(slug, dir, { rebuild: body?.rebuild === true }),
+    );
   });
 
   app.get('/:slug/plugin-draft', (c) => {

@@ -66,6 +66,17 @@ export interface PluginDraftStatus {
   readonly panes: readonly PluginDraftPane[];
   /** Problems from the most recent build attempt. */
   readonly diagnostics: readonly PluginDraftDiagnostic[];
+  /**
+   * How edits reach the build, as the watcher reports it. When `polling` is
+   * false, a save may not rebuild on its own (native file events can arm and
+   * then deliver nothing); `reason` says why, and a manual rebuild
+   * (`POST lease` with `{ "rebuild": true }`) always works.
+   */
+  readonly watch?: {
+    readonly native: boolean;
+    readonly polling: boolean;
+    readonly reason?: string;
+  };
   readonly builtAt?: string;
   readonly leaseExpiresAt?: string;
 }

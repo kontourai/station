@@ -13,12 +13,13 @@ import {
   type PluginDraftBuildOptions,
   type PluginDraftBuildResult,
 } from '@kontourai/station-shared/build';
+import { readBoundedRegularFileSync } from '@kontourai/station-shared/regular-file';
 import {
   type FallbackWatchOptions,
   type WatchHandle,
   watchWithFallback,
 } from '@kontourai/station-shared/source-watch';
-import { readPluginManifestFileWithFormat } from './plugin-manifest-loader.js';
+import { parsePluginManifestDocumentWithFormat } from './plugin-manifest-loader.js';
 
 /**
  * Plugin draft preview (epic #2323 S3): watches a Project folder and builds
@@ -43,6 +44,13 @@ const RETAINED_GENERATIONS = 2;
 const DEFAULT_MAX_CONCURRENT_BUILDS = 2;
 const DEFAULT_MAX_ACTIVE_LEASES = 8;
 const DEFAULT_DEBOUNCE_MS = 300;
+/**
+ * How long one draft build may hold a build slot. A build that never settles
+ * (an input that blocks a read, a wedged esbuild) would otherwise hold one of
+ * the few global slots forever and starve every draft on the Station.
+ */
+const DEFAULT_BUILD_TIMEOUT_MS = 60_000;
+const MAX_MANIFEST_BYTES = 1024 * 1024;
 const WATCHED_EXTENSIONS = new Set([
   '.ts',
   '.tsx',
@@ -75,6 +83,7 @@ export interface PluginDraftServiceOptions {
   /** Scan interval for the watcher's polling fallback (tests shorten it). */
   readonly pollIntervalMs?: number;
   readonly now?: () => number;
+  readonly buildTimeoutMs?: number;
   /** Seams for tests; production uses the shared builder and watcher. */
   readonly build?: (
     options: PluginDraftBuildOptions,
@@ -175,7 +184,15 @@ export class PluginDraftService {
   }
 
   /** Starts or refreshes the lease for a Project's draft and returns its status. */
-  lease(projectSlug: string, projectDir: string): PluginDraftStatus {
+  /**
+   * `rebuild` asks for a build now even though no change was observed: the
+   * manual escape hatch when automatic change detection is off.
+   */
+  lease(
+    projectSlug: string,
+    projectDir: string,
+    { rebuild = false }: { rebuild?: boolean } = {},
+  ): PluginDraftStatus {
     let root: string;
     try {
       root = realpathSync(projectDir);
@@ -186,6 +203,7 @@ export class PluginDraftService {
     const existing = this.entries.get(draftId);
     if (existing) {
       existing.expiresAt = this.now() + this.leaseTtlMs;
+      if (rebuild) this.scheduleBuild(existing);
       return this.statusOf(existing);
     }
     if (this.entries.size >= this.maxActiveLeases) {
@@ -330,6 +348,7 @@ export class PluginDraftService {
       ...(entry.pluginVersion ? { pluginVersion: entry.pluginVersion } : {}),
       panes: entry.panes,
       diagnostics: entry.diagnostics,
+      ...watchState(entry.watcher),
       ...(latest ? { builtAt: latest.builtAt } : {}),
       leaseExpiresAt: new Date(entry.expiresAt).toISOString(),
     };
@@ -375,8 +394,19 @@ export class PluginDraftService {
     }
     let manifest: PluginManifest;
     try {
-      manifest = (await readPluginManifestFileWithFormat(manifestPath))
-        .manifest;
+      // Read non-blocking and bounded: a FIFO named plugin.json must not
+      // block a thread (the async fs pool has four) any more than a source
+      // file may block esbuild.
+      const raw = readBoundedRegularFileSync(manifestPath, MAX_MANIFEST_BYTES);
+      if (raw === null) {
+        throw new Error(
+          'plugin.json is not a regular file of at most 1 MB, so it was not read.',
+        );
+      }
+      manifest = parsePluginManifestDocumentWithFormat(
+        raw,
+        manifestPath,
+      ).manifest;
     } catch (error) {
       entry.state = 'failed';
       entry.diagnostics = [
@@ -402,13 +432,37 @@ export class PluginDraftService {
     );
     rmSync(dir, { recursive: true, force: true });
     let result: PluginDraftBuildResult;
+    const controller = new AbortController();
+    const timeoutMs = this.options.buildTimeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      result = await this.build({
+      const build = this.build({
         pluginDir: entry.root,
         outdir: dir,
         registrationKey: this.registrationKey(entry, generation),
         manifest,
+        signal: controller.signal,
       });
+      // The build is raced, not just aborted: a build that ignores its
+      // signal (blocked in a read) still gives its slot back at the deadline.
+      build.catch(() => {});
+      result = await Promise.race([
+        build,
+        new Promise<PluginDraftBuildResult>((resolveTimeout) => {
+          deadline = setTimeout(() => {
+            controller.abort();
+            resolveTimeout({
+              ok: false,
+              diagnostics: [
+                {
+                  text: `The draft build did not finish within ${Math.round(timeoutMs / 1000)}s and was stopped. Check for an import that never finishes reading (a pipe or device file).`,
+                },
+              ],
+            });
+          }, timeoutMs);
+          deadline.unref?.();
+        }),
+      ]);
     } catch (error) {
       this.options.logger?.warn?.('Plugin draft build failed unexpectedly', {
         draftId: entry.draftId,
@@ -418,6 +472,8 @@ export class PluginDraftService {
         ok: false,
         diagnostics: [{ text: 'The draft build failed unexpectedly.' }],
       };
+    } finally {
+      if (deadline) clearTimeout(deadline);
     }
     if (!result.ok) {
       rmSync(dir, { recursive: true, force: true });
@@ -432,7 +488,7 @@ export class PluginDraftService {
       hasCss ? result.cssPath : undefined,
       registrationKey,
     );
-    entry.diagnostics = [];
+    entry.diagnostics = [...(result.warnings ?? [])];
     entry.state = 'ready';
     // A save that changed nothing the bundle depends on is not a revision.
     // The registration key embeds the generation, so bytes are compared with
@@ -462,6 +518,33 @@ export class PluginDraftService {
       generation,
     });
   }
+}
+
+/**
+ * Whether this folder's edits rebuild on their own, derived from what the
+ * watcher reports rather than assumed: native events armed, or the polling
+ * fallback running. When polling is off its reason is carried, so the pane
+ * can say automatic rebuilds may not happen and offer a manual one.
+ */
+function watchState(
+  watcher: WatchHandle | undefined,
+): Pick<PluginDraftStatus, 'watch'> {
+  if (!watcher) return {};
+  const status = watcher.status();
+  return {
+    watch: {
+      native: status.nativeArmed,
+      polling: status.pollingActive,
+      ...(status.pollingActive
+        ? {}
+        : {
+            reason:
+              status.pollingError ??
+              status.nativeError ??
+              'change detection is unavailable',
+          }),
+    },
+  };
 }
 
 function normalizedDigest(

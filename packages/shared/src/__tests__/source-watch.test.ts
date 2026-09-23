@@ -24,6 +24,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { afterEach, describe, expect, test } from 'vitest';
+import { POLL_ENTRY_BUDGET, watchWithFallback } from '../source-watch.js';
 
 const MODULE_URL = pathToFileURL(
   resolve(import.meta.dirname, '..', 'source-watch.ts'),
@@ -118,4 +119,40 @@ describe('source-watch polling scan', () => {
     },
     DEADLINE_MS + 5_000,
   );
+
+  // Round 2 LOW-3: a scan over budget turned polling off for good, with no
+  // way back short of a restart. It now retries after a backoff and resumes
+  // once the tree fits again, and says why it is off in the meantime.
+  test('polling that exceeded its budget re-arms once the tree fits again', async () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-watch-big-')),
+    );
+    roots.push(root);
+    const bulk = join(root, 'bulk');
+    mkdirSync(bulk);
+    for (let i = 0; i <= POLL_ENTRY_BUDGET; i += 1)
+      writeFileSync(join(bulk, `f${i}.ts`), '');
+    const handle = watchWithFallback({
+      cwd: root,
+      paths: [root],
+      targets: ['.'],
+      onChange() {},
+      pollIntervalMs: 20,
+      rearmMinMs: 50,
+    });
+    try {
+      expect(handle.status()).toMatchObject({ pollingActive: false });
+      expect(handle.status().pollingError).toContain('entries');
+      rmSync(bulk, { recursive: true, force: true });
+      const deadline = Date.now() + 5_000;
+      while (!handle.status().pollingActive && Date.now() < deadline)
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+      expect(handle.status()).toMatchObject({
+        pollingActive: true,
+        pollingError: null,
+      });
+    } finally {
+      handle.close();
+    }
+  }, 15_000);
 });

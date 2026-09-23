@@ -326,6 +326,118 @@ describe('plugin draft routes', () => {
     TEST_TIMEOUT_MS,
   );
 
+  // S3 review round 2 MEDIUM: a build that never settles (a FIFO input, a
+  // wedged esbuild) used to hold a global build slot forever and block
+  // release. The service races every build against a deadline.
+  test(
+    'a build that never settles is stopped at the deadline, frees its slot, and can be released',
+    async () => {
+      const draftsRoot = join(tempDir('station-draft-home-'), 'plugin-drafts');
+      const hung = tempDir('station-draft-hung-');
+      const next = tempDir('station-draft-next-');
+      writePlugin(hung);
+      writePlugin(next);
+      const builds: string[] = [];
+      let now = Date.now();
+      const service = new PluginDraftService({
+        draftsRoot,
+        emitRebuilt: () => {},
+        maxConcurrentBuilds: 1,
+        buildTimeoutMs: 200,
+        now: () => now,
+        pollIntervalMs: 60_000,
+        build: async (options) => {
+          builds.push(options.pluginDir);
+          if (options.pluginDir === hung) return new Promise(() => {});
+          return { ok: false, diagnostics: [{ text: 'stub' }] };
+        },
+      });
+      cleanup.push(() => service.dispose());
+      service.lease('hung', hung);
+      service.lease('next', next);
+      await service.idle('hung', hung);
+      const stopped = service.status('hung', hung);
+      expect(stopped.state).toBe('failed');
+      expect(stopped.diagnostics[0].text).toContain('did not finish within');
+      // The slot came back: the queued draft built.
+      await service.idle('next', next);
+      expect(builds).toEqual([hung, next]);
+      now += 10 * 60_000;
+      service.releaseExpired();
+      expect(existsSync(join(draftsRoot, stopped.draftId as string))).toBe(
+        false,
+      );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'a lease with rebuild builds now when no change is observed, and status carries the watcher state',
+    async () => {
+      // A watcher that arms and never reports anything: the case the manual
+      // rebuild exists for.
+      const inertWatch = () => ({
+        targets: ['.'],
+        pollIntervalMs: 2_000,
+        status: () => ({
+          nativeArmed: true,
+          nativeDelivered: false,
+          nativeError: null,
+          pollingActive: false,
+          pollingError: 'more than 2000 entries or 250ms per scan',
+          pollingDelivered: false,
+        }),
+        close: () => {},
+      });
+      const projectDir = tempDir('station-draft-inert-');
+      const emitted: number[] = [];
+      const service = new PluginDraftService({
+        draftsRoot: join(tempDir('station-draft-home-'), 'plugin-drafts'),
+        emitRebuilt: (event) => emitted.push(event.generation),
+        watch: inertWatch,
+      });
+      cleanup.push(() => service.dispose());
+      const app = new Hono();
+      app.route(
+        '/api/projects',
+        createPluginDraftRoutes({
+          service,
+          resolveProjectDirectory: () => projectDir,
+        }),
+      );
+      writePlugin(projectDir, 'first');
+      await app.request('/api/projects/demo/plugin-draft/lease', {
+        method: 'POST',
+      });
+      await service.idle('demo', projectDir);
+      const first = service.status('demo', projectDir);
+      expect(first.generation).toBe(1);
+      expect(first.watch).toEqual({
+        native: true,
+        polling: false,
+        reason: 'more than 2000 entries or 250ms per scan',
+      });
+
+      writeSource(projectDir, 'second');
+      // A plain refresh does not build: nothing reported a change.
+      await app.request('/api/projects/demo/plugin-draft/lease', {
+        method: 'POST',
+      });
+      await service.idle('demo', projectDir);
+      expect(service.status('demo', projectDir).generation).toBe(1);
+
+      await app.request('/api/projects/demo/plugin-draft/lease', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rebuild: true }),
+      });
+      await service.idle('demo', projectDir);
+      expect(service.status('demo', projectDir).generation).toBe(2);
+      expect(emitted).toEqual([1, 2]);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
   test('status without a lease is idle and starts nothing', async () => {
     const h = harness();
     writePlugin(h.projectDir);

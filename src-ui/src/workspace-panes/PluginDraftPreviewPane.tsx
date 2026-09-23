@@ -149,6 +149,24 @@ function PluginDraftPreviewBody({
     refetchInterval: LEASE_REFRESH_MS,
   });
   const [chosen, setChosen] = useState<RunningRevision | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  // A manual build: the only way an edit reaches the draft when automatic
+  // change detection is off. It builds; it never runs anything.
+  const rebuild = async () => {
+    setRebuilding(true);
+    try {
+      await authenticatedFetch(`${draftPath}/lease`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rebuild: true }),
+      });
+    } catch {
+      // The status read below reports whatever state resulted.
+    } finally {
+      setRebuilding(false);
+      void status.refetch();
+    }
+  };
   const [selectedComponent, setSelectedComponent] = useState<string>();
   const [inProcess, setInProcess] = useState<boolean | undefined>();
 
@@ -235,6 +253,16 @@ function PluginDraftPreviewBody({
             {describeDraftState(draft, running)}
           </p>
         </div>
+        {draft.canLease ? (
+          <Button
+            size="sm"
+            pending={rebuilding}
+            pendingLabel="Rebuilding…"
+            onClick={() => void rebuild()}
+          >
+            Rebuild
+          </Button>
+        ) : null}
         {panes.length > 1 ? (
           <label className="plugin-draft-pane__picker">
             <span>Pane</span>
@@ -251,6 +279,13 @@ function PluginDraftPreviewBody({
           </label>
         ) : null}
       </header>
+
+      {draft.watch && !draft.watch.polling ? (
+        <p className="plugin-draft-pane__note" role="status">
+          Automatic rebuilds may not happen for this folder:{' '}
+          {draft.watch.reason}. Save again or press Rebuild.
+        </p>
+      ) : null}
 
       {draft.diagnostics.length > 0 ? (
         <ul className="plugin-draft-pane__diagnostics" aria-label="Problems">

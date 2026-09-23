@@ -1,13 +1,6 @@
-import {
-  closeSync,
-  existsSync,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readSync,
-  realpathSync,
-} from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { readBoundedRegularFileSync } from './regular-file.js';
 
 /**
  * The tsconfig a plugin bundle is built with, read by Station instead of by
@@ -72,31 +65,19 @@ function readContainedFile(root: string, path: string): string | null {
     return null;
   }
   if (!insideRoot(root, real)) return null;
-  let fd: number | undefined;
-  try {
-    if (!lstatSync(real).isFile()) return null;
-    fd = openSync(real, 'r');
-    const size = fstatSync(fd).size;
-    if (size > MAX_TSCONFIG_BYTES) return null;
-    const buffer = Buffer.alloc(size);
-    let offset = 0;
-    while (offset < size) {
-      const read = readSync(fd, buffer, offset, size - offset, offset);
-      if (read === 0) break;
-      offset += read;
-    }
-    return buffer.subarray(0, offset).toString('utf8');
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
+  return readBoundedRegularFileSync(real, MAX_TSCONFIG_BYTES);
 }
 
-/** JSON with comments and trailing commas, as tsconfig allows. */
+/**
+ * JSON with comments and trailing commas, as tsconfig allows. One
+ * string-aware pass: comments and trailing commas are removed only outside
+ * string literals, so a value like `"h,}"` survives intact.
+ */
 export function parseJsonc(text: string): unknown {
   let out = '';
   let inString = false;
+  /** Index in `out` of a comma not yet known to be trailing. */
+  let pendingComma = -1;
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     const next = text[i + 1];
@@ -108,20 +89,31 @@ export function parseJsonc(text: string): unknown {
       } else if (char === '"') inString = false;
       continue;
     }
-    if (char === '"') {
-      inString = true;
-      out += char;
-    } else if (char === '/' && next === '/') {
+    if (char === '/' && next === '/') {
       while (i < text.length && text[i] !== '\n') i += 1;
       out += '\n';
-    } else if (char === '/' && next === '*') {
+      continue;
+    }
+    if (char === '/' && next === '*') {
       i += 2;
       while (i < text.length && !(text[i] === '*' && text[i + 1] === '/'))
         i += 1;
       i += 1;
-    } else out += char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      out += char;
+      continue;
+    }
+    if ((char === '}' || char === ']') && pendingComma >= 0) {
+      out = out.slice(0, pendingComma) + out.slice(pendingComma + 1);
+    }
+    pendingComma = -1;
+    if (char === ',') pendingComma = out.length;
+    if (char === '"') inString = true;
+    out += char;
   }
-  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+  return JSON.parse(out);
 }
 
 function resolveExtends(
@@ -151,6 +143,7 @@ function loadOptions(
   root: string,
   file: string,
   depth: number,
+  dropped: string[],
 ): CompilerOptions | null {
   const text = readContainedFile(root, file);
   if (text === null) return null;
@@ -177,9 +170,15 @@ function loadOptions(
     for (const parent of parents) {
       if (typeof parent !== 'string') continue;
       const target = resolveExtends(root, dir, parent);
-      const options = target ? loadOptions(root, target, depth + 1) : null;
+      const options = target
+        ? loadOptions(root, target, depth + 1, dropped)
+        : null;
       if (options) inherited = { ...inherited, ...options };
+      else dropped.push(parent);
     }
+  } else {
+    for (const parent of parents)
+      if (typeof parent === 'string') dropped.push(parent);
   }
   const own =
     config.compilerOptions &&
@@ -206,8 +205,32 @@ function loadOptions(
 export function pluginTsconfigRaw(pluginRoot: string): {
   compilerOptions: CompilerOptions;
 } {
+  return pluginTsconfig(pluginRoot).tsconfigRaw;
+}
+
+/**
+ * {@link pluginTsconfigRaw} plus the `extends` entries it did not follow
+ * (outside the plugin root, hoisted into a workspace `node_modules`,
+ * unreadable, or too deep), so a build can say which inherited settings it
+ * did not apply instead of silently building differently than `tsc` would.
+ */
+export function pluginTsconfig(pluginRoot: string): {
+  tsconfigRaw: { compilerOptions: CompilerOptions };
+  droppedExtends: string[];
+} {
+  const droppedExtends: string[] = [];
+  const tsconfigRaw = buildTsconfigRaw(pluginRoot, droppedExtends);
+  return { tsconfigRaw, droppedExtends };
+}
+
+function buildTsconfigRaw(
+  pluginRoot: string,
+  dropped: string[],
+): { compilerOptions: CompilerOptions } {
   const file = join(pluginRoot, 'tsconfig.json');
-  const loaded = existsSync(file) ? loadOptions(pluginRoot, file, 0) : null;
+  const loaded = existsSync(file)
+    ? loadOptions(pluginRoot, file, 0, dropped)
+    : null;
   const options: CompilerOptions = {};
   for (const key of HONORED_COMPILER_OPTIONS) {
     if (loaded && key in loaded) options[key] = loaded[key];

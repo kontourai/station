@@ -454,4 +454,32 @@ describe('Plugin preview pane guardrail', () => {
     );
     expect(draftScripts()).toEqual([]);
   });
+
+  // Round 2 LOW-3: when automatic change detection is off, the pane says so
+  // and offers a manual Rebuild, which builds and never runs anything.
+  test('says when automatic rebuilds are off and rebuilds on request without running', async () => {
+    currentStatus = {
+      ...status(1),
+      watch: { native: true, polling: false, reason: 'more than 2000 entries' },
+    };
+    renderPane();
+    expect(
+      await screen.findByText(/Automatic rebuilds may not happen/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Rebuild' }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            String(url).endsWith('/plugin-draft/lease') &&
+            (init as RequestInit | undefined)?.body ===
+              JSON.stringify({ rebuild: true }),
+        ),
+      ).toBe(true),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(draftScripts()).toEqual([]);
+  });
 });

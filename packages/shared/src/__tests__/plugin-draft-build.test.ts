@@ -12,7 +12,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, test } from 'vitest';
-import { buildPluginDraft, MAX_DRAFT_BUNDLE_BYTES } from '../build.js';
+import {
+  buildPlugin,
+  buildPluginDraft,
+  MAX_DRAFT_BUNDLE_BYTES,
+} from '../build.js';
 
 // esbuild startup can exceed the default budget on a loaded shared host.
 const BUILD_TEST_TIMEOUT_MS = 30_000;
@@ -152,6 +156,12 @@ describe('buildPluginDraft', () => {
       const text = result.diagnostics.map((d) => d.text).join('\n');
       expect(text).toContain('outside the plugin folder');
       expect(text).not.toContain(outside);
+      // Attributed to the author's importing file, not to Station's own hook.
+      expect(result.diagnostics[0]).toMatchObject({
+        text: expect.stringContaining('This import resolves outside'),
+        file: 'src/index.tsx',
+        line: 1,
+      });
     },
     BUILD_TEST_TIMEOUT_MS,
   );
@@ -186,6 +196,12 @@ describe('buildPluginDraft', () => {
         : JSON.stringify(result.diagnostics);
       expect(observable).not.toContain('TOPSECRET');
       expect(result.ok).toBe(true);
+      // Said, not silently ignored: the author learns the extends was dropped.
+      if (result.ok)
+        expect(result.warnings?.[0]).toMatchObject({
+          file: 'tsconfig.json',
+          text: expect.stringContaining('was not applied'),
+        });
     },
     BUILD_TEST_TIMEOUT_MS,
   );
@@ -283,6 +299,29 @@ describe('buildPluginDraft', () => {
       if (result.ok) return;
       expect(result.diagnostics[0].text).toContain('preview limit');
       expect(existsSync(outdir)).toBe(false);
+    },
+    BUILD_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'an install build also reports a dropped tsconfig extends as a warning',
+    async () => {
+      const outside = tempDir('station-install-outside-');
+      writeFileSync(join(outside, 'base.json'), '{"compilerOptions":{}}');
+      const pluginDir = writeDraft(
+        "export const components = { pulse: () => 'installed' };\n",
+      );
+      writeFileSync(
+        join(pluginDir, 'tsconfig.json'),
+        JSON.stringify({ extends: join(outside, 'base.json') }),
+      );
+      const result = await buildPlugin(pluginDir, 'production', manifest());
+      expect(result.built).toBe(true);
+      expect(result.warnings).toEqual([
+        expect.stringContaining(
+          `extends ${JSON.stringify(join(outside, 'base.json'))} was not applied`,
+        ),
+      ]);
     },
     BUILD_TEST_TIMEOUT_MS,
   );

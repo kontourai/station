@@ -23,13 +23,14 @@ import {
 import { fileURLToPath } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
-import type { build as EsbuildBuild } from 'esbuild';
+import type { build as EsbuildBuild, context as EsbuildContext } from 'esbuild';
 import {
   type AgentPluginManifestReport,
   parseAgentPluginManifest,
 } from './agent-plugin-manifest.js';
 import { readPluginManifest } from './parsers.js';
-import { pluginTsconfigRaw } from './plugin-tsconfig.js';
+import { pluginTsconfig } from './plugin-tsconfig.js';
+import { isRegularFileSync } from './regular-file.js';
 
 const sharedDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -49,17 +50,26 @@ const sharedDirectory = dirname(fileURLToPath(import.meta.url));
  * `buildPlugin` was always async, so the await is free, and in the server and
  * the monorepo (where esbuild is a real dependency) the import always resolves.
  */
-let esbuildBuild: typeof EsbuildBuild | undefined;
+let esbuildModule:
+  | { build: typeof EsbuildBuild; context: typeof EsbuildContext }
+  | undefined;
 
 async function loadEsbuild(): Promise<typeof EsbuildBuild> {
-  if (esbuildBuild) return esbuildBuild;
+  return (await loadEsbuildModule()).build;
+}
+
+async function loadEsbuildModule(): Promise<{
+  build: typeof EsbuildBuild;
+  context: typeof EsbuildContext;
+}> {
+  if (esbuildModule) return esbuildModule;
   try {
     // A literal specifier on purpose: it stays statically analysable for the
     // publish-surface contract, and esbuild leaves a dynamic import of an
     // *external* package as a real runtime `import()` rather than inlining it.
     const loaded = await import('esbuild');
-    esbuildBuild = loaded.build;
-    return esbuildBuild;
+    esbuildModule = { build: loaded.build, context: loaded.context };
+    return esbuildModule;
   } catch (error) {
     const code = (error as { code?: string } | undefined)?.code;
     if (code !== 'ERR_MODULE_NOT_FOUND' && code !== 'MODULE_NOT_FOUND') {
@@ -135,6 +145,16 @@ export interface BuildResult {
   built: boolean;
   bundlePath?: string;
   cssPath?: string;
+  /** Non-fatal notes about how the bundle was built (e.g. a dropped tsconfig extends). */
+  warnings?: string[];
+}
+
+/** The one-line warning for each tsconfig `extends` a build did not follow. */
+function droppedExtendsWarnings(droppedExtends: readonly string[]): string[] {
+  return droppedExtends.map(
+    (entry) =>
+      `tsconfig.json extends ${JSON.stringify(entry)} was not applied: it is outside the plugin folder (or could not be read), so its compiler options are ignored.`,
+  );
 }
 
 /** Projects only validated build fields. Root lookalikes and unknown client namespaces never control author builds. */
@@ -216,6 +236,9 @@ async function buildLayoutPlugin(
   const allowedRoots = buildAllowedInputRoots(pluginRoot);
   const entrypoint = join(pluginDir, manifest.entrypoint);
   assertRealPathInside(allowedRoots, entrypoint, 'Plugin entrypoint');
+  if (!isRegularFileSync(realpathSync(entrypoint))) {
+    throw new Error(`Plugin entrypoint is not a regular file: ${entrypoint}`);
+  }
 
   ensurePluginDeps(pluginDir);
   if (existsSync(outdir) && lstatSync(outdir).isSymbolicLink()) {
@@ -226,9 +249,11 @@ async function buildLayoutPlugin(
   mkdirSync(outdir, { recursive: true });
   assertRealPathInside([pluginRoot], outdir, 'Plugin build output directory');
 
+  const tsconfig = pluginTsconfig(pluginRoot);
   await esbuild(
     pluginBundleOptions({
       pluginRoot,
+      tsconfigRaw: tsconfig.tsconfigRaw,
       entrypoint,
       outfile,
       isDev,
@@ -238,10 +263,12 @@ async function buildLayoutPlugin(
   );
 
   const cssPath = outfile.replace(/\.js$/, '.css');
+  const warnings = droppedExtendsWarnings(tsconfig.droppedExtends);
   return {
     built: true,
     bundlePath: outfile,
     cssPath: existsSync(cssPath) ? cssPath : undefined,
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 
@@ -253,6 +280,7 @@ async function buildLayoutPlugin(
  */
 function pluginBundleOptions({
   pluginRoot,
+  tsconfigRaw,
   entrypoint,
   outfile,
   isDev,
@@ -263,6 +291,8 @@ function pluginBundleOptions({
 }: {
   /** Real path of the plugin folder. */
   pluginRoot: string;
+  /** From `pluginTsconfig(pluginRoot)`; never read by esbuild from disk. */
+  tsconfigRaw: ReturnType<typeof pluginTsconfig>['tsconfigRaw'];
   entrypoint: string;
   outfile: string;
   isDev: boolean;
@@ -277,8 +307,8 @@ function pluginBundleOptions({
     // Never let esbuild read a tsconfig from disk: it searches parent
     // directories and follows `extends` anywhere on the host, outside every
     // containment check below (S3 review HIGH-2). The plugin's own tsconfig
-    // is read, contained and filtered by `pluginTsconfigRaw` instead.
-    tsconfigRaw: pluginTsconfigRaw(pluginRoot),
+    // is read, contained and filtered by `pluginTsconfig` instead.
+    tsconfigRaw,
     entryPoints: [entrypoint],
     bundle: true,
     format: 'iife',
@@ -313,6 +343,12 @@ function pluginBundleOptions({
         setup(build) {
           build.onLoad({ filter: /.*/ }, (args) => {
             assertRealPathInside(allowedRoots, args.path, 'Plugin build input');
+            // A FIFO (or device) as an input would block esbuild's read
+            // forever and hold the build open. Decided on the descriptor,
+            // opened non-blocking, not by a stat that a swap could outrun.
+            if (!isRegularFileSync(realpathSync(args.path))) {
+              throw new Error(`${NOT_REGULAR_FILE_MARKER}: ${args.path}`);
+            }
             return null;
           });
         },
@@ -321,6 +357,8 @@ function pluginBundleOptions({
     logLevel,
   };
 }
+
+const NOT_REGULAR_FILE_MARKER = 'Plugin build input is not a regular file';
 
 /** One esbuild message, reduced to what a draft author needs and nothing host-local. */
 export interface PluginDraftBuildDiagnostic {
@@ -340,6 +378,8 @@ export interface PluginDraftBuildOptions {
   readonly registrationKey: string;
   /** The manifest the host already parsed and validated. */
   readonly manifest: PluginManifest;
+  /** Aborting cancels the esbuild run and resolves as a failed build. */
+  readonly signal?: AbortSignal;
 }
 
 export type PluginDraftBuildResult =
@@ -347,6 +387,8 @@ export type PluginDraftBuildResult =
       readonly ok: true;
       readonly bundlePath: string;
       readonly cssPath?: string;
+      /** Non-fatal notes, shown with the revision. */
+      readonly warnings?: readonly PluginDraftBuildDiagnostic[];
     }
   | {
       readonly ok: false;
@@ -379,7 +421,7 @@ const MAX_DRAFT_DIAGNOSTIC_TEXT = 500;
 export async function buildPluginDraft(
   options: PluginDraftBuildOptions,
 ): Promise<PluginDraftBuildResult> {
-  const { pluginDir, outdir, registrationKey, manifest } = options;
+  const { pluginDir, outdir, registrationKey, manifest, signal } = options;
   const fail = (text: string): PluginDraftBuildResult => ({
     ok: false,
     diagnostics: [{ text }],
@@ -409,7 +451,7 @@ export async function buildPluginDraft(
   ) {
     throw new Error('Draft build output must not be inside the plugin folder');
   }
-  const esbuild = await loadEsbuild();
+  const esbuild = await loadEsbuildModule();
   const entrypoint = join(pluginRoot, manifest.entrypoint);
   const allowedRoots = buildAllowedInputRoots(pluginRoot);
   try {
@@ -422,12 +464,24 @@ export async function buildPluginDraft(
         : `The entrypoint ${manifest.entrypoint} resolves outside the plugin folder.`,
     );
   }
+  if (!isRegularFileSync(realpathSync(entrypoint))) {
+    return fail(
+      `The entrypoint ${manifest.entrypoint} is not a regular file, so it cannot be bundled.`,
+    );
+  }
   mkdirSync(resolvedOutdir, { recursive: true });
   const outfile = join(resolvedOutdir, 'bundle.js');
+  const tsconfig = pluginTsconfig(pluginRoot);
+  // A context rather than a one-shot build so a caller's abort (the draft
+  // service's build deadline) can cancel the esbuild run itself.
+  let context: Awaited<ReturnType<typeof EsbuildContext>> | undefined;
+  const cancel = () => void context?.cancel().catch(() => {});
   try {
-    await esbuild(
+    if (signal?.aborted) return fail(DRAFT_BUILD_STOPPED);
+    context = await esbuild.context(
       pluginBundleOptions({
         pluginRoot,
+        tsconfigRaw: tsconfig.tsconfigRaw,
         entrypoint,
         outfile,
         isDev: true,
@@ -439,8 +493,16 @@ export async function buildPluginDraft(
         sourcemap: false,
       }),
     );
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) return fail(DRAFT_BUILD_STOPPED);
+    await context.rebuild();
+    if (signal?.aborted) return fail(DRAFT_BUILD_STOPPED);
   } catch (error) {
+    if (signal?.aborted) return fail(DRAFT_BUILD_STOPPED);
     return { ok: false, diagnostics: draftDiagnostics(error, pluginRoot) };
+  } finally {
+    signal?.removeEventListener('abort', cancel);
+    void context?.dispose().catch(() => {});
   }
   const cssPath = join(resolvedOutdir, 'bundle.css');
   const hasCss = existsSync(cssPath);
@@ -451,12 +513,18 @@ export async function buildPluginDraft(
       `The draft bundle is ${Math.ceil(size / 1024 / 1024)} MB, over the ${MAX_DRAFT_BUNDLE_BYTES / 1024 / 1024} MB preview limit.`,
     );
   }
+  const warnings = droppedExtendsWarnings(tsconfig.droppedExtends).map(
+    (text) => ({ text, file: 'tsconfig.json' }),
+  );
   return {
     ok: true,
     bundlePath: outfile,
     ...(hasCss ? { cssPath } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
+
+const DRAFT_BUILD_STOPPED = 'The draft build was stopped before it finished.';
 
 /**
  * Upper bound on one draft revision's js + css. The server reads a revision
@@ -468,14 +536,35 @@ function draftDiagnostics(
   error: unknown,
   pluginRoot: string,
 ): PluginDraftBuildDiagnostic[] {
+  type EsbuildLocation = {
+    file?: unknown;
+    line?: unknown;
+    column?: unknown;
+  } | null;
   const messages = (
     error as {
       errors?: Array<{
         text?: unknown;
-        location?: { file?: unknown; line?: unknown; column?: unknown } | null;
+        location?: EsbuildLocation;
+        notes?: Array<{ location?: EsbuildLocation }>;
       }>;
     }
   )?.errors;
+  const inRoot = (location: EsbuildLocation | undefined) => {
+    if (typeof location?.file !== 'string') return undefined;
+    const file = relative(
+      pluginRoot,
+      resolve(pluginRoot, location.file),
+    ).replaceAll('\\', '/');
+    return file.startsWith('..') || isAbsolute(file) ? undefined : file;
+  };
+  const at = (location: EsbuildLocation | undefined, file: string) => ({
+    file,
+    ...(typeof location?.line === 'number' ? { line: location.line } : {}),
+    ...(typeof location?.column === 'number'
+      ? { column: location.column }
+      : {}),
+  });
   const bound = (text: string) =>
     text.length > MAX_DRAFT_DIAGNOSTIC_TEXT
       ? `${text.slice(0, MAX_DRAFT_DIAGNOSTIC_TEXT)}…`
@@ -490,11 +579,29 @@ function draftDiagnostics(
   }
   return messages.slice(0, MAX_DRAFT_DIAGNOSTICS).map((message) => {
     const rawText = String(message.text ?? 'Build error');
-    // A containment refusal names the file the symlink points at, which is a
-    // host path outside the Project. Say what happened, not where.
-    const text = rawText.includes('escapes plugin root')
+    // Station's own input refusals are thrown from its onLoad hook, so esbuild
+    // locates them in this module; the file that matters is the IMPORTER,
+    // which esbuild names in a note. Checked before the outside-file scrub
+    // below, which would otherwise swallow them. The refused path itself is
+    // never echoed: for a symlink escape it is a host path.
+    const refusal = rawText.includes('escapes plugin root')
       ? 'This import resolves outside the plugin folder (a symlink?), so it cannot be bundled.'
-      : rawText;
+      : rawText.includes(NOT_REGULAR_FILE_MARKER)
+        ? 'This import is not a regular file (a FIFO or device?), so it cannot be bundled.'
+        : undefined;
+    if (refusal) {
+      const importer = [
+        message.location,
+        ...(message.notes ?? []).map((note) => note.location),
+      ]
+        .map((location) => ({ location, file: inRoot(location) }))
+        .find((candidate) => candidate.file);
+      return {
+        text: refusal,
+        ...(importer?.file ? at(importer.location, importer.file) : {}),
+      };
+    }
+    const text = rawText;
     const location = message.location ?? undefined;
     const rawFile =
       typeof location?.file === 'string' ? location.file : undefined;
