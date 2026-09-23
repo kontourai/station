@@ -14,6 +14,9 @@ import {
   checkExample,
   documentedScripts,
   listExamples,
+  TYPECHECK_EXCLUDED,
+  TYPECHECK_EXCLUDED_README_NOTE,
+  typecheckCoverageProblems,
   uncataloguedExamples,
 } from '../examples-conformance.mjs';
 
@@ -148,7 +151,169 @@ describe('checkExample', () => {
   });
 });
 
+/** A repo root holding `examples/<name>/...` for the coverage gate. */
+function makeRepo(files: Record<string, string>): string {
+  sandbox = mkdtempSync(join(tmpdir(), 'examples-typecheck-'));
+  for (const [path, contents] of Object.entries(files)) {
+    const full = join(sandbox, path);
+    mkdirSync(join(full, '..'), { recursive: true });
+    writeFileSync(full, contents);
+  }
+  return sandbox;
+}
+
+const SRC_TSCONFIG = JSON.stringify({
+  compilerOptions: { strict: true, noEmit: true },
+  include: ['src/**/*'],
+});
+const CHECK_DEMO =
+  'node scripts/tsc-slot.mjs --noEmit -p examples/demo/tsconfig.json';
+
+describe('typecheckCoverageProblems', () => {
+  it('flags an example whose TypeScript no typecheck:examples project compiles', () => {
+    // The station#2343 shape: a tsconfig-less example nothing type-checks.
+    const root = makeRepo({ 'examples/demo/src/index.tsx': 'export {};' });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: '',
+        excluded: new Map(),
+      }),
+    ).toEqual([
+      expect.stringContaining(
+        'examples/demo/src/index.tsx is TypeScript that no typecheck:examples project compiles',
+      ),
+    ]);
+  });
+
+  it('flags a tsconfig the typecheck:examples chain never names', () => {
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: '',
+        excluded: new Map(),
+      }),
+    ).toHaveLength(1);
+  });
+
+  it('accepts an example whose project the chain compiles', () => {
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx': 'export {};',
+      // Compiler output, not an authored source.
+      'examples/demo/providers/out.d.ts': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: CHECK_DEMO,
+        excluded: new Map(),
+      }),
+    ).toEqual([]);
+  });
+
+  it('flags a source outside the project include even when the example is covered', () => {
+    // The compiler decides membership: server tests beside a src-only include
+    // are exactly what a hand-written glob would wave through.
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx': 'export {};',
+      'examples/demo/server/__tests__/plugin.test.ts': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: CHECK_DEMO,
+        excluded: new Map(),
+      }),
+    ).toEqual([
+      expect.stringContaining('examples/demo/server/__tests__/plugin.test.ts'),
+    ]);
+  });
+
+  it('flags a project the chain names that does not exist', () => {
+    const root = makeRepo({ 'examples/other/README.md': '# other' });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: CHECK_DEMO,
+        excluded: new Map(),
+      }),
+    ).toEqual([
+      'typecheck:examples names a missing project: examples/demo/tsconfig.json',
+    ]);
+  });
+
+  it('honours an exclusion only when the README discloses it', () => {
+    const excluded = new Map([['demo', 'reference only']]);
+    const undisclosed = makeRepo({
+      'examples/demo/README.md': '# demo',
+      'examples/demo/src/index.tsx': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root: undisclosed,
+        typecheckCommand: '',
+        excluded,
+      }),
+    ).toEqual([expect.stringContaining('its README does not say')]);
+    rmSync(undisclosed, { recursive: true, force: true });
+
+    const disclosed = makeRepo({
+      'examples/demo/README.md': `# demo\n\n${TYPECHECK_EXCLUDED_README_NOTE}\n`,
+      'examples/demo/src/index.tsx': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root: disclosed,
+        typecheckCommand: '',
+        excluded,
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects an exclusion that is stale or contradicted by coverage', () => {
+    const root = makeRepo({
+      'examples/demo/README.md': `# demo\n\n${TYPECHECK_EXCLUDED_README_NOTE}\n`,
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx': 'export {};',
+      'examples/plain/README.md': `# plain\n\n${TYPECHECK_EXCLUDED_README_NOTE}\n`,
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: CHECK_DEMO,
+        excluded: new Map([
+          ['demo', 'x'],
+          ['plain', 'x'],
+          ['gone', 'x'],
+        ]),
+      }),
+    ).toEqual([
+      'demo: listed in TYPECHECK_EXCLUDED but typecheck:examples compiles it',
+      'plain: listed in TYPECHECK_EXCLUDED but has no TypeScript sources',
+      'TYPECHECK_EXCLUDED names a missing example: gone',
+    ]);
+  });
+});
+
 describe('the repo’s own examples', () => {
+  it('type-checks every example TypeScript source, or discloses the exclusion', () => {
+    // Reads package.json's real typecheck:examples chain and asks TypeScript
+    // which files each named project compiles (station#2343).
+    expect(typecheckCoverageProblems()).toEqual([]);
+  });
+
+  it('excludes nothing from typecheck:examples today', () => {
+    // Every example was brought under the compiler in station#2343. Adding an
+    // exclusion is allowed, but should be a visible diff to this pin.
+    expect([...TYPECHECK_EXCLUDED.keys()]).toEqual([]);
+  });
+
   it('catalogs every example for developers', () => {
     expect(uncataloguedExamples()).toEqual([]);
   });

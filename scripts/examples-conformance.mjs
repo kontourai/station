@@ -17,6 +17,10 @@
  *     with no dev script.
  *   - Declared dependency on `@kontourai/station-sdk` resolves to a real
  *     workspace version rather than a stale range.
+ *   - Every TypeScript source under `examples/` is compiled by one of the
+ *     projects `npm run typecheck:examples` names, or its example is listed in
+ *     TYPECHECK_EXCLUDED with a README note saying so (station#2343: thirteen
+ *     examples had TS sources no compiler ever saw, and 76 errors hid in one).
  *
  * Live build/run proof is a separate lane: see `--build`. Examples that need
  * credentials are declared here rather than skipped silently, so "not proven"
@@ -25,7 +29,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import ts from 'typescript';
 import { npmInvocation } from './lib/npm-cli.mjs';
 
 const ROOT = process.cwd();
@@ -41,6 +46,127 @@ export const CREDENTIAL_GATED = new Map([
   ['nova-sonic-voice', 'needs AWS Bedrock credentials for Nova Sonic'],
   ['meeting-transcription', 'needs a speech-to-text provider credential'],
 ]);
+
+/**
+ * Examples deliberately left out of `typecheck:examples`, as name -> reason.
+ * This is the ONLY place an example with TypeScript sources may opt out, and
+ * an entry is only honoured when the example's README carries
+ * TYPECHECK_EXCLUDED_README_NOTE, so a reader copying from it is told. Empty
+ * means every example that ships TypeScript is type-checked.
+ */
+export const TYPECHECK_EXCLUDED = new Map();
+
+/** The sentence an excluded example's README must contain. */
+export const TYPECHECK_EXCLUDED_README_NOTE =
+  'Unmaintained reference code: not type-checked by `npm run typecheck:examples`.';
+
+const TS_SOURCE = /\.(?:ts|tsx|mts|cts)$/;
+// Declaration files are compiler output here (shared-providers emits its
+// `providers/*.d.ts`), not sources anyone authors or copies.
+const TS_DECLARATION = /\.d\.(?:ts|mts|cts)$/;
+const SKIPPED_DIRS = new Set(['node_modules', 'dist']);
+
+/** Every authored TypeScript file under `dir`, absolute. */
+export function typeScriptSources(dir) {
+  const found = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!SKIPPED_DIRS.has(entry.name)) found.push(...typeScriptSources(full));
+    } else if (TS_SOURCE.test(entry.name) && !TS_DECLARATION.test(entry.name)) {
+      found.push(full);
+    }
+  }
+  return found.sort();
+}
+
+/** The tsconfig paths `typecheck:examples` passes to `-p`, repo-relative. */
+export function typecheckedProjects(command) {
+  return [...(command ?? '').matchAll(/(?:^|\s)-p\s+(\S+)/g)].map((m) => m[1]);
+}
+
+/**
+ * The files TypeScript itself resolves for a project -- the compiler's own
+ * include/exclude/files evaluation, not a re-implementation of its globbing.
+ */
+export function projectFiles(tsconfigPath) {
+  const read = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+  if (read.error) {
+    throw new Error(
+      `${tsconfigPath}: ${ts.flattenDiagnosticMessageText(read.error.messageText, '\n')}`,
+    );
+  }
+  const parsed = ts.parseJsonConfigFileContent(
+    read.config,
+    ts.sys,
+    dirname(tsconfigPath),
+  );
+  return parsed.fileNames.map((file) => resolve(file));
+}
+
+/**
+ * Problems with how `examples/` TypeScript is (not) type-checked: a source no
+ * `typecheck:examples` project compiles, or an exclusion that is stale,
+ * contradicted by coverage, or undisclosed in the example's README.
+ */
+export function typecheckCoverageProblems({
+  root = ROOT,
+  examplesDir = join(root, 'examples'),
+  typecheckCommand = JSON.parse(
+    readFileSync(join(root, 'package.json'), 'utf8'),
+  ).scripts?.['typecheck:examples'],
+  excluded = TYPECHECK_EXCLUDED,
+} = {}) {
+  const problems = [];
+  const covered = new Set();
+  for (const project of typecheckedProjects(typecheckCommand)) {
+    const path = resolve(root, project);
+    if (!existsSync(path)) {
+      problems.push(`typecheck:examples names a missing project: ${project}`);
+      continue;
+    }
+    for (const file of projectFiles(path)) covered.add(file);
+  }
+
+  const examples = listExamples(examplesDir);
+  for (const name of examples) {
+    const dir = join(examplesDir, name);
+    const sources = typeScriptSources(dir);
+    const uncovered = sources.filter((file) => !covered.has(file));
+    if (excluded.has(name)) {
+      if (sources.length === 0) {
+        problems.push(
+          `${name}: listed in TYPECHECK_EXCLUDED but has no TypeScript sources`,
+        );
+      } else if (uncovered.length < sources.length) {
+        problems.push(
+          `${name}: listed in TYPECHECK_EXCLUDED but typecheck:examples compiles it`,
+        );
+      }
+      const readme = join(dir, 'README.md');
+      if (
+        !existsSync(readme) ||
+        !readFileSync(readme, 'utf8').includes(TYPECHECK_EXCLUDED_README_NOTE)
+      ) {
+        problems.push(
+          `${name}: listed in TYPECHECK_EXCLUDED but its README does not say "${TYPECHECK_EXCLUDED_README_NOTE}"`,
+        );
+      }
+      continue;
+    }
+    for (const file of uncovered) {
+      problems.push(
+        `${relative(root, file).split(sep).join('/')} is TypeScript that no typecheck:examples project compiles; add it to a project or list ${name} in TYPECHECK_EXCLUDED`,
+      );
+    }
+  }
+  for (const name of excluded.keys()) {
+    if (!examples.includes(name)) {
+      problems.push(`TYPECHECK_EXCLUDED names a missing example: ${name}`);
+    }
+  }
+  return problems;
+}
 
 /** Manifest fields whose values are repo-relative paths that must exist. */
 function declaredPaths(manifest) {
@@ -180,6 +306,12 @@ function main() {
       `\n  examples/README.md does not list: ${uncatalogued.join(', ')}`,
     );
   }
+  const typecheckProblems = typecheckCoverageProblems();
+  if (typecheckProblems.length > 0) {
+    failed += 1;
+    console.error('\n  TypeScript coverage (typecheck:examples):');
+    for (const problem of typecheckProblems) console.error(`    - ${problem}`);
+  }
   for (const name of examples) {
     const problems = checkExample(join(EXAMPLES_DIR, name), name);
     if (problems.length === 0) continue;
@@ -197,6 +329,9 @@ function main() {
 
   for (const [name, reason] of CREDENTIAL_GATED) {
     console.log(`  NOT PROVEN AT RUNTIME: ${name} — ${reason}`);
+  }
+  for (const [name, reason] of TYPECHECK_EXCLUDED) {
+    console.log(`  NOT TYPE-CHECKED: ${name} — ${reason}`);
   }
 
   if (!withBuild) return;
