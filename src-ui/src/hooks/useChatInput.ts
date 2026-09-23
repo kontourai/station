@@ -38,6 +38,9 @@ import {
   approvalModeLabel,
   approvalPickReceived,
   approvalPickUpdate,
+  fullAccessRefusalNote,
+  isFullAccessRefusal,
+  supersededPickNote,
 } from '../utils/approvalMode';
 import {
   type BindingStatus,
@@ -880,23 +883,35 @@ export function useChatInput({
       void setOrchestrationApprovalMode({
         threadId,
         approvalMode: mode,
+        // Compare-and-set: the decision this chat had folded when the user
+        // picked. A newer one it has not seen stands instead (#2436).
+        basedOnSequence: current?.approvalPostureSequence ?? null,
         apiBase,
       })
-        .then((recorded) => {
+        .then((result) => {
           const latest = activeChatsStore.getSnapshot()[sessionId];
           if (!latest) return;
-          updateChat(
-            sessionId,
-            approvalPickReceived(
-              latest,
-              recorded.approvalMode,
-              recorded.sequence,
-            ),
-          );
+          updateChat(sessionId, approvalPickReceived(latest, mode, result));
+          if (!result.recorded) {
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content: supersededPickNote(result.approvalMode),
+            });
+          }
         })
-        .catch(() => {
-          // Still queued: the next send carries it, and the server records
-          // it on receipt.
+        .catch((error: unknown) => {
+          if (isFullAccessRefusal(error)) {
+            // Refused, not failed: resending it could only be refused again.
+            const latest = activeChatsStore.getSnapshot()[sessionId];
+            if (latest?.queuedApprovalMode === mode)
+              updateChat(sessionId, { queuedApprovalMode: undefined });
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content: fullAccessRefusalNote,
+            });
+          }
+          // Otherwise still queued: the next send carries it, and the server
+          // records it on receipt.
         });
     },
     [apiBase, sessionId, updateChat, addEphemeralMessage],

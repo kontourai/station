@@ -1,11 +1,8 @@
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
   type ApprovalMode,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import {
-  EXECUTION_MODE,
-  type ExecutionMode,
-} from '@kontourai/station-contracts/tool';
 
 export type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
@@ -140,7 +137,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 
 type ApprovalModeSource =
   | 'session override'
-  | 'connection default'
+  | 'agent default'
   | 'station default'
   | 'adapter default';
 
@@ -151,27 +148,31 @@ interface EffectiveApprovalMode {
 }
 
 /**
- * The effective approval mode for a session, in priority order: a concrete
- * session override, then the engine connection's configured default, then
- * this Station's `AppConfig.defaultApprovalMode` (#2144 slice 6), then the
- * adapter's own built-in default. `'connection-default'` is only
- * ever a *selectable* value meaning "clear my override" — it is never
- * itself displayed as a resolved posture when a concrete adapter default
- * is known (archive#727).
+ * The effective approval mode for a session, in the order the server applies
+ * it (#2436, `approval-posture.ts`): the session's own pick, then the
+ * Agent's default (`AgentSpec.execution.approvalMode`), then this Station's
+ * `AppConfig.defaultApprovalMode` (#2144 slice 6), then the adapter's own
+ * built-in default. `'connection-default'` is only ever a *selectable*
+ * value meaning "clear my override" — it is never itself displayed as a
+ * resolved posture when a concrete default is known (archive#727).
  *
- * When the resolution did NOT come from an explicit session override, the
- * label is suffixed with "— default" so the two are visually
- * distinguishable in the chip.
+ * An engine connection's `config.approvalMode` is not a layer: no writer
+ * persists it, and the server does not apply it, so showing it would name a
+ * posture nothing enforces.
+ *
+ * When the resolution did NOT come from the session's own pick, the label
+ * says which default it is, so the two are distinguishable in the chip.
  */
 export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
-  connectionDefault,
+  agentDefault,
   stationDefault,
 }: {
   engineConnectionId?: string | null;
   sessionOverride?: unknown;
-  connectionDefault?: unknown;
+  /** The session's Agent's own default (`execution.approvalMode`). */
+  agentDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
    * engine whose adapter reads the knob at all — passing it for any other
@@ -190,16 +191,17 @@ export function resolveEffectiveApprovalMode({
     };
   }
 
-  const connDefault =
-    isApprovalMode(connectionDefault) &&
-    connectionDefault !== 'connection-default'
-      ? connectionDefault
+  const agentDefaultMode =
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(agentDefault) &&
+    agentDefault !== 'connection-default'
+      ? agentDefault
       : undefined;
-  if (connDefault) {
+  if (agentDefaultMode) {
     return {
-      mode: connDefault,
-      label: `${approvalModeLabel(connDefault)} — default`,
-      source: 'connection default',
+      mode: agentDefaultMode,
+      label: `${approvalModeLabel(agentDefaultMode)} (agent default)`,
+      source: 'agent default',
     };
   }
 
@@ -239,64 +241,6 @@ export function resolveEffectiveApprovalMode({
     label: approvalModeLabel('connection-default'),
     source: 'adapter default',
   };
-}
-
-/**
- * The approval mode this send must put ON THE WIRE, or `undefined` for "send
- * nothing and let the engine keep whatever it already does".
- *
- * `resolveEffectiveApprovalMode` answers what to DISPLAY. This answers what
- * to ENFORCE, and the two have to agree or the chip narrates a posture
- * nothing applies (#2144 slice 6 fix round 1: both the Station default and
- * the connection default were display-only — the only value that reached
- * `modelOptions.approvalMode`, which is the single thing the server reads
- * (`readApprovalMode`, provider.ts), was the session override).
- *
- * Returns `undefined` when:
- * - the engine's adapter has no approval knob (`approvalModeKnobSupported`) —
- *   sending a posture there would be a request nothing can honour;
- * - the chat does not run in `external` execution mode. A provider-managed
- *   Station-mode chat keeps a knob-capable `agentConnectionId` (its model
- *   provider), and `ChatInputArea` renders no approval control for it, so a
- *   posture on the wire would be one no surface offered (round 2 M2);
- * - this chat's session is LIVE (`chatSessionIsLive`, utils/execution.ts —
- *   round 3 F1 replaced "an id exists" with a liveness derivation, because a
- *   `currentSessionId` outlives its session and a reopened conversation is
- *   marked started while merely continuable). The default is the posture a
- *   session STARTS in: re-requesting it on a warm session would let a
- *   mid-life edit of the Station setting reconfigure a running chat, and
- *   Claude refuses an escalation to `'never'` on a session that was not
- *   spawned with its bypass flag — with a `runtime.warning` banner on every
- *   later turn (claude-adapter.ts). A session override is the only thing
- *   that may change a live session's posture, and it travels on its own
- *   (round 2 M3). The queued-follow-up drain (`queueDrain.ts`) passes no
- *   fallback at all and is deliberately left that way: a queued message is
- *   never the message that starts a session;
- * - the resolution came from a session override: the chat's queued pick or
- *   recorded posture, which the server applies itself (#2436);
- * - nothing concrete resolved (`'connection-default'`), which is Station
- *   deliberately stating no posture.
- */
-export function approvalModeForDispatch(input: {
-  engineConnectionId?: string | null;
-  /** The chat's execution mode; only `external` reaches an engine adapter. */
-  executionMode?: ExecutionMode;
-  /**
-   * Whether this chat already has a live orchestration session. `true`
-   * suppresses the fold entirely — see above.
-   */
-  sessionAlreadyStarted?: boolean;
-  sessionOverride?: unknown;
-  connectionDefault?: unknown;
-  stationDefault?: unknown;
-}): ApprovalMode | undefined {
-  if (input.executionMode !== EXECUTION_MODE.EXTERNAL) return undefined;
-  if (input.sessionAlreadyStarted) return undefined;
-  if (!approvalModeKnobSupported(input.engineConnectionId)) return undefined;
-  const resolved = resolveEffectiveApprovalMode(input);
-  if (resolved.source === 'session override') return undefined;
-  if (resolved.mode === 'connection-default') return undefined;
-  return resolved.mode;
 }
 
 /**
@@ -406,30 +350,53 @@ export function foldApprovalPosture(
 }
 
 /**
- * The update once the server has received a queued pick (its command result,
- * or an accepted send that carried it): the posture is folded and the queue
- * is cleared, unless the user has picked something newer meanwhile.
+ * The update once the server has answered a pick (the `setApprovalMode`
+ * command's result, or the result a send that carried it reports): the
+ * standing decision is folded, and the queued pick is cleared — either it
+ * was recorded, or a newer decision it had not seen stands instead
+ * (compare-and-set, `recorded: false`). A pick made after this one was sent
+ * stays queued.
  */
 export function approvalPickReceived(
   chat: ApprovalPostureState | null | undefined,
-  approvalMode: ApprovalMode,
-  sequence?: number,
+  sent: ApprovalMode,
+  result: { approvalMode: ApprovalMode; sequence: number },
 ): Partial<ApprovalPostureState> {
   return {
-    ...foldApprovalPosture(chat, approvalMode, sequence),
-    ...(chat?.queuedApprovalMode === approvalMode
+    ...foldApprovalPosture(chat, result.approvalMode, result.sequence),
+    ...(chat?.queuedApprovalMode === sent
       ? { queuedApprovalMode: undefined }
       : {}),
   };
 }
 
 /**
+ * Whether `error` is the server's refusal of full access to a caller that is
+ * neither the operator in person nor a device granted it (#2436).
+ */
+export function isFullAccessRefusal(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE
+  );
+}
+
+export const fullAccessRefusalNote =
+  "Full access was not applied: this device is not allowed to give an agent full access. The Station's operator can allow it from this device's access settings.";
+
+/** The note a pick dropped by compare-and-set earns in the chat. */
+export function supersededPickNote(standing: ApprovalMode): string {
+  return `Your approval pick was not applied: another device had already set it to **${approvalModeLabel(standing)}**.`;
+}
+
+/**
  * #2436 migration: a pick persisted by `main` (an `approvalMode` inside the
  * model-options bags) or by the unreleased #2449 branch (`pendingApprovalMode`
  * / `approvalModeOverride`) becomes a queued pick, so the server records it on
- * the next send. A persisted full access that was only CONFIRMED (or only in
- * a bag, which `main` resent every turn) is dropped rather than re-escalated
- * from stale state; an unsent pending one was an explicit request and is kept.
+ * the next send. A persisted full access is dropped in every form (pending,
+ * confirmed, or in a bag `main` resent every turn) rather than re-escalated
+ * from stale state.
  */
 export function migratedApprovalPick(persisted: {
   pendingApprovalMode?: unknown;
@@ -437,10 +404,14 @@ export function migratedApprovalPick(persisted: {
   requestedProviderOptions?: Record<string, unknown>;
   providerOptions?: Record<string, unknown>;
 }): ApprovalMode | undefined {
+  // Even an unsent pending full access is dropped: re-escalating from state
+  // persisted before a reload is never what a later reader expects, and a
+  // pick of full access now needs an authority the old build never checked.
   if (isApprovalMode(persisted.pendingApprovalMode))
-    return persisted.pendingApprovalMode === 'connection-default'
-      ? undefined
-      : persisted.pendingApprovalMode;
+    return persisted.pendingApprovalMode === 'ask' ||
+      persisted.pendingApprovalMode === 'auto'
+      ? persisted.pendingApprovalMode
+      : undefined;
   const confirmed = isApprovalMode(persisted.approvalModeOverride)
     ? persisted.approvalModeOverride
     : (persisted.requestedProviderOptions ?? persisted.providerOptions)

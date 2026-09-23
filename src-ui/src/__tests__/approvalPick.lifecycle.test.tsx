@@ -332,16 +332,31 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       executionMode: 'external',
       conversationId: 'conv-1',
     });
-    sendExecutionMessage.mockResolvedValue({
-      conversationId: 'conv-1',
-      sessionId: SESSION_ID,
-      providerTurnId: 'provider-turn',
-      target: { kind: 'agent', id: 'codex' },
-      resolution: {},
-    });
+    // A Station that speaks the command: a send that carries a pick reports
+    // what became of it (recorded, here).
+    sendExecutionMessage.mockImplementation(
+      async (_apiBase: string, body: { setApprovalMode?: string }) => ({
+        conversationId: 'conv-1',
+        sessionId: SESSION_ID,
+        providerTurnId: 'provider-turn',
+        target: { kind: 'agent', id: 'codex' },
+        resolution: {},
+        ...(body.setApprovalMode
+          ? {
+              approvalMode: {
+                threadId: SESSION_ID,
+                recorded: true,
+                approvalMode: body.setApprovalMode,
+                sequence: ++streamSeq,
+              },
+            }
+          : {}),
+      }),
+    );
     setOrchestrationApprovalMode.mockImplementation(
       async (input: { threadId: string; approvalMode: string }) => ({
         threadId: input.threadId,
+        recorded: true,
         approvalMode: input.approvalMode,
         sequence: ++streamSeq,
       }),
@@ -364,6 +379,7 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     expect(setOrchestrationApprovalMode).toHaveBeenCalledWith({
       threadId: SESSION_ID,
       approvalMode: 'ask',
+      basedOnSequence: null,
       apiBase: 'http://station.test',
     });
     const recorded = await setOrchestrationApprovalMode.mock.results[0]?.value;
@@ -573,6 +589,7 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       await act(async () => {
         resolveCommand({
           threadId: SESSION_ID,
+          recorded: true,
           approvalMode: 'ask',
           sequence: framePosition,
         });
@@ -614,12 +631,104 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
     expect(wire.model?.options ?? {}).not.toHaveProperty('approvalMode');
   });
 
-  test('control: with no pick, a new session is sent the Station default on the default channel', async () => {
+  test('control: with no pick, a new session is sent no posture at all; the server applies the defaults', async () => {
     stationConfig.current = { defaultApprovalMode: 'never' };
     const { send } = renderComposer();
     const wire = await send();
-    expect(wire.model?.options?.approvalMode).toBe('never');
+    expect(wire.model?.options ?? {}).not.toHaveProperty('approvalMode');
     expect(wire.setApprovalMode).toBeUndefined();
+  });
+
+  describe('compare-and-set and authority (#2436 fix round)', () => {
+    test('the pick names the decision the chat had folded, and a superseded pick is dropped with a note', async () => {
+      startedSession();
+      const seen = decided('auto');
+      setOrchestrationApprovalMode.mockImplementationOnce(
+        async (input: {
+          threadId: string;
+          basedOnSequence: number | null;
+        }) => ({
+          threadId: input.threadId,
+          recorded: false,
+          approvalMode: 'ask',
+          sequence: seen + 5,
+        }),
+      );
+      const { pick } = renderComposer();
+      await pick('never');
+      expect(setOrchestrationApprovalMode).toHaveBeenCalledWith(
+        expect.objectContaining({ basedOnSequence: seen }),
+      );
+      expect(chat().queuedApprovalMode).toBeUndefined();
+      expect(chat().approvalPosture).toBe('ask');
+      expect(
+        (chat().ephemeralMessages ?? []).some((message) =>
+          /was not applied: another device had already set it to \*\*Ask first\*\*/.test(
+            message.content,
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    test('a carried pick the server dropped is cleared, with the standing posture and a note', async () => {
+      const { pick, send } = renderComposer();
+      await pick('never');
+      sendExecutionMessage.mockImplementationOnce(async () => ({
+        conversationId: 'conv-1',
+        sessionId: SESSION_ID,
+        providerTurnId: 'provider-turn',
+        target: { kind: 'agent', id: 'codex' },
+        resolution: {},
+        approvalMode: {
+          threadId: SESSION_ID,
+          recorded: false,
+          approvalMode: 'ask',
+          sequence: ++streamSeq,
+        },
+      }));
+      await send();
+      expect(chat().queuedApprovalMode).toBeUndefined();
+      expect(chat().approvalPosture).toBe('ask');
+    });
+
+    test('HIGH-1: a send whose Station reports nothing about the pick (an older one) leaves it queued', async () => {
+      const { pick, send } = renderComposer();
+      await pick('ask');
+      sendExecutionMessage.mockImplementationOnce(async () => ({
+        conversationId: 'conv-1',
+        sessionId: SESSION_ID,
+        providerTurnId: 'provider-turn',
+        target: { kind: 'agent', id: 'codex' },
+        resolution: {},
+      }));
+      await send();
+      expect(chat().queuedApprovalMode).toBe('ask');
+      expect(chat().approvalPosture).toBeUndefined();
+      expect(renderPill().text).toBe('Ask');
+      expect(renderPill().name).toMatch(/requested; takes effect next turn/);
+      act(() => turnStarted('t1', 'ask'));
+      act(() => turnCompleted('t1'));
+      // So the next send carries it again.
+      expect((await send()).setApprovalMode).toBe('ask');
+    });
+
+    test('a refused full access (no grant) is dropped from the queue with a note, not retried', async () => {
+      startedSession();
+      setOrchestrationApprovalMode.mockRejectedValueOnce(
+        Object.assign(new Error('not allowed'), {
+          code: 'approval-full-access-not-granted',
+        }),
+      );
+      const { pick, send } = renderComposer();
+      await pick('never');
+      expect(chat().queuedApprovalMode).toBeUndefined();
+      expect(
+        (chat().ephemeralMessages ?? []).some((message) =>
+          /Full access was not applied/.test(message.content),
+        ),
+      ).toBe(true);
+      expect((await send()).setApprovalMode).toBeUndefined();
+    });
   });
 
   test('a refused full access shows it needs a restart, and nothing is resent', async () => {
@@ -694,10 +803,16 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       ).toBeUndefined();
     });
 
-    test("the unreleased #2334 branch's unsent pending pick is kept, since it was an explicit request", () => {
+    test("the unreleased #2334 branch's pending Ask is kept", () => {
+      expect(
+        persistWith({ pendingApprovalMode: 'ask' }).queuedApprovalMode,
+      ).toBe('ask');
+    });
+
+    test("the unreleased #2334 branch's pending full access is dropped, not carried", () => {
       expect(
         persistWith({ pendingApprovalMode: 'never' }).queuedApprovalMode,
-      ).toBe('never');
+      ).toBeUndefined();
     });
   });
 

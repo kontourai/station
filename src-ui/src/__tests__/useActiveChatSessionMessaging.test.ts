@@ -318,207 +318,82 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   });
 
   /**
-   * #2144 slice 6 fix round 1. This is the ENFORCEMENT seam: the chip's
-   * `resolveEffectiveApprovalMode` only ever decided a label, and both
-   * default layers under a session override reached nothing else. These
-   * assert the payload `sendExecutionMessage` is called with, not the
-   * resolver.
+   * #2436: the server resolves the defaults (the Agent's, then this
+   * Station's) at a session start, so the send path puts none on the wire,
+   * whatever the chat's liveness. The only posture a send carries is a pick
+   * the server has not received yet, as its own compare-and-set command.
    */
-  describe('approval-mode defaults reaching the wire', () => {
+  describe('approval posture on the wire', () => {
     beforeEach(() => {
-      // A knob-supporting engine (claude/codex are the two adapters that
-      // read `modelOptions.approvalMode`), with nothing session-scoped.
       activeChatsStore.updateChat(sessionId, {
         agentConnectionId: 'claude',
-        // The composer renders an approval control only for `external`, and
-        // this turn starts the chat's session (no id, nothing started).
         executionMode: 'external',
         requestedProviderOptions: undefined,
         providerOptions: {},
       });
-      stationAppConfig.current = undefined;
+      stationAppConfig.current = { defaultApprovalMode: 'never' };
     });
 
     afterEach(() => {
       stationAppConfig.current = undefined;
-      // `vi.clearAllMocks` clears calls, not implementations — a
-      // `mockReturnValue` set below would otherwise leak into later files'
-      // expectations of an empty connection list.
-      agentConnectionsMock.mockReturnValue({ data: [] });
     });
 
-    it("sends this Station's default when neither the chat nor its connection names one", async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
+    async function bodyAfterSend() {
       const { result } = renderHook(() => useSendMessage('http://api.test'));
-
       await act(async () => {
         await result.current(sessionId, 'codex', undefined, 'go');
       });
+      return sendExecutionMessageMock.mock.calls[0][1];
+    }
 
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).toMatchObject({ approvalMode: 'never' });
+    it.each([
+      ['a chat starting its session', {}],
+      [
+        'a session that exited',
+        {
+          orchestrationSessionStarted: false,
+          orchestrationStatus: 'exited',
+          currentSessionId: 'dead-session-1',
+        },
+      ],
+      [
+        'a live session',
+        {
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'running',
+          currentSessionId: 'live-session-1',
+        },
+      ],
+    ])('sends no default for %s', async (_label, state) => {
+      activeChatsStore.updateChat(sessionId, state);
+      const body = await bodyAfterSend();
+      expect(body.target.model?.options ?? {}).not.toHaveProperty(
+        'approvalMode',
+      );
+      expect(body).not.toHaveProperty('setApprovalMode');
     });
 
-    it('lets the session pick win over the Station default: it rides as setApprovalMode, and no default is sent (#2436)', async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'ask' });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
+    it('carries a queued pick as setApprovalMode, compare-and-set against the folded decision', async () => {
+      activeChatsStore.updateChat(sessionId, {
+        queuedApprovalMode: 'ask',
+        approvalPostureSequence: 41,
       });
-
-      const body = sendExecutionMessageMock.mock.calls[0][1];
-      expect(body.setApprovalMode).toBe('ask');
+      const body = await bodyAfterSend();
+      expect(body).toMatchObject({
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: 41,
+      });
       expect(body.target.model?.options ?? {}).not.toHaveProperty(
         'approvalMode',
       );
     });
 
-    it("lets the connection's own default win over the Station default", async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      agentConnectionsMock.mockReturnValue({
-        data: [{ id: 'claude', config: { approvalMode: 'auto' } }],
+    it('a pick made having folded no decision says so (null), not "unconditional"', async () => {
+      activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'auto' });
+      expect(await bodyAfterSend()).toMatchObject({
+        setApprovalMode: 'auto',
+        setApprovalModeBasedOn: null,
       });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).toMatchObject({ approvalMode: 'auto' });
-    });
-
-    it('sends nothing to an engine whose adapter has no approval knob', async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        agentConnectionId: 'some-acp-runtime',
-      });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).not.toHaveProperty('approvalMode');
-    });
-
-    it('sends nothing for a Station-mode chat, which shows no approval control', async () => {
-      // Round 2 M2: a provider-managed Station-mode chat keeps a
-      // knob-capable `agentConnectionId` (its model provider), and
-      // ChatInputArea renders no chip for it — a posture on the wire would
-      // be one no surface offered.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, { executionMode: 'station' });
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).not.toHaveProperty('approvalMode');
-    });
-
-    async function optionsAfterSend() {
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-      return sendExecutionMessageMock.mock.calls[0][1].target.model.options;
-    }
-
-    it('sends nothing on a live session, which is not a chat starting', async () => {
-      // Round 2 M3: the setting is the posture a NEW chat starts in.
-      // Re-requesting it per turn reconfigures a running session, and
-      // Claude refuses a mid-session escalation to 'never' with a
-      // runtime.warning on every later turn.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: true,
-        orchestrationStatus: 'running',
-        currentSessionId: 'live-session-1',
-      });
-
-      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
-    });
-
-    /**
-     * Round 4 N1/N6. A stopped TURN is not a stopped session: the process is
-     * alive, the server continues it, and a posture sent now is the
-     * mid-life re-request this gate exists to prevent.
-     */
-    it.each([
-      ['aborted', 'the user stopped the previous turn'],
-      ['errored', 'the previous turn hit a runtime error'],
-      ['idle', 'the session is simply between turns'],
-    ])('sends nothing when the status is %s (%s)', async (status) => {
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: true,
-        orchestrationStatus: status,
-        currentSessionId: 'live-session-1',
-      });
-
-      expect(await optionsAfterSend()).not.toHaveProperty('approvalMode');
-    });
-
-    /**
-     * Round 3 F1. The previous gate was
-     * `orchestrationSessionStarted || currentSessionId`, and each disjunct
-     * was true on a path where the SERVER starts a session — so the posture
-     * was withheld from the very spawn it is for. One test per disjunct.
-     */
-    it('sends the default after the session exited, whose id lingers', async () => {
-      // `session.exited` writes `orchestrationSessionStarted: false` and
-      // leaves `currentSessionId` in place; the id is not the session.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: false,
-        orchestrationStatus: 'exited',
-        currentSessionId: 'dead-session-1',
-      });
-
-      expect(await optionsAfterSend()).toMatchObject({
-        approvalMode: 'never',
-      });
-    });
-
-    it('sends the default for a reopened conversation that is merely continuable', async () => {
-      // `commitConversationOpen` marks every `status: 'resolved'` open as
-      // started and carries the child id; a stopped conversation resolves
-      // too, and the next send is the server's `startRequired` path. No
-      // `orchestrationStatus` accompanies a reopen, which is exactly the
-      // "unsure" case `chatSessionIsLive` answers as not-live.
-      stationAppConfig.current = { defaultApprovalMode: 'never' };
-      activeChatsStore.updateChat(sessionId, {
-        orchestrationSessionStarted: true,
-        orchestrationStatus: undefined,
-        currentSessionId: 'reopened-child-1',
-      });
-
-      expect(await optionsAfterSend()).toMatchObject({
-        approvalMode: 'never',
-      });
-    });
-
-    it('sends nothing when this Station states no posture', async () => {
-      stationAppConfig.current = { defaultApprovalMode: 'connection-default' };
-      const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-      await act(async () => {
-        await result.current(sessionId, 'codex', undefined, 'go');
-      });
-
-      expect(
-        sendExecutionMessageMock.mock.calls[0][1].target.model.options,
-      ).not.toHaveProperty('approvalMode');
     });
   });
 

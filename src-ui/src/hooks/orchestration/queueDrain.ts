@@ -5,7 +5,10 @@ import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
-import { approvalPickReceived } from '../../utils/approvalMode';
+import {
+  approvalPickReceived,
+  supersededPickNote,
+} from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
@@ -211,10 +214,10 @@ export function drainQueuedMessageOnTurnCompleted(
       model: current.model,
       providerOptions: current.providerOptions,
       // #2436: the server applies the recorded posture to this turn. A pick
-      // it has not received yet rides along and is recorded on receipt. No
-      // `approvalModeFallback`: a queued message never starts the session
-      // (see approvalModeForDispatch).
+      // it has not received yet rides along, compare-and-set against the
+      // decision this chat had folded.
       setApprovalMode: current.queuedApprovalMode,
+      setApprovalModeBasedOn: current.approvalPostureSequence ?? null,
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,
       // Queued sends recompute ambient context at drain time so the model
@@ -226,16 +229,25 @@ export function drainQueuedMessageOnTurnCompleted(
         nextMessage,
       ),
     })
-      .then(() => {
+      .then((receipt) => {
+        // Settled only by what the server reports became of the pick (see
+        // the composer send path).
         const carried = current.queuedApprovalMode;
-        if (carried) {
+        if (carried && receipt.approvalMode) {
           activeChatsStore.updateChat(
             threadId,
             approvalPickReceived(
               activeChatsStore.getSnapshot()[threadId],
               carried,
+              receipt.approvalMode,
             ),
           );
+          if (!receipt.approvalMode.recorded) {
+            activeChatsStore.addEphemeralMessage(threadId, {
+              role: 'system',
+              content: supersededPickNote(receipt.approvalMode.approvalMode),
+            });
+          }
         }
         // Say what the retry actually did: the follow-up went to the
         // conversation as it is, NOT into the project workspace the chat is

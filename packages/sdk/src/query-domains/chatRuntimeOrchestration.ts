@@ -13,6 +13,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
+import { ChatHttpError } from '../client/chatHttpError';
 import {
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
@@ -382,9 +383,15 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     success: boolean;
     data?: T;
     error?: string;
+    code?: string;
   };
   if (!response.ok || !result.success) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+    const message = apiErrorMessage(result, `HTTP ${response.status}`);
+    // A stable refusal code (e.g. #2436's `approval-full-access-not-granted`)
+    // is kept, so a caller can tell a refusal from a transport failure.
+    throw typeof result.code === 'string'
+      ? new ChatHttpError(response.status, message, result.code)
+      : new Error(message);
   }
   return result.data as T;
 }

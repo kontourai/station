@@ -167,7 +167,7 @@ interface ChatDockBodyProps {
   modelProviderLabel?: string;
   modelProviders?: ModelProviderOption[];
   agentDefaultModelId?: string;
-  connectionApprovalModeDefault?: unknown;
+  agentApprovalModeDefault?: unknown;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
@@ -252,7 +252,7 @@ export function ChatDockBody({
   modelProviderLabel,
   modelProviders,
   agentDefaultModelId,
-  connectionApprovalModeDefault,
+  agentApprovalModeDefault,
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
@@ -1392,7 +1392,7 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
-            approvalModeConnectionDefault={connectionApprovalModeDefault}
+            approvalModeAgentDefault={agentApprovalModeDefault}
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}

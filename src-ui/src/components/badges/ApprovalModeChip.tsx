@@ -39,8 +39,12 @@ interface ApprovalModeChipProps {
   toolPolicyDelivery?: ToolPolicyDelivery;
   /** Raw session override value, typically `providerOptions.approvalMode`. */
   sessionOverride?: unknown;
-  /** The Agent app connection's configured default, if any. */
-  connectionDefault?: unknown;
+  /**
+   * The session's Agent's own default (#2436,
+   * `AgentSpec.execution.approvalMode`), which the server applies below the
+   * session's pick and above the Station default.
+   */
+  agentDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6) — the
    * layer below the connection's own default. Absent leaves resolution
@@ -102,7 +106,7 @@ export function ApprovalModeChip({
   engineConnectionId,
   toolPolicyDelivery,
   sessionOverride,
-  connectionDefault,
+  agentDefault,
   stationDefault,
   lastAppliedApprovalMode,
   sessionOverrideState,
@@ -120,7 +124,7 @@ export function ApprovalModeChip({
   const effective = resolveEffectiveApprovalMode({
     engineConnectionId,
     sessionOverride,
-    connectionDefault,
+    agentDefault,
     stationDefault,
   });
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
@@ -141,6 +145,14 @@ export function ApprovalModeChip({
   // was not spawned with it: that needs a session restart, and "next turn"
   // would promise an escalation that is not going to happen.
   const isRefused = isOverride && sessionOverrideState === 'refused';
+  // #2436: the Agent's own default is named as such, so a member using an
+  // Agent set to full access sees it before sending. Only while the engine
+  // has reported nothing else: a session that started before the default
+  // changed runs what it reports.
+  const agentDefaultShown =
+    !isOverride &&
+    effective.source === 'agent default' &&
+    (appliedMode === undefined || appliedMode === effective.mode);
   const isPendingApply =
     isOverride &&
     !isRefused &&
@@ -181,10 +193,14 @@ export function ApprovalModeChip({
       ? `${approvalModeChipLabel(displayedMode)} · ${isRefused ? 'needs restart' : 'pending'}`
       : isOverride
         ? approvalModeChipLabel(displayedMode)
-        : 'Default';
+        : agentDefaultShown
+          ? `${approvalModeChipLabel(effective.mode)} (agent default)`
+          : 'Default';
   const accessibleLabel = isOverride
     ? selectedLabel
-    : `Default — ${selectedLabel}`;
+    : agentDefaultShown
+      ? `${chipText} — ${approvalModeLabel(effective.mode)}`
+      : `Default — ${selectedLabel}`;
 
   return (
     <>

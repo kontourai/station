@@ -752,7 +752,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSessionForHook,
     agentDefaultModelId,
     bindingStatus,
-    connectionApprovalModeDefault,
+    agentApprovalModeDefault,
     toolPolicyDelivery,
     effectiveModels,
     fileAttachmentsSupported,
@@ -2559,9 +2559,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       modelProviderLabel={modelProviderLabel}
                       modelProviders={modelProviders}
                       agentDefaultModelId={agentDefaultModelId ?? null}
-                      connectionApprovalModeDefault={
-                        connectionApprovalModeDefault
-                      }
+                      agentApprovalModeDefault={agentApprovalModeDefault}
                       stationApprovalModeDefault={
                         appConfig?.defaultApprovalMode
                       }

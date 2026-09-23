@@ -19,20 +19,6 @@ export async function dispatchForeground(input: {
   model?: string;
   providerOptions?: Record<string, unknown>;
   /**
-   * The approval posture resolved from the layers BELOW a session override —
-   * the engine connection's default, then this Station's
-   * `AppConfig.defaultApprovalMode` (#2144 slice 6). Supplied already
-   * resolved (`approvalModeForDispatch`) so this module stays a mapper.
-   *
-   * It is folded into the outgoing `model.options` because
-   * `modelOptions.approvalMode` is the only channel the server reads
-   * (`readApprovalMode`, packages/contracts/src/provider.ts;
-   * `resolveClaudePermissionMode`, src-server/providers/adapters/
-   * claude-approval-mode.ts). A concrete override already present in the
-   * options bag outranks it and is left untouched.
-   */
-  approvalModeFallback?: string;
-  /**
    * #2436: an approval pick the server has not received yet (the chat's
    * `queuedApprovalMode`). It is a server-ordered decision, not a model
    * option: it travels as the message's own `setApprovalMode`, which the
@@ -41,6 +27,12 @@ export async function dispatchForeground(input: {
    * an approval pick.
    */
   setApprovalMode?: import('@kontourai/station-contracts/provider').ApprovalMode;
+  /**
+   * The sequence of the latest decision the chat had folded when the user
+   * picked (`null`: none): the server records the pick only if no newer
+   * decision exists (compare-and-set).
+   */
+  setApprovalModeBasedOn?: number | null;
   message: string;
   attachments?: FileAttachment[];
   attachmentStages?: ComposerAttachmentStageSnapshot[];
@@ -51,21 +43,12 @@ export async function dispatchForeground(input: {
 }) {
   const resolved = resolveTurnModel(input);
   const defaultRequested = resolved.kind === 'engine-selected';
-  const modelOptions = ((): Record<string, unknown> | undefined => {
-    const modelControls = defaultRequested
-      ? undefined
-      : (input.requestedProviderOptions ?? input.providerOptions);
-    if (!input.approvalModeFallback) return modelControls;
-    // The default channel: applied by the server only while the
-    // conversation has no recorded posture (#2436). Deliberately survives
-    // the `engine-selected` branch above: dropping the whole bag with no
-    // model override is about not claiming a model, and must not silently
-    // drop the posture the Station does state.
-    return {
-      ...(modelControls ?? {}),
-      approvalMode: input.approvalModeFallback,
-    };
-  })();
+  // No approval posture rides the options (#2436): the server applies the
+  // conversation's recorded pick, else the Agent's and this Station's
+  // defaults at a session start, whatever path sends the turn.
+  const modelOptions = defaultRequested
+    ? undefined
+    : (input.requestedProviderOptions ?? input.providerOptions);
   const requestedModel = defaultRequested ? undefined : resolved.modelId;
   const attachments = input.attachments ?? [];
   const stages = input.attachmentStages ?? [];
@@ -156,7 +139,10 @@ export async function dispatchForeground(input: {
       clientTurnId: input.clientTurnId,
       automaticBackground: input.automaticBackground,
       ...(input.setApprovalMode
-        ? { setApprovalMode: input.setApprovalMode }
+        ? {
+            setApprovalMode: input.setApprovalMode,
+            setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
+          }
         : {}),
     },
     { signal: input.signal },

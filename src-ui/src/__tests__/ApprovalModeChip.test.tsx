@@ -135,7 +135,7 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride={undefined}
-        connectionDefault="ask"
+        stationDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -147,12 +147,58 @@ describe('ApprovalModeChip', () => {
     ).toBeTruthy();
   });
 
+  // #2436 owner request: an Agent's own default is shown as such, so a member
+  // using an Agent set to full access sees it before sending.
+  test("an Agent's full-access default reads Full access (agent default), above the Station default", () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        agentDefault="never"
+        stationDefault="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Full access (agent default)');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Approval mode: Full access \(agent default\) — Never ask \(full access\)\./,
+    );
+  });
+
+  test("a session's own pick outranks the Agent's default", () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="ask"
+        sessionOverrideState="confirmed"
+        agentDefault="never"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Ask');
+  });
+
+  test("an engine reporting something else than the Agent's default is not labelled with it", () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        agentDefault="never"
+        lastAppliedApprovalMode="ask"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(chipValue()).toBe('Default');
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Approval mode: Default — Ask first\./,
+    );
+  });
+
   test('the open sheet marks the effective mode as the checked option', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride={undefined}
-        connectionDefault="ask"
+        stationDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -162,12 +208,12 @@ describe('ApprovalModeChip', () => {
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('false');
   });
 
-  test('a session override takes priority over the connection default', async () => {
+  test('a session override takes priority over the Station default', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride="never"
-        connectionDefault="ask"
+        stationDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -183,7 +229,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         lastAppliedApprovalMode="auto"
         onChange={vi.fn()}
       />,
@@ -204,7 +249,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -226,7 +270,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -245,7 +288,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -272,7 +314,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -293,7 +334,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -314,7 +354,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -331,7 +370,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         onChange={onChange}
       />,
     );
@@ -351,7 +389,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={onChange}
       />,
@@ -372,7 +409,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride="auto"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={onChange}
       />,
@@ -391,7 +427,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={vi.fn()}
       />,
@@ -411,7 +446,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode={undefined}
         onChange={vi.fn()}
       />,
@@ -429,7 +463,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="never"
         onChange={vi.fn()}
       />,
@@ -447,7 +480,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="ask"
         onChange={vi.fn()}
       />,
@@ -461,7 +493,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="auto"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="never"
         onChange={vi.fn()}
       />,
@@ -556,7 +587,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="ask"
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -581,11 +611,7 @@ describe('ApprovalModeChip', () => {
 
   test('renders nothing when no engineConnectionId is known at all', () => {
     const { container } = render(
-      <ApprovalModeChip
-        sessionOverride="ask"
-        connectionDefault={undefined}
-        onChange={vi.fn()}
-      />,
+      <ApprovalModeChip sessionOverride="ask" onChange={vi.fn()} />,
     );
 
     expect(container.firstChild).toBeNull();
@@ -597,12 +623,12 @@ describe('ApprovalModeChip', () => {
    * generic `config.approvalMode` must not announce a governing posture,
    * and the long inert "Set by engine" substitute is gone too.
    */
-  test('a no-knob engine never reports a mode, even when the connection carries an approvalMode default', () => {
+  test('a no-knob engine never reports a mode, even when its Agent carries an approval default', () => {
     const { container } = render(
       <ApprovalModeChip
         engineConnectionId="kiro"
         sessionOverride={undefined}
-        connectionDefault="ask"
+        agentDefault="ask"
         onChange={vi.fn()}
       />,
     );
@@ -617,7 +643,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="kiro"
         sessionOverride="never"
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -637,7 +662,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="codex"
         sessionOverride="never"
-        connectionDefault={undefined}
         lastAppliedApprovalMode="never"
         onChange={vi.fn()}
       />,
@@ -657,7 +681,6 @@ describe('ApprovalModeChip', () => {
       <ApprovalModeChip
         engineConnectionId="claude"
         sessionOverride={undefined}
-        connectionDefault={undefined}
         onChange={vi.fn()}
       />,
     );
@@ -698,7 +721,6 @@ describe('ApprovalModeChip', () => {
                 : undefined
           }
           lastAppliedApprovalMode={applied}
-          connectionDefault={undefined}
           onChange={vi.fn()}
         />,
       );

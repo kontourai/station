@@ -271,12 +271,10 @@ export function useChatDockViewModel({
     provider: activeSessionForHook?.provider,
     agentName: activeSessionForHook?.agentName,
   });
-  // The Agent app connection's configured approval-mode default (#727) —
-  // generic `config` bag field, additive, mirrors `config.defaultModel`.
-  const connectionApprovalModeDefault =
-    typeof runtimeConnection?.config.approvalMode === 'string'
-      ? runtimeConnection.config.approvalMode
-      : undefined;
+  // The session's Agent's own default approval posture (#2436,
+  // `AgentSpec.execution.approvalMode`): the layer the server applies below
+  // the session's own pick.
+  const agentApprovalModeDefault = agentForHook?.execution?.approvalMode;
   // The connection object, not its display/id string, is the authoritative
   // input to the matrix resolver. Undefined remains visibly unknown in the
   // composer while the connection query has not resolved.
@@ -475,7 +473,7 @@ export function useChatDockViewModel({
     agentDefaultModelId,
     chatEngineConnection,
     bindingStatus,
-    connectionApprovalModeDefault,
+    agentApprovalModeDefault,
     toolPolicyDelivery,
     effectiveModels,
     executionSummary,

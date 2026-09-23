@@ -4,6 +4,7 @@ import type {
   SlashCommand,
 } from '@kontourai/station-contracts/agent';
 import type { AgentEditorTabKey } from '@kontourai/station-contracts/agent-capability-profile';
+import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { Dispatch, SetStateAction } from 'react';
 import type { NavigationView, Tool } from '../../types';
@@ -64,6 +65,12 @@ export interface AgentFormData {
      * account with no signal.
      */
     credentialProfileRef?: string;
+    /**
+     * #2436: the approval posture this Agent's sessions start in, and what a
+     * Default pick returns to. Round-trips for the same reason as the field
+     * above; edited by `AgentEditorApprovalDefault`.
+     */
+    approvalMode?: ApprovalMode;
   };
   icon: string;
   skills: string[];
