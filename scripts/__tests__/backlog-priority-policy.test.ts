@@ -23,14 +23,13 @@ function issue(number: number, labels: string[]) {
 }
 
 describe('backlog priority policy', () => {
-  test('is enforced on issue changes, daily drift checks, and manual audits', () => {
+  test('is audited daily and on demand, not on every issue event', () => {
     const workflow = readFileSync(
       '.github/workflows/backlog-priority-policy.yml',
       'utf8',
     );
-    expect(workflow).toContain(
-      'types: [opened, reopened, closed, labeled, unlabeled]',
-    );
+    // `issues: read` under permissions stays; an `issues:` trigger with types does not.
+    expect(workflow).not.toMatch(/^ {2}issues:\n {4}types:/m);
     expect(workflow).toContain("cron: '23 13 * * *'");
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('node scripts/backlog-priority-policy.mjs');

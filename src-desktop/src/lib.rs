@@ -7096,6 +7096,11 @@ fn build_sidecar_command(
         .env("STATION_HOME", &context.station_home)
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
+        // Only the handshake line is read from stdout; every other line is
+        // discarded. Pretty-printed logs there cost CPU per line, and a pipe
+        // left full after this process dies wedges the server's exit hooks
+        // (#2327). The durable log store still records everything.
+        .env("STATION_STDOUT_LOGS", "0")
         .env("STATION_INSTANCE_ID", &context.instance_id)
         .env_remove("STATION_ROOT")
         // A boot identifies one concrete Node process. Generate it at the
@@ -11903,6 +11908,7 @@ mod tests {
             ("STATION_HOME", "/home/example/.station-nightly"),
             ("STATION_HOST", "127.0.0.1"),
             ("STATION_STDOUT_HANDSHAKE", "1"),
+            ("STATION_STDOUT_LOGS", "0"),
             ("STATION_INSTANCE_ID", "desktop-sidecar-nightly"),
             ("STATION_BOOT_ID", "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111"),
             ("STATION_DESKTOP_CHANNEL", "nightly"),

@@ -1973,9 +1973,34 @@ test.runIf(process.platform !== 'win32').each(['S', 'Z'])(
             ? `${started}\n`
             : '42\n',
     }));
-    expect(processIdentity(42, runPs)).toEqual(
+    expect(processIdentity(42, runPs, { platform: 'darwin' })).toEqual(
       state === 'Z' ? null : { pid: 42, processStart: started, pgid: 42 },
     );
     expect(runPs).toHaveBeenCalledOnce();
   },
 );
+
+test('Linux process identity takes its start from the /proc birth, not the drifting lstart', () => {
+  // Under WSL2 lstart for one live process walks backwards as the guest clock
+  // is stepped; the same daemon then read as a different process.
+  const runPs = vi.fn(() => ({
+    status: 0,
+    stdout: 'Thu Sep 10 01:02:10 2026 42 S\n',
+  }));
+  expect(
+    processIdentity(42, runPs, {
+      platform: 'linux',
+      birth: () => 'linux:boot:777',
+    }),
+  ).toEqual({ pid: 42, processStart: 'linux:boot:777', pgid: 42 });
+  const births = ['linux:boot:777', 'linux:boot:778'];
+  expect(
+    processIdentity(42, runPs, {
+      platform: 'linux',
+      birth: () => births.shift() ?? null,
+    }),
+  ).toBeNull();
+  expect(
+    processIdentity(42, runPs, { platform: 'linux', birth: () => null }),
+  ).toBeNull();
+});

@@ -73,10 +73,11 @@ jobs:
           capacity-units: "10"
           lease-weight: "9"
           # Weight 9 of 10 is admitted only once every other desktop-win
-          # lease has drained, and the Windows PR floor (weight 5, ~18 min,
-          # 45-minute budget) runs on every PR. A 600s wait therefore timed
-          # out whenever a floor run was mid-flight (run 33589882367, a
-          # main red with no code cause). Wait out the floor's full budget.
+          # lease has drained. The 45-minute wait was sized for a post-merge
+          # Windows floor (weight 5, 45-minute budget) that no longer exists
+          # (run 33589882367: a 600s wait timed out behind it). The remaining
+          # desktop-win tenants are all dispatch-only, so a wait here now
+          # means an operator dispatched one of them.
           timeout-seconds: "2700"
           owner-lifetime-seconds: "7800"
       - id: isolate-docker
