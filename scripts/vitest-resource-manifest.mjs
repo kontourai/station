@@ -1304,9 +1304,15 @@ function quarantineKeysError(entry) {
     : `must have exactly the keys ${QUARANTINE_ENTRY_KEYS.join(', ')}; found ${keys.join(', ') || '<none>'}`;
 }
 
+// A quarantined path becomes a Vitest `--exclude` pattern, so a glob
+// metacharacter would widen one entry into many excluded files.
+const GLOB_METACHARACTERS = /[[\]{}()*?!]/;
+
 function quarantineFileError(file, seen, tracked) {
   if (!isSafeRelativeFile(file))
     return 'file must be a repository-relative test path';
+  if (GLOB_METACHARACTERS.test(file))
+    return 'file must be a literal path, without glob metacharacters [ ] { } ( ) * ? !';
   if (seen.has(file)) return 'file is quarantined twice';
   if (tracked && !tracked.has(file))
     return 'file is not a tracked Vitest test file';

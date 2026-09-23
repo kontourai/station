@@ -490,6 +490,18 @@ describe('test quarantine policy', () => {
       expect(errors([entry({ file })]), file).toEqual([
         expect.stringMatching(/file must be a repository-relative test path/),
       ]);
+    // Each becomes a Vitest --exclude pattern, so a glob would widen it.
+    for (const file of [
+      'scripts/__tests__/*.test.ts',
+      'scripts/__tests__/flaky-?.test.ts',
+      'scripts/__tests__/flaky-[01].test.ts',
+      'scripts/__tests__/{a,b}.test.ts',
+      'scripts/__tests__/flaky-(x).test.ts',
+      'scripts/__tests__/!flaky.test.ts',
+    ])
+      expect(errors([entry({ file })]), file).toEqual([
+        expect.stringMatching(/without glob metacharacters/),
+      ]);
     expect(errors([entry({ owner: 'someone' })])).toEqual([
       expect.stringMatching(/must have exactly the keys/),
     ]);
