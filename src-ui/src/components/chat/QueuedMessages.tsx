@@ -20,7 +20,7 @@ interface QueuedMessagesProps {
   onRetry?: () => void;
   /**
    * #2309: send the head now. Offered by the host only when the automatic
-   * drain will not (no turn is open, or the open turn has gone silent).
+   * drain will not: no turn is open, yet messages are still queued.
    */
   onSendNow?: () => void;
 }

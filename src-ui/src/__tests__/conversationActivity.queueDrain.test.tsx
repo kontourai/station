@@ -472,7 +472,7 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
     expect(chat().queuedMessages).toEqual(['and this later']);
   });
 
-  test('a turn that stays open is offered "Send now" only once the watchdog has observed it silent', () => {
+  test('a turn that stays open is never offered "Send now", even once the watchdog has observed it silent', () => {
     chatWithQueue(['waiting'], CHILD);
     connect(API, open(60));
     render(<Queue apiBase={API} />);
@@ -492,9 +492,52 @@ describe('#2309 "Send now" when the automatic drain will not come', () => {
         }),
       ),
     );
+    // Sending into an open (if silent) turn is refused as indeterminate and
+    // blocks the thread; the path is Stop first.
     expect(
-      screen.getByRole('button', { name: 'Send the next queued message now' }),
-    ).toBeTruthy();
+      screen.queryByRole('button', { name: /Send the next queued/ }),
+    ).toBeNull();
+  });
+
+  test('a silent turn, then Stop: once the turn has ended "Send now" is offered, and one click sends exactly one', async () => {
+    chatWithQueue(['after the silent turn', 'later'], CHILD);
+    connect(
+      API,
+      open(64, {
+        progressSilence: {
+          detectedAt: '2026-09-22T19:10:00.000Z',
+          windowMs: 600_000,
+          silentSinceEventAt: '2026-09-22T19:00:00.000Z',
+          provider: 'claude',
+        },
+      }),
+    );
+    render(<Queue apiBase={API} />);
+    expect(
+      screen.queryByRole('button', { name: /Send the next queued/ }),
+    ).toBeNull();
+
+    // The stall notice's Stop ends the turn; its turn.aborted closes the record.
+    act(() => deliverEvent(API, turnAborted(), closed(65)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Send the next queued message now',
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(mocks.dispatchForeground).toHaveBeenCalledTimes(1);
+    expect(mocks.dispatchForeground.mock.calls[0]?.[0]).toMatchObject({
+      message: 'after the silent turn',
+      apiBase: API,
+    });
+    expect(chat().queuedMessages).toEqual(['later']);
   });
 });
 
