@@ -658,6 +658,43 @@ export const MUSE_TURN_IDLE_TIMEOUT_CODE = 'muse-turn-idle-timeout';
 export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
 
 /**
+ * #2300: `runtime.warning` code for a Muse child that Station's idle deadline
+ * reaped AFTER its turn had already ended, while background work the turn
+ * launched may still have been running in it (the turn closed that work's
+ * rows as unresolved). Stopping the child ends that work, so the reap is
+ * announced rather than done silently. A warning, not an error: the turn's
+ * own outcome was already published and is not changed by it.
+ */
+export const MUSE_LINGERING_CHILD_REAPED_CODE = 'muse-lingering-child-reaped';
+
+/**
+ * #2300: `runtime.warning` code for a Muse turn held open for background
+ * work (see the Muse adapter) that ended without muse delivering the
+ * result: its follow-up run ended without completing, the process exited
+ * first, or a declared turn budget expired. The turn itself still closes
+ * with `turn.completed` — never `runtime.error`, whose "Send again" would
+ * re-launch the work — so this warning is where the terminal, reason, or
+ * exit code is recorded. It is persisted in the session's event log (the
+ * session diagnostics log shows it) and toasted live; the transcript does
+ * not render it.
+ */
+export const MUSE_HELD_TURN_UNFINISHED_CODE = 'muse-held-turn-unfinished';
+
+/**
+ * #2300: refusal code for a Muse send that arrived while the previous
+ * turn had already ended but its `muse exec` process had not yet exited,
+ * and did not exit within the adapter's short wait. The previous process
+ * still owns the session's `--session-id`, so the send is refused rather
+ * than run concurrently — retryable, because that process is only exiting:
+ * the same send succeeds once it is gone (or once Station's idle reap stops
+ * a process that lingers). Used ONLY while Station has not already tried to
+ * stop that process and failed to confirm it; a slot held by such a process
+ * frees itself on no schedule, so that send is refused definitively instead
+ * (no code; stop the session to recover).
+ */
+export const MUSE_TURN_SLOT_RELEASING_CODE = 'muse_turn_slot_releasing';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned
