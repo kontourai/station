@@ -95,10 +95,7 @@ import {
   validate,
 } from '../schemas/schemas.js';
 
-export type {
-  PluginValidateDiagnostic,
-  PluginValidateResult,
-} from '../../services/plugins/plugin-validate-source.js';
+export type { PluginValidateResult } from '../../services/plugins/plugin-validate-source.js';
 
 /** Far above any real manifest; low enough that a hostile file cannot stall the route. */
 export const PLUGIN_VALIDATE_MANIFEST_MAX_BYTES = 1024 * 1024;
