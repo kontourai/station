@@ -108,16 +108,31 @@ async function thumbprintFor(jwk: {
 
 class MemoryStorage implements BrowserRelayAuthorityStorage {
   values = new Map<string, unknown>();
+  beforeRead?: (key: string) => Promise<void>;
+  failRead?: (key: string) => Error | undefined;
   beforeCompare?: (key: string, expected: unknown) => Promise<void>;
+  afterCompare?: (key: string, next: unknown) => Promise<void>;
   afterActivate?: () => Promise<void>;
-  async read(id: string) {
+  refuseAbortedWrites = false;
+  async read(id: string, signal?: AbortSignal) {
+    await this.beforeRead?.(id);
+    if (signal?.aborted) throw signal.reason;
+    const error = this.failRead?.(id);
+    if (error) throw error;
     return this.values.get(id) ?? null;
   }
-  async compareAndSwap(id: string, expected: any, next: any) {
+  async compareAndSwap(
+    id: string,
+    expected: any,
+    next: any,
+    signal?: AbortSignal,
+  ) {
     await this.beforeCompare?.(id, expected);
+    if (signal?.aborted && this.refuseAbortedWrites) throw signal.reason;
     const current = this.values.get(id) ?? null;
     if (!sameStoredIdentity(current, expected)) return false;
     this.values.set(id, next);
+    await this.afterCompare?.(id, next);
     return true;
   }
   async activateStaged(input: any) {
@@ -128,7 +143,7 @@ class MemoryStorage implements BrowserRelayAuthorityStorage {
       !sameStoredIdentity(staged, input.expectedStage)
     )
       return false;
-    this.values.set(input.activeKey, input.active);
+    this.values.set(input.activeKey, input.activating);
     this.values.set(input.stageKey, input.stageTombstone);
     await this.afterActivate?.();
     return true;
@@ -383,6 +398,79 @@ describe('browser relay application authority', () => {
     ).toBe(true);
   });
 
+  it('keeps account scope pending during delayed hydration and fails closed on invalid or unreadable records', async () => {
+    const connectionId = 'hydration-read-fences-scope';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const input = {
+      stageId: 'd'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'e'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'hydrated-account',
+        credential: 'f'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+    };
+    await installApprovedDevice(input, storage);
+    const scopeKey = browserRelayAccountScopeKey({
+      connectionId,
+      applicationOrigin,
+      route,
+      clientOrigin: window.location.origin,
+    });
+    let releaseRead!: () => void;
+    let signalRead!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      signalRead = resolve;
+    });
+    const readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    storage.beforeRead = async (target) => {
+      if (target !== storageKey(connectionId)) return;
+      storage.beforeRead = undefined;
+      signalRead();
+      await readGate;
+    };
+    const hydration = hydrateBrowserRelayApplicationAuthorityScope(
+      { connectionId, applicationOrigin, route },
+      storage,
+    );
+    await readStarted;
+    expect(getBrowserRelayAccountScope(scopeKey)?.state).toBe('pending');
+    expect(getBrowserRelayAccountScope(scopeKey)?.authorityKey).toBeNull();
+    releaseRead();
+    expect((await hydration)?.authorityKey).toBe('hydrated-account');
+
+    const stored = storage.values.get(storageKey(connectionId)) as {
+      continuation: ApplicationSessionContinuation;
+    };
+    stored.continuation.expiresAt = new Date(Date.now() - 1).toISOString();
+    await hydrateBrowserRelayApplicationAuthorityScope(
+      { connectionId, applicationOrigin, route },
+      storage,
+    );
+    expect(getBrowserRelayAccountScope(scopeKey)?.authorityKey).toBeNull();
+    expect(getBrowserRelayAccountScope(scopeKey)?.state).toBe('ready');
+
+    stored.continuation.expiresAt = new Date(Date.now() + 60_000).toISOString();
+    storage.failRead = (target) =>
+      target === storageKey(connectionId)
+        ? new Error('hydration read unavailable')
+        : undefined;
+    await expect(
+      hydrateBrowserRelayApplicationAuthorityScope(
+        { connectionId, applicationOrigin, route },
+        storage,
+      ),
+    ).resolves.toMatchObject({ state: 'ready', authorityKey: null });
+  });
+
   it('replaces only an expired inert stage on a safe retry with the same stage ID', async () => {
     const connectionId = 'expired-stage-retry';
     publish(connectionId);
@@ -594,10 +682,24 @@ describe('browser relay application authority', () => {
 
   it('rolls back activation if the selected route retires during the storage transaction', async () => {
     const connectionId = 'activation-retirement';
-    publish(connectionId);
+    const transport = publish(connectionId);
     const storage = new MemoryStorage();
     let routeCurrent = true;
     storage.afterActivate = async () => {
+      expect(
+        (storage.values.get(storageKey(connectionId)) as { status: string })
+          .status,
+      ).toBe('activating');
+      await expect(
+        createBrowserRelayApplicationCredential({
+          connectionId,
+          applicationOrigin,
+          route,
+          transport,
+          routeIsCurrent: () => true,
+          storage,
+        }),
+      ).rejects.toThrow('unavailable or stale');
       routeCurrent = false;
     };
     const input = {
@@ -616,7 +718,7 @@ describe('browser relay application authority', () => {
     };
     await expect(
       installApprovedDevice(input, storage, input.stageId, () => routeCurrent),
-    ).rejects.toThrow('route changed while activation was committing');
+    ).rejects.toThrow('route changed before activation could be published');
     const current = storage.values.get(storageKey(connectionId)) as
       | { status: string; authorityInstanceId?: string }
       | undefined;
@@ -656,6 +758,50 @@ describe('browser relay application authority', () => {
     expect(current?.bearer).toBeUndefined();
   });
 
+  it('rolls back cookie alias installation when the post-commit read fails', async () => {
+    const connectionId = 'alias-install-read-failure';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const keyThumbprint = await thumbprintFor(publicKey);
+    storage.afterCompare = async (target, next) => {
+      if (
+        target === storageKey(connectionId) &&
+        (next as { status?: string }).status === 'active'
+      ) {
+        storage.afterCompare = undefined;
+        storage.failRead = (readKey) =>
+          readKey === storageKey(connectionId)
+            ? new Error('post-commit read unavailable')
+            : undefined;
+      }
+    };
+    await expect(
+      installBrowserRelayApplicationAuthority(
+        {
+          connectionId,
+          applicationOrigin,
+          route,
+          bearer: { kind: 'alias', credential: 'Q'.repeat(43) },
+          key,
+          continuation: { ...continuation, keyThumbprint },
+        },
+        storage,
+      ),
+    ).rejects.toThrow('post-commit read unavailable');
+    const current = storage.values.get(storageKey(connectionId)) as
+      | { status: string; bearer?: unknown }
+      | undefined;
+    expect(current?.status).toBe('empty');
+    expect(current?.bearer).toBeUndefined();
+    const scopeKey = browserRelayAccountScopeKey({
+      connectionId,
+      applicationOrigin,
+      route,
+      clientOrigin: window.location.origin,
+    });
+    expect(getBrowserRelayAccountScope(scopeKey)?.authorityKey).toBeNull();
+  });
+
   it('aborts a pending activation and rolls back a transaction that completed during cancellation', async () => {
     const connectionId = 'activation-abort';
     publish(connectionId);
@@ -687,6 +833,65 @@ describe('browser relay application authority', () => {
       | undefined;
     expect(current?.status).toBe('empty');
     expect(current?.authorityInstanceId).not.toBe(input.stageId);
+  });
+
+  it('aborts at the final activation transaction boundary without publishing authority', async () => {
+    const connectionId = 'activation-final-cas-abort';
+    publish(connectionId);
+    const storage = new MemoryStorage();
+    const controller = new AbortController();
+    storage.refuseAbortedWrites = true;
+    const input = {
+      stageId: 'a'.repeat(43),
+      connectionId,
+      applicationOrigin,
+      route,
+      bearer: { kind: 'device' as const, credential: 'b'.repeat(43) },
+      key,
+      continuation: {
+        ...continuation,
+        authorityKey: 'final-cas-aborted',
+        credential: 'c'.repeat(43),
+        keyThumbprint: await thumbprintFor(publicKey),
+      },
+      signal: controller.signal,
+    };
+    await stageBrowserRelayApplicationAuthority(input, storage);
+    storage.beforeCompare = async (target) => {
+      if (
+        target === storageKey(connectionId) &&
+        (storage.values.get(target) as { status?: string })?.status ===
+          'activating'
+      ) {
+        storage.beforeCompare = undefined;
+        controller.abort(new Error('cancelled at activation publication'));
+      }
+    };
+    await expect(
+      publishBrowserRelayApplicationAuthority(
+        {
+          connectionId,
+          applicationOrigin,
+          route,
+          stageId: input.stageId,
+          activationReceipt: {
+            version: 'station.relay-enrollment/v1',
+            state: 'active',
+            enrollmentId: input.stageId,
+            deviceId: input.continuation.deviceId,
+            receiptDigest: 'R'.repeat(43),
+            receiptExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+          },
+          isRouteCurrent: () => true,
+          signal: controller.signal,
+        },
+        storage,
+      ),
+    ).rejects.toThrow('cancelled at activation publication');
+    expect(
+      (storage.values.get(storageKey(connectionId)) as { status?: string })
+        ?.status,
+    ).toBe('empty');
   });
 
   it('removes a staged record if its ceremony signal aborts as the write settles', async () => {
@@ -877,8 +1082,16 @@ describe('browser relay application authority', () => {
       kind: 'device',
       credential: 'D'.repeat(43),
     });
+    expect(retained.status).toBe('device-only');
     expect(retained.continuation).toBeUndefined();
     expect(credential.transportBindingIsCurrent?.()).toBe(false);
+    await removeBrowserRelayApplicationAuthority(
+      { connectionId: 'connection-1', applicationOrigin, route },
+      storage,
+    );
+    const removed = storage.values.get(storageKey()) as Record<string, unknown>;
+    expect(removed.status).toBe('empty');
+    expect(removed.bearer).toBeUndefined();
   });
 
   it('does not attempt relay cookie adoption from a cross-origin browser', async () => {

@@ -51,6 +51,9 @@ type ActiveAuthorityRecord = Omit<BrowserRelayAuthorityInput, 'key'> & {
   clientOrigin: string;
   installedAt: number;
 };
+type ActivatingAuthorityRecord = Omit<ActiveAuthorityRecord, 'status'> & {
+  status: 'activating';
+};
 type StagedAuthorityRecord = Omit<BrowserRelayAuthorityInput, 'key'> & {
   version: 1;
   status: 'staged';
@@ -72,6 +75,7 @@ type DeviceOnlyAuthorityRecord = Omit<
 > & { status: 'device-only' };
 type AuthorityRecord =
   | ActiveAuthorityRecord
+  | ActivatingAuthorityRecord
   | StagedAuthorityRecord
   | DeviceOnlyAuthorityRecord
   | EmptyAuthorityRecord;
@@ -89,7 +93,7 @@ export interface BrowserRelayAuthorityStorage {
     stageKey: string;
     expectedActive: AuthorityIdentity | null;
     expectedStage: AuthorityIdentity | null;
-    active: ActiveAuthorityRecord;
+    activating: ActivatingAuthorityRecord;
     stageTombstone: EmptyAuthorityRecord;
     signal?: AbortSignal;
   }): Promise<boolean>;
@@ -321,7 +325,7 @@ class IndexedDbBrowserRelayAuthorityStorage
     stageKey: string;
     expectedActive: AuthorityIdentity | null;
     expectedStage: AuthorityIdentity | null;
-    active: ActiveAuthorityRecord;
+    activating: ActivatingAuthorityRecord;
     stageTombstone: EmptyAuthorityRecord;
     signal?: AbortSignal;
   }) {
@@ -341,7 +345,7 @@ class IndexedDbBrowserRelayAuthorityStorage
         )
           return;
         matched = true;
-        store.put(input.active, input.activeKey);
+        store.put(input.activating, input.activeKey);
         store.put(input.stageTombstone, input.stageKey);
       };
       activeRequest.onsuccess = () => {
@@ -377,6 +381,11 @@ function identityOf(value: unknown): AuthorityIdentity | null | undefined {
     };
   if (value.status === 'staged')
     return { authorityInstanceId: value.stageId, scopeVersion: 0 };
+  if (value.status === 'activating')
+    return {
+      authorityInstanceId: value.authorityInstanceId,
+      scopeVersion: value.scopeVersion,
+    };
   throw new Error('Relay authority record is invalid.');
 }
 
@@ -514,6 +523,7 @@ function isRecord(value: unknown): value is AuthorityRecord {
   return (
     record.version === 1 &&
     (record.status === 'active' ||
+      record.status === 'activating' ||
       record.status === 'device-only' ||
       record.status === 'staged' ||
       record.status === 'empty')
@@ -524,8 +534,26 @@ function isActiveRecord(value: unknown): value is ActiveAuthorityRecord {
   return isRecord(value) && value.status === 'active';
 }
 
+function isDeviceOnlyRecord(
+  value: unknown,
+): value is DeviceOnlyAuthorityRecord {
+  return isRecord(value) && value.status === 'device-only';
+}
+
 function recordScopeVersion(value: unknown) {
   return isRecord(value) && value.status !== 'staged' ? value.scopeVersion : 0;
+}
+
+async function rollbackActivation(
+  storage: BrowserRelayAuthorityStorage,
+  key: string,
+  expected: ActivatingAuthorityRecord | ActiveAuthorityRecord,
+  previous: unknown,
+) {
+  const rollback = isActiveRecord(previous)
+    ? { ...previous, scopeVersion: expected.scopeVersion + 1 }
+    : emptyRecord(expected.scopeVersion + 1);
+  return storage.compareAndSwap(key, identityOf(expected)!, rollback);
 }
 
 function emptyRecord(scopeVersion: number): EmptyAuthorityRecord {
@@ -569,34 +597,52 @@ export async function hydrateBrowserRelayApplicationAuthorityScope(
     input.route,
   );
   if (!binding?.isCurrent()) return null;
-  const value = await storage.read(key);
-  if (isActiveRecord(value)) {
-    const valid =
-      value.connectionId === input.connectionId &&
-      value.applicationOrigin === input.applicationOrigin &&
-      value.clientOrigin === clientOrigin &&
-      value.route.brokerOrigin === input.route.brokerOrigin &&
-      sameScope(value.route.scope, input.route.scope) &&
-      Number.isFinite(Date.parse(value.continuation.expiresAt)) &&
-      Date.parse(value.continuation.expiresAt) > Date.now() &&
-      binding.isCurrent();
-    if (valid) {
-      const signer = restoreApplicationSessionKey(
-        value.key.privateKey,
-        value.key.publicKey,
-      );
-      if (
-        (await publicKeyThumbprint(signer)) ===
-          value.continuation.keyThumbprint &&
-        binding.isCurrent()
-      ) {
-        readyScope(key, value, value.scopeVersion);
-        return getBrowserRelayAccountScope(key);
+  const transitionVersion = beginBrowserRelayAccountScopeChange(key);
+  try {
+    const value = await storage.read(key);
+    if (isActiveRecord(value)) {
+      const valid =
+        value.connectionId === input.connectionId &&
+        value.applicationOrigin === input.applicationOrigin &&
+        value.clientOrigin === clientOrigin &&
+        value.route.brokerOrigin === input.route.brokerOrigin &&
+        sameScope(value.route.scope, input.route.scope) &&
+        value.continuation.stationId === input.route.scope.stationId &&
+        value.continuation.requestOrigin === input.applicationOrigin &&
+        value.continuation.clientOrigin === clientOrigin &&
+        Number.isFinite(Date.parse(value.continuation.expiresAt)) &&
+        Date.parse(value.continuation.expiresAt) > Date.now() &&
+        binding.isCurrent();
+      if (valid) {
+        try {
+          const signer = restoreApplicationSessionKey(
+            value.key.privateKey,
+            value.key.publicKey,
+          );
+          if (
+            (await publicKeyThumbprint(signer)) ===
+              value.continuation.keyThumbprint &&
+            binding.isCurrent()
+          ) {
+            readyScope(key, value, transitionVersion);
+            return getBrowserRelayAccountScope(key);
+          }
+        } catch {
+          // A malformed or unusable signing key must never hydrate an account.
+        }
       }
     }
+    if (binding.isCurrent())
+      readyScope(
+        key,
+        null,
+        Math.max(transitionVersion, recordScopeVersion(value)),
+      );
+    return getBrowserRelayAccountScope(key);
+  } catch {
+    if (binding.isCurrent()) readyScope(key, null, transitionVersion);
+    return getBrowserRelayAccountScope(key);
   }
-  if (binding.isCurrent()) readyScope(key, value, recordScopeVersion(value));
-  return getBrowserRelayAccountScope(key);
 }
 
 async function installActiveAliasAuthority(
@@ -626,8 +672,11 @@ async function installActiveAliasAuthority(
     clientOrigin,
   );
   const transitionVersion = beginBrowserRelayAccountScopeChange(key);
+  let installed: ActiveAuthorityRecord | null = null;
+  let previousAuthority: unknown;
   try {
     const previous = await storage.read(key);
+    previousAuthority = previous;
     if (!routeCurrent(input, selected.transport)) {
       readyScope(key, previous, transitionVersion);
       throw authorityError(
@@ -656,23 +705,15 @@ async function installActiveAliasAuthority(
         'Relay authority changed while cookie adoption was committing.',
       );
     }
+    installed = record;
     const latest = await storage.read(key);
     if (
       !isActiveRecord(latest) ||
       latest.authorityInstanceId !== record.authorityInstanceId ||
       !routeCurrent(input, selected.transport)
     ) {
-      if (
-        isActiveRecord(latest) &&
-        latest.authorityInstanceId === record.authorityInstanceId
-      ) {
-        const rollback = isActiveRecord(previous)
-          ? { ...previous, scopeVersion: record.scopeVersion + 1 }
-          : emptyRecord(record.scopeVersion + 1);
-        await storage.compareAndSwap(key, identityOf(latest)!, rollback);
-      }
-      const restored = await storage.read(key);
-      readyScope(key, restored, record.scopeVersion + 1);
+      await rollbackInstalledAuthority(storage, key, record, previous);
+      readyScope(key, null, record.scopeVersion + 1);
       throw authorityError(
         'station_relay_route_stale',
         'The selected route changed while cookie authority was committing.',
@@ -680,14 +721,35 @@ async function installActiveAliasAuthority(
     }
     readyScope(key, latest, latest.scopeVersion);
     return {
-      authorityKey: latest.continuation.authorityKey,
-      deviceId: latest.continuation.deviceId,
+      authorityKey: record.continuation.authorityKey,
+      deviceId: record.continuation.deviceId,
     };
   } catch (error) {
-    const latest = await storage.read(key).catch(() => undefined);
-    if (latest !== undefined) readyScope(key, latest, transitionVersion);
+    if (installed) {
+      await rollbackInstalledAuthority(
+        storage,
+        key,
+        installed,
+        previousAuthority,
+      ).catch(() => false);
+      readyScope(key, null, installed.scopeVersion + 1);
+    } else {
+      readyScope(key, null, transitionVersion);
+    }
     throw error;
   }
+}
+
+async function rollbackInstalledAuthority(
+  storage: BrowserRelayAuthorityStorage,
+  key: string,
+  installed: ActiveAuthorityRecord,
+  previous?: unknown,
+) {
+  const rollback = isActiveRecord(previous)
+    ? { ...previous, scopeVersion: installed.scopeVersion + 1 }
+    : emptyRecord(installed.scopeVersion + 1);
+  return storage.compareAndSwap(key, identityOf(installed)!, rollback);
 }
 
 /** Immediate installation is reserved for the cookie-adoption flow, which returns an already active alias. */
@@ -925,11 +987,14 @@ export async function publishBrowserRelayApplicationAuthority(
       selectedTransport &&
         routeCurrent(input, selectedTransport, input.isRouteCurrent),
     );
+  let consumed: ActivatingAuthorityRecord | null = null;
+  let previousActive: unknown;
   try {
     const [stagedValue, activeValue] = await Promise.all([
       storage.read(stageKey, input.signal),
       storage.read(key, input.signal),
     ]);
+    previousActive = activeValue;
     throwIfAborted(input.signal);
     if (
       !isRecord(stagedValue) ||
@@ -968,73 +1033,79 @@ export async function publishBrowserRelayApplicationAuthority(
       authorityInstanceId: input.stageId,
       scopeVersion: activeVersion,
     };
+    const activating: ActivatingAuthorityRecord = {
+      ...active,
+      status: 'activating',
+    };
     const committed = await storage.activateStaged({
       activeKey: key,
       stageKey,
       expectedActive: expectedIdentity(activeValue),
       expectedStage: expectedIdentity(stagedValue),
-      active,
+      activating,
       stageTombstone: emptyRecord(1),
       signal: input.signal,
     });
     if (!committed) {
       const latest = await storage.read(key);
-      readyScope(key, latest, transitionVersion);
+      readyScope(
+        key,
+        null,
+        Math.max(transitionVersion, recordScopeVersion(latest)),
+      );
       throw new Error(
         'Relay authority changed while activation was committing.',
       );
     }
-    const promoted = await storage.read(key, input.signal);
-    try {
-      throwIfAborted(input.signal);
-    } catch (error) {
-      if (
-        isActiveRecord(promoted) &&
-        promoted.authorityInstanceId === input.stageId
-      ) {
-        const rollback = isActiveRecord(activeValue)
-          ? { ...activeValue, scopeVersion: promoted.scopeVersion + 1 }
-          : emptyRecord(promoted.scopeVersion + 1);
-        await storage.compareAndSwap(key, identityOf(promoted)!, rollback);
-      }
-      const latest = await storage.read(key);
-      readyScope(key, latest, transitionVersion);
-      throw error;
-    }
-    if (
-      !isActiveRecord(promoted) ||
-      promoted.authorityInstanceId !== input.stageId ||
-      !stillSelected()
-    ) {
-      const latest = await storage.read(key);
-      if (
-        isActiveRecord(latest) &&
-        latest.authorityInstanceId === input.stageId
-      ) {
-        const rollback = isActiveRecord(activeValue)
-          ? { ...activeValue, scopeVersion: activeVersion + 1 }
-          : emptyRecord(activeVersion + 1);
-        await storage.compareAndSwap(key, identityOf(latest)!, rollback);
-      }
-      const afterRollback = await storage.read(key);
-      readyScope(key, afterRollback, activeVersion + 1);
+    consumed = activating;
+    throwIfAborted(input.signal);
+    if (!stillSelected()) {
+      await rollbackActivation(storage, key, consumed, activeValue);
+      consumed = null;
+      readyScope(key, null, activeVersion + 1);
       throw authorityError(
         'station_relay_route_stale',
-        'The selected route changed while activation was committing.',
+        'The selected route changed before activation could be published.',
       );
     }
-    restoreApplicationSessionKey(
-      promoted.key.privateKey,
-      promoted.key.publicKey,
-    );
-    readyScope(key, promoted, promoted.scopeVersion);
+    restoreApplicationSessionKey(active.key.privateKey, active.key.publicKey);
+    if (
+      !(await storage.compareAndSwap(
+        key,
+        identityOf(activating)!,
+        active,
+        input.signal,
+      ))
+    ) {
+      await rollbackActivation(storage, key, activating, activeValue);
+      consumed = null;
+      readyScope(key, null, activeVersion + 1);
+      throw authorityError(
+        'station_relay_activation_stale',
+        'Relay authority changed before activation could be published.',
+      );
+    }
+    consumed = null;
+    if (input.signal?.aborted || !stillSelected()) {
+      await rollbackActivation(storage, key, active, activeValue);
+      readyScope(key, null, activeVersion + 1);
+      throw authorityError(
+        'station_relay_route_stale',
+        'The selected route changed while activation was being published.',
+      );
+    }
+    readyScope(key, active, active.scopeVersion);
     return {
-      authorityKey: promoted.continuation.authorityKey,
-      deviceId: promoted.continuation.deviceId,
+      authorityKey: active.continuation.authorityKey,
+      deviceId: active.continuation.deviceId,
     };
   } catch (error) {
-    const current = await storage.read(key).catch(() => undefined);
-    if (current !== undefined) readyScope(key, current, transitionVersion);
+    if (consumed) {
+      await rollbackActivation(storage, key, consumed, previousActive).catch(
+        () => false,
+      );
+    }
+    readyScope(key, null, transitionVersion);
     throw error;
   }
 }
@@ -1088,7 +1159,7 @@ export async function removeBrowserRelayApplicationAuthority(
   );
   const transitionVersion = beginBrowserRelayAccountScopeChange(key);
   const current = await storage.read(key);
-  if (!isActiveRecord(current)) {
+  if (!isActiveRecord(current) && !isDeviceOnlyRecord(current)) {
     readyScope(key, current, transitionVersion);
     return;
   }
