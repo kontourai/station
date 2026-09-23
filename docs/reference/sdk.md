@@ -1049,12 +1049,62 @@ const accountHeaders = await accounts.headers(continuation, { method: 'GET', url
 // accounts.renew(continuation) preserves authorityKey; accounts.revoke signs out.
 ```
 
+For a browser already signed in on the Station's same HTTPS origin, call
+`accounts.adoptCookies()` with a key from `createApplicationSessionKey()`. The
+browser sends its existing `__Host-station-device` and provider cookies through
+`credentials: 'same-origin'`; the SDK never reads or copies cookie values into
+JavaScript. Adoption returns a short-lived account continuation and a bounded,
+read-only alias for that same approved Device. Keep the alias with its
+continuation and send both on each protected request.
+`accounts.revokeAlias(alias, continuation)` revokes that alias only and leaves
+the provider account session and parent Device grant intact. Cookie adoption
+requires direct same-origin HTTPS; a virtual transport has no cookie authority
+and cannot run this step.
+
 Calling `establish()` without credentials uses native HTTPS cookie exchange;
 virtual-only login requires its separately advertised provider capability. The
 relay forwards headers/body and respects response backpressure; it does not own
 account cookies, proof verification or membership logic. See the
 [application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
 for expiry, origin, replay and revocation behavior.
+
+### Fresh relay enrollment proof helpers
+
+`@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,
+`restoreRelayEnrollmentKey`, `createRelayEnrollmentLoginProof`,
+`createRelayEnrollmentFinalizeProof`, `digestRelayEnrollmentBundle`, and
+`createRelayEnrollmentActivationProof` for the versioned fresh relay-account
+ceremony. The signing key is non-extractable
+P-256 custody, and the proof binds the Station, configured client Origin,
+enrollment attempt, key thumbprint, nonce, method, path, purpose, and short
+expiry. Keep the key in platform credential custody. The login proof authorizes
+only a provider-side candidate identity; the operator must still approve the
+account binding, and the server separately activates a narrow Device after a
+signed delivery acknowledgment. The SDK helper does not transport cookies,
+Device credentials, or continuations.
+
+```ts
+import {
+  createRelayEnrollmentKey,
+  createRelayEnrollmentLoginProof,
+} from '@kontourai/station-sdk/relay-enrollment';
+
+const key = await createRelayEnrollmentKey();
+const proof = await createRelayEnrollmentLoginProof(key, challenge, {
+  method: 'POST',
+  url: `${stationOrigin}/.well-known/station/v1/relay/enrollment/login`,
+  clientOrigin,
+});
+```
+
+The enrollment wire shapes live in
+`@kontourai/station-contracts/relay-enrollment`. This proof is distinct from
+application-session proof and cannot establish an ordinary authenticated
+account session. If finalize delivery is uncertain, do not retry finalize or
+expect the same secret bundle to be returned: Station discards that inert
+attempt and the client starts a fresh enrollment. Activation ACK may be retried
+only with the same signed proof; Station returns the stored receipt only when
+its digest matches the committed ACK.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project

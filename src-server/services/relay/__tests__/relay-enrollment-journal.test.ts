@@ -7,6 +7,8 @@ import {
   openRelayEnrollmentJournal,
   RELAY_ENROLLMENT_ACK_REPLAY_WINDOW_MS,
   RelayEnrollmentCapacityError,
+  type RelayEnrollmentJournal,
+  type RelayEnrollmentPatch,
   type RelayEnrollmentRecord,
   type RelayEnrollmentState,
 } from '../relay-enrollment-journal.js';
@@ -65,6 +67,31 @@ describe('RelayEnrollmentJournal', () => {
     return `${label}-${'x'.repeat(Math.max(0, 32 - label.length - 1))}`;
   }
 
+  function transitionProviderPending(
+    journal: RelayEnrollmentJournal,
+    enrollmentId: string,
+    patch: RelayEnrollmentPatch,
+  ) {
+    journal.transition({
+      enrollmentId,
+      expectedStates: ['challenge'],
+      nextState: 'provider-creating',
+      patch: {
+        issuer:
+          typeof patch.issuer === 'string'
+            ? patch.issuer
+            : 'https://issuer.example',
+        loginJti: 'L'.repeat(22),
+      },
+    });
+    return journal.transition({
+      enrollmentId,
+      expectedStates: ['provider-creating'],
+      nextState: 'provider-pending',
+      patch,
+    });
+  }
+
   test('allows one matching compare-and-swap across independent SQLite connections', async () => {
     const first = setup();
     const second = openRelayEnrollmentJournal({
@@ -75,28 +102,26 @@ describe('RelayEnrollmentJournal', () => {
       first.journal.reserveChallenge(challenge());
       const results = await Promise.all([
         Promise.resolve().then(() =>
-          first.journal.transition({
-            enrollmentId: makeId('enrollment-high-entropy-001'),
-            expectedStates: ['challenge'],
-            nextState: 'provider-pending',
-            patch: {
+          transitionProviderPending(
+            first.journal,
+            makeId('enrollment-high-entropy-001'),
+            {
               providerSessionId: 'session-a',
               issuer: 'https://issuer.example',
               subject: 'account-a',
             },
-          }),
+          ),
         ),
         Promise.resolve().then(() =>
-          second.transition({
-            enrollmentId: makeId('enrollment-high-entropy-001'),
-            expectedStates: ['challenge'],
-            nextState: 'provider-pending',
-            patch: {
+          transitionProviderPending(
+            second,
+            makeId('enrollment-high-entropy-001'),
+            {
               providerSessionId: 'session-a',
               issuer: 'https://issuer.example',
               subject: 'account-a',
             },
-          }),
+          ),
         ),
       ]);
       expect(results.filter(Boolean)).toHaveLength(1);
@@ -122,23 +147,21 @@ describe('RelayEnrollmentJournal', () => {
     try {
       reopened.reserveChallenge(challenge());
       expect(() =>
-        reopened.transition({
-          enrollmentId: makeId('enrollment-high-entropy-001'),
-          expectedStates: ['challenge'],
-          nextState: 'provider-pending',
-          patch: { stationId: 'station-other' } as never,
-        }),
+        transitionProviderPending(
+          reopened,
+          makeId('enrollment-high-entropy-001'),
+          { stationId: 'station-other' } as never,
+        ),
       ).toThrow(/immutable/);
       expect(() =>
-        reopened.transition({
-          enrollmentId: makeId('enrollment-high-entropy-001'),
-          expectedStates: ['challenge'],
-          nextState: 'provider-pending',
-          patch: { deviceCredential: 'raw-secret' } as never,
-        }),
+        transitionProviderPending(
+          reopened,
+          makeId('enrollment-high-entropy-001'),
+          { deviceCredential: 'raw-secret' } as never,
+        ),
       ).toThrow(/immutable/);
       expect(reopened.get(makeId('enrollment-high-entropy-001'))?.state).toBe(
-        'challenge',
+        'provider-creating',
       );
     } finally {
       reopened.close();
@@ -187,15 +210,10 @@ describe('RelayEnrollmentJournal', () => {
       ).toThrow(/P-256 public key/);
       journal.reserveChallenge(challenge('missing-device'));
       const id = makeId('missing-device');
-      journal.transition({
-        enrollmentId: id,
-        expectedStates: ['challenge'],
-        nextState: 'provider-pending',
-        patch: {
-          providerSessionId: 'session-id',
-          issuer: 'https://issuer.example',
-          subject: 'subject-id',
-        },
+      transitionProviderPending(journal, id, {
+        providerSessionId: 'session-id',
+        issuer: 'https://issuer.example',
+        subject: 'subject-id',
       });
       journal.transition({
         enrollmentId: id,
@@ -270,16 +288,29 @@ describe('RelayEnrollmentJournal', () => {
       next: RelayEnrollmentState;
       prior: RelayEnrollmentState[];
     }> = [
-      { next: 'provider-pending', prior: [] },
-      { next: 'pairing-requested', prior: ['provider-pending'] },
-      { next: 'approved', prior: ['provider-pending', 'pairing-requested'] },
+      { next: 'provider-creating', prior: [] },
+      { next: 'provider-pending', prior: ['provider-creating'] },
+      {
+        next: 'pairing-requested',
+        prior: ['provider-creating', 'provider-pending'],
+      },
+      {
+        next: 'approved',
+        prior: ['provider-creating', 'provider-pending', 'pairing-requested'],
+      },
       {
         next: 'device-pending',
-        prior: ['provider-pending', 'pairing-requested', 'approved'],
+        prior: [
+          'provider-creating',
+          'provider-pending',
+          'pairing-requested',
+          'approved',
+        ],
       },
       {
         next: 'continuation-pending',
         prior: [
+          'provider-creating',
           'provider-pending',
           'pairing-requested',
           'approved',
@@ -289,6 +320,7 @@ describe('RelayEnrollmentJournal', () => {
       {
         next: 'awaiting-ack',
         prior: [
+          'provider-creating',
           'provider-pending',
           'pairing-requested',
           'approved',
@@ -299,6 +331,7 @@ describe('RelayEnrollmentJournal', () => {
       {
         next: 'activating',
         prior: [
+          'provider-creating',
           'provider-pending',
           'pairing-requested',
           'approved',
@@ -316,6 +349,10 @@ describe('RelayEnrollmentJournal', () => {
         journal.reserveChallenge(challenge(label));
         let state: RelayEnrollmentState = 'challenge';
         const validPatches: Record<string, Record<string, unknown>> = {
+          'provider-creating': {
+            issuer: 'https://issuer.example',
+            loginJti: `login-${index}-abcdefghijkl`,
+          },
           'provider-pending': {
             providerSessionId: `session-${index}`,
             issuer: 'https://issuer.example',
@@ -357,7 +394,7 @@ describe('RelayEnrollmentJournal', () => {
           }),
         ).toThrow(
           new RegExp(
-            `requires ${item.next === 'provider-pending' ? 'providerSessionId' : item.next === 'pairing-requested' ? 'offerId' : item.next === 'approved' ? 'approvalId' : item.next === 'device-pending' ? 'deviceId' : item.next === 'continuation-pending' ? 'authorityKey' : item.next === 'awaiting-ack' ? 'activationNonce' : 'ackJti'}`,
+            `requires ${item.next === 'provider-creating' ? 'issuer' : item.next === 'provider-pending' ? 'providerSessionId' : item.next === 'pairing-requested' ? 'offerId' : item.next === 'approved' ? 'approvalId' : item.next === 'device-pending' ? 'deviceId' : item.next === 'continuation-pending' ? 'authorityKey' : item.next === 'awaiting-ack' ? 'activationNonce' : 'ackJti'}`,
           ),
         );
         expect(journal.get(id)?.state).toBe(state);
@@ -377,16 +414,15 @@ describe('RelayEnrollmentJournal', () => {
     const first = setup();
     try {
       first.journal.reserveChallenge(challenge());
-      first.journal.transition({
-        enrollmentId: makeId('enrollment-high-entropy-001'),
-        expectedStates: ['challenge'],
-        nextState: 'provider-pending',
-        patch: {
+      transitionProviderPending(
+        first.journal,
+        makeId('enrollment-high-entropy-001'),
+        {
           providerSessionId: 'provider-session-ref',
           issuer: 'https://issuer.example',
           subject: 'provider-subject',
         },
-      });
+      );
       first.journal.transition({
         enrollmentId: makeId('enrollment-high-entropy-001'),
         expectedStates: ['provider-pending'],
@@ -470,15 +506,10 @@ describe('RelayEnrollmentJournal', () => {
         receiptDigest: 'receipt-sha256',
       });
       reopened.reserveChallenge(challenge('cleanup-attempt'));
-      reopened.transition({
-        enrollmentId: makeId('cleanup-attempt'),
-        expectedStates: ['challenge'],
-        nextState: 'provider-pending',
-        patch: {
-          providerSessionId: 'cleanup-provider-session',
-          issuer: 'https://issuer.example',
-          subject: 'subject-id',
-        },
+      transitionProviderPending(reopened, makeId('cleanup-attempt'), {
+        providerSessionId: 'cleanup-provider-session',
+        issuer: 'https://issuer.example',
+        subject: 'subject-id',
       });
       expect(() =>
         reopened.transition({
@@ -535,15 +566,10 @@ describe('RelayEnrollmentJournal', () => {
         RelayEnrollmentCapacityError,
       );
       expect(journal.get(makeId('second'))).toBeUndefined();
-      journal.transition({
-        enrollmentId: makeId('first'),
-        expectedStates: ['challenge'],
-        nextState: 'provider-pending',
-        patch: {
-          providerSessionId: 'session-first',
-          issuer: 'https://issuer.example',
-          subject: 'subject-first',
-        },
+      transitionProviderPending(journal, makeId('first'), {
+        providerSessionId: 'session-first',
+        issuer: 'https://issuer.example',
+        subject: 'subject-first',
       });
       journal.transition({
         enrollmentId: makeId('first'),
@@ -649,6 +675,53 @@ describe('RelayEnrollmentJournal', () => {
     }
   });
 
+  test('expired challenge-only attempts release admission capacity without operator polling', () => {
+    let now = 100;
+    let failReserve = false;
+    const { journal } = setup({
+      now: () => now,
+      maxActiveAttempts: 1,
+      faultInjector: (operation: string) => {
+        if (operation === 'reserve' && failReserve)
+          throw new Error('injected reservation failure');
+      },
+    });
+    try {
+      journal.reserveChallenge(challenge('abandoned', { expiresAt: 200 }));
+      expect(() =>
+        journal.reserveChallenge(challenge('early', { expiresAt: 300 })),
+      ).toThrow(RelayEnrollmentCapacityError);
+
+      now = 200;
+      failReserve = true;
+      expect(() =>
+        journal.reserveChallenge(challenge('replacement', { expiresAt: 300 })),
+      ).toThrow('injected reservation failure');
+      expect(journal.get(makeId('abandoned'))?.state).toBe('challenge');
+      failReserve = false;
+      journal.reserveChallenge(challenge('replacement', { expiresAt: 300 }));
+      expect(journal.get(makeId('abandoned'))).toBeUndefined();
+      expect(journal.get(makeId('replacement'))?.state).toBe('challenge');
+
+      transitionProviderPending(journal, makeId('replacement'), {
+        providerSessionId: 'provider-session',
+        issuer: 'https://issuer.example',
+        subject: 'account-subject',
+      });
+      now = 300;
+      expect(() =>
+        journal.reserveChallenge(
+          challenge('not-yet-cleaned', { expiresAt: 400 }),
+        ),
+      ).toThrow(RelayEnrollmentCapacityError);
+      expect(journal.get(makeId('replacement'))?.state).toBe(
+        'provider-pending',
+      );
+    } finally {
+      journal.close();
+    }
+  });
+
   test('allows cleanup but refuses forward CAS at the exact expiry boundary', () => {
     let now = 100;
     const { journal } = setup({ now: () => now });
@@ -659,15 +732,10 @@ describe('RelayEnrollmentJournal', () => {
       );
       now = 200;
       expect(() =>
-        journal.transition({
-          enrollmentId: id,
-          expectedStates: ['challenge'],
-          nextState: 'provider-pending',
-          patch: {
-            providerSessionId: 'session',
-            issuer: 'https://issuer.example',
-            subject: 'subject',
-          },
+        transitionProviderPending(journal, id, {
+          providerSessionId: 'session',
+          issuer: 'https://issuer.example',
+          subject: 'subject',
         }),
       ).toThrow(/Expired relay enrollment/);
       expect(journal.get(id)?.state).toBe('challenge');
@@ -703,16 +771,15 @@ describe('RelayEnrollmentJournal', () => {
       journal.reserveChallenge(challenge());
       fail = 'transition';
       expect(() =>
-        journal.transition({
-          enrollmentId: makeId('enrollment-high-entropy-001'),
-          expectedStates: ['challenge'],
-          nextState: 'provider-pending',
-          patch: {
+        transitionProviderPending(
+          journal,
+          makeId('enrollment-high-entropy-001'),
+          {
             providerSessionId: 'session',
             issuer: 'https://issuer.example',
             subject: 'subject',
           },
-        }),
+        ),
       ).toThrow(/injected persistence/);
       expect(journal.get(makeId('enrollment-high-entropy-001'))?.state).toBe(
         'challenge',
@@ -742,15 +809,10 @@ describe('RelayEnrollmentJournal', () => {
   test('fails closed when a persisted record is corrupted', () => {
     const { dbPath, journal } = setup();
     journal.reserveChallenge(challenge());
-    journal.transition({
-      enrollmentId: makeId('enrollment-high-entropy-001'),
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'session-tamper',
-        issuer: 'https://issuer.example',
-        subject: 'subject-tamper',
-      },
+    transitionProviderPending(journal, makeId('enrollment-high-entropy-001'), {
+      providerSessionId: 'session-tamper',
+      issuer: 'https://issuer.example',
+      subject: 'subject-tamper',
     });
     journal.transition({
       enrollmentId: makeId('enrollment-high-entropy-001'),
@@ -797,15 +859,10 @@ describe('RelayEnrollmentJournal', () => {
     const { dbPath, journal } = setup();
     const id = makeId('missing-device-ref');
     journal.reserveChallenge(challenge('missing-device-ref'));
-    journal.transition({
-      enrollmentId: id,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'provider-session',
-        issuer: 'https://issuer.example',
-        subject: 'provider-subject',
-      },
+    transitionProviderPending(journal, id, {
+      providerSessionId: 'provider-session',
+      issuer: 'https://issuer.example',
+      subject: 'provider-subject',
     });
     journal.transition({
       enrollmentId: id,
@@ -890,15 +947,10 @@ describe('RelayEnrollmentJournal', () => {
     const { dbPath, journal } = setup();
     const id = makeId('cleaning-device-ref');
     journal.reserveChallenge(challenge('cleaning-device-ref'));
-    journal.transition({
-      enrollmentId: id,
-      expectedStates: ['challenge'],
-      nextState: 'provider-pending',
-      patch: {
-        providerSessionId: 'provider-session',
-        issuer: 'https://issuer.example',
-        subject: 'provider-subject',
-      },
+    transitionProviderPending(journal, id, {
+      providerSessionId: 'provider-session',
+      issuer: 'https://issuer.example',
+      subject: 'provider-subject',
     });
     journal.transition({
       enrollmentId: id,

@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
+import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   handleOrchestrationEvent,
   settleSemanticDeliveryBuffer,
@@ -17,7 +18,118 @@ import { applyOrchestrationSnapshot } from './snapshotHandlers';
 import { setStreamConnectionState } from './streamConnectionState';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
-const activeSources = new Map<string, FetchSseConnection>();
+interface OwnedStream {
+  connection: FetchSseConnection;
+  /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
+  parked: boolean;
+  /**
+   * Monotonic time (`monotonicNow`) of the last refusal or retry of a parked
+   * stream.
+   */
+  lastParkedRetryAt: number;
+  /** The one deferred retry a throttled recovery signal left behind. */
+  deferredParkedRetry: ReturnType<typeof setTimeout> | undefined;
+  /** The connection's loop has returned, whether or not it was aborted. */
+  ended: boolean;
+}
+
+/**
+ * station#2301 review (M1): a parked stream is one whose credential the server
+ * REFUSED, so every retry it makes is a failed authentication — and the
+ * runtime rate-limits those per peer (10 a minute by default). Focus and
+ * visibility fire as often as a user switches windows, so without a floor a
+ * user with a revoked credential could trip that limiter on their own peer
+ * and have the request that fixes the credential refused too.
+ *
+ * A signal inside the floor is DEFERRED, not dropped: it leaves one retry
+ * scheduled for the end of the floor. A parked stream has no timer of its
+ * own, so a dropped signal could strand it — a user who repaired the
+ * authorization on the host and came back 20s after the refusal would then
+ * sit on "Connection needs attention" until they happened to switch windows
+ * again. The credential-change wake is not throttled, because it means the
+ * saved credential actually changed.
+ */
+const PARKED_RETRY_MIN_INTERVAL_MS = 30_000;
+
+/**
+ * The floor is an interval, so it reads a monotonic clock: a wall clock
+ * stepped backwards (NTP, a manual change, sleep fix-up) would otherwise hold
+ * every parked retry off until the clock caught up.
+ */
+function monotonicNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
+}
+
+function clearDeferredParkedRetry(owned: OwnedStream): void {
+  if (owned.deferredParkedRetry === undefined) return;
+  clearTimeout(owned.deferredParkedRetry);
+  owned.deferredParkedRetry = undefined;
+}
+
+function retryParkedStream(owned: OwnedStream): void {
+  clearDeferredParkedRetry(owned);
+  if (!owned.parked || owned.ended || owned.connection.signal.aborted) return;
+  owned.lastParkedRetryAt = monotonicNow();
+  owned.connection.retry();
+}
+
+/**
+ * station#2301: the single-flight registry. An entry counts only while its
+ * connection is LIVE: the guard below checks the connection's own abort
+ * signal, so an abort from ANY path — a non-persisted `pagehide`, a caller
+ * signal, a future one nobody has written yet — frees the slot for the next
+ * ensure, including one in the same tick as the abort. Before this, the guard
+ * checked presence and only the 401/403 path ever deleted an entry, so every
+ * other abort left a dead connection registered forever and every later
+ * ensure returned early against it. A loop that ends WITHOUT an abort (a
+ * callback throwing inside the SDK's retry loop) is caught by `ended`.
+ */
+const activeSources = new Map<string, OwnedStream>();
+
+/**
+ * station#2301: silence longer than this on a connected stream means the
+ * socket is dead, not idle. The server writes a keepalive frame every
+ * `SSE_KEEPALIVE_INTERVAL_MS` (30s, `src-server/constants.ts`), so 75s is two
+ * and a half missed heartbeats — enough slack for a slow proxy flush, short
+ * enough that a frozen transcript recovers without an app restart.
+ */
+const ORCHESTRATION_STREAM_STALL_TIMEOUT_MS = 75_000;
+
+/**
+ * station#2301: every apiBase a caller has asked for, so a recovery signal can
+ * re-ensure a stream whose connection ended without anyone remounting the
+ * dock. `ChatDock`'s mount effect is the only caller, and it does not re-run
+ * when the page merely comes back to the foreground.
+ */
+const requestedBases = new Set<string>();
+let recoveryListenersInstalled = false;
+/** apiBases whose chats this document has already seeded from a snapshot. */
+const basesWithSnapshot = new Set<string>();
+
+function reensureRequestedStreams(): void {
+  if (
+    (globalThis as { document?: { hidden?: boolean } }).document?.hidden ===
+    true
+  )
+    return;
+  for (const apiBase of requestedBases) ensureOrchestrationEventStream(apiBase);
+}
+
+function installRecoveryListeners(): void {
+  if (recoveryListenersInstalled) return;
+  recoveryListenersInstalled = true;
+  const scope = globalThis as {
+    document?: EventTarget;
+    window?: EventTarget;
+  };
+  scope.document?.addEventListener(
+    'visibilitychange',
+    reensureRequestedStreams,
+  );
+  scope.window?.addEventListener('focus', reensureRequestedStreams);
+  scope.window?.addEventListener('online', reensureRequestedStreams);
+  scope.window?.addEventListener('pageshow', reensureRequestedStreams);
+}
 
 /**
  * V3 the chat dock's failure banner reads the
@@ -118,7 +230,29 @@ export function ensureOrchestrationEventStream(
   queryClient?: QueryClient,
 ) {
   if (queryClient) sharedQueryClient = queryClient;
-  if (activeSources.has(apiBase)) return;
+  requestedBases.add(apiBase);
+  installRecoveryListeners();
+  const existing = activeSources.get(apiBase);
+  if (existing && !existing.ended && !existing.connection.signal.aborted) {
+    // A parked stream is alive but waiting for a credential change that may
+    // have arrived by a path that never announced it. Ask again at most once
+    // per floor interval, deferring rather than dropping a signal that lands
+    // inside it — see `PARKED_RETRY_MIN_INTERVAL_MS`.
+    if (existing.parked) {
+      const wait =
+        existing.lastParkedRetryAt +
+        PARKED_RETRY_MIN_INTERVAL_MS -
+        monotonicNow();
+      if (wait <= 0) retryParkedStream(existing);
+      else if (existing.deferredParkedRetry === undefined)
+        existing.deferredParkedRetry = setTimeout(
+          () => retryParkedStream(existing),
+          wait,
+        );
+    }
+    return;
+  }
+  if (existing) activeSources.delete(apiBase);
   // archive#1092: dedup guard against duplicate/overlapping frames on a
   // sequence-cursor resume. Applying a stale duplicate here would
   // reapply deltas (e.g. `content.text-delta`) into already-updated chat
@@ -134,14 +268,20 @@ export function ensureOrchestrationEventStream(
   // no refetch is warranted. Any LATER snapshot on this same stream means
   // the server fell back on a genuine RECONNECT (bounded-gap-exceeded or a
   // stale/evicted cursor); see `applyOrchestrationSnapshot`'s
-  // `isReconnectFallback` option for what that triggers. This flag lives on
-  // the stream's own closure (not module scope), so it naturally resets if
-  // `onTerminal` ever tears the whole stream down and a fresh
-  // `ensureOrchestrationEventStream(apiBase)` call starts a new one.
-  let hasReceivedSnapshot = false;
+  // `isReconnectFallback` option for what that triggers.
+  //
+  // station#2301: "first" is per DOCUMENT, not per stream. A stream that
+  // replaces a dead predecessor starts without a cursor, so its first frame
+  // is a snapshot — but this document has been showing state since the
+  // predecessor's last event, and whatever it missed in between needs exactly
+  // the catch-up a reconnect fallback triggers.
+  let hasReceivedSnapshot = basesWithSnapshot.has(apiBase);
   let receiving = false;
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
+    // station#2301: lets the server's stream open/close lines say WHICH
+    // document connected — see `clientDocumentSession.ts`.
+    headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
     // archive#1848: a ceiling equal to the initial delay is not a backoff
     // ladder — it is a fixed 2s poll that never decays, so a server that is
     // down, restarting, or refusing keeps receiving ~30 requests/minute from
@@ -152,6 +292,7 @@ export function ensureOrchestrationEventStream(
     // ratcheted-up delay.
     retryDelayMs: 2000,
     maxRetryDelayMs: 30_000,
+    stallTimeoutMs: ORCHESTRATION_STREAM_STALL_TIMEOUT_MS,
     onMessage: (raw) => {
       if (!receiving) {
         recordReplayConnection(apiBase, 'receiving');
@@ -176,6 +317,7 @@ export function ensureOrchestrationEventStream(
           queryClient,
         });
         hasReceivedSnapshot = true;
+        basesWithSnapshot.add(apiBase);
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
         // archive#1410: the frame is a wrapper, not a bare event — the
@@ -219,18 +361,24 @@ export function ensureOrchestrationEventStream(
       if (setStreamConnectionState(apiBase, 'interrupted'))
         recordReplayConnection(apiBase, 'interrupted');
     },
-    // archive#1094: a TERMINAL (401/403) failure now parks
-    // this stream indefinitely waiting for an explicit wake instead of
-    // giving up — `onError` alone would leave it an orphan: no longer
-    // reachable to close (dropped from `activeSources` already), but still
-    // strongly referenced by the SDK's origin-scoped credential-change wake
-    // registry, and it would silently reactivate — re-applying events
-    // against its own stale cursor alongside whatever stream a later
-    // `ensureOrchestrationEventStream(apiBase)` call created in the
-    // meantime — the next time a matching credential change fires.
-    // `close` aborts the controller, which `fetchSSE` checks for
-    // immediately after invoking this callback, so the stream never even
-    // reaches the wake-registry registration below.
+    // station#2301: a TERMINAL (401/403) failure parks this stream IN PLACE,
+    // still registered, until the SDK's origin-scoped credential wake
+    // (`notifyCredentialChanged`, fired by `ApiBaseContext` when the saved
+    // credential changes) or an explicit `retry()` resumes it. It used to
+    // `close()` and drop the entry instead, which aborted before the SDK
+    // could register that wake — so fixing the credential recovered nothing,
+    // and the dock sat on "Connection needs attention" until an app restart.
+    //
+    // archive#1094's concern still holds and is why the entry is KEPT: a
+    // parked stream that had been dropped from `activeSources` would be an
+    // orphan — unreachable to close, yet woken by a credential change to
+    // replay against its stale cursor beside whatever stream a later ensure
+    // created. Keeping it registered makes it the one owner, so no second
+    // stream is ever created while it waits.
+    //
+    // Resuming in place keeps this stream's cursor. That assumes the new
+    // credential is the same principal's; if it is not, the server still
+    // gates every replayed event by the NEW request's authority.
     onTerminal: () => {
       // fetchSSE invokes onError first. Cancel its deferred transient flush:
       // a terminal 401/403 means authority was lost, so hidden content is
@@ -238,10 +386,44 @@ export function ensureOrchestrationEventStream(
       settleSemanticDeliveryBuffer(apiBase, true);
       recordReplayConnection(apiBase, 'closed');
       setStreamConnectionState(apiBase, 'closed');
-      authenticatedStream.close();
-      activeSources.delete(apiBase);
+      owned.parked = true;
+      // The floor counts from the rejection, so the first recovery signal
+      // after a 401 does not immediately repeat it.
+      owned.lastParkedRetryAt = monotonicNow();
+    },
+    onRetry: () => {
+      // A deferred retry still pending re-checks `parked` before it fires.
+      owned.parked = false;
     },
   });
 
-  activeSources.set(apiBase, authenticatedStream);
+  const owned: OwnedStream = {
+    connection: authenticatedStream,
+    parked: false,
+    lastParkedRetryAt: 0,
+    deferredParkedRetry: undefined,
+    ended: false,
+  };
+  activeSources.set(apiBase, owned);
+  // station#2301 review (L1): the abort signal covers every abort, but the
+  // loop can also end by REJECTING — a callback above throwing inside the
+  // SDK's catch — without aborting. Either way the connection is gone.
+  void authenticatedStream.completed.then(
+    () => {
+      owned.ended = true;
+      clearDeferredParkedRetry(owned);
+    },
+    (error: unknown) => {
+      owned.ended = true;
+      clearDeferredParkedRetry(owned);
+      // Not silent: the dock must stop claiming a live feed, and whatever
+      // threw is a defect worth seeing. The next recovery signal replaces it.
+      if (setStreamConnectionState(apiBase, 'interrupted'))
+        recordReplayConnection(apiBase, 'interrupted');
+      console.error(
+        '[orchestration] event stream ended unexpectedly; it will be replaced on the next ensure',
+        error,
+      );
+    },
+  );
 }

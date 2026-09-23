@@ -407,8 +407,38 @@ records their SHA-256 hashes, and requires an acknowledgement of every image.
 Missing credentials, missing artifacts, invalid output, incomplete responses,
 and unexercised journeys are `NOT_VERIFIED`. Exit 0 means all reported checks
 passed; 1 means a failure or candidate visual finding; 2 means incomplete
-coverage. Local callers must provide `UI_SWEEP_RESULT=success` only after
-actually running the UI sweep.
+coverage. `DISABLED` is the one exception to exit 2 (next section): it is
+listed, never counted as a pass, and does not move the exit code. Local
+callers must provide `UI_SWEEP_RESULT=success` only after actually running the
+UI sweep.
+
+#### Checks that require a signed-in account
+
+CI runners hold no engine CLI login and no funded review credential. Until
+#2318 lets CI use the owner's Station, a check that needs one is disabled in
+CI, visibly, rather than left to fail or time out. The decision and rendering
+live in `scripts/lib/account-requirement.mjs`; each check declares its
+requirement where its own metadata lives:
+
+- an E2E spec: `requiresAccount: '<the account>'` on its `tests/e2e-manifest.mjs`
+  entry;
+- a core-loop journey: the `requiresAccount` option of `runJourney` in
+  `tests/live/core-loop-journeys.mjs`;
+- the semantic image review in `scripts/usability-feedback.mjs`.
+
+Accounts are absent when `STATION_CI_ACCOUNTS=absent`, or when it is unset and
+`CI=true` or `GITHUB_ACTIONS=true`; `STATION_CI_ACCOUNTS=present` runs them
+anyway, and any other value is refused. The affected workflows set `absent`
+explicitly. A declared check is then skipped before it starts (a spec is
+dropped before any Station boots; a journey never begins; the image reviewer
+makes no request), with the reason "requires a signed-in account; disabled in
+CI until #2318". It appears under **Disabled in CI (requires account)** in the
+step summary, the coverage coordinator's summary and the latest-E2E manifest
+(`buckets[].disabled`), and the usability report, where its status is
+`DISABLED`. It is not a pass, and it does not make the job exit non-zero;
+`NOT_VERIFIED` from any other cause still exits 2. Outside CI, declared checks
+run as before. Declare a check only when it cannot run for want of an
+account, not when a tool is merely missing from the runner.
 
 For a local review using the installed Muse CLI and its configured provider,
 set `UI_REVIEW_BACKEND=muse`. This does not require the CI review API key.
@@ -835,7 +865,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |
 | `test-full-audit` | `npm run test:full:audit` | repository-wide diagnostic audit | complete Vitest corpus, retaining independent failures | static / integration | diagnostic | command only |
-| `test-coverage` | `npm run test:coverage` | explicit coverage / risk | serialized coverage corpus + dogfood-reconcile | static / integration | diagnostic | command only |
+| `test-coverage` | `npm run test:coverage` | explicit coverage / risk | resource-profiled coverage slices, merged, thresholds on the merge | static / integration | diagnostic | command only |
 | `verify-static` | `npm run verify:static` | diagnostic static gate | node-runtime, naming, UI-contract, platform, workflow ratchets, lint, typecheck | static / integration | diagnostic | command only |
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
@@ -935,6 +965,17 @@ feedback listener before its lease is admitted. The actionlint policy still
 enforces that partition for any persistent Linux job. See
 [the private-runner partition guide](private-runner-partition.md) before
 changing fleet labels or adding a capacity-leased workflow.
+
+### Merge-queue regression (required)
+
+`Merge-queue regression` is a required check (since 2026-09-23). On every queue
+candidate it runs Nightly's full-regression phases, sharded across hosted jobs
+by `scripts/run-full-regression-phases.mjs`, plus the Android viewport suite.
+On pull requests it reports skipped, which the ruleset counts as passing. A red
+aggregate names real failing tests in the failed job's log: diagnose the test
+and fix it at source rather than requeueing until green. If the same failure
+appears on unrelated candidates, main itself is red, so fix main first. Flaky
+tests go through the quarantine policy below.
 
 ### Test quarantine
 

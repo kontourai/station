@@ -14,10 +14,12 @@ name: Fresh-home walkthrough
 # #766 item 2 adds a second job: the core-loop journeys
 # (tests/live/core-loop-journeys.mjs) — multi-turn continuity, the capacity
 # gate reaching the chat surface, the project deep-link reload, and the
-# pairing/approval loop. Journeys that need a signed-in Claude Code CLI
-# report NOT-EXERCISED here (hosted runners have none) and are exercised on
-# development hosts; the capacity-posture seam and the pairing loop run
-# end-to-end on this runner.
+# pairing/approval loop. Journeys that need a signed-in Claude Code CLI, and
+# the semantic image review (a funded API credential), are DISABLED here —
+# skipped before they start and listed under "Disabled in CI (requires
+# account)" in the report, without failing the job — until #2318 lets CI use
+# the owner's Station. They still run on development hosts; the
+# capacity-posture seam and the pairing loop run end-to-end on this runner.
 on:
   schedule:
     # 10:00 UTC — after the nightly's 09:00 gate, so a red walkthrough lands
@@ -132,6 +134,8 @@ jobs:
         # `./station start` builds the app on first run for its own instance;
         # the suite's own start timeout budgets it.
         timeout-minutes: 45
+        env:
+          STATION_CI_ACCOUNTS: absent
         run: npm run journeys:core-loop
 
       - name: Upload journey summary
@@ -212,6 +216,9 @@ jobs:
         id: feedback
         continue-on-error: true
         env:
+          # The image review reports DISABLED without calling the API while
+          # accounts are absent (#2318); the credential stays wired for then.
+          STATION_CI_ACCOUNTS: absent
           OPENAI_API_KEY: ${{ secrets.CODEX_REVIEW_API_KEY || secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ vars.CODEX_REVIEW_BASE_URL || 'https://api.openai.com/v1' }}
           UI_REVIEW_MODEL: ${{ vars.UI_REVIEW_MODEL || 'gpt-5.6-sol' }}

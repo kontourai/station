@@ -326,6 +326,15 @@ import {
   type SessionOutputsModule,
 } from './session-outputs-module.js';
 import {
+  effectiveOwnerAttribution,
+  type StartOwnerAttribution,
+  sessionOwnerAttributionMetadata,
+} from './session-owner-attribution.js';
+import {
+  SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
+  SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
+} from './session-project-identity.js';
+import {
   createSessionQueryModule,
   MAX_ASSISTANT_TURN_EVENTS,
   type SessionQueryModule,
@@ -1123,6 +1132,67 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * never consulted. See `project-resource-shadow.ts` for why the migration is
  * shadowed before it is flipped.
  */
+/**
+ * Replaces any caller-supplied `localProjectId` with the id of the project
+ * `metadata.projectSlug` names in this Station's own list, or removes it.
+ * A caller can therefore never assert one.
+ *
+ * Meaning (R3): `localProjectId` is "the Project named at start AND
+ * verified to contain the session's working directory". It is stamped only
+ * when the resolved start `cwd` lies inside that Project's
+ * `workingDirectory`, or is exactly the server-admitted workspace (a
+ * provisioned worktree) bound to this thread and Project. A Project with no
+ * directory, or a start whose cwd is elsewhere, is named but unverified:
+ * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
+ * cannot fall back to looking the slug up.
+ *
+ * The containment check is LEXICAL: paths are resolved and compared as
+ * strings, and symlinks inside the root are not followed. A symlink under
+ * the Project root that points elsewhere still counts as inside.
+ */
+function withSessionLocalProjectId(
+  input: ProviderSessionStartInput,
+  listProjects?: () => AttachedProjectRoot[],
+  admittedWorkspace?: { threadId: string; projectSlug?: string; cwd: string },
+): ProviderSessionStartInput {
+  const metadata = input.metadata;
+  if (!metadata) return input;
+  const { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: _untrusted, ...rest } =
+    metadata;
+  const slug =
+    typeof metadata.projectSlug === 'string' && metadata.projectSlug
+      ? metadata.projectSlug
+      : undefined;
+  const project = slug
+    ? listProjects?.().find((entry) => entry.slug === slug)
+    : undefined;
+  const cwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  const root = project?.workingDirectory
+    ? resolve(expandTilde(project.workingDirectory))
+    : undefined;
+  const cwdVerified =
+    cwd !== undefined &&
+    ((root !== undefined && isWithinDirectory(root, cwd)) ||
+      (admittedWorkspace?.threadId === input.threadId &&
+        admittedWorkspace.projectSlug === slug &&
+        admittedWorkspace.cwd === cwd));
+  const id = cwdVerified ? project?.id : undefined;
+  if (typeof id === 'string' && id)
+    return {
+      ...input,
+      metadata: { ...rest, [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: id },
+    };
+  if (project)
+    return {
+      ...input,
+      metadata: {
+        ...rest,
+        [SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY]: true,
+      },
+    };
+  return _untrusted === undefined ? input : { ...input, metadata: rest };
+}
+
 // Runtime composition resolves the current local resource before containment and
 // engine invocation. Embedded consumers without that callback retain legacy cwd
 // behavior; recovered sessions with a persisted cwd retain their original path.
@@ -3583,6 +3653,28 @@ export class OrchestrationService {
     return undefined;
   }
 
+  /**
+   * Station #90 lane D (R2): the metadata a session was STARTED with, from
+   * its first `session.started` event (else its first `session.configured`).
+   * Unlike {@link latestStartedMetadataOfThread}, later reconfiguration events
+   * cannot shadow it: Claude's CLI init, and Codex/Bedrock/Ollama model
+   * application, publish sparse `session.configured` events that omit the
+   * project binding and the `localProjectId` stamped at start.
+   */
+  firstStartedMetadataOfThread(
+    threadId: string,
+  ): Record<string, unknown> | undefined {
+    const store = this.options.eventStore;
+    for (const method of ['session.started', 'session.configured'] as const) {
+      const payload = store?.firstEventByMethod(threadId, method)?.payload as
+        | { metadata?: unknown }
+        | undefined;
+      if (payload?.metadata && typeof payload.metadata === 'object')
+        return payload.metadata as Record<string, unknown>;
+    }
+    return undefined;
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
@@ -3866,6 +3958,16 @@ export class OrchestrationService {
       boundaryId,
       indeterminate,
     );
+  }
+
+  /**
+   * Station #90 lane D (station #122): the principal a session acts for, from the
+   * ownership record only. See `SessionActingPrincipal` for the derivations.
+   */
+  resolveSessionActingPrincipal(
+    threadId: string,
+  ): import('./session-authorization.js').SessionActingPrincipal | undefined {
+    return this.sessionAuthz.sessionActingPrincipal(threadId);
   }
 
   /**
@@ -4663,6 +4765,28 @@ export class OrchestrationService {
               internal?.receiverExecutionAdmission?.admitted,
             this.options.resolveProjectSessionDirectory,
           );
+          // Station #90 lane D (D5): record the Project's local id beside its
+          // slug, from this Station's own project list, never from input.
+          startInput = withSessionLocalProjectId(
+            startInput,
+            this.options.listProjects,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+              internal?.receiverExecutionAdmission?.admitted,
+          );
+          // Station #90 lane D (R1): the one start choke point. A start an
+          // unverified agent caused (derived at the HTTP seam, carried in the
+          // dispatch context) is marked so it acts for no one.
+          const ownerAttribution = effectiveOwnerAttribution(context);
+          if (ownerAttribution) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                ...sessionOwnerAttributionMetadata(ownerAttribution),
+              },
+            };
+          }
           if (internal?.reviewIsolation) {
             startInput = {
               ...startInput,
@@ -4988,6 +5112,8 @@ export class OrchestrationService {
       principal?: PrincipalRef;
       /** Captured HTTP principal liveness; never supplied by the command body. */
       requestCurrent?: () => boolean;
+      /** Station #90 lane D (R1): see `SessionCommandContext.ownerAttribution`. */
+      ownerAttribution?: StartOwnerAttribution;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5047,6 +5173,8 @@ export class OrchestrationService {
        */
       principal?: PrincipalRef;
       requestCurrent?: () => boolean;
+      /** Station #90 lane D (R1): see `SessionCommandContext.ownerAttribution`. */
+      ownerAttribution?: StartOwnerAttribution;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5194,6 +5322,7 @@ export class OrchestrationService {
             context?.userId,
             context?.tenantExecutionContext,
             command.idempotencyKey,
+            effectiveOwnerAttribution(context ?? {}),
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke

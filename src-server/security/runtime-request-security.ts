@@ -234,6 +234,8 @@ export interface RuntimeHttpSecurityOptions {
   ) => RuntimeCredentialAuthority | undefined;
   /** Server-side paired-device lookup used only for durable provenance. */
   resolveCredentialDeviceId?: (credential: string) => string | undefined;
+  /** Alias credentials require their exact account continuation on every request. */
+  resolveCredentialAliasId?: (credential: string) => string | undefined;
   /**
    * #2323 S5: the paired device's kind, from the same record as the id.
    * Person-only plugin lifecycle routes refuse `delegation` (another Station
