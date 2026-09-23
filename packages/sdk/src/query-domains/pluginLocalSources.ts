@@ -5,6 +5,8 @@
  */
 import type { PluginLocalSourceStatus } from '@kontourai/station-contracts/plugin';
 import { _getApiBase } from '../api';
+import { apiErrorMessage } from '../client/api-error-message';
+import { authenticatedFetch } from '../client/http';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
 /**
