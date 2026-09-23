@@ -45,8 +45,10 @@ vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => stationConfig.current,
 }));
 
+const interruptOrchestrationTurn = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  interruptOrchestrationTurn,
   telemetry: { track: vi.fn() },
   useSkillsQuery: () => ({ data: [] }),
   useProviderCommandsQuery: () => ({ data: [] }),
@@ -106,7 +108,10 @@ import {
 } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
-import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
+import {
+  useCancelMessage,
+  useSendMessage,
+} from '../hooks/useActiveChatSessionMessaging';
 import { useChatInput } from '../hooks/useChatInput';
 import { sessionApprovalOverride } from '../utils/approvalMode';
 import { chatSessionIsLive } from '../utils/execution';
@@ -259,6 +264,35 @@ function renderPill() {
   };
 }
 
+/**
+ * "Never looser than main." What each probe puts on the wire (or leaves the
+ * engine at) on origin/main and on this branch. Main keeps the pick only in
+ * the model-options request bag, which a model acknowledgement clears.
+ * Main column: from the round-4 review's executed comparison where it gave
+ * one; entries marked * are derived from origin/main's code path, not run.
+ *
+ * | probe | sequence                                         | main              | branch          |
+ * |-------|--------------------------------------------------|-------------------|-----------------|
+ * | E     | desktop confirms never; phone applies Ask        | nothing*          | nothing (Ask)   |
+ * | E2    | E, with a desktop reload in between              | looser (review)   | nothing (Ask)   |
+ * | E3    | confirmed never, reload, phone tightened unseen  | looser (review)   | nothing         |
+ * | G     | desktop picks never unsent; phone applies Ask    | looser (review)   | nothing (Ask)   |
+ * | R     | desktop picks Ask unsent; phone's never lands    | Ask (review)      | Ask             |
+ * | T1    | Ask picked offline; looser reports replayed      | Ask (review)      | Ask             |
+ * | S1    | confirmed Ask; phone loosens; session ends       | Ask (review)      | Ask             |
+ * | S2    | confirmed auto; phone tightens to Ask            | nothing*          | nothing (Ask)   |
+ * | T3    | confirmed Ask; reload mid-turn; default never    | never*            | nothing         |
+ * | H     | Default picked                                   | nothing*          | nothing         |
+ * | I     | confirmed never; Ask picked; phone's turn = never| nothing* (never)  | Ask             |
+ *
+ * "(review)" is the round-4 review's executed comparison; "*" is derived
+ * from origin/main's code path (the request bag is cleared when a report
+ * acknowledges the model; the Station default is sent when liveness is not
+ * known), not run here. In parentheses: the posture the engine keeps.
+ * "nothing" leaves the engine where the other device put it, which in every
+ * such row is the stricter posture. A report only ever retires a pick it is
+ * stricter than, so no row can be looser than main.
+ */
 describe('an approval pick beside the model options (#2334)', () => {
   beforeEach(() => {
     clock = 0;
@@ -374,16 +408,32 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
   });
 
-  test('a newer differing report retires a pending pick in the other direction too', async () => {
+  test('probe R: a later LOOSER report never retires a pending pick; it is resent', async () => {
     const { composer, step, send } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
     step(() => composer.result.current.handleApprovalModeChange('ask'));
+    // The phone's full-access turn lands at a later stream position. That
+    // does not prove it was decided after the Ask: it may have been sent
+    // first. A report never loosens a pick.
     step(() => otherDeviceTurn('phone-1', 'never'));
 
-    expect(chat().pendingApprovalMode).toBeUndefined();
-    // Latest wins: the phone's later full access is not reverted from here.
-    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
-    expect(renderPill().text).toBe('Default');
+    expect(chat().pendingApprovalMode).toBe('ask');
+    expect((await send())?.options?.approvalMode).toBe('ask');
+  });
+
+  test('probe T1: an offline pick survives the looser reports replayed on reconnect', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => otherDeviceTurn('t0', 'auto'));
+    // Offline: the stream stops; the user tightens.
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    // Reconnect replays what happened meanwhile, every frame "after" the
+    // pick's position, including a looser posture.
+    step(() => otherDeviceTurn('phone-while-offline', 'never'));
+    step(() => otherDeviceTurn('phone-while-offline-2', 'auto'));
+
+    expect(chat().pendingApprovalMode).toBe('ask');
+    expect((await send())?.options?.approvalMode).toBe('ask');
   });
 
   test("probe I: another device's turn that CHANGES nothing does not retire a pending pick", async () => {
@@ -407,20 +457,88 @@ describe('an approval pick beside the model options (#2334)', () => {
   test('probe I across a reload: the posture known at the pick survives with the pending pick', () => {
     const { composer, step } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
-    step(() => otherDeviceTurn('t0', 'never'));
-    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    step(() => otherDeviceTurn('t0', 'ask'));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
     composer.unmount();
 
     expect(reload()).toMatchObject({
-      pendingApprovalMode: 'ask',
-      pendingApprovalAppliedAtPick: 'never',
+      pendingApprovalMode: 'never',
+      pendingApprovalAppliedAtPick: 'ask',
     });
-    // An ordinary turn elsewhere, same posture: still not a decision.
-    otherDeviceTurn('phone-1', 'never');
-    expect(chat().pendingApprovalMode).toBe('ask');
-    // A change of posture elsewhere is.
+    // An ordinary turn elsewhere reports the posture already in place: not a
+    // decision, though it is stricter than the pick.
+    otherDeviceTurn('phone-1', 'ask');
+    expect(chat().pendingApprovalMode).toBe('never');
+    // A stricter CHANGE elsewhere is (G across a reload): auto is stricter
+    // than the pending never, and differs from the Ask known at the pick.
     otherDeviceTurn('phone-2', 'auto');
     expect(chat().pendingApprovalMode).toBeUndefined();
+  });
+
+  test('probe S1: a LOOSER report keeps a confirmed pick as the posture a new session starts in', async () => {
+    stationConfig.current = { defaultApprovalMode: 'never' };
+    try {
+      const { composer, step, send } = renderComposer();
+      step(() => composer.result.current.handleModelSelect(modelX));
+      step(() => composer.result.current.handleApprovalModeChange('ask'));
+      await send();
+      step(() => turnStarted('t1', 'ask'));
+      step(() => turnCompleted('t1'));
+      // The phone loosens this session to full access.
+      step(() => otherDeviceTurn('phone-1', 'never'));
+
+      expect(chat().approvalModeOverride).toBe('ask');
+      const pill = renderPill();
+      expect(pill.text).toBe('Ask · unconfirmed');
+      // Not sent to the live session: the phone's choice stands there.
+      expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+      // The session ends; the next one starts in the user's Ask, not in the
+      // Station default of never.
+      step(() => fold({ method: 'session.exited', exitCode: 0 }));
+      expect((await send())?.options?.approvalMode).toBe('ask');
+    } finally {
+      stationConfig.current = undefined;
+    }
+  });
+
+  test('probe S2: a STRICTER report retires a confirmed pick', async () => {
+    const { composer, step, send } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('auto'));
+    await send();
+    step(() => turnStarted('t1', 'auto'));
+    step(() => turnCompleted('t1'));
+    step(() => otherDeviceTurn('phone-1', 'ask'));
+
+    expect(chat().approvalModeOverride).toBeUndefined();
+    expect(renderPill().text).toBe('Default');
+    step(() => fold({ method: 'session.exited', exitCode: 0 }));
+    // Nothing re-asserts the looser auto, even for a new session.
+    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+  });
+
+  test('probe T3: after a reload mid-turn (liveness unknown) neither the confirmed pick nor the Station default is sent', async () => {
+    stationConfig.current = { defaultApprovalMode: 'never' };
+    try {
+      const { composer, step, send } = renderComposer();
+      step(() => composer.result.current.handleModelSelect(modelX));
+      step(() => composer.result.current.handleApprovalModeChange('ask'));
+      await send();
+      // The turn is still running when the tab reloads.
+      step(() => turnStarted('t1', 'ask'));
+      composer.unmount();
+
+      reload();
+      // The live status is not restored (archive#3300): unknown, not ended.
+      expect(chatSessionIsLive(chat())).toBe(false);
+      expect(chat().orchestrationSessionStarted).toBe(true);
+      const fresh = renderComposer();
+      expect((await fresh.send())?.options ?? {}).not.toHaveProperty(
+        'approvalMode',
+      );
+    } finally {
+      stationConfig.current = undefined;
+    }
   });
 
   test('probe E: a revoke on another device retires the confirmed pick; nothing re-escalates', async () => {
@@ -788,6 +906,61 @@ describe('an approval pick beside the model options (#2334)', () => {
     // The drained follow-up is marked in flight, so a pick made now knows
     // its report predates the pick.
     expect(chat().pendingClientTurnId).toBeDefined();
+  });
+
+  /** Drives probe D up to the drained follow-up's dispatch. */
+  async function drainFollowUp() {
+    const { composer, step, sender } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    await act(async () => {
+      await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'first');
+    });
+    step(() => turnStarted('t1', undefined));
+    await act(async () => {
+      await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'follow-up');
+    });
+    sendExecutionMessage.mockClear();
+    step(() => turnCompleted('t1'));
+    await vi.waitFor(() => expect(sendExecutionMessage).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
+    const [, drained] = sendExecutionMessage.mock.calls[0] ?? [];
+    const clientTurnId = (drained as { clientTurnId: string }).clientTurnId;
+    return { step, clientTurnId };
+  }
+
+  test("LOW-1: the drained follow-up's turn.started reconciles its optimistic row, not a second copy", async () => {
+    const { step, clientTurnId } = await drainFollowUp();
+    expect(chat().pendingClientTurnId).toBe(clientTurnId);
+    step(() =>
+      fold({
+        method: 'turn.started',
+        turnId: 't2',
+        prompt: 'follow-up',
+        metadata: { effectiveModel: 'model-x', effectiveModelOptions: {} },
+      }),
+    );
+    const rows = (chat().messages ?? []).filter(
+      (message) => message.role === 'user' && message.content === 'follow-up',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ turnId: 't2' });
+    expect(chat().pendingClientTurnId).toBeUndefined();
+  });
+
+  test('LOW-1: Stop before the drained follow-up starts binds its cancel to that dispatch', async () => {
+    const { clientTurnId } = await drainFollowUp();
+    interruptOrchestrationTurn.mockResolvedValue({
+      outcome: 'pending-turn-start',
+      threadId: SESSION_ID,
+    });
+    const cancel = renderHook(() => useCancelMessage('http://station.test'));
+    await act(async () => {
+      await cancel.result.current(SESSION_ID);
+    });
+    expect(interruptOrchestrationTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ clientTurnId }),
+    );
   });
 
   /** A reload: serialize to storage and hydrate back into the store. */

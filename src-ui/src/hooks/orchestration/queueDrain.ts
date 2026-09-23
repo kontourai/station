@@ -6,7 +6,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { approvalModeToSend } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
-import { chatSessionIsLive } from '../../utils/execution';
+import { chatSessionKnownEnded } from '../../utils/execution';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
 
@@ -208,12 +208,12 @@ export function drainQueuedMessageOnTurnCompleted(
       providerOptions: current.providerOptions,
       // #2334: a pending approval pick rides beside the options on every
       // send path; a follow-up drained without it ran under the posture the
-      // engine last applied. A confirmed pick is not resent to the live
-      // session (`approvalModeToSend`). No `approvalModeFallback`: a queued
+      // engine last applied. A confirmed pick goes only to a session known
+      // to have ended (`approvalModeToSend`). No `approvalModeFallback`: a queued
       // message never starts the session (see approvalModeForDispatch).
       approvalModeOverride: approvalModeToSend(
         current,
-        chatSessionIsLive(current),
+        chatSessionKnownEnded(current),
       ),
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,

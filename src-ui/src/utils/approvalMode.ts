@@ -301,34 +301,40 @@ export function approvalModeForDispatch(input: {
 
 /**
  * #2334: the session approval pick, across devices. The engine holds its own
- * posture; the client never re-asserts one it already saw applied, and the
- * latest decision wins.
+ * posture, and ANOTHER device's report may only move this device's pick in
+ * the STRICTER direction (permissiveness: ask < auto < never). A report never
+ * loosens a pick. That is what keeps this model never looser than a client
+ * that simply resends its pick (the pre-#2334 behaviour), while a stricter
+ * decision made elsewhere is not overridden from here.
  *
  * - A CONFIRMED pick (`approvalModeOverride`) is one a report showed the
- *   engine applying. It labels the chip, and is sent only to START a new
- *   session (after a reload, or when the old one ended). It is never resent
- *   to a live session: that session already holds a posture, possibly one a
- *   newer decision on another device set. It survives a reload as confirmed.
+ *   engine applying. It labels the chip, and is sent only when this send
+ *   starts a session known to have ended or never started
+ *   (`chatSessionKnownEnded`). It is never sent while the session is live or
+ *   its liveness is unknown (e.g. after a reload mid-turn, before the
+ *   reconnect snapshot). It survives a reload as confirmed.
+ *   - A STRICTER differing report retires it (someone tightened).
+ *   - A LOOSER differing report keeps it, shown as unconfirmed for this
+ *     session: it stays the posture a new session starts in.
  * - A PENDING pick (`pendingApprovalMode`) is one this client made and the
  *   engine has not shown applying. It is sent with every turn until a report
  *   settles it. It records the latest server stream position this client had
- *   seen when the user picked (`pendingApprovalPickedAt`), and the dispatch
- *   that was already in flight (`pendingApprovalBehindTurn`), and the posture
- *   the engine last reported at that moment (`pendingApprovalAppliedAtPick`),
- *   so a report can be ordered against it:
+ *   seen when the user picked (`pendingApprovalPickedAt`), the dispatch that
+ *   was already in flight (`pendingApprovalBehindTurn`), and the posture the
+ *   engine last reported at that moment (`pendingApprovalAppliedAtPick`):
  *   - a report that MATCHES confirms it;
  *   - a report from BEFORE the pick (at or under the recorded position, or
  *     the report of the dispatch that was already in flight) is stale and is
- *     ignored, so the pick stays pending (refuted approach 2);
- *   - a report from AFTER the pick whose posture CHANGED since the pick means
- *     someone decided later, and retires the pick, in either direction: the
- *     latest decision wins. A later report of the SAME posture as at the pick
- *     is not a decision (a report says what applied, not that anyone chose
- *     it: another device's ordinary message reports the posture it found),
- *     so the pick stays pending. With no posture known at the pick, any
- *     differing later report counts as a decision.
- * - Any report that differs from a confirmed pick retires it: the posture
- *   changed after it was confirmed.
+ *     ignored (refuted approach 2);
+ *   - a report from AFTER the pick retires it only when it is STRICTER than
+ *     the pick AND the posture changed since the pick (a report of the
+ *     posture already in place is nobody's decision). A later position is
+ *     not proof of a later decision (another device's turn may have been
+ *     dispatched first; an offline replay makes every report "later"), so a
+ *     LOOSER report never retires: the pick stays pending and is resent.
+ * - `connection-default` names no posture and has no rank, so it is never
+ *   "stricter": a report of it retires nothing. Keeping the pick is the
+ *   resend-it behaviour, so this cannot be looser than that.
  *
  * Positions are the server's own event-stream sequence, never a wall clock.
  */
@@ -337,8 +343,10 @@ export interface SessionApprovalOverride {
   /**
    * - `requested`: a pending pick; the next send carries it.
    * - `unconfirmed`: a confirmed pick with no report of it applying to THIS
-   *   session yet (restored after a reload, or the posture changed since).
-   *   It is not sent to a live session, so nothing will make it true there.
+   *   session yet (restored after a reload, or a looser posture reported
+   *   since). It is sent only when a send starts a session known to have
+   *   ended or never started; never while the session is live or its
+   *   liveness is unknown, so nothing makes it true for the current session.
    * - `confirmed`: the engine's latest report shows it applied.
    */
   state: 'requested' | 'unconfirmed' | 'confirmed';
@@ -402,18 +410,35 @@ export function sessionApprovalOverride(
 
 /**
  * The approval mode a send puts on the wire as the session's own pick: the
- * pending pick always; the confirmed pick only when this send STARTS a
- * session (`sessionLive` false). See the model above.
+ * pending pick always; the confirmed pick only when the session is KNOWN to
+ * have ended or never started (`sessionKnownEnded`, from
+ * `chatSessionKnownEnded`). See the model above.
  */
 export function approvalModeToSend(
   chat: ApprovalPickState | null | undefined,
-  sessionLive: boolean,
+  sessionKnownEnded: boolean,
 ): ApprovalMode | undefined {
   if (!chat) return undefined;
   if (isApprovalMode(chat.pendingApprovalMode)) return chat.pendingApprovalMode;
-  if (!sessionLive && isApprovalMode(chat.approvalModeOverride))
+  if (sessionKnownEnded && isApprovalMode(chat.approvalModeOverride))
     return chat.approvalModeOverride;
   return undefined;
+}
+
+/** How much a posture lets the engine do without asking. */
+const APPROVAL_PERMISSIVENESS: Partial<Record<ApprovalMode, number>> = {
+  ask: 0,
+  auto: 1,
+  never: 2,
+};
+
+/** Whether `report` is provably STRICTER than `pick` (both ranked). */
+function isStricter(report: ApprovalMode, pick: ApprovalMode): boolean {
+  const reportRank = APPROVAL_PERMISSIVENESS[report];
+  const pickRank = APPROVAL_PERMISSIVENESS[pick];
+  return (
+    reportRank !== undefined && pickRank !== undefined && reportRank < pickRank
+  );
 }
 
 const CLEAR_PENDING = {
@@ -483,15 +508,12 @@ export function approvalPickUpdate(
 /**
  * The chat update for an engine report of the mode actually applied
  * (`session.configured` / `turn.started` metadata), at server stream
- * `position` when known. Applies the model documented above
- * (`SessionApprovalOverride`).
- *
- * A report with no known position cannot be ordered against a pending pick,
- * so it is treated as stale: the pick stays pending. A pick the engine never
- * reports back (e.g. a Codex review-isolation turn, whose knobs the adapter
- * fixes, reports another mode, which retires it; an engine that reports
- * nothing leaves it pending and resent). Accepted: resending a pick the user
- * made is harmless.
+ * `position` when known. Applies the model documented on
+ * `SessionApprovalOverride`: a report only ever retires a pick it is
+ * STRICTER than. A report with no known position cannot be ordered against a
+ * pending pick, so it is treated as stale. A pick the engine never reports
+ * back (e.g. a Codex review-isolation turn) stays pending and resent;
+ * accepted as harmless.
  */
 export function settleApprovalPick(
   chat: ApprovalPickState | null | undefined,
@@ -511,12 +533,15 @@ export function settleApprovalPick(
       (chat.pendingApprovalPickedAt === undefined ||
         position > chat.pendingApprovalPickedAt);
     const postureChanged = applied !== chat.pendingApprovalAppliedAtPick;
-    return afterPick && !fromDispatchBeforePick && postureChanged
+    return afterPick &&
+      !fromDispatchBeforePick &&
+      postureChanged &&
+      isStricter(applied, pending)
       ? { ...CLEAR_PENDING, approvalModeOverride: undefined }
       : {};
   }
   return chat.approvalModeOverride !== undefined &&
-    chat.approvalModeOverride !== applied
+    isStricter(applied, chat.approvalModeOverride)
     ? { approvalModeOverride: undefined }
     : {};
 }

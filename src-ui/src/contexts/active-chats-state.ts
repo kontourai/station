@@ -362,9 +362,10 @@ export type ChatUIState = {
   pendingApprovalAppliedAtPick?: ApprovalMode;
   /**
    * An approval pick a report showed the engine applying (#2334). Persisted
-   * as confirmed: it is never resent to a live session, only used to start a
-   * new one (`approvalModeToSend`), so restoring it cannot override a newer
-   * decision made on another device.
+   * as confirmed: it is sent only to start a session known to have ended or
+   * never started (`approvalModeToSend`), never to a session that is live or
+   * of unknown liveness, so restoring it cannot override a decision made on
+   * another device.
    */
   approvalModeOverride?: ApprovalMode;
   orchestrationSessionStarted?: boolean;
@@ -881,9 +882,10 @@ export function serializeActiveChats(
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
       // #2334: both picks survive a reload as what they are. The confirmed
-      // one starts a fresh session in the user's posture (never resent to a
-      // live one); the pending one keeps its stream position, so a report
-      // made after it still retires it.
+      // one starts a fresh session in the user's posture (only once the old
+      // session is known to have ended); the pending one keeps its stream
+      // position and the posture known at the pick, so a later stricter
+      // report still retires it.
       ...(chat.pendingApprovalMode
         ? {
             pendingApprovalMode: chat.pendingApprovalMode,

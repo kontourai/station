@@ -35,6 +35,7 @@ import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeForDispatch,
   approvalModeToSend,
+  sessionApprovalOverride,
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
@@ -42,6 +43,7 @@ import {
 } from '../utils/chatErrorTranslation';
 import {
   chatSessionIsLive,
+  chatSessionKnownEnded,
   resolveSessionEngineConnectionId,
   sessionAdapterSupportsSteering,
 } from '../utils/execution';
@@ -372,12 +374,16 @@ export function useSendMessage(
         // The approval pick travels beside the model options (#2334). It is
         // session posture, not message content: a replayed turn sends the
         // chat's CURRENT pick, never the one it was queued with. A confirmed
-        // pick goes only to a session this send starts; a live session holds
-        // its own posture (see `approvalModeToSend`).
+        // pick goes only to a session known to have ended or never started
+        // (see `approvalModeToSend`).
         const dispatchedApprovalOverride = approvalModeToSend(
           currentState,
-          chatSessionIsLive(currentState),
+          chatSessionKnownEnded(currentState),
         );
+        // The session's own pick, sent or withheld, outranks the defaults
+        // below it: a confirmed pick withheld because liveness is unknown
+        // must not let the Station default be sent in its place.
+        const sessionApprovalPick = sessionApprovalOverride(currentState)?.mode;
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
@@ -395,7 +401,7 @@ export function useSendMessage(
             // outlives its session, and a reopened conversation is marked
             // started whether or not anything is running (round 3 F1).
             sessionAlreadyStarted: chatSessionIsLive(currentState),
-            sessionOverride: dispatchedApprovalOverride,
+            sessionOverride: sessionApprovalPick,
             connectionDefault: agentConnections.find(
               (connection) => connection.id === sessionEngineConnectionId,
             )?.config.approvalMode,

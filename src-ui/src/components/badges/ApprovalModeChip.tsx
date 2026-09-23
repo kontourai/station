@@ -135,8 +135,10 @@ export function ApprovalModeChip({
   const displayedMode = isOverride
     ? effective.mode
     : (appliedMode ?? effective.mode);
-  // A restored pick with no report for this session is not sent to it
-  // (`approvalModeToSend`), so "takes effect next turn" would be false.
+  // An unconfirmed pick is sent only when a new session starts after the old
+  // one is known to have ended (`approvalModeToSend`), never to a session
+  // that is live or of unknown liveness, so "takes effect next turn" would
+  // be false.
   const isUnconfirmed = isOverride && sessionOverrideState === 'unconfirmed';
   const isPendingApply =
     isOverride &&
@@ -150,9 +152,10 @@ export function ApprovalModeChip({
   // pick (e.g. a pending Ask against an applied `auto`) keeps the plain
   // visible label #1933 pins; its accessible name still says it is not
   // confirmed (`pendingNote` below). An UNCONFIRMED pick is shown as such
-  // visibly ("· unconfirmed"): it is never resent to a live session, and
-  // another device may have set that session to anything, including full
-  // access, so a bare label could overclaim in the dangerous direction.
+  // visibly ("· unconfirmed"): it is not sent to the current session (only a
+  // session known to have ended gets it), and another device may have set
+  // that session to anything, including full access, so a bare label could
+  // overclaim in the dangerous direction.
   const isPendingRestrict =
     isOverride &&
     sessionOverrideState === 'requested' &&
