@@ -16,10 +16,15 @@
  * `contentDigest`), not with the installed artifact's digest, which includes
  * the built bundle and never equals a source tree.
  *
+ * Cost: Projects are member-creatable, so many Projects can name one
+ * folder. Each canonical folder is walked at most once per request,
+ * concurrent requests join a walk already in flight, and one request walks
+ * at most LOCAL_SOURCE_STATUS_MAX_FOLDERS distinct folders.
+ *
  * Read-only: nothing here stages, builds, installs or writes. The result
  * names plugins and Projects, never a host path.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import type { PluginLocalSourceStatus } from '@kontourai/station-contracts/plugin';
 import { expandTilde } from '../../utils/paths.js';
@@ -28,14 +33,47 @@ import type {
   PackageMcpInstallation,
 } from './package-mcp-admission.js';
 import { pluginAcquisitionOrigin } from './plugin-acquisition-origin.js';
-import { observeLocalPluginSourceDigest } from './plugin-source-digest.js';
+import {
+  type LocalSourceDigestObservation,
+  observeLocalPluginSourceDigest,
+} from './plugin-source-digest.js';
 import { resolvePluginValidateSource } from './plugin-validate-source.js';
+
+/** The one sentence a caller sees when the installation journal is unreadable. */
+export const PLUGIN_INSTALLATIONS_UNAVAILABLE =
+  'Plugin installations are unavailable; reload Plugins and retry.';
 
 export class PluginInstallationsUnavailableError extends Error {
   constructor() {
-    super('Plugin installations are unavailable; reload Plugins and retry.');
+    super(PLUGIN_INSTALLATIONS_UNAVAILABLE);
     this.name = 'PluginInstallationsUnavailableError';
   }
+}
+
+/**
+ * The most distinct source folders one request walks (#2323 S4 review).
+ * Projects are member-creatable, so the Project list is not a cost bound;
+ * the number of distinct matching folders is. Past it, a folder reads
+ * `unknown` / `too-many-sources` rather than being walked.
+ */
+export const LOCAL_SOURCE_STATUS_MAX_FOLDERS = 16;
+
+/**
+ * Walks in flight, by canonical folder, shared across requests: concurrent
+ * status reads of one folder share one walk. Entries leave when the walk
+ * settles, so nothing here is a cache; a later read walks again and sees
+ * later edits.
+ */
+const inFlightWalks = new Map<string, Promise<LocalSourceDigestObservation>>();
+
+function observeShared(folder: string): Promise<LocalSourceDigestObservation> {
+  const joined = inFlightWalks.get(folder);
+  if (joined) return joined;
+  const walk = observeLocalPluginSourceDigest(folder).finally(() => {
+    inFlightWalks.delete(folder);
+  });
+  inFlightWalks.set(folder, walk);
+  return walk;
 }
 
 export async function observeLocalPluginSourceStatuses(input: {
@@ -58,6 +96,9 @@ export async function observeLocalPluginSourceStatuses(input: {
   }
   if (byOrigin.size === 0) return [];
 
+  // One walk per canonical folder per request, however many Projects name
+  // it, and at most LOCAL_SOURCE_STATUS_MAX_FOLDERS of them.
+  const walks = new Map<string, Promise<LocalSourceDigestObservation>>();
   const statuses: PluginLocalSourceStatus[] = [];
   for (const project of input.projects) {
     const stored = project.workingDirectory?.trim();
@@ -68,11 +109,13 @@ export async function observeLocalPluginSourceStatuses(input: {
     // Project folder on a UNC or automount path is never stat-ed here.
     const resolved = resolvePluginValidateSource(expanded);
     if (!resolved.ok || !existsSync(resolved.path)) continue;
+    let folder: string;
     let origin: string;
     try {
+      folder = realpathSync.native(resolved.path);
       origin = pluginAcquisitionOrigin({
         projectHomeDir: input.projectHomeDir,
-        source: resolved.path,
+        source: folder,
       });
     } catch {
       continue;
@@ -97,7 +140,21 @@ export async function observeLocalPluginSourceStatuses(input: {
         });
         continue;
       }
-      const observed = await observeLocalPluginSourceDigest(resolved.path);
+      let walk = walks.get(folder);
+      if (!walk) {
+        if (walks.size >= LOCAL_SOURCE_STATUS_MAX_FOLDERS) {
+          statuses.push({
+            ...base,
+            status: 'unknown',
+            reason: 'too-many-sources',
+            installedSourceDigest,
+          });
+          continue;
+        }
+        walk = observeShared(folder);
+        walks.set(folder, walk);
+      }
+      const observed = await walk;
       if ('unavailable' in observed) {
         statuses.push({
           ...base,

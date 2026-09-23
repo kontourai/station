@@ -680,6 +680,13 @@ export function usePluginManagementViewModel() {
       projectName: project.name,
       installedVersion: plugin.version,
       grantedPermissions: plugin.permissions?.granted ?? [],
+      installedGrants: Object.fromEntries(
+        plugins.flatMap((entry) =>
+          isRejectedPlugin(entry)
+            ? []
+            : [[entry.name, entry.permissions?.granted ?? []]],
+        ),
+      ),
       ...(status.installedSourceDigest
         ? { installedSourceDigest: status.installedSourceDigest }
         : {}),

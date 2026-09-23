@@ -497,6 +497,8 @@ function unknownSourceReason(
       return 'the folder is too large to compare.';
     case 'unreadable':
       return 'the folder could not be read.';
+    case 'too-many-sources':
+      return 'too many Project folders are plugin sources to compare them all at once.';
     case 'not-recorded':
       return 'the installation has no record of its source to compare with.';
     case 'source-path-not-absolute':

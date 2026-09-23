@@ -178,5 +178,11 @@ export interface ReinstallFromSource {
   projectName: string;
   installedVersion: string;
   grantedPermissions: string[];
+  /**
+   * Current grants of each INSTALLED plugin, by id, so a dependency's
+   * requested permissions can be compared with what it holds now. A
+   * dependency absent here is not installed: everything it requests is new.
+   */
+  installedGrants: Record<string, string[]>;
   installedSourceDigest?: string;
 }

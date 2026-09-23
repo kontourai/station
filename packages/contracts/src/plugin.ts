@@ -438,6 +438,11 @@ export type PluginLocalSourceUnknownReason =
   | 'too-large'
   /** The folder could not be read. */
   | 'unreadable'
+  /**
+   * More distinct source folders matched than one status read walks; this
+   * one was not compared.
+   */
+  | 'too-many-sources'
   /** The installation carries no recorded source digest to compare with. */
   | 'not-recorded'
   /**

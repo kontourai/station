@@ -1,6 +1,6 @@
 import { describePermission } from '../../core/permission-vocabulary';
 import type { PreviewData, ReinstallFromSource } from './types';
-import { reinstallDelta } from './view-utils';
+import { type ReinstallPermissionChange, reinstallDelta } from './view-utils';
 
 /**
  * #2323 S4: what "Reinstall from source" changes, shown in the preview
@@ -62,7 +62,7 @@ function PermissionList({
   testId,
 }: {
   title: string;
-  permissions: string[];
+  permissions: ReinstallPermissionChange[];
   testId: string;
 }) {
   if (permissions.length === 0) return null;
@@ -70,9 +70,11 @@ function PermissionList({
     <div data-testid={testId}>
       <div className="plugins__preview-deps-label">{title}</div>
       <ul className="plugins__reinstall-permissions">
-        {permissions.map((permission) => (
-          <li key={permission}>
-            {describePermission(permission)} <code>{permission}</code>
+        {permissions.map((entry) => (
+          <li key={`${entry.dependency ?? ''}:${entry.permission}`}>
+            {entry.dependency ? `Dependency ${entry.dependency}: ` : ''}
+            {describePermission(entry.permission)}{' '}
+            <code>{entry.permission}</code>
           </li>
         ))}
       </ul>

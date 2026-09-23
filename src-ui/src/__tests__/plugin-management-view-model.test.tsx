@@ -1321,6 +1321,7 @@ describe('#2323 S4 reinstall from source', () => {
       projectName: 'Pulse Lab',
       installedVersion: '1.0.0',
       grantedPermissions: ['navigation.dock', 'network.fetch'],
+      installedGrants: { pulse: ['navigation.dock', 'network.fetch'] },
       installedSourceDigest: 'sha256:installed',
     });
 

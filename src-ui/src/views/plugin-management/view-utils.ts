@@ -165,13 +165,23 @@ export function soleLayoutTargetProject<
   return projects.length === 1 ? projects[0] : null;
 }
 
+export interface ReinstallPermissionChange {
+  permission: string;
+  /** Set when the permission belongs to a dependency, not the plugin itself. */
+  dependency?: string;
+}
+
 /**
- * #2323 S4: what a reinstall from source changes, against the installed
- * plugin. Permissions are compared with the plugin's CURRENT grants, so
- * "added" is what the new version requests that the plugin does not hold
- * now, and "removed" is what it holds now that the new version no longer
- * requests. This is disclosure, not the decision: the consent step still
+ * #2323 S4: what a reinstall from source changes, against what is installed.
+ *
+ * Permissions are compared with CURRENT grants. "added" is what the new
+ * version, or a dependency it brings, requests and does not hold now (a
+ * dependency that is not installed holds nothing). "removed" is what the
+ * plugin itself holds now and the new version no longer requests; a
+ * dependency's grants are never dropped by a reinstall, so they are not
+ * listed there. This is disclosure, not the decision: the consent step still
  * asks exactly what it asks for any install.
+ *
  * "Code" compares the preview's digest with the source digest the
  * installation recorded; with no recorded digest it is `unknown`, never
  * `unchanged`. A preview that reported no permissions has no permission
@@ -180,11 +190,14 @@ export function soleLayoutTargetProject<
 export function reinstallDelta(
   installed: Pick<
     ReinstallFromSource,
-    'grantedPermissions' | 'installedSourceDigest'
+    'grantedPermissions' | 'installedGrants' | 'installedSourceDigest'
   >,
-  preview: Pick<PreviewData, 'contentDigest' | 'permissions'>,
+  preview: Pick<PreviewData, 'contentDigest' | 'permissions' | 'dependencies'>,
 ): {
-  permissions: { added: string[]; removed: string[] } | null;
+  permissions: {
+    added: ReinstallPermissionChange[];
+    removed: ReinstallPermissionChange[];
+  } | null;
   code: 'changed' | 'unchanged' | 'unknown';
 } {
   const code =
@@ -196,10 +209,25 @@ export function reinstallDelta(
   if (!preview.permissions) return { permissions: null, code };
   const required = new Set(preview.permissions.required);
   const granted = new Set(installed.grantedPermissions);
+  const added: ReinstallPermissionChange[] = [...required]
+    .filter((entry) => !granted.has(entry))
+    .sort()
+    .map((permission) => ({ permission }));
+  for (const dependency of preview.dependencies ?? []) {
+    const held = new Set(installed.installedGrants[dependency.id] ?? []);
+    for (const permission of [
+      ...new Set(dependency.consent?.permissions ?? []),
+    ].sort())
+      if (!held.has(permission))
+        added.push({ permission, dependency: dependency.id });
+  }
   return {
     permissions: {
-      added: [...required].filter((entry) => !granted.has(entry)).sort(),
-      removed: [...granted].filter((entry) => !required.has(entry)).sort(),
+      added,
+      removed: [...granted]
+        .filter((entry) => !required.has(entry))
+        .sort()
+        .map((permission) => ({ permission })),
     },
     code,
   };

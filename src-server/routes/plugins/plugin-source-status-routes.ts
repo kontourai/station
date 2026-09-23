@@ -28,6 +28,7 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-r
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
   observeLocalPluginSourceStatuses,
+  PLUGIN_INSTALLATIONS_UNAVAILABLE,
   PluginInstallationsUnavailableError,
 } from '../../services/plugins/plugin-local-source-status.js';
 import type { Logger } from '../../utils/logger.js';
@@ -74,11 +75,7 @@ export function createPluginSourceStatusRoutes(
     } catch (error) {
       if (error instanceof PluginInstallationsUnavailableError)
         return c.json(
-          {
-            success: false,
-            error:
-              'Plugin installations are unavailable; reload Plugins and retry.',
-          },
+          { success: false, error: PLUGIN_INSTALLATIONS_UNAVAILABLE },
           503,
         );
       deps.logger.warn('Plugin source status failed', {

@@ -14,6 +14,7 @@ const reinstall: ReinstallFromSource = {
   projectName: 'Pulse Lab',
   installedVersion: '1.0.0',
   grantedPermissions: ['navigation.dock', 'network.fetch'],
+  installedGrants: { 'shared-lib': ['network.fetch'] },
   installedSourceDigest: 'sha256:installed',
 };
 
@@ -106,6 +107,51 @@ describe('#2323 S4 reinstall delta', () => {
     expect(screen.getByTestId('reinstall-delta-code').textContent).toBe(
       'The code is the same as what is installed.',
     );
+  });
+
+  test('a dependency’s permissions it does not hold now are listed as added, so "No permission changes" cannot hide them', () => {
+    const dependency = (id: string, permissions: string[]) => ({
+      id,
+      status: 'will-install',
+      consent: {
+        contentDigest: `sha256:${id}`,
+        permissions,
+        dependencies: [],
+        pendingConsent: [],
+      },
+    });
+    renderModal(
+      preview({
+        contentDigest: 'sha256:installed',
+        // The plugin's own permissions are exactly what it holds.
+        permissions: {
+          required: ['navigation.dock', 'network.fetch'],
+          autoGranted: ['navigation.dock'],
+          pendingConsent: [],
+        },
+        dependencies: [
+          // Installed, holds network.fetch already, now also asks agents.invoke.
+          dependency('shared-lib', ['network.fetch', 'agents.invoke']),
+          // Not installed: everything it asks is new.
+          dependency('new-lib', ['tools.invoke']),
+        ],
+      }),
+    );
+    expect(
+      screen.queryByTestId('reinstall-delta-permissions-unchanged'),
+    ).toBeNull();
+    const added = screen.getByTestId('reinstall-delta-added');
+    const items = within(added)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toContain('Dependency shared-lib:');
+    expect(items[0]).toContain('agents.invoke');
+    expect(items[1]).toContain('Dependency new-lib:');
+    expect(items[1]).toContain('tools.invoke');
+    // A dependency grant it already holds is not a change.
+    expect(added.textContent).not.toContain('network.fetch');
+    expect(screen.queryByTestId('reinstall-delta-removed')).toBeNull();
   });
 
   test('with no recorded installed digest the code comparison is unknown, never unchanged', () => {

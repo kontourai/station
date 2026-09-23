@@ -17,7 +17,7 @@
  * that grows in between is read in full (the bound is a cost guard, not a
  * guarantee).
  */
-import { lstatSync, readdirSync } from 'node:fs';
+import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { observePluginTreeAsync } from '@kontourai/station-shared/plugin-tree-digest';
 
@@ -30,27 +30,30 @@ const LOCAL_SOURCE_DIGEST_MAX_BYTES = 64 * 1024 * 1024;
  * following links, stopping at the first bound crossed. Mirrors the digest's
  * own walk (root `.git` excluded), so a tree inside the bounds is one the
  * digest will read in full. Returns `null` when the tree could not be read.
+ *
+ * Asynchronous on purpose (#2323 S4 review): a request-path caller must not
+ * hold the event loop for a 5000-entry walk.
  */
-function withinDigestBounds(root: string): boolean | null {
+async function withinDigestBounds(root: string): Promise<boolean | null> {
   let entries = 0;
   let bytes = 0;
-  const walk = (dir: string, top: boolean): boolean => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  const walk = async (dir: string, top: boolean): Promise<boolean> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
       if (top && entry.name === '.git') continue;
       entries += 1;
       if (entries > LOCAL_SOURCE_DIGEST_MAX_ENTRIES) return false;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (!walk(path, false)) return false;
+        if (!(await walk(path, false))) return false;
       } else if (entry.isFile()) {
-        bytes += lstatSync(path).size;
+        bytes += (await lstat(path)).size;
         if (bytes > LOCAL_SOURCE_DIGEST_MAX_BYTES) return false;
       }
     }
     return true;
   };
   try {
-    return walk(root, true);
+    return await walk(root, true);
   } catch {
     return null;
   }
@@ -63,7 +66,7 @@ export type LocalSourceDigestObservation =
 export async function observeLocalPluginSourceDigest(
   path: string,
 ): Promise<LocalSourceDigestObservation> {
-  const bounded = withinDigestBounds(path);
+  const bounded = await withinDigestBounds(path);
   if (bounded === null) return { unavailable: 'unreadable' };
   if (!bounded) return { unavailable: 'too-large' };
   const digest = (await observePluginTreeAsync(path))?.digest;

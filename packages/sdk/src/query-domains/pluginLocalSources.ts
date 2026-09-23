@@ -34,5 +34,13 @@ async function fetchPluginLocalSources(): Promise<PluginLocalSourceStatus[]> {
 export function usePluginLocalSourcesQuery(
   config?: QueryConfig<PluginLocalSourceStatus[]>,
 ) {
-  return useApiQuery(['plugin-sources'], fetchPluginLocalSources, config);
+  // A folder changes outside this client (an agent edits it), and Station
+  // disables refetch-on-mount by default. So the answer is short-lived and
+  // re-read whenever the Plugins view mounts, or an edit would not surface
+  // the Reinstall offer until the default five-minute staleness ran out.
+  return useApiQuery(['plugin-sources'], fetchPluginLocalSources, {
+    staleTime: 30_000,
+    refetchOnMount: true,
+    ...config,
+  });
 }

@@ -34,12 +34,20 @@ import {
   PrincipalUnresolvedError,
 } from '../../../services/identity/principal-resolver.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { pluginAcquisitionOrigin } from '../../../services/plugins/plugin-acquisition-origin.js';
 import { resolveInstalledPluginRoot } from '../../../services/plugins/plugin-incarnation.js';
+import {
+  LOCAL_SOURCE_STATUS_MAX_FOLDERS,
+  observeLocalPluginSourceStatuses,
+} from '../../../services/plugins/plugin-local-source-status.js';
 import { LOCAL_SOURCE_DIGEST_MAX_ENTRIES } from '../../../services/plugins/plugin-source-digest.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import { createPluginSourceStatusRoutes } from '../plugin-source-status-routes.js';
 
-const observeTree = vi.hoisted(() => vi.fn());
+const { observeTree, real } = vi.hoisted(() => ({
+  observeTree: vi.fn(),
+  real: { observe: null as unknown as (...args: unknown[]) => unknown },
+}));
 vi.mock(
   '@kontourai/station-shared/plugin-tree-digest',
   async (importOriginal) => {
@@ -48,6 +56,7 @@ vi.mock(
         typeof import('@kontourai/station-shared/plugin-tree-digest')
       >();
     observeTree.mockImplementation(actual.observePluginTreeAsync);
+    real.observe = actual.observePluginTreeAsync as never;
     return { ...actual, observePluginTreeAsync: observeTree };
   },
 );
@@ -59,6 +68,7 @@ afterEach(() => {
   for (const home of homes.splice(0))
     rmSync(home, { recursive: true, force: true });
   observeTree.mockClear();
+  observeTree.mockImplementation(real.observe);
 });
 
 const logger = {
@@ -381,5 +391,103 @@ describe('#2323 S4 reinstall from source', () => {
         installedSourceDigest: preview.contentDigest,
       }),
     ]);
+  });
+});
+
+describe('#2323 S4 review: the walk is bounded by folders, not by Projects', () => {
+  /** Calls to the tree digest that read the fixture source folder. */
+  const walksOf = (folder: string) =>
+    observeTree.mock.calls.filter(
+      ([path]) => realpathSync(path as string) === realpathSync(folder),
+    ).length;
+
+  test('forty Projects naming one source folder (through two spellings) walk it once', async () => {
+    const f = fixture();
+    await f.previewAndInstall(f.source);
+    const alias = join(f.home, 'alias');
+    symlinkSync(f.source, alias);
+    f.projects.splice(
+      0,
+      f.projects.length,
+      ...Array.from({ length: 40 }, (_, index) => ({
+        slug: `p${index}`,
+        workingDirectory: index % 2 ? alias : f.source,
+      })),
+    );
+    observeTree.mockClear();
+    const sources = await f.sources();
+    expect(sources).toHaveLength(40);
+    expect(sources.every((entry) => entry.status === 'unchanged')).toBe(true);
+    expect(walksOf(f.source)).toBe(1);
+  });
+
+  test('concurrent status reads share one walk of a folder', async () => {
+    const f = fixture();
+    await f.previewAndInstall(f.source);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    observeTree.mockClear();
+    observeTree.mockImplementation(async (...args: unknown[]) => {
+      await gate;
+      return real.observe(...args);
+    });
+    const reads = Promise.all([f.sources(), f.sources(), f.sources()]);
+    // Let all three requests reach the walk before it finishes.
+    await vi.waitFor(() => expect(observeTree).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    const results = await reads;
+    expect(results.map((entry) => entry[0]?.status)).toEqual([
+      'unchanged',
+      'unchanged',
+      'unchanged',
+    ]);
+    expect(walksOf(f.source)).toBe(1);
+    // Nothing is cached once the walk settles: a later read walks again.
+    await f.sources();
+    expect(walksOf(f.source)).toBe(2);
+  });
+
+  test('past the per-request folder cap a source reads unknown / too-many-sources and is not walked', async () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'station-s4-cap-')));
+    homes.push(home);
+    const count = LOCAL_SOURCE_STATUS_MAX_FOLDERS + 2;
+    const folders = Array.from({ length: count }, (_, index) => {
+      const folder = join(home, `src-${index}`);
+      mkdirSync(folder);
+      writeManifest(folder, '1.0.0');
+      return folder;
+    });
+    const installations = folders.map((folder, index) => ({
+      journalId: 'j',
+      pluginId: `plugin-${index}`,
+      incarnation: 'g1',
+      contentDigest: 'sha256:artifact',
+      origin: pluginAcquisitionOrigin({ projectHomeDir: home, source: folder }),
+    }));
+    observeTree.mockClear();
+    const statuses = await observeLocalPluginSourceStatuses({
+      projectHomeDir: home,
+      journal: {
+        selectedInstallations: () => ({ state: 'observed', installations }),
+        activationPlan: () => ({ sourceDigest: 'sha256:recorded' }) as never,
+      },
+      projects: folders.map((folder, index) => ({
+        slug: `p${index}`,
+        workingDirectory: folder,
+      })),
+    });
+    expect(statuses).toHaveLength(count);
+    const capped = statuses.filter(
+      (entry) => entry.reason === 'too-many-sources',
+    );
+    expect(capped.map((entry) => entry.projectSlug)).toEqual([
+      `p${count - 2}`,
+      `p${count - 1}`,
+    ]);
+    expect(capped.every((entry) => entry.status === 'unknown')).toBe(true);
+    expect(observeTree).toHaveBeenCalledTimes(LOCAL_SOURCE_STATUS_MAX_FOLDERS);
   });
 });
