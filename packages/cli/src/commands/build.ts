@@ -13,6 +13,7 @@ export async function build(
     `📦 Building ${manifest.displayName || manifest.name}${mode === 'dev' ? ' (dev)' : ''}...`,
   );
   const result = await buildPlugin(INVOKED_CWD, mode);
+  for (const warning of result.warnings ?? []) console.warn(`⚠ ${warning}`);
   if (result.built && result.bundlePath) {
     const size = readFileSync(result.bundlePath).length;
     const cssSize = result.cssPath ? readFileSync(result.cssPath).length : 0;

@@ -15,11 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Coverage runs the resource-profiled corpus slices one after another in
+  # this ONE job, then merges their reports (scripts/run-coverage-corpus.mjs).
+  # Not a matrix: every fleet runner shares the one physical host (desktop-win,
+  # 10 capacity units), so matrix legs would queue on the capacity lease rather
+  # than run in parallel, each would repeat checkout, install, Chromium and
+  # the SDK builds, and the merge would need every leg's report carried across
+  # jobs as artifacts. The owner lifetime is a fixed host-manifest value
+  # (7800 s), which caps a capacity job at 125 minutes; the coordinated lane's
+  # own 100-minute deadline sits inside that with room for setup.
   coverage:
     needs: playwright-full
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' }}
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
-    timeout-minutes: 90
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    timeout-minutes: 125
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,7 +46,11 @@ jobs:
           coordination-root: /mnt/e/kontour-runner-capacity
           host-id: desktop-win
           capacity-units: "10"
-          lease-weight: "6"
+          # 9, as for the other full-corpus Vitest job on this host
+          # (windows-vitest-diagnostic.yml): the slices run at the corpus
+          # worker bounds (four ordinary workers), not the single worker the
+          # former lane reserved 6 units for.
+          lease-weight: "9"
           timeout-seconds: "600"
           owner-lifetime-seconds: "7800"
 
@@ -46,6 +59,23 @@ jobs:
         with: { install: false }
 
       - run: npm run dependencies:ci
+
+      # The corpus includes real-Chromium geometry tests, and the lane checks
+      # for the pinned browser before any slice runs. Same install as
+      # playwright-full below; see its comment for why this calls the script
+      # directly and never passes --with-deps.
+      - name: Install Playwright browsers
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" node scripts/install-playwright-browsers.mjs chromium
+
+      # The canonical lane builds the SDKs and the connect/CLI bundles before
+      # its corpus phases; the merge-queue regression prepares the same way.
+      - name: Prepare the corpus prerequisites
+        run: |
+          node scripts/run-full-regression-phases.mjs --phase=browser-prerequisite --phase=sdk-builds
+          npm run prepare:verify-static
 
       # `ci:extended` is intentionally not used here: it reruns ci:fast.
       # Coverage follows Playwright even when Playwright fails, so both remain
@@ -58,14 +88,16 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # Diagnostics: a storage/quota failure here is an infrastructure
         # condition, not a verdict on the code. It must not redden a job
-        # whose work passed (station#2218).
+        # whose work passed (station#2218). Only the merged report and its
+        # summary are kept: each per-slice report under coverage/shards/ is
+        # tens of megabytes and is fully contained in the merge.
         continue-on-error: true
         with:
           name: coverage-verification-${{ github.run_id }}
           path: |
             .kontourai/verification-receipts/
             .kontourai/verification-output/
-            coverage/
+            coverage/*.json
           if-no-files-found: ignore
           retention-days: 7
 

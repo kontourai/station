@@ -1,5 +1,7 @@
+import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { FolderGlyph } from '../../components/icons/Glyph';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
+import { PluginProposalSummary } from '../../components/plugins/PluginProposalSummary';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -14,7 +16,10 @@ export function InstallPluginModal({
   onBrowse,
   onInstall,
   onClose,
+  proposal = null,
 }: {
+  /** #2323 S5: the proposal this install came from, when it did. */
+  proposal?: PluginLifecycleProposal | null;
   installSource: string;
   installMessage: { type: 'success' | 'error'; text: string } | null;
   installPending: boolean;
@@ -82,9 +87,26 @@ export function InstallPluginModal({
                 : 'Install'}
           </button>
         </div>
-        <p className="plugins__install-hint">
-          Paste a git URL or local path to a Station plugin.
-        </p>
+        {proposal ? (
+          <div
+            className="plugins__install-hint"
+            data-testid="install-plugin-proposal"
+          >
+            <PluginProposalSummary
+              author={proposal.author}
+              source={proposal.source}
+              rationale={proposal.rationale}
+              testId="install-plugin-proposal-summary"
+            />
+            <p>
+              Install previews it first; nothing is installed until you confirm.
+            </p>
+          </div>
+        ) : (
+          <p className="plugins__install-hint">
+            Paste a git URL or local path to a Station plugin.
+          </p>
+        )}
       </div>
     </ResponsiveDialogSurface>
   );

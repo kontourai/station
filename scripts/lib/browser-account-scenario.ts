@@ -226,33 +226,36 @@ export async function runBrowserCookieAdoptionScenario(
   assert.equal(afterParentRevocation.parent.status, 401);
 
   return {
-    status: 'passed',
-    origin: apiBase,
-    secureContext: true,
-    deviceCookieHttpOnlySecureStrict:
-      deviceCookie.httpOnly &&
-      deviceCookie.secure &&
-      deviceCookie.sameSite === 'Strict',
-    accountCookieHttpOnlySecure: accountCookie.httpOnly && accountCookie.secure,
-    cookieValuesVisibleToJavascript: false,
-    adoptedDeviceId: first.deviceId,
-    deviceCountBeforeAdoption: countAfterPair,
-    deviceCountAfterAdoption: await station.deviceCount(),
-    vaiAliasRequest: {
-      status: vaiRead.status,
-      cookieHeader: vaiRead.cookieHeader,
-      setCookieHeader: vaiRead.setCookieHeader,
-      continuationHeader: vaiRead.continuationHeader,
-      proofHeader: vaiRead.proofHeader,
-      aliasCredential: vaiRead.aliasCredential,
+    report: {
+      status: 'passed',
+      origin: apiBase,
+      secureContext: true,
+      deviceCookieHttpOnlySecureStrict:
+        deviceCookie.httpOnly &&
+        deviceCookie.secure &&
+        deviceCookie.sameSite === 'Strict',
+      accountCookieHttpOnlySecure:
+        accountCookie.httpOnly && accountCookie.secure,
+      cookieValuesVisibleToJavascript: false,
+      adoptedDeviceId: first.deviceId,
+      deviceCountBeforeAdoption: countAfterPair,
+      deviceCountAfterAdoption: await station.deviceCount(),
+      vaiAliasRequest: {
+        status: vaiRead.status,
+        cookieHeader: vaiRead.cookieHeader,
+        setCookieHeader: vaiRead.setCookieHeader,
+        continuationHeader: vaiRead.continuationHeader,
+        proofHeader: vaiRead.proofHeader,
+        aliasCredential: vaiRead.aliasCredential,
+      },
+      sameOriginCookieReauthenticationPreservedAlias: true,
+      aliasOnlyDirectStatus: aliasOnlyDirect.status,
+      aliasOnlyRevocationPreservedParentAndAccount: true,
+      aliasRevocationStatus: revokedAliasRead.status,
+      parentRevocationStatus: parentRevokedRead.status,
+      parentCookieAfterDeviceRevocationStatus:
+        afterParentRevocation.parent.status,
     },
-    sameOriginCookieReauthenticationPreservedAlias: true,
-    aliasOnlyDirectStatus: aliasOnlyDirect.status,
-    aliasOnlyRevocationPreservedParentAndAccount: true,
-    aliasRevocationStatus: revokedAliasRead.status,
-    parentRevocationStatus: parentRevokedRead.status,
-    parentCookieAfterDeviceRevocationStatus:
-      afterParentRevocation.parent.status,
     privateSecrets: [
       deviceCookie.value,
       accountCookie.value,

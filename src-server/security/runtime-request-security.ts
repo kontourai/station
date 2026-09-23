@@ -68,6 +68,12 @@ export interface RuntimeAuthenticatedRequestPrincipal {
   readonly authority: RuntimeCredentialAuthority | undefined;
   /** Server-resolved paired-device identity; never request supplied. */
   readonly deviceId?: string;
+  /**
+   * Server-resolved paired-device KIND (#2323 S5): `delegation` for another
+   * Station's delegation grant, `device` for a person's device. Present only
+   * alongside `deviceId`, read off the verified device record.
+   */
+  readonly deviceKind?: 'device' | 'delegation';
   readonly source: 'bearer' | 'session';
   /** Present only for a device credential whose pairing request recorded a source. */
   readonly pairingSource?: RuntimeDevicePairingSource;
@@ -230,6 +236,14 @@ export interface RuntimeHttpSecurityOptions {
   resolveCredentialDeviceId?: (credential: string) => string | undefined;
   /** Alias credentials require their exact account continuation on every request. */
   resolveCredentialAliasId?: (credential: string) => string | undefined;
+  /**
+   * #2323 S5: the paired device's kind, from the same record as the id.
+   * Person-only plugin lifecycle routes refuse `delegation` (another Station
+   * is not a person). Operator credentials resolve `undefined`.
+   */
+  resolveCredentialDeviceKind?: (
+    credential: string,
+  ) => 'device' | 'delegation' | undefined;
   /**
    * Resolves a device credential's pairing-request source. Operator
    * credentials and historical devices without a source resolve `undefined`.

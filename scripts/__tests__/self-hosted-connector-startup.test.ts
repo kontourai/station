@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
 import { acquireStationHomeMaintenanceLease } from '@kontourai/station-shared/station-home-lifecycle';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createBrokerCredentialBundle } from '../../src-server/services/connections/self-hosted-broker-service.js';
 import { localLabEnvironment } from '../lib/local-collaboration-process.mjs';
 import {
@@ -59,6 +59,10 @@ async function fixture(refuse: boolean) {
   const registered = new Promise<void>((resolve) => {
     registerObserved = resolve;
   });
+  let pollObserved!: () => void;
+  const polled = new Promise<void>((resolve) => {
+    pollObserved = resolve;
+  });
   const violations: string[] = [];
   let withdraws = 0;
   let scope: SelfHostedBrokerScopeV1;
@@ -100,6 +104,7 @@ async function fixture(refuse: boolean) {
             });
             return;
           case '/broker/v1/connections/offers':
+            pollObserved();
             send(200, { offers: [] });
             return;
           case '/broker/v1/leases/withdraw':
@@ -313,8 +318,11 @@ async function fixture(refuse: boolean) {
       output,
       waitRegistration: () =>
         bounded(Promise.race([registered, earlyExit]), 'registration'),
+      waitOfferPoll: () =>
+        bounded(Promise.race([polled, earlyExit]), 'offer poll', 30_000),
       waitReady: () => bounded(Promise.race([ready, earlyExit]), 'readiness'),
       readyLine: () => readyLine,
+      stationId: scope.stationId,
       withdraws: () => withdraws,
       releaseRegistration: () => {
         if (!registration) throw new Error('Registration was not requested');
@@ -337,13 +345,10 @@ async function fixture(refuse: boolean) {
 describe.skipIf(process.platform === 'win32')(
   'normal entrypoint broker lifecycle',
   () => {
-    test('awaits registration before readiness and withdraws before releasing its home', async () => {
+    test('keeps local Station ready during registration, then polls and withdraws before releasing its home', async () => {
       const run = await fixture(false);
       try {
         await run.waitRegistration();
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
-        expect(run.readyLine()).toBeUndefined();
-        run.releaseRegistration();
         const ready = JSON.parse(await run.waitReady()) as {
           port: number;
           host: string;
@@ -355,6 +360,18 @@ describe.skipIf(process.platform === 'win32')(
             (port) => port >= ready.port && port < ready.port + 4,
           ),
         ).toBe(false);
+        const local = await fetch(
+          `http://127.0.0.1:${ready.port}/.well-known/station/v1`,
+          { signal: AbortSignal.timeout(10_000) },
+        );
+        expect(local.status).toBe(200);
+        expect(await local.json()).toMatchObject({
+          environmentId: run.stationId,
+        });
+        // The fixture has not replied to registration yet. A successful
+        // public handshake therefore proves local use is independent of it.
+        run.releaseRegistration();
+        await run.waitOfferPoll();
         await run.stop();
         const completion = await bounded(run.completion, 'shutdown');
         const diagnostic = run.output.finish();
@@ -376,15 +393,29 @@ describe.skipIf(process.platform === 'win32')(
       }
     }, 150_000);
 
-    test('refused registration exits without readiness and attempts withdrawal', async () => {
+    test('permanent broker refusal withdraws but leaves local Station usable', async () => {
       const run = await fixture(true);
       try {
-        const result = await bounded(run.completion, 'refused startup');
-        expect(result.status).toBe(1);
-        expect(run.readyLine()).toBeUndefined();
+        await run.waitRegistration();
+        const ready = JSON.parse(await run.waitReady()) as { port: number };
+        await vi.waitFor(() => expect(run.withdraws()).toBe(1), {
+          timeout: 15_000,
+        });
+        const local = await fetch(
+          `http://127.0.0.1:${ready.port}/.well-known/station/v1`,
+          { signal: AbortSignal.timeout(10_000) },
+        );
+        expect(local.status).toBe(200);
+        expect(await local.json()).toMatchObject({
+          environmentId: run.stationId,
+        });
+        await run.stop();
+        expect((await bounded(run.completion, 'shutdown')).status).toBe(0);
         expect(run.withdraws()).toBe(1);
         expect(run.violations).toEqual([]);
         expect(run.output.finish().truncated).toBe(false);
+        const lease = acquireStationHomeMaintenanceLease(run.home);
+        lease.release();
       } finally {
         await run.dispose();
       }

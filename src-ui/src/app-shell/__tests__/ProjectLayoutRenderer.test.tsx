@@ -693,6 +693,54 @@ describe('ProjectLayoutRenderer', () => {
     expect(refetch).toHaveBeenCalledOnce();
   });
 
+  test('keeps painting the cached catalog when a background revalidation fails (#2319)', () => {
+    // The state a real failed refetch of an invalidated catalog leaves behind
+    // (pinned in paneCatalogOutsideInstall.test.tsx): `isError` with the
+    // previous answer still in `data`.
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'coding',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: {
+          projectId: 'project-uuid',
+          sourceId: 'builtin:coding',
+        },
+      },
+    )!;
+    catalogMock.mockReturnValue({
+      isError: true,
+      data: { projectId: 'project-uuid', descriptors: [], instances: [] },
+      refetch: vi.fn(),
+      projectId: 'project-uuid',
+      projectSlug: 'project-route',
+      entries: [
+        {
+          instance: coding.instance,
+          availability: {
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          },
+          descriptor: coding.descriptor,
+        },
+      ],
+    });
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="coding" />,
+    );
+
+    expect(screen.queryByText('Could not load coding workspace')).toBeNull();
+    expect(screen.getByText('Coding chat pane')).toBeTruthy();
+  });
+
   test('keeps the live non-Git Project useful and explains the unavailable Diff pane', async () => {
     const { resolveWorkspacePaneCatalogPresentation } = await vi.importActual<
       typeof import('../../workspace-panes/resolvedWorkspacePaneCatalog')

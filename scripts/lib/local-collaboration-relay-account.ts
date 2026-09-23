@@ -51,7 +51,6 @@ async function close(server: Server) {
 /** Controller needed by the shared account provisioner (never assumes openApplicationChannel). */
 type RelayAccountStationController = {
   base: string;
-  listenerBase?: string;
   stationId: string;
   operator: ClientRequestOptions & {
     credential: string;
@@ -74,14 +73,13 @@ export async function provisionRelayAccountStation<
   S extends RelayAccountStationController,
 >(input: RelayAccountProvisionInput<S>) {
   const { station: current, browserOrigin, signal, transport, stop } = input;
-  const operatorBase = current.listenerBase ?? current.base;
   try {
     const http = async <T = Record<string, unknown>>(
       path: string,
       body?: unknown,
       operator = false,
     ) => {
-      const response = await fetch(operatorBase + path, {
+      const response = await fetch(current.base + path, {
         method: body === undefined ? 'GET' : 'POST',
         headers: {
           Origin: current.base,
@@ -514,6 +512,18 @@ export async function provisionRelayAccountStation<
         assert.equal(confirmation.status, 200);
         assert.equal(confirmation.body.principalBinding.kind, 'account');
       },
+      async confirmFreshRelayRequest(requestId: string) {
+        const confirmation = await http<{
+          principalBinding: { kind: string; approvalId: string };
+        }>(
+          `/api/pairing/requests/${requestId}/confirm`,
+          { bindAccountIdentity: true },
+          true,
+        );
+        assert.equal(confirmation.status, 200);
+        assert.equal(confirmation.body.principalBinding.kind, 'account');
+        assert(confirmation.body.principalBinding.approvalId);
+      },
       async exchangeBoundDevice(offer: DevicePairingOffer, requestId: string) {
         const response = await transport(
           current.base + PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
@@ -648,6 +658,9 @@ export async function startRelayAccountStation(
   browserOrigin: string,
   signal: AbortSignal,
   options: {
+    port?: number;
+    prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
+    ownedBrokerTcpPort?: number;
     publicOrigin?: string;
     onStationReady?: (
       station: Awaited<ReturnType<typeof startAccountLabStation>>,
@@ -691,7 +704,10 @@ export async function startRelayAccountStation(
         blockedProbePort: await listen(blocked),
         probeNonce: nonce,
         virtualApplicationOrigin: browserOrigin,
+        port: options.port,
         ...(options.publicOrigin ? { publicOrigin: options.publicOrigin } : {}),
+        prepareSelfHostedBrokerConfig: options.prepareSelfHostedBrokerConfig,
+        ownedBrokerTcpPort: options.ownedBrokerTcpPort,
       },
       signal,
     );

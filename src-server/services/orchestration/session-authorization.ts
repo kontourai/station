@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { sessionOwnerCacheOps } from '../../telemetry/metrics.js';
+import type { StationControlCallerPrincipalSource } from '../../tools/station-control-shared.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
@@ -21,6 +22,32 @@ import {
 // gate). Sized like `attached-session-follow-service.ts`'s MAX_SEEN_EVENT_IDS
 // LRU — generous relative to realistic concurrently-relevant thread counts.
 const SESSION_OWNER_CACHE_MAX_ENTRIES = 2_048;
+
+/**
+ * Station #90 lane D (station #122): the principal an agent session acts for, read
+ * from the server's own ownership record. `source` says how it was derived,
+ * so a consumer can refuse a derivation it does not accept:
+ *
+ * - `session-owner` — the session's recorded `metadata.userId`, stamped
+ *   server-side from the authenticated caller that started it.
+ * - `legacy-personal-owner` — a pre-ownership row carrying this Station's
+ *   former OS alias (#749); it maps to the local operator, the same mapping
+ *   `canReadSessionForCommand` applies.
+ * - `ownerless-single-operator` — a personal host in `single-user-compat`
+ *   mode, where a session with no recorded owner is the local operator's
+ *   (the only account such a host has). Hosted or `deny` hosts never
+ *   produce it: an ownerless session there acts for no one.
+ *
+ * Only `session-owner` is eligible for elevation (a consumer granting a
+ * Project role must require it; see `StationControlCallerPrincipal
+ * .elevationEligible`). The two operator mappings name the operator by
+ * inference, not from an authenticated start, and grant nothing beyond what
+ * the session already had.
+ */
+export interface SessionActingPrincipal {
+  readonly id: string;
+  readonly source: StationControlCallerPrincipalSource;
+}
 
 export interface PersonalConversationAccess {
   canRead(requesterId: string, ownerId: string): boolean;
@@ -266,6 +293,38 @@ export class SessionAuthorization {
     // an authorization outcome must never be pinned by a cache the way a
     // positive owner safely can be.
     return undefined;
+  }
+
+  /** See {@link SessionActingPrincipal}. Never reads request input. */
+  sessionActingPrincipal(threadId: string): SessionActingPrincipal | undefined {
+    // B2: a session an agent started without a verified acting principal
+    // acts for no one, whatever owner its record carries. Owner and marker
+    // come from one statement so they describe the same store state.
+    const attribution =
+      this.deps.eventStore?.findSessionOwnerAttribution?.(threadId);
+    if (!attribution || attribution.unattributedAgent) return undefined;
+    const hosted = this.deps.requireTenantExecutionContext?.() === true;
+    const owner = attribution.ownerUserId;
+    if (owner !== undefined) {
+      if (
+        this.deps.legacyPersonalOwner !== undefined &&
+        owner === this.deps.legacyPersonalOwner
+      ) {
+        return hosted
+          ? undefined
+          : {
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              source: 'legacy-personal-owner',
+            };
+      }
+      return { id: owner, source: 'session-owner' };
+    }
+    if (hosted || this.deps.ownerlessSessionAccess !== 'single-user-compat')
+      return undefined;
+    return {
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'ownerless-single-operator',
+    };
   }
 
   /**

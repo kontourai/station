@@ -105,6 +105,8 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
       'install',
       'preview',
       'reload',
+      // #2323 S1: `POST /api/plugins/validate` checks a local plugin folder.
+      'validate',
       'visibility',
     ]);
   });

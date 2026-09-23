@@ -12,6 +12,31 @@ export function createApplicationSessionRuntime(
   stationId: string,
   authentication: LoadedDeploymentAuthentication,
   identifyDevice: (credential: string) => PairedDevice | null,
+  resolvePendingRelayDevice?: (
+    deviceId: string,
+    enrollmentId: string,
+  ) => {
+    deviceId: string;
+    enrollmentId: string;
+    issuer: string;
+    subject: string;
+    approvalId: string;
+    approvedBy: string;
+    scope: readonly string[];
+  } | null,
+  resolveActiveRelayDevice?: (
+    deviceId: string,
+    enrollmentId: string,
+  ) => {
+    deviceId: string;
+    enrollmentId: string;
+    issuer: string;
+    subject: string;
+    approvalId: string;
+    approvedBy: string;
+    scope: readonly string[];
+  } | null,
+  now: () => number = Date.now,
   credentialAliasId: (credential: string) => string | undefined = () =>
     undefined,
   adoption?: ApplicationSessionCookieAdoptionCallbacks,
@@ -30,7 +55,9 @@ export function createApplicationSessionRuntime(
       authentication.publicOrigin,
       identifyDevice,
       authentication.allowedBrowserOrigins,
-      Date.now,
+      now,
+      resolvePendingRelayDevice,
+      resolveActiveRelayDevice,
       credentialAliasId,
       adoption,
     );

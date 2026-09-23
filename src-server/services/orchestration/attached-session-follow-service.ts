@@ -89,6 +89,8 @@ interface AttachedSessionCursorOwner {
 export interface AttachedProjectRoot {
   slug: string;
   workingDirectory?: string;
+  /** `ProjectConfig.id`, when the source lists it (Station #90 lane D, D5). */
+  id?: string;
 }
 
 /**

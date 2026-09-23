@@ -123,6 +123,14 @@ await Promise.all([
     entryPoints: ['./src-server/services/search/transcript-search-worker.ts'],
     outfile: `${serverDir}/transcript-search-worker.js`,
   }),
+  // A plugin draft build runs in its own disposable process (epic #2323 S3),
+  // forked via an import.meta.url-relative path, so ship its entry beside
+  // the server bundle like the workers above.
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/services/plugins/plugin-draft-build-child.ts'],
+    outfile: `${serverDir}/plugin-draft-build-child.js`,
+  }),
   // The private document worker is loaded via import.meta.url at runtime too.
   // Ship it beside the history worker: source-only availability passes dev
   // tests while a packaged server otherwise fails its first room request.

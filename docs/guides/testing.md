@@ -835,7 +835,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
 | `test-full` | `npm run test:full` | diagnostic full corpus | resource-profiled Vitest corpus + dogfood-reconcile | static / integration | diagnostic | command only |
 | `test-full-audit` | `npm run test:full:audit` | repository-wide diagnostic audit | complete Vitest corpus, retaining independent failures | static / integration | diagnostic | command only |
-| `test-coverage` | `npm run test:coverage` | explicit coverage / risk | serialized coverage corpus + dogfood-reconcile | static / integration | diagnostic | command only |
+| `test-coverage` | `npm run test:coverage` | explicit coverage / risk | resource-profiled coverage slices, merged, thresholds on the merge | static / integration | diagnostic | command only |
 | `verify-static` | `npm run verify:static` | diagnostic static gate | node-runtime, naming, UI-contract, platform, workflow ratchets, lint, typecheck | static / integration | diagnostic | command only |
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
@@ -935,6 +935,17 @@ feedback listener before its lease is admitted. The actionlint policy still
 enforces that partition for any persistent Linux job. See
 [the private-runner partition guide](private-runner-partition.md) before
 changing fleet labels or adding a capacity-leased workflow.
+
+### Merge-queue regression (required)
+
+`Merge-queue regression` is a required check (since 2026-09-23). On every queue
+candidate it runs Nightly's full-regression phases, sharded across hosted jobs
+by `scripts/run-full-regression-phases.mjs`, plus the Android viewport suite.
+On pull requests it reports skipped, which the ruleset counts as passing. A red
+aggregate names real failing tests in the failed job's log: diagnose the test
+and fix it at source rather than requeueing until green. If the same failure
+appears on unrelated candidates, main itself is red, so fix main first. Flaky
+tests go through the quarantine policy below.
 
 ### Test quarantine
 

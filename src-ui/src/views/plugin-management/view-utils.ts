@@ -1,4 +1,10 @@
-import { isRejectedPlugin, type Plugin, type ReadyPlugin } from './types';
+import {
+  isRejectedPlugin,
+  type Plugin,
+  type PreviewData,
+  type ReadyPlugin,
+  type ReinstallFromSource,
+} from './types';
 
 export function pluginSelectionId(plugin: Plugin) {
   return isRejectedPlugin(plugin) ? `rejected:${plugin.name}` : plugin.name;
@@ -157,4 +163,84 @@ export function soleLayoutTargetProject<
   T extends { slug: string; name: string },
 >(projects: readonly T[]): T | null {
   return projects.length === 1 ? projects[0] : null;
+}
+
+export interface ReinstallPermissionChange {
+  permission: string;
+  /** Set when the permission belongs to a dependency, not the plugin itself. */
+  dependency?: string;
+}
+
+/**
+ * #2323 S4: what a reinstall from source changes, against what is installed.
+ *
+ * Permissions are compared with CURRENT grants. "added" is what the new
+ * version, or a dependency it brings, requests and does not hold now (a
+ * dependency that is not installed holds nothing). "removed" is what the
+ * plugin itself holds now and the new version no longer requests; a
+ * dependency's grants are never dropped by a reinstall, so they are not
+ * listed there. This is disclosure, not the decision: the consent step still
+ * asks exactly what it asks for any install.
+ *
+ * "Code" compares the preview's digest with the source digest the
+ * installation recorded; with no recorded digest it is `unknown`, never
+ * `unchanged`. A dependency the install would add, reported with no
+ * permissions, is listed as unknown. A preview that reported no permissions has no permission
+ * delta (`null`), rather than one claiming every grant was dropped.
+ */
+export function reinstallDelta(
+  installed: Pick<
+    ReinstallFromSource,
+    'grantedPermissions' | 'installedGrants' | 'installedSourceDigest'
+  >,
+  preview: Pick<PreviewData, 'contentDigest' | 'permissions' | 'dependencies'>,
+): {
+  permissions: {
+    added: ReinstallPermissionChange[];
+    removed: ReinstallPermissionChange[];
+    /**
+     * Dependencies the install would add whose permissions the preview did
+     * not report. Their permissions are unknown here, never "no change".
+     */
+    unknownDependencies: string[];
+  } | null;
+  code: 'changed' | 'unchanged' | 'unknown';
+} {
+  const code =
+    !installed.installedSourceDigest || !preview.contentDigest
+      ? 'unknown'
+      : installed.installedSourceDigest === preview.contentDigest
+        ? 'unchanged'
+        : 'changed';
+  if (!preview.permissions) return { permissions: null, code };
+  const required = new Set(preview.permissions.required);
+  const granted = new Set(installed.grantedPermissions);
+  const added: ReinstallPermissionChange[] = [...required]
+    .filter((entry) => !granted.has(entry))
+    .sort()
+    .map((permission) => ({ permission }));
+  const unknownDependencies: string[] = [];
+  for (const dependency of preview.dependencies ?? []) {
+    if (!dependency.consent && dependency.status !== 'installed') {
+      unknownDependencies.push(dependency.id);
+      continue;
+    }
+    const held = new Set(installed.installedGrants[dependency.id] ?? []);
+    for (const permission of [
+      ...new Set(dependency.consent?.permissions ?? []),
+    ].sort())
+      if (!held.has(permission))
+        added.push({ permission, dependency: dependency.id });
+  }
+  return {
+    permissions: {
+      added,
+      removed: [...granted]
+        .filter((entry) => !required.has(entry))
+        .sort()
+        .map((permission) => ({ permission })),
+      unknownDependencies,
+    },
+    code,
+  };
 }

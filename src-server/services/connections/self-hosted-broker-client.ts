@@ -169,10 +169,16 @@ export class SelfHostedBrokerClient {
     if (
       !Number.isSafeInteger(value.registeredAt) ||
       !Number.isSafeInteger(value.revision) ||
-      !Number.isSafeInteger(value.expiresAt) ||
-      (value.expiresAt as number) <= this.now()
+      !Number.isSafeInteger(value.expiresAt)
     )
       throw new Error('broker_response_invalid');
+    // A structurally valid broker lease can appear expired while this
+    // Station's clock is ahead. Never admit it, but allow startup to recover
+    // after clock correction without a process restart.
+    if ((value.expiresAt as number) <= this.now())
+      throw new BrokerTransientRequestError(
+        new Error('broker_lease_not_current'),
+      );
     return {
       registeredAt: value.registeredAt as number,
       revision: value.revision as number,
@@ -187,10 +193,13 @@ export class SelfHostedBrokerClient {
     if (
       !Number.isSafeInteger(value.revision) ||
       !Number.isSafeInteger(value.expiresAt) ||
-      (value.revision as number) !== expectedRevision + 1 ||
-      (value.expiresAt as number) <= this.now()
+      (value.revision as number) !== expectedRevision + 1
     )
       throw new Error('broker_response_invalid');
+    if ((value.expiresAt as number) <= this.now())
+      throw new BrokerTransientRequestError(
+        new Error('broker_lease_not_current'),
+      );
     return {
       revision: value.revision as number,
       expiresAt: value.expiresAt as number,
