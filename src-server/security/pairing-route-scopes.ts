@@ -2670,6 +2670,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/operating-state/availability',
     },
     { method: 'POST', path: '/api/projects/:slug/operating-state/intent' },
+    // epic #2323 S2. Writes a starter plugin into the folder the Project
+    // already names, and only when that folder is empty; it never
+    // overwrites and never installs. It takes the family's operate tier as a
+    // recorded decision: `PUT /api/projects/:slug`, at this same tier,
+    // already sets that folder, and any Agent this tier can start writes
+    // files there. It returns only relative file paths about THIS Station's
+    // own Project, so it needs no override. It is the one Project write a
+    // shared member may make (owner decision): the runtime's Project guard
+    // exempts exactly this leaf (`isProjectMemberPluginScaffold`). The
+    // account-bound device allowlist is unchanged and does not include it.
+    // Its read twin answers only whether scaffolding is possible here
+    // (eligible, or a reason code): no path, no file names. A family read.
+    { method: 'GET', path: '/api/projects/:slug/plugin-scaffold' },
+    { method: 'POST', path: '/api/projects/:slug/plugin-scaffold' },
     { method: 'GET', path: '/api/projects/:slug/readiness' },
     { method: 'POST', path: '/api/projects/:slug/readiness/init' },
     // archive#1502 — see the `POST /api/projects/:slug/bind` note

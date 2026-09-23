@@ -223,6 +223,7 @@ import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
 import { createFsRoutes } from '../../routes/projects/fs.js';
 import { createWorkflowRoutes } from '../../routes/projects/layouts.js';
+import { createPluginScaffoldRoutes } from '../../routes/projects/plugin-scaffold-routes.js';
 import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
@@ -865,6 +866,22 @@ export {
   type CurrentRuntimeRequestPrincipalSecurity,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
+
+/**
+ * Epic #2323 S2 (owner decision: any Project member may author a plugin).
+ * The Project read guard refuses every non-GET from a deployment account
+ * that is only a member, because Project routes mutate the Project. The
+ * plugin scaffold is the one write a member may make: it writes only into
+ * the folder the Project already names, only while that folder is empty,
+ * never overwrites, and installs nothing. Matched on the exact leaf so no
+ * sibling path, trailing slash or deeper segment rides on it. The route
+ * itself still validates the slug.
+ */
+export function isProjectMemberPluginScaffold(method: string, path: string) {
+  return (
+    method === 'POST' && /^\/api\/projects\/[^/]+\/plugin-scaffold$/.test(path)
+  );
+}
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -3351,7 +3368,15 @@ export function configureRuntimeRoutes(
         c.req.raw,
         c.req.param('slug'),
       );
-      if (restricted && c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      if (
+        restricted &&
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        !isProjectMemberPluginScaffold(
+          c.req.method,
+          new URL(c.req.raw.url).pathname,
+        )
+      ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
           403,
@@ -3516,6 +3541,15 @@ export function configureRuntimeRoutes(
         },
       },
     ),
+  );
+  // Epic #2323 S2. Mounted here, after the Project read guard above and
+  // under its `/api/projects/:slug/*` prefix, so that guard (with its one
+  // exact member exemption) and the pairing scope table both apply.
+  context.app.route(
+    '/api/projects/:slug/plugin-scaffold',
+    createPluginScaffoldRoutes(context.projectService, {
+      requestPrincipalId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    }),
   );
   context.app.route(
     '/api/providers',

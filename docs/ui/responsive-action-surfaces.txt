@@ -104,7 +104,10 @@ src-ui/src/views/home/HomeRolePane.tsx|covered|src-ui/src/views/home/__tests__/H
 src-ui/src/views/integrations/DeleteIntegrationModal.tsx|covered|ResponsiveSurfaceActions destructive confirmation contract
 src-ui/src/views/learning-review/LearningSourceDialog.tsx|covered|ResponsiveSurfaceActions wrap and 44px mobile controls exercised by tests/learning-source.spec.ts; source details scroll inside the shared responsive dialog.
 src-ui/src/views/monitoring/MonitoringHeader.tsx|exception|Monitoring header actions; reviewed for incremental migration
+src-ui/src/views/plugin-management/AuthoringChatFallback.tsx|covered|ResponsiveSurfaceActions with shared Button actions inside the New/Start plugin dialogs; NewPluginModal.test.tsx drives Copy and Done
 src-ui/src/views/plugin-management/InstallPreviewModal.tsx|covered|ResponsiveSurfaceActions long-content confirmation contract
+src-ui/src/views/plugin-management/NewPluginModal.tsx|covered|ResponsiveSurfaceActions form confirmation contract with shared Button actions
+src-ui/src/views/plugin-management/StartPluginModal.tsx|covered|ResponsiveSurfaceActions form confirmation contract with shared Button actions
 src-ui/src/views/plugin-management/PluginModalStack.tsx|covered|ResponsiveSurfaceActions stack-owned confirmation contract
 src-ui/src/views/project-page/ProjectKnowledgeScanModal.tsx|covered|ResponsiveSurfaceActions form confirmation contract
 src-ui/src/views/project-page/ProjectKnowledgeSection.tsx|exception|Knowledge section actions; reviewed for incremental migration
