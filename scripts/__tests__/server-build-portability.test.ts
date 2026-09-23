@@ -14,7 +14,6 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { createServer } from 'node:net';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +22,7 @@ import * as esbuild from 'esbuild';
 import { load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventStore } from '../../src-server/services/orchestration/event-store.js';
+import { withDesktopRuntimeListenerLease } from '../lib/desktop-runtime-port-lease.mjs';
 import {
   DESKTOP_SERVER_RUNTIME_BUDGET,
   DESKTOP_SERVER_RUNTIME_PACKAGES,
@@ -103,23 +103,6 @@ function loadDesktopReleaseConfig() {
     releaseWorkflow,
     tauriConfig,
   };
-}
-
-async function freePort() {
-  const server = createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  if (!address || typeof address === 'string') {
-    server.close();
-    throw new Error('Could not allocate a desktop smoke port');
-  }
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
-  return address.port;
 }
 
 function stagedRuntimeFiles(release: string): string[] {
@@ -358,14 +341,18 @@ function assertRuntimeContainment(release: string, temporaryRoot: string) {
   }
 }
 
-function launchDesktopServer(release: string, root: string, port: number) {
-  const homeDir = join(root, 'home');
+function launchDesktopServer(
+  release: string,
+  root: string,
+  instanceId: string,
+) {
+  const homeDir = join(root, `home-${instanceId}`);
   const stagedBuild = readStagedServerBuildStamp(release);
   // A supervisor/check-out SHA is intentionally present but must not rewrite
   // the immutable identity of the staged resource bytes.
   const conflictingCheckoutSha = '1234567890abcdef1234567890abcdef12345678';
   const expectedIdentity = {
-    instanceId: 'desktop-smoke',
+    instanceId,
     sha: stagedBuild.sha,
     shaSource: 'build-stamp' as const,
     bootId: randomUUID(),
@@ -379,7 +366,8 @@ function launchDesktopServer(release: string, root: string, port: number) {
     cwd: release,
     env: {
       ...process.env,
-      PORT: String(port),
+      PORT: '0',
+      STATION_STDOUT_HANDSHAKE: '1',
       STATION_HOME: homeDir,
       STATION_HOST: '127.0.0.1',
       STATION_BUILD_SHA: conflictingCheckoutSha,
@@ -421,9 +409,10 @@ async function probeDesktopIdentityOnce(
   options: DesktopIdentityProbeOptions = {},
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const livenessUrl = `http://127.0.0.1:${port}/api/system/liveness`;
   let liveness: Response;
   try {
-    liveness = await fetchImpl(`http://127.0.0.1:${port}/api/system/liveness`, {
+    liveness = await fetchImpl(livenessUrl, {
       signal: AbortSignal.timeout(DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS),
     });
   } catch (error) {
@@ -433,7 +422,7 @@ async function probeDesktopIdentityOnce(
   }
   if (!liveness.ok) {
     throw new Error(
-      `Packaged desktop liveness probe failed with ${liveness.status}`,
+      `Packaged desktop liveness probe at ${livenessUrl} failed with ${liveness.status}`,
     );
   }
   expect(await liveness.json()).toEqual({ live: true });
@@ -459,17 +448,17 @@ async function probeDesktopIdentityOnce(
   }
   if (!identity.ok) {
     throw new Error(
-      `Packaged desktop identity probe failed with ${identity.status}`,
+      `Packaged desktop identity probe at http://127.0.0.1:${port}/api/system/identity failed with ${identity.status}`,
     );
   }
   return identity.json();
 }
 
 async function waitForDesktopIdentity(
-  port: number,
   launched: ReturnType<typeof launchDesktopServer>,
 ) {
   const deadline = Date.now() + DESKTOP_SERVER_READINESS_TIMEOUT_MS;
+  let port: number | undefined;
   while (Date.now() < deadline) {
     const exitDiagnostic = childExitDiagnostic(launched.child);
     if (exitDiagnostic) {
@@ -477,7 +466,10 @@ async function waitForDesktopIdentity(
         `Packaged desktop server exited (${exitDiagnostic}): ${launched.output()}`,
       );
     }
+    port ??= readinessPort(launched.output());
     try {
+      if (port === undefined)
+        throw new DesktopProbeTransportError('Readiness handshake pending');
       return await probeDesktopIdentityOnce(port, launched.homeDir);
     } catch (error) {
       if (!(error instanceof DesktopProbeTransportError)) throw error;
@@ -500,8 +492,51 @@ async function waitForDesktopIdentity(
     );
   }
   throw new Error(
-    `Packaged desktop server did not become ready within ${DESKTOP_SERVER_READINESS_TIMEOUT_MS}ms. Output tail:\n${launched.output()}`,
+    `Packaged desktop server did not become ready at ${port === undefined ? 'an unreported listener' : `http://127.0.0.1:${port}`} within ${DESKTOP_SERVER_READINESS_TIMEOUT_MS}ms. Output tail:\n${launched.output()}`,
   );
+}
+
+function readinessPort(output: string): number | undefined {
+  for (const line of output.split(/\r?\n/)) {
+    try {
+      const event = JSON.parse(line) as { event?: unknown; port?: unknown };
+      if (event.event === 'listening' && Number.isInteger(event.port)) {
+        return event.port as number;
+      }
+    } catch {
+      // Startup logs share stdout; only the structured handshake owns port
+      // selection. A normal log line is not readiness evidence.
+    }
+  }
+  return undefined;
+}
+
+async function startPackagedRuntimeUnderLease(
+  release: string,
+  root: string,
+  instanceId: string,
+) {
+  return withDesktopRuntimeListenerLease(async () => {
+    const launched = launchDesktopServer(release, root, instanceId);
+    try {
+      const identity = await waitForDesktopIdentity(launched);
+      const port = readinessPort(launched.output());
+      if (!Number.isInteger(port)) {
+        throw new Error(
+          `Station ${instanceId} identity succeeded without its readiness port`,
+        );
+      }
+      return { identity, launched, port };
+    } catch (error) {
+      const port = readinessPort(launched.output());
+      const detail = error instanceof Error ? error.message : String(error);
+      const diagnostic = new Error(
+        `Packaged Station startup failed: pid=${launched.child.pid ?? 'unknown'}, expectedBootId=${launched.expectedIdentity.bootId}, listenerBlock=${port === undefined ? 'unreported' : `${port}-${port + 3}`}, destination=${port === undefined ? 'unreported' : `http://127.0.0.1:${port}/api/system/liveness`}; ${detail}; output tail:\n${launched.output()}`,
+      );
+      await terminateDesktopServer(launched.child);
+      throw diagnostic;
+    }
+  });
 }
 
 async function terminateDesktopServer(
@@ -519,6 +554,45 @@ async function terminateDesktopServer(
       resolve();
     });
   });
+}
+
+async function runPortLeaseChild(
+  lockPath: string,
+  moduleUrl: string,
+  id: string,
+) {
+  const source = [
+    "import { open, unlink } from 'node:fs/promises';",
+    'const { withDesktopRuntimeListenerLease } = await import(process.argv[2]);',
+    'await withDesktopRuntimeListenerLease(async () => {',
+    "  const marker = await open(process.argv[4], 'wx');",
+    "  process.stdout.write('enter-' + process.argv[3] + '\\n');",
+    '  await new Promise((resolve) => setTimeout(resolve, 120));',
+    "  process.stdout.write('leave-' + process.argv[3] + '\\n');",
+    '  await marker.close();',
+    '  await unlink(process.argv[4]);',
+    '}, { path: process.argv[1] });',
+  ].join('\n');
+  const child = spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      source,
+      lockPath,
+      moduleUrl,
+      id,
+      `${lockPath}.active`,
+    ],
+    { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  let output = '';
+  child.stdout.on('data', (chunk) => (output += String(chunk)));
+  child.stderr.on('data', (chunk) => (output += String(chunk)));
+  const code = await new Promise<number | null>((resolve) =>
+    child.once('exit', (exitCode) => resolve(exitCode)),
+  );
+  return { code, output };
 }
 
 function createBudgetFixture(root: string) {
@@ -581,7 +655,9 @@ describe('server build package portability', () => {
         readCredentialRecord: () =>
           JSON.stringify({ credential: 'fixture-credential' }),
       }),
-    ).rejects.toThrow('liveness probe failed with 401');
+    ).rejects.toThrow(
+      'liveness probe at http://127.0.0.1:3142/api/system/liveness failed with 401',
+    );
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain(
       '/api/system/liveness',
@@ -599,7 +675,9 @@ describe('server build package portability', () => {
         readCredentialRecord: () =>
           JSON.stringify({ credential: 'fixture-credential' }),
       }),
-    ).rejects.toThrow('identity probe failed with 401');
+    ).rejects.toThrow(
+      'identity probe at http://127.0.0.1:3142/api/system/identity failed with 401',
+    );
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(String(fetchImpl.mock.calls[1]?.[0])).toContain(
       '/api/system/identity',
@@ -1009,20 +1087,92 @@ describe('server build package portability', () => {
     temporaryRoots.push(root);
     const release = await buildDesktopResourceFixture(root);
     assertRuntimeContainment(release, root);
-    const port = await freePort();
-    const launched = launchDesktopServer(release, root, port);
+    const launched = await startPackagedRuntimeUnderLease(
+      release,
+      root,
+      `desktop-smoke-${randomUUID()}`,
+    );
     try {
-      expect(launched.expectedIdentity.sha).not.toBe(
-        launched.conflictingCheckoutSha,
+      expect(launched.launched.expectedIdentity.sha).not.toBe(
+        launched.launched.conflictingCheckoutSha,
       );
-      const identity = await waitForDesktopIdentity(port, launched);
-      expect(identity).toEqual(launched.expectedIdentity);
-      expect(identity).toMatchObject({
+      expect(launched.identity).toEqual(launched.launched.expectedIdentity);
+      expect(launched.identity).toMatchObject({
         sha: readStagedServerBuildStamp(release).sha,
         shaSource: 'build-stamp',
       });
     } finally {
-      await terminateDesktopServer(launched.child);
+      await terminateDesktopServer(launched.launched.child);
     }
   }, 150_000);
+
+  it('serializes lease ownership across concurrent fixture processes', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-desktop-port-lease-'));
+    temporaryRoots.push(root);
+    const lockPath = join(root, 'listeners.lock');
+    const moduleUrl = new URL(
+      '../lib/desktop-runtime-port-lease.mjs',
+      import.meta.url,
+    ).href;
+    const results = await Promise.all([
+      runPortLeaseChild(lockPath, moduleUrl, 'a'),
+      runPortLeaseChild(lockPath, moduleUrl, 'b'),
+    ]);
+    expect(results.map((result) => result.code)).toEqual([0, 0]);
+    const events = results
+      .flatMap((result) => result.output.trim().split(/\r?\n/))
+      .sort();
+    expect(events).toEqual(['enter-a', 'enter-b', 'leave-a', 'leave-b']);
+  }, 20_000);
+
+  it('serializes concurrent packaged-runtime fixture starts until each listener block is owned', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-desktop-concurrent-'));
+    temporaryRoots.push(root);
+    const release = await buildDesktopResourceFixture(root);
+    assertRuntimeContainment(release, root);
+    const results = await Promise.allSettled([
+      startPackagedRuntimeUnderLease(
+        release,
+        root,
+        `desktop-left-${randomUUID()}`,
+      ),
+      startPackagedRuntimeUnderLease(
+        release,
+        root,
+        `desktop-right-${randomUUID()}`,
+      ),
+    ]);
+    if (results.some((result) => result.status === 'rejected')) {
+      await Promise.all(
+        results.flatMap((result) =>
+          result.status === 'fulfilled'
+            ? [terminateDesktopServer(result.value.launched.child)]
+            : [],
+        ),
+      );
+      const failures = results.flatMap((result) =>
+        result.status === 'rejected' ? [String(result.reason)] : [],
+      );
+      throw new Error(
+        `Concurrent packaged Station startup failed: ${failures.join('; ')}`,
+      );
+    }
+    const [left, right] = results.map((result) =>
+      result.status === 'fulfilled' ? result.value : undefined,
+    );
+    if (!left || !right)
+      throw new Error('Concurrent Station results did not settle');
+    try {
+      expect(left.port).not.toBe(right.port);
+      expect(left.identity.bootId).not.toBe(right.identity.bootId);
+      expect(left.identity.instanceId).not.toBe(right.identity.instanceId);
+      expect(left.identity).toEqual(left.launched.expectedIdentity);
+      expect(right.identity).toEqual(right.launched.expectedIdentity);
+    } finally {
+      await Promise.all([
+        terminateDesktopServer(left.launched.child),
+        terminateDesktopServer(right.launched.child),
+      ]);
+    }
+  }, 210_000);
 });
