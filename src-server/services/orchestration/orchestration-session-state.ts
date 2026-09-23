@@ -125,7 +125,7 @@ export const DRAFT_ENDING_TURN_METHODS = [
 ] as const;
 export const DRAFT_ENDING_METHOD_PREFIXES = ['content.', 'tool.'] as const;
 
-export function isDraftEndingActivity(method: string): boolean {
+function isDraftEndingActivity(method: string): boolean {
   return (
     (DRAFT_ENDING_TURN_METHODS as readonly string[]).includes(method) ||
     DRAFT_ENDING_METHOD_PREFIXES.some((prefix) => method.startsWith(prefix))
@@ -192,7 +192,7 @@ export interface SessionDraftVerdict {
  * a continuation child with no activity of its own is exactly the shape that
  * would be mislabelled.
  */
-export function deriveSessionDraft(input: {
+function deriveSessionDraft(input: {
   events: readonly CanonicalRuntimeEvent[];
   session: Pick<
     ProviderSession,
@@ -232,7 +232,7 @@ export function deriveSessionDraft(input: {
  * Neither detail says "nothing ran": a `failed` send may have reached the
  * provider.
  */
-export const FIRST_SEND_ATTRIBUTION = {
+const FIRST_SEND_ATTRIBUTION = {
   refused: {
     kind: 'send_refused',
     detail: 'Station refused the send before it started.',
@@ -265,7 +265,7 @@ export const FIRST_SEND_ATTRIBUTION = {
  * An outcome the fold already recorded — failed, completed, canceled — is
  * left exactly as it is.
  */
-export function foldFirstSendOutcome<
+function foldFirstSendOutcome<
   L extends {
     lifecycleState: SessionLifecycleState;
     blockedReason?: string;
