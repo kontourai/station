@@ -729,11 +729,15 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * by construction), or a fork target (it carries copied messages).
    *
    * A send that was attempted and did not take is not a Draft either: with
-   * no activity recorded since, that session reads `lifecycleState:
-   * 'failed'` with `terminalAttribution.kind` `send_refused` or
-   * `send_failed` and the same reason in `blockedReason`. A send refused for
-   * authorization or ownership (a caller who cannot act on the session)
-   * changes nothing.
+   * no activity recorded since, that session carries
+   * `terminalAttribution.kind` `send_refused` or `send_failed` with the same
+   * reason in `blockedReason`, and reads Failed through `isFirstSendFailure`
+   * (`@kontourai/station-contracts/session-attention`). `lifecycleState`
+   * is NOT rewritten — it stays the event fold, because control paths
+   * (continuation, manual transitions) read it as runtime truth; a consumer
+   * must not test `lifecycleState === 'failed'` for this case. A send
+   * refused for authorization or ownership (a caller who cannot act on the
+   * session) changes nothing.
    *
    * Lineage-aware on purpose: a continuation child minted for the NEXT turn,
    * or a root whose turns all ran in children, has no activity of its own and
