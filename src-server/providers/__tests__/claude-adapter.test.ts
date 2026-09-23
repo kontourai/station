@@ -3538,6 +3538,15 @@ describe('ClaudeAdapter', () => {
       expect(mintStationControlCallerToken).not.toHaveBeenCalled();
     });
 
+    test('Station #90 lane D: stopSession revokes the credential even when no session record exists', async () => {
+      const revokeStationControlCallerToken = vi.fn();
+      const adapter = new ClaudeAdapter({ revokeStationControlCallerToken });
+      await adapter.stopSession('thread-never-tracked');
+      expect(revokeStationControlCallerToken).toHaveBeenCalledWith(
+        'thread-never-tracked',
+      );
+    });
+
     test('Station #90 lane D: a query() that throws after minting revokes the credential', async () => {
       __resetStationControlMcpTokensForTests();
       mockQuery.mockImplementationOnce(() => {
