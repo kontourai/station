@@ -896,6 +896,39 @@ describe('coverage slices', () => {
     }
   });
 
+  it('threads the coverage directory into the real Vitest argv', async () => {
+    // The corpus runner hands `coverageDirectory` to runVitestGroup; this
+    // pins that runVitestGroup passes it on to the argv it executes, so a
+    // conflict resolution that drops it cannot stay green.
+    const argvFor = async (coverageDirectory?: string) => {
+      let argv: string[] = [];
+      await runVitestGroup(VITEST_CORPUS_GROUPS[2], ['exclusive.test.ts'], {
+        execute: (_executable, args) => {
+          argv = args;
+          return completedExecution();
+        },
+        capture: () => ({
+          finish: () => ({
+            stdout: { text: '', sourceBytes: 0 },
+            stderr: { text: '', sourceBytes: 0 },
+            truncated: false,
+          }),
+        }),
+        ...(coverageDirectory === undefined ? {} : { coverageDirectory }),
+      });
+      return argv;
+    };
+    const covered = await argvFor('/tmp/cov/shards/process-exclusive');
+    expect(covered).toContain(
+      '--coverage.reportsDirectory=/tmp/cov/shards/process-exclusive',
+    );
+    expect(covered).toContain('--coverage.enabled=true');
+    expect(covered).toContain('exclusive.test.ts');
+    const plain = await argvFor();
+    expect(plain).toContain('exclusive.test.ts');
+    expect(plain.some((arg) => arg.startsWith('--coverage'))).toBe(false);
+  });
+
   it('refuses coverage on the Windows serialized fallback and a shrinking deadline', async () => {
     await expect(
       runVitestCorpus({
