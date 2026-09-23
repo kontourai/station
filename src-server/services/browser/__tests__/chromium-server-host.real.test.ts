@@ -259,6 +259,9 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
         return launch;
       },
       onEvent: (event) => events.push(event),
+      // A shared, heavily loaded CI or dev host can take far longer than a
+      // quiet one to start Chromium; the launch deadline is not under test.
+      launchTimeoutMs: 120_000,
     });
     const target = await host.openTarget({
       profileDir,
@@ -266,7 +269,7 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     });
     session = target.cdpSessionId;
     targetId = target.targetId;
-  }, 60_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (!executablePath) {
@@ -548,6 +551,7 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
         interfaceAddresses: localInterfaceAddresses,
         reach: { kind: 'project', localTargets: () => targets },
       },
+      launchTimeoutMs: 120_000,
     });
     try {
       const adminTarget = await adminHost.openTarget({
@@ -585,7 +589,7 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
       await adminHost.shutdown();
     }
     // A second browser launch; generous for a loaded shared host.
-  }, 120_000);
+  }, 180_000);
 
   test('a killed browser is reported through onExit and the host refuses further work', async (ctx) => {
     if (!executablePath) return ctx.skip(SKIP_REASON);
