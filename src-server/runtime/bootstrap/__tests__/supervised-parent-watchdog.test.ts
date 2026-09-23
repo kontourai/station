@@ -4,6 +4,7 @@ import {
   SUPERVISED_PARENT_WATCHDOG_GRACE_MS,
   SUPERVISED_PARENT_WATCHDOG_INTERVAL_MS,
   shouldStopForMissingSupervisor,
+  supervisorLiveness,
 } from '../supervised-parent-watchdog.js';
 
 /** The watchdog's tick starts an async probe; let it settle. */
@@ -183,28 +184,16 @@ describe('supervised parent watchdog', () => {
     ).resolves.toBe(true);
   });
 
-  test('the default liveness check proves a real exited process is gone', async () => {
-    const { spawn } = await import('node:child_process');
-    const child = spawn(process.execPath, ['-e', ''], { windowsHide: true });
-    await new Promise((resolve) => child.once('exit', resolve));
-    await expect(
-      shouldStopForMissingSupervisor(
-        String(child.pid),
-        123,
-        'birth-a',
-        async () => null,
-        'win32',
-      ),
-    ).resolves.toBe(true);
-    await expect(
-      shouldStopForMissingSupervisor(
-        String(process.pid),
-        123,
-        'birth-a',
-        async () => null,
-        'win32',
-      ),
-    ).resolves.toBe(false);
+  test('only ESRCH from kill(pid, 0) proves the supervisor is gone', () => {
+    const failWith = (code: string) => () => {
+      throw Object.assign(new Error(code), { code });
+    };
+    expect(supervisorLiveness(123, () => true)).toBe('alive');
+    expect(supervisorLiveness(123, failWith('ESRCH'))).toBe('dead');
+    // A process we may not signal is still a process.
+    expect(supervisorLiveness(123, failWith('EPERM'))).toBe('unavailable');
+    expect(supervisorLiveness(123, failWith('EINVAL'))).toBe('unavailable');
+    expect(supervisorLiveness(process.pid)).toBe('alive');
   });
 
   test('a throwing logger does not stop the shutdown from being armed', async () => {

@@ -4,13 +4,16 @@ import type { Logger } from '../../utils/logger.js';
 export const SUPERVISED_PARENT_WATCHDOG_INTERVAL_MS = 15_000;
 export const SUPERVISED_PARENT_WATCHDOG_GRACE_MS = 20_000;
 
-type SupervisorLiveness = 'alive' | 'dead' | 'unavailable';
+export type SupervisorLiveness = 'alive' | 'dead' | 'unavailable';
 
 /** Only ESRCH proves the pid is gone; EPERM and anything else are live or
  * ambiguous, so they never authorize stopping. */
-function supervisorLiveness(pid: number): SupervisorLiveness {
+export function supervisorLiveness(
+  pid: number,
+  kill: (pid: number, signal: number) => unknown = process.kill,
+): SupervisorLiveness {
   try {
-    process.kill(pid, 0);
+    kill(pid, 0);
     return 'alive';
   } catch (error) {
     return (error as NodeJS.ErrnoException)?.code === 'ESRCH'
@@ -27,7 +30,8 @@ export async function shouldStopForMissingSupervisor(
     pid: number,
   ) => Promise<string | null> = lookupProcessBirthFingerprintAsync,
   platform: NodeJS.Platform = process.platform,
-  liveness: (pid: number) => SupervisorLiveness = supervisorLiveness,
+  liveness: (pid: number) => SupervisorLiveness = (pid) =>
+    supervisorLiveness(pid),
 ): Promise<boolean> {
   if (!supervisorPid) return false;
   const parsedSupervisorPid = Number.parseInt(supervisorPid, 10);
@@ -100,7 +104,7 @@ export function armSupervisedParentWatchdog(
         supervisorBirth,
         lookupSupervisorBirth,
         process.platform,
-        dependencies.supervisorLiveness ?? supervisorLiveness,
+        dependencies.supervisorLiveness ?? ((pid) => supervisorLiveness(pid)),
       )) ||
       stopping
     ) {

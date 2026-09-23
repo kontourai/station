@@ -22,6 +22,9 @@ export const BOOT_INTERNAL_SECRET_ENV_KEYS = [
  */
 export const SUPERVISOR_CHANNEL_ENV_KEYS = ['STATION_STDOUT_LOGS'] as const;
 
+/** Removes the boot-internal secrets and, despite the name, the
+ * supervisor-channel settings above: every caller that must not leak one
+ * must not leak the other. */
 export function scrubBootInternalSecrets(
   env: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
