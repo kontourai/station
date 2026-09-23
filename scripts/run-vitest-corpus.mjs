@@ -528,8 +528,9 @@ export async function runVitestCorpus({
       return { passed: false, results };
     }
     const files = descriptorFiles(resolvedGroups, descriptor);
-    // A process-heavy slice spends the whole group's budget at most; there is
-    // no separate phase for one slice.
+    // A process-heavy slice has no phase of its own, so each slice gets the
+    // whole group's phase budget. The budget applies per slice, not shared
+    // across the slices of one run.
     const phase =
       FULL_REGRESSION_PHASES.find(
         (entry) =>
