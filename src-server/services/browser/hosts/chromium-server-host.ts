@@ -420,6 +420,16 @@ export const launchChromiumProcess: ChromiumLauncher = ({
     );
   });
   void exited.then(() => {
+    // The browser process died (crash, kill) but its helpers — renderers,
+    // GPU, network service — share its process group and can outlive it
+    // (observed on macOS after a SIGKILL of the browser). Reap the group.
+    if (process.platform !== 'win32' && typeof proc.pid === 'number') {
+      try {
+        process.kill(-proc.pid, 'SIGKILL');
+      } catch {
+        // The group is already empty.
+      }
+    }
     release();
     void transport.close();
   });

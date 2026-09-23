@@ -651,5 +651,23 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
       }),
     ).rejects.toMatchObject({ name: 'BrowserHostExitedError' });
     expect(() => process.kill(pid as number, 0)).toThrow();
+    // No helper (renderer, GPU, network) outlives the killed browser.
+    if (process.platform !== 'win32') {
+      const groupAlive = () => {
+        try {
+          process.kill(-(pid as number), 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      expect(
+        await poll(
+          async () => groupAlive(),
+          (alive) => !alive,
+          10_000,
+        ),
+      ).toBe(false);
+    }
   });
 });
