@@ -69,6 +69,31 @@ export function isConversationContinuationControlEligible(
   );
 }
 
+/**
+ * #2316: whether a conversation that cannot be continued RIGHT NOW is only
+ * waiting on its active turn — the open read's `continuationPending`, which the
+ * UI renders as a busy wait rather than a read-only verdict.
+ *
+ * An approval opened on the live turn sets `pendingReview`, and that alone
+ * made {@link isConversationContinuationControlEligible} deny, so a reload
+ * while Claude waited on "Allow Bash?" read as "could not prove a writable
+ * continuation". While a turn is active, an open request is that turn paused
+ * on the user's decision: it settles when the request is answered, exactly
+ * like any other active-turn wait. Every other denial still applies unchanged
+ * (a read-only attachment, an unanswerable current child), and a pending
+ * review with NO active turn — a request nothing live is waiting on — is still
+ * not a wait.
+ */
+export function isConversationContinuationPending(
+  detail: OrchestrationSessionDetail,
+): boolean {
+  if (detail.session.hasActiveTurn !== true) return false;
+  return isConversationContinuationControlEligible({
+    ...detail,
+    session: { ...detail.session, pendingReview: false },
+  });
+}
+
 export function canResolveConversationContinuation(
   detail: OrchestrationSessionDetail,
 ): boolean {

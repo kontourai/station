@@ -4795,6 +4795,25 @@ button.tool-call__line:hover {
   opacity: 0.8;
 }
 
+/* #2316: a decision in flight (or already accepted) cannot be sent twice. */
+.tool-call__approve-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* #2316: a decision Station did not accept is named on the card itself,
+   on its own line beneath the buttons. */
+.tool-call__actions:has(.tool-call__approve-error) {
+  flex-wrap: wrap;
+}
+
+.tool-call__approve-error {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 0.75em;
+  color: var(--error-text);
+}
+
 /* Collapsed tool-call batch — a muted single-line summary that replaces a
    stack of individually-expandable ToolCallDisplay cards ("three shell_exec
    cards fill the phone screen"). Tapping opens ToolCallBatchSheet, which

@@ -2166,3 +2166,125 @@ it('retains stated tool purpose through durable projection', () => {
     args: { path: 'README.md' },
   });
 });
+
+describe('#2316 request.opened binds the approval card to the request it answers', () => {
+  const toolPart = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+    toolCallId: string,
+  ) =>
+    messages
+      .flatMap((message) => message.parts)
+      .find(
+        (part) =>
+          part.type === 'tool-invocation' && part.toolCallId === toolCallId,
+      );
+
+  it('binds by the exact call id and stamps the requesting thread, not the newest same-named call', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'Run both' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-a',
+        toolCallId: 'bash-first',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-a',
+        toolCallId: 'bash-second',
+        toolName: 'Bash',
+        arguments: { command: 'pwd' },
+      }),
+      // Claude's canUseTool for the FIRST call. A name-only fold picked the
+      // newest Bash (`bash-second`) — a card beside the wrong command.
+      ev({
+        method: 'request.opened',
+        requestId: 'req-first',
+        requestType: 'approval',
+        payload: { toolName: 'Bash', toolCallId: 'bash-first' },
+      }),
+    ]);
+
+    expect(toolPart(messages, 'bash-first')).toMatchObject({
+      needsApproval: true,
+      approvalId: 'req-first',
+      approvalThreadId: 't1',
+      state: 'awaiting-approval',
+    });
+    expect(toolPart(messages, 'bash-second')).not.toHaveProperty('approvalId');
+  });
+
+  it('never binds another session’s id-less request onto the folded turn’s call', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        threadId: 'successor',
+        turnId: 'turn-s',
+        prompt: 'Run it',
+      }),
+      ev({
+        method: 'tool.started',
+        threadId: 'successor',
+        turnId: 'turn-s',
+        toolCallId: 'bash-successor',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      // A request from a DIFFERENT session in the same conversation lineage,
+      // with no call id — only its tool name matches.
+      ev({
+        method: 'request.opened',
+        threadId: 'predecessor',
+        requestId: 'req-predecessor',
+        requestType: 'approval',
+        payload: { toolName: 'Bash' },
+      }),
+    ]);
+
+    expect(toolPart(messages, 'bash-successor')).not.toHaveProperty(
+      'approvalId',
+    );
+  });
+
+  it('keeps the same-thread name fallback, without stealing a call already awaiting another request', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'turn-n', prompt: 'Run both' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-n',
+        toolCallId: 'bash-one',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-n',
+        toolCallId: 'bash-two',
+        toolName: 'Bash',
+        arguments: { command: 'pwd' },
+      }),
+      ev({
+        method: 'request.opened',
+        requestId: 'req-one',
+        requestType: 'approval',
+        payload: { toolName: 'Bash' },
+      }),
+      ev({
+        method: 'request.opened',
+        requestId: 'req-two',
+        requestType: 'approval',
+        payload: { toolName: 'Bash' },
+      }),
+    ]);
+
+    expect(toolPart(messages, 'bash-two')).toMatchObject({
+      approvalId: 'req-one',
+      approvalThreadId: 't1',
+    });
+    expect(toolPart(messages, 'bash-one')).toMatchObject({
+      approvalId: 'req-two',
+      approvalThreadId: 't1',
+    });
+  });
+});

@@ -1042,6 +1042,10 @@ describe('ClaudeAdapter', () => {
     expect(opened.value).toMatchObject({
       method: 'request.opened',
       requestType: 'approval',
+      // #2316: the SDK's tool_use id rides along, so the transcript binds the
+      // card to this exact call (the id `tool.started` carries), not to the
+      // newest same-named call.
+      payload: { toolName: 'Read', toolCallId: 'tool-use-1' },
     });
 
     await adapter.respondToRequest(

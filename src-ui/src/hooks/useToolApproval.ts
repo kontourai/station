@@ -1,13 +1,50 @@
-import { submitToolApproval } from '@kontourai/station-sdk';
+import {
+  resolveOrchestrationRequest,
+  submitToolApproval,
+} from '@kontourai/station-sdk';
 import { useCallback } from 'react';
-import { log } from '@/utils/logger';
 import {
   activeChatsStore,
   useActiveChatActions,
 } from '../contexts/ActiveChatsContext';
 import { useToast } from '../contexts/ToastContext';
 
-export function useToolApproval(_apiBase: string) {
+export type ToolApprovalAction = 'once' | 'trust' | 'deny';
+
+/** The decision an orchestration adapter's `respondToRequest` understands. */
+export function orchestrationDecisionForToolApproval(
+  action: ToolApprovalAction,
+): 'accept' | 'acceptForSession' | 'decline' {
+  // Same mapping the approval toast uses (`approvalHandlers.ts`): "Always
+  // Allow" is the adapter's session grant for this tool, not a local list.
+  return action === 'once'
+    ? 'accept'
+    : action === 'trust'
+      ? 'acceptForSession'
+      : 'decline';
+}
+
+/**
+ * The inline approval card's answer.
+ *
+ * #2316: every card is built from a `request.opened` runtime event (the
+ * transcript projection is the only writer of `approvalId`), and its request
+ * id lives only in the adapter session that minted it. Claude, ACP, Codex and
+ * Station-agent sessions all answer through orchestration `respondToRequest`
+ * on that session (the Station-agent adapter resolves its ApprovalRegistry
+ * entry from there). The card used to post to `/tool-approval/:id`, which
+ * consults only the ApprovalRegistry, so a Claude session's request 404'd and
+ * the click did nothing. `approvalThreadId` (the event's own `threadId`) is
+ * the discriminator: present → orchestration; absent → the registry route,
+ * kept only for a part that does not carry the field.
+ *
+ * Resolves only when the server accepted the decision and REJECTS otherwise
+ * (HTTP error, network failure, `success: false`), so the card can say the
+ * decision did not land instead of pretending it did. Local bookkeeping
+ * (toast, pending list, streaming row) changes only after success; the card
+ * itself clears when the durable `request.resolved` arrives.
+ */
+export function useToolApproval(apiBase: string) {
   const { updateChat } = useActiveChatActions();
   const { dismissToast } = useToast();
 
@@ -17,12 +54,29 @@ export function useToolApproval(_apiBase: string) {
       _agentSlug: string,
       approvalId: string,
       toolName: string,
-      action: 'once' | 'trust' | 'deny',
-    ) => {
+      action: ToolApprovalAction,
+      approvalThreadId?: string,
+    ): Promise<void> => {
+      const approved = action !== 'deny';
+
+      if (approvalThreadId) {
+        await resolveOrchestrationRequest({
+          apiBase,
+          threadId: approvalThreadId,
+          requestId: approvalId,
+          decision: orchestrationDecisionForToolApproval(action),
+        });
+      } else {
+        const result = await submitToolApproval(approvalId, approved);
+        if (!result?.success) {
+          throw new Error(
+            result?.error || 'Station did not accept this approval decision.',
+          );
+        }
+      }
+
       const state = activeChatsStore.getSnapshot()[sessionId];
       if (!state) return;
-
-      const approved = action !== 'deny';
 
       // Dismiss the toast for this approval
       const toastId = state.approvalToasts?.get(approvalId);
@@ -83,14 +137,7 @@ export function useToolApproval(_apiBase: string) {
           },
         });
       }
-
-      // Send approval to backend
-      try {
-        await submitToolApproval(approvalId, approved);
-      } catch (err) {
-        log.api('Failed to send tool approval:', err);
-      }
     },
-    [updateChat, dismissToast],
+    [apiBase, updateChat, dismissToast],
   );
 }

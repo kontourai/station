@@ -117,7 +117,8 @@ interface MessageBubbleProps {
     approvalId: string,
     toolName: string,
     action: 'once' | 'trust' | 'deny',
-  ) => void;
+    approvalThreadId?: string,
+  ) => Promise<void>;
   anchorKey?: string;
   /**
    * "via <Station>" row attribution (archive#2585), resolved by callers from
@@ -157,17 +158,18 @@ function MessageBubbleComponent({
   // reason (e.g. a sibling message's isThinking flag flipping).
   const handleContentToolApproval = useCallback(
     (part: MessageContentPart, action: 'once' | 'trust' | 'deny') => {
-      if (!onToolApproval) return;
+      if (!onToolApproval) return Promise.resolve();
       const toolName = part.toolName || part.name;
       if (!part.approvalId || !toolName) {
-        return;
+        return Promise.resolve();
       }
-      onToolApproval(
+      return onToolApproval(
         activeSession.id,
         activeSession.agentSlug,
         part.approvalId,
         toolName,
         action,
+        part.approvalThreadId,
       );
     },
     [onToolApproval, activeSession.id, activeSession.agentSlug],

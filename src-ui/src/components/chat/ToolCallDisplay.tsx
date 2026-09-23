@@ -58,7 +58,11 @@ export interface ToolCallData {
 
 interface ToolCallDisplayProps {
   toolCall: ToolCallData;
-  onApprove?: (action: 'once' | 'trust' | 'deny') => void;
+  /**
+   * #2316: resolves when Station accepted the decision, rejects when it did
+   * not. The card stays actionable and says so on rejection.
+   */
+  onApprove?: (action: 'once' | 'trust' | 'deny') => void | Promise<void>;
   showDetails?: boolean;
 }
 
@@ -275,34 +279,77 @@ function ToolCallDisplayComponent({
   );
 }
 
+/**
+ * #2316: a decision is not done until Station accepts it. While it is in
+ * flight the buttons are disabled (a second click would answer a request the
+ * first may already have settled); a rejected decision re-enables them and
+ * names the failure, because the request is still open and still waiting on
+ * the user. After success they stay disabled until the durable
+ * `request.resolved` settles the row and unmounts this control.
+ */
 function ToolApprovalButtons({
   onApprove,
 }: {
-  onApprove: (action: 'once' | 'trust' | 'deny') => void;
+  onApprove: (action: 'once' | 'trust' | 'deny') => void | Promise<void>;
 }) {
+  const [phase, setPhase] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [failure, setFailure] = useState<string | null>(null);
+  const decide = (action: 'once' | 'trust' | 'deny') => {
+    if (phase !== 'idle') return;
+    setPhase('sending');
+    setFailure(null);
+    // Invoked synchronously, in the click, so the decision is dispatched
+    // before this handler returns; only its outcome is awaited.
+    let sent: void | Promise<void>;
+    try {
+      sent = onApprove(action);
+    } catch (error) {
+      sent = Promise.reject(error);
+    }
+    Promise.resolve(sent).then(
+      () => setPhase('sent'),
+      (error: unknown) => {
+        setPhase('idle');
+        setFailure(
+          error instanceof Error && error.message
+            ? error.message
+            : 'Station did not accept this decision.',
+        );
+      },
+    );
+  };
+  const busy = phase !== 'idle';
   return (
     <>
       <button
         type="button"
-        onClick={() => onApprove('once')}
+        onClick={() => decide('once')}
+        disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--primary"
       >
         Allow Once
       </button>
       <button
         type="button"
-        onClick={() => onApprove('trust')}
+        onClick={() => decide('trust')}
+        disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--secondary"
       >
         Always Allow
       </button>
       <button
         type="button"
-        onClick={() => onApprove('deny')}
+        onClick={() => decide('deny')}
+        disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--danger"
       >
         Deny
       </button>
+      {failure && (
+        <p className="tool-call__approve-error" role="alert">
+          Your decision was not delivered: {failure}
+        </p>
+      )}
     </>
   );
 }

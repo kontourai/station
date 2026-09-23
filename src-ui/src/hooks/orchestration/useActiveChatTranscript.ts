@@ -278,6 +278,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             runtimeErrorCode: part.runtimeErrorCode,
             needsApproval: part.needsApproval,
             approvalId: part.approvalId,
+            approvalThreadId: part.approvalThreadId,
             approvalStatus: part.approvalStatus,
           };
           // Preserve the same tool-result identity and sanitized blocks as

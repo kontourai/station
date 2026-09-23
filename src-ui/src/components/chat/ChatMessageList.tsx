@@ -531,9 +531,7 @@ function ChatMessageListComponent({
       onNewChatFromMessage={
         msg.role === 'user' ? onNewChatFromMessage : undefined
       }
-      onToolApproval={
-        activeSession.replay ? undefined : (handleToolApproval as any)
-      }
+      onToolApproval={activeSession.replay ? undefined : handleToolApproval}
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
@@ -626,6 +624,7 @@ function ChatMessageListComponent({
                   part.approvalId!,
                   part.toolName || part.name || '',
                   action,
+                  part.approvalThreadId,
                 )
             : undefined
         }

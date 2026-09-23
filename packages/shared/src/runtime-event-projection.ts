@@ -758,17 +758,36 @@ export function projectRuntimeEventsToMessages(
       case 'request.opened': {
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
-        const target = [...toolsByCallId.values()]
-          .reverse()
-          .find(
-            (part) =>
-              (typeof toolCallId === 'string' &&
-                part.toolCallId === toolCallId) ||
-              (typeof toolName === 'string' && part.toolName === toolName),
-          );
+        // #2316: a request id is answerable only by the session that minted
+        // it. A conversation window folds every session in its lineage, and a
+        // name-only match could bind one session's open request onto another
+        // session's same-named call (or onto the wrong one of two parallel
+        // same-named calls) — a card whose buttons answered a request other
+        // than the one it sat beside. Bind by the exact call id when the
+        // adapter reports one. The name fallback, for adapters that report no
+        // id, is confined to the thread whose turn is being folded and never
+        // takes a call already awaiting a different request.
+        const target =
+          typeof toolCallId === 'string'
+            ? toolsByCallId.get(toolCallId)
+            : typeof toolName === 'string' &&
+                (turnSessionId === undefined || turnSessionId === ev.threadId)
+              ? [...toolsByCallId.values()]
+                  .reverse()
+                  .find(
+                    (part) =>
+                      part.toolName === toolName &&
+                      !(
+                        part.needsApproval === true &&
+                        part.approvalId !== undefined &&
+                        part.approvalId !== ev.requestId
+                      ),
+                  )
+              : undefined;
         if (target) {
           target.needsApproval = true;
           target.approvalId = ev.requestId;
+          target.approvalThreadId = ev.threadId;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
         }

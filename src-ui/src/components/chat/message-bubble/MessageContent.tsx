@@ -36,7 +36,7 @@ interface MessageContentProps {
   onToolApproval?: (
     part: MessageContentPart,
     action: 'once' | 'trust' | 'deny',
-  ) => void;
+  ) => Promise<void>;
 }
 
 function MessageContentComponent({
@@ -73,7 +73,7 @@ function MessageContentComponent({
       showDetails={showToolDetails}
       onApprove={
         isStreamingMessage && part.needsApproval
-          ? (action) => onToolApproval?.(part, action)
+          ? (action) => onToolApproval?.(part, action) ?? Promise.resolve()
           : undefined
       }
     />

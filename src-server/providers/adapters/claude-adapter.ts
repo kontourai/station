@@ -2307,6 +2307,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           description: options.description,
           payload: {
             toolName,
+            // #2316: the SDK's id for this exact tool_use block — the same id
+            // `tool.started` carries as `toolCallId` — so the transcript binds
+            // the approval to the call it gates rather than to the newest
+            // call that happens to share the tool's name.
+            ...(options.toolUseID ? { toolCallId: options.toolUseID } : {}),
             toolInput,
             blockedPath: options.blockedPath,
             displayName: options.displayName,
