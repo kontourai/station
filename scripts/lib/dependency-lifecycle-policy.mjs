@@ -41,6 +41,25 @@ const NODE_MODULES_CHAIN =
 const LIFECYCLE_HOOKS = new Set(['preinstall', 'install', 'postinstall']);
 export const PTY_HANDSHAKE_MARKER = 'STATION_NODE_PTY_READY_4296';
 export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
+/**
+ * The child's own 8s handshake timer starts only after Node has booted and
+ * loaded node-pty. The outer bound must leave room for that cold start, or it
+ * kills the child before the child can report which phase stalled — the
+ * hosted Windows failure in #2315 was exactly that: an outer SIGTERM at 10s
+ * with an empty stderr. The same hosted log records the first cold Node child
+ * of the install (esbuild's postinstall) at 3965ms against ~160ms warm, so the
+ * old 2s margin was below one observed cold start. Twelve seconds is three
+ * times that observation.
+ */
+export const PTY_HANDSHAKE_STARTUP_ALLOWANCE_MS = 12_000;
+/**
+ * A timeout is the one environmental outcome: a saturated host can stall any
+ * process start. Every other failure (no marker, unnatural exit, unparseable
+ * outcome, native crash) is a verdict about the module and is never retried.
+ * A deterministic hang still fails every attempt, so this stays fail-closed.
+ */
+export const PTY_HANDSHAKE_ATTEMPTS = 3;
+const PTY_HANDSHAKE_RETRY_PAUSE_MS = 2_000;
 
 /**
  * The PTY probe always captures UTF-8 output. Keep this injection seam narrow:
@@ -51,6 +70,11 @@ export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
 /** @type {NodePtyExec} */
 function executeNodePty(file, args, options) {
   return execFileSync(file, args, options);
+}
+
+/** @param {number} ms */
+function pauseSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 export function canonicalJson(value) {
@@ -94,14 +118,22 @@ export function assertPtyHandshakeOutcome(output) {
  */
 /**
  * @param {string} packageRoot
- * @param {{ exec?: NodePtyExec }} options
+ * @param {{ exec?: NodePtyExec, log?: (line: string) => void, pause?: (ms: number) => void, attempts?: number }} options
  */
 export function verifyNodePtyHandshake(
   packageRoot,
-  { exec = executeNodePty } = {},
+  {
+    exec = executeNodePty,
+    log = console.log,
+    pause = pauseSync,
+    attempts = PTY_HANDSHAKE_ATTEMPTS,
+  } = {},
 ) {
   const child = String.raw`
+const phases = {};
+const mark = (name) => { phases[name] = Math.round(performance.now()); };
 const pty = require(process.argv[1]);
+mark('loadedMs');
 const marker = process.env.STATION_PTY_MARKER;
 const terminal = pty.spawn(process.execPath, ['-e',
   'process.stdout.write(process.env.STATION_PTY_MARKER + "\\n"); process.stdin.resume(); process.stdin.once("data", () => process.exit(0));'
@@ -113,14 +145,16 @@ const finish = (code, message) => {
   if (settled) return;
   settled = true;
   clearTimeout(timeout);
-  if (message) process.stderr.write(message + '\n');
-  if (code === 0) process.stdout.write(JSON.stringify({ marker: seen ? marker : null, exitCode: 0, signal: 0 }));
+  mark('settledMs');
+  if (message) process.stderr.write(message + ' phases=' + JSON.stringify(phases) + '\n');
+  if (code === 0) process.stdout.write(JSON.stringify({ marker: seen ? marker : null, exitCode: 0, signal: 0, phases }));
   process.exit(code);
 };
 terminal.onData((chunk) => {
   transcript += chunk;
   if (seen || !transcript.includes(marker)) return;
   seen = true;
+  mark('markerMs');
   terminal.write('station-pty-ack\r');
 });
 terminal.onExit((event) => {
@@ -134,43 +168,91 @@ const timeout = setTimeout(() => {
   finish(1, 'node-pty handshake timed out (marker seen: ' + seen + ')');
 }, Number(process.env.STATION_PTY_TIMEOUT_MS));
 `;
-  let output;
-  try {
-    output = exec(process.execPath, ['-e', child, packageRoot], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        STATION_PTY_MARKER: PTY_HANDSHAKE_MARKER,
-        STATION_PTY_TIMEOUT_MS: String(PTY_HANDSHAKE_TIMEOUT_MS),
-      },
-      timeout: 10_000,
-      windowsHide: true,
-    });
-  } catch (error) {
-    // A present-but-empty stderr (string or Buffer) is not nullish, so a `??`
-    // chain would suppress the message fallback and log only the bare prefix.
-    // Report stderr when informative, else the message, and attach the
-    // termination facts so a timeout and a native crash stay distinguishable.
-    const facts = [];
-    if (error != null && typeof error === 'object') {
-      if (error.status != null) facts.push(`status=${String(error.status)}`);
-      if (error.signal) facts.push(`signal=${String(error.signal)}`);
-      if (typeof error.killed === 'boolean')
-        facts.push(`killed=${String(error.killed)}`);
-      if (error.code != null) facts.push(`code=${String(error.code)}`);
+  for (let attempt = 1; ; attempt += 1) {
+    const startedAt = Date.now();
+    let output;
+    try {
+      output = exec(process.execPath, ['-e', child, packageRoot], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          STATION_PTY_MARKER: PTY_HANDSHAKE_MARKER,
+          STATION_PTY_TIMEOUT_MS: String(PTY_HANDSHAKE_TIMEOUT_MS),
+        },
+        timeout: PTY_HANDSHAKE_TIMEOUT_MS + PTY_HANDSHAKE_STARTUP_ALLOWANCE_MS,
+        windowsHide: true,
+      });
+    } catch (error) {
+      const failure = describePtyHandshakeFailure(error);
+      if (!isPtyHandshakeTimeout(error) || attempt >= attempts) {
+        if (attempt > 1)
+          log(
+            `[dependency-lifecycle] node-pty real PTY handshake failed on attempt ${attempt}/${attempts} after ${Date.now() - startedAt}ms`,
+          );
+        throw failure;
+      }
+      log(
+        `[dependency-lifecycle] node-pty real PTY handshake attempt ${attempt}/${attempts} timed out after ${Date.now() - startedAt}ms; retrying: ${failure.message}`,
+      );
+      pause(PTY_HANDSHAKE_RETRY_PAUSE_MS);
+      continue;
     }
-    const narrative =
-      String(error?.stderr ?? '').trim() ||
-      String(error?.message ?? '').trim() ||
-      (typeof error === 'string' ? error.trim() : '');
-    const detail = [narrative, facts.join(' ')]
-      .filter((part) => part)
-      .join(' ');
-    throw new Error(
-      `node-pty real PTY handshake failed: ${detail || 'no diagnostic output'}`,
+    // A completed child is a verdict, never retried: the outcome must carry
+    // the marker and a natural exit.
+    assertPtyHandshakeOutcome(output);
+    log(
+      `[dependency-lifecycle] node-pty real PTY handshake passed on attempt ${attempt}/${attempts} in ${Date.now() - startedAt}ms ${describePtyPhases(output)}`.trimEnd(),
     );
+    return;
   }
-  assertPtyHandshakeOutcome(output);
+}
+
+/** @param {unknown} output */
+function describePtyPhases(output) {
+  try {
+    const phases = JSON.parse(String(output).trim())?.phases;
+    return phases && typeof phases === 'object'
+      ? `phases=${JSON.stringify(phases)}`
+      : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Only a timeout is retryable: the outer spawn's own ETIMEDOUT, or the child's
+ * handshake timer (which kills the PTY before reporting). A child that exits
+ * without the marker, or crashes, is not a timeout.
+ * @param {any} error
+ */
+function isPtyHandshakeTimeout(error) {
+  if (error == null || typeof error !== 'object') return false;
+  if (error.code === 'ETIMEDOUT') return true;
+  return String(error.stderr ?? '').includes('node-pty handshake timed out');
+}
+
+/** @param {any} error */
+function describePtyHandshakeFailure(error) {
+  // A present-but-empty stderr (string or Buffer) is not nullish, so a `??`
+  // chain would suppress the message fallback and log only the bare prefix.
+  // Report stderr when informative, else the message, and attach the
+  // termination facts so a timeout and a native crash stay distinguishable.
+  const facts = [];
+  if (error != null && typeof error === 'object') {
+    if (error.status != null) facts.push(`status=${String(error.status)}`);
+    if (error.signal) facts.push(`signal=${String(error.signal)}`);
+    if (typeof error.killed === 'boolean')
+      facts.push(`killed=${String(error.killed)}`);
+    if (error.code != null) facts.push(`code=${String(error.code)}`);
+  }
+  const narrative =
+    String(error?.stderr ?? '').trim() ||
+    String(error?.message ?? '').trim() ||
+    (typeof error === 'string' ? error.trim() : '');
+  const detail = [narrative, facts.join(' ')].filter((part) => part).join(' ');
+  return new Error(
+    `node-pty real PTY handshake failed: ${detail || 'no diagnostic output'}`,
+  );
 }
 
 function isObject(value) {
