@@ -137,6 +137,12 @@ describe('#2309 inbox running state from the conversation record', () => {
     expect(within(active).getByText('Active')).not.toBeNull();
   });
 
+  it('with only the session rows carrying the record (the chat has none yet), the row still renders Running', () => {
+    renderInbox(rows(OPEN), chat({}));
+    const active = screen.getByRole('region', { name: 'Active now' });
+    expect(within(active).getByText('Active')).not.toBeNull();
+  });
+
   it('a finished turn does not render Running, though local status still says sending', () => {
     renderInbox(
       rows(CLOSED),
