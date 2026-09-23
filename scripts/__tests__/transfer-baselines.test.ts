@@ -216,6 +216,29 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
     expect(registered(f.primary)).toContain(stale);
   });
 
+  test.skipIf(process.platform === 'linux')(
+    'a failing lsof with partial output is unknown liveness, not an empty table',
+    () => {
+      const f = fixture();
+      const stale = f.addDetached(f.baselinePath(f.old1), f.old1);
+      const bin = join(f.root, 'fake-bin');
+      mkdirSync(bin);
+      // Partial listing that omits every process, then a failure exit.
+      writeFileSync(
+        join(bin, 'lsof'),
+        '#!/bin/sh\nprintf "p1\\nn/\\n"\nexit 1\n',
+        { mode: 0o755 },
+      );
+      const priorPath = process.env.PATH;
+      process.env.PATH = `${bin}:${priorPath}`;
+      try {
+        expect(findPathsInUse([stale])).toBeNull();
+      } finally {
+        process.env.PATH = priorPath;
+      }
+    },
+  );
+
   test(`${TRANSFER_BASELINE_PRUNE_ENV}=0 opts out: nothing is removed`, () => {
     const f = fixture();
     const stale = f.addDetached(f.baselinePath(f.old1), f.old1);

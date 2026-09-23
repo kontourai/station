@@ -199,9 +199,11 @@ function readLsofCwds() {
     maxBuffer: 64 * 1024 * 1024,
     windowsHide: true,
   });
-  // lsof exits 1 when some processes are unreadable but still prints the
-  // rest; only a missing binary or empty output makes the answer unknown.
-  if (result.error || !result.stdout) return null;
+  // Any failure makes the answer unknown, even with partial stdout: a
+  // truncated or killed listing can omit exactly the process that matters.
+  // (Measured on the reference Mac: exit 0 in ~0.15-0.3s.)
+  if (result.error || result.status !== 0 || result.signal || !result.stdout)
+    return null;
   const cwds = [];
   let pid = null;
   for (const line of result.stdout.split('\n')) {
@@ -219,7 +221,8 @@ function readProcessCommands() {
     maxBuffer: 64 * 1024 * 1024,
     windowsHide: true,
   });
-  if (result.error || result.status !== 0 || !result.stdout) return null;
+  if (result.error || result.status !== 0 || result.signal || !result.stdout)
+    return null;
   return result.stdout
     .split('\n')
     .map((line) => line.match(/^\s*(\d+)\s+(.*)$/))
