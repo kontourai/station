@@ -1,3 +1,8 @@
+import {
+  AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+  type AuthorityObservation,
+  isAuthorityObservation,
+} from '@kontourai/station-contracts/authority-observation';
 import type { Page } from '@playwright/test';
 import { buildLongSessionTurns } from '../fixtures/long-session';
 import { agentConnectionFixture } from './connection-fixtures';
@@ -13,10 +18,20 @@ const json = (body: unknown) => ({
   contentType: 'application/json',
   body: JSON.stringify(body),
 });
+const CHAT_SHELL_ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
+const CHAT_SHELL_AUTHORITY = {
+  schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+  environmentId: CHAT_SHELL_ENVIRONMENT_ID,
+  principal: { kind: 'human', id: 'human:local:operator' },
+  grant: { kind: 'operator' },
+} satisfies AuthorityObservation;
+
 export async function mockChatShell(
   page: Page,
   options: { expectedEnvironmentId?: string } = {},
 ) {
+  if (!isAuthorityObservation(CHAT_SHELL_AUTHORITY))
+    throw new Error('Invalid chat shell authority fixture');
   let providerCalls = 0;
   page.on('pageerror', (error) => {
     console.error(`mobile-chat page error: ${error.message}`);
@@ -42,7 +57,7 @@ export async function mockChatShell(
     route.fulfill(
       json({
         schemaVersion: 1,
-        environmentId: '11111111-1111-4111-8111-111111111111',
+        environmentId: CHAT_SHELL_ENVIRONMENT_ID,
         authentication: { scheme: 'bearer', protocolVersion: 1 },
         transports: { http: 1, sse: 1, websocket: 1 },
         compatibility: E2E_STATION_COMPATIBILITY,
@@ -52,6 +67,8 @@ export async function mockChatShell(
   );
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (route.request().method() === 'GET' && path === '/api/auth/authority')
+      return route.fulfill(json(CHAT_SHELL_AUTHORITY));
     // `GET /api/plugins` answers `{ plugins: [...] }`, not the `{success,data}`
     // envelope the catch-all below returns. `PluginRegistry.ts:207-212`
     // destructures `plugins` and iterates it, so the envelope makes it throw,
@@ -277,7 +294,7 @@ export async function mockChatShell(
     if (path === '/api/system/identity')
       return route.fulfill(
         json({
-          environmentId: '11111111-1111-4111-8111-111111111111',
+          environmentId: CHAT_SHELL_ENVIRONMENT_ID,
           bootId: 'mobile-test-boot',
         }),
       );
