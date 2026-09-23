@@ -16,8 +16,12 @@
  * - Every session carries an append-only, bounded action history (D6): an
  *   agent may drive a session nobody is watching, so what happened in it must
  *   always be discoverable. Truncation is counted, never silent.
+ * - Profiles are per (canonical Project ID, principal), never per slug (D7):
+ *   the operator's logins are never visible to a Project admin's session, a
+ *   slug rename keeps the profile, and a reused slug inherits nothing. The
+ *   profile also fixes the network reach its browser's egress proxy enforces.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -84,9 +88,31 @@ export interface BrowserSessionHistory {
   total: number;
 }
 
+/** Network reach of a profile's browser (D7), enforced by its egress proxy. */
+export type BrowserProfileReach = 'operator' | 'project';
+
+/** One browser profile: one process, one proxy, one cookie jar. */
+export interface BrowserProfile {
+  /** Canonical Project ID (not the slug). */
+  projectId: string;
+  /** `operator` or `principal:<id>`. */
+  principalKey: string;
+  reach: BrowserProfileReach;
+  /** Map key for the profile. */
+  key: string;
+  /** Home-relative, `/`-separated profile directory. */
+  profileRef: string;
+}
+
 export interface BrowserSessionRecord {
   browserSessionId: string;
+  /** Canonical Project ID; authorization and the profile key use this. */
   projectId: string;
+  /** The Project's slug when the session was created (display only). */
+  projectSlug: string;
+  /** Whose profile the session runs in (D7). */
+  principalKey: string;
+  reach: BrowserProfileReach;
   threadId?: string;
   url: string;
   viewport: BrowserViewport;
@@ -115,6 +141,7 @@ export type BrowserSessionErrorCode =
   | 'url-not-allowed'
   | 'invalid-project'
   | 'invalid-viewport'
+  | 'invalid-actor'
   | 'not-found'
   | 'not-live'
   | 'stale-generation'
@@ -142,10 +169,10 @@ export const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = {
 
 export const DEFAULT_BROWSER_IDLE_SHUTDOWN_MS = 60_000;
 
-const STORE_VERSION = 1;
+const STORE_VERSION = 2;
 const MAX_STORED_SESSIONS = 500;
 const CLOSED_RETENTION_MS = 24 * 60 * 60 * 1000;
-const PROJECT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const PROJECT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export function isValidBrowserViewport(
   value: unknown,
@@ -175,9 +202,71 @@ export function isValidBrowserProjectId(
   );
 }
 
-/** Home-relative, always `/`-separated so the persisted record is portable. */
-export function browserProfileRef(projectId: string): string {
-  return posix.join('projects', projectId, 'browser', 'profile');
+/** The profile principal for an actor; undefined when it may own none. */
+export function principalKeyFor(
+  actor: BrowserSessionActor,
+): string | undefined {
+  switch (actor.kind) {
+    case 'operator':
+      return 'operator';
+    case 'project-admin':
+      return `principal:${actor.principalId}`;
+    case 'agent':
+      return actor.principalId ? `principal:${actor.principalId}` : undefined;
+    case 'system':
+      return undefined;
+  }
+}
+
+const digest = (value: string) =>
+  createHash('sha256').update(value).digest('hex').slice(0, 32);
+
+/**
+ * The profile an actor's session in a Project runs in. The directory is
+ * derived from digests so any id or principal spelling is path-safe.
+ */
+export function browserProfileFor(
+  projectId: string,
+  actor: BrowserSessionActor,
+): BrowserProfile | undefined {
+  const principalKey = principalKeyFor(actor);
+  if (!principalKey) return undefined;
+  return {
+    projectId,
+    principalKey,
+    reach: principalKey === 'operator' ? 'operator' : 'project',
+    key: `${projectId}\u001f${principalKey}`,
+    profileRef: posix.join(
+      'browser',
+      'profiles',
+      digest(projectId),
+      digest(principalKey),
+    ),
+  };
+}
+
+/**
+ * Whether an already Project-authorized actor may see this session (D7): the
+ * operator sees every session; anyone else only sessions in their own profile.
+ */
+export function actorOwnsSessionProfile(
+  record: Pick<BrowserSessionRecord, 'principalKey'>,
+  actor: BrowserSessionActor,
+): boolean {
+  if (actor.kind === 'operator') return true;
+  const key = principalKeyFor(actor);
+  return key !== undefined && key === record.principalKey;
+}
+
+/** Drop query and fragment: list and summary views never carry them (S4). */
+export function redactBrowserUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return url;
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
 }
 
 export function browserProfileDir(
@@ -191,7 +280,7 @@ export interface BrowserSessionRegistryOptions {
   stationHome: string;
   hostKind?: BrowserHostKind;
   /** One new host per launch; the registry never reuses an exited host. */
-  createHost(projectId: string): BrowserHost | Promise<BrowserHost>;
+  createHost(profile: BrowserProfile): BrowserHost | Promise<BrowserHost>;
   idleShutdownMs?: number;
   now?: () => Date;
   newId?: () => string;
@@ -216,6 +305,8 @@ export class BrowserSessionRegistry {
   private readonly generations = new Map<string, number>();
   private readonly hosts = new Map<string, HostEntry>();
   private readonly starting = new Map<string, Promise<HostEntry>>();
+  /** Attaches in flight per profile; an idle shutdown waits for them. */
+  private readonly reservations = new Map<string, number>();
   private stopped = false;
   /** Raised above every stored value when the store was unreadable. */
   private generationFloor = 0;
@@ -246,9 +337,16 @@ export class BrowserSessionRegistry {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map((record) => {
         const { history, ...rest } = structuredClone(record);
-        const entries = history.entries.slice(-BROWSER_SESSION_SUMMARY_ACTIONS);
+        const entries = history.entries
+          .slice(-BROWSER_SESSION_SUMMARY_ACTIONS)
+          .map((entry) =>
+            entry.url === undefined
+              ? entry
+              : { ...entry, url: redactBrowserUrl(entry.url) },
+          );
         return {
           ...rest,
+          url: redactBrowserUrl(rest.url),
           history: {
             entries,
             total: history.total,
@@ -258,13 +356,15 @@ export class BrowserSessionRegistry {
       });
   }
 
-  /** Whether a Project currently has a running browser (diagnostics/tests). */
-  hasRunningHost(projectId: string): boolean {
-    return this.hosts.has(projectId);
+  /** Whether a profile currently has a running browser (diagnostics/tests). */
+  hasRunningHost(projectId: string, principalKey = 'operator'): boolean {
+    return this.hosts.has(`${projectId}\u001f${principalKey}`);
   }
 
   async createSession(input: {
+    /** Canonical Project ID. */
     projectId: string;
+    projectSlug: string;
     threadId?: string;
     url: string;
     viewport?: BrowserViewport;
@@ -275,6 +375,13 @@ export class BrowserSessionRegistry {
       throw new BrowserSessionError(
         'invalid-project',
         'The Project id is not valid.',
+      );
+    }
+    const profile = browserProfileFor(input.projectId, input.actor);
+    if (!profile) {
+      throw new BrowserSessionError(
+        'invalid-actor',
+        'This caller cannot own a browser profile.',
       );
     }
     const url = this.normalize(input.url);
@@ -289,18 +396,25 @@ export class BrowserSessionRegistry {
     const record: BrowserSessionRecord = {
       browserSessionId: this.newId(),
       projectId: input.projectId,
+      projectSlug: input.projectSlug,
+      principalKey: profile.principalKey,
+      reach: profile.reach,
       ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
       url,
       viewport: { ...viewport },
       generation: 0,
       hostKind: this.hostKind,
-      profileRef: browserProfileRef(input.projectId),
+      profileRef: profile.profileRef,
       state: 'opening',
       createdAt: at,
       updatedAt: at,
       history: { entries: [], total: 0 },
     };
     this.sessions.set(record.browserSessionId, record);
+    // Recorded before the attach so a close that lands while the browser is
+    // still opening follows it in the history.
+    this.append(record, 'created', input.actor, { url });
+    const created = record.history.entries.at(-1);
     try {
       await this.attach(record);
     } catch (error) {
@@ -308,7 +422,10 @@ export class BrowserSessionRegistry {
       this.persist();
       throw error;
     }
-    this.record(record, 'created', input.actor, { url });
+    if (created && record.state === 'live') {
+      created.generation = record.generation;
+      this.persist();
+    }
     return structuredClone(record);
   }
 
@@ -360,7 +477,7 @@ export class BrowserSessionRegistry {
       });
       throw error;
     }
-    const entry = this.hosts.get(record.projectId);
+    const entry = this.hosts.get(this.keyOf(record));
     const target = entry?.targets.get(record.browserSessionId);
     if (!entry || !target) {
       throw new BrowserSessionError(
@@ -394,7 +511,7 @@ export class BrowserSessionRegistry {
   ): Promise<BrowserSessionRecord> {
     const record = this.require(browserSessionId);
     if (record.state === 'closed') return structuredClone(record);
-    const entry = this.hosts.get(record.projectId);
+    const entry = this.hosts.get(this.keyOf(record));
     const target = entry?.targets.get(record.browserSessionId);
     record.state = 'closed';
     record.endReason = 'closed';
@@ -402,7 +519,7 @@ export class BrowserSessionRegistry {
     if (entry && target) {
       entry.targets.delete(record.browserSessionId);
       await entry.host.closeTarget(target.targetId).catch(() => {});
-      this.scheduleIdleShutdown(record.projectId, entry);
+      this.scheduleIdleShutdown(this.keyOf(record), entry);
     }
     return structuredClone(record);
   }
@@ -432,48 +549,90 @@ export class BrowserSessionRegistry {
     );
   }
 
-  private async attach(record: BrowserSessionRecord): Promise<void> {
-    const entry = await this.ensureHost(record.projectId);
-    if (entry.idleTimer) {
-      clearTimeout(entry.idleTimer);
-      entry.idleTimer = undefined;
-    }
-    const target = await entry.host.openTarget({
-      profileDir: browserProfileDir(
-        this.options.stationHome,
-        record.profileRef,
-      ),
-      viewport: record.viewport,
-    });
-    entry.targets.set(record.browserSessionId, target);
-    try {
-      if (record.url !== ABOUT_BLANK) {
-        await entry.host
-          .cdp()
-          .send('Page.navigate', { url: record.url }, target.cdpSessionId);
-      }
-    } catch (error) {
-      entry.targets.delete(record.browserSessionId);
-      await entry.host.closeTarget(target.targetId).catch(() => {});
-      this.scheduleIdleShutdown(record.projectId, entry);
-      throw error;
-    }
-    record.generation = entry.generation;
-    record.state = 'live';
-    this.touch(record);
+  private keyOf(
+    record: Pick<BrowserSessionRecord, 'projectId' | 'principalKey'>,
+  ) {
+    return `${record.projectId}\u001f${record.principalKey}`;
   }
 
-  private ensureHost(projectId: string): Promise<HostEntry> {
-    const existing = this.hosts.get(projectId);
+  private profileOf(record: BrowserSessionRecord): BrowserProfile {
+    return {
+      projectId: record.projectId,
+      principalKey: record.principalKey,
+      reach: record.reach,
+      key: this.keyOf(record),
+      profileRef: record.profileRef,
+    };
+  }
+
+  private async attach(record: BrowserSessionRecord): Promise<void> {
+    const profile = this.profileOf(record);
+    // Reserve BEFORE the first await so an idle shutdown cannot fire between
+    // resolving the host and opening the target on it.
+    this.reservations.set(
+      profile.key,
+      (this.reservations.get(profile.key) ?? 0) + 1,
+    );
+    let entry: HostEntry | undefined;
+    try {
+      entry = await this.ensureHost(profile);
+      if (entry.idleTimer) {
+        clearTimeout(entry.idleTimer);
+        entry.idleTimer = undefined;
+      }
+      const target = await entry.host.openTarget({
+        profileDir: browserProfileDir(
+          this.options.stationHome,
+          record.profileRef,
+        ),
+        viewport: record.viewport,
+      });
+      if (record.state === 'closed') {
+        // Closed while opening: nothing may run in a closed session.
+        await entry.host.closeTarget(target.targetId).catch(() => {});
+        return;
+      }
+      entry.targets.set(record.browserSessionId, target);
+      try {
+        if (record.url !== ABOUT_BLANK) {
+          await entry.host
+            .cdp()
+            .send('Page.navigate', { url: record.url }, target.cdpSessionId);
+        }
+      } catch (error) {
+        entry.targets.delete(record.browserSessionId);
+        await entry.host.closeTarget(target.targetId).catch(() => {});
+        throw error;
+      }
+      // The state may have changed while the navigation was in flight.
+      if ((record.state as BrowserSessionState) === 'closed') {
+        entry.targets.delete(record.browserSessionId);
+        await entry.host.closeTarget(target.targetId).catch(() => {});
+        return;
+      }
+      record.generation = entry.generation;
+      record.state = 'live';
+      this.touch(record);
+    } finally {
+      const left = (this.reservations.get(profile.key) ?? 1) - 1;
+      if (left > 0) this.reservations.set(profile.key, left);
+      else this.reservations.delete(profile.key);
+      if (entry && this.hosts.get(profile.key) === entry)
+        this.scheduleIdleShutdown(profile.key, entry);
+    }
+  }
+
+  private ensureHost(profile: BrowserProfile): Promise<HostEntry> {
+    const existing = this.hosts.get(profile.key);
     if (existing) return Promise.resolve(existing);
-    const pending = this.starting.get(projectId);
+    const pending = this.starting.get(profile.key);
     if (pending) return pending;
     const start = (async () => {
-      const host = await this.options.createHost(projectId);
+      const host = await this.options.createHost(profile);
       const generation =
-        Math.max(this.generations.get(projectId) ?? 0, this.generationFloor) +
+        Math.max(this.generations.get(profile.key) ?? 0, this.generationFloor) +
         1;
-      this.generations.set(projectId, generation);
+      this.generations.set(profile.key, generation);
       this.persist();
       const entry: HostEntry = {
         host,
@@ -482,26 +641,22 @@ export class BrowserSessionRegistry {
         offExit: () => {},
       };
       entry.offExit = host.onExit((reason) =>
-        this.onHostExit(projectId, entry, reason),
+        this.onHostExit(profile.key, entry, reason),
       );
-      this.hosts.set(projectId, entry);
+      this.hosts.set(profile.key, entry);
       return entry;
     })();
-    this.starting.set(projectId, start);
-    return start.finally(() => this.starting.delete(projectId));
+    this.starting.set(profile.key, start);
+    return start.finally(() => this.starting.delete(profile.key));
   }
 
-  private onHostExit(
-    projectId: string,
-    entry: HostEntry,
-    reason: string,
-  ): void {
-    if (this.hosts.get(projectId) !== entry) return;
-    this.hosts.delete(projectId);
+  private onHostExit(key: string, entry: HostEntry, reason: string): void {
+    if (this.hosts.get(key) !== entry) return;
+    this.hosts.delete(key);
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     for (const record of this.sessions.values()) {
       if (
-        record.projectId === projectId &&
+        this.keyOf(record) === key &&
         record.generation === entry.generation &&
         (record.state === 'live' || record.state === 'opening')
       ) {
@@ -516,12 +671,14 @@ export class BrowserSessionRegistry {
     this.persist();
   }
 
-  private scheduleIdleShutdown(projectId: string, entry: HostEntry): void {
-    if (entry.targets.size > 0 || entry.idleTimer) return;
+  private scheduleIdleShutdown(key: string, entry: HostEntry): void {
+    const busy = () =>
+      entry.targets.size > 0 || (this.reservations.get(key) ?? 0) > 0;
+    if (busy() || entry.idleTimer) return;
     entry.idleTimer = setTimeout(() => {
       entry.idleTimer = undefined;
-      if (this.hosts.get(projectId) !== entry || entry.targets.size > 0) return;
-      this.hosts.delete(projectId);
+      if (this.hosts.get(key) !== entry || busy()) return;
+      this.hosts.delete(key);
       entry.offExit();
       void entry.host.shutdown().catch(() => {});
     }, this.options.idleShutdownMs ?? DEFAULT_BROWSER_IDLE_SHUTDOWN_MS);
@@ -638,16 +795,20 @@ export class BrowserSessionRegistry {
       return;
     }
     if (parsed?.version !== STORE_VERSION) return;
-    for (const [projectId, generation] of Object.entries(
-      parsed.generations ?? {},
-    )) {
-      if (isValidBrowserProjectId(projectId) && Number.isInteger(generation))
-        this.generations.set(projectId, generation);
+    for (const [key, generation] of Object.entries(parsed.generations ?? {})) {
+      if (typeof key === 'string' && Number.isInteger(generation))
+        this.generations.set(key, generation);
     }
     const nowMs = this.now().getTime();
     for (const record of parsed.sessions ?? []) {
       if (!record || typeof record.browserSessionId !== 'string') continue;
       if (!isValidBrowserProjectId(record.projectId)) continue;
+      if (
+        typeof record.principalKey !== 'string' ||
+        (record.reach !== 'operator' && record.reach !== 'project') ||
+        typeof record.profileRef !== 'string'
+      )
+        continue;
       if (
         record.state === 'closed' &&
         nowMs - Date.parse(record.updatedAt) > CLOSED_RETENTION_MS

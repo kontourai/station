@@ -18,6 +18,7 @@ import type {
   BrowserHost,
   CdpTransport,
 } from '../../services/browser/browser-host.js';
+import { LocalTargetStore } from '../../services/browser/browser-local-targets.js';
 import {
   type BrowserSessionActor,
   BrowserSessionRegistry,
@@ -116,7 +117,23 @@ function harness(
       completion: Promise.resolve(),
     })),
   };
-  const admins = options.admins ?? { alpha: ['admin-alpha'] };
+  // Canonical Project IDs differ from slugs on purpose (D7).
+  const projects: Record<
+    string,
+    { id: string; slug: string; workspaceRoot?: string }
+  > = {
+    alpha: { id: 'p-alpha', slug: 'alpha', workspaceRoot: '/work/alpha' },
+    beta: { id: 'p-beta', slug: 'beta' },
+  };
+  const admins = options.admins ?? { 'p-alpha': ['admin-alpha'] };
+  let principalCurrent = true;
+  const localTargets = new LocalTargetStore(stationHome);
+  const suggestLocalTargets = vi.fn(async () => ({
+    state: 'ok' as const,
+    suggestions: [
+      { host: 'localhost' as const, port: 5173, label: 'vite :5173', pid: 42 },
+    ],
+  }));
   const bearer = (request: Request) =>
     request.headers.get('authorization')?.replace(/^Bearer /, '');
   const authorizeProject = vi.fn<BrowserProjectAuthorizer>(
@@ -135,9 +152,12 @@ function harness(
       acquisition,
       authorizeProject,
       authorizeOperator: async (request) => bearer(request) === 'operator',
-      projectExists: (projectId) => ['alpha', 'beta'].includes(projectId),
+      localTargets,
+      listeners: () => ({ ports: [4100, 4101, 4102, 4103], hostnames: [] }),
+      suggestLocalTargets,
+      resolveProject: (slug) => projects[slug],
       isRequestPrincipalCurrent: (request) =>
-        isRuntimeRequestPrincipalCurrent(request, security),
+        principalCurrent && isRuntimeRequestPrincipalCurrent(request, security),
     }),
   );
   const request = (
@@ -162,9 +182,9 @@ function harness(
         incoming: { socket: { remoteAddress: '100.96.12.7' } },
       } as HttpBindings,
     );
-  const create = async (credential: string, projectId = 'alpha') =>
+  const create = async (credential: string, projectSlug = 'alpha') =>
     request('POST', '/sessions', credential, {
-      projectId,
+      projectSlug,
       url: 'https://example.com',
     });
   return {
@@ -174,6 +194,11 @@ function harness(
     acquisition,
     authorizeProject,
     credentials,
+    localTargets,
+    suggestLocalTargets,
+    setPrincipalCurrent: (value: boolean) => {
+      principalCurrent = value;
+    },
   };
 }
 
@@ -261,16 +286,21 @@ describe('browser routes: per-Project authorization (D5)', () => {
       data: Array<{ projectId: string; history: { total: number } }>;
     };
     expect(asOperator.data.map((s) => s.projectId).sort()).toEqual([
-      'alpha',
-      'beta',
+      'p-alpha',
+      'p-beta',
     ]);
     expect(asOperator.data.every((s) => s.history.total === 1)).toBe(true);
+    await h.create('admin-alpha', 'alpha');
     const asAdmin = (await (
       await h.request('GET', '/sessions', 'admin-alpha')
     ).json()) as {
-      data: Array<{ projectId: string }>;
+      data: Array<{ projectId: string; principalKey: string }>;
     };
-    expect(asAdmin.data.map((s) => s.projectId)).toEqual(['alpha']);
+    // D7: the admin sees only their own profile's sessions, never the
+    // operator's (whose logins it would expose).
+    expect(asAdmin.data.map((s) => [s.projectId, s.principalKey])).toEqual([
+      ['p-alpha', 'principal:admin-alpha'],
+    ]);
     const asContributor = (await (
       await h.request('GET', '/sessions', 'contributor-alpha')
     ).json()) as { data: unknown[] };
@@ -289,6 +319,13 @@ describe('browser routes: per-Project authorization (D5)', () => {
         })
       ).status,
     ).toBe(403);
+    // Authorization precedes body validation: 403, not 400, for a bad body.
+    for (const body of [{}, 'nope', { consent: false }]) {
+      expect(
+        (await h.request('POST', '/acquisition/download', 'admin-alpha', body))
+          .status,
+      ).toBe(403);
+    }
     expect(h.acquisition.startDownload).not.toHaveBeenCalled();
     expect((await h.request('GET', '/acquisition', 'operator')).status).toBe(
       200,
@@ -356,7 +393,7 @@ describe('browser routes: validation and typed failures', () => {
   test('out-of-scope URLs, unknown Projects and malformed bodies are refused', async () => {
     const h = harness();
     const fileUrl = await h.request('POST', '/sessions', 'operator', {
-      projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'file:///etc/passwd',
     });
     expect(fileUrl.status).toBe(400);
@@ -367,17 +404,18 @@ describe('browser routes: validation and typed failures', () => {
     expect(
       (
         await h.request('POST', '/sessions', 'operator', {
-          projectId: 'gamma',
+          projectSlug: 'gamma',
           url: 'https://a.b',
         })
       ).status,
-    ).toBe(404);
+    ).toBe(403);
     for (const body of [
-      { projectId: '../x', url: 'https://a.b' },
-      { projectId: 'alpha' },
-      { projectId: 'alpha', url: 'https://a.b', surprise: true },
+      { projectSlug: '../x', url: 'https://a.b' },
+      { projectSlug: 'alpha' },
+      { projectSlug: 'alpha', url: 'https://a.b', surprise: true },
+      { projectId: 'alpha', url: 'https://a.b' },
       {
-        projectId: 'alpha',
+        projectSlug: 'alpha',
         url: 'https://a.b',
         viewport: { width: 1, height: 1, deviceScaleFactor: 1 },
       },
@@ -414,5 +452,194 @@ describe('browser routes: validation and typed failures', () => {
     );
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ code: 'stale-generation' });
+  });
+});
+
+describe('browser routes: D7 profile isolation', () => {
+  test("a Project admin cannot open, drive or see the operator's session", async () => {
+    const h = harness();
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const id = created.data.browserSessionId;
+    for (const [method, path, body] of [
+      ['GET', `/sessions/${id}`, undefined],
+      ['POST', `/sessions/${id}/navigate`, { url: 'https://example.org' }],
+      ['DELETE', `/sessions/${id}`, undefined],
+    ] as const) {
+      expect(
+        (await h.request(method, path, 'admin-alpha', body)).status,
+        `${method} ${path}`,
+      ).toBe(403);
+    }
+    // The operator can open an admin's session (D6: never hidden from the user).
+    const adminSession = (await (await h.create('admin-alpha')).json()) as {
+      data: { browserSessionId: string };
+    };
+    expect(
+      (
+        await h.request(
+          'GET',
+          `/sessions/${adminSession.data.browserSessionId}`,
+          'operator',
+        )
+      ).status,
+    ).toBe(200);
+  });
+});
+
+describe('browser routes: a principal that stopped being current (review M3)', () => {
+  test('every route refuses and nothing changes', async () => {
+    const h = harness();
+    const created = (await (await h.create('operator')).json()) as {
+      data: { browserSessionId: string };
+    };
+    const id = created.data.browserSessionId;
+    h.setPrincipalCurrent(false);
+    for (const [method, path, body] of [
+      ['GET', '/acquisition', undefined],
+      ['POST', '/acquisition/download', { consent: true }],
+      ['GET', '/sessions', undefined],
+      ['POST', '/sessions', { projectSlug: 'alpha', url: 'https://a.b' }],
+      ['GET', `/sessions/${id}`, undefined],
+      ['POST', `/sessions/${id}/navigate`, { url: 'https://example.org' }],
+      ['POST', `/sessions/${id}/reopen`, {}],
+      ['DELETE', `/sessions/${id}`, undefined],
+      ['GET', '/projects/alpha/local-targets', undefined],
+      [
+        'POST',
+        '/projects/alpha/local-targets',
+        { host: 'localhost', port: 5173, label: 'x' },
+      ],
+      ['GET', '/projects/alpha/local-target-suggestions', undefined],
+    ] as const) {
+      const response = await h.request(method, path, 'operator', body);
+      expect(response.status, `${method} ${path}`).toBe(403);
+      expect(await response.json()).toMatchObject({ code: 'access-denied' });
+    }
+    expect(h.registry.listSessions().map((s) => s.state)).toEqual(['live']);
+    expect(h.registry.getSession(id)?.history.total).toBe(1);
+    expect(h.acquisition.startDownload).not.toHaveBeenCalled();
+    expect(h.localTargets.list('p-alpha')).toEqual([]);
+    expect(h.suggestLocalTargets).not.toHaveBeenCalled();
+  });
+});
+
+describe('browser routes: registered local targets (D7)', () => {
+  test('only the operator adds or removes; Project admins can list; others get nothing', async () => {
+    const h = harness();
+    const target = { host: 'localhost', port: 5173, label: 'Vite dev server' };
+    expect(
+      (
+        await h.request(
+          'POST',
+          '/projects/alpha/local-targets',
+          'admin-alpha',
+          target,
+        )
+      ).status,
+    ).toBe(403);
+    const added = await h.request(
+      'POST',
+      '/projects/alpha/local-targets',
+      'operator',
+      target,
+    );
+    expect(added.status).toBe(201);
+    const { data } = (await added.json()) as {
+      data: { id: string; addedBy: string };
+    };
+    expect(data.addedBy).toBe('operator');
+    expect(h.localTargets.list('p-alpha')).toHaveLength(1);
+    const listed = await h.request(
+      'GET',
+      '/projects/alpha/local-targets',
+      'admin-alpha',
+    );
+    expect(listed.status).toBe(200);
+    expect(((await listed.json()) as { data: unknown[] }).data).toHaveLength(1);
+    expect(
+      (
+        await h.request(
+          'GET',
+          '/projects/alpha/local-targets',
+          'contributor-alpha',
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await h.request(
+          'DELETE',
+          `/projects/alpha/local-targets/${data.id}`,
+          'admin-alpha',
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await h.request(
+          'DELETE',
+          `/projects/alpha/local-targets/${data.id}`,
+          'operator',
+        )
+      ).status,
+    ).toBe(200);
+    expect(h.localTargets.list('p-alpha')).toEqual([]);
+  });
+
+  test('a Station listener port, a public host and junk are refused at registration', async () => {
+    const h = harness();
+    for (const [body, code] of [
+      [
+        { host: 'localhost', port: 4101, label: 'terminal' },
+        'station-listener',
+      ],
+      [{ host: '93.184.216.34', port: 80, label: 'public' }, 'invalid-host'],
+      [
+        { host: '169.254.169.254', port: 80, label: 'metadata' },
+        'invalid-host',
+      ],
+      [{ host: 'localhost', port: 0, label: 'x' }, 'invalid-port'],
+      [{ host: 'localhost', port: 5173, label: '' }, 'invalid-label'],
+    ] as const) {
+      const response = await h.request(
+        'POST',
+        '/projects/alpha/local-targets',
+        'operator',
+        body,
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code });
+    }
+    expect(h.localTargets.list('p-alpha')).toEqual([]);
+  });
+
+  test('suggestions are operator-only and never register anything', async () => {
+    const h = harness();
+    expect(
+      (
+        await h.request(
+          'GET',
+          '/projects/alpha/local-target-suggestions',
+          'admin-alpha',
+        )
+      ).status,
+    ).toBe(403);
+    const response = await h.request(
+      'GET',
+      '/projects/alpha/local-target-suggestions',
+      'operator',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { state: 'ok', suggestions: [{ port: 5173 }] },
+    });
+    expect(h.suggestLocalTargets).toHaveBeenCalledWith({
+      id: 'p-alpha',
+      slug: 'alpha',
+      workspaceRoot: '/work/alpha',
+    });
+    expect(h.localTargets.list('p-alpha')).toEqual([]);
   });
 });

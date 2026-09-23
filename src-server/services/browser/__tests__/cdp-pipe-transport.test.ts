@@ -221,6 +221,17 @@ describe('CdpPipeTransport close semantics', () => {
     await expect(pending).resolves.toEqual({ p: '' });
   });
 
+  test('a frame one byte over the bound is refused (max + 1)', async () => {
+    const frame = JSON.stringify({ id: 1, result: { p: '' } });
+    const pipe = fakePipe();
+    const transport = new CdpPipeTransport(pipe.writable, pipe.readable, {
+      maxMessageBytes: Buffer.byteLength(frame) - 1,
+    });
+    const pending = transport.send('A');
+    pipe.readable.emit('data', Buffer.from(`${frame}\0`));
+    await expect(pending).rejects.toBeInstanceOf(CdpTransportClosedError);
+  });
+
   test('a corrupt (non-JSON) frame closes the transport', async () => {
     const pipe = fakePipe();
     const transport = new CdpPipeTransport(pipe.writable, pipe.readable);

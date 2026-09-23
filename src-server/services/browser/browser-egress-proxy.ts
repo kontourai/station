@@ -1,7 +1,7 @@
 /**
  * The host Chromium's only way out: a Station-owned loopback forward proxy
- * that refuses every connection whose RESOLVED destination is a Station
- * listener on this host (#90 amendment "Station-listener deny").
+ * that enforces the profile's egress policy (`egress-policy.ts`) on the
+ * RESOLVED and the CONNECTED address (#90 D2/D7, "Station-listener deny").
  *
  * Chromium is launched with `--proxy-server=<this proxy>` and
  * `--proxy-bypass-list=<-loopback>` (so loopback traffic is proxied too, not
@@ -10,11 +10,26 @@
  * workers and service workers alike, because the decision is made at the
  * connection, below any page.
  *
- * The proxy resolves the hostname ITSELF, refuses if ANY resolved address is
- * a Station listener (see `station-listeners.ts`), and then connects to the
- * exact address it checked — never re-resolving — so DNS rebinding between
- * check and connect is not possible. A proxy failure fails closed: Chromium
- * has no direct route around it.
+ * 1. The proxy resolves the hostname ITSELF and refuses when ANY resolved
+ *    address is refused.
+ * 2. It dials the exact address it checked — never re-resolving — so DNS
+ *    rebinding between check and connect cannot move the destination.
+ * 3. After the TCP connect it checks the socket's actual `remoteAddress`
+ *    again, before a single byte is written, and destroys the connection if
+ *    that is refused. Any gap between the parser and the kernel's idea of the
+ *    address therefore fails closed (review H1).
+ *
+ * A proxy failure fails closed: Chromium has no direct route around it.
+ *
+ * Accepted gap (review S2): the proxy listens on 127.0.0.1 without a
+ * per-launch secret. Chromium cannot present proxy credentials without a
+ * CDP auth handler on every request (WebSockets included, which CDP cannot
+ * see), and cannot use a unix-socket proxy; attributing each accepted socket
+ * to Chromium's process tree costs a process-table lookup per connection.
+ * What another local process gains by using it: at most the reach of the
+ * profile's policy, which is never more than a same-host process already
+ * has (loopback is not user-isolated) and, for a Project admin profile, much
+ * less. Station listeners stay refused either way.
  */
 import { lookup as dnsLookup } from 'node:dns/promises';
 import {
@@ -28,22 +43,20 @@ import {
 import { connect, isIP, type Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
 import {
-  isLocalAddress,
-  isStationListenerDestination,
-  localInterfaceAddresses,
-  type StationListeners,
-} from './station-listeners.js';
+  decideEgress,
+  type EgressPolicy,
+  type EgressRefusal,
+} from './egress-policy.js';
 
-export type EgressRefusal =
-  | 'station-listener'
-  | 'resolve-failed'
-  | 'invalid-target';
+export type { EgressRefusal } from './egress-policy.js';
 
 export interface EgressDecisionEvent {
   host: string;
   port: number;
   address?: string;
   refusal: EgressRefusal;
+  /** `resolved` before dialing, `connected` on the socket's actual peer. */
+  stage: 'resolved' | 'connected';
 }
 
 export type EgressLookup = (
@@ -51,10 +64,7 @@ export type EgressLookup = (
 ) => Promise<ReadonlyArray<{ address: string }>>;
 
 export interface BrowserEgressProxyOptions {
-  /** Current Station listeners; re-read for every connection. */
-  listeners: () => StationListeners;
-  /** This host's interface addresses; defaults to the live interface list. */
-  interfaceAddresses?: () => readonly string[];
+  policy: EgressPolicy;
   /** Hostname resolution; defaults to the OS resolver. */
   lookup?: EgressLookup;
   onRefused?: (event: EgressDecisionEvent) => void;
@@ -94,20 +104,32 @@ function stripHopByHop(headers: IncomingHttpHeaders): IncomingHttpHeaders {
 function parseAuthority(
   value: string,
 ): { host: string; port: number } | undefined {
-  const match = /^(\[[0-9A-Fa-f:.]+\]|[^:/\s]+):(\d{1,5})$/.exec(value);
+  const match = /^(\[[0-9A-Fa-f:.]+\]|[^:/\s[\]]+):(\d{1,5})$/.exec(value);
   if (!match) return undefined;
   const port = Number(match[2]);
   if (port < 1 || port > 65_535) return undefined;
   return { host: match[1] as string, port };
 }
 
-function refuseTunnel(
-  socket: Duplex,
-  status: '403 Forbidden' | '400 Bad Request' | '502 Bad Gateway',
-): void {
+type TunnelStatus = '403 Forbidden' | '400 Bad Request' | '502 Bad Gateway';
+
+function refuseTunnel(socket: Duplex, status: TunnelStatus): void {
   socket.end(
     `HTTP/1.1 ${status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`,
   );
+}
+
+function refusalStatus(refusal: EgressRefusal): TunnelStatus {
+  return refusal === 'resolve-failed' ? '502 Bad Gateway' : '403 Forbidden';
+}
+
+class ConnectRefused extends Error {
+  constructor(
+    readonly refusal: EgressRefusal,
+    readonly address?: string,
+  ) {
+    super(`egress refused: ${refusal}`);
+  }
 }
 
 export class BrowserEgressProxy {
@@ -115,11 +137,9 @@ export class BrowserEgressProxy {
   private listeningPort = 0;
   private readonly sockets = new Set<Socket | Duplex>();
   private readonly lookup: EgressLookup;
-  private readonly interfaces: () => readonly string[];
 
   constructor(private readonly options: BrowserEgressProxyOptions) {
     this.lookup = options.lookup ?? defaultLookup;
-    this.interfaces = options.interfaceAddresses ?? localInterfaceAddresses;
   }
 
   get port(): number {
@@ -165,9 +185,14 @@ export class BrowserEgressProxy {
       await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
+  /** The policy decision for one address, including this proxy's own port. */
+  decide(address: string, port: number): EgressRefusal | undefined {
+    return decideEgress(address, port, this.options.policy, this.listeningPort);
+  }
+
   /**
-   * Decide a destination: resolve once, refuse if any address is a Station
-   * listener (or this proxy itself), otherwise return the address to dial.
+   * Resolve once, refuse if ANY address is refused, otherwise return the
+   * address to dial.
    */
   async resolveDestination(
     rawHost: string,
@@ -190,19 +215,39 @@ export class BrowserEgressProxy {
       }
     }
     if (addresses.length === 0) return { ok: false, refusal: 'resolve-failed' };
-    const listeners = this.options.listeners();
-    const interfaces = this.interfaces();
     for (const address of addresses) {
-      const selfPort =
-        port === this.listeningPort && isLocalAddress(address, interfaces);
-      if (
-        selfPort ||
-        isStationListenerDestination(address, port, listeners, interfaces)
-      ) {
-        return { ok: false, refusal: 'station-listener', address };
-      }
+      const refusal = this.decide(address, port);
+      if (refusal) return { ok: false, refusal, address };
     }
     return { ok: true, address: addresses[0] as string };
+  }
+
+  /**
+   * Dial the checked address and re-check the socket's actual peer before
+   * anything is written. Rejects with {@link ConnectRefused} on refusal.
+   */
+  private connectChecked(address: string, port: number): Promise<Socket> {
+    return new Promise((resolve, reject) => {
+      const socket = connect({ host: address, port });
+      this.track(socket);
+      socket.setTimeout(this.options.connectTimeoutMs ?? 30_000, () => {
+        if (socket.connecting) socket.destroy(new Error('connect timeout'));
+      });
+      socket.once('error', reject);
+      socket.once('connect', () => {
+        socket.off('error', reject);
+        socket.setTimeout(0);
+        const peer = socket.remoteAddress;
+        const refusal =
+          peer === undefined ? 'invalid-target' : this.decide(peer, port);
+        if (refusal) {
+          socket.destroy();
+          reject(new ConnectRefused(refusal, peer));
+          return;
+        }
+        resolve(socket);
+      });
+    });
   }
 
   private track(socket: Socket | Duplex): void {
@@ -211,18 +256,8 @@ export class BrowserEgressProxy {
     socket.on('error', () => {});
   }
 
-  private refused(
-    host: string,
-    port: number,
-    refusal: EgressRefusal,
-    address?: string,
-  ) {
-    this.options.onRefused?.({
-      host,
-      port,
-      refusal,
-      ...(address ? { address } : {}),
-    });
+  private refused(event: EgressDecisionEvent) {
+    this.options.onRefused?.(event);
   }
 
   private async onRequest(
@@ -241,25 +276,51 @@ export class BrowserEgressProxy {
       return;
     }
     const port = target.port === '' ? 80 : Number(target.port);
-    const decision = await this.resolveDestination(target.hostname, port);
-    if (!decision.ok) {
-      this.refused(target.hostname, port, decision.refusal, decision.address);
+    const blocked = (refusal: EgressRefusal) =>
       res
-        .writeHead(decision.refusal === 'resolve-failed' ? 502 : 403, {
+        .writeHead(refusal === 'resolve-failed' ? 502 : 403, {
           'content-type': 'text/plain',
           connection: 'close',
         })
         .end('Blocked by Station browser egress policy.');
+    const decision = await this.resolveDestination(target.hostname, port);
+    if (!decision.ok) {
+      this.refused({
+        host: target.hostname,
+        port,
+        refusal: decision.refusal,
+        stage: 'resolved',
+        ...(decision.address ? { address: decision.address } : {}),
+      });
+      blocked(decision.refusal);
+      return;
+    }
+    let socket: Socket;
+    try {
+      socket = await this.connectChecked(decision.address, port);
+    } catch (error) {
+      if (error instanceof ConnectRefused) {
+        this.refused({
+          host: target.hostname,
+          port,
+          refusal: error.refusal,
+          stage: 'connected',
+          ...(error.address ? { address: error.address } : {}),
+        });
+        blocked(error.refusal);
+      } else if (!res.headersSent) {
+        res.writeHead(502, { connection: 'close' }).end();
+      }
       return;
     }
     const upstream = httpRequest({
-      host: decision.address,
-      port,
+      createConnection: () => socket,
       method: req.method,
       path: `${target.pathname}${target.search}`,
       headers: stripHopByHop(req.headers),
       setHost: false,
-      timeout: this.options.connectTimeoutMs ?? 30_000,
+      // No `agent`: createConnection is only honoured without one, and the
+      // pre-checked socket must be the one used.
     });
     upstream.on('response', (response) => {
       res.writeHead(
@@ -268,9 +329,6 @@ export class BrowserEgressProxy {
       );
       response.pipe(res);
     });
-    upstream.on('timeout', () =>
-      upstream.destroy(new Error('upstream timeout')),
-    );
     upstream.on('error', () => {
       if (!res.headersSent) res.writeHead(502, { connection: 'close' });
       res.end();
@@ -289,29 +347,10 @@ export class BrowserEgressProxy {
       refuseTunnel(socket, '400 Bad Request');
       return;
     }
-    const decision = await this.resolveDestination(
-      authority.host,
-      authority.port,
-    );
-    if (!decision.ok) {
-      this.refused(
-        authority.host,
-        authority.port,
-        decision.refusal,
-        decision.address,
-      );
-      refuseTunnel(
-        socket,
-        decision.refusal === 'resolve-failed'
-          ? '502 Bad Gateway'
-          : '403 Forbidden',
-      );
-      return;
-    }
-    this.tunnel(
+    await this.openTunnel(
       socket,
       head,
-      decision.address,
+      authority.host,
       authority.port,
       'HTTP/1.1 200 Connection Established\r\n\r\n',
     );
@@ -336,63 +375,69 @@ export class BrowserEgressProxy {
       return;
     }
     const port = target.port === '' ? 80 : Number(target.port);
-    const decision = await this.resolveDestination(target.hostname, port);
-    if (!decision.ok) {
-      this.refused(target.hostname, port, decision.refusal, decision.address);
-      refuseTunnel(
-        socket,
-        decision.refusal === 'resolve-failed'
-          ? '502 Bad Gateway'
-          : '403 Forbidden',
-      );
-      return;
-    }
     const lines = [`${req.method} ${target.pathname}${target.search} HTTP/1.1`];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
       const name = req.rawHeaders[i] as string;
       if (/^proxy-/i.test(name)) continue;
       lines.push(`${name}: ${req.rawHeaders[i + 1]}`);
     }
-    this.tunnel(
+    await this.openTunnel(
       socket,
       head,
-      decision.address,
+      target.hostname,
       port,
       undefined,
       `${lines.join('\r\n')}\r\n\r\n`,
     );
   }
 
-  private tunnel(
+  private async openTunnel(
     client: Duplex,
     head: Buffer,
-    address: string,
+    host: string,
     port: number,
     replyToClient?: string,
     prefaceToUpstream?: string,
-  ): void {
-    const upstream = connect({ host: address, port });
-    this.track(upstream);
-    upstream.setTimeout(this.options.connectTimeoutMs ?? 30_000, () => {
-      if (upstream.connecting) upstream.destroy();
-    });
-    let connected = false;
-    upstream.once('connect', () => {
-      connected = true;
-      upstream.setTimeout(0);
-      if (replyToClient) client.write(replyToClient);
-      if (prefaceToUpstream) upstream.write(prefaceToUpstream);
-      if (head.length > 0) upstream.write(head);
-      upstream.pipe(client);
-      client.pipe(upstream);
-    });
-    upstream.once('error', () => {
-      // Before the tunnel opened the client still expects a status line;
-      // after, the bytes belong to the tunnelled protocol and we just end it.
-      if (!connected && replyToClient && !client.writableEnded)
+  ): Promise<void> {
+    const decision = await this.resolveDestination(host, port);
+    if (!decision.ok) {
+      this.refused({
+        host,
+        port,
+        refusal: decision.refusal,
+        stage: 'resolved',
+        ...(decision.address ? { address: decision.address } : {}),
+      });
+      refuseTunnel(client, refusalStatus(decision.refusal));
+      return;
+    }
+    let upstream: Socket;
+    try {
+      upstream = await this.connectChecked(decision.address, port);
+    } catch (error) {
+      if (error instanceof ConnectRefused) {
+        this.refused({
+          host,
+          port,
+          refusal: error.refusal,
+          stage: 'connected',
+          ...(error.address ? { address: error.address } : {}),
+        });
+        refuseTunnel(client, refusalStatus(error.refusal));
+      } else if (!client.writableEnded) {
         refuseTunnel(client, '502 Bad Gateway');
-      else client.destroy();
-    });
+      }
+      return;
+    }
+    if (client.destroyed) {
+      upstream.destroy();
+      return;
+    }
+    if (replyToClient) client.write(replyToClient);
+    if (prefaceToUpstream) upstream.write(prefaceToUpstream);
+    if (head.length > 0) upstream.write(head);
+    upstream.pipe(client);
+    client.pipe(upstream);
     client.once('close', () => upstream.destroy());
     upstream.once('close', () => client.destroy());
   }

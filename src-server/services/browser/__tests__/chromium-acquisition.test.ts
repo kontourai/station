@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,11 +23,15 @@ import {
 
 const ARCHIVE = Buffer.from('pretend-this-is-a-chromium-zip');
 const ARCHIVE_MD5 = createHash('md5').update(ARCHIVE).digest('base64');
+const ARCHIVE_SHA256 = createHash('sha256').update(ARCHIVE).digest('hex');
 
-function testPin(overrides: Partial<{ bytes: number; md5: string }> = {}) {
+function testPin(
+  overrides: Partial<{ bytes: number; md5: string; sha256: string }> = {},
+) {
   const build = {
     bytes: overrides.bytes ?? ARCHIVE.length,
     md5: overrides.md5 ?? ARCHIVE_MD5,
+    sha256: overrides.sha256 ?? ARCHIVE_SHA256,
     executable: ['chrome-mac-arm64', 'Chromium.app', 'chrome'],
   };
   return {
@@ -60,6 +65,7 @@ function harness(
     contentLength?: string | null;
     status?: number;
     extract?: ChromiumAcquisitionDeps['extract'];
+    entries?: string[];
   } = {},
 ) {
   const stationHome = mkdtempSync(join(tmpdir(), 'station-cft-home-'));
@@ -96,6 +102,13 @@ function harness(
       installed.has(path) || (path.startsWith(stationHome) && existsSync(path)),
     fetch: fetchMock as unknown as typeof fetch,
     extract,
+    listEntries: vi.fn(
+      async () =>
+        options.entries ?? [
+          'chrome-mac-arm64/',
+          'chrome-mac-arm64/Chromium.app/chrome',
+        ],
+    ),
     pin: options.pin ?? testPin(),
   };
   return {
@@ -265,6 +278,7 @@ describe('consented download', () => {
         path.startsWith(stationHome) && existsSync(path),
       fetch: vi.fn() as unknown as typeof fetch,
       extract: vi.fn(),
+      listEntries: vi.fn(async () => []),
       pin: testPin(),
     });
     expect(again.status().state).toBe('downloaded');
@@ -357,7 +371,94 @@ describe('consented download', () => {
   });
 });
 
+describe('archive trust (review: SHA-256 root, zip-slip, symlinks)', () => {
+  test('bytes matching size and MD5 but not the pinned SHA-256 are refused', async () => {
+    const { acquisition, extract, stationHome } = harness({
+      pin: testPin({ sha256: 'a'.repeat(64) }),
+    });
+    await acquisition.startDownload({ consent: true }).completion;
+    expect(acquisition.status()).toMatchObject({
+      state: 'failed',
+      reason: 'integrity-mismatch',
+    });
+    expect(extract).not.toHaveBeenCalled();
+    expect(readdirSync(chromiumInstallRoot(stationHome))).toEqual([]);
+  });
+
+  test('a malformed or placeholder SHA-256 pin fails closed', async () => {
+    const { acquisition, extract } = harness({
+      pin: testPin({ sha256: 'TODO' }),
+    });
+    await acquisition.startDownload({ consent: true }).completion;
+    expect(acquisition.status()).toMatchObject({
+      state: 'failed',
+      reason: 'integrity-mismatch',
+    });
+    expect(extract).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['../evil'],
+    ['chrome-mac-arm64/../../evil'],
+    ['/etc/evil'],
+    ['C:/evil'],
+    ['chrome\\..\\..\\evil'],
+  ])(
+    'an entry escaping the root (%s) is refused before extraction',
+    async (entry) => {
+      const { acquisition, extract } = harness({
+        entries: ['chrome-mac-arm64/Chromium.app/chrome', entry],
+      });
+      await acquisition.startDownload({ consent: true }).completion;
+      expect(acquisition.status()).toMatchObject({
+        state: 'failed',
+        reason: 'extract-failed',
+      });
+      expect(extract).not.toHaveBeenCalled();
+    },
+  );
+
+  test('an extracted symlink pointing outside the install directory is refused', async () => {
+    const { acquisition, stationHome } = harness({
+      extract: async (_zip, dest) => {
+        const dir = join(dest, 'chrome-mac-arm64', 'Chromium.app');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, 'chrome'), '#!/bin/sh\n');
+        symlinkSync(tmpdir(), join(dir, 'escape'));
+      },
+    });
+    await acquisition.startDownload({ consent: true }).completion;
+    expect(acquisition.status()).toMatchObject({
+      state: 'failed',
+      reason: 'extract-failed',
+    });
+    expect(readdirSync(chromiumInstallRoot(stationHome))).toEqual([]);
+  });
+
+  test('a symlink that stays inside (app-bundle style) is accepted', async () => {
+    const { acquisition } = harness({
+      extract: async (_zip, dest) => {
+        const dir = join(dest, 'chrome-mac-arm64', 'Chromium.app');
+        mkdirSync(join(dir, 'Versions', '1'), { recursive: true });
+        writeFileSync(join(dir, 'chrome'), '#!/bin/sh\n');
+        symlinkSync('Versions/1', join(dir, 'Current'));
+      },
+    });
+    await acquisition.startDownload({ consent: true }).completion;
+    expect(acquisition.status().state).toBe('downloaded');
+  });
+});
+
 describe('the production pin', () => {
+  test('pins a SHA-256 for every platform', () => {
+    for (const build of Object.values(CHROME_FOR_TESTING_PIN.builds)) {
+      expect(build.sha256).toMatch(/^[0-9a-f]{64}$/);
+    }
+    expect(CHROME_FOR_TESTING_PIN.builds['mac-arm64'].sha256).toBe(
+      '0e6b3439469c1b8b95b2e89c72ea29f7af00fb2c28a8878358a0b6002b6d3a64',
+    );
+  });
+
   test('pins every platform with an exact size and a 16-byte MD5', () => {
     expect(CHROME_FOR_TESTING_PIN.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(CHROME_FOR_TESTING_PIN.baseUrl).toBe(

@@ -18,6 +18,7 @@ import {
   configuredConsentPort,
   createBrowserService,
 } from '../../services/browser/browser-service.js';
+import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
@@ -3193,10 +3194,33 @@ export function configureRuntimeRoutes(
         acquisition: browserService.acquisition,
         authorizeProject: createBrowserProjectAuthorizer(browserAccess),
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
-        projectExists: (projectId) =>
-          context.projectService
+        localTargets: browserService.localTargets,
+        listeners: browserService.listeners,
+        suggestLocalTargets: async (project) => {
+          const service = browserService!;
+          return suggestLocalTargets(
+            await service.portScanner.scan(),
+            {
+              workspaceRoot: project.workspaceRoot,
+              registered: service.localTargets.list(project.id),
+            },
+            service.listeners(),
+          );
+        },
+        resolveProject: (slug) => {
+          const project = context.projectService
             .listProjects()
-            .some((project) => project.slug === projectId),
+            .find((candidate) => candidate.slug === slug);
+          if (!project) return undefined;
+          const config = context.projectService.getProject(slug);
+          return {
+            id: project.id,
+            slug: project.slug,
+            ...(config?.workingDirectory
+              ? { workspaceRoot: expandTilde(config.workingDirectory) }
+              : {}),
+          };
+        },
         isRequestPrincipalCurrent,
       }),
     );

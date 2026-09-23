@@ -6,14 +6,21 @@
 import { findRunning } from '@kontourai/station-shared/instance-registry';
 import { createLogger } from '../../utils/logger.js';
 import type { BrowserHost } from './browser-host.js';
-import { BrowserSessionRegistry } from './browser-session-registry.js';
+import { LocalTargetStore } from './browser-local-targets.js';
+import {
+  type BrowserProfile,
+  BrowserSessionRegistry,
+} from './browser-session-registry.js';
 import { ChromiumAcquisition } from './chromium-acquisition.js';
+import type { EgressPolicy } from './egress-policy.js';
 import {
   BrowserHostExitedError,
   ChromiumServerHost,
 } from './hosts/chromium-server-host.js';
+import { LocalPortScanner } from './local-port-scanner.js';
 import {
   deriveStationListeners,
+  localInterfaceAddresses,
   type StationInstancePorts,
   type StationListeners,
 } from './station-listeners.js';
@@ -34,6 +41,8 @@ export interface BrowserServiceOptions {
 export interface BrowserService {
   registry: BrowserSessionRegistry;
   acquisition: ChromiumAcquisition;
+  localTargets: LocalTargetStore;
+  portScanner: LocalPortScanner;
   listeners(): StationListeners;
   shutdown(): Promise<void>;
 }
@@ -92,9 +101,10 @@ export function createBrowserService(
     }
     return cached.listeners;
   };
+  const localTargets = new LocalTargetStore(options.stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome: options.stationHome,
-    createHost: (projectId): BrowserHost => {
+    createHost: (profile: BrowserProfile): BrowserHost => {
       const executablePath = acquisition.resolveExecutable();
       if (!executablePath) {
         throw new BrowserHostExitedError(
@@ -103,13 +113,17 @@ export function createBrowserService(
       }
       return new ChromiumServerHost({
         executablePath,
-        stationListeners: listeners,
+        egressPolicy: egressPolicyFor(profile, listeners, localTargets),
         onEvent: (event) => {
           if (
             event.kind === 'request-blocked' ||
             event.kind === 'egress-refused'
           )
-            logger.info('browser: request refused', { projectId, ...event });
+            logger.info('browser: request refused', {
+              projectId: profile.projectId,
+              reach: profile.reach,
+              ...event,
+            });
         },
       });
     },
@@ -117,8 +131,33 @@ export function createBrowserService(
   return {
     registry,
     acquisition,
+    localTargets,
+    portScanner: new LocalPortScanner(),
     listeners,
     shutdown: () => registry.shutdown(),
+  };
+}
+
+/**
+ * The egress policy for one profile's browser (D7): operator profiles get
+ * full reach minus Station listeners; every other profile public addresses
+ * plus the Project's registered local targets, read live per connection.
+ */
+export function egressPolicyFor(
+  profile: Pick<BrowserProfile, 'projectId' | 'reach'>,
+  listeners: () => StationListeners,
+  localTargets: Pick<LocalTargetStore, 'list'>,
+): EgressPolicy {
+  return {
+    listeners,
+    interfaceAddresses: localInterfaceAddresses,
+    reach:
+      profile.reach === 'operator'
+        ? { kind: 'operator' }
+        : {
+            kind: 'project',
+            localTargets: () => localTargets.list(profile.projectId),
+          },
   };
 }
 

@@ -49,9 +49,9 @@ import type {
   CdpTransport,
 } from '../browser-host.js';
 import { CdpPipeTransport } from '../cdp-pipe-transport.js';
+import type { EgressPolicy } from '../egress-policy.js';
 import {
   isStationSelfUrl,
-  localInterfaceAddresses,
   type StationListeners,
   stationSelfFetchPatterns,
 } from '../station-listeners.js';
@@ -60,31 +60,90 @@ import { ABOUT_BLANK, isAllowedBrowserUrl } from '../url-policy.js';
 /** Chromium's own network-error page. It cannot be navigated to directly. */
 const CHROME_ERROR_PAGE = 'chrome-error://chromewebdata/';
 
-/** Methods only the host may issue; they install or could undo enforcement. */
-const HOST_OWNED_CDP_METHODS = new Set([
-  'Browser.setDownloadBehavior',
-  'Page.setDownloadBehavior',
-  'Browser.setPermission',
-  'Browser.grantPermissions',
-  'Browser.resetPermissions',
-  'Browser.close',
-  'Browser.crash',
-  'Browser.crashGpuProcess',
-  'Target.createTarget',
-  'Target.createBrowserContext',
-  'Target.setDiscoverTargets',
-  'Target.exposeDevToolsProtocol',
+/**
+ * The ONLY methods the public {@link BrowserHost.cdp} channel forwards, and
+ * only on a page session this host opened (review B2/M1). Everything else —
+ * every `Browser.*` and `Target.*` method, `Fetch.*`, storage and download
+ * controls, and `DOM.setFileInputFiles` — stays host-owned, because
+ * `Target.attachToTarget{flatten:false}` + `Target.sendMessageToTarget` or
+ * `Target.attachToBrowserTarget` would tunnel ANY method past a deny-list.
+ * Adding an entry requires updating the pinning test.
+ */
+export const PAGE_SESSION_CDP_ALLOWLIST: readonly string[] = Object.freeze([
+  // Navigation. Page.navigate is URL-checked below; navigateToHistoryEntry is
+  // checked against the entry's URL. Reload and stop keep the current URL.
+  'Page.navigate',
+  'Page.reload',
+  'Page.stopLoading',
+  'Page.getNavigationHistory',
+  'Page.navigateToHistoryEntry',
+  // Observation: frames the pane streams and the agent inspects.
+  'Page.enable',
+  'Page.getFrameTree',
+  'Page.getLayoutMetrics',
+  'Page.captureScreenshot',
+  'Page.startScreencast',
+  'Page.stopScreencast',
+  'Page.screencastFrameAck',
+  // Input the human or agent sends into the page (the lease decides who).
+  'Input.dispatchMouseEvent',
+  'Input.dispatchKeyEvent',
+  'Input.dispatchTouchEvent',
+  'Input.insertText',
+  'Input.imeSetComposition',
+  // Page-realm script: locators and element handles run here. It has the
+  // page's own authority only (same as the page's JS); D4 gates the tool.
+  'Runtime.enable',
+  'Runtime.evaluate',
+  'Runtime.callFunctionOn',
+  'Runtime.getProperties',
+  'Runtime.releaseObject',
+  'Runtime.releaseObjectGroup',
+  'Runtime.awaitPromise',
+  // DOM reads (and focus, which a click also does). Never setFileInputFiles:
+  // it reads host files into the page.
+  'DOM.enable',
+  'DOM.getDocument',
+  'DOM.querySelector',
+  'DOM.querySelectorAll',
+  'DOM.describeNode',
+  'DOM.resolveNode',
+  'DOM.requestNode',
+  'DOM.getBoxModel',
+  'DOM.getContentQuads',
+  'DOM.getOuterHTML',
+  'DOM.getAttributes',
+  'DOM.getNodeForLocation',
+  'DOM.scrollIntoViewIfNeeded',
+  'DOM.focus',
+  // Accessibility tree reads for snapshots.
+  'Accessibility.enable',
+  'Accessibility.disable',
+  'Accessibility.getFullAXTree',
+  'Accessibility.getPartialAXTree',
+  'Accessibility.queryAXTree',
+  'Accessibility.getRootAXNode',
+  'Accessibility.getChildAXNodes',
+  // Viewport and media emulation for the pane's size and responsive checks.
+  'Emulation.setDeviceMetricsOverride',
+  'Emulation.clearDeviceMetricsOverride',
+  'Emulation.setEmulatedMedia',
+  'Emulation.setTouchEmulationEnabled',
+  // Diagnostics event streams (console, network log); no interception.
+  'Network.enable',
+  'Log.enable',
 ]);
+const PAGE_SESSION_CDP_ALLOWED = new Set(PAGE_SESSION_CDP_ALLOWLIST);
 
 /** Permission names denied at launch. The first five are mandatory. */
-const MANDATORY_DENIED_PERMISSIONS = [
+export const MANDATORY_DENIED_PERMISSIONS = [
   'geolocation',
   'notifications',
   'camera',
   'microphone',
   'clipboard-read',
 ] as const;
-const BEST_EFFORT_DENIED_PERMISSIONS = [
+export const BEST_EFFORT_DENIED_PERMISSIONS = [
   'midi',
   'background-sync',
   'persistent-storage',
@@ -110,14 +169,20 @@ export class BrowserHostExitedError extends Error {
 export class BrowserHostPolicyError extends Error {
   constructor(
     readonly method: string,
-    readonly code: 'host-owned-method' | 'url-not-allowed' | 'profile-mismatch',
+    readonly code:
+      | 'host-owned-method'
+      | 'url-not-allowed'
+      | 'profile-mismatch'
+      | 'foreign-session',
   ) {
     super(
       code === 'url-not-allowed'
         ? `${method} was refused: the URL is outside the Browser pane's scope.`
         : code === 'profile-mismatch'
           ? 'This browser host already runs a different profile directory.'
-          : `${method} is reserved to the browser host.`,
+          : code === 'foreign-session'
+            ? `${method} was refused: only page sessions this host opened are reachable.`
+            : `${method} is reserved to the browser host.`,
     );
     this.name = 'BrowserHostPolicyError';
   }
@@ -140,15 +205,12 @@ export type ChromiumLauncher = (request: {
 export interface ChromiumServerHostOptions {
   executablePath: string;
   /**
-   * Station's listeners, re-read for every connection the browser makes.
-   * Required so no caller can forget the block.
+   * The profile's egress policy (Station listeners plus the actor's reach,
+   * D7), re-read for every connection. Required so no caller can forget it.
    */
-  stationListeners: () => StationListeners;
-  /** Egress-proxy seams (tests): resolution and interface addresses. */
-  egress?: {
-    lookup?: EgressLookup;
-    interfaceAddresses?: () => readonly string[];
-  };
+  egressPolicy: EgressPolicy;
+  /** Egress-proxy seam (tests): hostname resolution. */
+  egress?: { lookup?: EgressLookup };
   launcher?: ChromiumLauncher;
   launchTimeoutMs?: number;
   /** Diagnostics sink for non-fatal enforcement events. */
@@ -158,7 +220,13 @@ export interface ChromiumServerHostOptions {
 export type ChromiumHostEvent =
   | { kind: 'request-blocked'; reason: PausedRequestBlock; url: string }
   | { kind: 'popup-folded'; openerTargetId: string; url: string | undefined }
-  | { kind: 'committed-url-refused'; targetId: string; url: string }
+  | {
+      kind: 'committed-url-refused';
+      targetId: string;
+      url: string;
+      frame: 'main' | 'subframe';
+    }
+  | { kind: 'untracked-target-closed'; targetId: string; url: string }
   | { kind: 'permission-deny-skipped'; permission: string; error: string }
   | ({ kind: 'egress-refused' } & EgressDecisionEvent);
 
@@ -201,6 +269,15 @@ export function isAllowedCommittedUrl(url: string): boolean {
   return url === CHROME_ERROR_PAGE || isAllowedBrowserUrl(url);
 }
 
+/**
+ * A subframe URL that may stay committed (review S3): the main-frame scope
+ * plus `about:srcdoc` (an inline iframe). `data:`, `blob:`, `filesystem:` and
+ * every other scheme are replaced with about:blank.
+ */
+export function isAllowedSubframeUrl(url: string): boolean {
+  return url === 'about:srcdoc' || isAllowedCommittedUrl(url);
+}
+
 /** Pure launch argument list. */
 export function buildChromiumArgs(input: {
   profileDir: string;
@@ -225,6 +302,7 @@ export function buildChromiumArgs(input: {
     '--disable-component-update',
     '--disable-default-apps',
     '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
     '--disable-sync',
     '--disable-features=Translate,MediaRouter,OptimizationHints',
     '--mute-audio',
@@ -237,7 +315,8 @@ export function buildChromiumArgs(input: {
     // QUIC and non-proxied WebRTC UDP would sidestep an HTTP proxy.
     '--disable-quic',
     '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
-    ABOUT_BLANK,
+    // No launch tab: every page target is one this host created.
+    '--no-startup-window',
   ];
 }
 
@@ -323,7 +402,14 @@ interface Running {
     { openerTargetId: string; folded: boolean; timer?: NodeJS.Timeout }
   >;
   unsubscribe: Array<() => void>;
+  /** Target.createTarget calls in flight (their targets are not yet known). */
+  creating: number;
+  /** Page targets awaiting the untracked-target check. */
+  pendingUntracked: Map<string, NodeJS.Timeout>;
 }
+
+/** Grace before an unknown page target (not ours, not a popup) is closed. */
+const UNTRACKED_TARGET_GRACE_MS = 1_000;
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -372,10 +458,16 @@ export class ChromiumServerHost implements BrowserHost {
   }): Promise<BrowserTarget> {
     const running = await this.ensureRunning(p.profileDir);
     const transport = running.launch.transport;
-    const { targetId } = await transport.send<{ targetId: string }>(
-      'Target.createTarget',
-      { url: ABOUT_BLANK },
-    );
+    running.creating += 1;
+    let targetId: string;
+    try {
+      ({ targetId } = await transport.send<{ targetId: string }>(
+        'Target.createTarget',
+        { url: ABOUT_BLANK },
+      ));
+    } finally {
+      running.creating -= 1;
+    }
     try {
       const { sessionId } = await transport.send<{ sessionId: string }>(
         'Target.attachToTarget',
@@ -383,6 +475,9 @@ export class ChromiumServerHost implements BrowserHost {
       );
       const unsubscribe = this.watchCommittedUrls(running, targetId, sessionId);
       running.targets.set(targetId, { sessionId, unsubscribe });
+      const pending = running.pendingUntracked.get(targetId);
+      if (pending) clearTimeout(pending);
+      running.pendingUntracked.delete(targetId);
       await transport.send('Page.enable', {}, sessionId);
       await transport.send(
         'Emulation.setDeviceMetricsOverride',
@@ -472,9 +567,8 @@ export class ChromiumServerHost implements BrowserHost {
   private async start(profileDir: string): Promise<Running> {
     mkdirSync(profileDir, { recursive: true, mode: 0o700 });
     const proxy = new BrowserEgressProxy({
-      listeners: this.options.stationListeners,
+      policy: this.options.egressPolicy,
       lookup: this.options.egress?.lookup,
-      interfaceAddresses: this.options.egress?.interfaceAddresses,
       onRefused: (event) =>
         this.options.onEvent?.({ kind: 'egress-refused', ...event }),
     });
@@ -499,6 +593,8 @@ export class ChromiumServerHost implements BrowserHost {
       targets: new Map(),
       popups: new Map(),
       unsubscribe: [],
+      creating: 0,
+      pendingUntracked: new Map(),
     };
     void launch.exited.then((reason) => {
       void proxy.close();
@@ -568,12 +664,25 @@ export class ChromiumServerHost implements BrowserHost {
     await transport.send('Fetch.enable', {
       patterns: [
         { urlPattern: '*', resourceType: 'Document', requestStage: 'Request' },
-        ...stationSelfFetchPatterns(this.options.stationListeners()).map(
+        ...stationSelfFetchPatterns(this.options.egressPolicy.listeners()).map(
           (urlPattern) => ({ urlPattern, requestStage: 'Request' }),
         ),
       ],
     });
     await transport.send('Target.setDiscoverTargets', { discover: true });
+    // Any page present at launch was not created by this host.
+    const { targetInfos } = await transport.send<{
+      targetInfos?: Array<{ targetId: string; type: string; url: string }>;
+    }>('Target.getTargets');
+    for (const info of targetInfos ?? []) {
+      if (info.type !== 'page') continue;
+      await transport.send('Target.closeTarget', { targetId: info.targetId });
+      this.options.onEvent?.({
+        kind: 'untracked-target-closed',
+        targetId: info.targetId,
+        url: info.url,
+      });
+    }
   }
 
   private onRequestPaused(running: Running, params: unknown): void {
@@ -587,10 +696,8 @@ export class ChromiumServerHost implements BrowserHost {
     const decision = decidePausedRequest(
       { url: p.request.url, resourceType: p.resourceType, frameId: p.frameId },
       {
-        stationListeners: this.options.stationListeners(),
-        interfaceAddresses: (
-          this.options.egress?.interfaceAddresses ?? localInterfaceAddresses
-        )(),
+        stationListeners: this.options.egressPolicy.listeners(),
+        interfaceAddresses: this.options.egressPolicy.interfaceAddresses(),
         popupFrameIds: new Set(
           [...running.popups.entries()]
             .filter(([, popup]) => !popup.folded)
@@ -622,15 +729,17 @@ export class ChromiumServerHost implements BrowserHost {
   private onTargetSeen(running: Running, params: unknown): void {
     const info = (params as { targetInfo?: Record<string, unknown> })
       .targetInfo;
-    if (!info || info.type !== 'page' || typeof info.targetId !== 'string')
-      return;
+    if (info?.type !== 'page' || typeof info.targetId !== 'string') return;
     const targetId = info.targetId;
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {
       const opener =
         typeof info.openerId === 'string' ? info.openerId : undefined;
-      if (!opener || !running.targets.has(opener)) return;
+      if (!opener || !running.targets.has(opener)) {
+        this.checkUntracked(running, targetId, url);
+        return;
+      }
       popup = { openerTargetId: opener, folded: false };
       running.popups.set(targetId, popup);
       // A popup opened without a URL (or that never reports one) is closed
@@ -642,6 +751,44 @@ export class ChromiumServerHost implements BrowserHost {
     }
     if (url !== '' && url !== ABOUT_BLANK)
       this.foldPopup(running, targetId, url);
+  }
+
+  /**
+   * A page target this host did not create and that is not a popup of one of
+   * its targets (the launch tab, an extension page, a view-source: tab) is
+   * closed: no unobserved page may live in the browser (review B2).
+   */
+  private checkUntracked(
+    running: Running,
+    targetId: string,
+    url: string,
+  ): void {
+    if (running.targets.has(targetId) || running.pendingUntracked.has(targetId))
+      return;
+    const check = () => {
+      running.pendingUntracked.delete(targetId);
+      if (running.targets.has(targetId) || running.popups.has(targetId)) return;
+      if (running.creating > 0) {
+        // One of our own creates may still be answering with this id.
+        running.pendingUntracked.set(
+          targetId,
+          setTimeout(check, UNTRACKED_TARGET_GRACE_MS),
+        );
+        return;
+      }
+      void running.launch.transport
+        .send('Target.closeTarget', { targetId })
+        .catch(() => {});
+      this.options.onEvent?.({
+        kind: 'untracked-target-closed',
+        targetId,
+        url,
+      });
+    };
+    running.pendingUntracked.set(
+      targetId,
+      setTimeout(check, UNTRACKED_TARGET_GRACE_MS),
+    );
   }
 
   private foldPopup(
@@ -687,22 +834,34 @@ export class ChromiumServerHost implements BrowserHost {
     const transport = running.launch.transport;
     return transport.on('Page.frameNavigated', (params, eventSessionId) => {
       if (eventSessionId !== sessionId) return;
-      const frame = (params as { frame?: { url?: string; parentId?: string } })
-        .frame;
+      const frame = (
+        params as { frame?: { id?: string; url?: string; parentId?: string } }
+      ).frame;
+      if (!frame || typeof frame.url !== 'string') return;
+      const subframe = frame.parentId !== undefined;
       if (
-        !frame ||
-        frame.parentId !== undefined ||
-        typeof frame.url !== 'string'
+        subframe
+          ? isAllowedSubframeUrl(frame.url)
+          : isAllowedCommittedUrl(frame.url)
       )
         return;
-      if (isAllowedCommittedUrl(frame.url)) return;
       this.options.onEvent?.({
         kind: 'committed-url-refused',
         targetId,
         url: frame.url,
+        frame: subframe ? 'subframe' : 'main',
       });
+      // data:, blob: and filesystem: documents never touch the network, so
+      // the Fetch layer cannot stop them; they are replaced on commit.
       void transport
-        .send('Page.navigate', { url: ABOUT_BLANK }, sessionId)
+        .send(
+          'Page.navigate',
+          {
+            url: ABOUT_BLANK,
+            ...(subframe && frame.id ? { frameId: frame.id } : {}),
+          },
+          sessionId,
+        )
         .catch(() => {});
     });
   }
@@ -717,6 +876,8 @@ export class ChromiumServerHost implements BrowserHost {
       for (const target of running.targets.values()) target.unsubscribe();
       for (const popup of running.popups.values())
         if (popup.timer) clearTimeout(popup.timer);
+      for (const timer of running.pendingUntracked.values())
+        clearTimeout(timer);
     }
     const listeners = [...this.exitListeners];
     this.exitListeners.clear();
@@ -730,38 +891,57 @@ export class ChromiumServerHost implements BrowserHost {
     }
   }
 
+  private ownSession(sessionId: string | undefined): boolean {
+    if (sessionId === undefined) return false;
+    for (const target of this.running?.targets.values() ?? [])
+      if (target.sessionId === sessionId) return true;
+    return false;
+  }
+
   private createGuardedTransport(): CdpTransport {
     const host = this;
     const closed = new Promise<void>((resolve) => {
       host.onExit(() => resolve());
     });
+    const refuse = (method: string, code: BrowserHostPolicyError['code']) =>
+      Promise.reject(new BrowserHostPolicyError(method, code));
     return {
-      send<R = unknown>(method: string, params?: object, sessionId?: string) {
-        if (HOST_OWNED_CDP_METHODS.has(method) || method.startsWith('Fetch.')) {
-          return Promise.reject(
-            new BrowserHostPolicyError(method, 'host-owned-method'),
-          );
-        }
+      async send<R = unknown>(
+        method: string,
+        params?: object,
+        sessionId?: string,
+      ): Promise<R> {
+        if (!PAGE_SESSION_CDP_ALLOWED.has(method))
+          return refuse(method, 'host-owned-method');
+        const running = host.requireRunning();
+        if (!host.ownSession(sessionId))
+          return refuse(method, 'foreign-session');
         if (method === 'Page.navigate') {
           const url = (params as { url?: unknown } | undefined)?.url;
-          if (typeof url !== 'string' || !isAllowedBrowserUrl(url)) {
-            return Promise.reject(
-              new BrowserHostPolicyError(method, 'url-not-allowed'),
-            );
-          }
+          if (typeof url !== 'string' || !isAllowedBrowserUrl(url))
+            return refuse(method, 'url-not-allowed');
         }
-        let running: Running;
-        try {
-          running = host.requireRunning();
-        } catch (error) {
-          return Promise.reject(error);
+        if (method === 'Page.navigateToHistoryEntry') {
+          const entryId = (params as { entryId?: unknown } | undefined)
+            ?.entryId;
+          const history = await running.launch.transport.send<{
+            entries: Array<{ id: number; url: string }>;
+          }>('Page.getNavigationHistory', {}, sessionId);
+          const entry = history.entries.find((e) => e.id === entryId);
+          if (!entry || !isAllowedBrowserUrl(entry.url))
+            return refuse(method, 'url-not-allowed');
         }
         return running.launch.transport.send<R>(method, params, sessionId);
       },
       // Subscribe after openTarget: before launch there is no channel, and a
       // subscription that silently never fires would read as "no events".
+      // Only events from this host's own page sessions are delivered.
       on(event, fn) {
-        return host.requireRunning().launch.transport.on(event, fn);
+        return host
+          .requireRunning()
+          .launch.transport.on(event, (params, sessionId) => {
+            if (host.ownSession(sessionId)) fn(params, sessionId);
+          });
       },
       // The channel belongs to the host; callers end it with shutdown().
       close: async () => {},

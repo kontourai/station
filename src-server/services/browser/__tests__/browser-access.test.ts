@@ -55,7 +55,7 @@ async function harness() {
     name: 'Alpha',
     slug: 'alpha',
   });
-  await projects.createProject({ name: 'Beta', slug: 'beta' });
+  const beta = await projects.createProject({ name: 'Beta', slug: 'beta' });
   const db = new DatabaseSync(join(home, 'access.sqlite'));
   databases.push(db);
   const service = new ProjectMembershipService(
@@ -117,6 +117,10 @@ async function harness() {
     membership: service,
   };
   return {
+    alpha: project.id,
+    beta: beta.id,
+    scope: enabled.scope,
+    ownerAuthority: authorityFor(ownerRequest),
     authorize: createBrowserProjectAuthorizer(deps),
     authorizeOperator: createBrowserOperatorAuthorizer(deps),
     requestAs,
@@ -130,7 +134,7 @@ describe('browser access (D5) with the real membership service', () => {
     for (const principal of [owner, admin]) {
       for (const purpose of ['view', 'drive'] as const) {
         expect(
-          await h.authorize(h.requestAs(principal), 'alpha', purpose),
+          await h.authorize(h.requestAs(principal), h.alpha, purpose),
         ).toEqual({
           kind: 'project-admin',
           principalId: principal.id,
@@ -144,7 +148,7 @@ describe('browser access (D5) with the real membership service', () => {
     for (const principal of [contributor, viewer, stranger]) {
       for (const purpose of ['view', 'drive'] as const) {
         expect(
-          await h.authorize(h.requestAs(principal), 'alpha', purpose),
+          await h.authorize(h.requestAs(principal), h.alpha, purpose),
         ).toBeUndefined();
       }
     }
@@ -153,14 +157,14 @@ describe('browser access (D5) with the real membership service', () => {
   test('admin standing does not carry to another Project', async () => {
     const h = await harness();
     expect(
-      await h.authorize(h.requestAs(admin), 'beta', 'drive'),
+      await h.authorize(h.requestAs(admin), h.beta, 'drive'),
     ).toBeUndefined();
   });
 
   test('the Station operator is admitted for any Project, and only it for acquisition', async () => {
     const h = await harness();
     expect(
-      await h.authorize(h.requestAs(stranger, true), 'beta', 'drive'),
+      await h.authorize(h.requestAs(stranger, true), h.beta, 'drive'),
     ).toEqual({
       kind: 'operator',
     });
@@ -201,5 +205,35 @@ describe('browser access (D5) with the real membership service', () => {
     expect(
       await authorize(new Request('http://x/'), 'alpha', 'drive'),
     ).toBeUndefined();
+  });
+
+  test('a revoked admin gets nothing', async () => {
+    const h = await harness();
+    const member = (
+      await h.service.administration('alpha', h.ownerAuthority)
+    ).members.find((entry) => entry.principal.id === admin.id)!;
+    await h.service.changeMember(
+      h.scope,
+      admin.id,
+      member.revision,
+      { role: 'admin', status: 'revoked' },
+      h.ownerAuthority,
+    );
+    expect(
+      await h.authorize(h.requestAs(admin), h.alpha, 'drive'),
+    ).toBeUndefined();
+  });
+
+  test('review S5: standing is keyed by canonical Project ID, never the slug', async () => {
+    const h = await harness();
+    // The slug string is not an ID: passing it grants nothing.
+    expect(
+      await h.authorize(h.requestAs(admin), 'alpha', 'drive'),
+    ).toBeUndefined();
+    expect(
+      await h.authorize(h.requestAs(admin), h.alpha, 'drive'),
+    ).toMatchObject({
+      kind: 'project-admin',
+    });
   });
 });

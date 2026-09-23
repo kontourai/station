@@ -20,7 +20,10 @@ import type { BrowserSessionActor } from './browser-session-registry.js';
 
 export type BrowserAccessPurpose = 'view' | 'drive';
 
-/** Resolves the caller's standing for one Project, or undefined to refuse. */
+/**
+ * Resolves the caller's standing for one Project (by canonical Project ID),
+ * or undefined to refuse.
+ */
 export type BrowserProjectAuthorizer = (
   request: Request,
   projectId: string,
@@ -73,12 +76,13 @@ export function createBrowserProjectAuthorizer(
       const admissions = await deps.membership.readableProjectAdmissions(
         deps.authority(request),
       );
+      // Canonical Project ID, never the slug: a renamed or reused slug must
+      // not move admin standing between Projects (D7, review S5).
       const admission = admissions.find(
-        ({ scope }) => scope.localProjectSlug === projectId,
+        ({ scope }) => scope.localProjectId === projectId,
       );
       if (
-        !admission ||
-        admission.member.status !== 'active' ||
+        admission?.member.status !== 'active' ||
         !PROJECT_ADMIN_ROLES.has(admission.member.role)
       ) {
         return undefined;

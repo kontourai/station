@@ -15,16 +15,19 @@ import {
   BrowserSessionError,
   BrowserSessionRegistry,
   browserProfileDir,
+  browserProfileFor,
+  redactBrowserUrl,
 } from '../browser-session-registry.js';
 
 const OPERATOR: BrowserSessionActor = { kind: 'operator' };
 const AGENT: BrowserSessionActor = {
   kind: 'agent',
+  principalId: 'agent-principal',
   sessionId: 'agent-session-1',
 };
 
 /** A fake host: one per launch, like the real single-use Chromium host. */
-function fakeHost(id: number) {
+function fakeHost(id: number, holdOpen?: Promise<void>) {
   const exitListeners = new Set<(reason: string) => void>();
   const sent: Array<{ method: string; params?: object; sessionId?: string }> =
     [];
@@ -45,6 +48,7 @@ function fakeHost(id: number) {
     shutdown: vi.fn(async () => {}),
     async openTarget(p: { profileDir: string }) {
       host.profileDirs.push(p.profileDir);
+      if (holdOpen) await holdOpen;
       targetSeq += 1;
       return {
         targetId: `H${id}-T${targetSeq}`,
@@ -75,7 +79,11 @@ afterEach(() => {
 });
 
 function harness(
-  options: { stationHome?: string; idleShutdownMs?: number } = {},
+  options: {
+    stationHome?: string;
+    idleShutdownMs?: number;
+    holdOpen?: Promise<void>;
+  } = {},
 ) {
   const stationHome =
     options.stationHome ?? mkdtempSync(join(tmpdir(), 'station-browser-reg-'));
@@ -86,7 +94,7 @@ function harness(
     stationHome,
     idleShutdownMs: options.idleShutdownMs ?? 1_000,
     createHost: () => {
-      const host = fakeHost(hosts.length + 1);
+      const host = fakeHost(hosts.length + 1, options.holdOpen);
       hosts.push(host);
       return host;
     },
@@ -100,6 +108,7 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts, stationHome } = harness();
     const session = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       threadId: 'thread-1',
       url: 'localhost:5173',
       actor: OPERATOR,
@@ -107,16 +116,22 @@ describe('BrowserSessionRegistry', () => {
     expect(session).toMatchObject({
       browserSessionId: 'bs_1',
       projectId: 'alpha',
+      projectSlug: 'alpha',
       threadId: 'thread-1',
       url: 'http://localhost:5173/',
       generation: 1,
       hostKind: 'server-chromium',
-      profileRef: 'projects/alpha/browser/profile',
+      principalKey: 'operator',
+      reach: 'operator',
+      profileRef: browserProfileFor('alpha', OPERATOR)?.profileRef,
       state: 'live',
       viewport: { width: 1280, height: 800, deviceScaleFactor: 1 },
     });
     expect(hosts[0]?.profileDirs).toEqual([
-      browserProfileDir(stationHome, 'projects/alpha/browser/profile'),
+      browserProfileDir(
+        stationHome,
+        browserProfileFor('alpha', OPERATOR)!.profileRef,
+      ),
     ]);
     expect(hosts[0]?.sent).toContainEqual({
       method: 'Page.navigate',
@@ -129,16 +144,19 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts } = harness();
     await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
     await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
     await registry.createSession({
       projectId: 'beta',
+      projectSlug: 'beta',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -151,6 +169,7 @@ describe('BrowserSessionRegistry', () => {
     await expect(
       registry.createSession({
         projectId: 'alpha',
+        projectSlug: 'alpha',
         url: 'file:///etc/passwd',
         actor: OPERATOR,
       }),
@@ -162,6 +181,7 @@ describe('BrowserSessionRegistry', () => {
       await expect(
         registry.createSession({
           projectId,
+          projectSlug: projectId,
           url: 'about:blank',
           actor: OPERATOR,
         }),
@@ -170,6 +190,7 @@ describe('BrowserSessionRegistry', () => {
     await expect(
       registry.createSession({
         projectId: 'alpha',
+        projectSlug: 'alpha',
         url: 'about:blank',
         viewport: { width: 99999, height: 10, deviceScaleFactor: 1 },
         actor: OPERATOR,
@@ -183,6 +204,7 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts } = harness();
     const session = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'https://example.com',
       actor: OPERATOR,
     });
@@ -237,11 +259,13 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts } = harness({ idleShutdownMs: 5_000 });
     const a = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
     const b = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -265,6 +289,7 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts } = harness({ idleShutdownMs: 5_000 });
     const a = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -272,6 +297,7 @@ describe('BrowserSessionRegistry', () => {
     await vi.advanceTimersByTimeAsync(2_000);
     await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -284,11 +310,13 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts } = harness();
     const a = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
     await registry.createSession({
       projectId: 'beta',
+      projectSlug: 'beta',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -301,6 +329,7 @@ describe('BrowserSessionRegistry', () => {
     await expect(
       registry.createSession({
         projectId: 'alpha',
+        projectSlug: 'alpha',
         url: 'about:blank',
         actor: OPERATOR,
       }),
@@ -311,11 +340,13 @@ describe('BrowserSessionRegistry', () => {
     const first = harness();
     const live = await first.registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'https://example.com',
       actor: OPERATOR,
     });
     const closed = await first.registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -355,6 +386,7 @@ describe('BrowserSessionRegistry', () => {
     expect(registry.listSessions()).toEqual([]);
     const session = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -362,13 +394,16 @@ describe('BrowserSessionRegistry', () => {
     const stored = JSON.parse(
       readFileSync(join(stationHome, 'browser', 'sessions.json'), 'utf8'),
     );
-    expect(stored.generations.alpha).toBe(session.generation);
+    expect(stored.generations[browserProfileFor('alpha', OPERATOR)!.key]).toBe(
+      session.generation,
+    );
   });
 
   test('persisted records hold no live state after a clean shutdown either', async () => {
     const { registry, stationHome } = harness();
     await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: OPERATOR,
     });
@@ -383,6 +418,7 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts } = harness();
     const session = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'https://example.com',
       actor: AGENT,
     });
@@ -430,6 +466,7 @@ describe('BrowserSessionRegistry', () => {
     const { registry } = harness();
     const session = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: AGENT,
     });
@@ -453,16 +490,19 @@ describe('BrowserSessionRegistry', () => {
     const { registry, hosts } = harness();
     const live = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: AGENT,
     });
     const crashed = await registry.createSession({
       projectId: 'beta',
+      projectSlug: 'beta',
       url: 'about:blank',
       actor: AGENT,
     });
     const closed = await registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: AGENT,
     });
@@ -499,6 +539,7 @@ describe('BrowserSessionRegistry', () => {
     const first = harness();
     const live = await first.registry.createSession({
       projectId: 'alpha',
+      projectSlug: 'alpha',
       url: 'about:blank',
       actor: AGENT,
     });
@@ -508,5 +549,234 @@ describe('BrowserSessionRegistry', () => {
       'created',
       'server-restarted',
     ]);
+  });
+
+  test('D7: profiles are per (Project ID, principal): operator and each admin get their own', async () => {
+    const { registry, hosts, stationHome } = harness();
+    const ADMIN_A: BrowserSessionActor = {
+      kind: 'project-admin',
+      principalId: 'a',
+    };
+    const ADMIN_B: BrowserSessionActor = {
+      kind: 'project-admin',
+      principalId: 'b',
+    };
+    const op = await registry.createSession({
+      projectId: 'p-1',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    const a = await registry.createSession({
+      projectId: 'p-1',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: ADMIN_A,
+    });
+    const b = await registry.createSession({
+      projectId: 'p-1',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: ADMIN_B,
+    });
+    expect(hosts).toHaveLength(3);
+    expect(new Set([op.profileRef, a.profileRef, b.profileRef]).size).toBe(3);
+    expect([op, a, b].map((s) => [s.principalKey, s.reach])).toEqual([
+      ['operator', 'operator'],
+      ['principal:a', 'project'],
+      ['principal:b', 'project'],
+    ]);
+    // The directory never contains the slug or the raw ids.
+    for (const ref of [op.profileRef, a.profileRef, b.profileRef]) {
+      expect(ref).toMatch(/^browser\/profiles\/[0-9a-f]{32}\/[0-9a-f]{32}$/);
+      expect(browserProfileDir(stationHome, ref).startsWith(stationHome)).toBe(
+        true,
+      );
+    }
+    expect(registry.hasRunningHost('p-1', 'principal:a')).toBe(true);
+  });
+
+  test('D7 / review S5: the profile follows the canonical Project ID, not the slug', async () => {
+    const { registry, hosts } = harness();
+    const before = await registry.createSession({
+      projectId: 'p-1',
+      projectSlug: 'old-slug',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    const renamed = await registry.createSession({
+      projectId: 'p-1',
+      projectSlug: 'new-slug',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    expect(renamed.profileRef).toBe(before.profileRef);
+    expect(hosts).toHaveLength(1);
+    // A different Project that later takes the old slug gets a fresh profile.
+    const reused = await registry.createSession({
+      projectId: 'p-2',
+      projectSlug: 'old-slug',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    expect(reused.profileRef).not.toBe(before.profileRef);
+    expect(hosts).toHaveLength(2);
+  });
+
+  test('a caller that cannot own a profile is refused', async () => {
+    const { registry, hosts } = harness();
+    await expect(
+      registry.createSession({
+        projectId: 'p-1',
+        projectSlug: 'alpha',
+        url: 'about:blank',
+        actor: { kind: 'system' },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-actor' });
+    await expect(
+      registry.createSession({
+        projectId: 'p-1',
+        projectSlug: 'alpha',
+        url: 'about:blank',
+        actor: { kind: 'agent', sessionId: 's' },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-actor' });
+    expect(hosts).toEqual([]);
+  });
+
+  test('review S4: list summaries drop query strings and fragments; the single view keeps them', async () => {
+    const { registry } = harness();
+    const session = await registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'https://example.com/cb?code=SECRET#token=T',
+      actor: OPERATOR,
+    });
+    const [summary] = registry.listSessions();
+    expect(summary?.url).toBe('https://example.com/cb');
+    expect(summary?.history.entries.map((e) => e.url)).toEqual([
+      'https://example.com/cb',
+    ]);
+    expect(JSON.stringify(summary)).not.toContain('SECRET');
+    expect(registry.getSession(session.browserSessionId)?.url).toBe(
+      'https://example.com/cb?code=SECRET#token=T',
+    );
+    expect(redactBrowserUrl('about:blank')).toBe('about:blank');
+  });
+
+  test('concurrency: parallel creates for one profile share one launch', async () => {
+    const { registry, hosts } = harness();
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        registry.createSession({
+          projectId: 'alpha',
+          projectSlug: 'alpha',
+          url: 'about:blank',
+          actor: OPERATOR,
+        }),
+      ),
+    );
+    expect(hosts).toHaveLength(1);
+    expect(hosts[0]?.profileDirs).toHaveLength(5);
+  });
+
+  test('concurrency: closing a session while it is still opening leaves nothing running', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    // openTarget is held until the close has happened.
+    const { registry, hosts } = harness({ holdOpen: gate });
+    const pending = registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    const host = hosts[0]!;
+    const [opening] = registry.listSessions();
+    expect(opening?.state).toBe('opening');
+    const closed = await registry.closeSession(
+      opening!.browserSessionId,
+      OPERATOR,
+    );
+    expect(closed.state).toBe('closed');
+    release();
+    await gate;
+    const result = await pending;
+    expect(result.state).toBe('closed');
+    expect(host.closedTargets).toEqual(['H1-T1']);
+    expect(
+      registry
+        .getSession(result.browserSessionId)
+        ?.history.entries.map((e) => e.kind),
+    ).toEqual(['created', 'closed']);
+  });
+
+  test('concurrency: an idle shutdown due while a create is resolving the host waits for it', async () => {
+    vi.useFakeTimers();
+    const { registry, hosts } = harness({ idleShutdownMs: 1 });
+    const first = await registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    await registry.closeSession(first.browserSessionId, OPERATOR);
+    // The idle timer (1 ms) is armed. Start a create and let the timer fire
+    // before the create's continuation runs.
+    const second = registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    await vi.advanceTimersByTimeAsync(5);
+    const live = await second;
+    expect(live.state).toBe('live');
+    expect(hosts[0]?.shutdown).not.toHaveBeenCalled();
+    expect(hosts).toHaveLength(1);
+    expect(registry.hasRunningHost('alpha')).toBe(true);
+  });
+
+  test('a restart demotes `opening` records too, never loading them as live', async () => {
+    const stationHome = mkdtempSync(join(tmpdir(), 'station-browser-reg-'));
+    homes.push(stationHome);
+    const profile = browserProfileFor('alpha', OPERATOR)!;
+    mkdirSync(join(stationHome, 'browser'), { recursive: true });
+    const at = new Date().toISOString();
+    writeFileSync(
+      join(stationHome, 'browser', 'sessions.json'),
+      JSON.stringify({
+        version: 2,
+        generations: { [profile.key]: 3 },
+        sessions: [
+          {
+            browserSessionId: 'bs_opening',
+            projectId: 'alpha',
+            projectSlug: 'alpha',
+            principalKey: 'operator',
+            reach: 'operator',
+            url: 'about:blank',
+            viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
+            generation: 3,
+            hostKind: 'server-chromium',
+            profileRef: profile.profileRef,
+            state: 'opening',
+            createdAt: at,
+            updatedAt: at,
+            history: { entries: [], total: 0 },
+          },
+        ],
+      }),
+    );
+    const { registry } = harness({ stationHome });
+    expect(registry.getSession('bs_opening')).toMatchObject({
+      state: 'needs-reopen',
+      endReason: 'server-restarted',
+    });
+    const reopened = await registry.reopenSession('bs_opening', OPERATOR);
+    expect(reopened.generation).toBe(4);
   });
 });

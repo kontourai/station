@@ -17,6 +17,11 @@ import type {
 } from '../services/browser/browser-access.js';
 import type { BrowserViewport } from '../services/browser/browser-host.js';
 import {
+  LocalTargetError,
+  type LocalTargetStore,
+} from '../services/browser/browser-local-targets.js';
+import {
+  actorOwnsSessionProfile,
   BrowserSessionError,
   type BrowserSessionRegistry,
   isValidBrowserProjectId,
@@ -27,10 +32,20 @@ import {
   ChromiumConsentRequiredError,
 } from '../services/browser/chromium-acquisition.js';
 import { BrowserHostExitedError } from '../services/browser/hosts/chromium-server-host.js';
+import type { LocalTargetSuggestions } from '../services/browser/local-port-scanner.js';
+import type { StationListeners } from '../services/browser/station-listeners.js';
 
 const MAX_BODY_BYTES = 16 * 1024;
 const SESSION_ID = /^bs_[0-9a-f-]{36}$/;
 const THREAD_ID = /^[A-Za-z0-9._:-]{1,200}$/;
+const TARGET_ID = /^lt_[0-9a-f-]{36}$/;
+
+/** A Project as the routes see it: canonical ID plus its current slug. */
+export interface BrowserRouteProject {
+  id: string;
+  slug: string;
+  workspaceRoot?: string;
+}
 
 export interface BrowserRoutesDeps {
   registry: Pick<
@@ -43,9 +58,15 @@ export interface BrowserRoutesDeps {
     | 'reopenSession'
   >;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
+  localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
+  listeners(): StationListeners;
+  suggestLocalTargets(
+    project: BrowserRouteProject,
+  ): Promise<LocalTargetSuggestions>;
   authorizeProject: BrowserProjectAuthorizer;
   authorizeOperator: BrowserOperatorAuthorizer;
-  projectExists(projectId: string): boolean;
+  /** Slug to canonical Project; undefined when there is no such Project. */
+  resolveProject(slug: string): BrowserRouteProject | undefined;
   isRequestPrincipalCurrent(request: Request): boolean;
 }
 
@@ -75,6 +96,7 @@ function sessionErrorStatus(error: BrowserSessionError): 400 | 404 | 409 | 503 {
     case 'url-not-allowed':
     case 'invalid-project':
     case 'invalid-viewport':
+    case 'invalid-actor':
       return 400;
     case 'not-found':
       return 404;
@@ -109,6 +131,16 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         sessionErrorStatus(error),
       );
     }
+    if (error instanceof LocalTargetError) {
+      return c.json(
+        { success: false, code: error.code },
+        error.code === 'not-found'
+          ? 404
+          : error.code === 'duplicate'
+            ? 409
+            : 400,
+      );
+    }
     if (error instanceof BrowserHostExitedError) {
       return c.json({ success: false, code: 'browser-unavailable' }, 503);
     }
@@ -121,11 +153,12 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   });
 
   app.post('/acquisition/download', async (c) => {
+    // Authorization first: a non-operator learns nothing about the body.
+    if (!(await deps.authorizeOperator(c.req.raw))) return c.json(denied, 403);
     const body = await readJsonObject(c.req.raw, ['consent']);
     // Consent is the literal `true`; nothing else starts a download.
-    if (!body || body.consent !== true)
+    if (body?.consent !== true)
       return c.json({ success: false, code: 'consent-required' }, 400);
-    if (!(await deps.authorizeOperator(c.req.raw))) return c.json(denied, 403);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     try {
       const { status } = deps.acquisition.startDownload({ consent: true });
@@ -138,40 +171,52 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   });
 
   app.get('/sessions', async (c) => {
-    const projectFilter = c.req.query('projectId');
-    if (projectFilter !== undefined && !isValidBrowserProjectId(projectFilter))
-      return c.json(invalid, 400);
+    const slug = c.req.query('projectSlug');
+    let projectFilter: string | undefined;
+    if (slug !== undefined) {
+      const project = isValidBrowserProjectId(slug)
+        ? deps.resolveProject(slug)
+        : undefined;
+      if (!project) return c.json(invalid, 400);
+      projectFilter = project.id;
+    }
     const all = deps.registry.listSessions(
       projectFilter === undefined
         ? undefined
         : (record) => record.projectId === projectFilter,
     );
     // D6: every session stays discoverable — to those allowed to see it.
-    const allowed = new Map<string, boolean>();
+    // D7: a Project admin sees only sessions in their own profile.
+    const actors = new Map<
+      string,
+      Awaited<ReturnType<BrowserProjectAuthorizer>>
+    >();
     for (const projectId of new Set(all.map((s) => s.projectId))) {
-      allowed.set(
+      actors.set(
         projectId,
-        (await deps.authorizeProject(c.req.raw, projectId, 'view')) !==
-          undefined,
+        await deps.authorizeProject(c.req.raw, projectId, 'view'),
       );
     }
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     return c.json({
       success: true,
-      data: all.filter((session) => allowed.get(session.projectId)),
+      data: all.filter((session) => {
+        const actor = actors.get(session.projectId);
+        return actor !== undefined && actorOwnsSessionProfile(session, actor);
+      }),
     });
   });
 
   app.post('/sessions', async (c) => {
     const body = await readJsonObject(c.req.raw, [
-      'projectId',
+      'projectSlug',
       'threadId',
       'url',
       'viewport',
     ]);
     if (
       !body ||
-      !isValidBrowserProjectId(body.projectId) ||
+      !isValidBrowserProjectId(body.projectSlug) ||
       typeof body.url !== 'string' ||
       (body.threadId !== undefined &&
         (typeof body.threadId !== 'string' ||
@@ -179,14 +224,12 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       (body.viewport !== undefined && !isValidBrowserViewport(body.viewport))
     )
       return c.json(invalid, 400);
-    const actor = await deps.authorizeProject(
-      c.req.raw,
-      body.projectId,
-      'drive',
-    );
-    if (!actor) return c.json(denied, 403);
-    if (!deps.projectExists(body.projectId))
-      return c.json({ success: false, code: 'project-not-found' }, 404);
+    const project = deps.resolveProject(body.projectSlug);
+    const actor = project
+      ? await deps.authorizeProject(c.req.raw, project.id, 'drive')
+      : undefined;
+    // An unknown Project and a refused one look the same to the caller.
+    if (!project || !actor) return c.json(denied, 403);
     const acquisition = deps.acquisition.status();
     if (
       acquisition.state !== 'found-system' &&
@@ -199,7 +242,8 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     }
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     const session = await deps.registry.createSession({
-      projectId: body.projectId,
+      projectId: project.id,
+      projectSlug: project.slug,
       url: body.url,
       actor,
       ...(typeof body.threadId === 'string' ? { threadId: body.threadId } : {}),
@@ -222,7 +266,8 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       session.projectId,
       purpose,
     );
-    if (!actor) return { status: 403 as const };
+    if (!actor || !actorOwnsSessionProfile(session, actor))
+      return { status: 403 as const };
     return { status: 200 as const, session, actor };
   };
 
@@ -314,6 +359,83 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       found.actor,
     );
     return c.json({ success: true, data: session });
+  });
+
+  // --- Registered local targets (D7) -------------------------------------
+  const projectFor = async (
+    request: Request,
+    slug: string,
+    need: 'view' | 'operator',
+  ) => {
+    const project = isValidBrowserProjectId(slug)
+      ? deps.resolveProject(slug)
+      : undefined;
+    if (!project) return undefined;
+    const allowed =
+      need === 'operator'
+        ? await deps.authorizeOperator(request)
+        : (await deps.authorizeProject(request, project.id, 'view')) !==
+          undefined;
+    return allowed ? project : undefined;
+  };
+
+  app.get('/projects/:projectSlug/local-targets', async (c) => {
+    const project = await projectFor(
+      c.req.raw,
+      c.req.param('projectSlug'),
+      'view',
+    );
+    if (!project) return c.json(denied, 403);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({ success: true, data: deps.localTargets.list(project.id) });
+  });
+
+  app.post('/projects/:projectSlug/local-targets', async (c) => {
+    const project = await projectFor(
+      c.req.raw,
+      c.req.param('projectSlug'),
+      'operator',
+    );
+    if (!project) return c.json(denied, 403);
+    const body = await readJsonObject(c.req.raw, ['host', 'port', 'label']);
+    if (!body) return c.json(invalid, 400);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const target = deps.localTargets.add(
+      project.id,
+      { host: body.host, port: body.port, label: body.label },
+      'operator',
+      deps.listeners(),
+    );
+    return c.json({ success: true, data: target }, 201);
+  });
+
+  app.delete('/projects/:projectSlug/local-targets/:targetId', async (c) => {
+    const project = await projectFor(
+      c.req.raw,
+      c.req.param('projectSlug'),
+      'operator',
+    );
+    if (!project) return c.json(denied, 403);
+    const targetId = c.req.param('targetId');
+    if (!TARGET_ID.test(targetId)) return c.json(invalid, 400);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({
+      success: true,
+      data: deps.localTargets.remove(project.id, targetId),
+    });
+  });
+
+  // Suggestions reveal local processes, so they are the operator's alone.
+  app.get('/projects/:projectSlug/local-target-suggestions', async (c) => {
+    const project = await projectFor(
+      c.req.raw,
+      c.req.param('projectSlug'),
+      'operator',
+    );
+    if (!project) return c.json(denied, 403);
+    const suggestions = await deps.suggestLocalTargets(project);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({ success: true, data: suggestions });
   });
 
   return app;

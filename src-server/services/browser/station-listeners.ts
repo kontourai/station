@@ -23,8 +23,8 @@
  * origin, from `ALLOWED_ORIGINS`); and the same block for every other running
  * instance this Station home's instance registry lists.
  */
-import { isIP } from 'node:net';
 import { networkInterfaces } from 'node:os';
+import { canonicalIp, isLoopbackIp, sameIp } from './ip-address.js';
 
 export interface StationListeners {
   /** Station listener ports (refused on any address of this host). */
@@ -70,45 +70,45 @@ function effectivePort(url: URL): number | undefined {
   return undefined;
 }
 
-function normalizeAddress(address: string): string {
-  let value = address.toLowerCase();
-  if (value.startsWith('[') && value.endsWith(']')) value = value.slice(1, -1);
-  const zone = value.indexOf('%');
-  if (zone !== -1) value = value.slice(0, zone);
-  // IPv4-mapped IPv6 (::ffff:127.0.0.1) is the IPv4 address.
-  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(value);
-  return mapped?.[1] ?? value;
-}
-
-/** Addresses of this host's interfaces (LAN, tailnet, ...), normalized. */
+/** Addresses of this host's interfaces (LAN, tailnet, ...), canonical. */
 export function localInterfaceAddresses(): string[] {
   const out: string[] = [];
   for (const entries of Object.values(networkInterfaces())) {
-    for (const entry of entries ?? [])
-      out.push(normalizeAddress(entry.address));
+    for (const entry of entries ?? []) {
+      const ip = canonicalIp(entry.address);
+      if (ip) out.push(ip.address);
+    }
   }
   return out;
 }
 
 /**
- * Whether an IP literal reaches THIS host: loopback, the unspecified address
- * (which connects locally), or one of the given interface addresses.
+ * Whether an IP literal (any spelling, including IPv4-mapped/compatible IPv6)
+ * reaches THIS host: loopback, the unspecified/"this network" ranges, or one
+ * of the given interface addresses. A non-IP string is not local.
  */
 export function isLocalAddress(
   address: string,
   interfaceAddresses: readonly string[],
 ): boolean {
-  const value = normalizeAddress(address);
-  if (value === '0.0.0.0' || value === '::' || value === '::1') return true;
-  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)) return true;
-  return interfaceAddresses.includes(value);
+  const ip = canonicalIp(address);
+  if (!ip) return false;
+  if (isLoopbackIp(ip)) return true;
+  return interfaceAddresses.some((candidate) => {
+    const other = canonicalIp(candidate);
+    return other !== undefined && sameIp(ip, other);
+  });
 }
 
 /** Loopback spellings Chromium connects to this machine without DNS. */
 export function isLoopbackHostname(hostname: string): boolean {
-  const host = normalizeAddress(hostname);
+  const host = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost')) return true;
-  return isIP(host) !== 0 && isLocalAddress(host, []);
+  const ip = canonicalIp(host);
+  return ip !== undefined && isLoopbackIp(ip);
 }
 
 function addInstance(ports: Set<number>, instance: StationInstancePorts): void {
@@ -190,9 +190,9 @@ export function isStationSelfUrl(
   }
   const port = effectivePort(url);
   if (port === undefined || !listeners.ports.includes(port)) return false;
-  const host = normalizeAddress(url.hostname);
+  const host = url.hostname.toLowerCase();
   if (isLoopbackHostname(host)) return true;
-  if (isIP(host) !== 0) return isLocalAddress(host, interfaceAddresses);
+  if (canonicalIp(host)) return isLocalAddress(host, interfaceAddresses);
   return listeners.hostnames.includes(host);
 }
 

@@ -4,7 +4,9 @@ import { afterEach, describe, expect, test } from 'vitest';
 import {
   BrowserEgressProxy,
   type EgressDecisionEvent,
+  type EgressLookup,
 } from '../browser-egress-proxy.js';
+import type { EgressReach, RegisteredLocalTarget } from '../egress-policy.js';
 import {
   deriveStationListeners,
   type StationListeners,
@@ -27,7 +29,13 @@ async function listen(server: Server): Promise<number> {
   return (server.address() as AddressInfo).port;
 }
 
-async function harness(options: { listeners?: () => StationListeners } = {}) {
+async function harness(
+  options: {
+    listeners?: () => StationListeners;
+    reach?: EgressReach;
+    lookup?: EgressLookup;
+  } = {},
+) {
   const stationHits: string[] = [];
   const station = createServer((req, res) => {
     stationHits.push(`http ${req.url}`);
@@ -44,8 +52,10 @@ async function harness(options: { listeners?: () => StationListeners } = {}) {
   // Ephemeral ports are often sequential: keep re-binding until the dev
   // server sits outside the Station block (server..consent = +0..+3).
   let devPort = 0;
+  const devHits: string[] = [];
   for (;;) {
     const dev = createServer((req, res) => {
+      devHits.push(`http ${req.url}`);
       res.setHeader('x-dev', 'yes');
       res.end(`dev ${req.method} ${req.url} host=${req.headers.host}`);
     });
@@ -58,15 +68,20 @@ async function harness(options: { listeners?: () => StationListeners } = {}) {
     configuredOrigins: [],
   });
   const proxy = new BrowserEgressProxy({
-    listeners: options.listeners ?? (() => listeners),
-    interfaceAddresses: () => ['192.0.2.10'],
-    lookup: async (hostname) => {
-      if (hostname === 'rebind.test' || hostname === 'dev.test')
-        return [{ address: '127.0.0.1' }];
-      if (hostname === 'split.test')
-        return [{ address: '93.184.216.34' }, { address: '127.0.0.1' }];
-      throw new Error('ENOTFOUND');
+    policy: {
+      listeners: options.listeners ?? (() => listeners),
+      interfaceAddresses: () => ['192.0.2.10'],
+      reach: options.reach ?? { kind: 'operator' },
     },
+    lookup:
+      options.lookup ??
+      (async (hostname) => {
+        if (hostname === 'rebind.test' || hostname === 'dev.test')
+          return [{ address: '127.0.0.1' }];
+        if (hostname === 'split.test')
+          return [{ address: '93.184.216.34' }, { address: '127.0.0.1' }];
+        throw new Error('ENOTFOUND');
+      }),
     onRefused: (event) => refused.push(event),
   });
   const proxyPort = await proxy.start();
@@ -77,6 +92,7 @@ async function harness(options: { listeners?: () => StationListeners } = {}) {
     proxyPort,
     proxy,
     stationHits,
+    devHits,
     refused,
     setListeners: (next: StationListeners) => {
       listeners = next;
@@ -197,12 +213,14 @@ describe('BrowserEgressProxy', () => {
           port: h.stationPort,
           refusal: 'station-listener',
           address: '127.0.0.1',
+          stage: 'resolved',
         },
         {
           host: 'split.test',
           port: h.stationPort,
           refusal: 'station-listener',
           address: '127.0.0.1',
+          stage: 'resolved',
         },
       ]),
     );
@@ -281,5 +299,97 @@ describe('BrowserEgressProxy', () => {
       req.end();
     });
     expect(status).toBe(400);
+  });
+
+  test('review H1: IPv4-mapped spellings of loopback are refused (hex, expanded, dotted)', async () => {
+    const h = await harness();
+    for (const host of [
+      '[::ffff:127.0.0.1]',
+      '[::ffff:7f00:1]',
+      '[0:0:0:0:0:ffff:7f00:1]',
+      '[::127.0.0.1]',
+    ]) {
+      const refused = await tunnel(h.proxyPort, `${host}:${h.stationPort}`);
+      expect(refused.status, host).toBe('HTTP/1.1 403 Forbidden');
+      refused.socket.destroy();
+      expect(
+        (await viaProxy(h.proxyPort, `http://${host}:${h.stationPort}/`))
+          .status,
+        host,
+      ).toBe(403);
+    }
+    expect(h.stationHits).toEqual([]);
+  });
+
+  test('review M2: the proxy dials the address it checked, never a re-resolution', async () => {
+    let calls = 0;
+    const h = await harness({
+      lookup: async () => {
+        calls += 1;
+        // First answer (the one checked) is loopback; any later answer
+        // points at an unroutable TEST-NET address.
+        return [{ address: calls === 1 ? '127.0.0.1' : '192.0.2.1' }];
+      },
+    });
+    const allowed = await tunnel(h.proxyPort, `flip.test:${h.devPort}`);
+    expect(allowed.status).toBe('HTTP/1.1 200 Connection Established');
+    const reply = await new Promise<string>((resolve) => {
+      allowed.socket.once('data', (chunk) => resolve(chunk.toString()));
+      allowed.socket.write(
+        'GET /flip HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n',
+      );
+    });
+    allowed.socket.destroy();
+    expect(reply).toContain('dev GET /flip');
+    expect(calls).toBe(1);
+  });
+
+  test('review H1: the CONNECTED address is re-checked before a byte is written', async () => {
+    // Listener set that changes between the resolve check and the connect
+    // check stands in for any gap between parser and kernel.
+    let reads = 0;
+    let devPort = 0;
+    const h = await harness({
+      listeners: () => {
+        reads += 1;
+        return { ports: reads === 1 ? [] : [devPort], hostnames: [] };
+      },
+    });
+    devPort = h.devPort;
+    const refused = await tunnel(h.proxyPort, `127.0.0.1:${h.devPort}`);
+    expect(refused.status).toBe('HTTP/1.1 403 Forbidden');
+    refused.socket.destroy();
+    reads = 0;
+    expect(
+      (await viaProxy(h.proxyPort, `http://127.0.0.1:${h.devPort}/late`))
+        .status,
+    ).toBe(403);
+    expect(h.devHits).toEqual([]);
+    expect(h.refused.map((e) => [e.refusal, e.stage])).toEqual([
+      ['station-listener', 'connected'],
+      ['station-listener', 'connected'],
+    ]);
+  });
+
+  test('D7: a Project profile reaches loopback only through a registered target', async () => {
+    const targets: RegisteredLocalTarget[] = [];
+    const h = await harness({
+      reach: { kind: 'project', localTargets: () => targets },
+    });
+    expect(
+      (await viaProxy(h.proxyPort, `http://127.0.0.1:${h.devPort}/`)).status,
+    ).toBe(403);
+    expect(
+      (await viaProxy(h.proxyPort, `http://dev.test:${h.devPort}/`)).status,
+    ).toBe(403);
+    expect(h.refused.map((e) => e.refusal)).toEqual([
+      'non-public-address',
+      'non-public-address',
+    ]);
+    targets.push({ host: 'localhost', port: h.devPort });
+    expect(
+      (await viaProxy(h.proxyPort, `http://127.0.0.1:${h.devPort}/ok`)).status,
+    ).toBe(200);
+    expect(h.devHits).toEqual(['http /ok']);
   });
 });

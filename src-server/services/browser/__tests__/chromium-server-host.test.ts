@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { CdpTransport } from '../browser-host.js';
 import {
+  BEST_EFFORT_DENIED_PERMISSIONS,
   BrowserHostExitedError,
   BrowserHostPolicyError,
   buildChromiumArgs,
@@ -12,6 +13,8 @@ import {
   ChromiumServerHost,
   chromiumEnvironment,
   decidePausedRequest,
+  MANDATORY_DENIED_PERMISSIONS,
+  PAGE_SESSION_CDP_ALLOWLIST,
 } from '../hosts/chromium-server-host.js';
 import { deriveStationListeners } from '../station-listeners.js';
 
@@ -97,7 +100,11 @@ function harness(respond?: (call: SentCall) => unknown) {
   const events: ChromiumHostEvent[] = [];
   const host = new ChromiumServerHost({
     executablePath: '/fake/chrome',
-    stationListeners: () => LISTENERS,
+    egressPolicy: {
+      listeners: () => LISTENERS,
+      interfaceAddresses: () => [],
+      reach: { kind: 'operator' },
+    },
     launcher,
     onEvent: (event) => events.push(event),
   });
@@ -129,8 +136,13 @@ describe('launch arguments and environment', () => {
         '--proxy-bypass-list=<-loopback>',
         '--disable-quic',
         '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+        '--disable-extensions',
+        '--disable-component-extensions-with-background-pages',
+        '--no-startup-window',
       ]),
     );
+    // No launch URL: the host creates every page target itself.
+    expect(args).not.toContain('about:blank');
     expect(args.some((arg) => arg.startsWith('--remote-debugging-port'))).toBe(
       false,
     );
@@ -357,14 +369,92 @@ describe('ChromiumServerHost with a fake browser', () => {
     expect(calls.filter((c) => c.method === 'Page.navigate')).toEqual([]);
   });
 
-  test('pages not opened by our targets are left alone', async () => {
-    const { host, profileDir, emit, calls } = harness();
+  test('review B2: a page target this host did not create is closed after a grace', async () => {
+    const { host, profileDir, emit, calls, events } = harness();
     await host.openTarget({ profileDir, viewport: VIEWPORT });
     emit('Target.targetCreated', {
-      targetInfo: { targetId: 'X', type: 'page', url: 'https://a.example/' },
+      targetInfo: {
+        targetId: 'X',
+        type: 'page',
+        url: 'view-source:https://a.example/',
+      },
     });
     await flush();
     expect(calls.filter((c) => c.method === 'Target.closeTarget')).toEqual([]);
+    await new Promise((r) => setTimeout(r, 1_100));
+    expect(calls).toContainEqual({
+      method: 'Target.closeTarget',
+      params: { targetId: 'X' },
+      sessionId: undefined,
+    });
+    expect(events).toContainEqual({
+      kind: 'untracked-target-closed',
+      targetId: 'X',
+      url: 'view-source:https://a.example/',
+    });
+  });
+
+  test('review B2: page targets present at launch are closed before any of ours', async () => {
+    const { host, profileDir, calls } = harness((call) =>
+      call.method === 'Target.getTargets'
+        ? {
+            targetInfos: [
+              { targetId: 'LAUNCH', type: 'page', url: 'about:blank' },
+              { targetId: 'W', type: 'service_worker', url: 'x' },
+            ],
+          }
+        : {},
+    );
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const methods = calls.map(
+      (c) => `${c.method}:${JSON.stringify(c.params ?? {})}`,
+    );
+    const closed = methods.indexOf('Target.closeTarget:{"targetId":"LAUNCH"}');
+    expect(closed).toBeGreaterThan(-1);
+    expect(closed).toBeLessThan(
+      methods.findIndex((m) => m.startsWith('Target.createTarget')),
+    );
+    expect(methods).not.toContain('Target.closeTarget:{"targetId":"W"}');
+  });
+
+  test('review S3: subframes may be about:srcdoc but not data:/blob:/filesystem:', async () => {
+    const { host, profileDir, emit, calls, events } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    emit(
+      'Page.frameNavigated',
+      { frame: { id: 'F1', url: 'about:srcdoc', parentId: 'T1' } },
+      'S-T1',
+    );
+    emit(
+      'Page.frameNavigated',
+      { frame: { id: 'F2', url: 'https://ok.example/', parentId: 'T1' } },
+      'S-T1',
+    );
+    await flush();
+    expect(calls.filter((c) => c.method === 'Page.navigate')).toEqual([]);
+    for (const [id, url] of [
+      ['F3', 'data:text/html,x'],
+      ['F4', 'blob:https://a.example/uuid'],
+      ['F5', 'filesystem:https://a.example/temporary/x'],
+    ]) {
+      emit(
+        'Page.frameNavigated',
+        { frame: { id, url, parentId: 'T1' } },
+        'S-T1',
+      );
+      await flush();
+      expect(calls).toContainEqual({
+        method: 'Page.navigate',
+        params: { url: 'about:blank', frameId: id },
+        sessionId: 'S-T1',
+      });
+      expect(events).toContainEqual({
+        kind: 'committed-url-refused',
+        targetId: 'T1',
+        url,
+        frame: 'subframe',
+      });
+    }
   });
 
   test('a committed out-of-scope main-frame URL is navigated away', async () => {
@@ -373,11 +463,6 @@ describe('ChromiumServerHost with a fake browser', () => {
     emit(
       'Page.frameNavigated',
       { frame: { url: 'chrome-error://chromewebdata/' } },
-      'S-T1',
-    );
-    emit(
-      'Page.frameNavigated',
-      { frame: { url: 'data:text/html,x', parentId: 'F' } },
       'S-T1',
     );
     emit(
@@ -397,6 +482,7 @@ describe('ChromiumServerHost with a fake browser', () => {
     expect(events).toContainEqual({
       kind: 'committed-url-refused',
       targetId: 'T1',
+      frame: 'main',
       url: 'data:text/html,x',
     });
   });
@@ -440,6 +526,168 @@ describe('ChromiumServerHost with a fake browser', () => {
         sessionId: 'S-T1',
       },
     ]);
+  });
+
+  test('review B2: the cdp() allow-list is pinned, entry for entry', () => {
+    expect([...PAGE_SESSION_CDP_ALLOWLIST]).toEqual([
+      'Page.navigate',
+      'Page.reload',
+      'Page.stopLoading',
+      'Page.getNavigationHistory',
+      'Page.navigateToHistoryEntry',
+      'Page.enable',
+      'Page.getFrameTree',
+      'Page.getLayoutMetrics',
+      'Page.captureScreenshot',
+      'Page.startScreencast',
+      'Page.stopScreencast',
+      'Page.screencastFrameAck',
+      'Input.dispatchMouseEvent',
+      'Input.dispatchKeyEvent',
+      'Input.dispatchTouchEvent',
+      'Input.insertText',
+      'Input.imeSetComposition',
+      'Runtime.enable',
+      'Runtime.evaluate',
+      'Runtime.callFunctionOn',
+      'Runtime.getProperties',
+      'Runtime.releaseObject',
+      'Runtime.releaseObjectGroup',
+      'Runtime.awaitPromise',
+      'DOM.enable',
+      'DOM.getDocument',
+      'DOM.querySelector',
+      'DOM.querySelectorAll',
+      'DOM.describeNode',
+      'DOM.resolveNode',
+      'DOM.requestNode',
+      'DOM.getBoxModel',
+      'DOM.getContentQuads',
+      'DOM.getOuterHTML',
+      'DOM.getAttributes',
+      'DOM.getNodeForLocation',
+      'DOM.scrollIntoViewIfNeeded',
+      'DOM.focus',
+      'Accessibility.enable',
+      'Accessibility.disable',
+      'Accessibility.getFullAXTree',
+      'Accessibility.getPartialAXTree',
+      'Accessibility.queryAXTree',
+      'Accessibility.getRootAXNode',
+      'Accessibility.getChildAXNodes',
+      'Emulation.setDeviceMetricsOverride',
+      'Emulation.clearDeviceMetricsOverride',
+      'Emulation.setEmulatedMedia',
+      'Emulation.setTouchEmulationEnabled',
+      'Network.enable',
+      'Log.enable',
+    ]);
+    expect(
+      PAGE_SESSION_CDP_ALLOWLIST.some((m) =>
+        /^(Target|Browser|Fetch|Storage)\./.test(m),
+      ),
+    ).toBe(false);
+    expect(PAGE_SESSION_CDP_ALLOWLIST).not.toContain('DOM.setFileInputFiles');
+  });
+
+  test('the denied permission lists are pinned', () => {
+    expect([...MANDATORY_DENIED_PERMISSIONS]).toEqual([
+      'geolocation',
+      'notifications',
+      'camera',
+      'microphone',
+      'clipboard-read',
+    ]);
+    expect([...BEST_EFFORT_DENIED_PERMISSIONS]).toEqual([
+      'midi',
+      'background-sync',
+      'persistent-storage',
+      'screen-wake-lock',
+      'display-capture',
+      'idle-detection',
+      'local-fonts',
+      'window-management',
+      'payment-handler',
+      'nfc',
+      'storage-access',
+    ]);
+  });
+
+  test('review B2: channel-smuggling and browser-level methods never reach the browser', async () => {
+    const { host, profileDir, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const cdp = host.cdp();
+    const before = calls.length;
+    for (const [method, params] of [
+      ['Target.attachToTarget', { targetId: 'T1', flatten: false }],
+      ['Target.sendMessageToTarget', { sessionId: 'x', message: '{}' }],
+      ['Target.attachToBrowserTarget', {}],
+      ['Target.getTargets', {}],
+      ['Target.closeTarget', { targetId: 'T1' }],
+      ['Browser.getVersion', {}],
+      [
+        'Browser.setPermission',
+        { permission: { name: 'geolocation' }, setting: 'granted' },
+      ],
+      ['DOM.setFileInputFiles', { files: ['/etc/passwd'] }],
+      ['Storage.clearDataForOrigin', {}],
+      ['Network.setRequestInterception', {}],
+      ['Runtime.runScript', {}],
+    ] as const) {
+      await expect(cdp.send(method, params, 'S-T1')).rejects.toMatchObject({
+        code: 'host-owned-method',
+      });
+    }
+    expect(calls.slice(before)).toEqual([]);
+  });
+
+  test('review B2: allowed methods only run on a page session this host opened', async () => {
+    const { host, profileDir, calls, emit } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const cdp = host.cdp();
+    const before = calls.length;
+    await expect(
+      cdp.send('Runtime.evaluate', { expression: '1' }),
+    ).rejects.toMatchObject({
+      code: 'foreign-session',
+    });
+    await expect(
+      cdp.send('Runtime.evaluate', { expression: '1' }, 'S-SOMEONE-ELSE'),
+    ).rejects.toMatchObject({ code: 'foreign-session' });
+    expect(calls.slice(before)).toEqual([]);
+    await cdp.send('Runtime.evaluate', { expression: '1' }, 'S-T1');
+    expect(calls.at(-1)).toEqual({
+      method: 'Runtime.evaluate',
+      params: { expression: '1' },
+      sessionId: 'S-T1',
+    });
+    // Events from other sessions or the browser itself are not delivered.
+    const seen: Array<string | undefined> = [];
+    cdp.on('Page.loadEventFired', (_p, sessionId) => seen.push(sessionId));
+    emit('Page.loadEventFired', {}, 'S-T1');
+    emit('Page.loadEventFired', {}, 'S-OTHER');
+    emit('Page.loadEventFired', {});
+    expect(seen).toEqual(['S-T1']);
+  });
+
+  test('history navigation is refused when the entry is out of scope', async () => {
+    const { host, profileDir } = harness((call) =>
+      call.method === 'Page.getNavigationHistory'
+        ? {
+            entries: [
+              { id: 1, url: 'https://ok.example/' },
+              { id: 2, url: 'data:text/html,x' },
+            ],
+          }
+        : {},
+    );
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    await expect(
+      host.cdp().send('Page.navigateToHistoryEntry', { entryId: 2 }, 'S-T1'),
+    ).rejects.toMatchObject({ code: 'url-not-allowed' });
+    await host
+      .cdp()
+      .send('Page.navigateToHistoryEntry', { entryId: 1 }, 'S-T1');
   });
 
   test('a second profile directory is refused: one process per profile', async () => {

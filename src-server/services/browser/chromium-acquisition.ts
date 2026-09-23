@@ -29,14 +29,17 @@ import {
   existsSync,
   constants as fsConstants,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, posix, win32 } from 'node:path';
+import { isAbsolute, join, posix, relative, resolve, win32 } from 'node:path';
 
 export type ChromeForTestingPlatform =
   | 'mac-arm64'
@@ -49,16 +52,24 @@ export type ChromeForTestingPlatform =
 export interface PinnedBuild {
   /** Exact archive length in bytes (x-goog-stored-content-length). */
   bytes: number;
-  /** Base64 MD5 of the archive (x-goog-hash md5=). */
+  /** Base64 MD5 of the archive (x-goog-hash md5=): transport corruption check. */
   md5: string;
+  /**
+   * Hex SHA-256 of the archive: the trust root. Recorded 2026-09-22 by
+   * streaming each archive through `shasum -a 256` in a scratch directory
+   * outside the repository and Station home (nothing kept); the streamed byte
+   * count matched `bytes` for every platform.
+   */
+  sha256: string;
   /** Executable path inside the extracted archive. */
   executable: readonly string[];
 }
 
 /**
  * Pinned 2026-09-22 from Chrome-for-Testing's last-known-good Stable channel.
- * Bump deliberately: a new pin must re-record bytes and md5 from the storage
- * object's metadata (HEAD request), never from the downloaded file itself.
+ * Bump deliberately: re-record bytes and md5 from the storage object's
+ * metadata (HEAD request) and sha256 by hashing each archive once, outside
+ * the repository, and cross-check the byte count against the metadata.
  */
 export const CHROME_FOR_TESTING_PIN = {
   version: '154.0.8037.57',
@@ -67,6 +78,8 @@ export const CHROME_FOR_TESTING_PIN = {
     'mac-arm64': {
       bytes: 191_429_663,
       md5: 'TsIlmo+9Ym7Xr8cEuw69TQ==',
+      sha256:
+        '0e6b3439469c1b8b95b2e89c72ea29f7af00fb2c28a8878358a0b6002b6d3a64',
       executable: [
         'chrome-mac-arm64',
         'Google Chrome for Testing.app',
@@ -78,6 +91,8 @@ export const CHROME_FOR_TESTING_PIN = {
     'mac-x64': {
       bytes: 201_976_957,
       md5: 'rxEx6zkiaeqPlTzy/bUoFg==',
+      sha256:
+        'f6c0dff4662f1ffb01f63f9de3888ea95e4c634870a8b9f55e6d2208ba29a8a9',
       executable: [
         'chrome-mac-x64',
         'Google Chrome for Testing.app',
@@ -89,21 +104,29 @@ export const CHROME_FOR_TESTING_PIN = {
     linux64: {
       bytes: 196_223_440,
       md5: 'D+qnMtvRxrB1r9bMVeDIrw==',
+      sha256:
+        'ceee2972074d441ea7c4ba8bcc0eaab77e7e87680f6653d73d3065851fe10302',
       executable: ['chrome-linux64', 'chrome'],
     },
     'linux-arm64': {
       bytes: 196_514_864,
       md5: '0orw9rf7Xn32EcM3AKpu0g==',
+      sha256:
+        'da83171e552650df34272a9c51f62182bae88d467d1ac19c92dd97917dfa0bca',
       executable: ['chrome-linux-arm64', 'chrome'],
     },
     win64: {
       bytes: 205_808_814,
       md5: 'BpFTc5nUB8I7TZiCrPjW+Q==',
+      sha256:
+        '676f51fb82608330db5510ffba53d9e2762d3d7a99464afce54f9e9e25ad6bf7',
       executable: ['chrome-win64', 'chrome.exe'],
     },
     win32: {
       bytes: 184_475_517,
       md5: '00BKE11aWAf+ECMR5RDgmQ==',
+      sha256:
+        '7bf2a5abc4ab6239782298e8514cb239d7e2664e37ea88ac88f7a13d76d7774e',
       executable: ['chrome-win32', 'chrome.exe'],
     },
   } satisfies Record<ChromeForTestingPlatform, PinnedBuild>,
@@ -164,6 +187,8 @@ export interface ChromiumAcquisitionDeps {
   isExecutableFile(path: string): boolean;
   fetch: typeof fetch;
   extract(zipPath: string, destDir: string): Promise<void>;
+  /** Entry names in the archive, read before anything is extracted. */
+  listEntries(zipPath: string): Promise<string[]>;
   /** The build to fetch. Production uses {@link CHROME_FOR_TESTING_PIN}. */
   pin: ChromeForTestingPin;
 }
@@ -255,12 +280,14 @@ function runArchiveTool(
   command: string,
   args: string[],
   timeoutMs: number,
+  collect?: (chunk: Buffer) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      stdio: 'ignore',
+      stdio: ['ignore', collect ? 'pipe' : 'ignore', 'ignore'],
       windowsHide: true,
     });
+    if (collect) child.stdout?.on('data', collect);
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       reject(new Error(`${command} did not finish within ${timeoutMs}ms`));
@@ -299,6 +326,83 @@ export function defaultExtract(
     runArchiveTool('unzip', ['-q', zip, '-d', dest], timeoutMs);
 }
 
+export function defaultListEntries(
+  platform: NodeJS.Platform,
+): (zipPath: string) => Promise<string[]> {
+  const timeoutMs = 2 * 60 * 1000;
+  const [command, args]: [string, (zip: string) => string[]] =
+    platform === 'win32'
+      ? [
+          win32.join(
+            process.env.SystemRoot ?? 'C:\\Windows',
+            'System32',
+            'tar.exe',
+          ),
+          (zip) => ['-tf', zip],
+        ]
+      : [
+          platform === 'darwin' ? '/usr/bin/zipinfo' : 'zipinfo',
+          (zip) => ['-1', zip],
+        ];
+  return async (zip) => {
+    const chunks: Buffer[] = [];
+    await runArchiveTool(command, args(zip), timeoutMs, (chunk) =>
+      chunks.push(chunk),
+    );
+    return Buffer.concat(chunks)
+      .toString('utf8')
+      .split(/\r?\n/)
+      .filter((line) => line !== '');
+  };
+}
+
+/**
+ * Zip-slip: an entry name that is absolute, has a drive or UNC prefix, or has
+ * a `..` segment could land outside the install directory. Refused before
+ * extraction.
+ */
+export function unsafeArchiveEntry(name: string): boolean {
+  if (name.includes('\0')) return true;
+  const normalized = name.replace(/\\/g, '/');
+  if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized)) return true;
+  return normalized.split('/').some((segment) => segment === '..');
+}
+
+/**
+ * After extraction, every entry — and every symlink's target — must resolve
+ * inside the extraction root (the app bundle's own relative symlinks do).
+ * Returns the first escaping path, or undefined.
+ */
+export function findEscapingEntry(root: string): string | undefined {
+  const realRoot = realpathSync(root);
+  const within = (candidate: string) => {
+    const rel = relative(realRoot, candidate);
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  };
+  const stack = [realRoot];
+  while (stack.length > 0) {
+    const dir = stack.pop() as string;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        const target = resolve(dir, readlinkSync(path));
+        let real: string;
+        try {
+          real = realpathSync(target);
+        } catch {
+          // A dangling link is judged by where it points.
+          real = target;
+        }
+        if (!within(real)) return path;
+        continue;
+      }
+      if (!within(realpathSync(path))) return path;
+      if (entry.isDirectory()) stack.push(path);
+    }
+  }
+  return undefined;
+}
+
 export function defaultChromiumAcquisitionDeps(): ChromiumAcquisitionDeps {
   return {
     platform: process.platform,
@@ -308,6 +412,7 @@ export function defaultChromiumAcquisitionDeps(): ChromiumAcquisitionDeps {
     isExecutableFile: defaultIsExecutableFile,
     fetch: globalThis.fetch.bind(globalThis),
     extract: defaultExtract(process.platform),
+    listEntries: defaultListEntries(process.platform),
     pin: CHROME_FOR_TESTING_PIN,
   };
 }
@@ -517,6 +622,7 @@ export class ChromiumAcquisition {
         );
       }
       const hash = createHash('md5');
+      const sha256 = createHash('sha256');
       const file = createWriteStream(zipPath);
       try {
         for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
@@ -528,6 +634,7 @@ export class ChromiumAcquisition {
             );
           }
           hash.update(chunk);
+          sha256.update(chunk);
           if (!file.write(chunk)) {
             await new Promise<void>((resolve) => file.once('drain', resolve));
           }
@@ -548,6 +655,31 @@ export class ChromiumAcquisition {
           `Archive MD5 ${md5} does not match the pinned ${build.md5}.`,
         );
       }
+      const digest = sha256.digest('hex');
+      if (!/^[0-9a-f]{64}$/.test(build.sha256) || digest !== build.sha256) {
+        throw new AcquisitionFailure(
+          'integrity-mismatch',
+          `Archive SHA-256 ${digest} does not match the pinned ${build.sha256}.`,
+        );
+      }
+      let entries: string[];
+      try {
+        entries = await this.deps.listEntries(zipPath);
+      } catch (error) {
+        throw new AcquisitionFailure(
+          'extract-failed',
+          `Could not list the archive: ${(error as Error).message}`,
+        );
+      }
+      const unsafe = entries.find(unsafeArchiveEntry);
+      if (unsafe !== undefined || entries.length === 0) {
+        throw new AcquisitionFailure(
+          'extract-failed',
+          unsafe !== undefined
+            ? `The archive has an entry outside its root: ${unsafe}`
+            : 'The archive is empty.',
+        );
+      }
       const extracted = join(staging, 'extracted');
       mkdirSync(extracted, { recursive: true });
       try {
@@ -558,6 +690,13 @@ export class ChromiumAcquisition {
           `Could not extract the archive: ${(error as Error).message}`,
         );
       }
+      const escaping = findEscapingEntry(extracted);
+      if (escaping !== undefined) {
+        throw new AcquisitionFailure(
+          'extract-failed',
+          `An extracted entry resolves outside the install directory: ${escaping}`,
+        );
+      }
       if (!this.deps.isExecutableFile(join(extracted, ...build.executable))) {
         throw new AcquisitionFailure(
           'extract-failed',
@@ -566,7 +705,7 @@ export class ChromiumAcquisition {
       }
       writeFileSync(
         join(extracted, MARKER_FILE),
-        `${JSON.stringify({ version: this.deps.pin.version, platform, md5 })}\n`,
+        `${JSON.stringify({ version: this.deps.pin.version, platform, md5, sha256: digest })}\n`,
       );
       rmSync(this.installDir, { recursive: true, force: true });
       renameSync(extracted, this.installDir);

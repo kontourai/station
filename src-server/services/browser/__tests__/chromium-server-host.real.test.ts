@@ -28,12 +28,17 @@ import {
   ChromiumAcquisition,
   defaultChromiumAcquisitionDeps,
 } from '../chromium-acquisition.js';
+import type { RegisteredLocalTarget } from '../egress-policy.js';
 import {
   type ChromiumHostEvent,
   ChromiumServerHost,
   launchChromiumProcess,
 } from '../hosts/chromium-server-host.js';
-import { deriveStationListeners } from '../station-listeners.js';
+import {
+  deriveStationListeners,
+  localInterfaceAddresses,
+  type StationListeners,
+} from '../station-listeners.js';
 
 // Only a system install counts; the acquisition's own Station home is a
 // throwaway directory, so a previously downloaded build is never used and
@@ -154,7 +159,9 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
           const D = ${devPort};
           // Every spelling of this host, plus a DNS-rebinding style name the
           // egress resolver maps to 127.0.0.1.
-          for (const h of ['127.0.0.1', 'localhost', 'probe.localhost', 'rebind.test']) {
+          // Review H1: IPv4-mapped IPv6 in dotted, hex and expanded form.
+          for (const h of ['127.0.0.1', 'localhost', 'probe.localhost', 'rebind.test',
+            '[::ffff:127.0.0.1]', '[::ffff:7f00:1]', '[0:0:0:0:0:ffff:7f00:1]']) {
             fetch('http://' + h + ':' + P + '/fetch-' + h).catch(() => {});
             try { new WebSocket('ws://' + h + ':' + P + '/ws-' + h); } catch {}
           }
@@ -168,6 +175,13 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
           fetch('/ok').catch(() => {});
           fetch('http://devalias.test:' + D + '/alias-ok').catch(() => {});
         </script>probe`);
+        return;
+      }
+      if (req.url === '/frames') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(
+          `<iframe id="inline" srcdoc="<p>inline</p>"></iframe><iframe id="slot" src="about:blank"></iframe>`,
+        );
         return;
       }
       if (req.url === '/worker.js') {
@@ -221,7 +235,11 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     });
     host = new ChromiumServerHost({
       executablePath,
-      stationListeners: () => listeners,
+      egressPolicy: {
+        listeners: () => listeners,
+        interfaceAddresses: localInterfaceAddresses,
+        reach: { kind: 'operator' },
+      },
       egress: {
         // Simulated DNS: two test names resolve to loopback, as a rebinding
         // attacker's name would. Everything else is refused as unresolvable.
@@ -308,6 +326,7 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     expect(events).toContainEqual({
       kind: 'committed-url-refused',
       targetId,
+      frame: 'main',
       url: 'data:text/html,<p>smuggled</p>',
     });
   });
@@ -385,14 +404,22 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     expect(devArrivals).toEqual(expect.arrayContaining(controls));
     // Allow every blocked attempt time to (wrongly) arrive.
     await new Promise((r) => setTimeout(r, 1500));
-    // Top-level navigation to Station is refused as well.
-    await host
-      .cdp()
-      .send(
-        'Page.navigate',
-        { url: `http://127.0.0.1:${stationPort}/nav` },
-        session,
-      );
+    // Top-level navigation to Station is refused as well, in every spelling.
+    for (const h of [
+      '127.0.0.1',
+      '[::ffff:127.0.0.1]',
+      '[::ffff:7f00:1]',
+      '[0:0:0:0:0:ffff:7f00:1]',
+    ]) {
+      await host
+        .cdp()
+        .send(
+          'Page.navigate',
+          { url: `http://${h}:${stationPort}/nav` },
+          session,
+        )
+        .catch(() => {});
+    }
     await new Promise((r) => setTimeout(r, 500));
     expect(stationArrivals).toEqual([]);
     // The refusals were decided on the resolved address, below the page.
@@ -404,12 +431,161 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
       (e) => e.port >= stationPort && e.port <= stationPort + 3,
     );
     expect(atStation.map((e) => e.host)).toEqual(
-      expect.arrayContaining(['127.0.0.1', 'localhost', 'rebind.test']),
+      expect.arrayContaining([
+        '127.0.0.1',
+        'localhost',
+        'rebind.test',
+        '[::ffff:7f00:1]',
+      ]),
     );
     expect(atStation.map((e) => e.refusal)).toEqual(
       atStation.map(() => 'station-listener'),
     );
   });
+
+  test('review B2: the cdp() channel cannot smuggle browser-level methods', async (ctx) => {
+    if (!executablePath || !raw) return ctx.skip(SKIP_REASON);
+    const cdp = host.cdp();
+    await expect(
+      cdp.send('Target.attachToTarget', { targetId, flatten: false }, session),
+    ).rejects.toMatchObject({ code: 'host-owned-method' });
+    await expect(
+      cdp.send(
+        'Target.sendMessageToTarget',
+        { targetId, message: '{"id":1,"method":"Browser.getVersion"}' },
+        session,
+      ),
+    ).rejects.toMatchObject({ code: 'host-owned-method' });
+    await expect(
+      cdp.send('Target.attachToBrowserTarget', {}, session),
+    ).rejects.toMatchObject({
+      code: 'host-owned-method',
+    });
+    await expect(
+      cdp.send(
+        'Browser.setPermission',
+        { permission: { name: 'geolocation' }, setting: 'granted' },
+        session,
+      ),
+    ).rejects.toMatchObject({ code: 'host-owned-method' });
+    await gotoDev('/perm-after-smuggle');
+    expect(
+      await evaluate(
+        `navigator.permissions.query({ name: 'geolocation' }).then((r) => r.state)`,
+      ),
+    ).toBe('denied');
+  });
+
+  test('review B2: every page target in the browser is one this host opened', async (ctx) => {
+    if (!executablePath || !raw) return ctx.skip(SKIP_REASON);
+    const pages = await poll(
+      async () =>
+        (
+          await raw!.send<{
+            targetInfos: Array<{ targetId: string; type: string; url: string }>;
+          }>('Target.getTargets')
+        ).targetInfos.filter((t) => t.type === 'page'),
+      (list) => list.length === 1,
+    );
+    expect(pages.map((t) => t.targetId)).toEqual([targetId]);
+  });
+
+  test('review S3: a data: subframe is replaced, an srcdoc subframe is kept', async (ctx) => {
+    if (!executablePath || !raw) return ctx.skip(SKIP_REASON);
+    await gotoDev('/frames');
+    await evaluate(
+      `document.getElementById('slot').src = 'data:text/html,<p>smuggled</p>'; true`,
+    );
+    type Tree = { frame: { url: string }; childFrames?: Tree[] };
+    const childUrls = async () => {
+      const { frameTree } = await raw!.send<{ frameTree: Tree }>(
+        'Page.getFrameTree',
+        {},
+        session,
+      );
+      return (frameTree.childFrames ?? []).map((f) => f.frame.url);
+    };
+    const refusedDataFrame = () =>
+      events.some(
+        (e) =>
+          e.kind === 'committed-url-refused' &&
+          e.frame === 'subframe' &&
+          e.url.startsWith('data:'),
+      );
+    await poll(
+      async () => refusedDataFrame(),
+      (seen) => seen,
+      10_000,
+    );
+    const urls = await poll(
+      childUrls,
+      (list) => !list.some((u) => u.startsWith('data:')),
+      10_000,
+    );
+    expect(urls.some((u) => u.startsWith('data:'))).toBe(false);
+    expect(urls).toContain('about:srcdoc');
+    expect(
+      events.some(
+        (e) =>
+          e.kind === 'committed-url-refused' &&
+          e.frame === 'subframe' &&
+          e.url.startsWith('data:'),
+      ),
+    ).toBe(true);
+  });
+
+  test('D7: a Project admin profile reaches a loopback server only once it is registered', async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    const targets: RegisteredLocalTarget[] = [];
+    const listeners: StationListeners = deriveStationListeners({
+      serverPort: stationPort,
+      configuredOrigins: [],
+    });
+    const adminHost = new ChromiumServerHost({
+      executablePath,
+      egressPolicy: {
+        listeners: () => listeners,
+        interfaceAddresses: localInterfaceAddresses,
+        reach: { kind: 'project', localTargets: () => targets },
+      },
+    });
+    try {
+      const adminTarget = await adminHost.openTarget({
+        profileDir: join(workDir, 'admin-profile'),
+        viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
+      });
+      const cdp = adminHost.cdp();
+      await cdp.send(
+        'Page.navigate',
+        { url: `http://127.0.0.1:${devPort}/admin-blocked` },
+        adminTarget.cdpSessionId,
+      );
+      await new Promise((r) => setTimeout(r, 1000));
+      expect(devArrivals).not.toContain('/admin-blocked');
+      targets.push({ host: 'localhost', port: devPort });
+      await cdp.send(
+        'Page.navigate',
+        { url: `http://127.0.0.1:${devPort}/admin-ok` },
+        adminTarget.cdpSessionId,
+      );
+      await poll(
+        async () => devArrivals.includes('/admin-ok'),
+        (seen) => seen,
+      );
+      expect(devArrivals).toContain('/admin-ok');
+      // Station stays refused even for a registered-style request.
+      await cdp.send(
+        'Page.navigate',
+        { url: `http://127.0.0.1:${stationPort}/admin-station` },
+        adminTarget.cdpSessionId,
+      );
+      await new Promise((r) => setTimeout(r, 500));
+      expect(stationArrivals).toEqual([]);
+    } finally {
+      await adminHost.shutdown();
+    }
+    // A second browser launch; generous for a loaded shared host.
+  }, 120_000);
 
   test('a killed browser is reported through onExit and the host refuses further work', async (ctx) => {
     if (!executablePath) return ctx.skip(SKIP_REASON);
