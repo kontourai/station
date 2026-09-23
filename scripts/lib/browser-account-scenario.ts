@@ -31,7 +31,7 @@ export async function runBrowserCookieAdoptionScenario(
   page: Page,
   station: Awaited<ReturnType<typeof provisionRelayAccountStation>>,
   broker: {
-    setExpectedAliasCredential(value: string): void;
+    setExpectedAliasCredential(value: string): Promise<void>;
     applicationObservations(): Array<{
       path: string;
       method: string;
@@ -147,7 +147,7 @@ export async function runBrowserCookieAdoptionScenario(
   assert.equal(reauthenticatedAlias.deviceId, first.deviceId);
   assert.equal(reauthenticatedAlias.stationId, browserInput.stationId);
   const expectedAlias = (await page.evaluate(browserCookieAdoptionSecrets))[1]!;
-  broker.setExpectedAliasCredential(expectedAlias);
+  await broker.setExpectedAliasCredential(expectedAlias);
   await page.route(`${apiBase}/**`, async (route) =>
     route.abort('blockedbyclient'),
   );
@@ -164,7 +164,10 @@ export async function runBrowserCookieAdoptionScenario(
     .slice()
     .reverse()
     .find((item) => item.path === '/api/account-auth/session');
-  assert(vaiRead, 'Station VAI must observe the real browser Project request');
+  assert(
+    vaiRead,
+    `Station VAI must observe the real browser account request; observed ${JSON.stringify(broker.applicationObservations().map(({ path, status }) => ({ path, status })))}; wrapper calls ${await page.evaluate(() => (globalThis as unknown as { stationBrokerLabObservations?: { observationCalls?: number } }).stationBrokerLabObservations?.observationCalls)}`,
+  );
   assert.equal(vaiRead.status, 200);
   assert.equal(vaiRead.cookieHeader, false);
   assert.equal(vaiRead.setCookieHeader, false);
@@ -640,6 +643,9 @@ export async function runBrowserAccountScenario(
     0,
     'Account traffic must not bypass the encrypted channel',
   );
+  // The next owned scenario deliberately adopts an HTTPS cookie at this same
+  // Station origin. Retire only this account scenario's direct-request block.
+  await page.unroute(`${accountStation.station.base}/**`);
   const accountReport = {
     status: privateRefused ? 'passed' : 'failed',
     directApplicationAttempts,

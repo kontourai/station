@@ -1114,10 +1114,23 @@ try {
             const admitted = browserGlobal.stationBrokerLabTransport;
             if (!admitted) throw new Error('Missing admitted broker transport');
             const raw = admitted.transport;
-            const state: { expectedAliasCredential?: string } = {
+            const state: {
+              expectedAliasCredential?: string;
+              observationCalls: number;
+            } = {
               expectedAliasCredential: undefined,
+              observationCalls: 0,
             };
-            admitted.transport = async (input: any, init: any = {}) => {
+            const observed = { ...admitted };
+            observed.transport = async (input: any, init: any = {}) => {
+              state.observationCalls++;
+              // Chromium removes Origin from a constructed Request because
+              // normal HTTP would add it later. The encrypted SDK carries
+              // the explicit header in init, so inspect that source too.
+              const suppliedHeaders = new Headers(
+                init.headers ??
+                  (input instanceof Request ? input.headers : undefined),
+              );
               const request =
                 input instanceof Request ? input : new Request(input, init);
               const authorization = request.headers.get('Authorization');
@@ -1126,7 +1139,9 @@ try {
                 path: new URL(request.url).pathname,
                 method: request.method,
                 status: response.status,
-                cookieHeader: request.headers.has('Cookie'),
+                cookieHeader:
+                  suppliedHeaders.has('Cookie') ||
+                  request.headers.has('Cookie'),
                 setCookieHeader:
                   response.headers.has('Set-Cookie') ||
                   response.headers.has('Set-Cookie2'),
@@ -1137,11 +1152,15 @@ try {
                 aliasCredential:
                   state.expectedAliasCredential !== undefined &&
                   authorization === `Bearer ${state.expectedAliasCredential}`,
-                origin: request.headers.get('Origin'),
+                origin: suppliedHeaders.get('Origin'),
               };
               await browserGlobal.__stationBrokerObservation(observation);
               return response;
             };
+            // The production transport descriptor is frozen. Publish a
+            // fixture wrapper for the next SDK resolver instead of trying to
+            // mutate that descriptor (which silently left observations empty).
+            browserGlobal.stationBrokerLabTransport = observed;
             browserGlobal.stationBrokerLabObservations = state;
           });
           const reconnectPair = await page.evaluate(
