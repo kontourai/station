@@ -2891,7 +2891,8 @@ describe('merge-queue regression workflow policy', () => {
     ).toContainEqual({
       file,
       jobId: 'ordinary',
-      message: 'base-controlled PR workflows must not use shared caches',
+      message:
+        'pull-request and merge-queue workflows must not write a shared cache',
     });
   });
 });
