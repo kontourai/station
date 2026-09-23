@@ -17,6 +17,10 @@ const requestKey = (request: PendingApprovalRequest) =>
  * window starts empty and loads history asynchronously, so a request that
  * was waiting all along first appears after mount.
  *
+ * Accepted gap: a request that genuinely ARRIVES live during that history
+ * load is indistinguishable from history here and is not announced by the
+ * strip. The approval toast still announces it, so it is not silent.
+ *
  * The text sits in a new keyed node per announcement, so two requests for
  * the same tool in a row are both heard (an unchanged text node would not
  * be).
