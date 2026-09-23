@@ -496,4 +496,108 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     }
     for (const read of reads) expect(read).not.toHaveBeenCalled();
   });
+
+  test('a call left open when its turn closes does not show running in the next turn', () => {
+    projection.readForThread(ROOT);
+    append(ROOT, { method: 'turn.started', turnId: 'turn-1' });
+    append(ROOT, {
+      method: 'tool.started',
+      itemId: 'grep-x',
+      toolCallId: 'grep-x',
+      toolName: 'Grep',
+    });
+    append(ROOT, { method: 'turn.completed', turnId: 'turn-1' });
+    append(ROOT, { method: 'turn.started', turnId: 'turn-2' });
+    const live = projection.readForThread(ROOT);
+    expect(live?.openTurn?.turnId).toBe('turn-2');
+    expect(live?.runningTools).toBeUndefined();
+    expect(freshProjection().readForThread(ROOT)).toEqual(live);
+  });
+
+  test('the watchdog silence marker passes through only for the matching open turn', () => {
+    const silence = { windowMs: 1000, detectedAt: '2026-09-22T10:00:00.000Z' };
+    let progressTurn = 'turn-s';
+    const withProgress = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () =>
+        ({ turnId: progressTurn, progressSilence: silence }) as never,
+      logger,
+    });
+    extraProjections.push(withProgress);
+    append(ROOT, { method: 'turn.started', turnId: 'turn-s' });
+    expect(withProgress.readForThread(ROOT)?.progressSilence).toEqual(silence);
+    progressTurn = 'other-turn';
+    expect(withProgress.readForThread(ROOT)?.progressSilence).toBeUndefined();
+    progressTurn = 'turn-s';
+    append(ROOT, { method: 'turn.completed', turnId: 'turn-s' });
+    expect(withProgress.readForThread(ROOT)?.progressSilence).toBeUndefined();
+  });
+
+  test('a tool.started frame inside a coalescing window still carries the running tool', () => {
+    const timed = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () => undefined,
+      logger,
+      now: () => 5_000_000,
+    });
+    extraProjections.push(timed);
+    timed.readForThread(ROOT);
+    append(ROOT, { method: 'turn.started', turnId: 'turn-t' });
+    const delta = append(ROOT, {
+      method: 'content.text-delta',
+      turnId: 'turn-t',
+      itemId: 'i',
+      delta: 'x',
+    });
+    expect(timed.streamBinding(delta)?.activity).toBeDefined();
+    const tool = append(ROOT, {
+      method: 'tool.started',
+      turnId: 'turn-t',
+      itemId: 'c',
+      toolCallId: 'c',
+      toolName: 'Bash',
+    });
+    expect(timed.streamBinding(tool)?.activity?.runningTools).toEqual([
+      expect.objectContaining({ callId: 'c', name: 'Bash' }),
+    ]);
+  });
+
+  test('a child reserved after the conversation was first read is folded in (lineage invalidation)', () => {
+    expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: CHILD_1,
+      createdAt: at(),
+    });
+    session(CHILD_1);
+    append(CHILD_1, { method: 'turn.started', turnId: 'child-turn' });
+    expect(projection.readForThread(ROOT)?.openTurn).toMatchObject({
+      turnId: 'child-turn',
+      threadId: CHILD_1,
+    });
+    expect(projection.currentSessionId(ROOT)).toBe(CHILD_1);
+  });
+
+  test('with a stuck open turn on the root and an open current child, the CURRENT child is reported even when the stuck turn started later', () => {
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: CHILD_1,
+      createdAt: at(),
+    });
+    session(CHILD_1);
+    append(CHILD_1, { method: 'turn.started', turnId: 'child-open' });
+    // A later-started open turn on the retired root: "latest wins" would pick
+    // it; the current-child rule must not.
+    append(ROOT, { method: 'turn.started', turnId: 'root-stuck' });
+    expect(projection.readForThread(ROOT)?.openTurn).toMatchObject({
+      turnId: 'child-open',
+      threadId: CHILD_1,
+    });
+    expect(freshProjection().readForThread(CHILD_1)?.openTurn).toMatchObject({
+      turnId: 'child-open',
+      threadId: CHILD_1,
+    });
+  });
 });

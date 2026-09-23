@@ -152,6 +152,9 @@ export class ConversationTurnActivityProjection {
       threadDeleted: (threadId) => {
         this.threads.delete(threadId);
         this.coalescedFrame.delete(threadId);
+        const prefix = `${threadId}\u0000`;
+        for (const key of this.countedStuckChildren)
+          if (key.startsWith(prefix)) this.countedStuckChildren.delete(key);
         const conversationId = this.conversationOfThread.get(threadId);
         this.conversationOfThread.delete(threadId);
         if (conversationId) this.childrenOfConversation.delete(conversationId);
