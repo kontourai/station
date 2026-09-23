@@ -770,7 +770,7 @@ describe('POST /api/plugins/validate', () => {
     const { body } = await validateSource(createApp(home), written);
 
     expect(body.valid).toBe(true);
-    const paths = fsCalls().map(([, path]) => String(path));
+    const paths = fsCalls().map((call) => String((call as unknown[])[1]));
     expect(paths).toContain(source);
     expect(
       paths.filter((path) => path.includes('/./') || path.includes('..')),
