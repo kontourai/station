@@ -28,7 +28,7 @@ const requestKey = (threadId: string, requestId: string) =>
  * same rule the projection uses to retire a bound card. Keyed by thread AND
  * request id: a conversation window folds every session in its lineage.
  */
-export function openApprovalRequests(
+function openApprovalRequests(
   events: readonly CanonicalRuntimeEvent[],
 ): RequestOpened[] {
   const open = new Map<string, RequestOpened>();

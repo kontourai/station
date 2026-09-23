@@ -14,7 +14,7 @@ import { useToast } from '../contexts/ToastContext';
 export type ToolApprovalAction = 'once' | 'trust' | 'deny';
 
 /** The decision an orchestration adapter's `respondToRequest` understands. */
-export function orchestrationDecisionForToolApproval(
+function orchestrationDecisionForToolApproval(
   action: ToolApprovalAction,
 ): 'accept' | 'acceptForSession' | 'decline' {
   // Same mapping the approval toast uses (`approvalHandlers.ts`): the "Allow
