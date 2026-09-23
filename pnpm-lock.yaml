@@ -155,8 +155,8 @@ importers:
         specifier: ^1.12.0
         version: 1.12.0(react@19.2.8)
       '@kontourai/veritas':
-        specifier: 1.7.2
-        version: 1.7.2(supports-color@7.2.0)(zod@4.5.4)
+        specifier: 1.7.3
+        version: 1.7.3(supports-color@7.2.0)(zod@4.5.4)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -2395,8 +2395,8 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.7.2':
-    resolution: {integrity: sha512-/UgGqyvLPNKlVT/joyTuGZnk6+/rZNTqvJK60QqNesshjAPSaBicvxmRqU5/CdB4uSaVr9imEVWEzTMnyU4ZFg==}
+  '@kontourai/veritas@1.7.3':
+    resolution: {integrity: sha512-useS0fKdQJg0cwdwhxTBxLV5+8R4tmn1n/V7LjOXl1ZomaYiRFqtMvCW4vF1/4foSN8JkEH62jtxfk08c/ZtRw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -9414,7 +9414,7 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@kontourai/veritas@1.7.2(supports-color@7.2.0)(zod@4.5.4)':
+  '@kontourai/veritas@1.7.3(supports-color@7.2.0)(zod@4.5.4)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.5.4)

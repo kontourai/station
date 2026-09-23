@@ -119,8 +119,23 @@ matching edit and zero on a repeat while evaluating both edits; a pathless
 patch was denied. Station declares no strict Work Area boundary, so an
 untrusted actor's otherwise valid edit was advisory rather than denied.
 An ordinary Codex `/hooks` view in this worktree reported zero installed and
-active handlers despite the feature flag reading `true`: host activation is
-`FAIL` pending project and exact-hook trust review. A one-off
-`--dangerously-bypass-hook-trust` smoke did not establish hook invocation.
-UI status-message noise remains `NOT_VERIFIED` until a normally trusted host
-invocation is observed.
+active project handlers despite the feature flag reading `true`. Explicit trust
+for this worktree, a fresh host session, and temporarily enabling user-level
+hooks did not make the project hook visible. Flow Agents now has a user-level
+Codex dispatcher bound to this repository's shared Git directory. Conduit
+recorded its installed bytes; `/hooks` showed one installed and active handler
+after exact-definition trust. A cross-worktree test confirmed it stays silent
+in an unrelated repository. The normal host invoked it on `apply_patch`, but
+Veritas 1.7.2 emitted a legacy top-level `decision: "approve"` that Codex
+rejects as a hook failure. A Veritas fix passed focused and full tests; a
+one-off host run with the fixed CLI completed and supplied guidance before the
+edit. With published Veritas 1.7.3 installed, a normal trusted Codex 0.155.1
+run reported `PreToolUse Completed` and supplied the contract and session
+transition guidance before a named `apply_patch` edit. A normal edit in an
+unrelated temporary Git repository reported no Veritas rule guidance. Codex
+still printed `PreToolUse` start/completion status for that unrelated edit;
+that host-level status noise is `CONFIRMED`. The user-level dispatcher is
+implemented in Flow Agents PR #1409; reproducible installation from its
+published package remains `NOT_VERIFIED` until that PR lands and Station
+consumes the release. The project-local hook remains undiscovered by this
+Codex version, so host activation here depends on the trusted user-level hook.
