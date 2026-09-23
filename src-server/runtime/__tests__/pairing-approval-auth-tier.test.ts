@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
@@ -85,6 +85,7 @@ async function createHarness() {
   const app = new Hono<{ Bindings: TestBindings }>();
   configureDevicePairingPublicRoutes(app as never, security.devicePairing, {
     allowedOrigins: [ORIGIN],
+    localGrant: { secretPath: join(homeDir, 'runtime', 'local-grant.secret') },
   });
   configureRuntimeHttp({
     app: app as never,
@@ -250,6 +251,11 @@ async function createHarness() {
   return {
     security,
     operatorCredential,
+    localGrantSecret: () =>
+      readFileSync(
+        join(homeDir, 'runtime', 'local-grant.secret'),
+        'utf8',
+      ).trim(),
     request,
     json,
     pairDevice,
@@ -454,4 +460,128 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
     );
     expect(confirm.status).toBe(200);
   });
+});
+
+test('the desktop home-proven local grant can invite and approve a phone without elevating that phone', async () => {
+  const h = await createHarness();
+  const mint = await h.request(
+    '/.well-known/station/v1/pairing/local-grant',
+    h.json({ secret: h.localGrantSecret(), deviceName: 'Desktop' }),
+    '127.0.0.1',
+  );
+  expect(mint.status).toBe(200);
+  const desktop = (await mint.json()) as {
+    credential: string;
+    device: PairedDevice;
+  };
+  expect(
+    h.security.devicePairing.isLocalGrantMintedCredential(desktop.credential),
+  ).toBe(true);
+  const offerResponse = await h.request(
+    '/api/pairing/offers',
+    h.json({ endpoint: ORIGIN }, desktop.credential),
+  );
+  expect(offerResponse.status).toBe(201);
+  const offer = (await offerResponse.json()) as DevicePairingOffer;
+  const pendingResponse = await h.request(
+    '/.well-known/station/v1/pairing/request',
+    h.json({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Phone',
+    }),
+  );
+  expect(pendingResponse.status).toBe(202);
+  const pending = (await pendingResponse.json()) as DevicePairingRequest;
+  const authorization = { Authorization: `Bearer ${desktop.credential}` };
+  expect(
+    (await h.request('/api/pairing/requests', { headers: authorization }))
+      .status,
+  ).toBe(200);
+  expect(
+    (await h.request('/api/pairing/devices', { headers: authorization }))
+      .status,
+  ).toBe(200);
+  expect(
+    h.security.credentialMayDecidePairingRequests(desktop.credential),
+  ).toBe(true);
+  expect(
+    (
+      await h.request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        h.json({}, desktop.credential),
+      )
+    ).status,
+  ).toBe(200);
+  const exchange = await h.request(
+    '/.well-known/station/v1/pairing/exchange',
+    h.json({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    }),
+  );
+  expect(exchange.status).toBe(200);
+  const phone = (await exchange.json()) as {
+    credential: string;
+    device: PairedDevice;
+  };
+  expect(
+    (
+      await h.request(
+        '/api/pairing/offers',
+        h.json({ endpoint: ORIGIN }, phone.credential),
+      )
+    ).status,
+  ).toBe(401);
+  expect(h.security.credentialMayDecidePairingRequests(phone.credential)).toBe(
+    false,
+  );
+  // Browser launcher grants also prove home possession, but were not minted
+  // as desktop local grants and must not acquire pairing administration.
+  const launcher = await h.request(
+    '/.well-known/station/v1/pairing/mint-ui-bootstrap',
+    h.json({ secret: h.localGrantSecret() }),
+    '127.0.0.1',
+  );
+  expect(launcher.status).toBe(200);
+  const { token } = (await launcher.json()) as { token: string };
+  const browser = await h.request(
+    '/.well-known/station/v1/pairing/ui-bootstrap',
+    {
+      ...h.json({ token }),
+      headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+    },
+    '127.0.0.1',
+  );
+  expect(browser.status).toBe(200);
+  const browserCookie = browser.headers.get('set-cookie')!.split(';')[0];
+  expect(
+    (
+      await h.request(
+        '/api/pairing/offers',
+        {
+          ...h.json({ endpoint: ORIGIN }),
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: ORIGIN,
+            Cookie: browserCookie,
+          },
+        },
+        '127.0.0.1',
+      )
+    ).status,
+  ).toBe(401);
+  h.security.devicePairing.revokeDevice(
+    desktop.device.id,
+    'operator-credential',
+  );
+  expect(
+    (
+      await h.request(
+        '/api/pairing/offers',
+        h.json({ endpoint: ORIGIN }, desktop.credential),
+      )
+    ).status,
+  ).toBe(401);
 });
