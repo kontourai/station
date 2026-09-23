@@ -5,6 +5,7 @@ import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
+import { approvalModeToSend } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
@@ -185,6 +186,10 @@ export function drainQueuedMessageOnTurnCompleted(
     activeChatsStore.updateChat(threadId, {
       status: 'sending',
       messages,
+      // The dispatch in flight, as the composer path marks it: its
+      // `turn.started` clears it. An approval pick made before then knows
+      // that turn's report predates it (#2334, `settleApprovalPick`).
+      pendingClientTurnId: clientId,
     });
 
     if (!current.agentSlug) {
@@ -205,6 +210,12 @@ export function drainQueuedMessageOnTurnCompleted(
       projectSlug: continueUnbound ? undefined : current.projectSlug,
       model: current.model,
       providerOptions: current.providerOptions,
+      // #2334: a pending approval pick rides beside the options on every
+      // send path; a follow-up drained without it ran under the posture the
+      // engine last applied. A confirmed Ask/Auto is reasserted too; a
+      // confirmed full access never is (`approvalModeToSend`). No `approvalModeFallback`: a queued
+      // message never starts the session (see approvalModeForDispatch).
+      approvalModeOverride: approvalModeToSend(current),
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,
       // Queued sends recompute ambient context at drain time so the model
@@ -266,6 +277,9 @@ export function drainQueuedMessageOnTurnCompleted(
         // drops return the chat to idle. Transient failures keep 'error':
         // their send is still pending in the queue and needs attention.
         activeChatsStore.updateChat(threadId, {
+          ...(failed?.pendingClientTurnId === clientId
+            ? { pendingClientTurnId: undefined }
+            : {}),
           ...(dropPermanentlyRejected
             ? { status: 'idle' as const, error: undefined }
             : { status: 'error' as const, error: reason }),

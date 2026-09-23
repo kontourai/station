@@ -4,12 +4,14 @@ import {
   activeChatsStore,
 } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { settleApprovalPick } from '../../utils/approvalMode';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
+import { eventStreamPosition } from './streamPosition';
 import type { OrchestrationEvent } from './types';
 
 export function handleSessionLifecycleEvent(
@@ -46,6 +48,12 @@ export function handleSessionLifecycleEvent(
     orchestrationProvider: event.provider,
     orchestrationSessionStarted: true,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
+    // A report settles the pending approval pick only when it matches (#2334).
+    ...settleApprovalPick(
+      currentChat,
+      approvalMode,
+      eventStreamPosition(event),
+    ),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'
       ? { currentModeId: event.metadata.acpSessionMode }

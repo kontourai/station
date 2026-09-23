@@ -270,6 +270,8 @@ function deriveSession(
     provider: chatState.provider,
     providerOptions: chatState.providerOptions,
     lastAppliedApprovalMode: chatState.lastAppliedApprovalMode,
+    pendingApprovalMode: chatState.pendingApprovalMode,
+    approvalModeOverride: chatState.approvalModeOverride,
     model: chatState.model,
     modelSource: chatState.modelSource,
     defaultModel: chatState.defaultModel,

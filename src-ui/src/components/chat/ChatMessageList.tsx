@@ -98,6 +98,8 @@ interface ChatMessageListProps {
    * pending-approvals strip below the transcript (never as messages).
    */
   approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
+  /** Whether `approvalEvents`' window has finished its first read (#2344). */
+  approvalEventsSettled?: boolean;
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -149,6 +151,7 @@ function ChatMessageListComponent({
   onNewChatFromMessage,
   onQuote,
   approvalEvents,
+  approvalEventsSettled,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
@@ -829,9 +832,12 @@ function ChatMessageListComponent({
               ))}
           </>
         )}
-        {!activeSession.replay && pendingApprovalRequests.length > 0 && (
+        {/* Mounted while empty too: its live region must exist before the
+            first request arrives (#2344). */}
+        {!activeSession.replay && (
           <PendingApprovalStrip
             requests={pendingApprovalRequests}
+            settled={approvalEventsSettled !== false}
             onApprove={(request, action) =>
               handleToolApproval(
                 activeSession.id,
