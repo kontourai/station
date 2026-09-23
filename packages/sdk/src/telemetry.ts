@@ -14,7 +14,7 @@ type BufferedTelemetryEvent = {
   apiBase: string;
   owner: {
     connectionId: string;
-    activationEpoch: number;
+    activationEpoch: string;
     authorityKey?: string;
   } | null;
   isCurrent?: () => boolean;

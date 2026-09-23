@@ -12,6 +12,7 @@ afterEach(async () => {
 });
 
 test('drops broker-route telemetry without direct Station HTTP', async () => {
+  vi.useFakeTimers();
   _setApiBase('https://station.example.test');
   const direct = vi.fn().mockResolvedValue({ ok: true });
   vi.stubGlobal('fetch', direct);
@@ -19,7 +20,7 @@ test('drops broker-route telemetry without direct Station HTTP', async () => {
     kind: 'broker',
     apiBase: 'https://station.example.test',
     connectionId: 'broker-station',
-    activationEpoch: 1,
+    activationEpoch: 'epoch-1',
     isCurrent: () => true,
   }));
 
@@ -29,6 +30,7 @@ test('drops broker-route telemetry without direct Station HTTP', async () => {
 });
 
 test('drops buffered direct events if the selected Station switches to a broker route', async () => {
+  vi.useFakeTimers();
   _setApiBase('https://station.example.test');
   const direct = vi.fn().mockResolvedValue({ ok: true });
   vi.stubGlobal('fetch', direct);
@@ -37,7 +39,7 @@ test('drops buffered direct events if the selected Station switches to a broker 
     kind: selected,
     apiBase: 'https://station.example.test',
     connectionId: 'station-one',
-    activationEpoch: selected === 'direct' ? 1 : 2,
+    activationEpoch: selected === 'direct' ? 'epoch-1' : 'epoch-2',
     isCurrent: () => true,
   }));
 
@@ -48,6 +50,7 @@ test('drops buffered direct events if the selected Station switches to a broker 
 });
 
 test('drops buffered events when account authority changes at the same Station', async () => {
+  vi.useFakeTimers();
   _setApiBase('https://station.example.test');
   const direct = vi.fn().mockResolvedValue({ ok: true });
   vi.stubGlobal('fetch', direct);
@@ -56,7 +59,7 @@ test('drops buffered events when account authority changes at the same Station',
     kind: 'direct',
     apiBase: 'https://station.example.test',
     connectionId: 'station-one',
-    activationEpoch: 1,
+    activationEpoch: 'epoch-1',
     authorityKey,
     isCurrent: () => true,
   }));
