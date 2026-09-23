@@ -540,7 +540,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             session.threadId,
             {
               projectSlug: session.projectSlug as string,
-              workingDirectory: session.cwd as string,
+              workingDir: session.cwd as string,
             },
           ]),
       ),

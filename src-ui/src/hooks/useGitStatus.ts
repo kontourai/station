@@ -9,7 +9,7 @@ function gitReadLocation(
   workingDirectory: string | null | undefined,
 ) {
   return projectSlug && workingDirectory
-    ? { projectSlug, workingDirectory }
+    ? { projectSlug, workingDir: workingDirectory }
     : null;
 }
 

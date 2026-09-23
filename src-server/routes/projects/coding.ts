@@ -60,7 +60,7 @@ import {
  * access request, and a collaborator's browser are all NOT in person, and
  * neither is a request no auth boundary saw.
  */
-export function isOperatorInPerson(request: Request): boolean {
+function isOperatorInPerson(request: Request): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
   return (
@@ -75,7 +75,7 @@ export function isOperatorInPerson(request: Request): boolean {
  * once per device (the device access editor, `operator-promotion`) and can
  * take away there. The operator in person is always allowed.
  */
-export function codingExecAllowed(c: Context): boolean {
+function codingExecAllowed(c: Context): boolean {
   if (isOperatorInPerson(c.req.raw)) return true;
   if (!getRuntimeAuthenticatedRequestPrincipal(c.req.raw)) return false;
   const scope = grantedPairingScope(c as unknown as PairingScopeContextStore);
@@ -86,7 +86,7 @@ export function codingExecAllowed(c: Context): boolean {
 }
 
 /** The stable refusal a device without the exec grant receives. */
-export const CODING_EXEC_NOT_GRANTED = {
+const CODING_EXEC_NOT_GRANTED = {
   success: false as const,
   code: 'coding-exec-not-granted' as const,
   error:

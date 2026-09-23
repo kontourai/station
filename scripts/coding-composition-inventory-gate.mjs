@@ -7,6 +7,11 @@ import { REQUIRED_CODING_COMPOSITION_CATEGORIES } from './coding-composition-pol
 const expectedDependencies = new Map(
   Object.entries({
     'packages/contracts/src/diff-comment.ts': 'contract',
+    // #2412: the pairing scope vocabulary names `/api/coding/exec` because
+    // its `coding:exec` token is the per-device grant that route requires.
+    // `route-authorization`, like the route-scope table beside it: it is a
+    // grant vocabulary, and renders and runs nothing.
+    'packages/contracts/src/environment-security.ts': 'route-authorization',
     'packages/contracts/src/distribution.ts': 'distribution',
     'packages/contracts/src/index.ts': 'contract-export',
     'packages/contracts/src/layout.ts': 'distribution',

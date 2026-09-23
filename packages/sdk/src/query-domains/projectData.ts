@@ -58,17 +58,18 @@ export type GitStatusResult =
  */
 export interface GitReadLocation {
   projectSlug: string;
-  workingDirectory: string;
+  /** The folder as the client names it; the server expands and confines it. */
+  workingDir: string;
 }
 
 function gitReadQuery(location: GitReadLocation): string {
-  return `projectSlug=${encodeURIComponent(location.projectSlug)}&path=${encodeURIComponent(location.workingDirectory)}`;
+  return `projectSlug=${encodeURIComponent(location.projectSlug)}&path=${encodeURIComponent(location.workingDir)}`;
 }
 
 function isGitReadLocation(
   location: GitReadLocation | null | undefined,
 ): location is GitReadLocation {
-  return !!location?.projectSlug && !!location.workingDirectory;
+  return !!location?.projectSlug && !!location.workingDir;
 }
 
 export function useGitStatusQuery(
@@ -76,7 +77,7 @@ export function useGitStatusQuery(
   config?: QueryConfig<any>,
 ) {
   return useApiQuery<GitStatusResult | null>(
-    ['git-status', location?.workingDirectory ?? ''],
+    ['git-status', location?.workingDir ?? ''],
     async () => {
       if (!isGitReadLocation(location)) {
         return null;
@@ -112,7 +113,7 @@ export function useGitLogQuery(
       message: string;
     }>
   >(
-    ['git-log', location?.workingDirectory ?? '', count],
+    ['git-log', location?.workingDir ?? '', count],
     async () => {
       if (!isGitReadLocation(location)) {
         return [];
