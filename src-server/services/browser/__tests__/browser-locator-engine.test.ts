@@ -72,9 +72,11 @@ describe('the locator engine source', () => {
 
   test('the runtime pin: playwright-core is an exact runtime dependency matching @playwright/test, and its injected script is the reviewed one', () => {
     const require = createRequire(import.meta.url);
-    const root = join(import.meta.dirname, '..', '..', '..', '..');
     const manifest = JSON.parse(
-      readFileSync(join(root, 'package.json'), 'utf8'),
+      readFileSync(
+        new URL('../../../../package.json', import.meta.url),
+        'utf8',
+      ),
     ) as {
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
