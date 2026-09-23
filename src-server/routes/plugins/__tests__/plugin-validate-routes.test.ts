@@ -564,7 +564,7 @@ describe('POST /api/plugins/validate', () => {
   });
 
   describe('a plugin.json that is not a plain file is refused, promptly, without echoing anything', () => {
-    const SECRET = 'AKIA-TEST-SECRET-9f3c';
+    const SECRET = 'validate-probe-sentinel-9f3c';
 
     async function refusedWithin(source: string, home: string) {
       const outcome = await Promise.race([
