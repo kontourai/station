@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomBytes, X509Certificate } from 'node:crypto';
+import { createHash, randomBytes, X509Certificate } from 'node:crypto';
 import { once } from 'node:events';
 import {
   mkdirSync,
@@ -27,16 +27,25 @@ import { ConnectionSigningKeyStore } from '../src-server/services/ssh/connection
 import { EnvironmentSecurityService } from '../src-server/services/ssh/environment-security-service.js';
 import { bridgeApplicationChannels } from './lib/application-ipc.js';
 import { runBrowserAccountScenario } from './lib/browser-account-scenario.js';
-import { browserApplicationAccountRequest } from './lib/browser-application-account.mjs';
+import {
+  browserApplicationAccountPrincipal,
+  browserApplicationAccountRequest,
+  browserBeginFreshRelayEnrollment,
+  browserFinalizeAndActivateFreshRelayEnrollment,
+  browserFreshProfileState,
+  browserFreshRelayProjectRead,
+} from './lib/browser-application-account.mjs';
 import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
 import {
   browserBrokerAdmitApplicationTransport,
   browserBrokerAdoptApplicationTransport,
+  browserBrokerClose,
   browserBrokerConnect,
   browserBrokerConnectionId,
   browserBrokerProbeOrigin,
   browserBrokerReadStatus,
   browserBrokerReconnect,
+  browserBrokerSelectedCandidatePair,
   browserBrokerTamperProof,
 } from './lib/browser-self-hosted-broker.mjs';
 import {
@@ -59,7 +68,7 @@ import {
 } from './lib/local-collaboration-process.mjs';
 import { startRelayAccountStation } from './lib/local-collaboration-relay-account.js';
 import { nodeApplicationChannel } from './lib/node-application-channel.js';
-import { startSelfHostedBrokerLab } from './lib/self-hosted-broker-lab.js';
+import { startSelfHostedBrokerProcess } from './lib/self-hosted-broker-process.js';
 
 // Isolated transport evaluation; the opt-in account mode uses a real Station.
 import { createTurnFixture, TURN_FIXTURE_IMAGE } from './lib/turn-fixture.js';
@@ -103,11 +112,20 @@ if (
 let accountStation:
   | Awaited<ReturnType<typeof startRelayAccountStation>>
   | undefined;
-let brokerLab: Awaited<ReturnType<typeof startSelfHostedBrokerLab>> | undefined;
+let brokerLab:
+  | Awaited<ReturnType<typeof startSelfHostedBrokerProcess>>
+  | undefined;
 let accountReport: Record<string, unknown> | undefined;
+let freshRelayReport: Record<string, unknown> | undefined;
+let freshRelayJourney:
+  | Awaited<ReturnType<typeof runFreshRelayScenario>>
+  | undefined;
 let applicationProtocol:
   | { status: string; requestMarker: string; responseBytes: number }
   | undefined;
+let sourceCommitSha: string | undefined;
+let sourceWorktreeClean: boolean | undefined;
+let pionExecutableSha256: string | undefined;
 const browserTransport = args.includes('--browser-turn=tcp') ? 'tcp' : 'udp';
 const pionExecutable = join(
   process.cwd(),
@@ -163,6 +181,202 @@ const server = createServer((request, response) => {
     '<!doctype html><title>Station browser transport fixture</title><script src="/connection-proof.js"></script>',
   );
 });
+
+async function runFreshRelayScenario(input: {
+  approvedPage: Page;
+  pageOrigin: string;
+}): Promise<{
+  report: Record<string, unknown>;
+  readFreshProject(): Promise<number>;
+  close(): Promise<void>;
+}> {
+  assert(accountStation && brokerLab && relay && browser);
+  const station = accountStation;
+  const broker = brokerLab;
+  const activeRelay = relay;
+  const browserOwner = browser;
+  const freshContext = await browserOwner.newContext();
+  const freshPage = await freshContext.newPage();
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await freshPage.evaluate(browserBrokerClose).catch(() => {});
+    await freshPage.close();
+    await freshContext.close();
+  };
+  try {
+    await freshPage.goto(input.pageOrigin);
+    const directStationHttpAttempts: string[] = [];
+    freshPage.on('request', (request) => {
+      try {
+        if (new URL(request.url()).origin === station.station.base)
+          directStationHttpAttempts.push(request.url());
+      } catch {
+        directStationHttpAttempts.push('invalid-request-url');
+      }
+    });
+    await freshPage.evaluate(browserSetConnectionTrust, {
+      trust: connectionTrust,
+      approvedKeyId: await stationConnectionSigningKeyId(connectionTrust),
+    });
+    const turnPort =
+      browserTransport === 'udp' ? turnUdpPort : activeRelay.port;
+    assert(turnPort);
+    const connected = await bounded(
+      freshPage.evaluate(browserBrokerConnect, {
+        brokerOrigin: broker.brokerOrigin,
+        scope: broker.scope,
+        routingId: broker.bundle.routing.id,
+        routingSecret: broker.bundle.routing.secret,
+        applicationOrigin: station.station.base,
+        port: turnPort,
+        username,
+        password,
+        transport: browserTransport,
+      }),
+      'fresh-device relay broker connect',
+    );
+    await freshPage.evaluate(browserBrokerAdmitApplicationTransport);
+    const freshBrowserState = await freshPage.evaluate(
+      browserFreshProfileState,
+    );
+    assert.equal(freshBrowserState.cookieJar, '');
+    assert.equal(freshBrowserState.hasPriorAccountState, false);
+    const cookiesBeforeBegin = await freshContext.cookies(station.station.base);
+    assert.deepEqual(
+      cookiesBeforeBegin,
+      [],
+      'Fresh browser context must have no cookies, including HttpOnly cookies, before begin',
+    );
+    const pending = await bounded(
+      freshPage.evaluate(browserBeginFreshRelayEnrollment, {
+        apiBase: station.station.base,
+        stationId: station.station.stationId,
+        username: station.browser.username,
+        password: station.browser.password,
+      }),
+      'fresh relay begin/login over browser DataChannel',
+    );
+    assert.equal(pending.state, 'pending');
+    assert.equal(pending.keyExtractable, false);
+    assert.equal(pending.priorAccountStatePresent, false);
+    assert.equal(pending.cookieJarEmpty, true);
+    assert.deepEqual(pending.requestHeaderEvidence, [
+      ['content-type', 'origin'],
+      ['content-type', 'origin'],
+    ]);
+    await station.confirmFreshRelayRequest(pending.requestId);
+    const activated = await bounded(
+      freshPage.evaluate(browserFinalizeAndActivateFreshRelayEnrollment),
+      'fresh relay finalize and signed activation ACK over browser DataChannel',
+    );
+    assert.equal(activated.status, 'passed');
+    assert.equal(activated.enrollmentId, pending.enrollmentId);
+    assert.equal(activated.beforeAckStatus, 401);
+    assert.equal(activated.afterAckStatus, 200);
+    assert.equal(activated.keyExtractable, false);
+    assert.equal(activated.cookieJarEmpty, true);
+    assert.equal(activated.priorAccountStateAbsent, true);
+    const cookiesAfterAck = await freshContext.cookies(station.station.base);
+    assert.deepEqual(
+      cookiesAfterAck,
+      [],
+      'Fresh relay ceremony must not adopt or mint Station cookies',
+    );
+    assert.deepEqual(activated.enrollmentRequestHeaderEvidence, [
+      ['content-type', 'origin'],
+      ['content-type', 'origin'],
+      ['content-type', 'origin'],
+      ['content-type', 'origin'],
+    ]);
+    assert.deepEqual(
+      directStationHttpAttempts,
+      [],
+      'Fresh browser account requests must stay on the encrypted broker DataChannel',
+    );
+    assert(activated.resourceHeaderNames.includes('authorization'));
+    assert.equal(activated.resourceHeaderNames.includes('cookie'), false);
+
+    const previousPrincipalId = await input.approvedPage.evaluate(
+      browserApplicationAccountPrincipal,
+    );
+    assert.equal(
+      activated.principalId,
+      previousPrincipalId,
+      'Fresh login must resolve to the same issuer-qualified person',
+    );
+    const approvedDeviceRead = await input.approvedPage.evaluate(
+      browserApplicationAccountRequest,
+      { path: '/api/projects/relay-shared' },
+    );
+    const freshDeviceRead = await freshPage.evaluate(
+      browserFreshRelayProjectRead,
+      { path: '/api/projects/relay-shared' },
+    );
+    assert.equal(approvedDeviceRead.status, 200);
+    assert.equal(freshDeviceRead.status, 200);
+
+    const report: Record<string, unknown> = {
+      status: 'passed',
+      transport: 'Chromium -> self-hosted broker -> StationRuntime Pion -> VAI',
+      connectionId: connected.connectionId,
+      enrollmentId: activated.enrollmentId,
+      deviceId: activated.deviceId,
+      previousDeviceId: station.browser.deviceId,
+      principalId: activated.principalId,
+      cookieJarEmpty: freshBrowserState.cookieJar === '',
+      browserContextCookiesBeforeBegin: cookiesBeforeBegin.map(
+        ({ name, domain, path, httpOnly, secure }) => ({
+          name,
+          domain,
+          path,
+          httpOnly,
+          secure,
+        }),
+      ),
+      priorBrowserAccountStateAbsent:
+        freshBrowserState.hasPriorAccountState === false,
+      loginRequestHeaderEvidence: pending.requestHeaderEvidence,
+      requestHeaderEvidence: activated.enrollmentRequestHeaderEvidence,
+      directStationHttpAttempts: directStationHttpAttempts.length,
+      simultaneousDeviceProjectReads: {
+        previousDevice: approvedDeviceRead.status,
+        freshDevice: freshDeviceRead.status,
+      },
+      protectedReadBeforeAck: activated.beforeAckStatus,
+      protectedReadAfterAck: activated.afterAckStatus,
+      privateKeyExtractable: activated.keyExtractable,
+      accountCookieJarEmpty: activated.cookieJarEmpty,
+      browserContextCookiesAfterAck: cookiesAfterAck.map(
+        ({ name, domain, path, httpOnly, secure }) => ({
+          name,
+          domain,
+          path,
+          httpOnly,
+          secure,
+        }),
+      ),
+      postAckHeaderNames: activated.resourceHeaderNames,
+      passwordMarkerSha256: createHash('sha256')
+        .update(station.browser.password)
+        .digest('hex'),
+    };
+    return {
+      report,
+      async readFreshProject() {
+        const result = await freshPage.evaluate(browserFreshRelayProjectRead, {
+          path: '/api/projects/relay-shared',
+        });
+        return result.status;
+      },
+      close,
+    };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
 
 async function offer(page: Page, port: number) {
   const transport = browserTransport;
@@ -492,6 +706,17 @@ async function exchange(
 }
 
 try {
+  sourceCommitSha = (
+    await runLabCommand('git', ['rev-parse', 'HEAD'], process.cwd())
+  ).stdout.trim();
+  assert.match(sourceCommitSha, /^[a-f0-9]{40}$/);
+  sourceWorktreeClean =
+    (
+      await runLabCommand('git', ['status', '--porcelain'], process.cwd())
+    ).stdout.trim().length === 0;
+  pionExecutableSha256 = createHash('sha256')
+    .update(readFileSync(pionExecutable))
+    .digest('hex');
   const authorityHome = args.includes('--application-accounts')
     ? join(root, 'application-station', 'home')
     : join(root, 'station-authority');
@@ -521,6 +746,8 @@ try {
     import {authenticatedFetch, setClientCredentialResolver, StationHttpError} from '@kontourai/station-sdk/client';
     import {ApplicationSessionClient, createApplicationSessionKey} from '@kontourai/station-sdk/application-session';
     window.stationApplicationChannel = {createApplicationChannelFetch, browserApplicationChannel, authenticatedFetch, setClientCredentialResolver, StationHttpError, ApplicationSessionClient, createApplicationSessionKey};
+    import * as relayEnrollment from '@kontourai/station-sdk/relay-enrollment';
+    window.stationRelayEnrollment = relayEnrollment;
     ${
       selfHostedBroker
         ? `import {SelfHostedBrokerBrowserClient, createBrowserPionConnection, createSelfHostedApplicationTransport} from './packages/connect/src/core/selfHostedBrowser.ts';
@@ -555,11 +782,95 @@ try {
   await once(server, 'listening');
   const address = server.address();
   assert(address && typeof address !== 'string');
+  const pageOrigin = `http://127.0.0.1:${address.port}`;
+  let prepareStationConnectorConfig:
+    | ((stationOrigin: string) => string)
+    | undefined;
+  let brokerPort: number | undefined;
+  if (selfHostedBroker) {
+    const activeRelay = relay;
+    assert(activeRelay);
+    const scope = {
+      stationId: connectionTrust.stationId,
+      enrollmentId: connectionTrust.enrollmentId,
+      routingGeneration: connectionTrust.generation,
+      browserOrigin: pageOrigin,
+    };
+    brokerLab = await startSelfHostedBrokerProcess({
+      directory: root,
+      scope,
+      signal: abort.signal,
+    });
+    const lab = brokerLab;
+    const currentBrokerPort = Number(new URL(lab.brokerOrigin).port);
+    assert(Number.isSafeInteger(currentBrokerPort) && currentBrokerPort > 1024);
+    assert(currentBrokerPort + 1 < 65536);
+    brokerPort = currentBrokerPort;
+    prepareStationConnectorConfig = (stationOrigin) => {
+      const connectorDirectory = join(root, 'application-station', 'connector');
+      mkdirSync(connectorDirectory, { recursive: true, mode: 0o700 });
+      const certificatePath = join(connectorDirectory, 'peer-cert.pem');
+      const privateKeyPath = join(connectorDirectory, 'peer-key.pem');
+      const credentialsPath = join(connectorDirectory, 'credentials.json');
+      const stationConnectorConfigPath = join(
+        connectorDirectory,
+        'connector.json',
+      );
+      writeFileSync(certificatePath, readFileSync(approved.cert), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      writeFileSync(privateKeyPath, readFileSync(approved.key), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      writeFileSync(
+        credentialsPath,
+        JSON.stringify({
+          version: 'station-self-hosted-broker-credentials/v1',
+          scope: lab.scope,
+          bundle: lab.bundle,
+        }),
+        { flag: 'wx', mode: 0o600 },
+      );
+      writeFileSync(
+        stationConnectorConfigPath,
+        JSON.stringify({
+          version: 'station-self-hosted-connector/v1',
+          brokerOrigin: lab.brokerOrigin,
+          applicationOrigin: stationOrigin,
+          credentialsPath,
+          certificatePath,
+          privateKeyPath,
+          pionExecutable,
+          turn: {
+            url: `turn:127.0.0.1:${activeRelay.port}?transport=tcp`,
+            username,
+            password,
+          },
+        }),
+        { flag: 'wx', mode: 0o600 },
+      );
+      const persisted = JSON.parse(
+        readFileSync(stationConnectorConfigPath, 'utf8'),
+      ) as { applicationOrigin?: unknown };
+      assert.equal(
+        persisted.applicationOrigin,
+        stationOrigin,
+        'Child connector target must equal the Station listener origin selected by its owner',
+      );
+      return stationConnectorConfigPath;
+    };
+  }
   if (args.includes('--application-accounts'))
     accountStation = await startRelayAccountStation(
       root,
-      `http://127.0.0.1:${address.port}`,
+      pageOrigin,
       abort.signal,
+      {
+        prepareSelfHostedBrokerConfig: prepareStationConnectorConfig,
+        ownedBrokerTcpPort: brokerPort,
+      },
     );
   if (accountStation)
     assert.equal(
@@ -574,73 +885,36 @@ try {
   await page.goto(`http://127.0.0.1:${address.port}`);
   let brokerJourney: Record<string, unknown> | undefined;
   let brokerLeaseBefore = 0;
-  let brokerReconnectAdapterIndex = 0;
   let brokerReconnectForJourney:
     | { previous: string | undefined; connectionId: string }
     | undefined;
   if (selfHostedBroker) {
     assert(accountStation?.station.openApplicationChannel);
-    assert(relay);
+    assert(brokerLab && relay);
     // The admitted Device trust is identical to the legacy path: read from
     // the same independently approved store, never minted by the broker.
     await page.evaluate(browserSetConnectionTrust, {
       trust: connectionTrust,
       approvedKeyId: await stationConnectionSigningKeyId(connectionTrust),
     });
-    const pageOrigin = `http://127.0.0.1:${address.port}`;
-    brokerLab = await startSelfHostedBrokerLab({
-      directory: root,
-      browserOrigin: pageOrigin,
-      applicationOrigin: accountStation.station.base,
-      stationId: connectionTrust.stationId,
-      enrollmentId: connectionTrust.enrollmentId,
-      heartbeatMs: 5_000,
-      renewMs: 10_000,
-      pollMs: 1_000,
-      executable: pionExecutable,
-      certificatePem: readFileSync(approved.cert, 'utf8'),
-      privateKeyPem: readFileSync(approved.key, 'utf8'),
-      turn: {
-        url: `turn:127.0.0.1:${relay.port}?transport=tcp`,
-        username,
-        password,
-      },
-      trust: {
-        current: () => connectionTrust,
-        // Exact descriptor semantics against the real key owner: identity
-        // comparison against a cloned/reopened descriptor refuses every
-        // peer, so compare station, enrollment, and generation exactly.
-        isCurrent: (value) =>
-          value?.stationId === connectionTrust.stationId &&
-          value?.enrollmentId === connectionTrust.enrollmentId &&
-          value?.generation === connectionTrust.generation &&
-          value.signingKey.kty === connectionTrust.signingKey.kty &&
-          value.signingKey.crv === connectionTrust.signingKey.crv &&
-          value.signingKey.x === connectionTrust.signingKey.x &&
-          value.signingKey.y === connectionTrust.signingKey.y,
-      },
-      // Explicit fixture accepted binding: the issuer admission callback
-      // requires the admitted set, so admit the exact connectionId before
-      // issue and retire it after, as the direct fixture does. The proof
-      // check itself is never disabled.
-      issuer: {
-        issue: async (binding: { connectionId: string }) => {
-          admittedConnections.add(binding.connectionId);
-          try {
-            return await (
-              proofIssuer as unknown as {
-                issue(b: unknown): Promise<string>;
-              }
-            ).issue(binding);
-          } finally {
-            admittedConnections.delete(binding.connectionId);
-          }
-        },
-      },
-      openApplicationChannel: () =>
-        accountStation!.station.openApplicationChannel!(),
-      signal: abort.signal,
-    });
+    let stationLease:
+      | Awaited<ReturnType<typeof brokerLab.readLease>>
+      | undefined;
+    const leaseDeadline = Date.now() + 30_000;
+    while (Date.now() < leaseDeadline) {
+      try {
+        stationLease = await brokerLab.readLease();
+        if (stationLease.state === 'online') break;
+      } catch {
+        // Wait only for the StationRuntime-owned connector registration.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert.equal(
+      stationLease?.state,
+      'online',
+      'StationRuntime child must register the broker lease before browser admission',
+    );
     // Browser TURN/UDP uses the direct UDP allocation; the recording relay
     // forward is TCP-only for the Station-side Pion peer. Never aim browser
     // UDP at the TCP recording relay port.
@@ -651,8 +925,8 @@ try {
       page.evaluate(browserBrokerConnect, {
         brokerOrigin: brokerLab.brokerOrigin,
         scope: brokerLab.scope,
-        routingId: brokerLab.routing.id,
-        routingSecret: brokerLab.routing.secret,
+        routingId: brokerLab.bundle.routing.id,
+        routingSecret: brokerLab.bundle.routing.secret,
         applicationOrigin: accountStation.station.base,
         port: brokerBrowserPort,
         username,
@@ -664,7 +938,11 @@ try {
     assert.match(connected.connectionId, /^[a-f0-9-]{36}$/);
     await page.evaluate(browserBrokerAdmitApplicationTransport);
     brokerLeaseBefore = (await brokerLab.readLease()).expiresAt;
-    assert(brokerLab.adapterMetadata.length > 0);
+    const stationPionPair = await page.evaluate(
+      browserBrokerSelectedCandidatePair,
+    );
+    assert.equal(stationPionPair.localType, 'relay');
+    assert.equal(stationPionPair.remoteType, 'relay');
   }
   const good = selfHostedBroker
     ? undefined
@@ -723,8 +1001,18 @@ try {
             'broker reconnect',
           );
           assert.notEqual(reconnected.connectionId, reconnected.previous);
+          assert.equal(
+            reconnected.peerReplaced,
+            true,
+            'Broker reconnect must select stats from the newly owned browser peer',
+          );
           await page.evaluate(browserBrokerAdmitApplicationTransport);
           await page.evaluate(browserBrokerAdoptApplicationTransport);
+          const reconnectPair = await page.evaluate(
+            browserBrokerSelectedCandidatePair,
+          );
+          assert.equal(reconnectPair.localType, 'relay');
+          assert.equal(reconnectPair.remoteType, 'relay');
           assert.equal(
             (
               await page.evaluate(browserApplicationAccountRequest, {
@@ -735,10 +1023,28 @@ try {
             'Fresh broker peer restores the permitted Project read',
           );
           brokerReconnectForJourney = reconnected;
-          brokerReconnectAdapterIndex = brokerLab.adapterMetadata.length - 1;
+          freshRelayJourney = await runFreshRelayScenario({
+            approvedPage: page,
+            pageOrigin,
+          });
+          freshRelayReport = freshRelayJourney.report;
         }
       },
     );
+  }
+  if (freshRelayJourney) {
+    const freshDeviceProjectRead = await freshRelayJourney.readFreshProject();
+    assert.equal(
+      freshDeviceProjectRead,
+      200,
+      'Fresh Device must retain Project access after the previous Device is revoked',
+    );
+    freshRelayReport = {
+      ...freshRelayJourney.report,
+      previousDeviceRevokedFreshDeviceProjectRead: freshDeviceProjectRead,
+    };
+    await freshRelayJourney.close();
+    freshRelayJourney = undefined;
   }
   if (selfHostedBroker) {
     assert(brokerLab);
@@ -752,8 +1058,8 @@ try {
       page.evaluate(browserBrokerProbeOrigin, {
         brokerOrigin: lab.brokerOrigin,
         scope: lab.scope,
-        routingId: lab.routing.id,
-        routingSecret: lab.routing.secret,
+        routingId: lab.bundle.routing.id,
+        routingSecret: lab.bundle.routing.secret,
       }),
       'broker CORS and credential refusal',
     );
@@ -795,24 +1101,13 @@ try {
     assert.equal(tamper.tamperedRefused, true, tamper.refusal);
     assert.equal(tamper.remoteDescriptionAttempted, false);
     assert.match(tamper.refusal, /proof|refused|invalid/i);
-    // The admitted Station-side peer actually selected relay transport:
-    // read the live candidate pair now, not an early null snapshot.
-    assert(lab.adapterMetadata.length > 0);
-    const observedAdapter = lab.adapterMetadata[brokerReconnectAdapterIndex]!;
-    let selectedPair = observedAdapter.pair();
-    const pairDeadline = Date.now() + 10_000;
-    while (
-      (!selectedPair ||
-        selectedPair.local.type !== 'relay' ||
-        selectedPair.remote.type !== 'relay') &&
-      Date.now() < pairDeadline
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      selectedPair = observedAdapter.pair();
-    }
-    assert.equal(selectedPair?.local.type, 'relay');
-    assert.equal(selectedPair?.remote.type, 'relay');
-    pionProvenance = observedAdapter.provenance;
+    // Read the live browser peer candidate pair; its remote relay candidate
+    // was produced by the StationRuntime-owned Pion adapter.
+    const selectedPair = await page.evaluate(
+      browserBrokerSelectedCandidatePair,
+    );
+    assert.equal(selectedPair.localType, 'relay');
+    assert.equal(selectedPair.remoteType, 'relay');
     assert(brokerReconnectForJourney);
     const reconnected = brokerReconnectForJourney;
     brokerJourney = {
@@ -828,8 +1123,8 @@ try {
       },
       proofTamperRefused: tamper.tamperedRefused,
       proofTamperObserved: tamper.tampered,
-      adapterPeersObserved: lab.adapterMetadata.length,
-      adapterRelaySelected: selectedPair,
+      stationRuntimeOwnsPionAndVirtualIngress: true,
+      stationPeerRelaySelected: selectedPair,
       scope:
         'same Station/enrollment plus browser origin; separate routing and connector credentials',
     };
@@ -851,8 +1146,10 @@ try {
     } finally {
       await brokerRevokePage.close();
     }
-    // Connector withdrawal retires the lease: routing status must refuse.
-    await lab.withdraw();
+    // Stopping StationRuntime retires its production connector and withdraws
+    // the lease while the broker remains available for the refusal check.
+    assert(accountStation);
+    await accountStation.stop();
     await assert.rejects(
       page.evaluate(browserBrokerReadStatus),
       // With the last lease withdrawn, CORS can hide the error response.
@@ -964,6 +1261,24 @@ try {
     ])
       assert.equal(captured.includes(Buffer.from(secret)), false);
   }
+  if (freshRelayReport && accountStation) {
+    const passwordAbsent = !captured.includes(
+      Buffer.from(accountStation.browser.password),
+    );
+    assert.equal(passwordAbsent, true);
+    freshRelayReport.passwordMarkerAbsentFromTurnCapture = passwordAbsent;
+    const contentMarkersAbsent = [
+      accountStation.sharedWork.sharedTask.messageMarker,
+      accountStation.sharedWork.sharedTask.documentMarker,
+    ].map((value) => !captured.includes(Buffer.from(value)));
+    assert(contentMarkersAbsent.every(Boolean));
+    freshRelayReport.contentMarkersAbsentFromTurnCapture = contentMarkersAbsent;
+    writeFileSync(
+      join(root, 'fresh-relay-enrollment.json'),
+      JSON.stringify(freshRelayReport, null, 2),
+      { mode: 0o600 },
+    );
+  }
   if (applicationProtocol)
     assert.equal(
       captured.includes(Buffer.from(applicationProtocol.requestMarker)),
@@ -973,7 +1288,11 @@ try {
   report = {
     scope: 'browser-transport-evaluation',
     status: 'passed',
+    sourceCommitSha,
+    sourceWorktreeClean,
+    pionExecutableSha256,
     applicationAccounts: accountReport ?? { status: 'not-run' },
+    freshRelayEnrollment: freshRelayReport ?? { status: 'not-run' },
     applicationProtocol: applicationProtocol
       ? {
           status: 'passed',
@@ -1001,6 +1320,7 @@ try {
           'TURN relay candidates selected at both ends',
           'broker lease renewed while application traffic continues',
           'fresh peer reconnect preserves the approved Device and account continuation',
+          'fresh no-cookie/no-Device account enrollment requires real operator approval and signed ACK',
           'tampered broker proof rejected before setRemoteDescription',
           'cross-tab Device trust revocation refuses new admission',
           'withdrawn routing credential refused by browser and exact HTTP control',
@@ -1046,9 +1366,10 @@ try {
     }
   }
   for (const cleanup of [
+    () => freshRelayJourney?.close(),
     () => (browser ? bounded(browser.close(), 'browser cleanup') : undefined),
-    () => brokerLab?.stop(),
     () => accountStation?.stop(),
+    () => brokerLab?.stop(),
     () => relay?.close(),
     () => turnFixture.stop(),
   ]) {

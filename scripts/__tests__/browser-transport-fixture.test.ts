@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { browserFinalizeAndActivateFreshRelayEnrollment } from '../lib/browser-application-account.mjs';
 import { startPionFixture } from '../lib/browser-transport-pion.js';
 import {
   runLabCommand,
@@ -14,6 +15,14 @@ const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
+});
+
+it('resolves the fresh relay continuation client from the application-session SDK surface', () => {
+  const implementation =
+    browserFinalizeAndActivateFreshRelayEnrollment.toString();
+  expect(implementation).toContain('window.stationApplicationChannel');
+  expect(implementation).toContain('new sessionApi.ApplicationSessionClient');
+  expect(implementation).not.toContain('new api.ApplicationSessionClient');
 });
 function temporaryRoot() {
   const root = mkdtempSync(join(tmpdir(), 'station-browser-fixture-test-'));
