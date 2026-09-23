@@ -103,6 +103,7 @@ import {
   resetServerLogSinkForTests,
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
+import { buildSessionFailedItem } from '../../projects/attention-projection.js';
 import { ProjectBindingsStore } from '../../projects/project-binding-store.js';
 import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
@@ -12701,6 +12702,64 @@ describe('OrchestrationService', () => {
     });
     expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  // #2310 review F1/F2/F3: the refusal above, seen from the session list. An
+  // execution-phase refusal (post-authorization) with nothing started reads
+  // Failed with its reason on every surface — but the event fold is left
+  // alone, so the user's retry continues THIS session instead of being
+  // re-routed to a fresh continuation child as if the session had stopped.
+  test('#2310: a refused first send reads Failed with its reason, and a retry continues the same session', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-refused-first',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new SendTurnRefusedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'thread-refused-first', input: 'inspect this' },
+      }),
+    ).rejects.toThrow('did not advertise image attachment support');
+
+    // Checked FIRST: the retry must continue this session, not a fresh
+    // continuation child. Round 1 rewrote the fold to 'failed', which routed
+    // exactly this retry to a new child.
+    await expect(
+      service.resolveConversationContinuation(
+        'thread-refused-first',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude' },
+      ),
+    ).resolves.toMatchObject({
+      sessionId: 'thread-refused-first',
+      startRequired: false,
+    });
+
+    const refused = (await service.listSessionReadModel()).find(
+      (session) => session.threadId === 'thread-refused-first',
+    );
+    expect(refused?.draft).toBe(false);
+    expect(refused?.terminalAttribution).toEqual({
+      kind: 'send_refused',
+      detail: 'Station refused the send before it started.',
+    });
+    expect(refused?.blockedReason).toBe(
+      'Station refused the send before it started.',
+    );
+    expect(refused?.lifecycleState).not.toBe('failed');
+    expect(buildSessionFailedItem(refused!).body).toBe(
+      'Station refused the send before it started.',
+    );
   });
 
   describe('station#1885 — station-agent image attachments', () => {

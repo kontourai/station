@@ -284,7 +284,7 @@ describe('primary CI workflow governance', () => {
     const classify = parsedJob(workflow, 'classify');
     const fastChecks = parsedJob(workflow, 'fast-checks');
     const fullRegression = parsedJob(workflow, 'full-regression');
-    const browserSmoke = parsedJob(workflow, 'browser-smoke');
+    expect(parsedJob(workflow, 'browser-smoke')).toBeUndefined();
 
     expect(workflow).toContain('pull_request_target:\n    branches: [main]');
     expect(workflow).toContain(
@@ -385,9 +385,6 @@ describe('primary CI workflow governance', () => {
     expect(fullRegression?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
       "${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}",
-    );
-    expect(browserSmoke?.if).toBe(
-      "github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')",
     );
   });
 
