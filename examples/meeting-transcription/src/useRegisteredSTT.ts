@@ -5,7 +5,13 @@
  * register them. The SDK does not expose which provider the person selected
  * in Station's voice settings: that choice lives in the host UI (its internal
  * `useSTT` hook), outside the plugin boundary. This hook therefore uses the
- * first registered provider that reports itself supported.
+ * first registered provider that reports itself supported, which is usually
+ * the host's WebSpeech provider.
+ *
+ * The host also registers placeholder entries for server-backed providers
+ * whose plugin bundle has not loaded. They report `isSupported` from the
+ * server's configuration but never listen, and nothing on the public
+ * STTProvider contract distinguishes them, so this hook cannot skip them.
  */
 
 import {

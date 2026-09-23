@@ -3,14 +3,19 @@
 Reference implementation of a meeting transcription toolbar plugin.
 
 Unlike the voice provider plugins, this one doesn't register an STT provider. It
-consumes one that a voice plugin registered in `voiceRegistry` from
-`@kontourai/station-sdk`, so it works with WebSpeech, ElevenLabs Scribe, or any other
-registered provider.
+listens through one that is already registered in `voiceRegistry` from
+`@kontourai/station-sdk`.
 
-The SDK does not tell plugins which provider the person selected in Station's voice
-settings. That choice lives in the host UI's internal `useSTT` hook, which is not a
-plugin export. `src/useRegisteredSTT.ts` therefore uses the first registered provider
-that reports itself supported.
+It cannot see which provider the person chose. Station's voice settings keep that
+choice in the host UI's internal `useSTT` hook, which is not a plugin export.
+`src/useRegisteredSTT.ts` uses the first registered provider that reports itself
+supported. In practice this is usually the browser's WebSpeech provider, which
+Station registers first, even when the person picked another one.
+
+Station also registers placeholder entries for server-backed voice providers whose
+plugin bundle has not loaded. A placeholder reports itself supported but does not
+listen, and the SDK gives no way to tell one apart from a working provider. If a
+placeholder is first, the modal opens but hears nothing.
 
 ## Files
 
@@ -22,5 +27,5 @@ that reports itself supported.
 ## Contrast with the old `MeetingTranscriptionModal.tsx`
 
 The previous version (deleted in this commit) used `useMeetingTranscription()` directly,
-which hardcoded WebSpeech. This version routes through `voiceRegistry`, so ElevenLabs
-Scribe works when that provider is registered.
+which hardcoded WebSpeech. This version routes through `voiceRegistry`, subject to
+the selection limits above.
