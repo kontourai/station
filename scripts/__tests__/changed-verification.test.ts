@@ -553,6 +553,52 @@ describe('changed verification selection', () => {
       'impact edge exception has no explicit owner: packages/sdk/src/client/** except packages/sdk/src/client/http.ts',
     );
   });
+  test.each([
+    [
+      'packages/sdk/src/client/api-error-message.ts',
+      [
+        'packages/sdk/src/__tests__/api-error-message.test.ts',
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+        'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
+      ],
+    ],
+    [
+      'packages/sdk/src/client/chatHttpError.ts',
+      [
+        'packages/sdk/src/__tests__/chatRuntimeStream.test.ts',
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+        'packages/sdk/src/__tests__/client-execution.test.ts',
+        'src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+      ],
+    ],
+    [
+      'packages/sdk/src/client/index.ts',
+      [
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+        'packages/sdk/src/__tests__/publicBarrel.test.ts',
+      ],
+    ],
+    [
+      'packages/sdk/src/index.ts',
+      [
+        'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+        'packages/sdk/src/__tests__/publicBarrel.test.ts',
+      ],
+    ],
+  ])(
+    'a broad-graph SDK module (%s) selects its own suites, not its import graph (#2326)',
+    (path, suites) => {
+      // Each of these reaches 498–744 test files through the import graph,
+      // which overruns the fast lane; consumers run in the merge-queue full
+      // regression instead. No lane: a lane would defer the whole diff.
+      const selection = selectChangedVerification([path]);
+      expect(selection.relatedPaths).not.toContain(path);
+      expect(selection.tests.map((entry) => entry.path).sort()).toEqual(
+        [...suites].sort(),
+      );
+      expect(selection.lanes).toEqual([]);
+    },
+  );
   test('the SDK transport edge names exactly its own-behaviour suites', () => {
     // Pinned in full: trimming a suite from the list is a coverage loss that
     // a sampled arrayContaining would not notice.
