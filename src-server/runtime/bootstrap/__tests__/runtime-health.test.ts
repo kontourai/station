@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runtimeEventLoopLag } from '../../../telemetry/metrics.js';
 import {
-  runRuntimeHealthChecks,
   EVENT_LOOP_STALL_WARN_MS,
+  runRuntimeHealthChecks,
   startRuntimeEventLoopLagMonitoring,
   startRuntimeHealthChecks,
 } from '../runtime-health.js';

@@ -91,45 +91,159 @@ describe('supervised parent watchdog', () => {
 
   test('uses the captured birth fingerprint even when Windows retains the parent PID', async () => {
     await expect(
-      shouldStopForMissingSupervisor('123', 123, 'birth-a', async () => 'birth-b'),
+      shouldStopForMissingSupervisor(
+        '123',
+        123,
+        'birth-a',
+        async () => 'birth-b',
+      ),
     ).resolves.toBe(true);
     await expect(
-      shouldStopForMissingSupervisor('123', 123, 'birth-a', async () => 'birth-a'),
+      shouldStopForMissingSupervisor(
+        '123',
+        123,
+        'birth-a',
+        async () => 'birth-a',
+      ),
     ).resolves.toBe(false);
   });
 
   // #2327: `ps -o lstart=` timing out on a loaded host returned null, which
   // read as "supervisor gone" and shut down a live desktop's server while
   // ppid still named the supervisor.
-  test('a failed identity probe is not proof the supervisor is gone', async () => {
+  test('a failed identity probe for a live supervisor is not proof it is gone', async () => {
     const failedProbe = async () => null;
-    await expect(
-      shouldStopForMissingSupervisor('123', 123, 'birth-a', failedProbe, 'darwin'),
-    ).resolves.toBe(false);
-    await expect(
-      shouldStopForMissingSupervisor('123', 123, 'birth-a', failedProbe, 'win32'),
-    ).resolves.toBe(false);
+    const alive = () => 'alive' as const;
+    const ambiguous = () => 'unavailable' as const;
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      await expect(
+        shouldStopForMissingSupervisor(
+          '123',
+          123,
+          'birth-a',
+          failedProbe,
+          platform,
+          alive,
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        shouldStopForMissingSupervisor(
+          '123',
+          123,
+          'birth-a',
+          failedProbe,
+          platform,
+          ambiguous,
+        ),
+      ).resolves.toBe(false);
+    }
     const throwingProbe = async () => {
       throw new Error('probe crashed');
     };
     await expect(
-      shouldStopForMissingSupervisor('123', 123, 'birth-a', throwingProbe, 'darwin'),
+      shouldStopForMissingSupervisor(
+        '123',
+        123,
+        'birth-a',
+        throwingProbe,
+        'darwin',
+        alive,
+      ),
     ).resolves.toBe(false);
+  });
+
+  // A dead pid also probes as null. Windows keeps the stale ppid, so the OS
+  // saying the pid is absent is its only proof the desktop died.
+  test('stops when the probe fails and the OS proves the supervisor pid is gone, on every platform', async () => {
+    const dead = () => 'dead' as const;
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      await expect(
+        shouldStopForMissingSupervisor(
+          '123',
+          123,
+          'birth-a',
+          async () => null,
+          platform,
+          dead,
+        ),
+      ).resolves.toBe(true);
+    }
   });
 
   test('a failed identity probe still falls back to the Unix ppid backstop', async () => {
     await expect(
-      shouldStopForMissingSupervisor('123', 1, 'birth-a', async () => null, 'darwin'),
+      shouldStopForMissingSupervisor(
+        '123',
+        1,
+        'birth-a',
+        async () => null,
+        'darwin',
+        () => 'alive',
+      ),
     ).resolves.toBe(true);
+  });
+
+  test('the default liveness check proves a real exited process is gone', async () => {
+    const { spawn } = await import('node:child_process');
+    const child = spawn(process.execPath, ['-e', ''], { windowsHide: true });
+    await new Promise((resolve) => child.once('exit', resolve));
+    await expect(
+      shouldStopForMissingSupervisor(
+        String(child.pid),
+        123,
+        'birth-a',
+        async () => null,
+        'win32',
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      shouldStopForMissingSupervisor(
+        String(process.pid),
+        123,
+        'birth-a',
+        async () => null,
+        'win32',
+      ),
+    ).resolves.toBe(false);
+  });
+
+  test('a throwing logger does not stop the shutdown from being armed', async () => {
+    let check: (() => void) | undefined;
+    const onSupervisorGone = vi.fn();
+    const setTimeout = vi.fn(() => ({ unref: vi.fn() }) as never);
+    armSupervisedParentWatchdog({
+      env: { STATION_SUPERVISOR_PID: '123' },
+      getParentPid: () => 1,
+      logger: {
+        error: () => {
+          throw new Error('log sink gone');
+        },
+      },
+      onSupervisorGone,
+      setInterval: (callback) => {
+        check = callback;
+        return { unref: vi.fn() } as never;
+      },
+      setTimeout,
+    });
+
+    check?.();
+    await settle();
+    expect(setTimeout).toHaveBeenCalledTimes(1);
+    expect(onSupervisorGone).toHaveBeenCalledTimes(1);
   });
 
   test('a live supervisor survives an armed watchdog whose probe fails', async () => {
     let check: (() => void) | undefined;
     const onSupervisorGone = vi.fn();
     armSupervisedParentWatchdog({
-      env: { STATION_SUPERVISOR_PID: '123', STATION_SUPERVISOR_BIRTH: 'birth-a' },
+      env: {
+        STATION_SUPERVISOR_PID: '123',
+        STATION_SUPERVISOR_BIRTH: 'birth-a',
+      },
       getParentPid: () => 123,
       lookupSupervisorBirth: async () => null,
+      supervisorLiveness: () => 'alive',
       logger: { error: vi.fn() },
       onSupervisorGone,
       setInterval: (callback) => {
@@ -154,7 +268,10 @@ describe('supervised parent watchdog', () => {
     );
     const onSupervisorGone = vi.fn();
     armSupervisedParentWatchdog({
-      env: { STATION_SUPERVISOR_PID: '123', STATION_SUPERVISOR_BIRTH: 'birth-a' },
+      env: {
+        STATION_SUPERVISOR_PID: '123',
+        STATION_SUPERVISOR_BIRTH: 'birth-a',
+      },
       getParentPid: () => 123,
       lookupSupervisorBirth,
       logger: { error: vi.fn() },

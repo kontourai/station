@@ -3898,6 +3898,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // This marker is a capability for precisely the server spawn governed by
   // service-run. Never inherit it through a server-initiated lifecycle call.
   delete serverEnv.STATION_SUPERVISOR_PID;
+  // The desktop addresses this to its own sidecar; a server started from a
+  // desktop terminal must still log to its stdout log file (#2327).
+  delete serverEnv.STATION_STDOUT_LOGS;
   const internalApiToken = randomBytes(32).toString('base64url');
   const uiBootstrapToken = randomBytes(32).toString('base64url');
   serverEnv.STATION_INTERNAL_API_TOKEN = internalApiToken;

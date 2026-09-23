@@ -55,8 +55,17 @@ function readTodayLines(directory: string): any[] {
 }
 
 const originalEnvLevel = process.env.STATION_LOG_LEVEL;
+const originalStdoutLogs = process.env.STATION_STDOUT_LOGS;
+
+// Run inside a desktop terminal, the suite would otherwise inherit the
+// sidecar's opt-out and every stdout assertion would read nothing (#2327).
+beforeEach(() => {
+  delete process.env.STATION_STDOUT_LOGS;
+});
 
 afterEach(() => {
+  if (originalStdoutLogs === undefined) delete process.env.STATION_STDOUT_LOGS;
+  else process.env.STATION_STDOUT_LOGS = originalStdoutLogs;
   stopLoggerCaptures();
   resetServerLogSinkForTests();
   for (const dir of dirs.splice(0))
@@ -356,7 +365,6 @@ describe('createLogger — level filtering and the store tee', () => {
     // Production branch so stdout is `process.stdout` and therefore
     // spyable; the opt-out is checked before either stdout stream is built.
     const originalNodeEnv = process.env.NODE_ENV;
-    const originalStdoutLogs = process.env.STATION_STDOUT_LOGS;
     process.env.NODE_ENV = 'production';
     process.env.STATION_STDOUT_LOGS = '0';
     const writeSpy = vi
@@ -379,9 +387,6 @@ describe('createLogger — level filtering and the store tee', () => {
       writeSpy.mockRestore();
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = originalNodeEnv;
-      if (originalStdoutLogs === undefined)
-        delete process.env.STATION_STDOUT_LOGS;
-      else process.env.STATION_STDOUT_LOGS = originalStdoutLogs;
     }
   });
 
