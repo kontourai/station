@@ -93,7 +93,13 @@ export async function browserStartApplicationAccount(input) {
     continuation.clientOrigin !== location.origin
   )
     throw new Error('Continuation binding mismatch');
-  window.stationApplicationAccount = { client, continuation, lifetime, input };
+  window.stationApplicationAccount = {
+    client,
+    continuation,
+    lifetime,
+    input,
+    transport,
+  };
   return {
     principalId: continuation.principal.id,
     deviceId: continuation.deviceId,
@@ -129,6 +135,9 @@ export async function browserApplicationAccountRequest({
     },
   );
   return { status: response.status, body: await response.text() };
+}
+export function browserApplicationAccountPrincipal() {
+  return window.stationApplicationAccount?.continuation?.principal?.id;
 }
 export async function browserAcceptApplicationInvitation(token) {
   const state = window.stationApplicationAccount;
@@ -229,4 +238,275 @@ export async function browserLoginApplicationAccountAgain() {
 export function browserStopApplicationAccount() {
   window.stationApplicationAccount?.lifetime.abort();
   window.stationApplicationChannel.setClientCredentialResolver(undefined);
+}
+
+/** Begin a fresh relay enrollment using only the admitted encrypted transport. */
+export async function browserBeginFreshRelayEnrollment(input) {
+  const api = window.stationRelayEnrollment;
+  const channel = window.stationBrokerLabTransport?.transport;
+  if (!api || !channel)
+    throw new Error('Missing encrypted relay enrollment transport');
+  const priorAccountStatePresent =
+    window.stationApplicationAccount !== undefined;
+  const cookieJarBeforeLogin = document.cookie;
+  if (priorAccountStatePresent || cookieJarBeforeLogin !== '')
+    throw new Error('Fresh browser profile contains prior account state');
+  const key = await api.createRelayEnrollmentKey();
+  const observedRequestHeaders = [];
+  const post = async (path, body) => {
+    const headers = new Headers({
+      Origin: location.origin,
+      'Content-Type': 'application/json',
+    });
+    observedRequestHeaders.push([...headers.keys()].sort());
+    if (headers.has('authorization') || headers.has('cookie'))
+      throw new Error('Fresh relay request attempted an existing credential');
+    const response = await channel(`${input.apiBase}${path}`, {
+      method: 'POST',
+      headers: Object.fromEntries(headers.entries()),
+      body: JSON.stringify(body),
+      credentials: 'omit',
+      redirect: 'error',
+      timeoutMs: 15000,
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const begin = await post(api.RELAY_ENROLLMENT_CLIENT_PATHS.begin, {
+    publicKey: key.publicKey,
+  });
+  if (begin.status !== 201)
+    throw new Error(
+      `Fresh relay begin refused: ${begin.status} ${JSON.stringify(begin.body)}`,
+    );
+  const challenge = begin.body;
+  if (
+    challenge.stationId !== input.stationId ||
+    challenge.clientOrigin !== location.origin ||
+    challenge.purpose !== 'login'
+  )
+    throw new Error('Fresh relay challenge binding mismatch');
+  const proof = await api.createRelayEnrollmentLoginProof(key, challenge, {
+    method: 'POST',
+    url: `${input.apiBase}${api.RELAY_ENROLLMENT_CLIENT_PATHS.login}`,
+    clientOrigin: location.origin,
+  });
+  const login = await post(api.RELAY_ENROLLMENT_CLIENT_PATHS.login, {
+    enrollmentId: challenge.enrollmentId,
+    proof,
+    credentials: { username: input.username, password: input.password },
+  });
+  if (login.status !== 202 || login.body.state !== 'pending')
+    throw new Error(`Fresh relay candidate login refused: ${login.status}`);
+  if (
+    'deviceCredential' in login.body ||
+    'continuation' in login.body ||
+    'offerProof' in login.body
+  )
+    throw new Error(
+      'Pending fresh relay response disclosed authority material',
+    );
+  window.stationFreshRelayEnrollment = {
+    apiBase: input.apiBase,
+    stationId: input.stationId,
+    clientOrigin: location.origin,
+    key,
+    challenge,
+    requestId: login.body.requestId,
+    transport: channel,
+    requestHeaderEvidence: observedRequestHeaders,
+  };
+  return {
+    state: login.body.state,
+    enrollmentId: login.body.enrollmentId,
+    requestId: login.body.requestId,
+    keyExtractable: key.privateKey.extractable,
+    requestHeaderEvidence: observedRequestHeaders,
+    priorAccountStatePresent,
+    cookieJarEmpty: document.cookie === '',
+  };
+}
+
+export function browserFreshProfileState() {
+  return {
+    cookieJar: document.cookie,
+    hasPriorAccountState: window.stationApplicationAccount !== undefined,
+  };
+}
+
+/** Finalize after operator approval, prove the delivered bundle inert, then ACK. */
+export async function browserFinalizeAndActivateFreshRelayEnrollment() {
+  const api = window.stationRelayEnrollment;
+  const sessionApi = window.stationApplicationChannel;
+  const state = window.stationFreshRelayEnrollment;
+  if (!api || !sessionApi || !state)
+    throw new Error('Missing fresh relay enrollment state');
+  const enrollmentRequestHeaderEvidence = state.requestHeaderEvidence;
+  const post = async (path, body) => {
+    const headers = new Headers({
+      Origin: state.clientOrigin,
+      'Content-Type': 'application/json',
+    });
+    enrollmentRequestHeaderEvidence.push([...headers.keys()].sort());
+    if (headers.has('authorization') || headers.has('cookie'))
+      throw new Error('Fresh relay request attempted an existing credential');
+    const response = await state.transport(`${state.apiBase}${path}`, {
+      method: 'POST',
+      headers: Object.fromEntries(headers.entries()),
+      body: JSON.stringify(body),
+      credentials: 'omit',
+      redirect: 'error',
+      timeoutMs: 15000,
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const finalizeProof = await api.createRelayEnrollmentFinalizeProof(
+    state.key,
+    state.challenge,
+    {
+      method: 'POST',
+      url: `${state.apiBase}${api.RELAY_ENROLLMENT_CLIENT_PATHS.finalize}`,
+      clientOrigin: state.clientOrigin,
+    },
+  );
+  const finalized = await post(api.RELAY_ENROLLMENT_CLIENT_PATHS.finalize, {
+    enrollmentId: state.challenge.enrollmentId,
+    proof: finalizeProof,
+  });
+  if (finalized.status !== 200 || finalized.body.state !== 'delivered')
+    throw new Error(`Fresh relay finalize refused: ${finalized.status}`);
+  const delivery = finalized.body;
+  if (
+    delivery.enrollmentId !== state.challenge.enrollmentId ||
+    delivery.bundle.stationId !== state.stationId ||
+    delivery.bundle.deviceId !== delivery.bundle.continuation.deviceId ||
+    delivery.bundle.continuation.clientOrigin !== state.clientOrigin
+  )
+    throw new Error('Fresh relay delivered bundle binding mismatch');
+  const client = new sessionApi.ApplicationSessionClient(
+    state.apiBase,
+    state.stationId,
+    state.clientOrigin,
+    { requireCredential: true, timeoutMs: 15000 },
+    state.key,
+  );
+  const resourceUrl = `${state.apiBase}/api/account-auth/session`;
+  const headers = await client.headers(delivery.bundle.continuation, {
+    method: 'GET',
+    url: resourceUrl,
+  });
+  const beforeAck = await state.transport(resourceUrl, {
+    method: 'GET',
+    headers: {
+      ...headers,
+      Authorization: `Bearer ${delivery.bundle.deviceCredential}`,
+    },
+    credentials: 'omit',
+    redirect: 'error',
+    timeoutMs: 15000,
+  });
+  if (beforeAck.status !== 401)
+    throw new Error(
+      `Pending Device/continuation became active before ACK: ${beforeAck.status}`,
+    );
+
+  const activationProof = await api.createRelayEnrollmentActivationProof(
+    state.key,
+    state.challenge,
+    delivery,
+    {
+      method: 'POST',
+      url: `${state.apiBase}${api.RELAY_ENROLLMENT_CLIENT_PATHS.activate}`,
+      clientOrigin: state.clientOrigin,
+    },
+  );
+  const ack = await post(api.RELAY_ENROLLMENT_CLIENT_PATHS.activate, {
+    enrollmentId: delivery.enrollmentId,
+    activationNonce: delivery.activationNonce,
+    deviceId: delivery.bundle.deviceId,
+    authorityKey: delivery.bundle.continuation.authorityKey,
+    bundleDigest: delivery.bundleDigest,
+    proof: activationProof,
+  });
+  if (ack.status !== 200 || ack.body.state !== 'active')
+    throw new Error(`Fresh relay activation refused: ${ack.status}`);
+  const afterAckHeaders = await client.headers(delivery.bundle.continuation, {
+    method: 'GET',
+    url: resourceUrl,
+  });
+  const afterAck = await state.transport(resourceUrl, {
+    method: 'GET',
+    headers: {
+      ...afterAckHeaders,
+      Authorization: `Bearer ${delivery.bundle.deviceCredential}`,
+    },
+    credentials: 'omit',
+    redirect: 'error',
+    timeoutMs: 15000,
+  });
+  if (afterAck.status !== 200)
+    throw new Error(
+      `Fresh relay account did not become usable after ACK: ${afterAck.status}`,
+    );
+  const self = await afterAck.json();
+  if (self.data?.principal?.id !== delivery.bundle.continuation.principal.id)
+    throw new Error('Fresh relay active account principal binding mismatch');
+  window.stationFreshRelayActiveAccount = {
+    state,
+    bundle: delivery.bundle,
+  };
+  window.stationFreshRelayEnrollment = undefined;
+  const finalHeaders = new Headers({
+    ...afterAckHeaders,
+    Authorization: `Bearer ${delivery.bundle.deviceCredential}`,
+  });
+  if (finalHeaders.has('cookie'))
+    throw new Error('Fresh relay account resource request attached a cookie');
+  return {
+    status: 'passed',
+    enrollmentId: delivery.enrollmentId,
+    deviceId: delivery.bundle.deviceId,
+    principalId: self.data.principal.id,
+    beforeAckStatus: beforeAck.status,
+    afterAckStatus: afterAck.status,
+    keyExtractable: state.key.privateKey.extractable,
+    cookieJarEmpty: document.cookie === '',
+    priorAccountStateAbsent: window.stationApplicationAccount === undefined,
+    resourceHeaderNames: [...finalHeaders.keys()].sort(),
+    enrollmentRequestHeaderEvidence,
+  };
+}
+
+/** Recheck the newly activated Device after the prior Device is revoked. */
+export async function browserFreshRelayProjectRead(input) {
+  const active = window.stationFreshRelayActiveAccount;
+  const sessionApi = window.stationApplicationChannel;
+  if (!active || !sessionApi)
+    throw new Error('Missing activated fresh relay Device');
+  const { state, bundle } = active;
+  const client = new sessionApi.ApplicationSessionClient(
+    state.apiBase,
+    state.stationId,
+    state.clientOrigin,
+    { requireCredential: true, timeoutMs: 15000 },
+    state.key,
+  );
+  const url = `${state.apiBase}${input.path}`;
+  const proofHeaders = await client.headers(bundle.continuation, {
+    method: 'GET',
+    url,
+  });
+  const headers = new Headers({
+    ...proofHeaders,
+    Authorization: `Bearer ${bundle.deviceCredential}`,
+  });
+  if (headers.has('cookie'))
+    throw new Error('Fresh Device request attempted cookie adoption');
+  const response = await state.transport(url, {
+    method: 'GET',
+    headers: Object.fromEntries(headers.entries()),
+    credentials: 'omit',
+    redirect: 'error',
+    timeoutMs: 15000,
+  });
+  return { status: response.status, body: await response.text() };
 }

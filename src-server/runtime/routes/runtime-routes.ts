@@ -8,6 +8,7 @@ import { createProjectSharedTaskRoutes } from '../../routes/projects/project-sha
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
+import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import {
@@ -1314,6 +1315,23 @@ export function configureRuntimeRoutes(
     '/api/account-auth/continuations',
     createApplicationSessionRoutes(context.applicationSessions),
   );
+  if (context.relayEnrollment) {
+    const relayEnrollmentRoutes = createRelayEnrollmentRoutes(
+      context.relayEnrollment,
+    );
+    context.app.post('/.well-known/station/v1/relay/enrollment/begin', (c) =>
+      relayEnrollmentRoutes.fetch(c.req.raw),
+    );
+    context.app.post('/.well-known/station/v1/relay/enrollment/login', (c) =>
+      relayEnrollmentRoutes.fetch(c.req.raw),
+    );
+    context.app.post('/.well-known/station/v1/relay/enrollment/finalize', (c) =>
+      relayEnrollmentRoutes.fetch(c.req.raw),
+    );
+    context.app.post('/.well-known/station/v1/relay/enrollment/activate', (c) =>
+      relayEnrollmentRoutes.fetch(c.req.raw),
+    );
+  }
   context.app.route(
     '/api/account-auth',
     createDeploymentAuthenticationRoutes(
