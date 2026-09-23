@@ -292,6 +292,30 @@ fn revoke_grant(
     write_index(backend, &binding.owner.channel, &index)
 }
 
+fn with_vault_lock<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let _guard = RELAY_GRANT_VAULT_LOCK
+        .lock()
+        .map_err(|_| "native relay grant vault is unavailable".to_string())?;
+    operation()
+}
+
+/// Commands always acquire `profiles.json.lock` before the in-process vault
+/// lock, matching the profile writer's lock order. This keeps profile
+/// validation, vault mutation, and a concurrent profile replace serialized.
+fn with_profile_and_vault<P, T>(
+    acquire_profile_lock: impl FnOnce() -> Result<P, String>,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let _profile_lock = acquire_profile_lock()?;
+    with_vault_lock(operation)
+}
+
+fn profile_lock_for_app(app: &AppHandle) -> Result<super::StationProfileLock, String> {
+    let path = super::station_profiles_path(app)?;
+    super::validate_station_profile_store(&path)?;
+    super::lock_station_profiles_for_app(app, &path)
+}
+
 fn index_account(channel: &str) -> Result<String, String> {
     if !matches!(channel, "dev" | "stable" | "beta" | "nightly") {
         return Err("invalid relay grant channel".to_string());
@@ -389,10 +413,7 @@ pub(crate) fn invalidate_removed_routes(
     if removed.is_empty() {
         return Ok(());
     }
-    let _guard = RELAY_GRANT_VAULT_LOCK
-        .lock()
-        .map_err(|_| "native relay grant vault is unavailable".to_string())?;
-    invalidate_route_bindings(&mut OsKeyring, channel, &removed)
+    with_vault_lock(|| invalidate_route_bindings(&mut OsKeyring, channel, &removed))
 }
 
 fn invalidate_route_bindings(
@@ -467,11 +488,13 @@ pub(crate) fn relay_client_grant_store(
     profile_name: String,
     grant: RelayClientGrant,
 ) -> Result<RelayGrantMetadata, String> {
-    let _guard = RELAY_GRANT_VAULT_LOCK
-        .lock()
-        .map_err(|_| "native relay grant vault is unavailable".to_string())?;
-    let owner = owner_for_profile(&app, &profile_name, &grant)?;
-    store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
+    with_profile_and_vault(
+        || profile_lock_for_app(&app),
+        || {
+            let owner = owner_for_profile(&app, &profile_name, &grant)?;
+            store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
+        },
+    )
 }
 
 #[tauri::command]
@@ -480,11 +503,13 @@ pub(crate) fn relay_client_grant_revoke(
     profile_name: String,
     route: RelayGrantRouteKey,
 ) -> Result<(), String> {
-    let _guard = RELAY_GRANT_VAULT_LOCK
-        .lock()
-        .map_err(|_| "native relay grant vault is unavailable".to_string())?;
-    let owner = owner_for_route(&app, &profile_name, &route)?;
-    revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
+    with_profile_and_vault(
+        || profile_lock_for_app(&app),
+        || {
+            let owner = owner_for_route(&app, &profile_name, &route)?;
+            revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
+        },
+    )
 }
 
 #[tauri::command]
@@ -493,14 +518,16 @@ pub(crate) fn relay_client_grant_metadata(
     profile_name: String,
     route: RelayGrantRouteKey,
 ) -> Result<Option<RelayGrantMetadata>, String> {
-    let _guard = RELAY_GRANT_VAULT_LOCK
-        .lock()
-        .map_err(|_| "native relay grant vault is unavailable".to_string())?;
-    let owner = owner_for_route(&app, &profile_name, &route)?;
-    read_metadata(
-        &mut OsKeyring,
-        &RelayGrantBinding { route, owner },
-        unix_time_ms()?,
+    with_profile_and_vault(
+        || profile_lock_for_app(&app),
+        || {
+            let owner = owner_for_route(&app, &profile_name, &route)?;
+            read_metadata(
+                &mut OsKeyring,
+                &RelayGrantBinding { route, owner },
+                unix_time_ms()?,
+            )
+        },
     )
 }
 
@@ -824,5 +851,137 @@ mod tests {
         assert_eq!(read_index(&mut keyring, "nightly").unwrap(), vec![nightly]);
         assert!(stable_snapshot.is_empty());
         assert!(nightly_snapshot.is_empty());
+    }
+
+    #[test]
+    fn concurrent_store_cannot_restore_a_grant_after_profile_removal_commits() {
+        use std::sync::mpsc;
+        use std::sync::{Arc, Mutex};
+
+        let directory = tempfile::tempdir().unwrap();
+        let profile_path = directory.path().join("profiles.json");
+        let current_contents = serde_json::json!({
+            "schemaVersion": 1,
+            "revision": 1,
+            "defaultProfile": null,
+            "projectProfiles": {},
+            "profiles": [{
+                "schemaVersion": 1,
+                "name": "relay-home",
+                "endpoint": "https://station.example",
+                "relayRoute": {
+                    "brokerOrigin": "https://broker.example",
+                    "stationId": "11111111-1111-4111-8111-111111111111",
+                    "enrollmentId": "22222222-2222-4222-8222-222222222222"
+                },
+                "clientInstanceId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "setupSource": "manual",
+                "configurationState": "unconfigured",
+                "createdAt": 1,
+                "updatedAt": 1
+            }]
+        })
+        .to_string();
+        let removed_contents = serde_json::json!({
+            "schemaVersion": 1,
+            "revision": 2,
+            "defaultProfile": null,
+            "projectProfiles": {},
+            "profiles": []
+        })
+        .to_string();
+        std::fs::write(&profile_path, &current_contents).unwrap();
+
+        let owner = owner("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        let binding = RelayGrantBinding {
+            route: route_key(),
+            owner: owner.clone(),
+        };
+        let keyring = Arc::new(Mutex::new(MemoryKeyring::default()));
+        store_grant(
+            &mut *keyring.lock().unwrap(),
+            owner.clone(),
+            grant(&"R".repeat(43), 3_000),
+            1_000,
+        )
+        .unwrap();
+
+        let (cleaned_tx, cleaned_rx) = mpsc::channel();
+        let (commit_tx, commit_rx) = mpsc::channel();
+        let (attempting_tx, attempting_rx) = mpsc::channel();
+        let writer_keyring = Arc::clone(&keyring);
+        let writer_path = profile_path.clone();
+        let route_for_cleanup = profile_route();
+        let writer_owner = owner.clone();
+        let writer = std::thread::spawn(move || {
+            let _profile_lock = super::super::lock_station_profiles(&writer_path).unwrap();
+            with_vault_lock(|| {
+                invalidate_route_bindings(
+                    &mut *writer_keyring.lock().unwrap(),
+                    "stable",
+                    &[(route_for_cleanup, writer_owner)],
+                )
+            })
+            .unwrap();
+            cleaned_tx.send(()).unwrap();
+            commit_rx.recv().unwrap();
+            std::fs::write(&writer_path, removed_contents).unwrap();
+        });
+
+        let store_keyring = Arc::clone(&keyring);
+        let store_path = profile_path.clone();
+        let store_owner = owner.clone();
+        let (store_result_tx, store_result_rx) = mpsc::channel();
+        let store = std::thread::spawn(move || {
+            cleaned_rx.recv().unwrap();
+            let result = with_profile_and_vault(
+                || {
+                    attempting_tx.send(()).unwrap();
+                    super::super::lock_station_profiles(&store_path)
+                },
+                || {
+                    let contents = std::fs::read_to_string(&store_path)
+                        .map_err(|error| format!("read profiles for grant store: {error}"))?;
+                    let parsed = super::super::parse_station_profile_store(&contents)?;
+                    let still_present = parsed.profiles.iter().any(|profile| {
+                        profile.relay_route.as_ref() == Some(&profile_route())
+                            && profile.client_instance_id.as_deref()
+                                == Some(store_owner.client_instance_id.as_str())
+                    });
+                    if !still_present {
+                        return Err("relay profile was removed before grant storage".to_string());
+                    }
+                    store_grant(
+                        &mut *store_keyring.lock().unwrap(),
+                        store_owner,
+                        grant(&"S".repeat(43), 4_000),
+                        1_001,
+                    )
+                    .map(|_| ())
+                },
+            );
+            store_result_tx.send(result.clone()).unwrap();
+            result
+        });
+
+        attempting_rx.recv().unwrap();
+        assert!(matches!(
+            store_result_rx.recv_timeout(std::time::Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        commit_tx.send(()).unwrap();
+        writer.join().unwrap();
+        assert!(store_result_rx.recv().unwrap().is_err());
+        assert!(store.join().unwrap().is_err());
+        assert!(
+            read_metadata(&mut *keyring.lock().unwrap(), &binding, 1_002)
+                .unwrap()
+                .is_none()
+        );
+        let final_store = super::super::parse_station_profile_store(
+            &std::fs::read_to_string(profile_path).unwrap(),
+        )
+        .unwrap();
+        assert!(final_store.profiles.is_empty());
     }
 }
