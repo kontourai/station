@@ -5859,9 +5859,6 @@ textarea {
 .cal-assign-modal__item-type--account {
   background: var(--accent-primary);
 }
-.cal-assign-modal__item-type--campaign {
-  background: var(--success-text);
-}
 .cal-assign-modal__item-type--opportunity {
   background: var(--text-tertiary);
 }
@@ -6068,30 +6065,6 @@ textarea {
   padding: 1rem;
   color: var(--text-secondary);
   font-size: 0.875rem;
-}
-
-/* Log Activity: Campaigns section */
-.log-activity__campaigns-section {
-  padding: 1rem 1rem 0;
-  border-top: 1px solid var(--border-primary);
-}
-.log-activity__campaign-btn {
-  width: 100%;
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  text-align: left;
-  cursor: pointer;
-  font-size: 0.875rem;
-}
-.log-activity__campaign-btn--selected {
-  background: var(--color-primary);
-  color: white;
-}
-.log-activity__campaign-btn--default {
-  background: var(--bg-primary);
-  color: var(--text-primary);
 }
 
 /* Log Activity: Form */
