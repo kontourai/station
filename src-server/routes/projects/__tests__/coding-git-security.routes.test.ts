@@ -474,6 +474,38 @@ describe.skipIf(process.platform === 'win32')(
       expect(bareHead()).toBe('');
     });
 
+    test("a .git file borrowing ANOTHER checkout's worktree entry is refused (the back-pointer does not name this folder)", async () => {
+      const other = join(root, 'operator-other');
+      mkdirSync(other);
+      plain(other, ['init', '-q', '-b', 'main']);
+      writeFileSync(join(other, 'work.txt'), 'operator work\n');
+      plain(other, ['add', '.']);
+      plain(other, ['commit', '-q', '-m', 'operator work']);
+      plain(other, [
+        'worktree',
+        'add',
+        '-q',
+        '-b',
+        'lane',
+        join(root, 'operator-lane'),
+      ]);
+      const laneHead = plain(other, ['rev-parse', 'lane']);
+      rmSync(join(project, '.git'), { recursive: true, force: true });
+      writeFileSync(
+        join(project, '.git'),
+        `gitdir: ${join(other, '.git', 'worktrees', 'operator-lane')}\n`,
+      );
+      writeFileSync(join(project, 'member.txt'), 'member payload\n');
+
+      const commit = await post('/git/commit', {
+        projectSlug: 'acme',
+        message: 'routine commit',
+      });
+      expect(commit.status).toBe(403);
+      expect(commit.json.code).toBe('git-dir-outside-project');
+      expect(plain(other, ['rev-parse', 'lane'])).toBe(laneHead);
+    });
+
     test('a genuine linked worktree as the Project folder is accepted', async () => {
       const main = join(root, 'main-checkout');
       plain(root, [
