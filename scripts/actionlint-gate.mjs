@@ -477,9 +477,18 @@ const CACHE_RESTORE_MESSAGE =
 const SETUP_NODE_AUTO_CACHE_MESSAGE =
   'setup-node in a pull-request or merge-queue workflow must set package-manager-cache: false';
 const CODEQL_TRAP_CACHE_MESSAGE =
-  'CodeQL init in a pull-request or merge-queue workflow must set trap-caching: false';
-const CODEQL_OVERLAY_CACHE_MESSAGE =
-  'CodeQL init in a pull-request or merge-queue workflow must set env CODEQL_OVERLAY_DATABASE_MODE: none';
+  'CodeQL init in a pull-request or merge-queue workflow must turn trap-caching off, at least under pull_request_target';
+/**
+ * The only TRAP-caching value besides `false` allowed in these workflows.
+ * pull_request_target is the one untrusted event whose GITHUB_REF is the base
+ * branch, which CodeQL reads as default-branch analysis and so uploads from.
+ * Under merge_group and pull_request the ref is a queue or PR ref, and
+ * codeql-action (trap-caching.ts at cdf488f) uploads only from the default
+ * branch, so there it only restores main's cache.
+ */
+const CODEQL_TRAP_CACHING_OFF_FOR_PR_TARGET =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ github.event_name != 'pull_request_target' }}";
 const UNREVIEWED_CACHE_ACTION_MESSAGE =
   'pull-request and merge-queue workflows may only use actions and reusable workflows whose cache behavior is reviewed in UNTRUSTED_ACTION_CACHE_POLICY';
 const MISSING_CALLEE_MESSAGE =
@@ -495,8 +504,8 @@ const MISSING_CALLEE_MESSAGE =
  * Reviewed for cache behavior at the pins these workflows use:
  * - checkout, upload-artifact, dependency-review-action, rust-toolchain and
  *   codeql-action/analyze have no cache input and no cache step of their own.
- *   (analyze uploads the TRAP/overlay caches that init configured; the init
- *   rule below turns both off.)
+ *   (analyze uploads the TRAP/overlay caches that init configured; see the
+ *   init rule below.)
  * - setup-node saves in its post step when `cache:` is set, and v7 defaults
  *   `package-manager-cache: true`, which turns that on by itself when
  *   package.json's packageManager names npm. These jobs check the candidate
@@ -506,8 +515,10 @@ const MISSING_CALLEE_MESSAGE =
  *   (GITHUB_REF is the base branch), so it tries to upload a TRAP cache built
  *   from the candidate: security-analysis run 35824349214 logged "Uploading
  *   TRAP cache ... codeql-trap-1-2.26.4-javascript-<main sha>" and only
- *   GitHub's read-only token stopped it. Overlay-base database caching follows
- *   the same default-branch rule once GitHub enables its feature flag.
+ *   GitHub's read-only token stopped it. Overlay caching needs no switch:
+ *   init picks restore-only Overlay mode whenever the event payload has a
+ *   pull_request (checked before the default branch), saves only in
+ *   OverlayBase mode, and merge_group gets neither.
  * - pnpm/setup restores and saves a sub-kilobyte lockfile-verification log on
  *   every run, independently of its `cache` input, with no opt-out (dist at
  *   703c526: the post step calls the save unconditionally). That write is
@@ -523,12 +534,10 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   'dtolnay/rust-toolchain': noCacheFindings,
   'github/codeql-action/analyze': noCacheFindings,
   'github/codeql-action/init': (step) => [
-    ...(isDisabledInput(step?.with?.['trap-caching'])
+    ...(isDisabledInput(step?.with?.['trap-caching']) ||
+    step?.with?.['trap-caching'] === CODEQL_TRAP_CACHING_OFF_FOR_PR_TARGET
       ? []
       : [CODEQL_TRAP_CACHE_MESSAGE]),
-    ...(String(step?.env?.CODEQL_OVERLAY_DATABASE_MODE ?? '') === 'none'
-      ? []
-      : [CODEQL_OVERLAY_CACHE_MESSAGE]),
     ...(isUnsetInput(step?.with?.['dependency-caching']) ||
     // 'restore' only reads; codeql-action's CachingKind.Restore never stores.
     ['false', 'none', 'restore'].includes(
@@ -1388,11 +1397,9 @@ function hasExactSecurityAnalysisSteps(job) {
     candidate.with.repository === FAST_CHECKOUT_REPOSITORY &&
     candidate.with.ref === FAST_CHECKOUT_REF &&
     candidate.with.path === SECURITY_CANDIDATE_CHECKOUT_PATH &&
-    hasExactKeys(init, ['name', 'uses', 'env', 'with']) &&
+    hasExactKeys(init, ['name', 'uses', 'with']) &&
     init?.name === 'Initialize CodeQL' &&
     init?.uses === CODEQL_INIT_ACTION &&
-    hasExactKeys(init?.env, ['CODEQL_OVERLAY_DATABASE_MODE']) &&
-    init.env?.CODEQL_OVERLAY_DATABASE_MODE === 'none' &&
     hasExactKeys(init?.with, [
       'languages',
       'build-mode',
@@ -1401,7 +1408,7 @@ function hasExactSecurityAnalysisSteps(job) {
       'config',
       'trap-caching',
     ]) &&
-    init.with?.['trap-caching'] === false &&
+    init.with?.['trap-caching'] === CODEQL_TRAP_CACHING_OFF_FOR_PR_TARGET &&
     init.with?.languages === 'javascript-typescript' &&
     init.with?.['build-mode'] === 'none' &&
     init.with?.queries === 'security-extended' &&

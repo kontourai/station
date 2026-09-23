@@ -3154,9 +3154,7 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
   const AUTO_CACHE =
     'setup-node in a pull-request or merge-queue workflow must set package-manager-cache: false';
   const TRAP =
-    'CodeQL init in a pull-request or merge-queue workflow must set trap-caching: false';
-  const OVERLAY =
-    'CodeQL init in a pull-request or merge-queue workflow must set env CODEQL_OVERLAY_DATABASE_MODE: none';
+    'CodeQL init in a pull-request or merge-queue workflow must turn trap-caching off, at least under pull_request_target';
   const UNREVIEWED =
     'pull-request and merge-queue workflows may only use actions and reusable workflows whose cache behavior is reviewed in UNTRUSTED_ACTION_CACHE_POLICY';
   const MISSING_CALLEE =
@@ -3168,7 +3166,6 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
     RESTORE,
     AUTO_CACHE,
     TRAP,
-    OVERLAY,
     UNREVIEWED,
     MISSING_CALLEE,
   ];
@@ -3606,7 +3603,6 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         'CodeQL dependency caching',
         {
           uses: `github/codeql-action/init@${SHA}`,
-          env: { CODEQL_OVERLAY_DATABASE_MODE: 'none' },
           with: { 'trap-caching': false, 'dependency-caching': 'full' },
         },
         [WRITE],
@@ -3615,7 +3611,6 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         'CodeQL restore-only dependency caching',
         {
           uses: `github/codeql-action/init@${SHA}`,
-          env: { CODEQL_OVERLAY_DATABASE_MODE: 'none' },
           with: { 'trap-caching': false, 'dependency-caching': 'restore' },
         },
         [],
@@ -3630,38 +3625,41 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       );
     });
 
+    const setTrap = (value: unknown) => (init: Step) => {
+      (init.with as Record<string, unknown>)['trap-caching'] = value;
+    };
     test.each([
       [
         'trap-caching removed',
         (init: Step) => delete init.with?.['trap-caching'],
-        TRAP,
       ],
+      ['trap-caching: true', setTrap(true)],
+      ['an always-true expression', setTrap(expr('true'))],
       [
-        'trap-caching: true',
-        (init: Step) => {
-          (init.with as Record<string, unknown>)['trap-caching'] = true;
-        },
-        TRAP,
+        'a different event expression',
+        setTrap(expr("github.event_name == 'push'")),
       ],
-      ['overlay env removed', (init: Step) => delete init.env, OVERLAY],
-      [
-        'overlay env set to overlay-base',
-        (init: Step) => {
-          init.env = { CODEQL_OVERLAY_DATABASE_MODE: 'overlay-base' };
-        },
-        OVERLAY,
-      ],
-    ])('the real CodeQL init is refused with %s', (_name, mutate, message) => {
+    ])('the real CodeQL init is refused with %s', (_name, mutate) => {
       const workflows = real();
       const init = docOf(workflows, SECURITY).jobs.codeql.steps?.find((step) =>
         String(step.uses).startsWith('github/codeql-action/init@'),
       ) as Step;
-      expect(init.with?.['trap-caching']).toBe(false);
-      expect(init.env).toEqual({ CODEQL_OVERLAY_DATABASE_MODE: 'none' });
+      expect(init.with?.['trap-caching']).toBe(
+        expr("github.event_name != 'pull_request_target'"),
+      );
       mutate(init);
       expect(cacheFindings(workflows)).toEqual([
-        { file: SECURITY, jobId: 'codeql', message },
+        { file: SECURITY, jobId: 'codeql', message: TRAP },
       ]);
+    });
+
+    test('CodeQL init may turn trap-caching off outright', () => {
+      const workflows = real();
+      const init = docOf(workflows, SECURITY).jobs.codeql.steps?.find((step) =>
+        String(step.uses).startsWith('github/codeql-action/init@'),
+      ) as Step;
+      setTrap(false)(init);
+      expect(cacheFindings(workflows)).toEqual([]);
     });
   });
 

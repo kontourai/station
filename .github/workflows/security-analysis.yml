@@ -84,22 +84,22 @@ jobs:
       # this YAML from the protected base, and actionlint-gate.mjs pins the
       # exact string. Paths are relative to source-root (the candidate).
       #
-      # No Actions-cache writes from a scan of candidate code. Under
-      # pull_request_target GITHUB_REF is the base branch, so CodeQL treats
-      # the run as default-branch analysis and uploads a TRAP cache (and, once
-      # GitHub enables overlay analysis, an overlay-base database) built from
-      # the candidate. Only GitHub's read-only pull_request_target cache token
-      # stops that today; these two switches make it not happen at all.
+      # TRAP caching is off only under pull_request_target. There GITHUB_REF
+      # is the base branch, so CodeQL treats the run as default-branch
+      # analysis and uploads a TRAP cache built from the candidate (only
+      # GitHub's read-only token stopped it in run 35824349214). merge_group
+      # keeps restoring main's cache: CodeQL uploads TRAP caches only from the
+      # default branch, and a queue ref is not it. Overlay needs no switch:
+      # CodeQL picks restore-only Overlay mode whenever the event carries a
+      # pull_request, before its default-branch check.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
-        env:
-          CODEQL_OVERLAY_DATABASE_MODE: none
         with:
           languages: javascript-typescript
           build-mode: none
           queries: security-extended
           source-root: candidate
-          trap-caching: false
+          trap-caching: ${{ github.event_name != 'pull_request_target' }}
           config: |
             paths-ignore:
               - '**/__tests__/**'
