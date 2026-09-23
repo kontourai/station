@@ -158,8 +158,21 @@ export function ownBirthFingerprint({
 }
 
 /**
- * @returns {{ record: any, corrupt: boolean, missing: boolean, mtimeMs: number | null }}
+ * @returns {{ record: any, corrupt: boolean, missing: boolean, busy?: boolean, mtimeMs: number | null }}
  */
+/**
+ * Windows reports a file that another process is renaming, deleting or
+ * scanning (antivirus) as EPERM/EBUSY/EACCES. There that is contention, so
+ * the slot is skipped for this pass; on POSIX the same codes are a real
+ * permission problem and propagate.
+ */
+export function isTransientContention(error, platform = process.platform) {
+  return (
+    platform === 'win32' &&
+    ['EPERM', 'EBUSY', 'EACCES'].includes(String(error?.code))
+  );
+}
+
 function readSlotRecord(path) {
   let text;
   let mtimeMs = null;
@@ -169,6 +182,14 @@ function readSlotRecord(path) {
   } catch (error) {
     if (error?.code === 'ENOENT')
       return { record: null, corrupt: false, missing: true, mtimeMs };
+    if (isTransientContention(error))
+      return {
+        record: null,
+        corrupt: false,
+        missing: false,
+        busy: true,
+        mtimeMs,
+      };
     throw error;
   }
   try {
@@ -240,13 +261,13 @@ function unlinkQuietly(path) {
  */
 function tryClaimSlot(dir, index, record) {
   const target = slotPath(dir, index);
-  const staging = join(dir, `.staging-${record.nonce}`);
+  const staging = join(dir, `.staging-${randomUUID()}`);
   writePrivateFile(staging, `${JSON.stringify(record)}\n`);
   try {
     linkSync(staging, target);
     return true;
   } catch (error) {
-    if (error?.code === 'EEXIST') return false;
+    if (error?.code === 'EEXIST' || isTransientContention(error)) return false;
     throw error;
   } finally {
     unlinkQuietly(staging);
@@ -261,7 +282,7 @@ function tryClaimSlot(dir, index, record) {
  * judged record, another process has already reclaimed and re-claimed the
  * slot, and its record is put back.
  *
- * @returns {'reclaimed' | 'gone' | 'restored' | 'overadmitted'}
+ * @returns {'reclaimed' | 'gone' | 'busy' | 'restored' | 'overadmitted'}
  */
 export function reclaimStaleSlot(
   dir,
@@ -275,11 +296,13 @@ export function reclaimStaleSlot(
     renameSync(target, aside);
   } catch (error) {
     if (error?.code === 'ENOENT') return 'gone';
+    if (isTransientContention(error)) return 'busy';
     throw error;
   }
   const moved = readSlotRecord(aside);
   const movedNonce = moved.record?.nonce ?? null;
-  if (movedNonce === observedNonce) {
+  // A moved record that cannot be read is put back rather than deleted.
+  if (!moved.busy && movedNonce === observedNonce) {
     unlinkQuietly(aside);
     return 'reclaimed';
   }
@@ -326,6 +349,8 @@ function claimOrObserve(dir, index, record, liveness) {
   const observed = readSlotRecord(slotPath(dir, index));
   // Released between our link and read: claim it on this pass.
   if (observed.missing) return tryClaimSlot(dir, index, record) || null;
+  // Unreadable right now (Windows contention): neither free nor a holder.
+  if (observed.busy) return null;
   if (!recordIsStale(observed, liveness)) return observed.record;
   const outcome = reclaimStaleSlot(dir, index, observed.record?.nonce ?? null, {
     warn: liveness.warn,

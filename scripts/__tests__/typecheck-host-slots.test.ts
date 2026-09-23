@@ -17,6 +17,7 @@ import {
   acquireTypecheckSlot,
   CORRUPT_RECORD_STALE_MS,
   holderIsLive,
+  isTransientContention,
   ownBirthFingerprint,
   reclaimStaleSlot,
   resolveSlotCount,
@@ -284,6 +285,17 @@ describe('acquireTypecheckSlot (in-process)', () => {
     expect(
       JSON.parse(readFileSync(slotPath(dir, slot.index), 'utf8')).nonce,
     ).toBe('someone-else');
+  });
+});
+
+describe('isTransientContention', () => {
+  test('Windows sharing violations are contention; the same codes on POSIX are real errors', () => {
+    for (const code of ['EPERM', 'EBUSY', 'EACCES']) {
+      expect(isTransientContention({ code }, 'win32')).toBe(true);
+      expect(isTransientContention({ code }, 'darwin')).toBe(false);
+      expect(isTransientContention({ code }, 'linux')).toBe(false);
+    }
+    expect(isTransientContention({ code: 'ENOSPC' }, 'win32')).toBe(false);
   });
 });
 
