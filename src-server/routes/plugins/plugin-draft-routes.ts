@@ -35,7 +35,7 @@ export function createPluginDraftRoutes({
 
   const projectDirectory = (slug: string) => {
     const dir = resolveProjectDirectory(slug);
-    return dir && dir.trim() ? dir : undefined;
+    return dir?.trim() ? dir : undefined;
   };
 
   app.post('/:slug/plugin-draft/lease', (c) => {
