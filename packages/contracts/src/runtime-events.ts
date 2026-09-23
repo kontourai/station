@@ -539,13 +539,21 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    *
    * Three of these assert what happened: `success` and `error` are the
    * engine's own verdict, and `cancelled` is a stop Station or the user
-   * asked for. `unresolved` (station#1558) asserts the opposite — that no
-   * verdict will ever arrive. It is published for a tool call still open
-   * when its SESSION ended, where the call's fate is genuinely unknown:
-   * Station never saw a result, and cannot tell whether the tool ran. Every
-   * adapter that tracks its open calls settles them this way when its
-   * session ends (station#1569 item 4 extended this past Claude to ACP,
-   * Codex and station-agent).
+   * asked for — or one the engine itself reported for the call (Muse
+   * publishes it when the tool's task reports `cancelled`, #2308). None of
+   * those is a failure. `unresolved` (station#1558) asserts the opposite —
+   * that no verdict will ever arrive. It is published for a tool call still
+   * open when the ENGINE PROCESS that ran it is finished with, where the
+   * call's fate is genuinely unknown: Station never saw a result, and cannot
+   * tell whether the tool ran. For engines with a per-session process that
+   * boundary is session end: every adapter that tracks its open calls
+   * settles them this way when its session ends (station#1569 item 4
+   * extended this past Claude to ACP, Codex and station-agent), with the
+   * output "No result was reported before the session ended; whether the
+   * tool ran is unknown." For an engine whose process lives ONE TURN (Muse:
+   * one `muse exec` per turn) the boundary is turn end, and the output says
+   * so: "No result was reported before the turn ended; whether the tool ran
+   * is unknown." (`unresolved-tool-output.ts` holds both sentences.)
    *
    * A session SUPERSEDED by a restart on the same thread settles its own
    * calls too, on their OWN turns — every terminal carries the turnId that
@@ -586,7 +594,7 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * So the sentence, not the enum, is the only thing an older client gets
    * right, and a reader has to open the row to find it. That asymmetry is
    * the reason the text is written to stand alone. Publishers must not use
-   * this status for any other situation.
+   * this status for any situation other than the two boundaries above.
    */
   status: 'success' | 'error' | 'cancelled' | 'unresolved';
   output?: unknown;

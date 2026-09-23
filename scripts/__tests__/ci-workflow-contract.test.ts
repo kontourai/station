@@ -785,9 +785,6 @@ describe('CI verification workflow contracts', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'group: hosted-full-regression-${{ inputs.source_sha }}',
     );
-    expect(ci).toContain(
-      `group: ci-browser-smoke-\${{ github.event_name }}-\${{ github.ref }}`,
-    );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );
@@ -928,7 +925,9 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(ci).not.toContain('playwright-full:');
-    expect(ci).toContain('browser-smoke:');
+    // The PR smoke lives in fast-checks; the post-completion duplicate that
+    // could only ever run on dispatch is gone (200 of 200 push runs skipped).
+    expect(ci).not.toContain('  browser-smoke:');
     expect(extended).toContain('coverage:');
     expect(extended).toContain('playwright-full:');
     expect(extended).not.toContain('run: npm run ci:extended');
@@ -1107,19 +1106,18 @@ describe('CI verification workflow contracts', () => {
     expect(suite).toContain('STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION');
   });
 
-  it('runs browser smoke only after the full completion gate releases capacity', () => {
+  it('runs browser smoke once, inside fast-checks, on every event', () => {
+    // A second smoke job gated on full-regression (without always()) was
+    // skipped on every push and merge_group run and only repeated this step
+    // on dispatch. fast-checks runs on dispatch too, so dispatch keeps it.
     const ci = workflow('ci.yml');
-    const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
-
-    expect(browserSmoke).toContain('needs: [classify, full-regression]');
-    expect(browserSmoke).toContain(
-      "if: github.event_name != 'pull_request_target'",
-    );
-    expect(browserSmoke).toContain(
-      'Start browser smoke only after the completion gate',
-    );
-    expect(browserSmoke).toContain(
-      'GitHub skips failed dependencies by default',
+    const jobs = (load(ci) as { jobs: Record<string, unknown> }).jobs;
+    const smokeJobs = Object.entries(jobs)
+      .filter(([, job]) => JSON.stringify(job).includes('test:e2e:pr-smoke'))
+      .map(([id]) => id);
+    expect(smokeJobs).toEqual(['fast-checks']);
+    expect(String((jobs['fast-checks'] as { if?: string }).if)).toContain(
+      "github.event_name == 'workflow_dispatch'",
     );
   });
 
@@ -1131,7 +1129,7 @@ describe('CI verification workflow contracts', () => {
     );
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
-      ci.indexOf('  browser-smoke:'),
+      ci.indexOf('  manual-completion-diagnostics:'),
     );
 
     expect(fastChecks).toContain('timeout-minutes: 45');
@@ -1309,7 +1307,10 @@ describe('CI verification workflow contracts', () => {
 
     const ci = workflow('ci.yml');
     const fullRegression = workflow('full-regression.yml');
-    const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
+    const fastChecks = ci.slice(
+      ci.indexOf('  fast-checks:'),
+      ci.indexOf('  fork-smoke:'),
+    );
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
       extended.indexOf('  coverage:'),
@@ -1399,13 +1400,13 @@ describe('CI verification workflow contracts', () => {
       expect(npmCiIndex, name).toBeLessThan(jobRunBody.indexOf(envExport));
     }
 
-    // browser-smoke already used this convention before this change and is
-    // unaffected by it — asserted here so a future edit that regresses it
-    // back toward node_modules is caught by the same test.
-    const browserSmokeRunBody = extractRunBodies(browserSmoke);
-    expect(browserSmokeRunBody).toContain(envExport);
-    expect(browserSmoke).toContain(envExport);
-    expect(browserSmokeRunBody).not.toMatch(inNodeModulesPathZero);
+    // fast-checks (which now owns the only PR browser smoke) uses the same
+    // convention — asserted here so a future edit that regresses it back
+    // toward node_modules is caught by the same test.
+    const fastChecksRunBody = extractRunBodies(fastChecks);
+    expect(fastChecksRunBody).toContain(envExport);
+    expect(fastChecks).toContain(envExport);
+    expect(fastChecksRunBody).not.toMatch(inNodeModulesPathZero);
     // coverage (ci-extended.yml) installs no browsers at all. Its run
     // bodies are non-empty (`npm run dependencies:ci`, `npm run test:coverage`) so this
     // absence check has something real to check against, not a body
@@ -1420,7 +1421,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  browser-smoke:'),
+      ci.indexOf('  fork-smoke:'),
     );
 
     expect(fastChecks).toContain('fetch-depth: 0');
@@ -1909,6 +1910,7 @@ describe('CI verification workflow contracts', () => {
             name?: string;
             if?: string;
             uses?: string;
+            run?: string;
             with?: Record<string, unknown>;
           }>;
         }
@@ -1937,7 +1939,56 @@ describe('CI verification workflow contracts', () => {
     expect(windows).toContain(
       'cargo test --manifest-path src-desktop/Cargo.toml --no-run',
     );
-    expect(windows).toContain('run: npm run typecheck');
+    // tsc's verdict is OS-independent and ci:fast's typecheck aggregate owns
+    // it; repeating it here only lengthened the required check. The policy
+    // gate above stays: it is the only Windows run of the policy scripts.
+    const windowsRuns = document.jobs['windows-pr-portable'].steps.map((step) =>
+      String(step.run ?? ''),
+    );
+    expect(windowsRuns.filter((run) => /\btypecheck\b/.test(run))).toEqual([]);
+    expect(windows).toContain(
+      'run: npm run gate:naming && npm run gate:ui-contracts',
+    );
+    // The cargo compile is skipped only on an exact base-controlled `false`.
+    // The job itself has no condition: a skipped job would leave the required
+    // `Windows PR portable floor` check to GitHub's skipped-counts-as-success.
+    const floorJob = document.jobs['windows-pr-portable'] as {
+      if?: string;
+      steps: Array<{ id?: string; name?: string; if?: string; run?: string }>;
+    };
+    expect(floorJob.if).toBeUndefined();
+    const relevance = floorJob.steps.find(
+      (step) => step.id === 'rust_relevance',
+    );
+    expect(relevance?.run).toContain(
+      '$BASE_SHA:scripts/classify-ci-change.mjs',
+    );
+    expect(relevance?.run).toContain('--scope desktop-rust --mode candidate');
+    expect(relevance?.run).toContain('fail_closed');
+    const compile = floorJob.steps.find(
+      (step) => step.name === 'Compile desktop Rust tests',
+    );
+    expect(compile?.if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ steps.rust_relevance.outputs.relevant != 'false' }}",
+    );
+    const relevanceIndex = floorJob.steps.findIndex(
+      (step) => step.id === 'rust_relevance',
+    );
+    // Before ANY candidate code: an earlier `npm run` can rewrite
+    // $GITHUB_PATH/$GITHUB_ENV and hand this "base-controlled" classifier a
+    // fake node or git that prints whatever the candidate wants.
+    const firstCandidateRun = floorJob.steps.findIndex((step) =>
+      /\bnpm run\b|\bcargo\b/.test(String(step.run ?? '')),
+    );
+    expect(relevanceIndex).toBeGreaterThan(-1);
+    expect(firstCandidateRun).toBeGreaterThan(-1);
+    expect(relevanceIndex).toBeLessThan(firstCandidateRun);
+    expect(relevanceIndex).toBeLessThan(
+      floorJob.steps.findIndex(
+        (step) => step.name === 'Compile desktop Rust tests',
+      ),
+    );
     const upload = document.jobs['windows-pr-portable'].steps.find(
       (step) => step.name === 'Upload Windows portable verification evidence',
     );
@@ -2118,6 +2169,17 @@ describe('iOS verification proves packaged runtime readiness', () => {
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
     expect(ios).toContain('merge_group:');
+    // The queue fast-forwards main to the candidate it built (merge_group run
+    // 35778933116 and push run 35781390232 built the same SHA), so a push
+    // trigger only repeats a finished macOS build. Dispatch covers the rest.
+    const triggers = Object.keys(
+      (load(ios) as { on: Record<string, unknown> }).on,
+    ).sort();
+    expect(triggers).toEqual([
+      'merge_group',
+      'pull_request_target',
+      'workflow_dispatch',
+    ]);
     expect(classifier).toContain("'src-desktop/'");
     expect(classifier).toContain("'src-ui/'");
     expect(classifier).toContain("'packages/connect/'");
@@ -2141,6 +2203,49 @@ describe('iOS verification proves packaged runtime readiness', () => {
     expect(ios).toContain(
       `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}"`,
     );
+  });
+
+  it('starts the simulator booting before the build without trusting that boot', () => {
+    const document = load(ios) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            name?: string;
+            run?: string;
+            'continue-on-error'?: boolean;
+            'working-directory'?: string;
+          }>;
+        }
+      >;
+    };
+    const steps = document.jobs['build-ios-verification'].steps;
+    const preboot = steps.findIndex((step) =>
+      String(step.run ?? '').includes('--preboot'),
+    );
+    const xcode = steps.findIndex((step) =>
+      String(step.run ?? '').includes('xcode-select -s'),
+    );
+    const build = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npx tauri ios build'),
+    );
+    const smoke = steps.findIndex((step) =>
+      String(step.run ?? '').includes('npm run test:ios-runtime-smoke --'),
+    );
+    // After the Xcode selection (simctl must be the reviewed Xcode's), before
+    // the build it overlaps, and before the smoke that waits on it.
+    expect(xcode).toBeGreaterThan(-1);
+    expect(preboot).toBeGreaterThan(xcode);
+    expect(preboot).toBeLessThan(build);
+    expect(build).toBeLessThan(smoke);
+    // A failed pre-boot must not fail the job on its own: the smoke's own
+    // boot path is the fallback, and it fails the run if it cannot boot.
+    expect(steps[preboot]['continue-on-error']).toBe(true);
+    // Same exact device: neither invocation overrides the smoke's defaults.
+    for (const index of [preboot, smoke]) {
+      expect(steps[index].run).not.toContain('--device');
+      expect(steps[index].run).not.toContain('--runtime');
+    }
   });
 
   it('runs the native accessibility smoke and always retains its evidence', () => {
