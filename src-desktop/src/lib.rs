@@ -14,6 +14,8 @@ mod notification_watch;
 mod local_access_watch;
 #[cfg(not(mobile))]
 mod desktop_companion;
+#[cfg(not(mobile))]
+mod relay_grant_vault;
 mod pairing_deep_link_channels_generated;
 mod service_state;
 #[cfg(not(mobile))]
@@ -444,7 +446,7 @@ struct CredentialProfile {
     client_instance_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 struct NativeStationRelayRoute {
@@ -5024,6 +5026,8 @@ fn station_profile_store_write_internal(
             renderer_store_references_are_authorized(&state, &next_store)?;
         }
     }
+    #[cfg(not(mobile))]
+    relay_grant_vault::invalidate_removed_routes(&current_store, &next_store)?;
     let temporary = path.with_extension(format!(
         "{}.{}.tmp",
         std::process::id(),
@@ -10424,6 +10428,9 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        relay_grant_vault::relay_client_grant_store,
+        relay_grant_vault::relay_client_grant_revoke,
+        relay_grant_vault::relay_client_grant_metadata,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
         credential_vault_commit_pairing,
@@ -14580,6 +14587,7 @@ mod tests {
         assert!(encoded.contains("\"relayRoute\""));
         assert!(encoded.contains("\"brokerOrigin\":\"https://broker.example\""));
         assert!(!encoded.contains("signingKey"));
+        assert!(!encoded.contains("secret"));
         assert!(parse_station_profile_store(&encoded).is_ok());
 
         let selected_as_default = contents.replace(
