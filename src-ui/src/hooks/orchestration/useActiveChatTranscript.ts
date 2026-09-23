@@ -459,9 +459,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // Only the CURRENT pending send can be the open turn's prompt, and it is
     // resolved FIRST: an older unstamped local row with the same text would
     // otherwise claim the open turn's row (hiding its own older prompt and
-    // duplicating this one). Like the live `turn.started` handler
-    // (`turnHandlers.ts`), this adopts an identical-text open turn even if
-    // another client sent it.
+    // duplicating this one). It can still adopt an identical-text open turn
+    // that another client sent; the live `turn.started` handler
+    // (`turnHandlers.ts`) is looser still: while a send is pending it adopts
+    // the newest composer row for the next turn regardless of its text.
     const currentPending = session.messages.find(
       (message) =>
         message.role === 'user' &&

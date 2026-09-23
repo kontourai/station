@@ -40,19 +40,11 @@ export type StreamingMessageProps = {
    * #2304: when the open turn started, from the server's `turn.started`
    * (`ChatUIState.openTurnStartedAt`). When known, the working count is the
    * turn's duration by the server's start (on this client's clock, so skew
-   * shows up in it). Unknown — a fresh mount before the window seeds it, or a
-   * reconnect catch-up that cleared it — and the row shows no duration at
-   * all, unless `sentAt` applies.
+   * shows up in it). Unknown — before `turn.started`, a fresh mount before
+   * the window seeds it, or a reconnect catch-up that cleared it — and the
+   * row shows no duration at all.
    */
   turnStartedAt?: number;
-  /**
-   * #2304: when THIS client sent the prompt of the turn this row stands for,
-   * set only for the sender's own pending send. Before `turn.started` it is
-   * the only real start there is ("since you sent"); after, the count reads
-   * from the EARLIER of it and the server start, so it does not jump back
-   * when the first stamp lands.
-   */
-  sentAt?: number;
   suppressActivity?: boolean;
   statusLabel?: string;
   /**
@@ -102,7 +94,6 @@ export function StreamingMessageView({
   activityHint,
   elapsedMs,
   turnStartedAt,
-  sentAt,
   suppressActivity,
   statusLabel,
   attributionAgent,
@@ -122,18 +113,11 @@ export function StreamingMessageView({
   // #2304. It is not the wait's own start — nothing resets it when the status
   // arrives — a pre-existing limitation, deliberately left alone.
   const [mountedAt] = useState(Date.now);
-  // #2304: the working count is shown only when a start is actually known:
-  // the server's turn start, or this client's own send time for the sender's
-  // pending turn. While neither is known (a remount before the seed, a
-  // reconnect catch-up awaiting its refetch) the row cannot tell "same turn
-  // still running" from "a different turn started in the gap", so it states
-  // no duration rather than guess one.
-  const workingSince =
-    turnStartedAt === undefined
-      ? sentAt
-      : sentAt === undefined
-        ? turnStartedAt
-        : Math.min(turnStartedAt, sentAt);
+  // #2304: the working count is shown only when the turn's server start is
+  // known. Without it (before `turn.started`, a remount before the seed, a
+  // reconnect catch-up awaiting its refetch) the row cannot tell how long
+  // this turn has run — or, after a gap, which turn is running — so it
+  // states no duration rather than guess one.
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -255,14 +239,14 @@ export function StreamingMessageView({
               {!statusLabel && <LoadingDots />}
               {statusLabel ||
               elapsedMs !== undefined ||
-              workingSince !== undefined ? (
+              turnStartedAt !== undefined ? (
                 <ElapsedWait
                   label={
                     statusLabel ??
                     `${workingLabel.replace(/[.\u2026]+$/u, '')} for`
                   }
                   separator={statusLabel ? ' · ' : ' '}
-                  startedAt={statusLabel ? mountedAt : workingSince}
+                  startedAt={statusLabel ? mountedAt : turnStartedAt}
                   elapsedMs={elapsedMs}
                 />
               ) : (

@@ -49,7 +49,6 @@ describe('buildTranscriptSession', () => {
       }),
     );
     expect(session.openTurnStartedAt).toBe(2_000);
-    expect(session.senderSentAt).toBe(1_000);
   });
 
   test('id is the real sessionId, not undefined', () => {

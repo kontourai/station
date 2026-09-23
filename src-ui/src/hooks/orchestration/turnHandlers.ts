@@ -198,7 +198,7 @@ export function handleTurnStartedEvent(
     openTurnShellSuperseded: false,
     // #2304: the turn's clock reads the server's start, not this client's
     // first render of the streaming row. Unparseable → undefined, and the
-    // row falls back to counting from its own mount.
+    // row shows no working duration until a parseable start arrives.
     openTurnStartedAt: parseTurnStartedAt(event.createdAt),
     isProcessingStep: false,
     // Optimistic: the turn has started, so the session is running. Without

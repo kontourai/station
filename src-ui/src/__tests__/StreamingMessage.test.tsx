@@ -444,11 +444,7 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     vi.useRealTimers();
   });
 
-  function row(
-    turnStartedAt: number | undefined,
-    statusLabel?: string,
-    sentAt?: number,
-  ) {
+  function row(turnStartedAt: number | undefined, statusLabel?: string) {
     return (
       <StreamingMessage
         sessionId={chatId}
@@ -457,17 +453,12 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
         fontSize={14}
         turnStartedAt={turnStartedAt}
         statusLabel={statusLabel}
-        sentAt={sentAt}
       />
     );
   }
 
-  function renderRow(
-    turnStartedAt: number | undefined,
-    statusLabel?: string,
-    sentAt?: number,
-  ) {
-    return render(row(turnStartedAt, statusLabel, sentAt));
+  function renderRow(turnStartedAt: number | undefined, statusLabel?: string) {
+    return render(row(turnStartedAt, statusLabel));
   }
 
   /** The working line with no duration: the label, and no m:ss anywhere. */
@@ -585,27 +576,21 @@ describe('working clock reads the turn start, not the mount (#2304)', () => {
     view.unmount();
   });
 
-  test('rule 2: the sender counts from its send, and does not jump back when a later server start lands', () => {
-    const sentAt = now;
-    const view = renderRow(undefined, undefined, sentAt);
-    expect(view.container.textContent).toContain('Working for 0:00');
+  test("the sender's row states no duration before turn.started, then counts from the server start", () => {
+    // Mounted at send: no start exists yet, so no count exists to jump back.
+    const view = renderRow(undefined);
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(view.container.textContent).toContain('Working for 0:30');
-    // turn.started lands; the server's start is 20s after the send.
-    view.rerender(row(now + 20_000, undefined, sentAt));
-    expect(view.container.textContent).toContain('Working for 0:30');
+    expectNoDuration(view);
+    // turn.started lands with the server's start: counting begins there.
+    view.rerender(row(Date.now()));
+    expect(view.container.textContent).toContain('Working for 0:00');
     act(() => {
       vi.advanceTimersByTime(2_000);
     });
-    expect(view.container.textContent).toContain('Working for 0:32');
+    expect(view.container.textContent).toContain('Working for 0:02');
     view.unmount();
-
-    // Not the sender (no send time): the same start reads the server's.
-    const other = renderRow(now + 20_000);
-    expect(other.container.textContent).toContain('Working for 0:12');
-    other.unmount();
   });
 
   test("the status-labelled wait keeps main's row-mount clock across a same-turn reconnect", () => {

@@ -115,7 +115,6 @@ import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTra
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { deviceSettingsStore } from '../lib/device-settings-store';
-import { senderSentAt } from '../utils/senderSentAt';
 
 const API = 'http://station.test';
 const BUFFERED_RECONNECT_API = 'http://station-buffered-reconnect.test';
@@ -151,8 +150,7 @@ function useDockTranscript() {
  * #2304: the dock's working clock — the real derived session and transcript
  * reader (which seeds the turn start), feeding a mounted streaming row that
  * stays mounted across the reconnect, as `ChatMessageList`'s does while the
- * turn fold stays open. Its `sentAt` is derived from the store session, as
- * `ChatDockBody` does.
+ * turn fold stays open.
  */
 function DockClock({ statusLabel }: { statusLabel?: string }) {
   const sessions = useDerivedSessions('', null, null);
@@ -165,7 +163,6 @@ function DockClock({ statusLabel }: { statusLabel?: string }) {
       agentIconStyle={{}}
       fontSize={14}
       turnStartedAt={session.openTurnStartedAt}
-      sentAt={senderSentAt(session)}
       statusLabel={statusLabel}
     />
   );
@@ -738,11 +735,11 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
   });
 
   /**
-   * #2304 round 4, rule 2 through the real store. The sender's row counts
-   * from its send before `turn.started`, and does not jump back when the
-   * server's later start lands.
+   * #2304 round 5, through the real store. The sender's row has no start
+   * before `turn.started` and states no duration; once the real turn handler
+   * stamps the server's start, it counts from there.
    */
-  test("the sender's working clock counts from the send and stays continuous when turn.started lands", async () => {
+  test("the sender's working clock states no duration before turn.started, then reads the server start", async () => {
     const t0 = Date.parse('2026-08-19T00:00:02.000Z');
     vi.useFakeTimers({ toFake: ['Date'], now: t0 });
     try {
@@ -767,28 +764,25 @@ describe('station#3352: a reconnect gap ends with the missed text on screen', ()
       });
       const view = render(<DockClock />);
       await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(1));
-      expect(view.container.textContent).toContain('Working for 0:00');
       vi.setSystemTime(t0 + 30_000);
-      await waitFor(
-        () => expect(view.container.textContent).toContain('Working for 0:30'),
-        { timeout: 3_000 },
-      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+      });
+      expect(view.container.textContent).toContain('Working…');
+      expect(view.container.textContent).not.toMatch(/\d+:\d\d/u);
       await act(async () => {
         handleTurnStartedEvent({
           method: 'turn.started',
           threadId: THREAD,
           turnId: TURN,
-          createdAt: new Date(t0 + 20_000).toISOString(),
+          createdAt: new Date(t0 + 30_000).toISOString(),
           prompt: 'Long job',
         } as never);
       });
-      expect(activeChatsStore.getSnapshot()[THREAD]?.openTurnStartedAt).toBe(
-        t0 + 20_000,
-      );
-      expect(view.container.textContent).toContain('Working for 0:30');
+      expect(view.container.textContent).toContain('Working for 0:00');
       vi.setSystemTime(t0 + 32_000);
       await waitFor(
-        () => expect(view.container.textContent).toContain('Working for 0:32'),
+        () => expect(view.container.textContent).toContain('Working for 0:02'),
         { timeout: 3_000 },
       );
       view.unmount();

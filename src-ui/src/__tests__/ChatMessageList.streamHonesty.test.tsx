@@ -54,13 +54,11 @@ vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: (props: {
     statusLabel?: string;
     turnStartedAt?: number;
-    sentAt?: number;
   }) => (
     <div
       data-testid="streaming-message"
       data-status-label={props.statusLabel ?? ''}
       data-turn-started-at={props.turnStartedAt ?? ''}
-      data-sent-at={props.sentAt ?? ''}
     >
       Streaming
     </div>
@@ -180,15 +178,15 @@ describe('station#3300 — settled turn stays settled on resume', () => {
         orchestrationTurnOpen: true,
         openTurnId: 'turn-2',
         openTurnStartedAt: serverStart,
-        senderSentAt: serverStart - 3_000,
         status: 'sending',
       }),
     );
 
-    const row = screen.getByTestId('streaming-message');
-    expect(row.getAttribute('data-turn-started-at')).toBe(String(serverStart));
-    // The sender's send time comes from the surface's session, as given.
-    expect(row.getAttribute('data-sent-at')).toBe(String(serverStart - 3_000));
+    expect(
+      screen
+        .getByTestId('streaming-message')
+        .getAttribute('data-turn-started-at'),
+    ).toBe(String(serverStart));
   });
 
   test('the optimistic local-send window (submit before turn.started) still renders the streaming row', () => {

@@ -35,7 +35,6 @@ import {
   accountableHumanFromUser,
   ownerAttributionFromStation,
 } from '../../utils/ownerAttribution';
-import { senderSentAt } from '../../utils/senderSentAt';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { ChatMessageList } from '../chat/ChatMessageList';
 import { durableMentionAuthority } from '../chat/composer-mentions';
@@ -86,7 +85,7 @@ const EMPTY_STRING_LIST: string[] = [];
  * namespaced under the literal "undefined". Only the fields the transcript
  * actually reads (id, agentSlug, agentName, conversationId, messages,
  * status/orchestrationStatus, isProcessingStep, pendingApprovals, and the
- * open turn's id/start/superseded flags for the working clock) come from
+ * open turn's start for the working clock) come from
  * live state; everything else the type requires but the transcript ignores
  * is a stable constant so an unrelated composer update (e.g. `input`) can't
  * change this object's shallow-equality outcome.
@@ -117,11 +116,10 @@ export function buildTranscriptSession(
     orchestrationStatus: state.orchestrationStatus,
     pendingApprovals: state.pendingApprovals,
     isProcessingStep: state.isProcessingStep,
-    // #2304: the streaming row's working clock reads these three.
-    openTurnId: state.openTurnId,
-    openTurnShellSuperseded: state.openTurnShellSuperseded,
+    // #2304: the streaming row's working clock reads the server start. ACP
+    // has no window seed, so after a reload or catch-up it shows no duration
+    // for that turn until #2309's server-projected start supplies one.
     openTurnStartedAt: state.openTurnStartedAt,
-    senderSentAt: senderSentAt(state),
   };
 }
 
