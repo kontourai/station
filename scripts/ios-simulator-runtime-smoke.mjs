@@ -57,6 +57,55 @@ export function selectIosSimulator(catalog, options) {
   return { ...device, runtimeIdentifier };
 }
 
+/**
+ * Whether the smoke must issue `simctl boot` for a device in `state`, and
+ * whether that state counts as a boot this run did not start (so the run
+ * leaves it running afterwards).
+ *
+ * CI pre-boots the device (`--preboot`) so its multi-minute first boot
+ * overlaps the app build. `simctl boot` returns before the device is usable,
+ * so the smoke can find it `Booting`; booting it again would fail with a
+ * state error, so both `Booted` and `Booting` skip the boot and rely on
+ * `bootstatus -b` to wait. Any other state (a failed pre-boot leaves
+ * `Shutdown`) takes the smoke's own boot path, and one simctl cannot boot
+ * fails the run: a pre-boot that went wrong is never read as a boot.
+ */
+export function simulatorBootPlan(state) {
+  const alreadyStarted = state === 'Booted' || state === 'Booting';
+  return { boot: !alreadyStarted, alreadyStarted };
+}
+
+export function parseIosPrebootOptions(argv) {
+  return {
+    deviceName: valueAfter(argv, '--device') ?? DEFAULT_DEVICE,
+    runtimeIdentifier: valueAfter(argv, '--runtime') ?? DEFAULT_RUNTIME,
+  };
+}
+
+/**
+ * Start the exact smoke device booting and return without waiting for it.
+ * Selection is the smoke's own `selectIosSimulator`, so the device warmed here
+ * is the device the smoke later tests on.
+ */
+function preboot(argv) {
+  const options = parseIosPrebootOptions(argv);
+  const device = selectIosSimulator(
+    JSON.parse(
+      run('xcrun', ['simctl', 'list', 'devices', 'available', '--json']).stdout,
+    ),
+    options,
+  );
+  const plan = simulatorBootPlan(device.state);
+  if (plan.boot) run('xcrun', ['simctl', 'boot', device.udid]);
+  console.log(
+    JSON.stringify({
+      preboot: plan.boot ? 'started' : 'already-started',
+      udid: device.udid,
+      initialState: device.state,
+    }),
+  );
+}
+
 function valueAfter(argv, name) {
   const prefix = `${name}=`;
   const inline = argv.find((value) => value.startsWith(prefix));
@@ -184,7 +233,11 @@ function printHelp() {
   console.log(`usage: node scripts/ios-simulator-runtime-smoke.mjs \\
   --app /absolute/path/Station.app \\
   [--artifacts /absolute/path] [--bundle-id ${DEFAULT_BUNDLE_ID}] \\
-  [--runtime ${DEFAULT_RUNTIME}] [--device "${DEFAULT_DEVICE}"]`);
+  [--runtime ${DEFAULT_RUNTIME}] [--device "${DEFAULT_DEVICE}"]
+
+       node scripts/ios-simulator-runtime-smoke.mjs --preboot \\
+  [--runtime ${DEFAULT_RUNTIME}] [--device "${DEFAULT_DEVICE}"]
+  Starts the same device booting and exits; the smoke waits for it later.`);
 }
 
 function writeArtifact(path, value) {
@@ -244,6 +297,13 @@ function captureDiagnostics({ artifacts, bundleId, udid }) {
 }
 
 async function main(argv = process.argv.slice(2)) {
+  if (argv.includes('--preboot')) {
+    if (process.platform !== 'darwin') {
+      throw new Error('The iOS simulator pre-boot requires macOS.');
+    }
+    preboot(argv);
+    return;
+  }
   const options = parseIosSmokeOptions(argv);
   if (options.help) {
     printHelp();
@@ -278,7 +338,8 @@ async function main(argv = process.argv.slice(2)) {
     '--json',
   ]);
   const device = selectIosSimulator(JSON.parse(catalogResult.stdout), options);
-  const wasBooted = device.state === 'Booted';
+  const bootPlan = simulatorBootPlan(device.state);
+  const wasBooted = bootPlan.alreadyStarted;
   const context = {
     schemaVersion: 1,
     sourceSha: options.sourceSha ?? null,
@@ -287,6 +348,10 @@ async function main(argv = process.argv.slice(2)) {
     runtimeIdentifier: options.runtimeIdentifier,
     deviceName: options.deviceName,
     udid: device.udid,
+    // `Booting` or `Booted` here means something (CI's --preboot) started the
+    // boot; `Shutdown` means this run booted it, including after a pre-boot
+    // that failed.
+    initialDeviceState: device.state ?? null,
     startedAt: new Date().toISOString(),
   };
   writeArtifact(join(artifacts, 'context.json'), context);
@@ -316,7 +381,7 @@ async function main(argv = process.argv.slice(2)) {
     return selectIosSimulator(catalog, options).state;
   };
   try {
-    if (!wasBooted) run('xcrun', ['simctl', 'boot', device.udid]);
+    if (bootPlan.boot) run('xcrun', ['simctl', 'boot', device.udid]);
     bootAndInstall();
 
     const xcodeDirectory = join(artifacts, 'xcode');
