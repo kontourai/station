@@ -116,6 +116,8 @@ interface DraftEntry {
   pluginVersion?: string;
   generations: DraftGeneration[];
   lastForcedRebuildAt?: number;
+  /** Aborts the build in flight, if any (release and dispose use it). */
+  buildController?: AbortController;
 }
 
 export function pluginDraftId(realRoot: string, projectSlug: string): string {
@@ -319,6 +321,10 @@ export class PluginDraftService {
 
   private release(entry: DraftEntry): void {
     entry.released = true;
+    // Stop the build in flight now rather than at its deadline: that timer
+    // is unref'd and would never fire in a process that is shutting down,
+    // leaving the build's disposable process running.
+    entry.buildController?.abort();
     entry.watcher?.close();
     this.entries.delete(entry.draftId);
     // A build still running finishes into a released entry and cleans up
@@ -455,6 +461,7 @@ export class PluginDraftService {
     rmSync(dir, { recursive: true, force: true });
     let result: PluginDraftBuildResult;
     const controller = new AbortController();
+    entry.buildController = controller;
     const timeoutMs = this.options.buildTimeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -499,6 +506,8 @@ export class PluginDraftService {
       };
     } finally {
       if (deadline) clearTimeout(deadline);
+      if (entry.buildController === controller)
+        entry.buildController = undefined;
     }
     if (!result.ok) {
       rmSync(dir, { recursive: true, force: true });

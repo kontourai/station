@@ -31,6 +31,36 @@ const CHILD_ENTRY = new URL(
   import.meta.url,
 );
 
+/**
+ * The environment a draft build child gets: only what Node, tsx and esbuild
+ * need to run. The server's environment carries provider keys and tokens,
+ * and a draft is member-authored input, so nothing else is inherited.
+ */
+const DRAFT_BUILD_CHILD_ENV_KEYS = [
+  'PATH',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  // Windows process basics.
+  'SystemRoot',
+  'windir',
+  'ComSpec',
+  'PATHEXT',
+  // An operator-pinned esbuild binary, honored by esbuild itself.
+  'ESBUILD_BINARY_PATH',
+] as const;
+
+export function draftBuildChildEnv(
+  parent: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of DRAFT_BUILD_CHILD_ENV_KEYS) {
+    const value = parent[key];
+    if (typeof value === 'string') env[key] = value;
+  }
+  return env;
+}
+
 export interface DraftBuildProcessHooks {
   /** Called with the child's pid once it is spawned (tests observe it). */
   onSpawn?: (pid: number) => void;
@@ -67,6 +97,7 @@ export function buildPluginDraftInChildProcess(
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
       serialization: 'json',
       windowsHide: true,
+      env: draftBuildChildEnv(),
     });
     let settled = false;
     const settle = (result: PluginDraftBuildResult) => {

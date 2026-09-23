@@ -10,7 +10,7 @@
  * Spawns processes (`mkfifo`, the build child), so it is classified
  * process-heavy in `scripts/vitest-resource-manifest.mjs`.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, fork } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -23,7 +23,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildPluginDraft } from '@kontourai/station-shared/build';
 import { afterEach, describe, expect, test } from 'vitest';
-import { buildPluginDraftInChildProcess } from '../plugin-draft-build-process.js';
+import {
+  buildPluginDraftInChildProcess,
+  draftBuildChildEnv,
+} from '../plugin-draft-build-process.js';
 import { PluginDraftService } from '../plugin-draft-service.js';
 
 const TEST_TIMEOUT_MS = 60_000;
@@ -267,6 +270,159 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
         );
       } finally {
         service.dispose();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  /** A plugin whose build blocks in esbuild's resolver on a FIFO. */
+  function blockingPlugin(): string {
+    const dir = plugin();
+    writeFileSync(
+      join(dir, 'src', 'index.tsx'),
+      "import value from 'blocking-package';\nexport const components = { pulse: () => value };\n",
+    );
+    mkdirSync(join(dir, 'node_modules', 'blocking-package'), {
+      recursive: true,
+    });
+    execFileSync(
+      'mkfifo',
+      [join(dir, 'node_modules', 'blocking-package', 'package.json')],
+      { windowsHide: true, timeout: 10_000 },
+    );
+    return dir;
+  }
+
+  // Round 4 MEDIUM: the child is detached into its own session, so a server
+  // that dies mid-build (crash, SIGKILL) used to leave it and its blocked
+  // esbuild service running under init. Only PIDs this test spawned (or that
+  // descend from them) are signalled.
+  test(
+    'a build child and its esbuild service exit when the server that started them dies',
+    async () => {
+      const dir = blockingPlugin();
+      const parent = fork(
+        new URL('./fixtures/plugin-draft-build-parent.ts', import.meta.url),
+        [],
+        {
+          execArgv: ['--import', 'tsx'],
+          stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+          windowsHide: true,
+        },
+      );
+      const parentPid = parent.pid as number;
+      try {
+        const childPid = await new Promise<number>((resolvePromise, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('no child pid reported')),
+            15_000,
+          );
+          parent.once('message', (message: { childPid?: number }) => {
+            clearTimeout(timer);
+            if (typeof message.childPid === 'number')
+              resolvePromise(message.childPid);
+          });
+          parent.send({
+            pluginDir: dir,
+            outdir: join(tempDir('station-draft-proc-out-'), '1'),
+          });
+        });
+        // Wait until the child has started its esbuild service and is blocked.
+        expect(
+          await waitFor(() => descendantsOf(childPid).length > 0, 10_000),
+        ).toBe(true);
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+        const grandchildren = descendantsOf(childPid);
+        expect(alive(childPid)).toBe(true);
+
+        process.kill(parentPid, 'SIGKILL');
+
+        expect(await waitFor(() => !alive(childPid), 5_000)).toBe(true);
+        expect(
+          await waitFor(() => grandchildren.every((pid) => !alive(pid)), 5_000),
+        ).toBe(true);
+      } finally {
+        if (alive(parentPid)) process.kill(parentPid, 'SIGKILL');
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'dispose() mid-build stops the build child at once, not at its deadline',
+    async () => {
+      const dir = blockingPlugin();
+      const service = new PluginDraftService({
+        draftsRoot: join(tempDir('station-draft-proc-home-'), 'plugin-drafts'),
+        emitRebuilt: () => {},
+        buildTimeoutMs: 60_000,
+        pollIntervalMs: 60_000,
+      });
+      const before = new Set(descendantsOf(process.pid));
+      service.lease('proc', dir);
+      expect(
+        await waitFor(
+          () => descendantsOf(process.pid).some((pid) => !before.has(pid)),
+          10_000,
+        ),
+      ).toBe(true);
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+      const spawned = descendantsOf(process.pid).filter(
+        (pid) => !before.has(pid),
+      );
+      const started = Date.now();
+      service.dispose();
+      expect(
+        await waitFor(() => spawned.every((pid) => !alive(pid)), 5_000),
+      ).toBe(true);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  // Round 4 LOW: the child gets a minimal environment, never the server's
+  // provider keys. Read from the running child's own environment, found by
+  // the pid this test recorded.
+  test(
+    'the build child does not inherit the server environment',
+    async () => {
+      const sentinel = 'STATION_DRAFT_TEST_SECRET';
+      process.env[sentinel] = 'sk-sentinel-value';
+      try {
+        expect(draftBuildChildEnv()).not.toHaveProperty(sentinel);
+        const dir = blockingPlugin();
+        const controller = new AbortController();
+        let pid: number | undefined;
+        const building = buildPluginDraftInChildProcess(
+          {
+            pluginDir: dir,
+            outdir: join(tempDir('station-draft-proc-out-'), '1'),
+            registrationKey: 'k:1',
+            manifest,
+            signal: controller.signal,
+          },
+          { onSpawn: (spawned) => (pid = spawned) },
+        );
+        expect(await waitFor(() => pid !== undefined)).toBe(true);
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+        const environment =
+          process.platform === 'linux'
+            ? execFileSync('cat', [`/proc/${pid}/environ`], {
+                encoding: 'utf8',
+                windowsHide: true,
+              })
+            : execFileSync('ps', ['eww', '-o', 'command=', '-p', String(pid)], {
+                encoding: 'utf8',
+                windowsHide: true,
+              });
+        // The probe can see the environment at all (PATH is passed on).
+        expect(environment).toContain('PATH=');
+        expect(environment).not.toContain(sentinel);
+        expect(environment).not.toContain('sk-sentinel-value');
+        controller.abort();
+        await building;
+      } finally {
+        delete process.env[sentinel];
       }
     },
     TEST_TIMEOUT_MS,
