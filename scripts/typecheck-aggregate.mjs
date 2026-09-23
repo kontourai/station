@@ -57,6 +57,10 @@ export const TYPECHECK_LANES = [
  * starting more lanes than there are slots only adds idle npm/node processes
  * queued behind them. The per-invocation concurrency is capped at the slot
  * count; the slots themselves bound the total across worktrees.
+ *
+ * @param {{ env?: NodeJS.ProcessEnv, concurrency?: number }} [options]
+ *   Annotated because `tsconfig.scripts.json` runs with checkJs:false, where
+ *   an undefaulted destructured property is dropped from the inferred type.
  */
 export function typecheckConcurrency({ env = process.env, concurrency } = {}) {
   const slots = resolveSlotCount({ env });

@@ -81,7 +81,8 @@ export function projectConfigPath(args, cwd) {
   }
   const absolute = resolve(cwd, project);
   try {
-    if (statSync(absolute).isDirectory()) return join(absolute, 'tsconfig.json');
+    if (statSync(absolute).isDirectory())
+      return join(absolute, 'tsconfig.json');
   } catch {
     // tsc reports a missing project itself.
   }
@@ -143,11 +144,13 @@ function describeProject(args, cwd) {
 export async function main(argv = process.argv.slice(2)) {
   const cwd = process.cwd();
   const plan = planTscArgs(argv, { cwd });
-  if (plan.buildInfoFile) mkdirSync(dirname(plan.buildInfoFile), { recursive: true });
+  if (plan.buildInfoFile)
+    mkdirSync(dirname(plan.buildInfoFile), { recursive: true });
 
   const require = createRequire(join(REPO_ROOT, 'package.json'));
   const compiler = require.resolve('typescript/lib/tsc.js');
-  if (!existsSync(compiler)) throw new Error(`TypeScript not found: ${compiler}`);
+  if (!existsSync(compiler))
+    throw new Error(`TypeScript not found: ${compiler}`);
 
   let slot;
   try {
