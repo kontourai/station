@@ -403,6 +403,7 @@ describe('archive trust (review: SHA-256 root, zip-slip, symlinks)', () => {
     ['/etc/evil'],
     ['C:/evil'],
     ['chrome\\..\\..\\evil'],
+    ['chrome-mac-arm64/evil\0.txt'],
   ])(
     'an entry escaping the root (%s) is refused before extraction',
     async (entry) => {
@@ -425,6 +426,26 @@ describe('archive trust (review: SHA-256 root, zip-slip, symlinks)', () => {
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, 'chrome'), '#!/bin/sh\n');
         symlinkSync(tmpdir(), join(dir, 'escape'));
+      },
+    });
+    await acquisition.startDownload({ consent: true }).completion;
+    expect(acquisition.status()).toMatchObject({
+      state: 'failed',
+      reason: 'extract-failed',
+    });
+    expect(readdirSync(chromiumInstallRoot(stationHome))).toEqual([]);
+  });
+
+  test('a DANGLING symlink pointing outside the install directory is refused', async () => {
+    const { acquisition, stationHome } = harness({
+      extract: async (_zip, dest) => {
+        const dir = join(dest, 'chrome-mac-arm64', 'Chromium.app');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, 'chrome'), '#!/bin/sh\n');
+        symlinkSync(
+          join(tmpdir(), `station-no-such-target-${process.pid}`),
+          join(dir, 'later'),
+        );
       },
     });
     await acquisition.startDownload({ consent: true }).completion;

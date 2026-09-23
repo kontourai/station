@@ -73,6 +73,9 @@ export function normalizeLocalTargetHost(host: unknown): string | undefined {
   if (!ip) return undefined;
   if (ip.address === '0.0.0.0' || ip.address === '0:0:0:0:0:0:0:0')
     return undefined;
+  // 0.0.0.0/8 is "this network": it connects locally (so egress treats it as
+  // local and non-public), but it is never a service address to share.
+  if (ip.family === 4 && ip.address.startsWith('0.')) return undefined;
   if (isLoopbackIp(ip)) return ip.address;
   return REGISTRABLE.check(ip.address, ip.family === 4 ? 'ipv4' : 'ipv6')
     ? ip.address

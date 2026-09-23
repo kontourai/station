@@ -158,7 +158,9 @@ describe('suggestLocalTargets', () => {
 
       deps({
         readCwd: vi.fn(async (pid: number) => cwd[pid] ?? null),
-        probe: vi.fn(async (port: number) => port !== 8000),
+        // Every listener answers as a web server, so the OUTSIDE process
+        // (pid 200, port 8000) is excluded only by the workspace check.
+        probe: vi.fn(async () => true),
       }),
     );
     const listeners = deriveStationListeners({
@@ -219,6 +221,47 @@ describe('suggestLocalTargets', () => {
         listeners,
       ),
     ).toMatchObject({ state: 'unavailable' });
+  });
+});
+
+describe('Project attribution by working directory', () => {
+  test('a sibling directory sharing the workspace prefix is outside it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-browser-prefix-'));
+    roots.push(root);
+    mkdirSync(join(root, 'proj'));
+    mkdirSync(join(root, 'proj-2'));
+    mkdirSync(join(root, 'proj', 'sub'));
+    const cwd: Record<number, string> = {
+      100: join(root, 'proj-2'),
+      200: join(root, 'proj', 'sub'),
+    };
+    const scanner = new LocalPortScanner(
+      () => [],
+      deps({
+        run: vi.fn(async () => ({
+          code: 0,
+          stdout: [
+            'p100',
+            'cnode',
+            'n*:5173',
+            'p200',
+            'cnode',
+            'n*:5174',
+            '',
+          ].join('\n'),
+        })),
+        readCwd: vi.fn(async (pid: number) => cwd[pid] ?? null),
+        probe: vi.fn(async () => true),
+      }),
+    );
+    const result = await suggestLocalTargets(
+      await scanner.scan(),
+      { workspaceRoot: join(root, 'proj'), registered: [] },
+      deriveStationListeners({ serverPort: 4100, configuredOrigins: [] }),
+    );
+    expect(
+      result.state === 'ok' && result.suggestions.map((s) => s.pid),
+    ).toEqual([200]);
   });
 });
 
