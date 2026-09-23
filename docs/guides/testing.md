@@ -407,8 +407,38 @@ records their SHA-256 hashes, and requires an acknowledgement of every image.
 Missing credentials, missing artifacts, invalid output, incomplete responses,
 and unexercised journeys are `NOT_VERIFIED`. Exit 0 means all reported checks
 passed; 1 means a failure or candidate visual finding; 2 means incomplete
-coverage. Local callers must provide `UI_SWEEP_RESULT=success` only after
-actually running the UI sweep.
+coverage. `DISABLED` is the one exception to exit 2 (next section): it is
+listed, never counted as a pass, and does not move the exit code. Local
+callers must provide `UI_SWEEP_RESULT=success` only after actually running the
+UI sweep.
+
+#### Checks that require a signed-in account
+
+CI runners hold no engine CLI login and no funded review credential. Until
+#2318 lets CI use the owner's Station, a check that needs one is disabled in
+CI, visibly, rather than left to fail or time out. The decision and rendering
+live in `scripts/lib/account-requirement.mjs`; each check declares its
+requirement where its own metadata lives:
+
+- an E2E spec: `requiresAccount: '<the account>'` on its `tests/e2e-manifest.mjs`
+  entry;
+- a core-loop journey: the `requiresAccount` option of `runJourney` in
+  `tests/live/core-loop-journeys.mjs`;
+- the semantic image review in `scripts/usability-feedback.mjs`.
+
+Accounts are absent when `STATION_CI_ACCOUNTS=absent`, or when it is unset and
+`CI=true` or `GITHUB_ACTIONS=true`; `STATION_CI_ACCOUNTS=present` runs them
+anyway, and any other value is refused. The affected workflows set `absent`
+explicitly. A declared check is then skipped before it starts (a spec is
+dropped before any Station boots; a journey never begins; the image reviewer
+makes no request), with the reason "requires a signed-in account; disabled in
+CI until #2318". It appears under **Disabled in CI (requires account)** in the
+step summary, the coverage coordinator's summary and the latest-E2E manifest
+(`buckets[].disabled`), and the usability report, where its status is
+`DISABLED`. It is not a pass, and it does not make the job exit non-zero;
+`NOT_VERIFIED` from any other cause still exits 2. Outside CI, declared checks
+run as before. Declare a check only when it cannot run for want of an
+account, not when a tool is merely missing from the runner.
 
 For a local review using the installed Muse CLI and its configured provider,
 set `UI_REVIEW_BACKEND=muse`. This does not require the CI review API key.
