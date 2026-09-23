@@ -341,9 +341,13 @@ export async function snapshotPluginFolder(
             continue;
           }
           const status = await lstat(absolute(path)).catch(() => null);
-          // The entry was looked up through the directories the walk
-          // recorded, not through one swapped in for the lookup.
-          await verifyChain(directory, path);
+          // No parent-chain re-check here, deliberately: an identity this
+          // lookup records through a swapped parent is never trusted on its
+          // own. A file's is compared with the open descriptor, its own name
+          // after the read, and every recorded parent after the read; a
+          // directory's with its parents before it is listed. Fault
+          // injection (#2374 round 3) showed a check here catches nothing
+          // those do not.
           if (!status) {
             // A name that is not valid UTF-8 cannot be looked up again by
             // the name Node decoded; anything else vanished mid-walk.
