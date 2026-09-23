@@ -587,8 +587,10 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
     };
   }
 
-  test('links into Plugins, names who proposed it, and dismisses through the proposal route', () => {
+  test('links into Plugins, names who proposed it, and dismisses through the proposal route', async () => {
     render(<AttentionCard item={proposalItem()} />);
+    // The row's actions load on demand (off the first paint).
+    await screen.findByRole('link', { name: 'Open in Plugins' });
     expect(screen.getByText('Plugin proposal')).toBeTruthy();
     expect(
       screen.getByTestId('attention-plugin-proposal-author').textContent,
@@ -608,7 +610,7 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
     expect(acknowledge).not.toHaveBeenCalled();
   });
 
-  test('review M2/L1: the host and path render apart, and the rationale is quoted as the agent’s words with bidi removed', () => {
+  test('review M2/L1: the host and path render apart, and the rationale is quoted as the agent’s words with bidi removed', async () => {
     render(
       <AttentionCard
         item={proposalItem({
@@ -617,6 +619,8 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
         })}
       />,
     );
+    // The row's actions load on demand (off the first paint).
+    await screen.findByRole('link', { name: 'Open in Plugins' });
     expect(
       screen.getByTestId('attention-plugin-proposal-host').textContent,
     ).toBe('evil.example');
@@ -628,7 +632,7 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
     ).toBe('The agent wrote: \u201cTrusted fix\u201d');
   });
 
-  test('review M3: a name the caller supplied is labelled self-reported', () => {
+  test('review M3: a name the caller supplied is labelled self-reported', async () => {
     render(
       <AttentionCard
         item={proposalItem({
@@ -641,6 +645,8 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
         })}
       />,
     );
+    // The row's actions load on demand (off the first paint).
+    await screen.findByRole('link', { name: 'Open in Plugins' });
     expect(
       screen.getByTestId('attention-plugin-proposal-author').textContent,
     ).toBe(

@@ -8,7 +8,6 @@ import type {
   GateReviewAttentionItem,
   GateRouteBackAttentionItem,
   NeedsInputAttentionItem,
-  PluginLifecycleProposalAttentionItem,
   ProposedChangeAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
@@ -22,7 +21,6 @@ import {
   useConfirmDevicePairingRequestMutation,
   useDenyDevicePairingRequestMutation,
   useDismissNotificationMutation,
-  useDismissPluginLifecycleProposalMutation,
   useNotificationActionMutation,
   useQueryClient,
 } from '@kontourai/station-sdk';
@@ -46,7 +44,6 @@ import {
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
 import { LazyBoundary } from '../LazyBoundary';
-import { PluginProposalSummary } from '../plugins/PluginProposalSummary';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
@@ -57,6 +54,11 @@ import {
 
 /** Recorded on a decision taken from the inbox. See `proposedChangeDecision`. */
 const INBOX_DECISION_SURFACE = 'notifications';
+
+const loadPluginProposalActions = () =>
+  import('./PluginProposalAttentionActions').then((module) => ({
+    default: module.PluginProposalAttentionActions,
+  }));
 
 const loadNeedsInputReply = () =>
   import('./NeedsInputReply').then((module) => ({
@@ -180,8 +182,15 @@ function AttentionAction({ item }: { item: AttentionItem }) {
     case 'gate-review':
       return <GateReviewAction item={item} />;
     // #2323 S5: an agent asked for a plugin change it cannot make itself.
+    // Loaded on demand: the summary stays off the first paint.
     case 'plugin-lifecycle-proposal':
-      return <PluginProposalActions item={item} />;
+      return (
+        <LazyBoundary
+          load={loadPluginProposalActions}
+          componentProps={{ item }}
+          pending={<SkeletonList count={1} label="Loading plugin proposal" />}
+        />
+      );
     // #1536 D8: the requirement's own route out. No secondary action —
     // the item resolves by configuring a connection, not by answering here.
     case 'setup-incomplete':
@@ -409,53 +418,6 @@ function ProposedChangeActions({
         Open in Review
       </a>
       <MutationError error={decision.error} />
-    </>
-  );
-}
-
-/**
- * #2323 S5: an agent proposed installing, updating or removing a plugin.
- *
- * Nothing on this row decides the change. "Open in Plugins" lands on the
- * ordinary flow — the install preview with its consent, or the update or
- * remove confirmation — and that is where the person decides. Dismiss closes
- * the proposal through `POST /api/plugin-proposals/:id/dismiss`, the one
- * resolution besides completing it.
- */
-function PluginProposalActions({
-  item,
-}: {
-  item: PluginLifecycleProposalAttentionItem;
-}) {
-  const dismiss = useDismissPluginLifecycleProposalMutation();
-  return (
-    <>
-      <div className="attention-item__detail">
-        <PluginProposalSummary
-          author={item.author}
-          source={item.pluginSource}
-          pluginName={item.pluginName}
-          rationale={item.rationale}
-          testId="attention-plugin-proposal"
-        />
-      </div>
-      <div className="attention-item__actions">
-        <a
-          className="attention-item__action attention-item__action--primary"
-          href={item.openHref}
-        >
-          Open in Plugins
-        </a>
-        <button
-          type="button"
-          className="attention-item__action attention-item__action--ghost"
-          disabled={dismiss.isPending}
-          onClick={() => dismiss.mutate(item.source.proposalId)}
-        >
-          Dismiss
-        </button>
-      </div>
-      <MutationError error={dismiss.error} />
     </>
   );
 }
