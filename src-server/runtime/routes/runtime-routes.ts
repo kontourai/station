@@ -5705,8 +5705,9 @@ export function configureDevicePairingPublicRoutes(
           .listRequests()
           .find((item) => item.requestId === requestId);
         if (!request) throw new DevicePairingError('request_not_found');
-        await options.relayEnrollment.denyRequest(requestId);
-        result = request;
+        if (!(await options.relayEnrollment.denyRequest(requestId)))
+          throw new DevicePairingError('request_not_found');
+        result = { ...request, status: 'denied' };
       } else {
         result = pairing.denyRequest(requestId);
       }
@@ -6918,8 +6919,9 @@ export function configureDevicePairingHostRoutes(
           .listRequests()
           .find((item) => item.requestId === requestId);
         if (!pending) throw new DevicePairingError('request_not_found');
-        await options.relayEnrollment.denyRequest(requestId);
-        request = pending;
+        if (!(await options.relayEnrollment.denyRequest(requestId)))
+          throw new DevicePairingError('request_not_found');
+        request = { ...pending, status: 'denied' };
       } else {
         request = pairing.denyRequest(requestId);
       }

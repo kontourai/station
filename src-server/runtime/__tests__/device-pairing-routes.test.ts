@@ -924,6 +924,10 @@ describe('device pairing routes', () => {
     );
 
     expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requestId: access.requestId,
+      status: 'denied',
+    });
     expect(discarded).toHaveBeenCalledWith(
       enrollmentId,
       providerSessionId,
@@ -1018,6 +1022,10 @@ describe('device pairing routes', () => {
     );
 
     expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requestId: access.requestId,
+      status: 'denied',
+    });
     expect(discarded).toHaveBeenCalledWith(
       enrollmentId,
       providerSessionId,
