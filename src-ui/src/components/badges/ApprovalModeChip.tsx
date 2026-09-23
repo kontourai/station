@@ -136,9 +136,9 @@ export function ApprovalModeChip({
     ? effective.mode
     : (appliedMode ?? effective.mode);
   // An unconfirmed pick is sent only when a new session starts after the old
-  // one is known to have ended (`approvalModeToSend`), never to a session
-  // that is live or of unknown liveness, so "takes effect next turn" would
-  // be false.
+  // one is known to have ended, and never if it is full access
+  // (`approvalModeToSend`); never to a session that is live or of unknown
+  // liveness. So "takes effect next turn" would be false.
   const isUnconfirmed = isOverride && sessionOverrideState === 'unconfirmed';
   const isPendingApply =
     isOverride &&
@@ -168,7 +168,9 @@ export function ApprovalModeChip({
   const pendingNote = isPendingRestrict
     ? 'the engine still reports full access'
     : isUnconfirmed
-      ? 'not confirmed for this session'
+      ? effective.mode === 'never'
+        ? 'not confirmed for this session; a new session starts at the default'
+        : 'not confirmed for this session'
       : isOverride && sessionOverrideState === 'requested' && !isPendingApply
         ? 'requested, not yet confirmed by the engine'
         : undefined;

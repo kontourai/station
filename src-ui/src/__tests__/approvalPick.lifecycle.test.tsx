@@ -284,6 +284,8 @@ function renderPill() {
  * | T3    | confirmed Ask; reload mid-turn; default never    | never*            | nothing         |
  * | H     | Default picked                                   | nothing*          | nothing         |
  * | I     | confirmed never; Ask picked; phone's turn = never| nothing* (never)  | Ask             |
+ * | N     | confirmed never; session ends; next send          | the defaults      | the defaults    |
+ * |       | (Station default auto)                           | auto              | auto            |
  *
  * "(review)" is the round-4 review's executed comparison; "*" is derived
  * from origin/main's code path (the request bag is cleared when a report
@@ -496,6 +498,29 @@ describe('an approval pick beside the model options (#2334)', () => {
       // Station default of never.
       step(() => fold({ method: 'session.exited', exitCode: 0 }));
       expect((await send())?.options?.approvalMode).toBe('ask');
+    } finally {
+      stationConfig.current = undefined;
+    }
+  });
+
+  test('probe N: a confirmed full access does NOT carry into a new session; it starts at the defaults, as on main', async () => {
+    stationConfig.current = { defaultApprovalMode: 'auto' };
+    try {
+      const { composer, step, send } = renderComposer();
+      step(() => composer.result.current.handleModelSelect(modelX));
+      step(() => composer.result.current.handleApprovalModeChange('never'));
+      await send();
+      step(() => turnStarted('t1', 'never'));
+      step(() => turnCompleted('t1'));
+      expect(chat().approvalModeOverride).toBe('never');
+      step(() => fold({ method: 'session.exited', exitCode: 0 }));
+
+      // The pill does not promise the new session full access.
+      const pill = renderPill();
+      expect(pill.text).toBe('Full access · unconfirmed');
+      expect(pill.name).toMatch(/a new session starts at the default/);
+      // Main would send the Station default here, not never.
+      expect((await send())?.options?.approvalMode).toBe('auto');
     } finally {
       stationConfig.current = undefined;
     }

@@ -6,6 +6,7 @@ import {
   EXECUTION_MODE,
   type ExecutionMode,
 } from '@kontourai/station-contracts/tool';
+import { chatSessionKnownEnded } from './execution';
 
 export type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
@@ -310,7 +311,9 @@ export function approvalModeForDispatch(input: {
  * - A CONFIRMED pick (`approvalModeOverride`) is one a report showed the
  *   engine applying. It labels the chip, and is sent only when this send
  *   starts a session known to have ended or never started
- *   (`chatSessionKnownEnded`). It is never sent while the session is live or
+ *   (`chatSessionKnownEnded`), and only if it is not full access
+ *   (`confirmedPickCarriesToNewSession`): a confirmed `never` lets the new
+ *   session start at the defaults, exactly as on main. It is never sent while the session is live or
  *   its liveness is unknown (e.g. after a reload mid-turn, before the
  *   reconnect snapshot). It survives a reload as confirmed.
  *   - A STRICTER differing report retires it (someone tightened).
@@ -345,8 +348,9 @@ export interface SessionApprovalOverride {
    * - `unconfirmed`: a confirmed pick with no report of it applying to THIS
    *   session yet (restored after a reload, or a looser posture reported
    *   since). It is sent only when a send starts a session known to have
-   *   ended or never started; never while the session is live or its
-   *   liveness is unknown, so nothing makes it true for the current session.
+   *   ended or never started, and only if it is not full access; never while
+   *   the session is live or its liveness is unknown, so nothing makes it
+   *   true for the current session.
    * - `confirmed`: the engine's latest report shows it applied.
    */
   state: 'requested' | 'unconfirmed' | 'confirmed';
@@ -375,6 +379,8 @@ export interface ApprovalPickState {
   approvalModeOverride?: ApprovalMode;
   lastAppliedApprovalMode?: ApprovalMode;
   pendingClientTurnId?: string;
+  orchestrationSessionStarted?: boolean;
+  orchestrationStatus?: string;
   requestedProviderOptions?: Record<string, unknown>;
   providerOptions?: Record<string, unknown>;
 }
@@ -395,8 +401,12 @@ export function sessionApprovalOverride(
   if (isApprovalMode(chat.approvalModeOverride)) {
     return {
       mode: chat.approvalModeOverride,
+      // A receipt stands only while a session could still hold it: once the
+      // session is known to have ended (session.exited clears
+      // `orchestrationSessionStarted`), it confirms nothing about the next.
       state:
-        chat.lastAppliedApprovalMode === chat.approvalModeOverride
+        chat.lastAppliedApprovalMode === chat.approvalModeOverride &&
+        !chatSessionKnownEnded(chat)
           ? 'confirmed'
           : 'unconfirmed',
     };
@@ -420,9 +430,41 @@ export function approvalModeToSend(
 ): ApprovalMode | undefined {
   if (!chat) return undefined;
   if (isApprovalMode(chat.pendingApprovalMode)) return chat.pendingApprovalMode;
-  if (sessionKnownEnded && isApprovalMode(chat.approvalModeOverride))
+  if (
+    sessionKnownEnded &&
+    isApprovalMode(chat.approvalModeOverride) &&
+    confirmedPickCarriesToNewSession(chat.approvalModeOverride)
+  )
     return chat.approvalModeOverride;
   return undefined;
+}
+
+/**
+ * Whether a confirmed pick becomes the posture of a NEW session this chat
+ * starts. Full access does not: the bar is "never looser than main", and on
+ * main a confirmed pick does not outlive its session, so a new one starts at
+ * the defaults (connection, then Station). Ask and auto carry, because they
+ * are at least as strict as whatever main would start in.
+ */
+export function confirmedPickCarriesToNewSession(mode: ApprovalMode): boolean {
+  return mode !== 'never' && mode !== 'connection-default';
+}
+
+/**
+ * The session pick the defaults below it must yield to
+ * (`approvalModeForDispatch`'s `sessionOverride`). A pick that is sent, or
+ * one withheld only because liveness is unknown, outranks the defaults, so a
+ * default is never sent in its place. A confirmed pick that does not carry to
+ * a new session (full access) yields: that session starts exactly as it
+ * would on main.
+ */
+export function approvalPickOverridingDefaults(
+  chat: ApprovalPickState | null | undefined,
+  sessionKnownEnded: boolean,
+): ApprovalMode | undefined {
+  const sent = approvalModeToSend(chat, sessionKnownEnded);
+  if (sent) return sent;
+  return sessionKnownEnded ? undefined : sessionApprovalOverride(chat)?.mode;
 }
 
 /** How much a posture lets the engine do without asking. */

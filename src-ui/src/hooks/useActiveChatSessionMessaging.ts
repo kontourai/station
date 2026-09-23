@@ -35,7 +35,7 @@ import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeForDispatch,
   approvalModeToSend,
-  sessionApprovalOverride,
+  approvalPickOverridingDefaults,
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
@@ -376,14 +376,18 @@ export function useSendMessage(
         // chat's CURRENT pick, never the one it was queued with. A confirmed
         // pick goes only to a session known to have ended or never started
         // (see `approvalModeToSend`).
+        const sessionKnownEnded = chatSessionKnownEnded(currentState);
         const dispatchedApprovalOverride = approvalModeToSend(
           currentState,
-          chatSessionKnownEnded(currentState),
+          sessionKnownEnded,
         );
-        // The session's own pick, sent or withheld, outranks the defaults
-        // below it: a confirmed pick withheld because liveness is unknown
-        // must not let the Station default be sent in its place.
-        const sessionApprovalPick = sessionApprovalOverride(currentState)?.mode;
+        // The pick the defaults below must yield to: a confirmed pick
+        // withheld because liveness is unknown still suppresses the Station
+        // default; a confirmed full access at a new session does not.
+        const sessionApprovalPick = approvalPickOverridingDefaults(
+          currentState,
+          sessionKnownEnded,
+        );
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
