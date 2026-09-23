@@ -200,7 +200,21 @@ test('a fullscreen pane bound to another Project leaves the draft alone', async 
   });
 
   expect(claimed).toBe(false);
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+
+  // Positive control instead of a timeout: a draft for THIS pane's own
+  // Project opens its picker. When that picker is up, the only request it
+  // ever showed must be its own; the earlier one for `pulse` opened nothing.
+  act(() => {
+    requestProjectChat({
+      projectSlug: 'other',
+      source: 'new-plugin',
+      composerDraft: draft,
+    });
+  });
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  expect(pickerProps.map((props) => props.activeProjectSlug)).not.toContain(
+    'pulse',
+  );
+  expect(pickerProps.at(-1)!.activeProjectSlug).toBe('other');
   expect(createChatSession).not.toHaveBeenCalled();
 });
