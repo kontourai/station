@@ -1,4 +1,8 @@
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import {
+  BROWSER_PANE_DEPLOYMENT_CAPABILITY,
+  workspaceBrowserPaneCatalogInstance,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
   createWorkspaceChatPaneInstance,
@@ -96,15 +100,25 @@ export const KNOWN_WORKSPACE_PANE_DECLARATIONS = Object.freeze([
     distribution: 'enabled',
     context: { project: 'present' },
   }),
-  declaration(WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR, {
-    rollout: 'available',
-    distribution: 'enabled',
-    context: { project: 'present' },
-    requirements: {
-      hostCapabilities: ['local-browser-preview'],
-      configuration: true,
+  // #90 wave 2: the Browser pane streams a SERVER-side Chromium, so it
+  // renders on desktop, web and mobile alike and needs no desktop capability
+  // or managed loopback. It does need a deployment that mounts
+  // `/api/browser` (personal hosts): the projects route supplies that fact
+  // from the server's own composition, and without it the pane is refused.
+  declaration(
+    WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
+    {
+      rollout: 'available',
+      distribution: 'enabled',
+      context: { project: 'present' },
+      requirements: {
+        deploymentCapabilities: [BROWSER_PANE_DEPLOYMENT_CAPABILITY],
+      },
     },
-  }),
+    // The Add-pane grid's Open path: one Browser pane per Project, which asks
+    // for a page when it first opens.
+    workspaceBrowserPaneCatalogInstance,
+  ),
   // Epic #2323 S3. Offered in every Project: opening it runs nothing (the
   // draft executes only after the viewer explicitly chooses to), and a
   // Project whose folder holds no plugin.json says so in the pane.

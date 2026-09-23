@@ -25,15 +25,16 @@ const parsedWorkspaceBrowserPreviewPaneDescriptor =
   parseWorkspacePaneDescriptor({
     version: WORKSPACE_PANE_CONTRACT_VERSION,
     id: WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID,
-    name: 'Browser Preview',
-    description: 'Open a validated local browser preview for a workspace.',
+    name: 'Browser',
+    description:
+      'Open a web page in a browser Station runs, and watch or drive it live.',
     rendererId: WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_ID,
     renderer: {
       kind: 'builtin-component',
       name: WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME,
     },
     placement: {
-      supportedRegions: ['primary', 'secondary', 'standalone'],
+      supportedRegions: ['primary', 'secondary', 'standalone', 'docked'],
       preferredRegion: 'secondary',
     },
     modes: [
@@ -50,10 +51,11 @@ if (!parsedWorkspaceBrowserPreviewPaneDescriptor) {
 /**
  * One code-owned descriptor shared by catalog and renderer admission.
  *
- * Deliberately NOT `docked` (#2047): a Browser Preview has no blank canonical
- * instance — it is keyed by a URL and opened by intent — so a dock catalog
- * could list it but never open it. Its dock reader is #2049's `openInRegion`
- * over instance-keyed panes; declare `docked` there, with that reader.
+ * `docked` since #90 D9, when the reader #2047 was waiting for arrived: a
+ * Browser pane has no blank canonical instance (it is attached to one
+ * server-owned session and opened by intent), and its dock reader is the
+ * instance-keyed `browser-preview:<nonce>` family that the float-over-chat's
+ * "Open in right panel" places through `openInRegion`.
  */
 export const WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR =
   parsedWorkspaceBrowserPreviewPaneDescriptor;

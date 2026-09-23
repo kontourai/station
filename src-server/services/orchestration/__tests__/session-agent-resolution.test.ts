@@ -588,6 +588,21 @@ describe('createSessionAgentResolver', () => {
     expect(result.agent).toMatchObject({ slug: 'my-agent', autoApprove: [] });
   });
 
+  test('#90 D14: an agent that switched the browser tools off carries browserTools: false; anything else leaves the default', async () => {
+    const resolve = (tools?: Record<string, unknown>) =>
+      createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec(tools ? { tools: { mcpServers: [], ...tools } } : {}),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      })(baseInput({ provider: 'claude' }));
+    expect((await resolve({ browser: false })).agent?.browserTools).toBe(false);
+    expect(
+      (await resolve({ browser: true })).agent?.browserTools,
+    ).toBeUndefined();
+    expect((await resolve()).agent?.browserTools).toBeUndefined();
+  });
+
   test('an unauthored tools.autoApprove stays undefined on input.agent', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () => agentSpec(),

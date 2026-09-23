@@ -9,6 +9,10 @@
  * operator-only. Validation happens here, at the route seam; behaviour lives
  * in the session registry and acquisition services.
  */
+import {
+  BROWSER_SESSION_ID_PATTERN as SESSION_ID,
+  BROWSER_THREAD_ID_PATTERN as THREAD_ID,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import { Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type {
@@ -20,24 +24,33 @@ import {
   LocalTargetError,
   type LocalTargetStore,
 } from '../services/browser/browser-local-targets.js';
+import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
   actorOwnsSessionProfile,
   BrowserSessionError,
   type BrowserSessionRegistry,
+  browserProfileFor,
   isValidBrowserProjectId,
   isValidBrowserViewport,
 } from '../services/browser/browser-session-registry.js';
+import { CdpProtocolError } from '../services/browser/cdp-pipe-transport.js';
 import {
   type ChromiumAcquisition,
   ChromiumConsentRequiredError,
 } from '../services/browser/chromium-acquisition.js';
-import { BrowserHostExitedError } from '../services/browser/hosts/chromium-server-host.js';
+import {
+  BrowserHostExitedError,
+  BrowserHostPolicyError,
+} from '../services/browser/hosts/chromium-server-host.js';
 import type { LocalTargetSuggestions } from '../services/browser/local-port-scanner.js';
-import type { StationListeners } from '../services/browser/station-listeners.js';
+import {
+  isStationSelfUrl,
+  localInterfaceAddresses,
+  type StationListeners,
+} from '../services/browser/station-listeners.js';
+import { normalizeBrowserUrl } from '../services/browser/url-policy.js';
 
 const MAX_BODY_BYTES = 16 * 1024;
-const SESSION_ID = /^bs_[0-9a-f-]{36}$/;
-const THREAD_ID = /^[A-Za-z0-9._:-]{1,200}$/;
 const TARGET_ID = /^lt_[0-9a-f-]{36}$/;
 
 /** A Project as the routes see it: canonical ID plus its current slug. */
@@ -56,9 +69,35 @@ export interface BrowserRoutesDeps {
     | 'navigate'
     | 'closeSession'
     | 'reopenSession'
+    | 'navigateHistory'
+    | 'setViewport'
+    | 'getSessionSummary'
   >;
+  /**
+   * The live-surface id of a live session (its screencast), when live
+   * surfaces are wired. Session responses carry it as `surfaceId`.
+   */
+  surfaceIdFor?(browserSessionId: string): string | undefined;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
+  /** Per-Project browser permissions (D4). Absent: the routes are not served. */
+  projectSettings?: Pick<
+    BrowserProjectSettingsStore,
+    'get' | 'setBrowserEvaluate'
+  >;
+  /**
+   * Whether a request may be an agent's rather than a person's (Station's
+   * internal principal, an agent-tool marker, a delegation device). Such a
+   * request may never change a permission that constrains agents.
+   */
+  isAgentRequest?(request: Request): boolean;
+  /**
+   * Station's own internal principal (review S4). The pane's routes are for
+   * people: an agent holding the internal token would otherwise stand as
+   * the operator and drive sessions with no lease and no D5. Agents use the
+   * browser tools (`/api/browser-agent`) instead.
+   */
+  isStationInternalRequest(request: Request): boolean;
   listeners(): StationListeners;
   suggestLocalTargets(
     project: BrowserRouteProject,
@@ -68,6 +107,8 @@ export interface BrowserRoutesDeps {
   /** Slug to canonical Project; undefined when there is no such Project. */
   resolveProject(slug: string): BrowserRouteProject | undefined;
   isRequestPrincipalCurrent(request: Request): boolean;
+  /** Test seam: the server clock stamped on session views as `serverNow`. */
+  now?(): Date;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -102,19 +143,44 @@ function sessionErrorStatus(error: BrowserSessionError): 400 | 404 | 409 | 503 {
       return 404;
     case 'not-live':
     case 'stale-generation':
+    case 'no-history-entry':
       return 409;
     case 'stopped':
       return 503;
   }
 }
 
+const HISTORY_ACTIONS = new Set(['back', 'forward', 'reload']);
+
 export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   const app = new Hono();
+  /** A session as the pane sees it: the record plus its live surface id. */
+  const present = <T extends { browserSessionId: string; state: string }>(
+    session: T,
+  ): T & { surfaceId?: string; serverNow: string } => {
+    const surfaceId =
+      session.state === 'live'
+        ? deps.surfaceIdFor?.(session.browserSessionId)
+        : undefined;
+    // The server's clock at sending: clients age `activity.lastAgentInputAt`
+    // against this, never against their own clock (skew).
+    const serverNow = (deps.now?.() ?? new Date()).toISOString();
+    return surfaceId
+      ? { ...session, surfaceId, serverNow }
+      : { ...session, serverNow };
+  };
+  const generationOf = (body: JsonObject): number | undefined | null =>
+    body.generation === undefined
+      ? undefined
+      : typeof body.generation === 'number' && Number.isInteger(body.generation)
+        ? body.generation
+        : null;
   const denied = { success: false, code: 'access-denied' } as const;
   const invalid = { success: false, code: 'invalid-request' } as const;
 
   app.use('*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
+    if (deps.isStationInternalRequest(c.req.raw)) return c.json(denied, 403);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     await next();
   });
@@ -141,8 +207,21 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
             : 400,
       );
     }
+    // A browser that is set up but died or failed to start is a different
+    // fact from one that is not set up (409 `browser-unavailable`).
     if (error instanceof BrowserHostExitedError) {
-      return c.json({ success: false, code: 'browser-unavailable' }, 503);
+      return c.json({ success: false, code: 'browser-host-failed' }, 503);
+    }
+    // The host's own policy refused the command (e.g. Back onto an entry
+    // whose URL is outside the pane's scope).
+    if (error instanceof BrowserHostPolicyError) {
+      return error.code === 'url-not-allowed'
+        ? c.json({ success: false, code: 'url-not-allowed' }, 409)
+        : c.json({ success: false, code: 'browser-refused' }, 403);
+    }
+    // The browser answered the command with a protocol error.
+    if (error instanceof CdpProtocolError) {
+      return c.json({ success: false, code: 'browser-error' }, 502);
     }
     throw error;
   });
@@ -200,10 +279,12 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     return c.json({
       success: true,
-      data: all.filter((session) => {
-        const actor = actors.get(session.projectId);
-        return actor !== undefined && actorOwnsSessionProfile(session, actor);
-      }),
+      data: all
+        .filter((session) => {
+          const actor = actors.get(session.projectId);
+          return actor !== undefined && actorOwnsSessionProfile(session, actor);
+        })
+        .map(present),
     });
   });
 
@@ -213,9 +294,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       'threadId',
       'url',
       'viewport',
+      'reuse',
     ]);
     if (
       !body ||
+      (body.reuse !== undefined && typeof body.reuse !== 'boolean') ||
       !isValidBrowserProjectId(body.projectSlug) ||
       typeof body.url !== 'string' ||
       (body.threadId !== undefined &&
@@ -241,6 +324,29 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       );
     }
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (body.reuse === true) {
+      // Restore rather than duplicate: the caller's OWN open session in this
+      // Project whose URL is exactly this one (the v1 pane migration). The
+      // server matches, so nobody else's session and no redacted look-alike
+      // can be picked.
+      const principalKey = browserProfileFor(project.id, actor)?.principalKey;
+      const wanted = normalizeBrowserUrl(body.url);
+      const existing = wanted.ok
+        ? deps.registry
+            .listSessions(
+              (record) =>
+                record.projectId === project.id &&
+                record.principalKey === principalKey &&
+                record.state !== 'closed' &&
+                record.url === wanted.url,
+            )
+            .at(0)
+        : undefined;
+      const reused = existing
+        ? deps.registry.getSession(existing.browserSessionId)
+        : undefined;
+      if (reused) return c.json({ success: true, data: present(reused) }, 200);
+    }
     const session = await deps.registry.createSession({
       projectId: project.id,
       projectSlug: project.slug,
@@ -249,7 +355,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       ...(typeof body.threadId === 'string' ? { threadId: body.threadId } : {}),
       ...(body.viewport ? { viewport: body.viewport as BrowserViewport } : {}),
     });
-    return c.json({ success: true, data: session }, 201);
+    return c.json({ success: true, data: present(session) }, 201);
   });
 
   /** Resolve a session and authorize the caller for its Project. */
@@ -278,7 +384,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         ? denied
         : { success: false, code: 'not-found' };
 
+  // `?view=summary` is what a pane polls (the latest few actions); the full
+  // history is read on demand without it.
   app.get('/sessions/:browserSessionId', async (c) => {
+    const view = c.req.query('view');
+    if (view !== undefined && view !== 'summary') return c.json(invalid, 400);
     const found = await sessionFor(
       c.req.raw,
       c.req.param('browserSessionId'),
@@ -286,7 +396,12 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
-    return c.json({ success: true, data: found.session });
+    const data =
+      view === 'summary'
+        ? deps.registry.getSessionSummary(found.session.browserSessionId)
+        : found.session;
+    if (!data) return c.json({ success: false, code: 'not-found' }, 404);
+    return c.json({ success: true, data: present(data) });
   });
 
   app.post('/sessions/:browserSessionId/navigate', async (c) => {
@@ -316,7 +431,77 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
           : {}),
       },
     );
-    return c.json({ success: true, data: result });
+    // A navigation Station itself refused (one of its own listeners) is
+    // said as Station's refusal, not as a generic load failure — to the
+    // operator only. Telling a Project admin which addresses are Station's
+    // would let them enumerate this host's LAN/tailnet interfaces.
+    const blockedByStation =
+      found.actor.kind === 'operator' &&
+      result.errorText !== undefined &&
+      isStationSelfUrl(
+        result.session.url,
+        deps.listeners(),
+        localInterfaceAddresses(),
+      );
+    return c.json({
+      success: true,
+      data: {
+        ...result,
+        session: present(result.session),
+        ...(blockedByStation ? { blocked: 'station-listener' } : {}),
+      },
+    });
+  });
+
+  app.post('/sessions/:browserSessionId/history', async (c) => {
+    const body = await readJsonObject(c.req.raw, ['action', 'generation']);
+    const generation = body ? generationOf(body) : null;
+    if (
+      !body ||
+      typeof body.action !== 'string' ||
+      !HISTORY_ACTIONS.has(body.action) ||
+      generation === null
+    )
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'drive',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const session = await deps.registry.navigateHistory(
+      found.session.browserSessionId,
+      body.action as 'back' | 'forward' | 'reload',
+      {
+        actor: found.actor,
+        ...(generation !== undefined ? { generation } : {}),
+      },
+    );
+    return c.json({ success: true, data: present(session) });
+  });
+
+  app.post('/sessions/:browserSessionId/viewport', async (c) => {
+    const body = await readJsonObject(c.req.raw, ['viewport', 'generation']);
+    const generation = body ? generationOf(body) : null;
+    if (!body || !isValidBrowserViewport(body.viewport) || generation === null)
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'drive',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const session = await deps.registry.setViewport(
+      found.session.browserSessionId,
+      body.viewport as BrowserViewport,
+      {
+        actor: found.actor,
+        ...(generation !== undefined ? { generation } : {}),
+      },
+    );
+    return c.json({ success: true, data: present(session) });
   });
 
   app.post('/sessions/:browserSessionId/reopen', async (c) => {
@@ -343,7 +528,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       found.session.browserSessionId,
       found.actor,
     );
-    return c.json({ success: true, data: session });
+    return c.json({ success: true, data: present(session) });
   });
 
   app.delete('/sessions/:browserSessionId', async (c) => {
@@ -386,6 +571,97 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
           undefined;
     return allowed ? project : undefined;
   };
+
+  /**
+   * The caller's standing for one Project's browser (the pane's first read):
+   * who they are to it, whether they are the operator, and whether a browser
+   * is ready to launch. A caller with no standing is refused (403), which the
+   * pane shows as "not available to you".
+   */
+  app.get('/projects/:projectSlug/access', async (c) => {
+    const slug = c.req.param('projectSlug');
+    const project = isValidBrowserProjectId(slug)
+      ? deps.resolveProject(slug)
+      : undefined;
+    const actor = project
+      ? await deps.authorizeProject(c.req.raw, project.id, 'view')
+      : undefined;
+    if (!project || !actor) return c.json(denied, 403);
+    const operator = await deps.authorizeOperator(c.req.raw);
+    const acquisition = deps.acquisition.status();
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({
+      success: true,
+      data: {
+        projectId: project.id,
+        role: actor.kind === 'operator' ? 'operator' : 'project-admin',
+        // The profile this caller's sessions run in (D7).
+        principalKey: browserProfileFor(project.id, actor)?.principalKey,
+        operator,
+        browser:
+          acquisition.state === 'found-system' ||
+          acquisition.state === 'downloaded'
+            ? 'ready'
+            : 'not-ready',
+      },
+    });
+  });
+
+  // --- Per-Project browser settings (D4) ------------------------------------
+  //
+  // `browserEvaluate` lets agents run arbitrary JavaScript in this Project's
+  // browser pages. Reading needs the same standing as the pane; changing it
+  // needs operator or Project-admin standing AND a request that is not
+  // plainly an agent's (Station's internal token, an agent-tool marker, a
+  // delegation device), so no agent can grant itself the permission through
+  // Station's own channels. The boundary is honest about what it is: on a
+  // personal host, any same-user process with a shell has home possession
+  // (it can read the local-grant secret and mint a local credential), so
+  // nothing here tells such a process apart from the operator in person.
+  app.get('/projects/:projectSlug/settings', async (c) => {
+    if (!deps.projectSettings) return c.json(denied, 403);
+    const slug = c.req.param('projectSlug');
+    const project = isValidBrowserProjectId(slug)
+      ? deps.resolveProject(slug)
+      : undefined;
+    const actor = project
+      ? await deps.authorizeProject(c.req.raw, project.id, 'view')
+      : undefined;
+    if (!project || !actor) return c.json(denied, 403);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({
+      success: true,
+      data: deps.projectSettings.get(project.id),
+    });
+  });
+
+  app.put('/projects/:projectSlug/settings', async (c) => {
+    if (!deps.projectSettings || !deps.isAgentRequest)
+      return c.json(denied, 403);
+    if (deps.isAgentRequest(c.req.raw)) return c.json(denied, 403);
+    const slug = c.req.param('projectSlug');
+    const project = isValidBrowserProjectId(slug)
+      ? deps.resolveProject(slug)
+      : undefined;
+    const actor = project
+      ? await deps.authorizeProject(c.req.raw, project.id, 'drive')
+      : undefined;
+    if (!project || !actor) return c.json(denied, 403);
+    const body = await readJsonObject(c.req.raw, ['browserEvaluate']);
+    if (!body || typeof body.browserEvaluate !== 'boolean')
+      return c.json(invalid, 400);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    return c.json({
+      success: true,
+      data: deps.projectSettings.setBrowserEvaluate(
+        project.id,
+        body.browserEvaluate,
+        actor.kind === 'project-admin'
+          ? `principal:${actor.principalId}`
+          : 'operator',
+      ),
+    });
+  });
 
   app.get('/projects/:projectSlug/local-targets', async (c) => {
     const project = await projectFor(

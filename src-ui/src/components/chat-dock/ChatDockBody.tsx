@@ -117,6 +117,10 @@ const loadSourceQuoteDrafts = () =>
     default: module.SourceQuoteDrafts,
   }));
 
+// #90 D9: a live Browser session an agent in this conversation drives
+// floats over the transcript. Its own chunk, loaded only for a Project chat.
+const loadFloatOverChat = () => import('../../float-over-chat/FloatOverChat');
+
 const loadQueuedMessages = () =>
   import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
     default: QueuedMessages,
@@ -1342,6 +1346,21 @@ export function ChatDockBody({
         />
       ) : (
         <>
+          {/*
+            Mounted HERE, between the transcript and everything docked at the
+            bottom (quotes, composer): the floater floats over its parent
+            (this chat body, not the history sidebar beside it) and keeps
+            clear of everything below its own position, which is exactly the
+            composer stack. A seam this component owns, not a class name.
+          */}
+          {activeSession.projectSlug ? (
+            <LazyBoundary
+              load={loadFloatOverChat}
+              componentProps={{ session: activeSession }}
+              pending={null}
+              unavailable={() => null}
+            />
+          ) : null}
           {chatInput.quotes.length > 0 && (
             <LazyBoundary
               load={loadSourceQuoteDrafts}

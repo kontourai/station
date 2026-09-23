@@ -77,6 +77,9 @@ describe('agents view utils', () => {
         mcpServers: ['safe-server'],
         available: ['safe-server_read'],
         autoApprove: ['safe-server_read'],
+        // #90 D14: the browser tools default on (the source never switched
+        // them off).
+        browser: true,
       },
       execution: {
         agentConnectionId: 'codex',
@@ -137,6 +140,7 @@ describe('agents view utils', () => {
         mcpServers: ['server-1'],
         available: ['server-1_tool-a'],
         autoApprove: ['server-1_tool-a'],
+        browser: true,
       },
       // The spec's tools object verbatim, so a save can tell an ABSENT key
       // from an authored-empty one and can carry through fields the form does
@@ -167,6 +171,7 @@ describe('agents view utils', () => {
           mcpServers: ['server-2'],
           available: [],
           autoApprove: [],
+          browser: true,
         },
       },
       'managed-runtime',
@@ -266,6 +271,7 @@ describe('agents view utils', () => {
           mcpServers: ['server-1'],
           available: [],
           autoApprove: [],
+          browser: true,
         },
         // The spec's tools object verbatim, so a save can tell an ABSENT key
         // from an authored-empty one and can carry through fields the form
@@ -361,6 +367,32 @@ describe('agents view utils', () => {
     expect(buildAgentPayload(global, { isCreating: true })).not.toHaveProperty(
       'project',
     );
+  });
+
+  test('#90 D14: browser tools default on; switching them off saves browser: false and nothing is written while they stay on', () => {
+    const stock = formFromAgent({ slug: 'stock', name: 'Stock' });
+    expect(stock.tools.browser).toBe(true);
+    const onPayload = buildAgentPayload(stock) as {
+      tools?: Record<string, unknown>;
+    };
+    expect(onPayload.tools?.browser).toBeUndefined();
+    const off = buildAgentPayload({
+      ...stock,
+      tools: { ...stock.tools, browser: false },
+    }) as { tools?: Record<string, unknown> };
+    expect(off.tools?.browser).toBe(false);
+    const wasOff = formFromAgent({
+      slug: 'off',
+      name: 'Off',
+      toolsConfig: { mcpServers: [], browser: false },
+    });
+    expect(wasOff.tools.browser).toBe(false);
+    // Switching back on over an authored false writes true, not a leftover.
+    const backOn = buildAgentPayload({
+      ...wasOff,
+      tools: { ...wasOff.tools, browser: true },
+    }) as { tools?: Record<string, unknown> };
+    expect(backOn.tools?.browser).toBe(true);
   });
 
   test('groupAgentToolsByServer groups tool definitions by server name', () => {

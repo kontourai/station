@@ -18,6 +18,12 @@ type PaneCapability = NonNullable<
 >[string];
 type CapabilityFacts = NonNullable<WorkspacePaneAvailabilityInput['host']>;
 
+/** Deployment capabilities the SDK reports to this client. */
+const CLIENT_OBSERVED_DEPLOYMENT: ReadonlySet<string> = new Set([
+  'web-push',
+  'scheduler',
+]);
+
 export type NativeCapabilityReader = Pick<
   Awaited<typeof nativePlatformPromise>,
   'capability'
@@ -116,10 +122,18 @@ export function adaptWorkspacePaneAvailabilityInput(
     input.requirements?.deploymentCapabilities ?? [];
   const deploymentCapabilities: Record<string, PaneCapability> = {};
   for (const requirement of deploymentRequirements) {
-    deploymentCapabilities[requirement] = getDeploymentCapabilityState(
-      facts.deployment,
-      requirement as 'web-push' | 'scheduler',
-    );
+    // Only capabilities this client can observe are re-derived here. Any
+    // other (e.g. `browser-pane`) is a fact the server derived from its own
+    // composition; replacing it with this client's "unknown" would refuse a
+    // pane the server offers, so the server's value stands.
+    deploymentCapabilities[requirement] = CLIENT_OBSERVED_DEPLOYMENT.has(
+      requirement,
+    )
+      ? getDeploymentCapabilityState(
+          facts.deployment,
+          requirement as 'web-push' | 'scheduler',
+        )
+      : (input.deployment?.capabilities?.[requirement] ?? 'unknown');
   }
   const requiresManagedLoopback = hostRequirements.includes(
     'local-browser-preview',
@@ -136,7 +150,9 @@ export function adaptWorkspacePaneAvailabilityInput(
     deployment:
       deploymentRequirements.length > 0
         ? {
-            state: facts.deployment ? 'supported' : 'unknown',
+            state: facts.deployment
+              ? 'supported'
+              : (input.deployment?.state ?? 'unknown'),
             capabilities: deploymentCapabilities,
           }
         : undefined,
