@@ -44,6 +44,23 @@ read-only; they can still display and copy the complete address. Ordinary
 browser-local saved Stations retain their existing edit and endpoint-verification
 flow.
 
+On native Desktop, **Add computer → Save an encrypted broker route** records
+the Station address, broker address and exact Station enrollment. **Saved broker
+routes** lists, edits and removes those records and reports whether this device
+has a separately approved Station signing key. Saving a route does not connect,
+sign in, pair a Device or grant Project access. Until the broker transport is
+wired into the ordinary client, these records remain unconnected and cannot be
+selected as direct Station connections or CLI defaults. The CLI also refuses
+`--station` and `STATION_TARGET` when they name one of these inert routes.
+
+Native Desktop and the CLI share a strict saved-profile file. An older build
+that predates broker-route metadata refuses the updated file instead of
+discarding fields it does not understand. Update both clients that use the
+shared profile root before saving a broker route; [#2404](https://github.com/kontourai/station/issues/2404)
+tracks a mixed-version migration. Removing the route in the newer Desktop
+removes its metadata without changing the Station or its trust record; other
+newer profile fields may still require an updated reader.
+
 ## Local first: Ollama (no credentials)
 
 This is the easiest path and needs no cloud account, API key, or AWS setup.
