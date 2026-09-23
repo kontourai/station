@@ -19,8 +19,10 @@ import {
  * other entry means the folder holds someone's work, and a scaffold never
  * lands on top of that.
  */
-export const IGNORABLE_SCAFFOLD_DIRECTORY_ENTRIES: ReadonlySet<string> =
-  new Set(['.git', '.DS_Store']);
+const IGNORABLE_SCAFFOLD_DIRECTORY_ENTRIES: ReadonlySet<string> = new Set([
+  '.git',
+  '.DS_Store',
+]);
 
 /** How many offending entries a refusal names; the count is always exact. */
 const MAX_REPORTED_ENTRIES = 10;

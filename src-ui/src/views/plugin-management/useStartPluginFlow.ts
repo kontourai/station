@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { pluginScaffoldEligibilityKey } from '../project-page/ProjectPluginStartGate';
+import { pluginScaffoldEligibilityKey } from '../project-page/pluginScaffoldEligibilityKey';
 import {
   buildPluginAuthoringPrimer,
   startPluginAuthoringChat,

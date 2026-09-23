@@ -2,6 +2,7 @@ import { getJson } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { pluginScaffoldEligibilityKey } from './pluginScaffoldEligibilityKey';
 
 /**
  * The only part of "Start a plugin in this folder" that loads with the
@@ -10,20 +11,15 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
  * scaffold, so a Project page that never offers it never pays for it.
  */
 
-export type PluginScaffoldEligibility =
+type PluginScaffoldEligibility =
   | { eligible: true }
   | { eligible: false; reason: string };
-
-export const pluginScaffoldEligibilityKey = (
-  apiBase: string,
-  projectSlug: string,
-) => ['plugin-scaffold-eligibility', apiBase, projectSlug] as const;
 
 /**
  * `GET /api/projects/:slug/plugin-scaffold`: whether a plugin could be
  * scaffolded into this Project's folder now. Read-only.
  */
-export async function fetchPluginScaffoldEligibility(
+async function fetchPluginScaffoldEligibility(
   apiBase: string,
   projectSlug: string,
 ): Promise<PluginScaffoldEligibility> {
