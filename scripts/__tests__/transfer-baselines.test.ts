@@ -271,12 +271,17 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
         );
       },
     });
-    expect(probes).toEqual([[first], [second]]);
-    expect(outcome.pruned).toEqual([first]);
+    // `git worktree list` order follows admin-dir names, so do not assume
+    // which tree comes first: one probe per removal, each naming one tree.
+    expect(probes).toHaveLength(2);
+    expect(probes.map((paths) => paths.length)).toEqual([1, 1]);
+    expect(probes.flat().sort()).toEqual([first, second].sort());
+    const [probedFirst, probedSecond] = probes.flat();
+    expect(outcome.pruned).toEqual([probedFirst]);
     expect(outcome.kept).toEqual([
-      { path: second, reason: 'started meanwhile' },
+      { path: probedSecond, reason: 'started meanwhile' },
     ]);
-    expect(registered(f.primary)).toContain(second);
+    expect(registered(f.primary)).toContain(probedSecond);
   });
 
   test('a stale baseline a sibling gate marked recently, or one just created, is kept (review M1)', () => {
