@@ -37,15 +37,18 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -249,6 +252,8 @@ describe('project guest administration over the production composition', () => {
 
     let appConfig: Record<string, unknown> = {};
     const app = new Hono();
+    // A real bus, so /events relays through the production gates.
+    const eventBus = new EventBus();
     const context = deepStub({
       projectMembership: membership.service,
       projectSharedTasks: undefined,
@@ -296,6 +301,7 @@ describe('project guest administration over the production composition', () => {
         },
       ),
       environmentSecurityService: security,
+      eventBus,
       taskGraphService: { listTasks: () => [] },
     });
     const result = configureRuntimeRoutesProduction(
@@ -434,6 +440,7 @@ describe('project guest administration over the production composition', () => {
 
     return {
       app,
+      eventBus,
       request,
       security,
       operatorCredential,
@@ -636,6 +643,81 @@ describe('project guest administration over the production composition', () => {
     // The restricted account-bound device surface is unchanged.
     const bound = await h.request('/api/projects/drafts/plugin-draft', guest());
     expect(bound.status).toBe(403);
+  });
+
+  // S3 verifier G4: the production /events gate for plugin-draft revisions.
+  // A subscriber that cannot read the Project never receives its revision
+  // events; a member does. Malformed payloads and a membership read that
+  // throws are denied, never relayed.
+  test('plugin draft revision events reach Project members only', async () => {
+    const h = await setup();
+    await h.shareWithGuestAdmin('drafts', 'Drafts');
+    const person = (cookie: string): RequestInit => ({
+      headers: {
+        Authorization: `Bearer ${h.operatorCredential}`,
+        Cookie: cookie,
+        Origin: ORIGIN,
+      },
+    });
+    const subscribe = async (cookie: string) => {
+      const res = await h.request('/events', person(cookie));
+      // Never read an SSE body to its end here: it does not end.
+      expect(res.status).toBe(200);
+      return res;
+    };
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+    const read = (res: Response) =>
+      readStreamUntil(res.body!, (text) => text.includes('"marker":"after"'));
+
+    const member = await subscribe('fixture_account=guest');
+    const outsider = await subscribe('fixture_account=peer');
+    await settle();
+    h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+      projectSlug: 'drafts',
+      draftId: 'draft_member_probe',
+      generation: 1,
+    });
+    h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+      projectSlug: '',
+      draftId: 'draft_empty_probe',
+      generation: 1,
+    });
+    h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+      draftId: 'draft_missing_probe',
+      generation: 1,
+    });
+    await settle();
+    h.eventBus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'after' });
+    const [memberStream, outsiderStream] = await Promise.all([
+      read(member),
+      read(outsider),
+    ]);
+    expect(memberStream).toContain('draft_member_probe');
+    expect(outsiderStream).toContain('"marker":"after"');
+    expect(outsiderStream).not.toContain('plugin-drafts:rebuilt');
+    expect(outsiderStream).not.toContain('draft_member_probe');
+    for (const stream of [memberStream, outsiderStream]) {
+      expect(stream).not.toContain('draft_empty_probe');
+      expect(stream).not.toContain('draft_missing_probe');
+    }
+
+    // A membership read that fails is a denial, not a relay.
+    const failing = vi
+      .spyOn(h.membership.service, 'requireProjectRead')
+      .mockRejectedValue(new Error('membership store unreadable'));
+    const second = await subscribe('fixture_account=guest');
+    await settle();
+    h.eventBus.emit(SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT, {
+      projectSlug: 'drafts',
+      draftId: 'draft_throw_probe',
+      generation: 2,
+    });
+    await settle();
+    h.eventBus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'after' });
+    const secondStream = await read(second);
+    expect(failing).toHaveBeenCalled();
+    expect(secondStream).not.toContain('draft_throw_probe');
+    failing.mockRestore();
   });
 
   test('read-only rescope over the operator endpoint: GET yes, POST no; read+operate restores POST', async () => {

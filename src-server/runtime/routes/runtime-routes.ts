@@ -4546,11 +4546,20 @@ export function configureRuntimeRoutes(
       // check the Project read guard applies to the draft routes themselves.
       // A caller with no deployment account is the operator or a paired
       // device, which that guard also admits for every Project.
-      canReadPluginDraftEvent: async (data, request) => {
+      canReadPluginDraftEvent: async (data, c) => {
         const projectSlug = (data as { projectSlug?: unknown } | undefined)
           ?.projectSlug;
         if (typeof projectSlug !== 'string' || !projectSlug) return false;
         try {
+          const request = c.req.raw;
+          // The membership authority compares the account against this
+          // request's resolved principal, which the /api/projects/* guards
+          // record before they run. /events has no such guard, so record
+          // it here; without it every member was refused (S3 verifier G4).
+          roomRequestPrincipals.set(
+            request,
+            resolveOrchestrationRequestPrincipal(c),
+          );
           const authority = await authenticatedProjectMember(request);
           if (!authority) return true;
           await context.projectMembership!.requireProjectRead(

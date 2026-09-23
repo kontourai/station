@@ -103,7 +103,7 @@ export interface EventRouteDeps {
    */
   canReadPluginDraftEvent?: (
     data: unknown,
-    request: Request,
+    c: Context,
   ) => boolean | Promise<boolean>;
   connectPairedDevice?: (request: Request) => ClientConnectionLease | undefined;
   isPairedDeviceConnectionCurrent?: (request: Request) => boolean;
@@ -233,7 +233,7 @@ export function createEventRoutes({
           if (isPluginDraftEvent(evt.event)) {
             if (!canReadPluginDraftEvent) return;
             void Promise.resolve()
-              .then(() => canReadPluginDraftEvent(evt.data, c.req.raw))
+              .then(() => canReadPluginDraftEvent(evt.data, c))
               .then(
                 (allowed) => {
                   if (allowed === true) relay(evt);
