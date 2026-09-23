@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   removeConnection: vi.fn(),
   select: vi.fn(),
   readTrust: vi.fn(),
+  approveTrust: vi.fn(),
   closeTrust: vi.fn(),
   redeem: vi.fn(),
   forget: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('../../../platform/PlatformProfileContext', () => ({
 vi.mock('@kontourai/station-connect/connection-trust', () => ({
   openDeviceConnectionTrustStore: async () => ({
     read: mocks.readTrust,
+    approve: mocks.approveTrust,
     close: mocks.closeTrust,
   }),
 }));
@@ -94,10 +96,11 @@ describe('browser broker route acceptance', () => {
     fillAndAccept();
     expect(
       await screen.findByText(
-        /Approve this Station’s signing key independently/,
+        /Approve this Station’s signing key from the operator’s separate key report/,
       ),
     ).toBeTruthy();
     expect(mocks.redeem).not.toHaveBeenCalled();
+    expect(mocks.approveTrust).not.toHaveBeenCalled();
     expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
   });
 

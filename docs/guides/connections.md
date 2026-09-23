@@ -53,17 +53,26 @@ wired into the ordinary client, these records remain unconnected and cannot be
 selected as direct Station connections or CLI defaults. The CLI also refuses
 `--station` and `STATION_TARGET` when they name one of these inert routes.
 
-In the browser, **Manage Stations → Broker routes** can accept a one-time
-invitation link or the operator's private JSON invitation after this browser
-already holds an independently approved Station signing key. Enter the Station
-application origin separately, then
-select the saved route. The routing grant stays in browser IndexedDB, outside
-the saved Station entry. A selected route uses an encrypted browser channel for
-the Station handshake and application requests; a missing grant, retired key or
-failed peer connection refuses instead of falling back to direct HTTP. This
-pilot uses local ICE host candidates. Remote TURN configuration, the ordinary
-key-approval ceremony, account/Device onboarding and native route selection
-are still separate work; the screen must not call a routing grant a login.
+In the browser, **Manage Stations → Broker routes** first has a **Station
+signing key** step. The operator can run
+`npm run --silent connection:key -- inspect --home=<absolute-home-path>` and
+send its public JSON report through a separate trusted channel. Compare the
+complete SHA-256 JWK thumbprint shown by the browser with the operator before
+checking the approval box. A broker invitation, its URL, or its contents cannot
+approve this key. The browser records only public trust metadata in its
+origin-local trust store. Rotation requires a higher key generation for the
+same enrollment; revoked trust stays revoked until a higher-generation key is
+independently approved. A different enrollment cannot be reset from this form.
+
+After that separate approval, the browser can accept a one-time invitation
+link or the operator's private JSON invitation. Enter the Station application
+origin separately, then select the saved route. The routing grant stays in
+browser IndexedDB, outside the saved Station entry. A selected route uses an
+encrypted browser channel for the Station handshake and application requests;
+a missing grant, retired key or failed peer connection refuses instead of
+falling back to direct HTTP. This pilot uses local ICE host candidates. Remote
+TURN configuration, account/Device onboarding and native route selection are
+still separate work; the screen must not call a routing grant a login.
 
 One broker can serve several Stations, and one Station can be reached through
 more than one route. A broker route belongs beneath the Station it reaches; it

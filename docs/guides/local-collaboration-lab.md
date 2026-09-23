@@ -254,12 +254,18 @@ operation; the bounded public result is its receipt.
 
 ### Device-side signing trust
 
-The browser fixture consumes `@kontourai/station-connect/connection-trust`.
+The browser client consumes `@kontourai/station-connect/connection-trust`.
 Its `openDeviceConnectionTrustStore()` stores only public signing trust in the
-current browser origin/storage partition. The trusted caller supplies a descriptor
-and key ID from independently authenticated operator approval; neither broker
-discovery nor account login is that approval ceremony. Production approval UI and
-account/session transport are not enabled by this module.
+current browser origin/storage partition. In **Manage Stations → Broker
+routes**, a user can paste the public report from the Station operator's
+`connection:key inspect` command into the separate Station signing key step.
+The browser recomputes the JWK thumbprint, shows the complete key ID, and
+requires the user to confirm that it was compared through a separate trusted
+channel. This is an explicit user-attested ceremony; Station cannot establish
+which human or channel supplied pasted text. Broker invitation data is never
+used to create trust. The UI handles higher-generation rotation and revocation
+through the existing revision-checked store. This does not implement account or
+session transport.
 
 The store exposes `read`, `approve`, `revoke`, `isCurrent`, and `close`.
 `approve(descriptor, expectedRevision, approvedKeyId)` requires `null` for first

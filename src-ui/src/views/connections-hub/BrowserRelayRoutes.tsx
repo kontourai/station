@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { BrowserStationTrustApproval } from './BrowserStationTrustApproval';
 
 /** Browser-only route custody. A route grant never enters SavedConnection. */
 export function BrowserRelayRoutes() {
@@ -102,12 +103,20 @@ export function BrowserRelayRoutes() {
       controller.signal.throwIfAborted();
       const trustRecord = await trustStore.read(invitation.scope.stationId);
       controller.signal.throwIfAborted();
+      if (trustRecord?.status === 'revoked')
+        throw new Error(
+          'Station trust is revoked on this browser. Independently approve the current rotated Station key before accepting this invitation.',
+        );
       if (
-        trustRecord?.status !== 'approved' ||
+        !trustRecord ||
         trustRecord.trust.enrollmentId !== invitation.scope.enrollmentId
       )
         throw new Error(
-          'Approve this Station’s signing key independently before accepting its broker invitation.',
+          'Approve this Station’s signing key from the operator’s separate key report before accepting its broker invitation.',
+        );
+      if (trustRecord.status !== 'approved')
+        throw new Error(
+          'Approve this Station’s signing key before accepting its broker invitation.',
         );
       // Persist only metadata first. A storage refusal must never consume an
       // invitation or replace an existing usable routing grant. A later
@@ -182,6 +191,7 @@ export function BrowserRelayRoutes() {
         A broker can find a Station. The Station still checks your account,
         approved Device and Project access separately.
       </p>
+      <BrowserStationTrustApproval />
       {routes.map((connection) => (
         <PageRow
           key={connection.id}
