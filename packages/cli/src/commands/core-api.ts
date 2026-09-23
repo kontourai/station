@@ -22,6 +22,16 @@ import {
   resolveProjectProfile,
 } from './profile-store.js';
 
+function requireDirectStationTarget(station: {
+  name: string;
+  relayRoute?: unknown;
+}): void {
+  if (station.relayRoute)
+    throw new Error(
+      `Station "${station.name}" has a saved broker route, not a direct CLI connection. Connect through a separately configured direct Station until CLI broker transport is available.`,
+    );
+}
+
 export interface ParsedCoreArgs {
   flags: Record<string, string | boolean>;
   positionals: string[];
@@ -240,6 +250,7 @@ function computeApiBaseDetailed(parsed: ParsedCoreArgs): ResolvedApiBase {
         `No Station named "${stationFlag}". ${describeKnownProfiles()}`,
       );
     }
+    requireDirectStationTarget(station);
     return {
       apiBase: station.endpoint,
       source: 'station-flag',
@@ -255,6 +266,7 @@ function computeApiBaseDetailed(parsed: ParsedCoreArgs): ResolvedApiBase {
         `STATION_TARGET names no Station "${environmentTarget}". ${describeKnownProfiles()}`,
       );
     }
+    requireDirectStationTarget(station);
     return {
       apiBase: station.endpoint,
       source: 'station-env',
