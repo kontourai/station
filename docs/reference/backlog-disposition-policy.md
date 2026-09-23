@@ -7,8 +7,8 @@ contract rather than duplicating its constants.
 An issue is classified when it carries a priority (`P1`, `P2`, or `P3`) or one
 of the explicit non-actionable dispositions: `blocked`, `epic`,
 `decision-needed`, or `acceptance-needed`. Other labels do not classify an
-issue. This makes an omitted disposition fail immediately, including on a
-newly opened issue; there is no grandfathered backlog ceiling or grace period.
+issue. An omitted disposition fails the next audit, including on a newly
+opened issue; there is no grandfathered backlog ceiling or grace period.
 
 `P1` is the actionable queue. A `bug` label no longer implies `P1`, and no
 label implies any priority: priority is a triage judgement recorded by whoever
@@ -32,7 +32,8 @@ rather than through a lower priority. Non-actionable dispositions still count as
 classified, so a blocked or decision-needed issue does not need a priority
 simply to satisfy the policy.
 
-The GitHub workflow runs on issue lifecycle and label changes, daily for drift,
-and manually through `workflow_dispatch`. Its tests derive fixtures from the
+The GitHub workflow runs daily and manually through `workflow_dispatch`. It
+does not run on issue events: that produced a run per label click and a red
+between filing and labelling every issue, and main-health does not watch it. Its tests derive fixtures from the
 same exported policy constants to make changes to classifications or the P1
 limit deliberate.

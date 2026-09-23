@@ -69,7 +69,7 @@ export function gateReport({ changedPaths, baseSha }) {
       'node scripts/check-prepush-sdk-barrel.mjs',
     ],
     [
-      'typecheck (thirteen tsc lanes, ~91s)',
+      'typecheck (twelve tsc lanes, ~91s)',
       typecheck.run,
       typecheck.reason,
       'node scripts/check-prepush-typecheck.mjs',

@@ -448,8 +448,10 @@ describe('e2e manifest', () => {
   it('requires the bounded smoke lane on pull requests with diagnostics', () => {
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
 
-    expect(workflow).toContain('browser-smoke:');
-    expect(workflow).toContain('name: Deterministic Browser Smoke');
+    // The smoke runs as a step of the required fast-checks job.
+    expect(workflow).toContain(
+      'name: Verify critical browser journeys before merge',
+    );
     expect(workflow).toContain('timeout-minutes: 10');
     expect(workflow).toContain('run: npm run test:e2e:pr-smoke');
     expect(workflow).toContain('playwright-report/');
