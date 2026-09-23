@@ -54,7 +54,9 @@ export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
  * cache-first default, so remounts do not refetch and an offline reload still
  * paints from the persisted snapshot without an error.
  */
-export function refetchOnMountWhenInvalidated(query: Query): boolean {
+export function refetchOnMountWhenInvalidated(
+  query: Query<any, any, any, any>,
+): boolean {
   return query.state.isInvalidated;
 }
 
@@ -67,7 +69,10 @@ export interface QueryConfig<_T> {
    * Most Station reads may use the app's cache-first default; capability-like
    * answer references may not survive an authority change in that cache.
    */
-  refetchOnMount?: boolean | 'always' | ((query: Query) => boolean | 'always');
+  refetchOnMount?:
+    | boolean
+    | 'always'
+    | ((query: Query<any, any, any, any>) => boolean | 'always');
   /** Polling interval in ms. Station globally disables refetch-on-focus and
    * refetch-on-mount, so for data that can change outside this client's own
    * mutations, polling is the only refresh path — pass this explicitly. */
