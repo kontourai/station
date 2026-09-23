@@ -182,6 +182,10 @@ export interface ChatMessage {
     isError?: boolean;
     needsApproval?: boolean;
     approvalId?: string;
+    /** #2316: see `MessagePart.approvalThreadId` in `packages/shared/src/conversation-message.ts`. */
+    approvalThreadId?: string;
+    /** #2316: see `MessagePart.approvalEventId`. */
+    approvalEventId?: string;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'
