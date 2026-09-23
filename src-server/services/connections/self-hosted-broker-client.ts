@@ -4,6 +4,12 @@ import type { BrokerCredential } from './self-hosted-broker-service.js';
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SDP_LIMIT = 128 * 1024;
+/** A request whose outcome may be unknown, but whose broker operation can be reconciled. */
+export class BrokerTransientRequestError extends Error {
+  constructor(cause: unknown) {
+    super('broker_request_transient', { cause });
+  }
+}
 export interface BrokerOffer {
   clientId: string;
   nonce: string;
@@ -102,19 +108,47 @@ export class SelfHostedBrokerClient {
       signal,
       AbortSignal.timeout(15_000),
     ]);
-    const response = await this.request(`${this.#base}/broker/v1${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.#credential.secret}`,
-        'X-Broker-Credential-Id': this.#credential.id,
-        'Content-Type': 'application/json',
-        Origin: this.#scope.browserOrigin,
-      },
-      body: JSON.stringify({ ...body, scope: this.#scope }),
-      redirect: 'error',
-      signal: boundedSignal,
-    });
-    const bytes = await readBounded(response, boundedSignal);
+    let response: Response;
+    try {
+      response = await this.request(`${this.#base}/broker/v1${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.#credential.secret}`,
+          'X-Broker-Credential-Id': this.#credential.id,
+          'Content-Type': 'application/json',
+          Origin: this.#scope.browserOrigin,
+        },
+        body: JSON.stringify({ ...body, scope: this.#scope }),
+        redirect: 'error',
+        signal: boundedSignal,
+      });
+    } catch (error) {
+      if (signal.aborted) throw error;
+      if (boundedSignal.aborted || error instanceof TypeError)
+        throw new BrokerTransientRequestError(error);
+      throw error;
+    }
+    if (response.status === 429 || response.status >= 500) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new BrokerTransientRequestError(
+        new Error(`broker_request_refused_${response.status}`),
+      );
+    }
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new Error(`broker_request_refused_${response.status}`);
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = await readBounded(response, boundedSignal);
+    } catch (error) {
+      if (
+        !signal.aborted &&
+        (boundedSignal.aborted || error instanceof TypeError)
+      )
+        throw new BrokerTransientRequestError(error);
+      throw error;
+    }
     boundedSignal.throwIfAborted();
     let value: unknown;
     try {
@@ -124,8 +158,6 @@ export class SelfHostedBrokerClient {
     } catch {
       throw new Error('broker_response_invalid');
     }
-    if (!response.ok)
-      throw new Error(`broker_request_refused_${response.status}`);
     return record(value);
   }
   async register(signal: AbortSignal) {
