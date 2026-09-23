@@ -285,8 +285,8 @@ export function useProjectWorkspacePanesQuery(
     },
     {
       // Installed plugins contribute descriptors from outside this tab (#2319).
-      refetchOnMount: refetchOnMountWhenInvalidated,
       ...config,
+      refetchOnMount: config?.refetchOnMount ?? refetchOnMountWhenInvalidated,
       enabled: !!projectSlug && (config?.enabled ?? true),
     },
   );

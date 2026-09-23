@@ -50,9 +50,13 @@ export const PERSISTED_QUERY_GC_TIME_MS = 24 * 60 * 60 * 1000;
  * nothing left to refetch it.
  *
  * Returning `true` for an invalidated query means "refetch if stale", and an
- * invalidated query is always stale. An untouched cached answer keeps the
- * cache-first default, so remounts do not refetch and an offline reload still
- * paints from the persisted snapshot without an error.
+ * invalidated query is always stale. A remount of an untouched answer does
+ * not refetch; it keeps the cache-first default.
+ *
+ * An invalidated answer that fails to refetch (the route dropped after the
+ * invalidation) keeps its data and reports `isError`. Consumers must render
+ * that data rather than an error screen; only a catalog with no data is an
+ * error state.
  */
 export function refetchOnMountWhenInvalidated(
   query: Query<any, any, any, any>,

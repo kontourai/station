@@ -73,14 +73,15 @@ function paneCatalog(descriptorIds: string[]) {
 }
 
 let serverCatalog = paneCatalog(['builtin-files', PLUGIN_PANE]);
-const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+async function serveCatalog(input: RequestInfo | URL) {
   const url = String(input);
   if (url !== PANES_URL) throw new Error(`unexpected request ${url}`);
   return new Response(JSON.stringify({ success: true, data: serverCatalog }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
-});
+}
+const fetchMock = vi.fn(serveCatalog);
 
 function paneRequests(): number {
   return fetchMock.mock.calls.filter(([input]) => String(input) === PANES_URL)
@@ -91,6 +92,7 @@ beforeEach(() => {
   connection.status = 'connected';
   serverCatalog = paneCatalog(['builtin-files', PLUGIN_PANE]);
   fetchMock.mockClear();
+  fetchMock.mockImplementation(serveCatalog);
   vi.stubGlobal('fetch', fetchMock);
   _setApiBase(API_BASE);
 });
@@ -273,4 +275,38 @@ describe('a plugin lifecycle server event reaches a catalog that is not on scree
       expect(paneRequests()).toBe(1);
     },
   );
+});
+
+describe('a failed revalidation keeps the cached catalog (#2319)', () => {
+  it('reports isError while keeping the previous answer in data', async () => {
+    fetchMock.mockImplementation(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const client = createAuthorityClient();
+    client.setQueryData(
+      ['projects', 'alpha', 'panes'],
+      paneCatalog(['builtin-files', PLUGIN_PANE]),
+    );
+    await client.invalidateQueries({ queryKey: ['projects'] });
+
+    render(
+      <QueryClientProvider client={client}>
+        <CatalogProbe />
+      </QueryClientProvider>,
+    );
+
+    // `retry: 1` from the authority client: two attempts, then settled.
+    // The retry waits ~1s, so give it room on a loaded host.
+    await waitFor(() => expect(paneQueryState(client)?.status).toBe('error'), {
+      timeout: 10_000,
+    });
+    expect(paneRequests()).toBeGreaterThan(0);
+    expect(paneQueryState(client)?.data).toEqual(
+      paneCatalog(['builtin-files', PLUGIN_PANE]),
+    );
+    // What consumers must render: the cached answer, not an error screen.
+    expect(screen.getByTestId('pane-catalog').textContent).toBe(
+      `builtin-files,${PLUGIN_PANE}`,
+    );
+  }, 15_000);
 });
