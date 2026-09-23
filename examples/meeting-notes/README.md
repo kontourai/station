@@ -136,12 +136,11 @@ opt-in, read-side Neo4j graph view described in the main knowledge guide.
   personal/project relevant-root filter into one shared module,
   `src/roots.ts`.
 - **`useSTT` is not actually exported by `@kontourai/station-sdk`.**
-  `examples/meeting-transcription/src/MeetingTranscriptionModal.tsx` imports
-  `useSTT` from `@kontourai/station-sdk`, but that hook is defined only
-  internally at `src-ui/src/hooks/useSTT.ts` — outside the plugin boundary
-  and not re-exported by the SDK. This is a pre-existing, verified gap (not
-  introduced by this plugin) that also affects `meeting-transcription`
-  itself. `CaptureModal.tsx` detects this defensively at module load
+  That hook is defined only internally at `src-ui/src/hooks/useSTT.ts`,
+  outside the plugin boundary, and the SDK does not re-export it.
+  `examples/meeting-transcription` used to import it anyway; it now binds
+  to a registered provider through `voiceRegistry` instead.
+  `CaptureModal.tsx` detects this defensively at module load
   (`LIVE_CAPTURE_SUPPORTED`) and simply doesn't render the live-capture
   toggle until the SDK actually exports the hook — the paste/upload
   textarea (this plugin's always-available v1 capture surface) works

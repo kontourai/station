@@ -1381,7 +1381,7 @@ Plugins can inject external links into the host UI:
 | `examples/custom-branding/` | Branding provider only |
 | `examples/elevenlabs-voice/` | STT/TTS voice provider |
 | `examples/nova-sonic-voice/` | Nova Sonic voice provider |
-| `examples/meeting-transcription/` | Context provider for meeting transcription |
+| `examples/meeting-transcription/` | Meeting transcription over a registered STT provider |
 | `examples/builder-delivery-viewer/` | Read-only Builder Kit lifecycle artifacts, Surface report, and exact Flow-run join |
 
 The Builder Delivery Viewer composes only published contracts: Flow Agents'
