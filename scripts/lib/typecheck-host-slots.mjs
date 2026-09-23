@@ -308,6 +308,32 @@ function describeHolders(holders) {
     .join('; ');
 }
 
+function recordIsStale(observed, liveness) {
+  if (observed.corrupt)
+    return (
+      observed.mtimeMs !== null &&
+      liveness.now - observed.mtimeMs > CORRUPT_RECORD_STALE_MS
+    );
+  return !holderIsLive(observed.record, liveness);
+}
+
+/**
+ * Try one slot. Returns `true` when claimed; otherwise the live holder's
+ * record (or null when the slot changed hands mid-look).
+ */
+function claimOrObserve(dir, index, record, liveness) {
+  if (tryClaimSlot(dir, index, record)) return true;
+  const observed = readSlotRecord(slotPath(dir, index));
+  // Released between our link and read: claim it on this pass.
+  if (observed.missing) return tryClaimSlot(dir, index, record) || null;
+  if (!recordIsStale(observed, liveness)) return observed.record;
+  const outcome = reclaimStaleSlot(dir, index, observed.record?.nonce ?? null, {
+    warn: liveness.warn,
+  });
+  if (outcome !== 'reclaimed' && outcome !== 'gone') return null;
+  return tryClaimSlot(dir, index, record) || null;
+}
+
 /**
  * One pass over every slot: claim the first free one, reclaiming stale
  * records on the way. Returns the claimed index, or the live holders seen.
@@ -315,34 +341,24 @@ function describeHolders(holders) {
 function scanSlots(dir, slots, record, liveness) {
   const holders = [];
   for (let index = 0; index < slots; index += 1) {
-    if (tryClaimSlot(dir, index, record)) return { index, holders };
-    const observed = readSlotRecord(slotPath(dir, index));
-    if (observed.missing) {
-      // Released between our link and read; claim it on this pass.
-      if (tryClaimSlot(dir, index, record)) return { index, holders };
-      continue;
-    }
-    const stale = observed.corrupt
-      ? observed.mtimeMs !== null &&
-        liveness.now - observed.mtimeMs > CORRUPT_RECORD_STALE_MS
-      : !holderIsLive(observed.record, liveness);
-    if (stale) {
-      const outcome = reclaimStaleSlot(
-        dir,
-        index,
-        observed.record?.nonce ?? null,
-        { warn: liveness.warn },
-      );
-      if (
-        (outcome === 'reclaimed' || outcome === 'gone') &&
-        tryClaimSlot(dir, index, record)
-      )
-        return { index, holders };
-      continue;
-    }
-    if (observed.record) holders.push(observed.record);
+    const result = claimOrObserve(dir, index, record, liveness);
+    if (result === true) return { index, holders };
+    if (result) holders.push(result);
   }
   return { index: -1, holders };
+}
+
+function releaser(path, nonce) {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (readSlotRecord(path).record?.nonce === nonce) unlinkQuietly(path);
+  };
+}
+
+function forLabel(label) {
+  return label ? ` for ${label}` : '';
 }
 
 /**
@@ -405,33 +421,25 @@ export async function acquireTypecheckSlot({
     };
     record.acquiredAt = liveness.now;
     const { index, holders } = scanSlots(dir, slots, record, liveness);
+    const seconds = Math.round((now() - startedAt) / 1000);
     if (index >= 0) {
-      const path = slotPath(dir, index);
-      let released = false;
-      const release = () => {
-        if (released) return;
-        released = true;
-        const current = readSlotRecord(path);
-        if (current.record?.nonce === record.nonce) unlinkQuietly(path);
-      };
-      if (lastLogAt !== null) {
+      if (lastLogAt !== null)
         log(
-          `[typecheck-slots] acquired slot ${index + 1}/${slots} after ${Math.round((now() - startedAt) / 1000)}s${label ? ` for ${label}` : ''}.`,
+          `[typecheck-slots] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
         );
-      }
+      const release = releaser(slotPath(dir, index), record.nonce);
       return { index, dir, slots, reentrant: false, release };
     }
-    const elapsed = now() - startedAt;
-    if (elapsed >= waitMs) {
+    if (now() - startedAt >= waitMs) {
       throw new Error(
-        `FAIL: waited ${Math.round(elapsed / 1000)}s for a host typecheck slot${label ? ` for ${label}` : ''}; all ${slots} are held: ${describeHolders(holders)}. ` +
+        `FAIL: waited ${seconds}s for a host typecheck slot${forLabel(label)}; all ${slots} are held: ${describeHolders(holders)}. ` +
           `Slots live in ${dir} (${SLOT_DIR_ENV}); raise ${SLOT_WAIT_ENV} to wait longer, or ${SLOT_COUNT_ENV} if the host has memory to spare.`,
       );
     }
     if (lastLogAt === null || now() - lastLogAt >= PROGRESS_LOG_MS) {
       lastLogAt = now();
       log(
-        `[typecheck-slots] waiting for a host typecheck slot${label ? ` for ${label}` : ''}: ${holders.length}/${slots} held (${describeHolders(holders)}). ` +
+        `[typecheck-slots] waiting for a host typecheck slot${forLabel(label)}: ${holders.length}/${slots} held (${describeHolders(holders)}). ` +
           `Bounded by ${SLOT_COUNT_ENV}=${slots} across every worktree on this host.`,
       );
     }
