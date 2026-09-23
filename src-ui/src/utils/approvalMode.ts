@@ -394,9 +394,10 @@ export function approvalPickUpdate(
  *   report may describe a turn sent before the pick (a stale report), so it
  *   neither drops the pick nor confirms it (#2334, refuted approach 2).
  * - With nothing pending, a report that disagrees with the confirmed pick
- *   means the posture changed elsewhere; the confirmed pick is no longer true
- *   and is dropped, so the chip falls back to the receipt and the next send
- *   does not quietly change it back.
+ *   moves it back to PENDING rather than dropping it: the report can be stale
+ *   too, and dropping the pick would leave the session on whatever the report
+ *   named (possibly looser). Pending, it is resent and re-confirmed, the same
+ *   treatment a disagreeing report gets on the pending path.
  */
 export function settleApprovalPick(
   chat: ApprovalPickState | null | undefined,
@@ -412,7 +413,10 @@ export function settleApprovalPick(
     chat.approvalModeOverride !== undefined &&
     chat.approvalModeOverride !== applied
   ) {
-    return { approvalModeOverride: undefined };
+    return {
+      approvalModeOverride: undefined,
+      pendingApprovalMode: chat.approvalModeOverride,
+    };
   }
   return {};
 }

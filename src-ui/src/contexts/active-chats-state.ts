@@ -353,8 +353,9 @@ export type ChatUIState = {
   pendingApprovalMode?: ApprovalMode;
   /**
    * An approval pick the engine confirmed applying on this chat's session
-   * (#2334). Not persisted: like `lastAppliedApprovalMode` it is a receipt
-   * about a live session, and a reload cannot re-verify it.
+   * (#2334). Persisted only as a PENDING pick (`serializeActiveChats`): like
+   * `lastAppliedApprovalMode` it is a receipt about a live session that a
+   * reload cannot re-verify, so it comes back as a request to re-confirm.
    */
   approvalModeOverride?: ApprovalMode;
   orchestrationSessionStarted?: boolean;
@@ -853,8 +854,16 @@ export function serializeActiveChats(
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
-      ...(chat.pendingApprovalMode
-        ? { pendingApprovalMode: chat.pendingApprovalMode }
+      // #2334: a confirmed pick is a receipt about THIS process's session;
+      // a reload cannot re-verify it. It is persisted as a pending pick
+      // instead, so the next send re-requests it and a report re-confirms
+      // it. Dropping it would let a fresh session start at the default,
+      // which may be looser (e.g. a Station default of `never`).
+      ...((chat.pendingApprovalMode ?? chat.approvalModeOverride)
+        ? {
+            pendingApprovalMode:
+              chat.pendingApprovalMode ?? chat.approvalModeOverride,
+          }
         : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
@@ -957,6 +966,7 @@ export function mergeChatUpdates(
     'requestedModelSource' in nextUpdates ||
     'requestedProviderOptions' in nextUpdates ||
     'pendingApprovalMode' in nextUpdates ||
+    'approvalModeOverride' in nextUpdates ||
     'defaultModel' in nextUpdates ||
     'defaultModelSource' in nextUpdates ||
     'provider' in nextUpdates ||

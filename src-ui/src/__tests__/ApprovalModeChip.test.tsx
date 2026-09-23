@@ -492,7 +492,7 @@ describe('ApprovalModeChip', () => {
     );
 
     const chip = screen.getByRole('button', {
-      name: /^Approval mode: Auto · pending — full access applies until the next turn\./,
+      name: /^Approval mode: Auto · pending — the engine still reports full access\./,
     });
     expect(chip.className).toContain('chat-input__approval-chip--pending');
     expect(chipValue()).toBe('Auto · pending');

@@ -4,6 +4,7 @@ import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
+import { sessionApprovalOverride } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
@@ -200,6 +201,12 @@ export function drainQueuedMessageOnTurnCompleted(
       projectSlug: continueUnbound ? undefined : current.projectSlug,
       model: current.model,
       providerOptions: current.providerOptions,
+      // #2334: the session's approval pick (pending, else confirmed) rides
+      // beside the options on every send path. A follow-up drained without
+      // it ran under whatever posture the engine last applied, which after
+      // a stricter pick is the looser one. No `approvalModeFallback`: a
+      // queued message never starts the session (see approvalModeForDispatch).
+      approvalModeOverride: sessionApprovalOverride(current)?.mode,
       message: nextMessage,
       conversationId: current.conversationId ?? threadId,
       // Queued sends recompute ambient context at drain time so the model

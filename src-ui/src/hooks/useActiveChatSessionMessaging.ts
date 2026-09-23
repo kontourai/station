@@ -33,7 +33,6 @@ import type {
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
-  type ApprovalMode,
   approvalModeForDispatch,
   sessionApprovalOverride,
 } from '../utils/approvalMode';
@@ -232,8 +231,6 @@ export function useSendMessage(
           requestedProviderOptions?: Record<string, unknown>;
           model?: string;
           providerOptions?: Record<string, unknown>;
-          pendingApprovalMode?: ApprovalMode;
-          approvalModeOverride?: ApprovalMode;
         };
       },
     ) => {
@@ -372,11 +369,13 @@ export function useSendMessage(
             (agent) => agent.slug === agentSlug,
           )?.execution?.agentConnectionId,
         });
-        // The approval pick travels beside the model options (#2334); a
-        // replayed turn carries the pick it was queued with.
-        const dispatchedApprovalOverride = sessionApprovalOverride(
-          options?.executionSnapshot ?? currentState,
-        )?.mode;
+        // The approval pick travels beside the model options (#2334). It is
+        // session posture, not message content: a replayed turn sends the
+        // chat's CURRENT pick, never the one it was queued with, so a
+        // stricter pick made while offline is never overtaken by an older,
+        // looser one (the user's latest wish wins either way).
+        const dispatchedApprovalOverride =
+          sessionApprovalOverride(currentState)?.mode;
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
@@ -532,8 +531,6 @@ export function useSendMessage(
                 requestedModel: currentState?.requestedModel,
                 requestedProviderOptions:
                   currentState?.requestedProviderOptions,
-                pendingApprovalMode: currentState?.pendingApprovalMode,
-                approvalModeOverride: currentState?.approvalModeOverride,
                 model: currentState?.model,
                 providerOptions: currentState?.providerOptions,
               },

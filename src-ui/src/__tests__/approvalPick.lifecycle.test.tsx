@@ -36,8 +36,13 @@ vi.mock('../contexts/ToastContext', async (importOriginal) => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
+// This Station's `AppConfig`; `defaultApprovalMode` is the layer below a
+// session pick (#2144 slice 6).
+const stationConfig = vi.hoisted(
+  () => ({ current: undefined }) as { current: unknown },
+);
 vi.mock('../contexts/ConfigContext', () => ({
-  useConfig: () => ({ config: undefined }),
+  useConfig: () => stationConfig.current,
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -290,6 +295,12 @@ describe('an approval pick beside the model options (#2334)', () => {
 
     // A model switch rebuilds the request from the confirmed bag, which
     // never held the pick, so nothing can resurrect it.
+    //
+    // Sending no posture is not the same as leaving bypass: on Claude a
+    // session already at full access KEEPS it when no approval mode arrives,
+    // so this Default pick changes nothing there while the chat reports that
+    // it did. Pre-existing and tracked as #2409; this test pins only that
+    // the revoked 'never' is not resent.
     step(() => composer.result.current.handleModelSelect(modelY));
     const wire = await send();
     expect(wire?.override).toBe('model-y');
@@ -318,7 +329,7 @@ describe('an approval pick beside the model options (#2334)', () => {
     // pick is not in effect yet (the #2334 decision on the #1933 pin).
     const pending = renderPill();
     expect(pending.text).toBe('Ask · pending');
-    expect(pending.name).toMatch(/full access applies until the next turn/);
+    expect(pending.name).toMatch(/the engine still reports full access/);
 
     step(() => turnCompleted('t1'));
     expect((await send())?.options?.approvalMode).toBe('ask');
@@ -431,7 +442,7 @@ describe('an approval pick beside the model options (#2334)', () => {
     expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
   });
 
-  test('with nothing pending, a report that disagrees retires the confirmed pick', async () => {
+  test('with nothing pending, a report that disagrees moves the confirmed pick back to pending', async () => {
     const { composer, step, send } = renderComposer();
     step(() => composer.result.current.handleModelSelect(modelX));
     step(() => composer.result.current.handleApprovalModeChange('auto'));
@@ -443,54 +454,185 @@ describe('an approval pick beside the model options (#2334)', () => {
     // bag the adapters expect.
     expect((await send())?.options?.approvalMode).toBe('auto');
 
-    // The posture changed elsewhere (another device's pick).
+    // A disagreeing report: stale, or the posture changed elsewhere. Either
+    // way it is not proof the pick is gone, so it is re-requested and must
+    // be re-confirmed rather than dropped (which would leave the session on
+    // whatever the report named).
     step(() => turnStarted('t2', 'ask'));
     step(() => turnCompleted('t2'));
     expect(chat().approvalModeOverride).toBeUndefined();
-    expect((await send())?.options ?? {}).not.toHaveProperty('approvalMode');
+    expect(chat().pendingApprovalMode).toBe('auto');
+    expect((await send())?.options?.approvalMode).toBe('auto');
+    step(() => turnStarted('t3', 'auto'));
+    expect(chat().pendingApprovalMode).toBeUndefined();
+    expect(chat().approvalModeOverride).toBe('auto');
   });
-  test('a pending pick survives a reload; a confirmed one, a receipt, does not', () => {
-    activeChatsStore.updateChat(SESSION_ID, {
-      pendingApprovalMode: 'ask',
-      approvalModeOverride: 'never',
-    });
+  /** A reload: serialize to storage and hydrate back into the store. */
+  function reload() {
     const rehydrated = hydrateActiveChats(
       serializeActiveChats(activeChatsStore.getSnapshot()),
     )[SESSION_ID];
-    expect(rehydrated?.pendingApprovalMode).toBe('ask');
-    expect(rehydrated?.approvalModeOverride).toBeUndefined();
+    activeChatsStore.removeChat(SESSION_ID);
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Approval pick chat',
+    });
+    activeChatsStore.updateChat(SESSION_ID, rehydrated!);
+    return rehydrated!;
+  }
+
+  test('a reload turns a confirmed pick into a pending one; a pending one stays pending', () => {
+    activeChatsStore.updateChat(SESSION_ID, { approvalModeOverride: 'ask' });
+    expect(reload()).toMatchObject({ pendingApprovalMode: 'ask' });
+    expect(chat().approvalModeOverride).toBeUndefined();
+
+    activeChatsStore.updateChat(SESSION_ID, {
+      pendingApprovalMode: 'auto',
+      approvalModeOverride: 'ask',
+    });
+    expect(reload()).toMatchObject({ pendingApprovalMode: 'auto' });
   });
 
-  test('a replayed queued turn sends the pick it was queued with', async () => {
-    const { sender } = renderComposer();
-    // The live chat has since moved on; the replay must not borrow its pick.
-    activeChatsStore.updateChat(SESSION_ID, { pendingApprovalMode: 'never' });
+  test('a confirmed Ask survives a reload under a Station default of never, and the next send carries Ask', async () => {
+    stationConfig.current = { defaultApprovalMode: 'never' };
+    try {
+      const { composer, step, send } = renderComposer();
+      step(() => composer.result.current.handleModelSelect(modelX));
+      step(() => composer.result.current.handleApprovalModeChange('ask'));
+      await send();
+      step(() => turnStarted('t1', 'ask'));
+      step(() => turnCompleted('t1'));
+      expect(chat().approvalModeOverride).toBe('ask');
+      composer.unmount();
+
+      reload();
+      // Nothing about the fresh session is known yet.
+      expect(chat().lastAppliedApprovalMode).toBeUndefined();
+      const fresh = renderComposer();
+      fresh.step(() => {});
+      // The chip names the pick, and does not claim it applied.
+      const pill = renderPill();
+      expect(pill.text).toBe('Ask');
+      expect(pill.name).toMatch(
+        /^Approval mode: Ask first — requested, not yet confirmed by the engine\./,
+      );
+      expect((await fresh.send())?.options?.approvalMode).toBe('ask');
+    } finally {
+      stationConfig.current = undefined;
+    }
+  });
+
+  test('control: with no pick, that fresh session starts at the Station default', async () => {
+    stationConfig.current = { defaultApprovalMode: 'never' };
+    try {
+      const { send } = renderComposer();
+      expect((await send())?.options?.approvalMode).toBe('never');
+    } finally {
+      stationConfig.current = undefined;
+    }
+  });
+
+  /**
+   * An offline replay the way `useOutboundQueueFlush` sends it: the queued
+   * turn's own snapshot (captured at enqueue) as `executionSnapshot`.
+   */
+  async function replay(
+    sender: { current: ReturnType<typeof useSendMessage> },
+    snapshot: {
+      requestedModel?: string | null;
+      requestedProviderOptions?: Record<string, unknown>;
+      model?: string;
+      providerOptions?: Record<string, unknown>;
+    },
+  ) {
     sendExecutionMessage.mockClear();
     await act(async () => {
-      await sender.result.current(
+      await sender.current(
         SESSION_ID,
         'codex',
         'conv-1',
         'queued',
         undefined,
         undefined,
-        undefined,
-        {
-          executionSnapshot: {
-            requestedModel: 'model-x',
-            requestedProviderOptions: { effort: 'low' },
-            providerOptions: {},
-            pendingApprovalMode: 'ask',
-          },
-        },
+        'queued-turn',
+        { executionSnapshot: snapshot },
       );
     });
     const target = sendExecutionMessage.mock.calls[0]?.[1].target as {
       model?: { options?: Record<string, unknown> };
     };
-    expect(target.model?.options).toEqual({
+    return target.model?.options;
+  }
+
+  function queuedSnapshot() {
+    const queuedAt = chat();
+    return {
+      requestedModel: queuedAt.requestedModel,
+      requestedProviderOptions: queuedAt.requestedProviderOptions,
+      model: queuedAt.model,
+      providerOptions: queuedAt.providerOptions,
+    };
+  }
+
+  test('an offline replay sends a stricter pick made after it was queued', async () => {
+    const { composer, step, sender } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() =>
+      composer.result.current.handleModelRuntimeOptionChange('effort', 'low'),
+    );
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    const snapshot = queuedSnapshot();
+    // Offline, the user tightens the posture before the queue flushes.
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+
+    // The message content (model, controls) is the snapshot's; the posture
+    // is the chat's current one.
+    expect(await replay(sender.result, snapshot)).toEqual({
       effort: 'low',
       approvalMode: 'ask',
     });
+  });
+
+  test('an offline replay sends a looser pick made after it was queued (the latest wish)', async () => {
+    const { composer, step, sender } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    const snapshot = queuedSnapshot();
+    step(() => composer.result.current.handleApprovalModeChange('auto'));
+
+    expect((await replay(sender.result, snapshot))?.approvalMode).toBe('auto');
+  });
+
+  test('a queued follow-up drained after the turn carries the stricter pick', async () => {
+    const { composer, step, sender } = renderComposer();
+    step(() => composer.result.current.handleModelSelect(modelX));
+    step(() => composer.result.current.handleApprovalModeChange('never'));
+    await act(async () => {
+      await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'first');
+    });
+    // Mid-turn: the engine confirms full access.
+    step(() => turnStarted('t1', 'never'));
+    expect(chat().approvalModeOverride).toBe('never');
+    // The user tightens the posture, then queues a follow-up.
+    step(() => composer.result.current.handleApprovalModeChange('ask'));
+    sendExecutionMessage.mockClear();
+    await act(async () => {
+      await sender.result.current(SESSION_ID, 'codex', 'conv-1', 'follow-up');
+    });
+    expect(chat().queuedMessages).toEqual(['follow-up']);
+    expect(sendExecutionMessage).not.toHaveBeenCalled();
+
+    // The turn completes; the real drain (turnHandlers → queueDrain) sends.
+    step(() => turnCompleted('t1'));
+    await vi.waitFor(() => expect(sendExecutionMessage).toHaveBeenCalled(), {
+      timeout: 2000,
+    });
+    const target = sendExecutionMessage.mock.calls[0]?.[1] as {
+      message: string;
+      target: { model?: { options?: Record<string, unknown> } };
+    };
+    expect(target.message).toBe('follow-up');
+    expect(target.target.model?.options?.approvalMode).toBe('ask');
   });
 });

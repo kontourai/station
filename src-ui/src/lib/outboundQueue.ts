@@ -18,7 +18,6 @@
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, set, update } from 'idb-keyval';
 import type { FileAttachment } from '../types';
-import type { ApprovalMode } from '../utils/approvalMode';
 
 export type OutboundDispatchStatus =
   | 'pending'
@@ -37,9 +36,6 @@ export interface QueuedOutboundTurn {
   ambientContext?: string;
   requestedModel?: string | null;
   requestedProviderOptions?: Record<string, unknown>;
-  /** The approval pick at enqueue time, sent beside the options (#2334). */
-  pendingApprovalMode?: ApprovalMode;
-  approvalModeOverride?: ApprovalMode;
   model?: string;
   providerOptions?: Record<string, unknown>;
   createdAt: number;
