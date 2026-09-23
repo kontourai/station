@@ -2209,12 +2209,7 @@ function untrustedJobCacheFindings(
       : ownJobId;
     for (const step of job?.steps ?? [])
       if (typeof step?.uses === 'string')
-        for (const message of untrustedStepCacheMessages(
-          file,
-          ownJobId,
-          step,
-          context.via,
-        ))
+        for (const message of untrustedStepCacheMessages(file, ownJobId, step))
           findings.push({ file, jobId, message });
     if (typeof job?.uses === 'string')
       findings.push(
@@ -2260,10 +2255,10 @@ function untrustedCallCacheFindings(
   );
 }
 
-function untrustedStepCacheMessages(file, jobId, step, via) {
+function untrustedStepCacheMessages(file, jobId, step) {
   const action = step.uses.split('@')[0].toLowerCase();
   if (action.startsWith('actions/cache/'))
-    return !via && isReviewedCacheRestore(file, jobId, step)
+    return isReviewedCacheRestore(file, jobId, step)
       ? []
       : action === 'actions/cache/save'
         ? [CACHE_WRITE_MESSAGE]
