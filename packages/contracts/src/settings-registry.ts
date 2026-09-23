@@ -437,16 +437,15 @@ export const APP_SETTINGS_REGISTRY = [
       values: ['connection-default', 'ask', 'auto', 'never'],
     },
     label: 'Default approval mode',
-    help: 'New chats start in this approval posture unless the chat or its engine connection names its own.',
-    // Kept to the row's own promise. The mechanism — which statuses count as
-    // a live session, that a connection's own `approvalMode` rides the same
-    // send, and that a queued follow-up carries neither — is in
-    // `AppConfig.defaultApprovalMode`'s docblock and in
-    // `approvalModeForDispatch`; a settings row is not the place to teach it
-    // (round 4 N2: this description had grown to 833 characters against a
-    // median of 110).
+    help: 'New chats start in this approval posture unless the chat or its Agent names its own.',
+    // Kept to the row's own promise. The mechanism (#2436: the server applies
+    // it at a session start, below the chat's own pick and the Agent's
+    // default, and never to a running session) is in
+    // `AppConfig.defaultApprovalMode`'s docblock and in `approval-posture.ts`;
+    // a settings row is not the place to teach it (round 4 N2: this
+    // description had grown to 833 characters against a median of 110).
     description:
-      'Sent when a message starts a session and withheld while Station can see one running; a chat’s own approval control is the only thing that changes a live session. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
+      'Applied when a session starts, never to one already running; a chat’s own approval control is the only thing that changes a live session. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
     // `'connection-default'` IS the honest fallback, not a placeholder for
     // one: `adapterDefaultApprovalMode` returns undefined for every engine
     // (station#1950 — Station no longer guesses Ask/Never), so "defer to the

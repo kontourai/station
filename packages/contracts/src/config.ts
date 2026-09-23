@@ -37,38 +37,25 @@ export interface AppConfig {
   defaultWorkspaceIsolation?: WorkspaceIsolationMode;
   /**
    * Approval posture a new chat starts in when neither the chat itself nor
-   * its engine connection names one (epic #2144 slice 6).
+   * its Agent names one (epic #2144 slice 6; #2436).
    *
-   * Two readers, deliberately paired, in `src-ui/src/utils/approvalMode.ts`:
-   * `resolveEffectiveApprovalMode` decides what the composer chip DISPLAYS,
-   * and `approvalModeForDispatch` decides what the send path ENFORCES by
-   * folding into `modelOptions.approvalMode` — the only channel the server
-   * reads (`readApprovalMode` below). Both place it under a session override
-   * and under the engine connection's own default, and above the adapter
-   * default.
+   * #2436: the SERVER applies it (`approval-posture.ts`,
+   * `resolveStationDefaultApprovalMode`), at a session START only, below the
+   * conversation's recorded pick and the Agent's own default
+   * (`AgentSpec.execution.approvalMode`); it is also what a Default pick
+   * returns to when the Agent names none. It is never re-applied to a running
+   * session: re-requesting a default there would let an edit of this setting
+   * reconfigure a live chat, and Claude refuses a mid-session escalation to
+   * `'never'` on a session not spawned with its bypass flag. Only a chat's
+   * own pick changes a live session. It applies only to an engine whose
+   * adapter has an approval knob.
    *
-   * ENFORCEMENT IS NARROWER THAN DISPLAY, by design. It applies only to a
-   * message that STARTS a session — a new chat, a reopened conversation
-   * whose session has stopped, or one that exited (`chatSessionIsLive` in
-   * `utils/execution.ts` is the derivation, and answers "unsure" as not
-   * live so the posture is sent rather than withheld) — and only for an
-   * `external`-mode chat on an engine whose adapter has a native knob (`approvalModeKnobSupported`
-   * — claude and codex; `PROVIDER_MODEL_OPTION_SUPPORT` in `provider.ts` is
-   * the server-side authority). Re-requesting a posture on a live session
-   * would reconfigure a running chat from a setting edited elsewhere, and
-   * Claude refuses a mid-session escalation to `'never'` on a session
-   * that was not spawned with its bypass flag. Only a
-   * session override may change a live chat's posture.
-   *
-   * The same send carries an engine connection's OWN `approvalMode` when it
-   * has one: that layer was display-only before #2144 slice 6 too, and it
-   * now enforces at session start under exactly these rules. A queued
-   * follow-up never carries either (`queueDrain.ts` passes no fallback — a
-   * queued message is never the message that starts a session).
+   * The composer chip DISPLAYS the same order (`resolveEffectiveApprovalMode`
+   * in `src-ui/src/utils/approvalMode.ts`); the client no longer puts it on
+   * the wire.
    *
    * `'connection-default'` is a real, canonical value here and means "this
-   * Station states no posture" — it is NOT a fourth posture. Both readers
-   * skip it exactly as they skip a session override holding it.
+   * Station states no posture" — it is NOT a fourth posture.
    */
   defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
