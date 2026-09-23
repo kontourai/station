@@ -62,9 +62,12 @@ function snapshotKey(value: unknown): value is {
   );
 }
 
-function announce(snapshot: BrowserRelayAccountScopeSnapshot) {
+function announce(
+  routeKey: string,
+  snapshot: BrowserRelayAccountScopeSnapshot,
+) {
   const message = {
-    route: snapshot.scopeKey,
+    route: routeKey,
     authorityKey: snapshot.authorityKey,
     version: snapshot.version,
     state: snapshot.state,
@@ -171,7 +174,7 @@ export function publishBrowserRelayAccountScope(
   });
   snapshots.set(scopeKey, next);
   for (const listener of listeners) listener();
-  if (shouldAnnounce) announce(next);
+  if (shouldAnnounce) announce(scopeKey, next);
 }
 
 /** Verifies that UI scope and saved-route scope still refer to the same Station. */

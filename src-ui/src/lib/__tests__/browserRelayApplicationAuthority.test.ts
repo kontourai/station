@@ -546,6 +546,52 @@ describe('browser relay application authority', () => {
     expect(current.continuation.authorityKey).toBe('cas-B');
   });
 
+  it('keeps request and query authority aligned after a failed removal transition', async () => {
+    const connectionId = 'failed-removal-transition';
+    const transport = publish(connectionId);
+    const storage = new MemoryStorage();
+    const keyThumbprint = await thumbprintFor(publicKey);
+    await installApprovedDevice(
+      {
+        stageId: 'T'.repeat(43),
+        connectionId,
+        applicationOrigin,
+        route,
+        bearer: { kind: 'device', credential: 'D'.repeat(43) },
+        key,
+        continuation: { ...continuation, keyThumbprint },
+      },
+      storage,
+    );
+    const routeScopeKey = browserRelayAccountScopeKey({
+      connectionId,
+      applicationOrigin,
+      route,
+      clientOrigin: window.location.origin,
+    });
+    const before = getBrowserRelayAccountScope(routeScopeKey);
+    storage.compareAndSwap = async () => false;
+    await removeBrowserRelayApplicationAuthority(
+      { connectionId, applicationOrigin, route },
+      storage,
+    );
+    const after = getBrowserRelayAccountScope(routeScopeKey);
+    expect(after?.state).toBe('ready');
+    expect(after?.authorityKey).toBe(continuation.authorityKey);
+    expect(after?.scopeKey).not.toBe(before?.scopeKey);
+
+    const credential = await createBrowserRelayApplicationCredential({
+      connectionId,
+      applicationOrigin,
+      route,
+      transport,
+      routeIsCurrent: () => true,
+      storage,
+    });
+    expect(credential.requestAuthority?.authorityKey).toBe(after?.scopeKey);
+    expect(credential.transportBindingIsCurrent?.()).toBe(true);
+  });
+
   it('rolls back activation if the selected route retires during the storage transaction', async () => {
     const connectionId = 'activation-retirement';
     publish(connectionId);

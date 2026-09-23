@@ -1258,9 +1258,20 @@ export async function createBrowserRelayApplicationCredential(input: {
   };
   const initial = await load();
   capturedIdentity = initial.identity;
-  authorityQualifier = `account:${initial.continuation.authorityKey}:v${initial.value.scopeVersion}`;
   readyScope(key, initial.value, initial.value.scopeVersion);
   const scopeSnapshot = getBrowserRelayAccountScope(key);
+  // Scope versions also fence failed local transitions. The persisted record
+  // version is a CAS identity, not necessarily the current UI invalidation
+  // epoch; request and query scopes must use the same published qualifier.
+  if (
+    scopeSnapshot?.state !== 'ready' ||
+    scopeSnapshot.authorityKey !== initial.continuation.authorityKey
+  )
+    throw authorityError(
+      'station_application_authority_required',
+      'Relay account scope is not ready for this Station.',
+    );
+  authorityQualifier = scopeSnapshot.scopeKey;
   const authorityIsCurrent = () =>
     input.routeIsCurrent() &&
     scopeSnapshot?.state === 'ready' &&
