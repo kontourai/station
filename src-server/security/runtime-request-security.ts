@@ -228,6 +228,8 @@ export interface RuntimeHttpSecurityOptions {
   ) => RuntimeCredentialAuthority | undefined;
   /** Server-side paired-device lookup used only for durable provenance. */
   resolveCredentialDeviceId?: (credential: string) => string | undefined;
+  /** Alias credentials require their exact account continuation on every request. */
+  resolveCredentialAliasId?: (credential: string) => string | undefined;
   /**
    * Resolves a device credential's pairing-request source. Operator
    * credentials and historical devices without a source resolve `undefined`.

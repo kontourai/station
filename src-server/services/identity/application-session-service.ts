@@ -34,6 +34,7 @@ const publicKey = z
 const challengeRecord = z
   .object({
     deviceId: z.string(),
+    aliasId: z.string().uuid().optional(),
     origin: z.string(),
     key: publicKey,
     keyThumbprint: opaque,
@@ -83,6 +84,9 @@ export class ApplicationSessionService {
     ) => PairedDevice | null,
     private readonly origins: readonly string[] = [requestOrigin],
     private readonly now: () => number = Date.now,
+    private readonly credentialAliasId: (
+      credential: string,
+    ) => string | undefined = () => undefined,
   ) {
     if (!stationId.trim() || new URL(requestOrigin).origin !== requestOrigin)
       throw new ApplicationSessionRefusal('unavailable');
@@ -153,6 +157,7 @@ export class ApplicationSessionService {
     if (!this.capabilities().cookieExchange)
       throw new ApplicationSessionRefusal('unsupported');
     const device = this.device(request);
+    const aliasId = this.currentAliasId(request);
     const origin = this.origin(request);
     const parsed = publicKey.parse(key);
     await importJWK(parsed, 'ES256');
@@ -161,6 +166,7 @@ export class ApplicationSessionService {
     const challengeId = randomBytes(32).toString('base64url');
     const value: Challenge = {
       deviceId: device.id,
+      ...(aliasId ? { aliasId } : {}),
       origin,
       key: parsed,
       keyThumbprint,
@@ -203,6 +209,7 @@ export class ApplicationSessionService {
       .get(id);
     const challenge = this.parse(row?.record, challengeRecord);
     this.device(request, challenge.deviceId);
+    this.assertAlias(request, challenge.aliasId);
     if (
       this.origin(request) !== challenge.origin ||
       challenge.expiresAt <= this.now()
@@ -241,6 +248,7 @@ export class ApplicationSessionService {
     )
       throw new ApplicationSessionRefusal('invalid');
     this.device(request, challenge.deviceId, current.principal.id);
+    this.assertAlias(request, challenge.aliasId);
     return this.issue(challenge, current);
   }
   async authenticate(
@@ -253,6 +261,7 @@ export class ApplicationSessionService {
       const hash = digest(opaque.parse(token));
       const record = this.read(hash);
       this.device(request, record.deviceId, record.principalId);
+      this.assertAlias(request, record.aliasId);
       if (this.origin(request) !== record.origin)
         throw new ApplicationSessionRefusal('invalid');
       const fingerprint = digest(
@@ -294,6 +303,7 @@ export class ApplicationSessionService {
       );
       this.read(hash);
       this.device(request, record.deviceId, record.principalId);
+      this.assertAlias(request, record.aliasId);
       if (
         result.principal.id !== record.principalId ||
         result.issuer !== record.issuer ||
@@ -347,6 +357,7 @@ export class ApplicationSessionService {
     );
     this.read(hash);
     this.device(request, current.deviceId, account.principal.id);
+    this.assertAlias(request, current.aliasId);
     if (
       source.principal.id !== current.principalId ||
       source.issuer !== current.issuer
@@ -522,6 +533,20 @@ export class ApplicationSessionService {
     if (bindingPrincipalId && principalId && bindingPrincipalId !== principalId)
       throw new ApplicationSessionRefusal('invalid');
     return device;
+  }
+  private currentAliasId(request: Request): string | undefined {
+    const bearer = parseStrictBearer(
+      request.headers.get('Authorization') ?? undefined,
+    );
+    if (!bearer) return undefined;
+    const aliasId = this.credentialAliasId(bearer);
+    if (aliasId !== undefined && !z.string().uuid().safeParse(aliasId).success)
+      throw new ApplicationSessionRefusal('invalid');
+    return aliasId;
+  }
+  private assertAlias(request: Request, expected?: string): void {
+    if (this.currentAliasId(request) !== expected)
+      throw new ApplicationSessionRefusal('invalid');
   }
   private origin(request: Request): string {
     const origin = request.headers.get('Origin');

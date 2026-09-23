@@ -1,6 +1,10 @@
 import { request as nodeRequest } from 'node:http';
 import { type HttpBindings, serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
+import {
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -74,6 +78,7 @@ function createHarness(
     onCredentialVerification?: (request: unknown) => void;
     credentialValid?: () => boolean;
     deviceId?: string;
+    aliasCredential?: string;
   } = {},
 ) {
   const logger: Logger = {
@@ -89,11 +94,36 @@ function createHarness(
   };
   const auditRecords: AuditRecord[] = [];
   const app = new Hono<{ Bindings: TestBindings }>();
+  const accounts = new WeakMap<
+    Request,
+    { kind: 'authenticated' } | { kind: 'absent' }
+  >();
   const runtimeSecurity = {
+    deploymentAuthentication: options.aliasCredential
+      ? {
+          hasCredential: (request: Request) =>
+            request.headers.has('cookie') ||
+            (request.headers.has(APPLICATION_SESSION_HEADER) &&
+              request.headers.has(APPLICATION_SESSION_PROOF_HEADER)),
+          authenticate: async (request: Request) => {
+            const result =
+              request.headers.has('cookie') ||
+              (request.headers.has(APPLICATION_SESSION_HEADER) &&
+                request.headers.has(APPLICATION_SESSION_PROOF_HEADER))
+                ? ({ kind: 'authenticated' } as const)
+                : ({ kind: 'absent' } as const);
+            accounts.set(request, result);
+            return result;
+          },
+          current: (request: Request) => accounts.get(request),
+          admittedPrincipalSnapshot: () => undefined,
+        }
+      : undefined,
     verifyCredential: (candidate: string, request: unknown) => {
       options.onCredentialVerification?.(request);
       return (
         candidate === CREDENTIAL ||
+        candidate === options.aliasCredential ||
         (candidate === DEVICE_CREDENTIAL &&
           (options.credentialValid?.() ?? true))
       );
@@ -103,16 +133,22 @@ function createHarness(
     // pairing-scope-enforcement.test.ts); a fully-scoped credential still
     // correctly fails closed on the one deliberately-unmapped route below.
     resolveGrantedScope: (candidate: string) =>
-      candidate === CREDENTIAL || candidate === DEVICE_CREDENTIAL
+      candidate === CREDENTIAL ||
+      candidate === DEVICE_CREDENTIAL ||
+      candidate === options.aliasCredential
         ? DEFAULT_GRANT_PAIRING_SCOPE
         : undefined,
     resolveCredentialAuthority: (candidate: string) =>
-      candidate === DEVICE_CREDENTIAL
+      candidate === DEVICE_CREDENTIAL || candidate === options.aliasCredential
         ? 'device-credential'
         : 'operator-credential',
     resolveCredentialDeviceId: (candidate: string) =>
       candidate === DEVICE_CREDENTIAL
         ? (options.deviceId ?? 'device-1')
+        : undefined,
+    resolveCredentialAliasId: (candidate: string) =>
+      candidate === options.aliasCredential
+        ? '11111111-1111-4111-8111-111111111111'
         : undefined,
     now: options.now ?? (() => Date.now()),
     maxFailures: options.maxFailures ?? 3,
@@ -200,6 +236,50 @@ describe('central runtime HTTP security boundary', () => {
         reported: { version: 1, surface: 'mobile', build: '1.2.3' },
       },
     ]);
+  });
+
+  it('requires an account continuation for an alias credential on direct and virtual application requests', async () => {
+    const { app, request } = createHarness({ aliasCredential: 'relay-alias' });
+    const direct = await request('/api/projects', {
+      headers: { Authorization: 'Bearer relay-alias' },
+    });
+    expect(direct.status).toBe(401);
+    expect(await direct.json()).toEqual({
+      error: { code: 'account_authentication_required' },
+    });
+    const withCookieOnly = await request('/api/projects', {
+      headers: {
+        Authorization: 'Bearer relay-alias',
+        Cookie: 'station_session=ordinary-provider-cookie',
+      },
+    });
+    expect(withCookieOnly.status).toBe(401);
+
+    const { VirtualApplicationIngress } = await import(
+      '../../services/connections/virtual-application.js'
+    );
+    const ingress = new VirtualApplicationIngress(ALLOWED_ORIGIN);
+    ingress.bind({ fetch: (input) => app.fetch(input) });
+    const application = ingress.activate();
+    const viaVirtualApplication = await application.fetch(
+      new Request(`${ALLOWED_ORIGIN}/api/projects`, {
+        headers: { Authorization: 'Bearer relay-alias' },
+      }),
+    );
+    expect(viaVirtualApplication.status).toBe(401);
+    expect(await viaVirtualApplication.json()).toEqual({
+      error: { code: 'account_authentication_required' },
+    });
+
+    const withAccount = await request('/api/projects', {
+      headers: {
+        Authorization: 'Bearer relay-alias',
+        [APPLICATION_SESSION_HEADER]: 'continuation',
+        [APPLICATION_SESSION_PROOF_HEADER]: 'proof',
+      },
+    });
+    expect(withAccount.status).toBe(200);
+    ingress.stop();
   });
 
   it('classifies direct activity peers without treating a CGNAT address as verified tailnet', () => {

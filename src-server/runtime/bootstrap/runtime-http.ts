@@ -675,6 +675,20 @@ function configureRuntimeSecurity(
         })(),
       }));
     if (valid) {
+      const aliasId = security.resolveCredentialAliasId?.(credential!);
+      if (
+        aliasId !== undefined &&
+        (!c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
+          !c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER) ||
+          security.deploymentAuthentication?.current(c.req.raw)?.kind !==
+            'authenticated')
+      ) {
+        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+        return c.json(
+          { error: { code: 'account_authentication_required' } },
+          401,
+        );
+      }
       const authority = security.resolveCredentialAuthority?.(credential!);
       const deviceId = security.resolveCredentialDeviceId?.(credential!);
       const pairingSource = security.resolvePairingSource?.(credential!);

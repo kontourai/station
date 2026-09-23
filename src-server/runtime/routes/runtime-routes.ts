@@ -909,6 +909,10 @@ export function configureRuntimeRoutes(
           : undefined,
     resolveCredentialDeviceId: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.id,
+    resolveCredentialAliasId: (credential: string) =>
+      context.environmentSecurityService.devicePairing.credentialAliasId(
+        credential,
+      ),
     resolvePairingSource: (credential: string) =>
       context.environmentSecurityService.identifyDevice(credential)?.source,
     resolveCredentialLocality: (credential: string) =>

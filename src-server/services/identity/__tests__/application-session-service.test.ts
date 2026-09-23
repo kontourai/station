@@ -9,6 +9,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
+import { VirtualApplicationIngress } from '../../connections/virtual-application.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
 import { loadLocalAccounts } from '../local-account-runtime.js';
@@ -63,6 +64,7 @@ async function harness() {
     stationId,
     accounts,
     (value) => pairing.identifyDevice(value),
+    (value) => pairing.credentialAliasId(value),
   )!;
   const app = () => {
     const result = new Hono();
@@ -125,6 +127,7 @@ async function harness() {
     pairing,
     password,
     accounts: () => accounts,
+    application: () => currentApp,
     request: (path: string, init: RequestInit) =>
       currentApp.request(origin + path, init),
     async restart() {
@@ -136,6 +139,7 @@ async function harness() {
         stationId,
         accounts,
         (value) => pairing.identifyDevice(value),
+        (value) => pairing.credentialAliasId(value),
       )!;
       currentApp = app();
     },
@@ -143,6 +147,131 @@ async function harness() {
 }
 
 describe('Device-bound continuation persistence and negative admission', () => {
+  test('an alias continuation is bound to its exact alias and alias bearers alone are denied over HTTP and VAI', async () => {
+    const h = await harness();
+    const login = await h.accounts().service.handle(
+      new Request(`${origin}/api/account-auth/sign-in/username`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: h.password }),
+      }),
+      '/sign-in/username',
+    );
+    const cookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
+    const firstAlias = h.pairing.issueRelayCredentialAlias(
+      h.device.credential,
+      h.device.device.id,
+    );
+    const secondAlias = h.pairing.issueRelayCredentialAlias(
+      h.device.credential,
+      h.device.device.id,
+    );
+    const firstClient = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {
+        credential: firstAlias.credential,
+        credentialOrigin: origin,
+        headers: { Cookie: cookie },
+      },
+      await createApplicationSessionKey(),
+    );
+    const secondClient = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {
+        credential: secondAlias.credential,
+        credentialOrigin: origin,
+        headers: { Cookie: cookie },
+      },
+      await createApplicationSessionKey(),
+    );
+    const firstSession = await firstClient.establish();
+    const secondSession = await secondClient.establish();
+    const proof = async (
+      client: ApplicationSessionClient,
+      session: Awaited<ReturnType<ApplicationSessionClient['establish']>>,
+      credential: string,
+    ) => ({
+      ...(await client.headers(session, {
+        method: 'GET',
+        url: `${origin}/resource`,
+      })),
+      Authorization: `Bearer ${credential}`,
+    });
+    const firstHeaders = await proof(
+      firstClient,
+      firstSession,
+      firstAlias.credential,
+    );
+    expect(
+      (await h.request('/resource', { headers: firstHeaders })).status,
+    ).toBe(200);
+
+    expect(
+      (
+        await h.request('/resource', {
+          headers: { Authorization: `Bearer ${firstAlias.credential}` },
+        })
+      ).status,
+    ).toBe(401);
+    const ingress = new VirtualApplicationIngress(origin);
+    ingress.bind({ fetch: (request) => h.application().fetch(request) });
+    const virtual = ingress.activate();
+    expect(
+      (
+        await virtual.fetch(
+          new Request(`${origin}/resource`, {
+            headers: { Authorization: `Bearer ${firstAlias.credential}` },
+          }),
+        )
+      ).status,
+    ).toBe(401);
+    ingress.stop();
+
+    expect(
+      (
+        await h.request('/resource', {
+          headers: {
+            ...(await proof(firstClient, firstSession, firstAlias.credential)),
+            Authorization: `Bearer ${secondAlias.credential}`,
+          },
+        })
+      ).status,
+    ).toBe(401);
+
+    expect(
+      h.pairing.revokeRelayCredentialAlias(
+        h.device.device.id,
+        firstAlias.aliasId,
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await h.request('/resource', {
+          headers: await proof(
+            firstClient,
+            firstSession,
+            firstAlias.credential,
+          ),
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await h.request('/resource', {
+          headers: await proof(
+            secondClient,
+            secondSession,
+            secondAlias.credential,
+          ),
+        })
+      ).status,
+    ).toBe(200);
+  });
+
   test('an account-bound Device accepts only the matching provider account while cookie-only enrollment stays available', async () => {
     const h = await harness();
     const login = await h.accounts().service.handle(

@@ -3302,6 +3302,10 @@ export class StationRuntime {
         this.deploymentAuthentication,
         (credential) =>
           this.environmentSecurityService.identifyDevice(credential),
+        (credential) =>
+          this.environmentSecurityService.devicePairing.credentialAliasId(
+            credential,
+          ),
       );
     }
     const packageProjections = await this.pluginInstallationHost.reconcile();
