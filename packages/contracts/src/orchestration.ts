@@ -553,9 +553,13 @@ export interface ConversationTurnActivity {
   asOfSequence: number;
   /**
    * The open turn of the conversation's CURRENT execution child (the one the
-   * server continues), absent when it has none. An open turn left on an
-   * earlier, retired child is a stuck state — continuation refuses while a
-   * predecessor's turn is active — and is never reported here.
+   * server continues), absent when it has none. An open turn on an earlier,
+   * retired child is never reported here. Continuation, handoff and context
+   * boundaries refuse while a predecessor's turn is active, so on the
+   * product's own paths such a turn is stuck (typically a crash with no
+   * boundary row). Nothing refuses a `sendTurn` addressed directly to a
+   * retired child's thread, though, so an API caller can run a real turn
+   * there that this field will not show.
    */
   openTurn?: {
     turnId: string;

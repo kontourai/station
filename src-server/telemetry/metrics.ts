@@ -913,10 +913,11 @@ export const orchestrationTurnStallDetections = meter.createCounter(
 
 /**
  * #2309: open turns found on a conversation child that is no longer the
- * conversation's current one. Continuation refuses while the predecessor has
- * an active turn, so each count is a stuck turn (an invariant breach), never
- * reported as the conversation running. Counted once per (child, turn), not
- * per read.
+ * conversation's current one, never reported as the conversation running.
+ * Continuation refuses while the predecessor has an active turn, so on the
+ * product's own paths each count is a stuck turn; a `sendTurn` addressed
+ * directly to a retired child's thread (not refused today) also counts here.
+ * Counted once per (child, turn), not per read.
  */
 export const orchestrationConversationActivityStuckChildTurns =
   meter.createCounter(

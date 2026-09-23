@@ -320,10 +320,12 @@ export class ConversationTurnActivityProjection {
   /**
    * An open turn on a child that is no longer the conversation's current one.
    * Continuation, handoff and context boundaries all refuse while the
-   * predecessor has an active turn, so this is a stuck state by construction
-   * (typically a retired child whose crash left no boundary row to recover):
-   * it must not make the conversation read as running. Counted once per
-   * (thread, turn).
+   * predecessor has an active turn, so on the product's own paths this is a
+   * stuck turn (typically a retired child whose crash left no boundary row
+   * to recover). It is not guaranteed stuck: nothing refuses a `sendTurn`
+   * addressed directly to a retired child's thread, so an API caller can
+   * run a real turn there. Either way it must not make the conversation
+   * read as running. Counted once per (thread, turn).
    */
   private countStuckChild(threadId: string, openTurn: { turnId: string }) {
     const key = `${threadId}\u0000${openTurn.turnId}`;
