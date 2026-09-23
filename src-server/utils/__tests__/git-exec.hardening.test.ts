@@ -6,6 +6,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -121,6 +122,32 @@ describe.skipIf(process.platform === 'win32')(
         true,
       );
       rmSync(marker);
+
+      await execGit(['status', '--porcelain'], { cwd: repo });
+      expect(existsSync(marker)).toBe(false);
+    });
+
+    test('a planted post-index-change hook does not run on status', async () => {
+      const repo = initRepo();
+      const marker = join(sandbox(), 'hook-ran');
+      const hook = join(repo, '.git', 'hooks', 'post-index-change');
+      writeFileSync(hook, `#!/bin/sh\ntouch '${marker}'\n`);
+      chmodSync(hook, 0o755);
+      // Same content, new mtime: status refreshes the stat data and, taking
+      // its optional lock, rewrites the index, which runs the hook.
+      const touch = (offset: number) =>
+        utimesSync(
+          join(repo, 'README.md'),
+          new Date(),
+          new Date(Date.now() + offset),
+        );
+      touch(10_000);
+      plainGit(repo, ['status', '--porcelain']);
+      expect(existsSync(marker), 'control: plain git runs the plant').toBe(
+        true,
+      );
+      rmSync(marker);
+      touch(20_000);
 
       await execGit(['status', '--porcelain'], { cwd: repo });
       expect(existsSync(marker)).toBe(false);

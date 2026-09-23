@@ -52,9 +52,15 @@
  *      whose config and hooks nothing here has looked at.
  *    - `GIT_TERMINAL_PROMPT=0` and an EMPTY `GIT_ASKPASS` (git then skips
  *      `core.askPass` as well).
+ *    - `GIT_OPTIONAL_LOCKS=0`: `status` otherwise refreshes and REWRITES the
+ *      index opportunistically, and an index write runs the repository's
+ *      `post-index-change` hook (observed through the Project page's status
+ *      route). Commands that must write the index (`add`, `commit`) still
+ *      do, and still run that hook.
  *
  *    Repository hooks are NOT disabled (owner decision on #2363): read-only
- *    commands run none, and an explicit operator commit runs them exactly as
+ *    commands run none (given `GIT_OPTIONAL_LOCKS=0`), and an explicit
+ *    operator commit runs them exactly as
  *    `git commit` in the operator's terminal would.
  *
  *    `GIT_CONFIG_NOSYSTEM` is deliberately NOT set. The system file is not
@@ -193,6 +199,9 @@ export function hardenedGitEnv(
     GIT_TERMINAL_PROMPT: '0',
     GIT_ASKPASS: '',
     GIT_SSH_COMMAND: SSH_BATCH_COMMAND,
+    // No opportunistic index write, so a read-only `status` never writes
+    // the index and never runs a planted `post-index-change` hook.
+    GIT_OPTIONAL_LOCKS: '0',
     GIT_ALLOW_PROTOCOL: options.allowFileProtocol
       ? 'https:ssh:file'
       : 'https:ssh',
