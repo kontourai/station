@@ -463,11 +463,16 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // A caller with a longer deadline — the supervisor's 10s steady and 45s
   // confirmation probes — says so in READINESS_BUDGET_REQUEST_HEADER (the same
   // literal as the module's exported READINESS_BUDGET_HEADER, repeated because
-  // this source is serialized into a standalone process); the clamp bounds
-  // what an unauthenticated caller can make this proxy hold open.
+  // this source is serialized into a standalone process). The clamp bounds
+  // what an unauthenticated caller can make this proxy hold open: the ceiling
+  // is the largest budget any in-repo caller states (36s, 80% of the
+  // supervisor's 45s confirmation probe) with a little headroom, not a round
+  // number chosen for its own sake. A caller that disconnects releases its
+  // backend check at once (see checkLiveReady), so the ceiling only bounds
+  // callers that stay connected.
   const READINESS_IDENTITY_BUDGET_MS = 2_500;
   const READINESS_IDENTITY_BUDGET_MIN_MS = 100;
-  const READINESS_IDENTITY_BUDGET_MAX_MS = 60_000;
+  const READINESS_IDENTITY_BUDGET_MAX_MS = 40_000;
   const READINESS_BUDGET_REQUEST_HEADER = 'x-station-readiness-budget-ms';
   const securityHeaders = (nonce: string) => ({
     'Content-Security-Policy': [
@@ -831,6 +836,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
   const checkLiveReady = (
     tenantId: string | undefined,
     budgetMs: number,
+    res: import('node:http').ServerResponse,
     callback: (state: 'ready' | 'degraded' | 'unavailable') => void,
   ) => {
     if (!declaredReady()) {
@@ -872,6 +878,12 @@ export function uiRequestHandler(deps: UiServerDeps) {
         let raw = '';
         response.setEncoding('utf8');
         response.on('data', (chunk) => (raw += chunk));
+        // A backend that dies mid-answer is a failed connection, not a slow
+        // one: settle now rather than at the deadline as 'degraded'.
+        response.once('error', () => finish('unavailable'));
+        response.once('close', () => {
+          if (!response.complete) finish('unavailable');
+        });
         response.on('end', () => {
           try {
             const upstreamIdentity = JSON.parse(raw);
@@ -901,6 +913,16 @@ export function uiRequestHandler(deps: UiServerDeps) {
       request.destroy();
     }, budgetMs);
     request.once('error', () => finish('unavailable'));
+    // The caller went away before an answer was written: nobody is waiting
+    // for this check, so release the backend socket and the timer now rather
+    // than holding both until the budget runs out. Same signal, for the same
+    // reason, as `proxyToBackend`'s `res.on('close')` above.
+    res.once('close', () => {
+      if (res.writableEnded || settled) return;
+      settled = true;
+      if (deadline) clearTimeout(deadline);
+      request.destroy();
+    });
     request.end();
   };
   const unavailable = (
@@ -944,7 +966,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
       return;
     }
     if (pathname === '/api/system/readiness') {
-      checkLiveReady(tenantId, readinessBudgetMs(req), (state) => {
+      checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
         if (state === 'unavailable') {
           unavailable(res, false);
           return;
@@ -978,7 +1000,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
       // whole UI because the host is slow is what made a running Station look
       // dead. Serving the shell grants nothing new: API calls are proxied (and
       // bounded) exactly as they are for any other page load.
-      checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, (state) =>
+      checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
         state === 'unavailable'
           ? unavailable(res, true)
           : serve(req, res, tenantId),

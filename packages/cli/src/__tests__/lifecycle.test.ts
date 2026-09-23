@@ -4763,6 +4763,101 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
         status: 'ready',
       });
     }, 15_000);
+
+    it('releases the backend check as soon as the readiness caller disconnects', async () => {
+      const readinessFile = declareReady();
+      let backendClosed!: () => void;
+      const backendSocketClosed = new Promise<void>((r) => (backendClosed = r));
+      await startUpstream((req) => {
+        // Never answers; only the socket's fate is observed.
+        req.socket.once('close', () => backendClosed());
+      });
+      serverModule = await startServer({ readinessFile, identity });
+
+      const controller = new AbortController();
+      const pending = fetch(
+        `http://127.0.0.1:${serverModule.port}/api/system/readiness`,
+        {
+          headers: { 'x-station-readiness-budget-ms': '999999999' },
+          signal: controller.signal,
+        },
+      ).catch(() => undefined);
+      await vi.waitFor(() => expect(upstreamHits).toHaveLength(1));
+      controller.abort();
+      await pending;
+      // Without the release this socket is held for the whole (capped 40s)
+      // budget, past this test's timeout.
+      await backendSocketClosed;
+    }, 15_000);
+
+    it('settles a backend that dies mid-answer as unavailable, not at the deadline as degraded', async () => {
+      const readinessFile = declareReady();
+      await startUpstream((_req, res) => {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Content-Length': '500',
+        });
+        res.write('{"instanceId":"pho');
+        setTimeout(() => res.socket?.destroy(), 20);
+      });
+      serverModule = await startServer({ readinessFile, identity });
+
+      const response = await readiness({
+        'x-station-readiness-budget-ms': '5000',
+      });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
+    }, 15_000);
+
+    describe('the stated budget is clamped', () => {
+      // The deadline timer is the only one whose callback turns `connected`
+      // into 'degraded' (matched without quotes: the test transform rewrites
+      // them); reading its delay pins the clamp without waiting it out.
+      const deadlineDelays = (spy: { mock: { calls: unknown[][] } }) =>
+        spy.mock.calls
+          .filter(([callback]) =>
+            /\bconnected\b.*\bdegraded\b/s.test(String(callback)),
+          )
+          .map(([, delay]) => delay);
+      const budgetFor = async (stated: string) => {
+        const readinessFile = declareReady();
+        await startUpstream(() => {});
+        serverModule = await startServer({ readinessFile, identity });
+        const spy = vi.spyOn(globalThis, 'setTimeout');
+        const controller = new AbortController();
+        try {
+          const pending = fetch(
+            `http://127.0.0.1:${serverModule.port}/api/system/readiness`,
+            {
+              headers: { 'x-station-readiness-budget-ms': stated },
+              signal: controller.signal,
+            },
+          ).catch(() => undefined);
+          await vi.waitFor(() => expect(upstreamHits).toHaveLength(1));
+          const delays = deadlineDelays(spy);
+          controller.abort();
+          await pending;
+          return delays;
+        } finally {
+          spy.mockRestore();
+        }
+      };
+
+      it('caps an oversized budget at 40s', async () => {
+        await expect(budgetFor('999999999')).resolves.toEqual([40_000]);
+      }, 15_000);
+
+      it('raises a tiny budget to the 100ms floor', async () => {
+        await expect(budgetFor('1')).resolves.toEqual([100]);
+      }, 15_000);
+
+      it('ignores a value that is not a whole number of milliseconds', async () => {
+        await expect(budgetFor('1e9')).resolves.toEqual([2_500]);
+      }, 15_000);
+    });
   });
 
   it('station#3752: forwards the BROWSER Host as its own attestation, discarding any client-supplied copy', async () => {
