@@ -1,14 +1,20 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildMuseExecArgs,
+  MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID,
+  MUSE_LAUNCH_RESULT_MAX_CHARS,
   mapMuseFinishReason,
+  museBackgroundTaskRowId,
   observeMuseToolTask,
+  parseMuseLaunchedBackgroundTask,
   parseMuseLine,
   splitMuseLines,
   translateMuseRecord,
 } from '../adapters/muse-adapter-events.js';
 import type { MuseToolTaskBinding } from '../adapters/muse-adapter-types.js';
 import {
+  MUSE_13_BACKGROUND_TASK_ID,
+  MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
   MUSE_13_BASH_CALL_ID,
   MUSE_13_BASH_TOOL_TURN_LINES,
   MUSE_ECHO_COMMAND_ACCEPTED,
@@ -527,5 +533,82 @@ describe('muse 1.3 tool start (#2308, real capture)', () => {
     expect(
       foldToolEffects(lines).out.filter((e) => e.kind === 'started'),
     ).toHaveLength(1);
+  });
+});
+
+describe('parseMuseLaunchedBackgroundTask (#2300)', () => {
+  const liveLaunch = translate(MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES[28]!);
+
+  test('reads the task id from the live workflow launch result', () => {
+    expect(liveLaunch).toMatchObject({
+      kind: 'tool-completed',
+      toolName: 'workflow',
+    });
+    if (liveLaunch.kind !== 'tool-completed') throw new Error('unreachable');
+    expect(
+      parseMuseLaunchedBackgroundTask(liveLaunch.toolName, liveLaunch.output),
+    ).toBe(MUSE_13_BACKGROUND_TASK_ID);
+    expect(museBackgroundTaskRowId(MUSE_13_BACKGROUND_TASK_ID)).toBe(
+      `muse-task:${MUSE_13_BACKGROUND_TASK_ID}`,
+    );
+  });
+
+  test('announces nothing for any other tool, status, shape, or size', () => {
+    const launched = (extra: Record<string, unknown> = {}) =>
+      JSON.stringify({ status: 'launched', taskId: 'task-1', ...extra });
+    expect(parseMuseLaunchedBackgroundTask('workflow', launched())).toBe(
+      'task-1',
+    );
+    expect(parseMuseLaunchedBackgroundTask('bash', launched())).toBeNull();
+    expect(parseMuseLaunchedBackgroundTask(null, launched())).toBeNull();
+    expect(parseMuseLaunchedBackgroundTask('workflow', null)).toBeNull();
+    for (const text of [
+      '',
+      'not json',
+      '{"status":"launched","taskId":',
+      '[]',
+      'null',
+      JSON.stringify({ status: 'completed', taskId: 'task-1' }),
+      JSON.stringify({ status: 'launched' }),
+      JSON.stringify({ status: 'launched', taskId: 42 }),
+      JSON.stringify({ status: 'launched', taskId: '' }),
+      JSON.stringify({ status: 'launched', taskId: 'a b' }),
+      JSON.stringify({ status: 'launched', taskId: 'x'.repeat(129) }),
+    ]) {
+      expect(
+        parseMuseLaunchedBackgroundTask('workflow', text),
+        text,
+      ).toBeNull();
+    }
+    // The size bound is on the text, whatever it contains.
+    const atBound = launched({
+      padding: 'x'.repeat(
+        MUSE_LAUNCH_RESULT_MAX_CHARS - launched({ padding: '' }).length,
+      ),
+    });
+    expect(atBound.length).toBe(MUSE_LAUNCH_RESULT_MAX_CHARS);
+    expect(parseMuseLaunchedBackgroundTask('workflow', atBound)).toBe('task-1');
+    expect(
+      parseMuseLaunchedBackgroundTask('workflow', `${atBound} `),
+    ).toBeNull();
+  });
+});
+
+describe('background follow-up marker (#2300)', () => {
+  test("only muse's own follow-up command_accepted is surfaced", () => {
+    const followUp = MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES[32]!;
+    expect(followUp).toContain(
+      `"client_id":"${MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID}"`,
+    );
+    expect(translate(followUp)).toEqual({ kind: 'background-follow-up' });
+    // The user's own submission (client_id null) stays ignored.
+    expect(translate(MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES[0]!)).toEqual({
+      kind: 'ignored',
+    });
+    expect(
+      translate(
+        followUp.replace(MUSE_BACKGROUND_FOLLOW_UP_CLIENT_ID, 'someone-else'),
+      ),
+    ).toEqual({ kind: 'ignored' });
   });
 });

@@ -364,6 +364,15 @@
   font-weight: 500;
 }
 
+.app-toolbar__conn-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
 /* archive#3311: the connection surface is self-describing — the state is
    visible text beside the dot, with the identity after it.
    station#4474: `connStateLabel` (HeaderActions.tsx) is one of five strings
@@ -408,11 +417,8 @@
   color: var(--warning-text);
 }
 
-/* #1536 F: the collapsed steady state — connected, one Station, nothing
-   qualifying it. Only the dot renders, so the button needs its own hit target
-   rather than borrowing width from text it no longer has. 44px on every
-   pointer, not only touch: this is the smallest control in the row and the one
-   most often aimed at in a hurry. */
+/* #1536 F / #2406: the steady state stays compact, with a visible Station
+   label so the status dot is an understood control. */
 .app-toolbar__conn--compact {
   /* #1552 D1: the same 32px as its three siblings. It was 44px on every pointer,
      which made the smallest-content control the LARGEST box in the row — the one
@@ -420,31 +426,17 @@
      is a WCAG 2.5.5 obligation: the mobile block below sizes every
      `.app-toolbar__icon-btn`, this one included, and it is what that floor is
      for. */
+  gap: var(--space-2);
   justify-content: center;
 }
 
-/* The bundled-server lifetime note ("App only"), which QUALIFIES the identity
-   rather than replacing it — it describes the locally supervised server, not
-   which Station the connection points at (station#3311 review). Muted so the
-   identity stays the emphasis. */
-.app-toolbar__conn-note {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-  font-size: var(--text-base);
-}
-
-/* Presentational "State · Name · Note" separators; kept out of the text
+/* Presentational "State · Name" separators; kept out of the text
    content so the accessible name and tests read clean strings.
    #1536 C3: each is attached to the part BEFORE it and printed only when a
    part actually FOLLOWS, so the dot can never appear with nothing on its
    left. `:has()` cannot see `display: none`, so every breakpoint that hides a
    following part suppresses these too — see the mobile block below. */
-.app-toolbar__conn-state:has(+ .app-toolbar__conn-name)::after,
-.app-toolbar__conn-state:has(+ .app-toolbar__conn-note)::after,
-.app-toolbar__conn-name:has(+ .app-toolbar__conn-note)::after {
+.app-toolbar__conn-state:has(+ .app-toolbar__conn-name)::after {
   content: " · ";
 }
 
@@ -1805,49 +1797,33 @@
   .app-toolbar__icon-btn {
     min-width: 44px;
     min-height: 44px;
-    /* station#1401: the 44px above is a FLOOR, so every glyph-only control
-       carrying this class is 44 whatever its padding — trimming theirs changes
-       nothing, in this row or in the chat dock's mobile header, which uses the
-       same class for three glyph buttons. The content-sized member this
-       reclaims from is the notifications button when it carries a badge: the
-       connection chip is dot-only here (see below), so its width is already
-       the floor. The vertical 6px -> 4px is inert for the same reason
-       `min-height` floors it, and the dock's own connection chip overrides
-       padding entirely (`index.css`, `.chat-dock__mobile-conn`). */
+    /* station#1401: the 44px above is a floor, so glyph-only controls stay
+       touchable regardless of their padding. The connection chip is slightly
+       wider to fit its persistent Station label. The vertical 6px -> 4px is
+       inert for the same reason `min-height` floors it, and the dock's own
+       connection chip overrides padding entirely (`index.css`,
+       `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
+  /* #2406: the healthy chip names the Station. Reserve that label's width in
+     every state so a connection change cannot move neighboring controls. */
+  .app-toolbar__conn {
+    box-sizing: border-box;
+    width: 136px;
+    min-width: 136px;
+    flex: 0 0 136px;
+  }
   .app-toolbar__conn-name,
-  .app-toolbar__conn-note,
   .app-toolbar__conn-state {
     display: none;
   }
-  /* The toolbar chip is dot-only in EVERY state on mobile — not just
-     `connected`/`idle` (archive#3311's old rule). Every state that needs a
-     decision already announces itself in the banner layer with its remedy
-     beside it (credential, pairing-failure, pending-approval, offline
-     decision banners), so the chip's text restated the banner's sentence in
-     the row that runs out of width first. The words are not gone: they stay
-     in the chip's accessible name and desktop tooltip, and the dot keeps
-     carrying the state by shape (`ConnectionStatusDot`).
-     *
-     * DISCLOSED TRADEOFF (reverses archive#3297's carrier for one case):
-     * transient reachability — a failing probe that is not a decision —
-     * deliberately banners nothing, so there the dot is the only visible
-     * signal and the remedy (tap the chip, which rechecks and opens
-     * Stations) is discoverable only by tapping. That is the price of the
-     * uncluttered row; the dot's alert shape plus the tap target is what
-     * remains of it.
-     *
-     * With no label in any state, the old label rules retired with it:
-     * the 85px `max-width` bound (#1401/#1424), the `:has()` separator
-     * suppressions (a `::after` on a `display: none` element renders
-     * nothing), and the 374px label-drop breakpoint (#1132). The chip is a
-     * fixed 44px touch target now, so there is no label width left to bound
-     * and no reflow left for the chip to cause at this breakpoint —
-     * station#4474's contract holds here by construction rather than by
-     * reservation. `index.css` carries the same breakpoint and the same
-     * `display: none` for the identity; this file owns the chip's own text
-     * (station#3766). */
+  /* Hide the verbose state/name spans on mobile. Healthy state still shows
+     `Station · <saved name>` in the separately bounded compact label; the
+     fixed 136px reservation keeps neighboring controls still as health
+     changes. The accessible name carries the full status and profile label,
+     while attention states keep their repair/waiting banners and controls.
+     Tapping this control opens the Station manager with the complete saved
+     name in its selected row. */
 
   .composer-popover-overlay {
     justify-content: stretch;
