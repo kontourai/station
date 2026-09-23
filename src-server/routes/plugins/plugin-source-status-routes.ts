@@ -73,7 +73,14 @@ export function createPluginSourceStatusRoutes(
       return c.json({ sources });
     } catch (error) {
       if (error instanceof PluginInstallationsUnavailableError)
-        return c.json({ success: false, error: error.message }, 503);
+        return c.json(
+          {
+            success: false,
+            error:
+              'Plugin installations are unavailable; reload Plugins and retry.',
+          },
+          503,
+        );
       deps.logger.warn('Plugin source status failed', {
         error: errorMessage(error),
       });
