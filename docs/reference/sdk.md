@@ -1049,6 +1049,18 @@ const accountHeaders = await accounts.headers(continuation, { method: 'GET', url
 // accounts.renew(continuation) preserves authorityKey; accounts.revoke signs out.
 ```
 
+For a browser already signed in on the Station's same HTTPS origin, call
+`accounts.adoptCookies()` with a key from `createApplicationSessionKey()`. The
+browser sends its existing `__Host-station-device` and provider cookies through
+`credentials: 'same-origin'`; the SDK never reads or copies cookie values into
+JavaScript. Adoption returns a short-lived account continuation and a bounded,
+read-only alias for that same approved Device. Keep the alias with its
+continuation and send both on each protected request.
+`accounts.revokeAlias(alias, continuation)` revokes that alias only and leaves
+the provider account session and parent Device grant intact. Cookie adoption
+requires direct same-origin HTTPS; a virtual transport has no cookie authority
+and cannot run this step.
+
 Calling `establish()` without credentials uses native HTTPS cookie exchange;
 virtual-only login requires its separately advertised provider capability. The
 relay forwards headers/body and respects response backpressure; it does not own

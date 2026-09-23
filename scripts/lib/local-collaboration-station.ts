@@ -60,6 +60,8 @@ interface StationInput {
   blockedProbePort: number;
   probeNonce: string;
   port?: number;
+  /** Public HTTPS origin when a test-owned TLS proxy fronts the HTTP listener. */
+  publicOrigin?: string;
   virtualApplicationOrigin?: string;
 }
 
@@ -80,6 +82,14 @@ export async function startAccountLabStation(
       )
     ).stdout.trim();
     assert.match(sourceSha, /^[a-f0-9]{40}$/);
+    const sourceTreeClean =
+      (
+        await runLabCommand(
+          'git',
+          ['status', '--porcelain'],
+          resolve(import.meta.dirname, '../..'),
+        )
+      ).stdout.trim().length === 0;
     const port = input.port ?? (await allocateFreePortBlock('127.0.0.1'));
     if (input.port) {
       const held = await reserveContiguousBlock('127.0.0.1', port, 4);
@@ -97,7 +107,8 @@ export async function startAccountLabStation(
     assert(
       ![3000, 3141].some((reserved) => reserved >= port && reserved < port + 4),
     );
-    const base = `http://${input.hostname}:${port}`;
+    const listenerBase = `http://${input.hostname}:${port}`;
+    const base = input.publicOrigin ?? listenerBase;
     const home = join(input.directory, 'home');
     const osHome = join(input.directory, 'os-home');
     const temp = join(input.directory, 'tmp');
@@ -281,7 +292,7 @@ export async function startAccountLabStation(
       join(home, 'security', 'environment.json'),
     );
     const nonce = createStationProofNonce();
-    const proof = await fetch(`${base}${PUBLIC_STATION_PROOF_PATH}`, {
+    const proof = await fetch(`${listenerBase}${PUBLIC_STATION_PROOF_PATH}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -301,7 +312,7 @@ export async function startAccountLabStation(
       }),
       true,
     );
-    const response = await fetch(`${base}/api/system/identity`, {
+    const response = await fetch(`${listenerBase}/api/system/identity`, {
       headers: { Authorization: `Bearer ${security.credential}` },
       redirect: 'error',
       signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
@@ -319,6 +330,9 @@ export async function startAccountLabStation(
     assert.equal(identity.shaSource, 'checkout');
     return {
       base,
+      listenerBase,
+      sourceSha,
+      sourceTreeClean,
       home,
       port,
       bootId,

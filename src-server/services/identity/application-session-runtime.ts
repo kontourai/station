@@ -1,7 +1,10 @@
 import { join } from 'node:path';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
-import { ApplicationSessionService } from './application-session-service.js';
+import {
+  type ApplicationSessionCookieAdoptionCallbacks,
+  ApplicationSessionService,
+} from './application-session-service.js';
 import type { LoadedDeploymentAuthentication } from './deployment-authentication-loader.js';
 
 export function createApplicationSessionRuntime(
@@ -11,6 +14,7 @@ export function createApplicationSessionRuntime(
   identifyDevice: (credential: string) => PairedDevice | null,
   credentialAliasId: (credential: string) => string | undefined = () =>
     undefined,
+  adoption?: ApplicationSessionCookieAdoptionCallbacks,
 ) {
   if (!authentication.service.sessionReferenceCapabilities().verify)
     return undefined;
@@ -28,6 +32,7 @@ export function createApplicationSessionRuntime(
       authentication.allowedBrowserOrigins,
       Date.now,
       credentialAliasId,
+      adoption,
     );
     authentication.service.installContinuationResolver(service);
     return service;

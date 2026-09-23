@@ -680,8 +680,9 @@ function configureRuntimeSecurity(
         aliasId !== undefined &&
         (!c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
           !c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER) ||
-          security.deploymentAuthentication?.current(c.req.raw)?.kind !==
-            'authenticated')
+          (!accountOperation &&
+            security.deploymentAuthentication?.current(c.req.raw)?.kind !==
+              'authenticated'))
       ) {
         c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
         return c.json(
@@ -1003,6 +1004,21 @@ export function parseDeviceSessionCookie(
     matches.push(candidate);
   }
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Cookie-adoption is an HTTPS browser ceremony; reject loopback's cleartext cookie name. */
+export function parseSecureDeviceSessionCookie(
+  value: string | undefined,
+): string | undefined {
+  if (!value || value.length > 16 * 1024) return undefined;
+  const hasSecureName = value.split(';').some((segment) => {
+    const separator = segment.indexOf('=');
+    return (
+      separator > 0 &&
+      segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE
+    );
+  });
+  return hasSecureName ? parseDeviceSessionCookie(value) : undefined;
 }
 
 function hasCredentialQuery(url: string): boolean {

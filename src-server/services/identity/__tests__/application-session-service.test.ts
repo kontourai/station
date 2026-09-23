@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
 import {
   ApplicationSessionClient,
@@ -9,6 +11,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
+import { parseSecureDeviceSessionCookie } from '../../../runtime/bootstrap/runtime-http.js';
 import { VirtualApplicationIngress } from '../../connections/virtual-application.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
@@ -26,7 +29,7 @@ afterEach(async () => {
 async function harness() {
   const home = await mkdtemp(join(tmpdir(), 'station-application-session-'));
   await mkdir(join(home, 'security'), { mode: 0o700 });
-  const pairing = new DevicePairingService({
+  let pairing = new DevicePairingService({
     homeDir: home,
     environmentId: stationId,
   });
@@ -59,12 +62,32 @@ async function harness() {
   const host = { homeDirectory: home, stationId };
   const enrollment = { mayRegister: async () => true };
   let accounts = await loadLocalAccounts(configuration, host, enrollment);
+  let browserCookieJar = '';
+  let lastIssuedAliasCredential: string | undefined;
   let sessions = createApplicationSessionRuntime(
     home,
     stationId,
     accounts,
     (value) => pairing.identifyDevice(value),
     (value) => pairing.credentialAliasId(value),
+    {
+      readSecureDeviceCookie: (request) =>
+        parseSecureDeviceSessionCookie(
+          request.headers.get('cookie') ?? undefined,
+        ),
+      issueAlias: (parentCredential, deviceId, aliasId) => {
+        const alias = pairing.issueRelayCredentialAlias(
+          parentCredential,
+          deviceId,
+          undefined,
+          aliasId,
+        );
+        lastIssuedAliasCredential = alias.credential;
+        return alias;
+      },
+      revokeAlias: (deviceId, aliasId) =>
+        pairing.revokeRelayCredentialAlias(deviceId, aliasId),
+    },
   )!;
   const app = () => {
     const result = new Hono();
@@ -88,10 +111,15 @@ async function harness() {
     return result;
   };
   let currentApp = app();
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string, init?: RequestInit) => currentApp.request(url, init)),
-  );
+  const browserFetch = vi.fn((url: string, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    if (init?.credentials === 'same-origin') {
+      headers.set('Cookie', browserCookieJar);
+      headers.set('Origin', origin);
+    }
+    return currentApp.request(url, { ...init, headers });
+  });
+  vi.stubGlobal('fetch', browserFetch);
   const password = 'Application session fixture password';
   const signup = await accounts.service.handle(
     new Request(`${origin}/api/account-auth/sign-up/username`, {
@@ -124,15 +152,27 @@ async function harness() {
     key,
     device,
     second,
-    pairing,
+    get pairing() {
+      return pairing;
+    },
     password,
     accounts: () => accounts,
     application: () => currentApp,
+    home,
+    browserFetch,
+    lastAliasCredential: () => lastIssuedAliasCredential,
+    setBrowserCookieJar(value: string) {
+      browserCookieJar = value;
+    },
     request: (path: string, init: RequestInit) =>
       currentApp.request(origin + path, init),
     async restart() {
       sessions.close();
       await accounts.service.close();
+      pairing = new DevicePairingService({
+        homeDir: home,
+        environmentId: stationId,
+      });
       accounts = await loadLocalAccounts(configuration, host, enrollment);
       sessions = createApplicationSessionRuntime(
         home,
@@ -140,6 +180,24 @@ async function harness() {
         accounts,
         (value) => pairing.identifyDevice(value),
         (value) => pairing.credentialAliasId(value),
+        {
+          readSecureDeviceCookie: (request) =>
+            parseSecureDeviceSessionCookie(
+              request.headers.get('cookie') ?? undefined,
+            ),
+          issueAlias: (parentCredential, deviceId, aliasId) => {
+            const alias = pairing.issueRelayCredentialAlias(
+              parentCredential,
+              deviceId,
+              undefined,
+              aliasId,
+            );
+            lastIssuedAliasCredential = alias.credential;
+            return alias;
+          },
+          revokeAlias: (deviceId, aliasId) =>
+            pairing.revokeRelayCredentialAlias(deviceId, aliasId),
+        },
       )!;
       currentApp = app();
     },
@@ -147,6 +205,298 @@ async function harness() {
 }
 
 describe('Device-bound continuation persistence and negative admission', () => {
+  test('compensates an alias when continuation persistence faults after mint', async () => {
+    const h = await harness();
+    const login = await h.accounts().service.handle(
+      new Request(`${origin}/api/account-auth/sign-in/username`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: h.password }),
+      }),
+      '/sign-in/username',
+    );
+    const accountCookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
+    h.setBrowserCookieJar(
+      `__Host-station-device=${h.device.credential}; ${accountCookie}`,
+    );
+    const browser = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {},
+      await createApplicationSessionKey(),
+    );
+    const database = new DatabaseSync(
+      join(h.home, 'authentication', 'application-sessions.sqlite'),
+    );
+    database.exec(`CREATE TRIGGER injected_adoption_insert_failure
+      BEFORE INSERT ON application_sessions
+      BEGIN SELECT RAISE(ABORT, 'injected adoption persistence failure'); END;`);
+    await expect(browser.adoptCookies()).rejects.toMatchObject({ status: 503 });
+    const orphan = h.lastAliasCredential();
+    expect(orphan).toBeDefined();
+    expect(h.pairing.credentialAliasId(orphan!)).toBeUndefined();
+    expect(h.pairing.verifyCredential(h.device.credential)).toBe(true);
+    expect(
+      database
+        .prepare('SELECT count(*) AS n FROM application_session_adoptions')
+        .get()?.n,
+    ).toBe(0);
+    expect(
+      database.prepare('SELECT count(*) AS n FROM application_sessions').get()
+        ?.n,
+    ).toBe(0);
+    database.exec('DROP TRIGGER injected_adoption_insert_failure');
+    database.close();
+
+    const adoption = await browser.adoptCookies();
+    expect(h.pairing.credentialAliasId(adoption.aliasCredential)).toBe(
+      adoption.aliasId,
+    );
+  });
+
+  test('startup revokes prepared and undelivered aliases left by an interrupted adoption', async () => {
+    const h = await harness();
+    const deviceId = h.device.device.id;
+    const preparedId = randomUUID();
+    const issuedId = randomUUID();
+    const preparedAlias = h.pairing.issueRelayCredentialAlias(
+      h.device.credential,
+      deviceId,
+      undefined,
+      randomUUID(),
+    );
+    const issuedAlias = h.pairing.issueRelayCredentialAlias(
+      h.device.credential,
+      deviceId,
+      undefined,
+      randomUUID(),
+    );
+    const database = new DatabaseSync(
+      join(h.home, 'authentication', 'application-sessions.sqlite'),
+    );
+    const expiry = Date.now() + 24 * 60 * 60_000;
+    const adoptionInsert = database.prepare(
+      'INSERT INTO application_session_adoptions VALUES (?,?,?,?,?)',
+    );
+    adoptionInsert.run(
+      preparedId,
+      deviceId,
+      preparedAlias.aliasId,
+      expiry,
+      'prepared',
+    );
+    adoptionInsert.run(
+      issuedId,
+      deviceId,
+      issuedAlias.aliasId,
+      expiry,
+      'issued',
+    );
+    const unactivatedHash = 'u'.repeat(43);
+    database
+      .prepare('INSERT INTO application_sessions VALUES (?,?,?)')
+      .run(unactivatedHash, expiry, JSON.stringify({ adoptionId: issuedId }));
+    database
+      .prepare('INSERT INTO application_session_proofs VALUES (?,?,?)')
+      .run(unactivatedHash, 'p'.repeat(22), expiry);
+    database.close();
+
+    await h.restart();
+    expect(
+      h.pairing.credentialAliasId(preparedAlias.credential),
+    ).toBeUndefined();
+    expect(h.pairing.credentialAliasId(issuedAlias.credential)).toBeUndefined();
+    expect(h.pairing.verifyCredential(h.device.credential)).toBe(true);
+    const recovered = new DatabaseSync(
+      join(h.home, 'authentication', 'application-sessions.sqlite'),
+    );
+    expect(
+      recovered
+        .prepare('SELECT count(*) AS n FROM application_session_adoptions')
+        .get()?.n,
+    ).toBe(0);
+    expect(
+      recovered.prepare('SELECT count(*) AS n FROM application_sessions').get()
+        ?.n,
+    ).toBe(0);
+    expect(
+      recovered
+        .prepare('SELECT count(*) AS n FROM application_session_proofs')
+        .get()?.n,
+    ).toBe(0);
+    recovered.close();
+  });
+
+  test('adopts existing HTTPS Device and local-account cookies, survives restart, and revokes only the alias', async () => {
+    const h = await harness();
+    const login = await h.accounts().service.handle(
+      new Request(`${origin}/api/account-auth/sign-in/username`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: h.password }),
+      }),
+      '/sign-in/username',
+    );
+    const accountCookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
+    const cookieJar = `__Host-station-device=${h.device.credential}; ${accountCookie}`;
+    h.setBrowserCookieJar(cookieJar);
+    const browserKey = await createApplicationSessionKey();
+    expect(browserKey.privateKey.extractable).toBe(false);
+    const browser = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {},
+      browserKey,
+    );
+    await expect(browser.capabilities()).resolves.toMatchObject({
+      cookieAdoption: true,
+      stationId,
+      requestOrigin: origin,
+    });
+    const wrongOrigin = await h.request(
+      '/api/account-auth/continuations/adopt-cookie/challenge',
+      {
+        method: 'POST',
+        headers: {
+          Origin: alternateOrigin,
+          Cookie: `__Host-station-device=${h.device.credential}; ${accountCookie}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ publicKey: browserKey.publicKey }),
+      },
+    );
+    expect(wrongOrigin.status).toBe(403);
+    const insecureDeviceCookie = await h.request(
+      '/api/account-auth/continuations/adopt-cookie/challenge',
+      {
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          Cookie: `station-device=${h.device.credential}; ${accountCookie}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ publicKey: browserKey.publicKey }),
+      },
+    );
+    expect(insecureDeviceCookie.status).toBe(401);
+    const devicesBefore = h.pairing.listDevices().map((device) => device.id);
+    const adoption = await browser.adoptCookies();
+    expect(adoption).toMatchObject({
+      version: 'station.application-session/v1',
+      continuation: {
+        stationId,
+        clientOrigin: origin,
+        deviceId: h.device.device.id,
+      },
+    });
+    expect(h.pairing.credentialAliasId(adoption.aliasCredential)).toBe(
+      adoption.aliasId,
+    );
+    expect(h.pairing.listDevices().map((device) => device.id)).toEqual(
+      devicesBefore,
+    );
+    expect(JSON.stringify(adoption)).not.toContain(accountCookie);
+    expect(JSON.stringify(adoption)).not.toContain(h.device.credential);
+    const adoptionCalls = h.browserFetch.mock.calls.filter(([url]) =>
+      url.includes('/adopt-cookie/'),
+    );
+    expect(adoptionCalls).toHaveLength(2);
+    for (const [, init] of adoptionCalls) {
+      expect(init?.credentials).toBe('same-origin');
+      expect(new Headers(init?.headers).has('Cookie')).toBe(false);
+      expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+    }
+
+    const relay = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      {
+        credential: adoption.aliasCredential,
+        credentialOrigin: origin,
+      },
+      browserKey,
+    );
+    const requestHeaders = await relay.headers(adoption.continuation, {
+      method: 'GET',
+      url: `${origin}/resource`,
+    });
+    expect(
+      (
+        await h.request('/resource', {
+          headers: {
+            ...requestHeaders,
+            Authorization: `Bearer ${adoption.aliasCredential}`,
+          },
+        })
+      ).status,
+    ).toBe(200);
+
+    const ingress = new VirtualApplicationIngress(origin);
+    ingress.bind({ fetch: (request) => h.application().fetch(request) });
+    const virtual = ingress.activate();
+    const cookieAttempt = await virtual.fetch(
+      new Request(
+        `${origin}/api/account-auth/continuations/adopt-cookie/challenge`,
+        {
+          method: 'POST',
+          headers: {
+            Origin: origin,
+            Cookie: cookieJar,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ publicKey: browserKey.publicKey }),
+        },
+      ),
+    );
+    expect(cookieAttempt.status).toBe(400);
+    const cookieFreeAttempt = await virtual.fetch(
+      new Request(
+        `${origin}/api/account-auth/continuations/adopt-cookie/challenge`,
+        {
+          method: 'POST',
+          headers: { Origin: origin, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publicKey: browserKey.publicKey }),
+        },
+      ),
+    );
+    expect(cookieFreeAttempt.status).toBe(401);
+    ingress.stop();
+
+    await h.restart();
+    const afterRestartHeaders = await relay.headers(adoption.continuation, {
+      method: 'GET',
+      url: `${origin}/resource`,
+    });
+    expect(
+      (
+        await h.request('/resource', {
+          headers: {
+            ...afterRestartHeaders,
+            Authorization: `Bearer ${adoption.aliasCredential}`,
+          },
+        })
+      ).status,
+    ).toBe(200);
+
+    await browser.revokeAlias(adoption.aliasCredential, adoption.continuation);
+    expect(
+      h.pairing.credentialAliasId(adoption.aliasCredential),
+    ).toBeUndefined();
+    expect(h.pairing.verifyCredential(h.device.credential)).toBe(true);
+    expect(
+      (
+        await h.accounts().service.authenticate(
+          new Request(`${origin}/api/account-auth/session`, {
+            headers: { Cookie: accountCookie },
+          }),
+        )
+      ).kind,
+    ).toBe('authenticated');
+  });
+
   test('an alias continuation is bound to its exact alias and alias bearers alone are denied over HTTP and VAI', async () => {
     const h = await harness();
     const login = await h.accounts().service.handle(

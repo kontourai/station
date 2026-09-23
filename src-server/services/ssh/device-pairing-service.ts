@@ -1770,10 +1770,12 @@ export class DevicePairingService {
     parentCredential: string,
     expectedDeviceId: string,
     ttlMs = MAX_RELAY_CREDENTIAL_ALIAS_TTL_MS,
+    requestedAliasId: string = randomUUID(),
   ): RelayCredentialAliasIssue {
     if (
       !BASE64URL_32_PATTERN.test(parentCredential) ||
       !CLIENT_INSTANCE_ID_PATTERN.test(expectedDeviceId) ||
+      !CLIENT_INSTANCE_ID_PATTERN.test(requestedAliasId) ||
       !Number.isSafeInteger(ttlMs) ||
       ttlMs < 1 ||
       ttlMs > MAX_RELAY_CREDENTIAL_ALIAS_TTL_MS
@@ -1830,7 +1832,15 @@ export class DevicePairingService {
       )
     )
       throw new DevicePairingError('invalid_request');
-    const aliasId = randomUUID();
+    if (
+      nextRegistry.devices.some((candidate) =>
+        candidate.credentialAliases?.some(
+          (alias) => alias.id === requestedAliasId,
+        ),
+      )
+    )
+      throw new DevicePairingError('invalid_request');
+    const aliasId = requestedAliasId;
     const expiresAt = now + ttlMs;
     device.credentialAliases = [
       ...activeAliases,

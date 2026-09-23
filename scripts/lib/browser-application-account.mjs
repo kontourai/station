@@ -155,7 +155,7 @@ export async function browserRequestBoundApplicationDevice(offer) {
     proof: offer.proof,
     deviceName: 'Bound encrypted account lab browser',
   };
-  const url = state.input.apiBase + '/.well-known/station/v1/pairing/request';
+  const url = `${state.input.apiBase}/.well-known/station/v1/pairing/request`;
   const headers = await state.client.headers(state.continuation, {
     method: 'POST',
     url,
@@ -229,4 +229,230 @@ export async function browserLoginApplicationAccountAgain() {
 export function browserStopApplicationAccount() {
   window.stationApplicationAccount?.lifetime.abort();
   window.stationApplicationChannel.setClientCredentialResolver(undefined);
+}
+
+export function browserCookieAdoptionOriginState() {
+  return { secureContext: window.isSecureContext, origin: location.origin };
+}
+
+export function browserCookieAdoptionSecrets() {
+  return window.stationCookieAdoptions.map((state) => state.aliasCredential);
+}
+
+/** Pair the HTTPS browser itself and let Station install the real HttpOnly Secure Device cookie. */
+export async function browserRequestCookieDevice(input) {
+  if (!window.isSecureContext || location.origin !== input.apiBase)
+    throw new Error(
+      'Device cookie pairing requires the same secure Station origin',
+    );
+  const response = await fetch(`${input.apiBase}${input.requestPath}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    mode: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      offerId: input.offerId,
+      proof: input.proof,
+      deviceName: 'HTTPS cookie adoption browser',
+    }),
+    redirect: 'error',
+  });
+  const body = await response.json();
+  if (response.status !== 202 || typeof body.requestId !== 'string')
+    throw new Error(
+      `Cookie browser pairing request failed: ${response.status}`,
+    );
+  return { requestId: body.requestId };
+}
+
+export async function browserExchangeCookieDevice(input) {
+  const response = await fetch(`${input.apiBase}${input.exchangePath}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    mode: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      offerId: input.offerId,
+      proof: input.proof,
+      requestId: input.requestId,
+      delivery: 'browser-cookie',
+    }),
+    redirect: 'error',
+  });
+  const body = await response.json();
+  if (response.status !== 200 || typeof body.device?.id !== 'string')
+    throw new Error(
+      `Cookie browser pairing exchange failed: ${response.status}`,
+    );
+  const visibleNames = document.cookie
+    .split(';')
+    .map((entry) => entry.trim().split('=')[0]);
+  return {
+    deviceId: body.device.id,
+    delivery: body.delivery,
+    setCookieVisibleToJavascript: response.headers.get('set-cookie') !== null,
+    deviceCookieVisibleToJavascript: visibleNames.includes(
+      '__Host-station-device',
+    ),
+  };
+}
+
+/** Sign in through the provider's ordinary HTTPS form; the browser owns the HttpOnly cookie jar. */
+export async function browserSignInForCookieAdoption(input) {
+  const response = await fetch(
+    `${input.apiBase}/api/account-auth${input.signInPath}`,
+    {
+      method: 'POST',
+      credentials: 'same-origin',
+      mode: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: input.username,
+        password: input.password,
+      }),
+      redirect: 'error',
+    },
+  );
+  await response.arrayBuffer();
+  if (response.status !== 200)
+    throw new Error(`Provider HTTPS sign-in failed: ${response.status}`);
+  const visibleNames = document.cookie
+    .split(';')
+    .map((entry) => entry.trim().split('=')[0]);
+  return {
+    setCookieVisibleToJavascript: response.headers.get('set-cookie') !== null,
+    accountCookieVisibleToJavascript: input.sessionCookies.some((name) =>
+      visibleNames.includes(name),
+    ),
+  };
+}
+
+export async function browserAcceptCookieInvitation(input) {
+  const response = await fetch(
+    `${input.apiBase}/api/account-auth/accept-invitation`,
+    {
+      method: 'POST',
+      credentials: 'same-origin',
+      mode: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: input.invitation }),
+      redirect: 'error',
+    },
+  );
+  const body = await response.json();
+  return {
+    status: response.status,
+    grantsDeviceAccess: body.data?.grantsDeviceAccess,
+  };
+}
+
+export async function browserAdoptCookieSessions(input) {
+  if (!window.isSecureContext || location.origin !== input.apiBase)
+    throw new Error('Cookie adoption requires the same secure Station origin');
+  const api = window.stationApplicationChannel;
+  const key = await api.createApplicationSessionKey();
+  if (key.privateKey.extractable)
+    throw new Error('Cookie adoption key must be non-extractable');
+  const client = new api.ApplicationSessionClient(
+    input.apiBase,
+    input.stationId,
+    location.origin,
+    {},
+    key,
+  );
+  const adoption = await client.adoptCookies();
+  const state = {
+    client,
+    continuation: adoption.continuation,
+    aliasCredential: adoption.aliasCredential,
+    aliasId: adoption.aliasId,
+    key,
+    input,
+  };
+  window.stationCookieAdoptions ??= [];
+  window.stationCookieAdoptions.push(state);
+  return {
+    deviceId: adoption.continuation.deviceId,
+    stationId: adoption.continuation.stationId,
+    clientOrigin: adoption.continuation.clientOrigin,
+    aliasId: adoption.aliasId,
+    keyExtractable: key.privateKey.extractable,
+  };
+}
+
+export function browserSelectCookieAdoption(input) {
+  const state = window.stationCookieAdoptions?.[input.index];
+  const transport = window.stationBrokerLabTransport;
+  if (!state || !transport)
+    throw new Error('Missing cookie adoption or admitted VAI transport');
+  const api = window.stationApplicationChannel;
+  api.setClientCredentialResolver(() => ({
+    origin: state.input.apiBase,
+    credential: state.aliasCredential,
+    transport: transport.transport,
+    transportBindingIsCurrent: transport.transportBindingIsCurrent,
+  }));
+  window.stationApplicationAccount = {
+    client: state.client,
+    continuation: state.continuation,
+    lifetime: new AbortController(),
+    input: { apiBase: state.input.apiBase },
+  };
+  return { deviceId: state.continuation.deviceId, aliasId: state.aliasId };
+}
+
+export async function browserReadAliasOnlyDirect(input) {
+  const state = window.stationCookieAdoptions?.[input.index];
+  if (!state) throw new Error('Missing cookie adoption');
+  const response = await fetch(`${state.input.apiBase}${input.path}`, {
+    headers: { Authorization: `Bearer ${state.aliasCredential}` },
+    credentials: 'omit',
+    mode: 'same-origin',
+    redirect: 'error',
+  });
+  const body = await response.text();
+  return { status: response.status, body };
+}
+
+export async function browserRevokeCookieAlias(input) {
+  const state = window.stationCookieAdoptions?.[input.index];
+  if (!state) throw new Error('Missing cookie adoption');
+  await state.client.revokeAlias(state.aliasCredential, state.continuation);
+  return { revoked: true, aliasId: state.aliasId };
+}
+
+export async function browserReadCookieAccountAndParent(input) {
+  const direct = async (path) => {
+    const response = await fetch(`${input.apiBase}${path}`, {
+      credentials: 'same-origin',
+      mode: 'same-origin',
+      redirect: 'error',
+    });
+    return { status: response.status, body: await response.text() };
+  };
+  const [account, parent] = await Promise.all([
+    direct('/api/account-auth/session'),
+    direct('/api/auth/authority'),
+  ]);
+  const accountProjection =
+    account.status === 200 ? JSON.parse(account.body).data : undefined;
+  const visibleNames = document.cookie
+    .split(';')
+    .map((entry) => entry.trim().split('=')[0]);
+  return {
+    account: {
+      status: account.status,
+      principalId: accountProjection?.principal?.id,
+    },
+    parent: {
+      status: parent.status,
+      containsDevice: parent.body.includes(input.deviceId),
+    },
+    deviceCookieVisibleToJavascript: visibleNames.includes(
+      '__Host-station-device',
+    ),
+    accountCookieVisibleToJavascript: input.sessionCookies.some((name) =>
+      visibleNames.includes(name),
+    ),
+  };
 }

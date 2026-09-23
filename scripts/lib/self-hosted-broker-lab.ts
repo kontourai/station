@@ -99,6 +99,41 @@ export async function startSelfHostedBrokerLab(
       open: async () => input.openApplicationChannel(),
       assertCurrent: () => input.signal.throwIfAborted(),
     });
+    let expectedAliasCredential: string | undefined;
+    const applicationObservations: Array<{
+      path: string;
+      method: string;
+      status: number;
+      cookieHeader: boolean;
+      setCookieHeader: boolean;
+      continuationHeader: boolean;
+      proofHeader: boolean;
+      aliasCredential: boolean;
+      origin: string | null;
+    }> = [];
+    const observedChannelFetch = async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      const authorization = request.headers.get('Authorization');
+      const response = await channelFetch(request);
+      applicationObservations.push({
+        path,
+        method: request.method,
+        status: response.status,
+        cookieHeader: request.headers.has('Cookie'),
+        setCookieHeader:
+          response.headers.has('Set-Cookie') ||
+          response.headers.has('Set-Cookie2'),
+        continuationHeader: request.headers.has(
+          'X-Station-Account-Continuation',
+        ),
+        proofHeader: request.headers.has('X-Station-Account-Proof'),
+        aliasCredential:
+          expectedAliasCredential !== undefined &&
+          authorization === `Bearer ${expectedAliasCredential}`,
+        origin: request.headers.get('Origin'),
+      });
+      return response;
+    };
     runtime = createSelfHostedBrokerPionRuntime(
       {
         brokerOrigin,
@@ -120,7 +155,7 @@ export async function startSelfHostedBrokerLab(
       {
         signal: input.signal,
         // Keep the Request's stream, abort signal and explicit headers intact.
-        fetch: (request) => channelFetch(request),
+        fetch: (request) => observedChannelFetch(request),
       },
       { startAdapter: observingStart },
     );
@@ -132,6 +167,11 @@ export async function startSelfHostedBrokerLab(
       adapterMetadata,
       readLease: broker.readLease,
       preflight: broker.preflight,
+      setExpectedAliasCredential(credential: string) {
+        expectedAliasCredential = credential;
+      },
+      applicationObservations: () =>
+        applicationObservations.map((item) => ({ ...item })),
       withdraw: () => runtime!.shutdown(),
       stop,
     };
