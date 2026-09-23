@@ -56,6 +56,24 @@ function readSource(file: string): string {
   );
 }
 
+/**
+ * Sentences that pair an install verb with "plugin(s)" without a negation or
+ * a person's-consent marker. Plugin installs need a person to approve a
+ * preview, so any sentence that talks about installing plugins must say so or
+ * say who cannot.
+ */
+function unqualifiedPluginInstallClaims(text: string): string[] {
+  const installsPlugin = (sentence: string) =>
+    /\binstall(s|ing|ed)?\b/i.test(sentence) && /\bplugins?\b/i.test(sentence);
+  const qualified = (sentence: string) =>
+    /\b(not|cannot|can['’]t|no agent|must not|a person|approv\w*|consent\w*)\b/i.test(
+      sentence,
+    );
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter((sentence) => installsPlugin(sentence) && !qualified(sentence));
+}
+
 describe('station-docs content', () => {
   test('every topic is complete and its id is a stable kebab-case key', () => {
     expect(STATION_DOCS_TOPICS.length).toBeGreaterThanOrEqual(8);
@@ -104,13 +122,30 @@ describe('station-docs content', () => {
     // (station-control-platform-tools.ts). Docs claiming the default agent
     // installs plugins send an engine to promise an action it cannot take.
     for (const topic of STATION_DOCS_TOPICS) {
-      expect(topic.body, topic.id).not.toMatch(/install(ing)? plugins/i);
+      const text = [topic.title, topic.summary, topic.body].join('\n');
+      expect(unqualifiedPluginInstallClaims(text), topic.id).toEqual([]);
     }
     for (const id of ['station-docs', 'builtin-assistant']) {
       const body = findStationDocsTopic(id)?.body ?? '';
       expect(body, id).toContain('station plugin install');
       expect(body, id).toContain('Plugins page');
     }
+  });
+
+  test('the plugin-install guard catches claims phrased other ways', () => {
+    expect(
+      unqualifiedPluginInstallClaims(
+        'The assistant can create agents and install a plugin for you.',
+      ),
+    ).toHaveLength(1);
+    expect(
+      unqualifiedPluginInstallClaims('The default agent installs plugins.'),
+    ).toHaveLength(1);
+    expect(
+      unqualifiedPluginInstallClaims(
+        'It cannot install a plugin. A person must approve the preview.',
+      ),
+    ).toEqual([]);
   });
 
   test('no topic claims to describe the reader’s own Station', () => {

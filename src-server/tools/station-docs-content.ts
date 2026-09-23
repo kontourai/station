@@ -235,7 +235,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
       'A skill is a reusable bundle of instructions and behavior that an agent adopts — a way to give several agents the same competence without duplicating a prompt.',
       'Skills are a capability Station owns for agents it runs. For an agent bound to an external engine, whether the skill reaches the engine depends on that engine having a delivery channel for skills. Some engines do; others do not.',
       'When an engine has no channel for an authored skill, Station records that as undelivered rather than silently dropping it, and the agent editor shows the authored content read-only with a diagnostic naming the engine that cannot deliver it.',
-      'Skills are installed and browsed from the registry alongside agents, tool servers, and plugins.',
+      'Skills are installed and browsed from the registry, like agents and tool servers.',
       'A skill can also declare itself runnable as a slash command, which is how a reusable instruction sequence is invoked directly in a chat or assigned to a task. There is one authored concept here, not two.',
     ].join('\n\n'),
     tags: [
@@ -332,7 +332,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     body: [
       "Station's core is deliberately foundational: runtime, streaming, routing, and a provider registry, with no domain logic. The domain surfaces are plugins.",
       'A plugin is manifest-driven and can contribute layouts, agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Plugin authors get the same primitives core gets — if core can do it, a plugin can do it.',
-      'The registry is the unified place to browse and install agents, skills, integrations, and plugins, with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.',
+      'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.',
       'Where open standards exist, Station adopts them rather than inventing an equivalent: MCP for tools, the Agent Client Protocol for reaching external engines, OpenTelemetry for observability, and MCP-UI for rendered tool resources.',
     ].join('\n\n'),
     tags: [
