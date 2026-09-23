@@ -164,3 +164,51 @@ test('shows no refresh marker when the list is current (#2345)', () => {
     screen.queryByRole('status', { name: 'Pane list not refreshed' }),
   ).toBeNull();
 });
+
+test('a cached EMPTY list whose refresh failed gets the marker, not "Could not load" (#2345)', () => {
+  const onRetry = vi.fn();
+  render(
+    <ProjectWorkspacePaneModal
+      show
+      onClose={vi.fn()}
+      entries={[]}
+      loading={false}
+      error
+      hasData
+      onRetry={onRetry}
+      onSelect={vi.fn()}
+      onAction={vi.fn(() => '')}
+      canExecuteAction={vi.fn(() => false)}
+    />,
+  );
+  const dialog = screen.getByRole('dialog', { name: 'Add workspace pane' });
+  expect(
+    within(dialog).queryByText('Could not load workspace panes'),
+  ).toBeNull();
+  const marker = within(dialog).getByRole('status', {
+    name: 'Pane list not refreshed',
+  });
+  fireEvent.click(within(marker).getByRole('button', { name: 'Retry' }));
+  expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+test('a list that never loaded still reads as an error (#2345)', () => {
+  render(
+    <ProjectWorkspacePaneModal
+      show
+      onClose={vi.fn()}
+      entries={[]}
+      loading={false}
+      error
+      hasData={false}
+      onRetry={vi.fn()}
+      onSelect={vi.fn()}
+      onAction={vi.fn(() => '')}
+      canExecuteAction={vi.fn(() => false)}
+    />,
+  );
+  expect(screen.getByText('Could not load workspace panes')).toBeTruthy();
+  expect(
+    screen.queryByRole('status', { name: 'Pane list not refreshed' }),
+  ).toBeNull();
+});

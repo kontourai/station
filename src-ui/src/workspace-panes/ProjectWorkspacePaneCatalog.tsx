@@ -5,12 +5,21 @@ import { PageCallout } from '../components/PageCallout';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
 import type { ResolvedWorkspacePaneCatalogEntry } from './resolvedWorkspacePaneCatalog';
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
+import { WorkspacePaneCatalogRefreshNotice } from './WorkspacePaneCatalogRefreshNotice';
 import type { WorkspacePaneAvailabilityCatalogEntry } from './workspacePaneAvailabilityPresentation';
 
 interface CatalogProps {
   entries: readonly ResolvedWorkspacePaneCatalogEntry[];
   loading: boolean;
   error: boolean;
+  /**
+   * The catalog holds an answer (fresh or cached). With `error`, it means a
+   * background refresh failed rather than the first load. Defaults to
+   * `entries.length > 0` for hosts that do not pass it.
+   */
+  hasData?: boolean;
+  /** A refetch is in flight. */
+  retrying?: boolean;
   onRetry: () => void;
   onSelect: (entry: WorkspacePaneAvailabilityCatalogEntry) => void;
   onAction: (
@@ -29,6 +38,8 @@ function CatalogContents({
   entries,
   loading,
   error,
+  hasData = entries.length > 0,
+  retrying = false,
   onRetry,
   onSelect,
   onAction,
@@ -39,7 +50,9 @@ function CatalogContents({
   if (loading && entries.length === 0) {
     return <SkeletonList count={2} label="Loading workspace panes" />;
   }
-  if (error && entries.length === 0) {
+  // Only a catalog that never loaded is an error screen. A cached EMPTY list
+  // whose refresh failed is still an answer: it gets the marker below.
+  if (error && entries.length === 0 && !hasData) {
     return (
       <ErrorState
         title="Could not load workspace panes"
@@ -58,28 +71,31 @@ function CatalogContents({
   // known…" label added.
   if (entries.length === 0) {
     return (
-      <Empty
-        variant="compact"
-        label="Nothing here yet"
-        description="Station has not discovered any panes for this Project."
-      />
+      <>
+        {error ? (
+          <WorkspacePaneCatalogRefreshNotice
+            onRetry={onRetry}
+            retrying={retrying}
+          />
+        ) : null}
+        <Empty
+          variant="compact"
+          label="Nothing here yet"
+          description="Station has not discovered any panes for this Project."
+        />
+      </>
     );
   }
   return (
     <>
-      {/* #2345: `error` with entries on screen is a failed background
-          refresh over a cached list (#2319 keeps the old answer). The list
-          stays usable; this says it may be out of date. */}
+      {/* #2345: `error` with a list on screen is a failed background
+          refresh over a cached answer (#2319 keeps it). The list stays
+          usable; this says it may be out of date. */}
       {error ? (
-        <PageCallout
-          calloutId="workspace-pane-catalog-refresh-failed"
-          tone="info"
-          role="status"
-          ariaLabel="Pane list not refreshed"
-          action={<Button onClick={onRetry}>Retry</Button>}
-        >
-          Couldn’t refresh the pane list. It may be out of date.
-        </PageCallout>
+        <WorkspacePaneCatalogRefreshNotice
+          onRetry={onRetry}
+          retrying={retrying}
+        />
       ) : null}
       <WorkspacePaneAvailabilityList
         entries={entries}

@@ -1271,6 +1271,8 @@ function BuiltinCodingLayoutHost({
         entries={catalog.entries}
         loading={catalog.isLoading}
         error={catalog.isError}
+        hasData={catalog.data !== undefined}
+        retrying={catalog.isFetching}
         onRetry={() => void catalog.refetch()}
         onSelect={openCatalogEntry}
         onAction={(_entry, action) => {

@@ -7,6 +7,7 @@ import { withWorkspacePaneInstanceLayoutBinding } from '@kontourai/station-contr
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import { useProjectLayoutQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
+import { Button } from '../components/Button';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -16,6 +17,7 @@ import { trackMcpAppDisplayModeDecision } from './mcpAppDisplayModeTelemetry';
 import { PluginWorkspacePaneSDKBoundary } from './PluginWorkspacePaneSDKBoundary';
 import { useResolvedWorkspacePaneCatalog } from './resolvedWorkspacePaneCatalog';
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
+import { WorkspacePaneCatalogRefreshNotice } from './WorkspacePaneCatalogRefreshNotice';
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
 import { WorkspacePaneStandardDataView } from './WorkspacePaneStandardDataView';
 import type { WorkspacePaneAvailabilityCatalogEntry } from './workspacePaneAvailabilityPresentation';
@@ -152,9 +154,12 @@ export function WorkspacePaneRouteView({
         title="Could not load workspace pane"
         description="Station could not read this Project’s pane catalog."
         action={
-          <button type="button" onClick={() => void catalog.refetch()}>
+          <Button
+            onClick={() => void catalog.refetch()}
+            pending={catalog.isFetching}
+          >
             Retry
-          </button>
+          </Button>
         }
       />
     );
@@ -169,9 +174,12 @@ export function WorkspacePaneRouteView({
         title="Could not refresh workspace panes"
         description="Station couldn’t check this Project’s current panes, so it can’t tell whether this one exists."
         action={
-          <button type="button" onClick={() => void catalog.refetch()}>
+          <Button
+            onClick={() => void catalog.refetch()}
+            pending={catalog.isFetching}
+          >
             Retry
-          </button>
+          </Button>
         }
       />
     );
@@ -194,6 +202,15 @@ export function WorkspacePaneRouteView({
       />
     );
   }
+
+  // #2345: the pane below comes from a catalog whose refresh just failed.
+  // It still works, so it stays mounted, marked as possibly out of date.
+  const refreshNotice = catalog.isRefetchError ? (
+    <WorkspacePaneCatalogRefreshNotice
+      onRetry={() => void catalog.refetch()}
+      retrying={catalog.isFetching}
+    />
+  ) : null;
 
   const matchingMcpResourceFailure =
     mcpResourceFailure?.descriptorId === entry.descriptor.id &&
@@ -318,6 +335,7 @@ export function WorkspacePaneRouteView({
         aria-label={entry.descriptor.name}
       >
         <div className="project-page__inner">
+          {refreshNotice}
           <WorkspacePaneFrame
             instanceId={boundInstance.instanceId}
             paneName={entry.descriptor.name}
@@ -349,6 +367,7 @@ export function WorkspacePaneRouteView({
         aria-label={entry.descriptor.name}
       >
         <div className="project-page__inner">
+          {refreshNotice}
           <WorkspacePaneFrame
             instanceId={boundInstance.instanceId}
             paneName={entry.descriptor.name}
@@ -426,6 +445,7 @@ export function WorkspacePaneRouteView({
         aria-label={entry.descriptor.name}
       >
         <div className="project-page__inner">
+          {refreshNotice}
           <WorkspacePaneFrame
             instanceId={boundInstance.instanceId}
             paneName={entry.descriptor.name}
@@ -476,6 +496,7 @@ export function WorkspacePaneRouteView({
       aria-labelledby="workspace-pane-route-title"
     >
       <div className="project-page__inner">
+        {refreshNotice}
         <h2 id="workspace-pane-route-title">Workspace pane</h2>
         <p className="project-page__modal-description">
           This pane is not currently available to mount in this host.
