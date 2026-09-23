@@ -176,6 +176,8 @@ describe('buildMuseExecArgs', () => {
       '--json',
       '--session-id',
       'session-1',
+      '--approval-mode',
+      'never',
       '--',
       'say hello',
     ]);
@@ -198,6 +200,8 @@ describe('buildMuseExecArgs', () => {
       'muse-spark-1.2-contributor',
       '--workspace',
       '/tmp/project',
+      '--approval-mode',
+      'never',
       '--',
       'go',
     ]);
@@ -241,6 +245,8 @@ describe('buildMuseExecArgs', () => {
       'echo',
       '--workspace',
       '/tmp/project',
+      '--approval-mode',
+      'never',
       '--',
       'go',
     ]);
@@ -263,6 +269,8 @@ describe('buildMuseExecArgs', () => {
       'meta',
       '--model',
       'muse-spark-1.2-contributor',
+      '--approval-mode',
+      'never',
       '--',
       'go',
     ]);
@@ -286,6 +294,8 @@ describe('buildMuseExecArgs', () => {
       'session-1',
       '--provider',
       'echo',
+      '--approval-mode',
+      'never',
       '--',
       'go',
     ]);
