@@ -556,6 +556,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // new-versus-inherited attribution and resistance to candidate rebaselining.
   'scripts/__tests__/code-health-gate.test.ts',
   'scripts/__tests__/run-e2e-suite-ports.test.ts',
+  // #2318/#2416: runs the E2E suite runner and the usability-feedback gate as
+  // real child processes so "disabled before start" and the DISABLED exit
+  // contract are proven against their actual exit statuses. Single-shot,
+  // no Station boot, no wall-clock assertion.
+  'scripts/__tests__/account-requirement.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   'scripts/__tests__/station-agent-smoke.test.ts',
   // Drives the deploy-ledger commit-back's

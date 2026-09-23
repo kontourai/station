@@ -168,7 +168,13 @@ jobs:
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" node scripts/install-playwright-browsers.mjs chromium
 
+      # Specs whose manifest entry declares `requiresAccount` (a signed-in
+      # engine CLI) are skipped before they start and listed under "Disabled
+      # in CI (requires account)" in this step's summary and the latest-E2E
+      # manifest: this runner holds no account until #2318.
       - name: Run coordinated full Playwright coverage
+        env:
+          STATION_CI_ACCOUNTS: absent
         run: npm run verify:e2e:full
 
       - name: Upload Playwright verification diagnostics
