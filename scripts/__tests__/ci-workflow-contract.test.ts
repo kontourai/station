@@ -2586,6 +2586,37 @@ describe('merge-queue regression workflow covers the full regression', () => {
     return step.if === 'failure()';
   }
 
+  // One step's gate violations, and whether it runs a test command.
+  function stepViolations(
+    step: Step,
+    where: string,
+    inheritedShell: string | undefined,
+  ) {
+    const runsGateCommand = logicalLines(step.run).some((line) =>
+      GATE_COMMAND.test(shellCode(line)),
+    );
+    if (isFailureDiagnostic(step))
+      return {
+        runsGateCommand: false,
+        violations: runsGateCommand
+          ? [`${where}: a gate command in an if: failure() step`]
+          : [],
+      };
+    const violations: string[] = [];
+    if (step['continue-on-error'] !== undefined)
+      violations.push(`${where}: continue-on-error`);
+    if (step.if !== undefined)
+      violations.push(`${where}: if: ${step.if} can skip a gated step`);
+    if (step.run !== undefined) {
+      const shell = step.shell ?? inheritedShell;
+      if (!shellKeepsFailures(shell))
+        violations.push(`${where}: shell '${shell}' drops -e or pipefail`);
+      for (const swallow of runSwallows(step.run))
+        violations.push(`${where}: ${swallow}`);
+    }
+    return { runsGateCommand, violations };
+  }
+
   /**
    * Every way a gate job could report success without its tests passing.
    * The aggregate's `needs` are the gate jobs; the aggregate itself is one
@@ -2601,34 +2632,14 @@ describe('merge-queue regression workflow covers the full regression', () => {
       if (!job) continue;
       if (job['continue-on-error'] !== undefined)
         violations.push(`${name}: job-level continue-on-error`);
+      const inheritedShell =
+        job.defaults?.run?.shell ?? workflowDocument.defaults?.run?.shell;
       let gatedTestCommands = 0;
       for (const step of job.steps ?? []) {
         const where = `${name}: ${step.name ?? step.uses ?? step.run?.split('\n')[0]}`;
-        const lines = logicalLines(step.run);
-        const runsGateCommand = lines.some((line) =>
-          GATE_COMMAND.test(shellCode(line)),
-        );
-        if (isFailureDiagnostic(step)) {
-          if (runsGateCommand)
-            violations.push(
-              `${where}: a gate command in an if: failure() step`,
-            );
-          continue;
-        }
-        if (runsGateCommand) gatedTestCommands += 1;
-        if (step['continue-on-error'] !== undefined)
-          violations.push(`${where}: continue-on-error`);
-        if (step.if !== undefined)
-          violations.push(`${where}: if: ${step.if} can skip a gated step`);
-        if (step.run === undefined) continue;
-        const shell =
-          step.shell ??
-          job.defaults?.run?.shell ??
-          workflowDocument.defaults?.run?.shell;
-        if (!shellKeepsFailures(shell))
-          violations.push(`${where}: shell '${shell}' drops -e or pipefail`);
-        for (const swallow of runSwallows(step.run))
-          violations.push(`${where}: ${swallow}`);
+        const result = stepViolations(step, where, inheritedShell);
+        if (result.runsGateCommand) gatedTestCommands += 1;
+        violations.push(...result.violations);
       }
       if (name !== aggregateName && gatedTestCommands === 0)
         violations.push(`${name}: no gated step runs a test command`);
