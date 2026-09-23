@@ -4937,6 +4937,57 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test('#2316: cancel-and-reprompt settles the open permission request; a late answer is refused and grants nothing', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-acp-steer-approval',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-acp-steer-approval',
+      input: 'start',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const requestPromise = requestPermission(
+      processes[0]!.client,
+      'tool-1',
+      'write',
+    );
+    const opened = await nextEvent(iterator, 'request.opened');
+
+    await adapter.steerTurn(
+      'thread-acp-steer-approval',
+      'take this instead',
+      turn.turnId,
+    );
+
+    expect(processes[0]?.cancelCalls).toBe(1);
+    await expect(requestPromise).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'cancelled',
+    });
+    await expect(
+      adapter.respondToRequest(
+        'thread-acp-steer-approval',
+        String(opened.requestId),
+        'acceptForSession',
+      ),
+    ).rejects.toThrow('Unknown ACP permission request');
+    const record = (adapter as any).sessions.get('thread-acp-steer-approval');
+    expect([...record.approvedTools]).toEqual([]);
+    await adapter.stopAll();
+  });
+
   test('Grok falls back to cancel-reprompt when interject is not implemented', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [{ id: 'kiro', command: 'grok' }],

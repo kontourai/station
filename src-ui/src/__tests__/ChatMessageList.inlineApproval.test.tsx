@@ -73,6 +73,7 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
 
@@ -441,6 +442,116 @@ describe('#2316 inline approval card', () => {
         screen.queryByText('This request was already answered.'),
       ).toBeNull();
     });
+
+    test('stays a loud failure when the request cannot be verified', async () => {
+      stubFetch(
+        (call) =>
+          refusedAsResolved(call) ??
+          Response.json({
+            success: true,
+            data: {
+              state: 'unavailable',
+              reference: {
+                threadId: 'claude-child-b',
+                requestId: 'req-claude-b',
+                requestEventId: 'evt-3',
+              },
+              message: 'This request could not be verified.',
+            },
+          }),
+      );
+      renderCard();
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Allow Once' }),
+      );
+
+      const alert = await screen.findByText(/Your decision was not delivered/);
+      expect(alert.getAttribute('role')).toBe('alert');
+      expect(
+        screen.queryByText('This request was already answered.'),
+      ).toBeNull();
+    });
+
+    test('a refused session grant on an already-answered request grants nothing locally', async () => {
+      activeChatsStore.initChat('chat-tab', {
+        agentSlug: 'station',
+        agentName: 'Station',
+        title: 'Plugin authoring',
+      });
+      try {
+        stubFetch(
+          (call) =>
+            refusedAsResolved(call) ??
+            Response.json({
+              success: true,
+              data: {
+                state: 'resolved',
+                reference: {
+                  threadId: 'claude-child-b',
+                  requestId: 'req-claude-b',
+                  requestEventId: 'evt-3',
+                },
+                message: 'This request has already been resolved.',
+              },
+            }),
+        );
+        renderCard();
+
+        fireEvent.click(
+          await screen.findByRole('button', {
+            name: 'Allow Bash for this session',
+          }),
+        );
+
+        await screen.findByText('This request was already answered.');
+        // Which decision settled it is not ours to claim: no local grant.
+        expect(
+          activeChatsStore.getSnapshot()['chat-tab']?.sessionAutoApprove ?? [],
+        ).toEqual([]);
+      } finally {
+        activeChatsStore.removeChat('chat-tab');
+      }
+    });
+  });
+
+  test('a subagent request whose exact call id misses a same-named main call goes to the strip, not onto that call', async () => {
+    sequence = 0;
+    windowEvents.current = [
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'Delegate the tests',
+      }),
+      runtimeEvent({
+        method: 'tool.started',
+        turnId: 'turn-1',
+        itemId: 'main-bash',
+        toolCallId: 'main-bash',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      runtimeEvent({
+        method: 'request.opened',
+        requestId: 'req-sub',
+        requestType: 'approval',
+        title: 'Allow Bash',
+        payload: { toolName: 'Bash', toolCallId: 'sub-call', agentId: 'a1' },
+      }),
+    ];
+    stubFetch(() => Response.json({ success: true, data: {} }));
+    renderCard();
+
+    const strip = await screen.findByRole('region', {
+      name: 'Approvals waiting on you',
+    });
+    // Exactly one card offers buttons: the strip's.
+    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+      1,
+    );
+    expect(
+      within(strip).getByRole('button', { name: 'Allow Once' }),
+    ).toBeTruthy();
   });
 
   describe('an approval with no card of its own (e.g. a Claude subagent call)', () => {

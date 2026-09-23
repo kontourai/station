@@ -174,6 +174,10 @@ export function projectRuntimeEventsToMessages(
     string,
     { part: MessagePart; subagent: boolean }
   >();
+  // #2316: the session whose `tool.started` created each tool part. Call ids
+  // are only unique per session, and a lineage window folds several, so an
+  // exact-id approval binds only a part from the request's own session.
+  const toolPartThread = new WeakMap<MessagePart, string>();
   const approvalKey = (threadId: string, requestId: string) =>
     `${threadId}\u0000${requestId}`;
   /**
@@ -603,6 +607,7 @@ export function projectRuntimeEventsToMessages(
           state: 'call',
         };
         toolsByCallId.set(ev.toolCallId, part);
+        toolPartThread.set(part, ev.threadId);
         parts.push(part);
         break;
       }
@@ -832,9 +837,16 @@ export function projectRuntimeEventsToMessages(
         // adapter reports one. The name fallback, for adapters that report no
         // id, is confined to the thread whose turn is being folded and never
         // takes a call already awaiting a different request.
-        const target =
+        const exact =
           typeof toolCallId === 'string'
             ? toolsByCallId.get(toolCallId)
+            : undefined;
+        const target =
+          typeof toolCallId === 'string'
+            ? exact &&
+              (toolPartThread.get(exact) ?? ev.threadId) === ev.threadId
+              ? exact
+              : undefined
             : typeof toolName === 'string' &&
                 (turnSessionId === undefined || turnSessionId === ev.threadId)
               ? [...toolsByCallId.values()]

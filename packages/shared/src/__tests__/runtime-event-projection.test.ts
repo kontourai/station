@@ -2180,6 +2180,12 @@ describe('#2316 request.opened binds the approval card to the request it answers
       );
 
   it('binds by the exact call id and stamps the requesting thread, not the newest same-named call', () => {
+    const requestOpened = ev({
+      method: 'request.opened',
+      requestId: 'req-first',
+      requestType: 'approval',
+      payload: { toolName: 'Bash', toolCallId: 'bash-first' },
+    });
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'turn-a', prompt: 'Run both' }),
       ev({
@@ -2198,21 +2204,96 @@ describe('#2316 request.opened binds the approval card to the request it answers
       }),
       // Claude's canUseTool for the FIRST call. A name-only fold picked the
       // newest Bash (`bash-second`) — a card beside the wrong command.
-      ev({
-        method: 'request.opened',
-        requestId: 'req-first',
-        requestType: 'approval',
-        payload: { toolName: 'Bash', toolCallId: 'bash-first' },
-      }),
+      requestOpened,
     ]);
 
     expect(toolPart(messages, 'bash-first')).toMatchObject({
       needsApproval: true,
       approvalId: 'req-first',
       approvalThreadId: 't1',
+      // The exact prompt the card answers (sent as expectedRequestEventId).
+      approvalEventId: requestOpened.eventId,
       state: 'awaiting-approval',
     });
     expect(toolPart(messages, 'bash-second')).not.toHaveProperty('approvalId');
+  });
+
+  it('never binds a subagent’s request whose exact call id misses onto a same-named main-thread call', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'turn-m', prompt: 'Delegate' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-m',
+        toolCallId: 'main-bash',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      ev({
+        method: 'request.opened',
+        requestId: 'req-sub',
+        requestType: 'approval',
+        payload: { toolName: 'Bash', toolCallId: 'sub-call', agentId: 'a1' },
+      }),
+    ]);
+    expect(toolPart(messages, 'main-bash')).not.toHaveProperty('approvalId');
+  });
+
+  it('stamps the child session on a child’s request folded inside the parent’s turn', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        threadId: 'parent',
+        turnId: 'turn-p',
+        prompt: 'Go',
+      }),
+      ev({
+        method: 'tool.started',
+        threadId: 'child',
+        turnId: 'turn-c',
+        toolCallId: 'child-call',
+        toolName: 'Read',
+        arguments: { path: 'a' },
+      }),
+      ev({
+        method: 'request.opened',
+        threadId: 'child',
+        requestId: 'req-child',
+        requestType: 'approval',
+        payload: { toolName: 'Read', toolCallId: 'child-call' },
+      }),
+    ]);
+    expect(toolPart(messages, 'child-call')).toMatchObject({
+      approvalId: 'req-child',
+      approvalThreadId: 'child',
+    });
+  });
+
+  it('never binds an exact call id across sessions that reuse it', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        threadId: 'session-a',
+        turnId: 'turn-a',
+        prompt: 'Go',
+      }),
+      ev({
+        method: 'tool.started',
+        threadId: 'session-a',
+        turnId: 'turn-a',
+        toolCallId: 'call-1',
+        toolName: 'Bash',
+        arguments: { command: 'ls' },
+      }),
+      // Another session in the lineage reuses the same provider call id.
+      ev({
+        method: 'request.opened',
+        threadId: 'session-b',
+        requestId: 'req-b',
+        requestType: 'approval',
+        payload: { toolName: 'Bash', toolCallId: 'call-1' },
+      }),
+    ]);
+    expect(toolPart(messages, 'call-1')).not.toHaveProperty('approvalId');
   });
 
   it('never binds another session’s id-less request onto the folded turn’s call', () => {

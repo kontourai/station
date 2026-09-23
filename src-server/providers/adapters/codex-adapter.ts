@@ -2385,22 +2385,50 @@ export class CodexAdapter implements ProviderAdapterShape {
     // outcome) silently disarmed it. `runCooperativeStop`'s cooperative-stop
     // deadline branch (the one caller that DOES have its own unconditional
     // fallback) stays safe via `rejectPendingRpcRequests`'s in-flight check.
-    await this.transport.sendRequest(
-      record,
-      'turn/interrupt',
-      {
-        threadId: record.codexThreadId,
-        turnId: targetTurnId,
-      },
-      // archive#3451 fix round D2: tracked so a forced teardown that has to
-      // force-reject this RPC can tell it apart from an abandoned interrupt
-      // targeting a DIFFERENT (earlier) turn.
-      { turnId: targetTurnId },
-    );
+    try {
+      await this.transport.sendRequest(
+        record,
+        'turn/interrupt',
+        {
+          threadId: record.codexThreadId,
+          turnId: targetTurnId,
+        },
+        // archive#3451 fix round D2: tracked so a forced teardown that has to
+        // force-reject this RPC can tell it apart from an abandoned interrupt
+        // targeting a DIFFERENT (earlier) turn.
+        { turnId: targetTurnId },
+      );
+    } finally {
+      // #2316: settle the interrupted turn's open approvals whether or not the
+      // interrupt RPC succeeded. A rejected RPC used to throw past this, and
+      // the approvals stayed pending — a late "Allow <tool> for this session"
+      // then minted a grant for a call that never ran.
+      this.cancelPendingApprovals(record, threadId);
+    }
 
-    // #2316: the interrupted turn's open approvals can never run their call.
-    // Answer each one `cancel` on the wire and settle it, so no later answer
-    // lands on a dead request and no session grant is minted for it.
+    this.transport.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: this.now().toISOString(),
+      turnId: targetTurnId,
+      method: 'turn.aborted',
+      reason: 'interrupted',
+    });
+    record.activeTurnId = undefined;
+    record.terminalPublishedForTurnId = targetTurnId;
+    return { outcome: 'cancelled', turnId: targetTurnId } as const;
+  }
+
+  /**
+   * #2316: answer every open approval `cancel` on the wire and settle it
+   * (`request.resolved`), so no later answer lands on a dead request and no
+   * session grant is minted for it.
+   */
+  private cancelPendingApprovals(
+    record: CodexSessionRecord,
+    threadId: string,
+  ): void {
     for (const [requestId, pending] of record.pendingApprovals) {
       const outcome = resolveApprovalOutcome(
         pending.method,
@@ -2419,19 +2447,6 @@ export class CodexAdapter implements ProviderAdapterShape {
       });
     }
     record.pendingApprovals.clear();
-
-    this.transport.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: this.now().toISOString(),
-      turnId: targetTurnId,
-      method: 'turn.aborted',
-      reason: 'interrupted',
-    });
-    record.activeTurnId = undefined;
-    record.terminalPublishedForTurnId = targetTurnId;
-    return { outcome: 'cancelled', turnId: targetTurnId } as const;
   }
 
   async respondToRequest(

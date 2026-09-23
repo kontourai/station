@@ -2745,7 +2745,15 @@ describe('ClaudeAdapter', () => {
         await openedBashRequest(threadId, controller.signal);
 
       controller.abort();
-      await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+      // A bounded wait: a regression reads as "never settled", not as a
+      // 30-second suite timeout.
+      const settled = await Promise.race([
+        permission,
+        new Promise((resolve) =>
+          setTimeout(() => resolve('NOT_SETTLED_AFTER_ABORT'), 1_000),
+        ),
+      ]);
+      expect(settled).toMatchObject({ behavior: 'deny' });
       expect((await iterator.next()).value).toMatchObject({
         method: 'request.resolved',
         requestId: opened.requestId,
