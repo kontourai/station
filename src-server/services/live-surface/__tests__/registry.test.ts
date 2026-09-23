@@ -410,7 +410,12 @@ describe('live surface registry', () => {
   });
 
   test('viewers are told when the surface wedges and when it recovers (W1a)', async () => {
-    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 20 });
+    // A long heartbeat, so the only thing that can deliver a state record
+    // is the wedge being announced.
+    const { producer, entry } = setup(() => true, {
+      dispatchTimeoutMs: 20,
+      hub: { heartbeatMs: 60_000 },
+    });
     const viewer = entry.hub.attach({
       maxFps: 10,
       quality: 70,
@@ -421,21 +426,33 @@ describe('live surface registry', () => {
       kind: 'state',
       state: { wedged: false, wedgedSince: null },
     });
+    // Take control first and consume that announcement, so the lease does
+    // not change again below.
+    await dispatchHumanInput(entry, human, 0, [move(0)]);
+    expect(await viewer.next()).toMatchObject({
+      kind: 'state',
+      state: { wedged: false },
+    });
+    const nextWithin = (ms: number) =>
+      Promise.race([
+        viewer.next(),
+        new Promise<'nothing'>((resolve) =>
+          setTimeout(() => resolve('nothing'), ms),
+        ),
+      ]);
     let finish!: () => void;
     producer.dispatchImpl = () =>
       new Promise<void>((resolve) => {
         finish = resolve;
       });
-    await dispatchHumanInput(entry, human, 0, [move(1)]);
-    // (the human's claim is announced first)
-    const records = [await viewer.next(), await viewer.next()];
-    expect(records.at(-1)).toMatchObject({
+    await dispatchHumanInput(entry, human, 1, [move(1)]);
+    expect(await nextWithin(1_000)).toMatchObject({
       kind: 'state',
       state: { wedged: true, wedgedSince: expect.any(Number) },
     });
     finish();
     await settleChain();
-    expect(await viewer.next()).toMatchObject({
+    expect(await nextWithin(1_000)).toMatchObject({
       kind: 'state',
       state: { wedged: false, wedgedSince: null },
     });
