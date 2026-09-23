@@ -150,14 +150,11 @@ function installRecoveryListeners(): void {
  * first turn is the moment that changes. A refresh that lands inside the
  * throttle window is deferred to the window's end rather than dropped.
  *
- * NOT LIVE IN PRODUCTION TODAY (#2307). This whole refresh needs a
- * `QueryClient`, and no production caller supplies one: the only caller,
- * `ChatDock.tsx`, calls `ensureOrchestrationEventStream(apiBase)` with none,
- * so `client` below is `undefined` and every branch returns early. The code is
- * correct for the moment #2307 wires a client; until then a Draft's first turn
- * reaches OTHER devices only through an unrelated refetch of the session list
- * (the sending device re-reads on its own send — `useSendMessage`). #2309
- * Phase B, a server-pushed conversation activity record, supersedes this.
+ * #2307: the refresh targets the `QueryClient` REGISTERED for the stream's
+ * apiBase (see `streamQueryClients` below) at the moment it fires. `ChatDock`
+ * registers its own client on mount, so a stream with no mounted dock for its
+ * apiBase refreshes nothing. #2309 Phase B, a server-pushed conversation
+ * activity record, supersedes this.
  */
 const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'turn.started',
@@ -170,29 +167,69 @@ const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
 let lastSessionReadModelRefreshAt = 0;
 let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
 /**
- * The app's one `QueryClient`, recorded by whichever caller has it.
+ * #2307: the `QueryClient` each apiBase's stream writes through.
  *
- * `ensureOrchestrationEventStream` dedups per `apiBase` and only the FIRST
- * call for one takes effect, so the client is bound here rather than to the
- * stream's closure: a later call that carries a client still arms the refresh
- * above for a stream an earlier, client-less call created. No production
- * caller passes one yet (#2307), so in production this stays `undefined`.
+ * There is no single app-lifetime client. `AuthorityQueryContext` mints a
+ * FRESH client per verified authority namespace (and a fresh ephemeral one for
+ * every unverified fallback) and replaces its whole protected subtree when
+ * that changes, while this stream is module-scoped per apiBase and outlives
+ * any one of those subtrees. So the client is not bound to the stream's
+ * closure: `ChatDock`, which renders inside that protected subtree, registers
+ * the client `useQueryClient()` gives it and releases it on unmount, and every
+ * consumer below resolves the CURRENT registration for its apiBase when it
+ * runs. A retired authority's subtree unmounts before (or in the same commit
+ * as) `retireAuthorityClient`, so its client stops receiving invalidations
+ * and reconnect refetches at that point, and a stream whose apiBase has no
+ * mounted dock writes into no cache at all rather than into another
+ * authority's.
+ *
+ * A list, not a slot: more than one dock can mount at once (a docked and a
+ * full-screen Chat share one authority's client), and releasing one of them
+ * must not unregister the other. The last live registration wins.
  */
-let sharedQueryClient: QueryClient | undefined;
+const streamQueryClients = new Map<string, QueryClient[]>();
+
+function currentStreamQueryClient(apiBase: string): QueryClient | undefined {
+  return streamQueryClients.get(apiBase)?.at(-1);
+}
+
+function registerStreamQueryClient(
+  apiBase: string,
+  queryClient: QueryClient,
+): () => void {
+  const registrations = streamQueryClients.get(apiBase) ?? [];
+  registrations.push(queryClient);
+  streamQueryClients.set(apiBase, registrations);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const current = streamQueryClients.get(apiBase);
+    const index = current?.lastIndexOf(queryClient) ?? -1;
+    if (!current || index === -1) return;
+    current.splice(index, 1);
+    if (current.length === 0) streamQueryClients.delete(apiBase);
+  };
+}
+
 function refreshSessionReadModelOnFact(
-  queryClient: QueryClient | undefined,
+  apiBase: string,
   event: OrchestrationEvent,
 ): void {
-  const client = queryClient ?? sharedQueryClient;
+  const client = currentStreamQueryClient(apiBase);
   if (!client || !SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
   const elapsed = Date.now() - lastSessionReadModelRefreshAt;
   if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
-    // One deferred refresh covers every fact that arrives in the window.
+    // One deferred refresh covers every fact that arrives in the window. It
+    // re-resolves the client when it fires: an authority switch inside the
+    // window must not send the refresh to the client it retired.
     if (deferredSessionReadModelRefresh === undefined) {
       deferredSessionReadModelRefresh = setTimeout(() => {
         deferredSessionReadModelRefresh = undefined;
+        const target = currentStreamQueryClient(apiBase);
+        if (!target) return;
         lastSessionReadModelRefreshAt = Date.now();
-        void client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+        void target.invalidateQueries({ queryKey: ['orchestration-sessions'] });
       }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
     }
     return;
@@ -202,7 +239,7 @@ function refreshSessionReadModelOnFact(
 }
 
 /**
- * Test-only: clears the module-global refresh throttle and client binding,
+ * Test-only: clears the module-global refresh throttle and client registrations,
  * so each test starts from a quiet window instead of inheriting the last
  * test's (#2310 review L3).
  */
@@ -212,24 +249,31 @@ export function resetSessionReadModelRefreshForTests(): void {
   }
   deferredSessionReadModelRefresh = undefined;
   lastSessionReadModelRefreshAt = 0;
-  sharedQueryClient = undefined;
+  streamQueryClients.clear();
 }
 
 /**
- * archive#1225 `queryClient`, when supplied by a caller (none in production
- * yet — #2307), is threaded down to
- * `applyOrchestrationSnapshot`'s reconnect-fallback refetch so it keeps the
- * SAME `toolMappings` cache-lookup fallback the mount-time rehydrate path
- * has — see `rehydrateChatSession.ts`'s file-header note. Only the FIRST
- * call for a given `apiBase` takes effect (the existing dedup guard below
- * returns early on every later call) — in practice there is exactly one
- * `QueryClient` for the app's lifetime, so this is never observably stale.
+ * Ensures the one orchestration event stream for `apiBase`.
+ *
+ * #2307: a supplied `queryClient` is REGISTERED for `apiBase` (see
+ * `streamQueryClients`) and the returned function releases that registration;
+ * `ChatDock` passes its `useQueryClient()` and returns the release as its
+ * effect cleanup. The stream itself is created by the first call for an
+ * apiBase and deduplicated after that, so the client is never read from this
+ * call's closure: the session read-model refresh, the projection-update
+ * invalidation, and `applyOrchestrationSnapshot`'s reconnect-fallback
+ * refetch (archive#1225 — the `toolMappings` cache lookup, see
+ * `rehydrateChatSession.ts`) all resolve the apiBase's current registration
+ * when they run. Calls without a client (the recovery re-ensure below)
+ * register nothing and return a no-op.
  */
 export function ensureOrchestrationEventStream(
   apiBase: string,
   queryClient?: QueryClient,
-) {
-  if (queryClient) sharedQueryClient = queryClient;
+): () => void {
+  const release = queryClient
+    ? registerStreamQueryClient(apiBase, queryClient)
+    : () => {};
   requestedBases.add(apiBase);
   installRecoveryListeners();
   const existing = activeSources.get(apiBase);
@@ -250,7 +294,7 @@ export function ensureOrchestrationEventStream(
           wait,
         );
     }
-    return;
+    return release;
   }
   if (existing) activeSources.delete(apiBase);
   // archive#1092: dedup guard against duplicate/overlapping frames on a
@@ -311,10 +355,11 @@ export function ensureOrchestrationEventStream(
         cursor.adopt(raw.id);
         const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
         recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
+        const snapshotQueryClient = currentStreamQueryClient(apiBase);
         applyOrchestrationSnapshot(payload, {
           apiBase,
           isReconnectFallback: hasReceivedSnapshot,
-          queryClient,
+          ...(snapshotQueryClient ? { queryClient: snapshotQueryClient } : {}),
         });
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
@@ -336,7 +381,7 @@ export function ensureOrchestrationEventStream(
           payload.provenance,
           payload.conversation,
         );
-        refreshSessionReadModelOnFact(queryClient, payload.event);
+        refreshSessionReadModelOnFact(apiBase, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
       ) {
@@ -344,7 +389,7 @@ export function ensureOrchestrationEventStream(
         // server projection". In particular, the client must not turn
         // `lastEventAt` into a second silence detector; the watchdog's
         // narrower progress derivation is serialized on that projection.
-        void (queryClient ?? sharedQueryClient)?.invalidateQueries({
+        void currentStreamQueryClient(apiBase)?.invalidateQueries({
           queryKey: ['orchestration-sessions'],
         });
       }
@@ -426,4 +471,5 @@ export function ensureOrchestrationEventStream(
       );
     },
   );
+  return release;
 }
