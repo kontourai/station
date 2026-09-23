@@ -527,8 +527,9 @@ describe('live surface registry', () => {
     ]);
   });
   test("another controller's stuck press does not keep a new holder live", async () => {
+    // A far ceiling, so only attribution can explain the lapse.
     const { producer, entry } = setup(() => true, {
-      lease: { humanHoldMs: 10 },
+      lease: { humanHoldMs: 10, maxHumanHoldMs: 60_000 },
     });
     // The agent's down is slow to dispatch (but within the timeout), so the
     // handoff's cancel of it waits behind it.
