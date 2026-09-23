@@ -192,6 +192,7 @@ import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-re
 import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
+import { createStationControlCallerRoutes } from '../../routes/mcp/station-control-caller-route.js';
 import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
@@ -545,6 +546,11 @@ import {
 } from '../bootstrap/runtime-tenant-context.js';
 import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import {
+  createAgentDispatchActorResolver,
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
+import {
   createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
 } from '../plugins/runtime-provider-resolution.js';
@@ -562,7 +568,10 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
-import { createRuntimeWorkspacePaneHostActions } from './workspace-pane-host-actions.js';
+import {
+  createRuntimeWorkspacePaneHostActions,
+  createWorkspacePaneHostActorFor,
+} from './workspace-pane-host-actions.js';
 
 type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
@@ -1613,11 +1622,39 @@ export function configureRuntimeRoutes(
     conversationForSession: (sessionId) =>
       context.orchestrationEventStore?.conversationForSession(sessionId),
   });
+  // Station #90 lane D (station #122): a station-control tool's verified caller
+  // names a session; the principal it acts for, its project and its
+  // conversation come from these records, never from the request.
+  const resolveStationControlCallerRecord =
+    createStationControlCallerRecordResolver(
+      stationControlCallerRecordSources({
+        orchestrationService: {
+          resolveSessionActingPrincipal: (threadId) =>
+            context.orchestrationService.resolveSessionActingPrincipal(
+              threadId,
+            ),
+          firstStartedMetadataOfThread: (threadId) =>
+            context.orchestrationService.firstStartedMetadataOfThread(threadId),
+        },
+        eventStore: context.orchestrationEventStore,
+        getProject: (slug) => context.storageAdapter.getProject(slug),
+      }),
+    );
+  const resolveAgentDispatchActor = createAgentDispatchActorResolver(
+    resolveStationControlCallerRecord,
+  );
   context.app.route(
     '',
     createStationControlMcpRoutes({
       port: context.port,
       hostedTenantRegistry,
+      resolveCallerRecord: resolveStationControlCallerRecord,
+    }),
+  );
+  context.app.route(
+    '/api/orchestration',
+    createStationControlCallerRoutes({
+      resolveRecord: resolveStationControlCallerRecord,
     }),
   );
   context.app.route(
@@ -2853,15 +2890,14 @@ export function configureRuntimeRoutes(
     '/api/orchestration/pane-host',
     createWorkspacePaneHostActionRoutes({
       service: paneHostActions,
-      actorFor: (c) => {
-        const principal = resolveOrchestrationRequestPrincipal(c);
-        return {
-          principal,
-          readAuthority: readAuthorityForExecution(principal.id),
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-          isCurrent: () => isRequestPrincipalCurrent(c.req.raw),
-        };
-      },
+      actorFor: createWorkspacePaneHostActorFor({
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        readAuthorityFor: (principalId) =>
+          readAuthorityForExecution(principalId),
+        resolveClientOrigin: resolveClientOriginForRequest,
+        isRequestPrincipalCurrent,
+        resolveAgentDispatchActor,
+      }),
     }),
   );
   context.app.route(
@@ -2902,6 +2938,10 @@ export function configureRuntimeRoutes(
       actionOperations,
       terminalService: context.terminalService,
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      // Station #90 lane D (B2): an agent tool's dispatch acts for its
+      // verified session's owner, or is marked unattributed; never silently
+      // as the operator the internal token resolves to.
+      resolveAgentDispatchActor,
       isRequestPrincipalCurrent,
       answerAssessmentModule,
       answerNarrativeBindingModule,
