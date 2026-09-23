@@ -4,12 +4,10 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
-import { activeChatsStore } from '../../contexts/active-chats-store';
 import {
   handleOrchestrationEvent,
   settleSemanticDeliveryBuffer,
 } from './eventHandlers';
-import { drainQueuedMessagesOnOpenTurnClosed } from './queueDrain';
 import {
   recordReplayConnection,
   recordReplaySnapshot,
@@ -20,8 +18,6 @@ import { setStreamConnectionState } from './streamConnectionState';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 const activeSources = new Map<string, FetchSseConnection>();
-let drainApiBase: string | undefined;
-let drainListenerRegistered = false;
 
 /**
  * V3 the chat dock's failure banner reads the
@@ -123,19 +119,6 @@ export function ensureOrchestrationEventStream(
 ) {
   if (queryClient) sharedQueryClient = queryClient;
   if (activeSources.has(apiBase)) return;
-  // #2309: a queued follow-up drains when the server record closes the
-  // chat's open turn, wherever that turn ran. ONE listener for the app,
-  // dispatching through the newest stream's Station: a listener per stream
-  // would drain the same turn end once per Station ever connected, the first
-  // of them through a retired authority.
-  drainApiBase = apiBase;
-  if (!drainListenerRegistered) {
-    drainListenerRegistered = true;
-    activeChatsStore.onOpenTurnClosed((closure) => {
-      if (drainApiBase)
-        drainQueuedMessagesOnOpenTurnClosed(drainApiBase, closure);
-    });
-  }
   // archive#1092: dedup guard against duplicate/overlapping frames on a
   // sequence-cursor resume. Applying a stale duplicate here would
   // reapply deltas (e.g. `content.text-delta`) into already-updated chat
@@ -257,7 +240,6 @@ export function ensureOrchestrationEventStream(
       setStreamConnectionState(apiBase, 'closed');
       authenticatedStream.close();
       activeSources.delete(apiBase);
-      if (drainApiBase === apiBase) drainApiBase = undefined;
     },
   });
 

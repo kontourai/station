@@ -1,9 +1,3 @@
-/**
- * @vitest-environment jsdom
- *
- * jsdom since #2309: the stream registers the queue drain's record listener
- * on the chat store, which reads browser storage at import.
- */
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const applyOrchestrationSnapshot = vi.fn();

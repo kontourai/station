@@ -20,10 +20,7 @@ import {
   handleWorkflowStateChangedEvent,
 } from './governanceHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
-import {
-  drainQueuedMessageOnTurnCompleted,
-  noteTurnEndedWithoutDrain,
-} from './queueDrain';
+import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import {
@@ -121,20 +118,6 @@ export function handleOrchestrationEvent(
   // frames never feed it: a recorded record would land on the live chat of
   // the same conversation.
   if (conversation?.activity && !isReplayThread(event.threadId)) {
-    // A turn end that must not fire a queued follow-up is noted BEFORE the
-    // record that closes the turn is applied, because that record's closing
-    // is what the queue drain listens to (`drainQueuedMessagesOnOpenTurnClosed`).
-    if (event.method === 'turn.aborted')
-      noteTurnEndedWithoutDrain(event.turnId);
-    if (
-      event.method === 'runtime.error' &&
-      isDeferredRetriableTurnError(event)
-    ) {
-      const failedTurnId = event.details?.turnId ?? event.turnId;
-      noteTurnEndedWithoutDrain(
-        typeof failedTurnId === 'string' ? failedTurnId : undefined,
-      );
-    }
     activeChatsStore.applyConversationActivity(conversation.activity);
   }
   recordReplayRuntime(apiBase, event, provenance);
@@ -155,12 +138,42 @@ export function handleOrchestrationEvent(
     dispatchProjectedOrchestrationEvent(apiBase, event, provenance);
     return;
   }
+  drainUnroutedConversationTurnEnd(apiBase, event, conversation);
   if (bufferedDeliveryEnabled()) {
     if (semanticDelivery)
       return semanticDelivery.offer(event, apiBase, provenance);
     loadSemanticDelivery();
   }
   dispatchProjectedOrchestrationEvent(apiBase, event, provenance);
+}
+
+/**
+ * #2309: a queued follow-up waits for its conversation's turn to END, and
+ * the terminal event is the only trigger (so a Stop, `turn.aborted`, never
+ * auto-sends: archive#3451). After a reload the chat can still name the root
+ * session while the conversation's CURRENT lineage child runs the turn; that
+ * child's terminal then routes to no chat and the queue was stranded. The
+ * frame's binding names the conversation it belongs to, resolved at delivery,
+ * so the terminal of the current child drains that conversation's chat,
+ * through the Station this frame came from. A chat the event already routes
+ * to is drained by its own handler, exactly as before.
+ */
+function drainUnroutedConversationTurnEnd(
+  apiBase: string,
+  event: OrchestrationEvent,
+  conversation: OrchestrationConversationStreamBinding | undefined,
+): void {
+  if (!conversation || conversation.currentSessionId !== event.threadId) return;
+  const endsTurn =
+    event.method === 'turn.completed' ||
+    (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event));
+  if (!endsTurn) return;
+  if (activeChatsStore.getChatKeyForExecutionSession(event.threadId)) return;
+  const chatKey = activeChatsStore.getChatKeyForExecutionSession(
+    conversation.conversationId,
+  );
+  if (!chatKey || isReplayThread(chatKey)) return;
+  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
 }
 
 function dispatchProjectedOrchestrationEvent(

@@ -2,10 +2,7 @@ import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/sessi
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import {
-  activeChatsStore,
-  type OpenTurnClosure,
-} from '../../contexts/active-chats-store';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { serverTurnLive } from '../../utils/conversation-activity';
@@ -89,57 +86,55 @@ function isDefinitiveClientRejection(error: unknown): boolean {
  * deterministic failure is worse than no button.
  */
 /**
- * #2309: turns whose end must NOT fire a queued follow-up: an explicit Stop
- * (`turn.aborted`; auto-sending right after the user asked the turn to stop
- * is the undecided UX call archive#3451 left alone) and a deferred-retriable
- * failure (the turn may still resolve). Noted from the witnessed event so the
- * record-driven drain can honour the same exclusions. Bounded: only the most
- * recent turn ends matter.
+ * Why an explicit user request to send the queue head cannot go now, or
+ * undefined when it can. An explicit action is never a silent no-op: the
+ * reason is said in the chat (#2309 review).
  */
-const turnsEndedWithoutDrain = new Set<string>();
-const TURNS_ENDED_WITHOUT_DRAIN_MAX = 200;
-
-export function noteTurnEndedWithoutDrain(turnId: string | undefined): void {
-  if (!turnId) return;
-  turnsEndedWithoutDrain.add(turnId);
-  if (turnsEndedWithoutDrain.size > TURNS_ENDED_WITHOUT_DRAIN_MAX) {
-    const oldest = turnsEndedWithoutDrain.values().next().value;
-    if (oldest !== undefined) turnsEndedWithoutDrain.delete(oldest);
-  }
-}
-
-/**
- * #2309: drain when the server record stops showing the chat's open turn.
- * This reaches the turn wherever it ran: after a reload the chat can still
- * name the root session while a lineage child runs the turn, and that
- * child's `turn.completed` then routes to no chat at all, stranding the
- * queue. The exclusions of the event-driven drain still apply.
- */
-export function drainQueuedMessagesOnOpenTurnClosed(
-  apiBase: string,
-  closure: OpenTurnClosure,
-): void {
-  if (closure.stoppedHere) return;
-  if (turnsEndedWithoutDrain.has(closure.turnId)) return;
-  drainQueuedMessageOnTurnCompleted(apiBase, closure.chatKey);
+function userSendBlockedReason(
+  chat: ReturnType<typeof activeChatsStore.getSnapshot>[string] | undefined,
+): string | undefined {
+  if (!chat?.queuedMessages?.length) return undefined;
+  if (chat.queueDrainSettling || chat.sendAwaitingTurnStart)
+    return 'A queued message is already being sent.';
+  if (chat.isEditingQueue)
+    return 'Finish editing the queued message first, then send it.';
+  if (!conversationCanMutate(chat))
+    return 'This conversation cannot take a new message right now.';
+  return undefined;
 }
 
 export function drainQueuedMessageOnTurnCompleted(
   apiBase: string,
   threadId: string,
   reviewed = false,
+  /**
+   * #2309: the user asked for this send (Retry, Send now). It is not held
+   * back by the server showing a turn open: the user is looking at that
+   * record (a stuck turn, a Stop elsewhere) and chose to send anyway. Any
+   * other reason it cannot send is said in the chat, never swallowed.
+   */
+  userInitiated = false,
 ) {
   if (isReplayThread(threadId)) return;
   const chat = activeChatsStore.getSnapshot()[threadId];
+  if (userInitiated) {
+    const blocked = userSendBlockedReason(chat);
+    if (blocked) {
+      activeChatsStore.addEphemeralMessage(threadId, {
+        role: 'system',
+        content: blocked,
+      });
+      return;
+    }
+  }
   if (
-    // #2309: the drain now has two triggers for one turn end (the witnessed
-    // terminal event and the server record closing the turn), and each pops
-    // the queue head; the second must not pop the next message while the
-    // first is still settling.
+    // A popped head that has not been dispatched yet: a second request in
+    // that window must not pop the next message too.
     chat?.queueDrainSettling ||
-    // #2309: a turn the server still shows open (a newer one, or this
-    // drain's own send awaiting its turn) is not a turn end to drain on.
-    serverTurnLive(chat) === true ||
+    // #2309: an AUTOMATIC drain does not send while the server shows a turn
+    // live (a turn started elsewhere, or this chat's own send awaiting its
+    // turn); a later turn end drains it.
+    (!userInitiated && serverTurnLive(chat) === true) ||
     !chat?.queuedMessages?.length ||
     chat.isEditingQueue ||
     (chat.queuedMessageFailure?.reviewReason === 'execution-binding-changed' &&
