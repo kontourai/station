@@ -572,6 +572,90 @@ describe('ConversationHistoryReadService', () => {
     }
   });
 
+  test('#2309: a stuck open turn on a retired child does not make the conversation read running', () => {
+    const root = 'stuck-root';
+    const child = `${root}:session:current`;
+    const addSession = (threadId: string, at: string) => {
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt: at,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+      });
+    };
+    addSession(root, '2026-08-08T16:00:00.000Z');
+    // The root crashed mid-turn and left no boundary row: its own fold reads
+    // this turn open forever.
+    eventStore.appendEvent({
+      eventId: 'stuck-turn',
+      provider: 'claude',
+      threadId: root,
+      createdAt: '2026-08-08T16:00:01.000Z',
+      method: 'turn.started',
+      turnId: 'stuck',
+      prompt: 'before the crash',
+    });
+    eventStore.reserveNextConversationSession({
+      conversationId: root,
+      predecessorSessionId: root,
+      proposedSessionId: child,
+      createdAt: '2026-08-08T16:01:00.000Z',
+    });
+    addSession(child, '2026-08-08T16:01:00.000Z');
+    eventStore.appendEvent({
+      eventId: 'current-turn',
+      provider: 'claude',
+      threadId: child,
+      createdAt: '2026-08-08T16:01:01.000Z',
+      method: 'turn.started',
+      turnId: 'current',
+      prompt: 'after',
+    });
+    eventStore.appendEvent({
+      eventId: 'current-done',
+      provider: 'claude',
+      threadId: child,
+      createdAt: '2026-08-08T16:01:02.000Z',
+      method: 'turn.completed',
+      turnId: 'current',
+    });
+    const projection = new ConversationTurnActivityProjection({
+      eventStore,
+      readTurnProgress: () => undefined,
+      logger: { warn: vi.fn() },
+    });
+    try {
+      const items = new ConversationHistoryReadService({
+        ...readServiceOptions(eventStore),
+        readConversationActivity: (conversationId) =>
+          projection.readConversation(conversationId),
+      }).list({
+        authority: sessionReadAuthorityFromRequest(
+          'owner-alpha',
+          undefined,
+          undefined,
+        ),
+        limit: 10,
+      }).items;
+      expect(items).toHaveLength(1);
+      expect(items[0]?.id).toBe(root);
+      expect(items[0]?.hasActiveTurn).toBe(false);
+      expect(items[0]?.activity?.openTurn).toBeUndefined();
+    } finally {
+      projection.dispose();
+    }
+  });
+
   test('includes a true NULL-owner record only when single-user compatibility is enabled and the authority check permits it', () => {
     eventStore.upsertSession({
       provider: 'claude',
