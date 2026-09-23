@@ -260,7 +260,7 @@ export const MUSE_CANCELLED_TOOL_OUTPUT =
  */
 export const MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT =
   'Muse reported this background task completed.';
-export const MUSE_BACKGROUND_TASK_FAILED_OUTPUT =
+const MUSE_BACKGROUND_TASK_FAILED_OUTPUT =
   'Muse reported this background task failed.';
 export const MUSE_BACKGROUND_TASK_CANCELLED_OUTPUT =
   'Muse cancelled this background task.';
@@ -286,7 +286,7 @@ export const MUSE_PENDING_BACKGROUND_TASKS_MAX = 64;
  * session's `--session-id`. Past this wait the send is refused with the
  * retryable `MUSE_TURN_SLOT_RELEASING_CODE`.
  */
-export const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
+const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
 
 /**
  * A send refused because the previous turn's child had not yet exited (see
