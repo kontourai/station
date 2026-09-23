@@ -8,7 +8,9 @@ export type CheckpointRestoreRefusalReason =
   | 'checkpoint_missing'
   | 'checkpoint_pruned'
   | 'authorization_changed'
-  | 'checkpoint_identity_mismatch';
+  | 'checkpoint_identity_mismatch'
+  | 'repository_config_refused'
+  | 'repository_config_unreadable';
 
 export type CheckpointRestoreClientError = StationHttpError & {
   readonly reason?: CheckpointRestoreRefusalReason;

@@ -6,6 +6,9 @@ export const TURN_CHANGED_FILES_UNAVAILABLE_REASONS = [
   'checkpoint_identity_invalid',
   'diff_failed',
   'diff_output_limit_exceeded',
+  // #2410: Station did not capture, because the repository's own git config
+  // defines a program (a clean filter) capture would run.
+  'checkpoint_refused',
 ] as const;
 
 export type TurnChangedFilesUnavailableReason =

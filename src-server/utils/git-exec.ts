@@ -104,8 +104,10 @@
  * - It does not stop a repo-local clean/smudge filter or diff driver. Those
  *   are selected per file by `.gitattributes` and cannot be neutralized
  *   generically; the coding routes refuse such a repository instead
- *   (`git-repository-config.ts`). Other callers that run `add` or `diff` in
- *   a Project folder (checkpoints) are not covered by that refusal.
+ *   (`git-repository-config.ts`), and so do checkpoint capture and restore
+ *   (#2410) and worktree provisioning (#2411). A new caller that runs
+ *   `status`, `diff`, `add` or `checkout` in a Project folder must apply
+ *   the same refusal.
  * - It does not stop a repo-local `url.*.insteadOf` rewriting a remote to
  *   another https/ssh address. The coding push route refuses one.
  * - The operator's OWN global configuration applies, by design.

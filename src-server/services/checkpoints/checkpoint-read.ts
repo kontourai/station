@@ -125,6 +125,16 @@ async function changedFilesBetween(
   settle: ServedTurnPhaseCheckpoint | undefined,
   options: { maxChangedFiles: number; runGit: GitDiffRunner },
 ): Promise<TurnChangedFiles> {
+  // #2410: a boundary Station declined to capture says so, rather than
+  // reading as a checkpoint that went missing.
+  if (
+    [baseline, settle].some(
+      (phase) =>
+        phase?.status === 'skipped' &&
+        phase.reason === 'repository_config_refused',
+    )
+  )
+    return { status: 'unavailable', reason: 'checkpoint_refused' };
   if (!baseline || !settle)
     return { status: 'unavailable', reason: 'checkpoint_missing' };
   if (baseline.status === 'failed' || settle.status === 'failed')

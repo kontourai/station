@@ -9,14 +9,19 @@
  * outlive a turn — it must land as a typed record.
  */
 
-import { mkdtempSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { CheckpointIndexStore } from '../checkpoint-index-store.js';
-import type { CheckpointCaptureResult } from '../checkpoint-ref-store.js';
+import { listThreadRecordsWithObjectStatus } from '../checkpoint-read.js';
+import {
+  type CheckpointCaptureResult,
+  CheckpointRefStore,
+} from '../checkpoint-ref-store.js';
 import {
   createThreadWorkingDirectoryResolver,
   TurnCheckpointCaptureCoordinator,
@@ -34,6 +39,11 @@ function newIndexStore(): CheckpointIndexStore {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+afterAll(() => {
+  for (const dir of tempDirs.splice(0))
+    rmSync(dir, { recursive: true, force: true });
 });
 
 function capturedResult(checkpointId: string): {
@@ -659,5 +669,77 @@ describe('createThreadWorkingDirectoryResolver', () => {
       () => [],
     );
     expect(throwing('thread-1')).toBeUndefined();
+  });
+});
+
+describe('turn checkpoints in a repository that defines a filter (#2410)', () => {
+  it('captures nothing, runs nothing, logs once, and tells the chat why', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'station-turn-cp-filter-'));
+    tempDirs.push(repo);
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: repo, windowsHide: true });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'checkpoint@test.invalid');
+    git('config', 'user.name', 'checkpoint test');
+    writeFileSync(join(repo, 'committed.md'), 'base\n');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'base');
+    const marker = `${repo}.clean-filter-ran`;
+    tempDirs.push(marker);
+    git('config', 'filter.marker.clean', `sh -c 'touch "${marker}"; cat'`);
+    writeFileSync(join(repo, '.gitattributes'), '*.txt filter=marker\n');
+    writeFileSync(join(repo, 'agent-output.txt'), 'payload\n');
+
+    const indexStore = newIndexStore();
+    const refStore = new CheckpointRefStore();
+    const warn = vi.fn();
+    const coordinator = new TurnCheckpointCaptureCoordinator({
+      refStore,
+      indexStore,
+      resolveWorkingDirectory: () => repo,
+      logger: { debug: () => {}, warn },
+    });
+    const eventBus = new EventBus();
+    const unsubscribe = wireTurnCheckpointCaptureWhenEnabled(
+      { workspaceCheckpoints: true },
+      { eventBus, coordinator, logger: { warn } },
+    );
+    for (const turnId of ['turn-1', 'turn-2']) {
+      emitTurnEvent(eventBus, {
+        method: 'turn.started',
+        threadId: 'thread-filter',
+        turnId,
+      });
+      emitTurnEvent(eventBus, {
+        method: 'turn.completed',
+        threadId: 'thread-filter',
+        turnId,
+      });
+    }
+    await vi.waitFor(() =>
+      expect(
+        indexStore.readTurn('thread-filter', 'turn-2')?.settle,
+      ).toBeDefined(),
+    );
+    unsubscribe();
+
+    expect(existsSync(marker)).toBe(false);
+    expect(
+      indexStore.readTurn('thread-filter', 'turn-1')?.baseline,
+    ).toMatchObject({ status: 'skipped', reason: 'repository_config_refused' });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({
+      threadId: 'thread-filter',
+      detail: 'repository config sets filter.marker.clean',
+    });
+    const served = await listThreadRecordsWithObjectStatus(
+      indexStore,
+      refStore,
+      'thread-filter',
+    );
+    expect(served.map((record) => record.changedFiles)).toEqual([
+      { status: 'unavailable', reason: 'checkpoint_refused' },
+      { status: 'unavailable', reason: 'checkpoint_refused' },
+    ]);
   });
 });

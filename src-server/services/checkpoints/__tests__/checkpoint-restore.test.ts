@@ -295,4 +295,68 @@ describe('CheckpointRestoreService', () => {
       }),
     ).rejects.toMatchObject({ reason: 'preview_invalid' });
   });
+
+  /**
+   * #2410: preview snapshots the tree with `add -A` (a clean filter runs) and
+   * restore materializes it with `read-tree -u` (a smudge filter runs). A
+   * repository whose own config defines a filter is refused before either.
+   */
+  async function plantFilter(repo: string) {
+    const marker = `${repo}.filter-ran`;
+    dirs.push(marker);
+    await execGit(
+      ['config', 'filter.marker.clean', `sh -c 'touch "${marker}"; cat'`],
+      { cwd: repo },
+    );
+    await execGit(
+      ['config', 'filter.marker.smudge', `sh -c 'touch "${marker}"; cat'`],
+      { cwd: repo },
+    );
+    await writeFile(join(repo, '.gitattributes'), '*.txt filter=marker\n');
+    return marker;
+  }
+
+  test('refuses a restore preview in a repository whose own config defines a filter, running nothing', async () => {
+    const { repo, home, refs, index } = await fixture();
+    const marker = await plantFilter(repo);
+    const service = new CheckpointRestoreService(index, refs, home);
+
+    await expect(
+      service.preview({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        phase: 'settle',
+        ownerKey: 'owner-1',
+      }),
+    ).rejects.toMatchObject({ reason: 'repository_config_refused' });
+    await expect(readFile(marker)).rejects.toThrow();
+  });
+
+  test('refuses the restore itself when a filter was planted after the preview', async () => {
+    const { repo, home, refs, index } = await fixture();
+    await writeFile(join(repo, 'tracked.txt'), 'later bytes');
+    const service = new CheckpointRestoreService(index, refs, home);
+    const preview = await service.preview({
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+      phase: 'settle',
+      ownerKey: 'owner-1',
+    });
+    const marker = await plantFilter(repo);
+
+    await expect(
+      service.restore({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        previewId: preview.previewId,
+        expectedCurrentTreeSha: preview.currentTreeSha,
+        ownerKey: 'owner-1',
+        confirmed: true,
+      }),
+    ).rejects.toMatchObject({ reason: 'repository_config_refused' });
+    await expect(readFile(marker)).rejects.toThrow();
+    expect(await readFile(join(repo, 'tracked.txt'), 'utf-8')).toBe(
+      'later bytes',
+    );
+  });
 });
