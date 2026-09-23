@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { request } from 'node:http';
 import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal-capability';
@@ -673,7 +674,8 @@ async function rawUpgradeStatus(
       headers: {
         Connection: 'Upgrade',
         Upgrade: 'websocket',
-        'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+        // A fresh per-request nonce, as RFC 6455 requires; it is not a credential.
+        'Sec-WebSocket-Key': randomBytes(16).toString('base64'),
         ...headers,
       },
     });

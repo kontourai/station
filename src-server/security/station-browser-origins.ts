@@ -44,7 +44,7 @@ export function resolveStationBrowserOrigins(input: {
   return [...origins];
 }
 
-export const WEBSOCKET_ORIGIN_FORBIDDEN = {
+const WEBSOCKET_ORIGIN_FORBIDDEN = {
   status: 403,
   reason: 'origin_forbidden',
 } as const;
