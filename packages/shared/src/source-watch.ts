@@ -1,4 +1,10 @@
-import { existsSync, watch as fsWatch, readdirSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  watch as fsWatch,
+  lstatSync,
+  readdirSync,
+  statSync,
+} from 'node:fs';
 import { join, relative } from 'node:path';
 
 /**
@@ -39,12 +45,25 @@ export const POLL_INTERVAL_MS = 2000;
 const NATIVE_QUIET_FACTOR = 2;
 
 /**
- * Upper bound on files one scan will stat. Past this the fallback switches
- * itself off and the status line says so, rather than walking a large tree
- * twice a second. A bounded fallback that admits its limit beats an unbounded
- * one.
+ * Upper bound on entries (files AND directories) one scan will visit. Past
+ * this the fallback switches itself off and the status line says so, rather
+ * than walking a large tree twice a second. A bounded fallback that admits its
+ * limit beats an unbounded one.
+ *
+ * Directories count because a tree can be expensive without holding many
+ * files: the scan is synchronous, and in a server it runs on the event loop
+ * every poll interval for a folder a Project member controls.
  */
 export const POLL_ENTRY_BUDGET = 2000;
+
+/**
+ * Wall-clock bound on one synchronous scan. An entry count cannot see a slow
+ * filesystem (a network mount, a stalled disk), so the scan also gives up —
+ * and switches the fallback off — once it has run this long.
+ */
+export const POLL_SCAN_TIME_BUDGET_MS = 250;
+
+const POLL_BUDGET_EXCEEDED = `more than ${POLL_ENTRY_BUDGET} entries or ${POLL_SCAN_TIME_BUDGET_MS}ms per scan`;
 
 /** Directory names never worth scanning inside a plugin source tree. */
 const SCAN_SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
@@ -91,22 +110,37 @@ export interface FallbackWatchOptions {
 type Snapshot = Map<string, number>;
 
 /**
- * Walk `paths` recording mtimes, or return `null` when the entry budget is
- * exhausted. Unreadable entries are skipped: a scan is a best-effort second
- * opinion, not an authority on the tree.
+ * Walk `paths` recording mtimes, or return `null` when the entry or time
+ * budget is exhausted. Unreadable entries are skipped: a scan is a best-effort
+ * second opinion, not an authority on the tree.
+ *
+ * Symbolic links are never descended. A symlinked FILE is recorded by its
+ * target's mtime (one stat, no recursion); a symlinked DIRECTORY is skipped.
+ * Following directory links let `sub/a -> .` plus `sub/b -> .` branch the walk
+ * 2^depth until ELOOP, blocking the process for as long as that took on every
+ * poll. The roots in `paths` themselves are followed: the caller chose them.
  */
 function scanPaths(
   cwd: string,
   paths: string[],
   accepts: (relativePath: string) => boolean,
+  now: () => number = Date.now,
 ): Snapshot | null {
   const snapshot: Snapshot = new Map();
   let budget = POLL_ENTRY_BUDGET;
+  const deadline = now() + POLL_SCAN_TIME_BUDGET_MS;
 
-  const visit = (absolute: string): boolean => {
+  const visit = (absolute: string, isRoot: boolean): boolean => {
+    budget -= 1;
+    if (budget < 0 || now() > deadline) return false;
     let stats: ReturnType<typeof statSync>;
     try {
-      stats = statSync(absolute);
+      stats = isRoot ? statSync(absolute) : lstatSync(absolute);
+      if (stats.isSymbolicLink()) {
+        const target = statSync(absolute);
+        if (!target.isFile()) return true;
+        stats = target;
+      }
     } catch {
       return true;
     }
@@ -119,12 +153,11 @@ function scanPaths(
       }
       for (const entry of entries) {
         if (entry.startsWith('.') || SCAN_SKIP_DIRS.has(entry)) continue;
-        if (!visit(join(absolute, entry))) return false;
+        if (!visit(join(absolute, entry), false)) return false;
       }
       return true;
     }
-    budget -= 1;
-    if (budget < 0) return false;
+    if (!stats.isFile()) return true;
     const relativePath = relative(cwd, absolute);
     if (accepts(relativePath)) {
       snapshot.set(relativePath, stats.mtimeMs);
@@ -133,7 +166,7 @@ function scanPaths(
   };
 
   for (const path of paths) {
-    if (!visit(path)) return null;
+    if (!visit(path, true)) return null;
   }
   return snapshot;
 }
@@ -235,7 +268,7 @@ export function watchWithFallback({
   // ── mtime fallback ──
   let snapshot = scanPaths(cwd, paths, accepts);
   if (snapshot === null) {
-    status.pollingError = `more than ${POLL_ENTRY_BUDGET} files`;
+    status.pollingError = POLL_BUDGET_EXCEEDED;
   } else {
     status.pollingActive = true;
     poller = setInterval(() => {
@@ -243,7 +276,7 @@ export function watchWithFallback({
       const next = scanPaths(cwd, paths, accepts);
       if (next === null) {
         status.pollingActive = false;
-        status.pollingError = `more than ${POLL_ENTRY_BUDGET} files`;
+        status.pollingError = POLL_BUDGET_EXCEEDED;
         if (poller) clearInterval(poller);
         poller = null;
         return;
