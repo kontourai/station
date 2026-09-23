@@ -60,9 +60,9 @@ import { tmpdir as osTmpdir, totalmem as osTotalmem } from 'node:os';
 import { join } from 'node:path';
 import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 
-export const SLOT_DIR_ENV = 'STATION_TYPECHECK_SLOT_DIR';
-export const SLOT_COUNT_ENV = 'STATION_TYPECHECK_SLOTS';
-export const SLOT_WAIT_ENV = 'STATION_TYPECHECK_SLOT_WAIT_MS';
+const SLOT_DIR_ENV = 'STATION_TYPECHECK_SLOT_DIR';
+const SLOT_COUNT_ENV = 'STATION_TYPECHECK_SLOTS';
+const SLOT_WAIT_ENV = 'STATION_TYPECHECK_SLOT_WAIT_MS';
 /**
  * Set on the holder's own environment. A nested acquisition in the same
  * process tree (a slot holder that starts another slotted program) would
@@ -77,11 +77,11 @@ const GIB = 1024 ** 3;
  * development host bound typecheck memory near 12 GB; a 16 GB CI runner
  * gets 2, which keeps its typecheck lane from serializing completely.
  */
-export const BYTES_PER_SLOT = 8 * GIB;
-export const MAX_DEFAULT_SLOTS = 4;
+const BYTES_PER_SLOT = 8 * GIB;
+const MAX_DEFAULT_SLOTS = 4;
 const MAX_CONFIGURED_SLOTS = 64;
 /** A full aggregate on a contended host legitimately queues for minutes. */
-export const DEFAULT_WAIT_MS = 45 * 60_000;
+const DEFAULT_WAIT_MS = 45 * 60_000;
 export const UNVERIFIED_HOLDER_STALE_MS = 6 * 60 * 60_000;
 /** A record that cannot be parsed is durable corruption once this old. */
 export const CORRUPT_RECORD_STALE_MS = 60_000;
@@ -112,15 +112,12 @@ export function resolveSlotCount({
   );
 }
 
-export function resolveSlotDirectory({
-  env = process.env,
-  tmpdir = osTmpdir(),
-} = {}) {
+function resolveSlotDirectory({ env = process.env, tmpdir = osTmpdir() } = {}) {
   const override = env[SLOT_DIR_ENV];
   return override ? override : join(tmpdir, 'station-typecheck-slots');
 }
 
-export function resolveWaitMs({ env = process.env } = {}) {
+function resolveWaitMs({ env = process.env } = {}) {
   const raw = env[SLOT_WAIT_ENV];
   if (raw === undefined || raw === '') return DEFAULT_WAIT_MS;
   const parsed = Number(raw);
@@ -163,7 +160,7 @@ export function ownBirthFingerprint({
 /**
  * @returns {{ record: any, corrupt: boolean, missing: boolean, mtimeMs: number | null }}
  */
-export function readSlotRecord(path) {
+function readSlotRecord(path) {
   let text;
   let mtimeMs = null;
   try {
@@ -241,7 +238,7 @@ function unlinkQuietly(path) {
  * Claim slot `index` if it is free. Returns false on EEXIST; any other error
  * is a real problem (unwritable directory) and propagates.
  */
-export function tryClaimSlot(dir, index, record) {
+function tryClaimSlot(dir, index, record) {
   const target = slotPath(dir, index);
   const staging = join(dir, `.staging-${record.nonce}`);
   writePrivateFile(staging, `${JSON.stringify(record)}\n`);
@@ -315,7 +312,7 @@ function describeHolders(holders) {
  * One pass over every slot: claim the first free one, reclaiming stale
  * records on the way. Returns the claimed index, or the live holders seen.
  */
-export function scanSlots(dir, slots, record, liveness) {
+function scanSlots(dir, slots, record, liveness) {
   const holders = [];
   for (let index = 0; index < slots; index += 1) {
     if (tryClaimSlot(dir, index, record)) return { index, holders };

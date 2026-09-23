@@ -757,6 +757,26 @@ reported separately from test failures.
 Use `npm run test:prepush:repeat` to measure 20 consecutive attempts. This tier
 is diagnostic and does not replace the final `npm run full:regression` receipt.
 
+### Host typecheck slots and incremental compiles
+
+Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
+one of N host-wide slots for the life of the compiler (lock files in
+`$TMPDIR/station-typecheck-slots`, shared by every worktree on the machine) and
+adds `--incremental` with a per-project build info file under the ignored
+`node_modules/.cache/station-tsbuildinfo/`. N defaults to one slot per 8 GiB of
+RAM, between 1 and 4; the `typecheck` aggregate never runs more lanes at once
+than there are slots. A crashed or killed compiler's slot is reclaimed from its
+dead pid. Overrides: `STATION_TYPECHECK_SLOTS` (count),
+`STATION_TYPECHECK_SLOT_WAIT_MS` (bounded wait, default 45 minutes, then the
+lane fails naming the holders), `STATION_TYPECHECK_SLOT_DIR`, and
+`STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
+same diagnostics as a cold one: TypeScript checks every input's content hash
+and replays stored errors for unchanged files.
+
+The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
+with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
+the full aggregate or `ci:fast` in the background and poll for its result.
+
 ### Shared Vitest worker policy
 
 Ordinary and focused Vitest invocations inherit the checked-in four-worker

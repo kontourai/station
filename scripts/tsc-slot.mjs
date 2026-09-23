@@ -36,8 +36,8 @@ import {
   SLOT_HELD_ENV,
 } from './lib/typecheck-host-slots.mjs';
 
-export const INCREMENTAL_ENV = 'STATION_TYPECHECK_INCREMENTAL';
-export const BUILDINFO_DIR_ENV = 'STATION_TSBUILDINFO_DIR';
+const INCREMENTAL_ENV = 'STATION_TYPECHECK_INCREMENTAL';
+const BUILDINFO_DIR_ENV = 'STATION_TSBUILDINFO_DIR';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -94,7 +94,7 @@ export function projectConfigPath(args, cwd) {
  * to a readable name (`packages__shared__tsconfig.json.tsbuildinfo`); a
  * config elsewhere gets a digest of its absolute path.
  */
-export function buildInfoPathFor(configPath, { repoRoot, cacheDir }) {
+function buildInfoPathFor(configPath, { repoRoot, cacheDir }) {
   const rel = relative(repoRoot, configPath);
   const name =
     rel && !rel.startsWith('..') && !isAbsolute(rel)
@@ -141,7 +141,7 @@ function describeProject(args, cwd) {
   return rel && !rel.startsWith('..') ? rel.replaceAll('\\', '/') : config;
 }
 
-export async function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2)) {
   const cwd = process.cwd();
   const plan = planTscArgs(argv, { cwd });
   if (plan.buildInfoFile)
