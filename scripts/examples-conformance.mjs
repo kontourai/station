@@ -82,8 +82,32 @@ export function typeScriptSources(dir) {
 
 /** The tsconfig paths `typecheck:examples` passes to `-p`, repo-relative. */
 export function typecheckedProjects(command) {
-  return [...(command ?? '').matchAll(/(?:^|\s)-p\s+(\S+)/g)].map((m) => m[1]);
+  return typecheckSegments(command).map((segment) => segment.project);
 }
+
+const TSC_SEGMENT = /^node scripts\/tsc-slot\.mjs\s+(.*)$/;
+
+/**
+ * The compiler runs `typecheck:examples` performs: `&&`-joined segments that
+ * invoke the slot runner, each with the project it passes to `-p`. A segment
+ * that runs anything else (`echo -p x`, say) type-checks nothing and is not
+ * counted, however its arguments read.
+ */
+export function typecheckSegments(command) {
+  const segments = [];
+  for (const raw of (command ?? '').split('&&')) {
+    const match = TSC_SEGMENT.exec(raw.trim());
+    if (!match) continue;
+    const args = match[1].split(/\s+/);
+    const at = args.indexOf('-p');
+    if (at === -1 || !args[at + 1]) continue;
+    segments.push({ project: args[at + 1], args });
+  }
+  return segments;
+}
+
+/** `// @ts-nocheck` (or its block form) switches a file's checking off. */
+const TS_NOCHECK = /^\s*(?:\/\/|\/\*)\s*@ts-nocheck\b/m;
 
 /**
  * The files TypeScript itself resolves for a project -- the compiler's own
@@ -101,7 +125,10 @@ export function projectFiles(tsconfigPath) {
     ts.sys,
     dirname(tsconfigPath),
   );
-  return parsed.fileNames.map((file) => resolve(file));
+  return {
+    files: parsed.fileNames.map((file) => resolve(file)),
+    noCheck: parsed.options.noCheck === true,
+  };
 }
 
 /**
@@ -119,13 +146,21 @@ export function typecheckCoverageProblems({
 } = {}) {
   const problems = [];
   const covered = new Set();
-  for (const project of typecheckedProjects(typecheckCommand)) {
+  for (const { project, args } of typecheckSegments(typecheckCommand)) {
     const path = resolve(root, project);
     if (!existsSync(path)) {
       problems.push(`typecheck:examples names a missing project: ${project}`);
       continue;
     }
-    for (const file of projectFiles(path)) covered.add(file);
+    const { files, noCheck } = projectFiles(path);
+    // A project compiled without checking covers nothing.
+    if (noCheck || args.includes('--noCheck')) {
+      problems.push(
+        `${project} is compiled with noCheck, so typecheck:examples does not type-check it`,
+      );
+      continue;
+    }
+    for (const file of files) covered.add(file);
   }
 
   const examples = listExamples(examplesDir);
@@ -153,6 +188,13 @@ export function typecheckCoverageProblems({
         );
       }
       continue;
+    }
+    for (const file of sources) {
+      if (TS_NOCHECK.test(readFileSync(file, 'utf8'))) {
+        problems.push(
+          `${relative(root, file).split(sep).join('/')} disables type checking with @ts-nocheck`,
+        );
+      }
     }
     for (const file of uncovered) {
       problems.push(

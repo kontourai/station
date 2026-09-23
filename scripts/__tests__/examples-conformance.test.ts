@@ -235,6 +235,83 @@ describe('typecheckCoverageProblems', () => {
     ]);
   });
 
+  // #2343 review LOW-1: each of these satisfied the gate without a single
+  // file being type-checked.
+  it('does not count a tsconfig that sets noCheck', () => {
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': JSON.stringify({
+        compilerOptions: { noCheck: true, noEmit: true },
+        include: ['src/**/*'],
+      }),
+      'examples/demo/src/index.tsx': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: CHECK_DEMO,
+        excluded: new Map(),
+      }),
+    ).toEqual([
+      'examples/demo/tsconfig.json is compiled with noCheck, so typecheck:examples does not type-check it',
+      expect.stringContaining(
+        'examples/demo/src/index.tsx is TypeScript that no typecheck:examples project compiles',
+      ),
+    ]);
+  });
+
+  it('does not count a segment that passes --noCheck', () => {
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: `${CHECK_DEMO} --noCheck`,
+        excluded: new Map(),
+      }),
+    ).toContain(
+      'examples/demo/tsconfig.json is compiled with noCheck, so typecheck:examples does not type-check it',
+    );
+  });
+
+  it('does not count a segment that names a project without compiling it', () => {
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx': 'export {};',
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: 'npm run lint && echo -p examples/demo/tsconfig.json',
+        excluded: new Map(),
+      }),
+    ).toEqual([
+      expect.stringContaining(
+        'examples/demo/src/index.tsx is TypeScript that no typecheck:examples project compiles',
+      ),
+    ]);
+  });
+
+  it('flags a covered source that switches checking off with @ts-nocheck', () => {
+    const root = makeRepo({
+      'examples/demo/tsconfig.json': SRC_TSCONFIG,
+      'examples/demo/src/index.tsx':
+        '// @ts-nocheck\nexport const n: number = "x";',
+      'examples/demo/src/ok.ts':
+        "// mentions @ts-nocheck mid-line: 'x // @ts-nocheck'\nexport {};",
+    });
+    expect(
+      typecheckCoverageProblems({
+        root,
+        typecheckCommand: CHECK_DEMO,
+        excluded: new Map(),
+      }),
+    ).toEqual([
+      'examples/demo/src/index.tsx disables type checking with @ts-nocheck',
+    ]);
+  });
+
   it('flags a project the chain names that does not exist', () => {
     const root = makeRepo({ 'examples/other/README.md': '# other' });
     expect(
