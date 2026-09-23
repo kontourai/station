@@ -2,8 +2,19 @@ import type {
   LiveSurfaceCodec,
   LiveSurfaceFrameHeader,
   LiveSurfaceInput,
+  LiveSurfacePointerButton,
   LiveSurfaceStreamParams,
 } from '@kontourai/station-contracts/live-surface';
+
+/**
+ * What a controller had pressed when it lost control: buttons it sent a
+ * `down` for without an `up`, keys likewise, and where the pointer was.
+ */
+export interface LiveSurfaceHeldInput {
+  buttons: LiveSurfacePointerButton[];
+  keys: { key: string; code: string }[];
+  pointer: { x: number; y: number };
+}
 
 /**
  * A producer is any frame + input source behind a live surface: a Chromium
@@ -43,4 +54,18 @@ export interface LiveSurfaceProducer {
    * the hub enforces the lower fps by throttling delivery instead.
    */
   updateParams?(params: LiveSurfaceStreamParams): Promise<void>;
+  /**
+   * Optional: release input the previous controller left held, WITHOUT
+   * completing its gesture. Called when control changes hands or is
+   * released while something is pressed. It must not release a button at
+   * the point where it was pressed — a `down` then `up` on the same target
+   * is a click, and a human grabbing control to STOP an agent's click must
+   * not be the thing that completes it.
+   *
+   * Without this hook the registry dispatches a neutral cancel: a pointer
+   * move to (-1, -1), outside every viewport, then each button's `up` there,
+   * then each key's `up`. A CDP producer can do better (e.g. dispatch the
+   * release with the target removed from hit testing).
+   */
+  cancelHeldInput?(held: LiveSurfaceHeldInput): Promise<void>;
 }

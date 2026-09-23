@@ -5,18 +5,19 @@ import type {
 } from '@kontourai/station-contracts/live-surface';
 
 /**
- * One controller, N viewers, epochs (#90).
+ * One controller, N viewers, two counters (#90).
  *
- * The epoch advances exactly when control passes to a DIFFERENT controller
- * than the last one to hold it. That is the fence: an operation that
- * captured epoch E checks `isCurrent(E, controller)` before and after each
- * step, and anyone else who took the surface in between has moved the epoch
- * on, so the operation aborts rather than acting on a page it no longer owns.
- *
- * A lease that merely lapses (expiry or release) leaves no holder and does
- * NOT advance the epoch: nobody else has acted, so the last holder's view is
- * not stale and its next input reclaims at the same epoch. The lapsed holder
- * is still fenced — `isCurrent(E, it)` answers `not-holder` — until then.
+ * - The FENCE advances on every change of holder: claim, takeover, release,
+ *   expiry. It is what operations fence on: an operation that captured
+ *   fence F checks `isCurrent(F, controller)` before and after each step.
+ *   Any holder change in between — including this same controller
+ *   releasing and reclaiming — moves the fence, so the earlier operation's
+ *   stragglers are refused rather than landing inside a later one.
+ * - The EPOCH is what viewers see and echo with their input. It advances
+ *   only when control passes to a DIFFERENT controller than the last one to
+ *   hold it. A lease that merely lapses (expiry or release) leaves no holder
+ *   and does not advance it: nobody else has acted, so the last holder's
+ *   view is not stale and its next input reclaims without a refusal.
  *
  * Rules:
  * - A human's input auto-claims (`claimForHumanInput`) when the epoch the
@@ -80,7 +81,7 @@ export interface LiveSurfaceLeaseReader {
   readonly surfaceId: string;
   snapshot(): LiveSurfaceControlLease;
   isCurrent(
-    epoch: number,
+    fence: number,
     controller?: LiveSurfaceController,
   ): LiveSurfaceLeaseCheck;
   onChange(listener: (lease: LiveSurfaceControlLease) => void): () => void;
@@ -88,6 +89,7 @@ export interface LiveSurfaceLeaseReader {
 
 export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   private epoch = 0;
+  private fence = 0;
   private holder: LiveSurfaceController | null = null;
   /** The most recent non-null holder; its reclaim does not advance the epoch. */
   private lastHolder: LiveSurfaceController | null = null;
@@ -132,15 +134,16 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
   }
 
   /**
-   * The fence. `controller` omitted checks only the epoch; passed, it also
-   * requires that controller to be the current holder.
+   * The fence check. `fence` is the token an operation captured (the
+   * `fence` of the lease its claim returned). `controller` omitted checks
+   * only the token; passed, it also requires that controller to hold.
    */
   isCurrent(
-    epoch: number,
+    fence: number,
     controller?: LiveSurfaceController,
   ): LiveSurfaceLeaseCheck {
     this.expireIfDue();
-    if (epoch !== this.epoch)
+    if (fence !== this.fence)
       return { ok: false, code: 'stale-epoch', lease: this.view() };
     if (controller && !sameController(controller, this.holder))
       return { ok: false, code: 'not-holder', lease: this.view() };
@@ -188,12 +191,12 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     return { ok: true, lease: this.view() };
   }
 
-  /** Extend the holder's lease. Refused when the epoch or holder moved. */
+  /** Extend the holder's lease. Refused when the fence or holder moved. */
   renew(
     controller: LiveSurfaceController,
-    epoch: number,
+    fence: number,
   ): LiveSurfaceLeaseResult {
-    const check = this.isCurrent(epoch, controller);
+    const check = this.isCurrent(fence, controller);
     if (!check.ok) return check;
     this.expiresAt =
       this.now() +
@@ -201,13 +204,22 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     return { ok: true, lease: this.view() };
   }
 
-  /** Give the lease up. Only the holder, at the current epoch. */
+  /**
+   * Give the lease up. Only the holder, presenting either its fence
+   * (automation) or the viewer epoch it last observed (a human's button).
+   */
   release(
     controller: LiveSurfaceController,
-    epoch: number,
+    stamp: { fence: number } | { epoch: number },
   ): LiveSurfaceLeaseResult {
-    const check = this.isCurrent(epoch, controller);
-    if (!check.ok) return check;
+    this.expireIfDue();
+    const current =
+      'fence' in stamp
+        ? stamp.fence === this.fence
+        : stamp.epoch === this.epoch;
+    if (!current) return { ok: false, code: 'stale-epoch', lease: this.view() };
+    if (!sameController(controller, this.holder))
+      return { ok: false, code: 'not-holder', lease: this.view() };
     this.setHolder(null, null);
     return { ok: true, lease: this.view() };
   }
@@ -220,6 +232,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
     const previousHolder = this.lastHolder;
     const handoff = holder !== null && !sameController(holder, this.lastHolder);
     if (handoff) this.epoch += 1;
+    if (changed) this.fence += 1;
     this.holder = holder;
     if (holder) this.lastHolder = holder;
     this.expiresAt = expiresAt;
@@ -242,6 +255,7 @@ export class LiveSurfaceControlLeaseState implements LiveSurfaceLeaseReader {
       epoch: this.epoch,
       holder: this.holder ? { ...this.holder } : null,
       expiresAt: this.expiresAt,
+      fence: this.fence,
     };
   }
 }

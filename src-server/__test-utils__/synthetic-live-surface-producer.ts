@@ -3,7 +3,10 @@ import type {
   LiveSurfaceInput,
   LiveSurfaceStreamParams,
 } from '@kontourai/station-contracts/live-surface';
-import type { LiveSurfaceProducer } from '../services/live-surface/producer.js';
+import type {
+  LiveSurfaceHeldInput,
+  LiveSurfaceProducer,
+} from '../services/live-surface/producer.js';
 
 /**
  * TEST-ONLY producer (#90): proves the hub, lease, routes and canvas without
@@ -79,6 +82,9 @@ export class SyntheticLiveSurfaceProducer implements LiveSurfaceProducer {
     this.acks.push(seq);
     if (this.outstanding === seq) this.outstanding = null;
   }
+
+  /** Absent by default, so the registry's neutral cancel is exercised. */
+  cancelHeldInput?: (held: LiveSurfaceHeldInput) => Promise<void>;
 
   updateParams?: (params: LiveSurfaceStreamParams) => Promise<void> = async (
     params,

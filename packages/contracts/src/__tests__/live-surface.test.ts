@@ -260,6 +260,15 @@ describe('live surface wire parsers', () => {
     expect(parseLiveSurfaceLeaseRequest({ action: 'release' })).toBeNull();
   });
 
+  test('a lease fence round-trips and must be a non-negative integer', () => {
+    const base = (state as { state: { lease: object } }).state.lease;
+    expect(parseLiveSurfaceControlLease({ ...base, fence: 7 })).toMatchObject({
+      fence: 7,
+    });
+    expect(parseLiveSurfaceControlLease({ ...base, fence: -1 })).toBeNull();
+    expect(parseLiveSurfaceControlLease({ ...base, fence: 1.5 })).toBeNull();
+  });
+
   test('a lease snapshot round-trips and rejects a malformed holder', () => {
     const lease = (state as { state: { lease: unknown } }).state.lease;
     expect(parseLiveSurfaceControlLease(lease)).toEqual(lease);

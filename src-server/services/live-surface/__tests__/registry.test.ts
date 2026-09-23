@@ -1,6 +1,7 @@
 import type { LiveSurfaceInput } from '@kontourai/station-contracts/live-surface';
 import { describe, expect, test } from 'vitest';
 import { SyntheticLiveSurfaceProducer } from '../../../__test-utils__/synthetic-live-surface-producer.js';
+import type { LiveSurfaceHeldInput } from '../producer.js';
 import {
   claimAgentControl,
   dispatchAgentInput,
@@ -8,6 +9,7 @@ import {
   type LiveSurfaceAuthorizer,
   LiveSurfaceRegistry,
   type LiveSurfaceRegistryOptions,
+  releaseHumanControl,
 } from '../registry.js';
 
 const agent = {
@@ -25,6 +27,8 @@ const move = (x: number) =>
   ({ kind: 'pointer', type: 'move', x, y: 1 }) as const;
 const key = (k: string, type: 'down' | 'up' = 'down') =>
   ({ kind: 'key', type, key: k, code: `Key${k.toUpperCase()}` }) as const;
+const press = (type: 'down' | 'up', x: number, y: number) =>
+  ({ kind: 'pointer', type, x, y, button: 'left', clickCount: 1 }) as const;
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -38,12 +42,24 @@ function setup(
   return { registry, producer, entry: registry.get('surface-1')! };
 }
 
+async function agentFence(entry: ReturnType<typeof setup>['entry']) {
+  const claim = await claimAgentControl(entry, agent, OPERATOR);
+  expect(claim.ok).toBe(true);
+  return claim.lease.fence!;
+}
+
+/** Wait until the input chain has drained (the cancel is queued work). */
+async function settleChain() {
+  await sleep(0);
+  await sleep(0);
+}
+
 const keysOf = (events: LiveSurfaceInput[]) =>
   events.map((event) =>
     event.kind === 'key'
       ? `${event.type}:${event.key}`
       : event.kind === 'pointer'
-        ? `${event.type}:${event.button ?? event.x}`
+        ? `${event.type}@${event.x},${event.y}`
         : event.text,
   );
 
@@ -51,14 +67,11 @@ describe('live surface registry', () => {
   test('an agent drives a surface with zero viewers; the frame stream never starts (D6)', async () => {
     const { producer, entry } = setup();
     expect(entry.hub.viewerCount).toBe(0);
-    const claim = await claimAgentControl(entry, agent, OPERATOR);
-    const result = await dispatchAgentInput(
-      entry,
-      agent,
-      OPERATOR,
-      claim.lease.epoch,
-      [move(1), { kind: 'text', text: 'hello' }],
-    );
+    const fence = await agentFence(entry);
+    const result = await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      move(1),
+      { kind: 'text', text: 'hello' },
+    ]);
     expect(result).toMatchObject({ ok: true, accepted: 2 });
     expect(producer.dispatched).toEqual([
       move(1),
@@ -71,8 +84,8 @@ describe('live surface registry', () => {
   test('human input arriving mid-batch preempts a running agent batch at its next event (B3)', async () => {
     const { producer, entry } = setup();
     producer.dispatchImpl = () => sleep(20);
-    const epoch = (await claimAgentControl(entry, agent, OPERATOR)).lease.epoch;
-    const agentRun = dispatchAgentInput(entry, agent, OPERATOR, epoch, [
+    const fence = await agentFence(entry);
+    const agentRun = dispatchAgentInput(entry, agent, OPERATOR, fence, [
       key('a'),
       key('a', 'up'),
       key('b'),
@@ -80,7 +93,7 @@ describe('live surface registry', () => {
       key('c'),
     ]);
     await sleep(5); // the agent's first event is in flight
-    const humanRun = dispatchHumanInput(entry, human, epoch, [key('h')]);
+    const humanRun = dispatchHumanInput(entry, human, 1, [key('h')]);
     const [agentResult, humanResult] = await Promise.all([agentRun, humanRun]);
     expect(agentResult).toMatchObject({
       ok: false,
@@ -89,55 +102,100 @@ describe('live surface registry', () => {
     });
     expect(humanResult).toMatchObject({
       ok: true,
-      lease: { holder: human, epoch: epoch + 1 },
+      lease: { holder: human, epoch: 2 },
     });
-    // The agent's first key was down when the human took over: the handoff
-    // released it before the human's input ran.
+    // The agent's key was down when the human took over: it is released
+    // before the human's input runs.
     expect(keysOf(producer.dispatched)).toEqual(['down:a', 'up:a', 'down:h']);
   });
 
-  test('a handoff releases every button and key the previous controller held (S4)', async () => {
+  test("a takeover cancels an agent's in-flight click instead of completing it (D1)", async () => {
     const { producer, entry } = setup();
-    const epoch = (await claimAgentControl(entry, agent, OPERATOR)).lease.epoch;
-    await dispatchAgentInput(entry, agent, OPERATOR, epoch, [
-      { kind: 'pointer', type: 'down', x: 5, y: 6, button: 'left' },
-      key('shift'),
+    producer.dispatchImpl = () => sleep(20);
+    const fence = await agentFence(entry);
+    // The agent is clicking Delete at (100, 50).
+    const agentRun = dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      press('down', 100, 50),
+      press('up', 100, 50),
     ]);
-    await dispatchHumanInput(entry, human, epoch, [move(9)]);
-    expect(producer.dispatched.slice(2)).toEqual([
-      {
-        kind: 'pointer',
-        type: 'up',
-        x: 5,
-        y: 6,
-        button: 'left',
-        clickCount: 1,
-      },
-      { kind: 'key', type: 'up', key: 'shift', code: 'KeySHIFT' },
-      move(9),
+    await sleep(5); // its down is in flight
+    // The human grabs control to stop it.
+    const humanRun = dispatchHumanInput(entry, human, 1, [move(300)]);
+    await Promise.all([agentRun, humanRun]);
+    const ups = producer.dispatched.filter(
+      (event) => event.kind === 'pointer' && event.type === 'up',
+    );
+    // No up where the down was: that would be the click.
+    expect(ups).not.toContainEqual(expect.objectContaining({ x: 100, y: 50 }));
+    expect(keysOf(producer.dispatched)).toEqual([
+      'down@100,50',
+      'move@-1,-1',
+      'up@-1,-1',
+      'move@300,1',
     ]);
   });
 
-  test('a released button is not released again at the handoff', async () => {
+  test('a producer with cancelHeldInput is handed what was held and nothing is synthesized', async () => {
     const { producer, entry } = setup();
-    const epoch = (await claimAgentControl(entry, agent, OPERATOR)).lease.epoch;
-    await dispatchAgentInput(entry, agent, OPERATOR, epoch, [
-      { kind: 'pointer', type: 'down', x: 5, y: 6, button: 'left' },
-      { kind: 'pointer', type: 'up', x: 5, y: 6, button: 'left' },
+    const cancelled: LiveSurfaceHeldInput[] = [];
+    producer.cancelHeldInput = async (held) => {
+      cancelled.push(held);
+    };
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      press('down', 5, 6),
+      key('shift'),
     ]);
-    await dispatchHumanInput(entry, human, epoch, [move(9)]);
+    await dispatchHumanInput(entry, human, 1, [move(9)]);
+    expect(cancelled).toEqual([
+      {
+        buttons: ['left'],
+        keys: [{ key: 'shift', code: 'KeySHIFT' }],
+        pointer: { x: 5, y: 6 },
+      },
+    ]);
+    expect(keysOf(producer.dispatched)).toEqual([
+      'down@5,6',
+      'down:shift',
+      'move@9,1',
+    ]);
+  });
+
+  test('a released button is not cancelled again at the handoff', async () => {
+    const { producer, entry } = setup();
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      press('down', 5, 6),
+      press('up', 5, 6),
+    ]);
+    await dispatchHumanInput(entry, human, 1, [move(9)]);
     expect(producer.dispatched).toHaveLength(3);
+  });
+
+  test('releasing the lease while a button is held cancels it (N-c)', async () => {
+    const { producer, entry } = setup();
+    const result = await dispatchHumanInput(entry, human, 0, [
+      press('down', 7, 8),
+    ]);
+    expect(result.ok).toBe(true);
+    expect(releaseHumanControl(entry, human, result.lease.epoch).ok).toBe(true);
+    await settleChain();
+    expect(keysOf(producer.dispatched)).toEqual([
+      'down@7,8',
+      'move@-1,-1',
+      'up@-1,-1',
+    ]);
   });
 
   test('an agent batch stops at the event where a human took over', async () => {
     const { producer, entry } = setup();
-    const epoch = (await claimAgentControl(entry, agent, OPERATOR)).lease.epoch;
+    const fence = await agentFence(entry);
     let humanRun: Promise<unknown> | undefined;
     producer.dispatchImpl = async () => {
       if (producer.dispatched.length === 1)
-        humanRun = dispatchHumanInput(entry, human, epoch, [move(100)]);
+        humanRun = dispatchHumanInput(entry, human, 1, [move(100)]);
     };
-    const result = await dispatchAgentInput(entry, agent, OPERATOR, epoch, [
+    const result = await dispatchAgentInput(entry, agent, OPERATOR, fence, [
       move(1),
       move(2),
       move(3),
@@ -171,7 +229,7 @@ describe('live surface registry', () => {
     const claim = await claimAgentControl(entry, agent, OPERATOR);
     expect(claim).toMatchObject({ ok: true, lease: { holder: agent } });
     expect(
-      await dispatchAgentInput(entry, agent, OPERATOR, claim.lease.epoch, [
+      await dispatchAgentInput(entry, agent, OPERATOR, claim.lease.fence!, [
         move(1),
       ]),
     ).toMatchObject({ ok: false, code: 'not-authorized', accepted: 0 });
@@ -183,18 +241,96 @@ describe('live surface registry', () => {
     ]);
   });
 
-  test('a hung producer dispatch fails the batch and never blocks the chain (S7)', async () => {
-    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 30 });
-    producer.dispatchImpl = () => new Promise(() => {});
+  test('a timed-out dispatch wedges the surface: nothing overlaps it, and input resumes once it settles (S7, D3)', async () => {
+    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 20 });
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let finishHung!: () => void;
+    producer.dispatchImpl = (event) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      const done = () => {
+        inFlight -= 1;
+      };
+      if (event.kind === 'pointer' && event.x === 1)
+        return new Promise<void>((resolve) => {
+          finishHung = () => {
+            done();
+            resolve();
+          };
+        });
+      done();
+      return Promise.resolve();
+    };
     const first = await dispatchHumanInput(entry, human, 0, [move(1), move(2)]);
     expect(first).toMatchObject({
       ok: false,
       code: 'dispatch-failed',
       accepted: 0,
     });
-    producer.dispatchImpl = async () => {};
-    const second = await dispatchHumanInput(entry, human, 1, [move(3)]);
-    expect(second).toMatchObject({ ok: true, accepted: 1 });
+    // Wedged: refused outright, and nothing reached the producer.
+    const during = await dispatchHumanInput(entry, human, 1, [move(3)]);
+    expect(during).toMatchObject({ ok: false, code: 'surface-wedged' });
+    expect(producer.dispatched).toEqual([move(1)]);
+    finishHung();
+    await settleChain();
+    const after = await dispatchHumanInput(entry, human, 1, [move(4)]);
+    expect(after).toMatchObject({ ok: true, accepted: 1 });
+    expect(maxInFlight).toBe(1);
+  });
+
+  test('a down that times out and lands late is still cancelled at the handoff (D3)', async () => {
+    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 20 });
+    let land!: () => void;
+    producer.dispatchImpl = (event) =>
+      event.kind === 'pointer' && event.type === 'down'
+        ? new Promise<void>((resolve) => {
+            land = resolve;
+          })
+        : Promise.resolve();
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      press('down', 40, 40),
+    ]);
+    // The human takes over while the down is still unsettled.
+    expect(await dispatchHumanInput(entry, human, 1, [move(9)])).toMatchObject({
+      code: 'surface-wedged',
+    });
+    land();
+    await settleChain();
+    expect(await dispatchHumanInput(entry, human, 1, [move(9)])).toMatchObject({
+      ok: true,
+    });
+    expect(keysOf(producer.dispatched)).toEqual([
+      'down@40,40',
+      'move@-1,-1',
+      'up@-1,-1',
+      'move@9,1',
+    ]);
+  });
+
+  test('an up that times out is not released a second time (D3)', async () => {
+    const { producer, entry } = setup(() => true, { dispatchTimeoutMs: 20 });
+    let land!: () => void;
+    producer.dispatchImpl = (event) =>
+      event.kind === 'pointer' && event.type === 'up'
+        ? new Promise<void>((resolve) => {
+            land = resolve;
+          })
+        : Promise.resolve();
+    const fence = await agentFence(entry);
+    await dispatchAgentInput(entry, agent, OPERATOR, fence, [
+      press('down', 40, 40),
+      press('up', 40, 40),
+    ]);
+    land();
+    await settleChain();
+    await dispatchHumanInput(entry, human, 1, [move(9)]);
+    expect(keysOf(producer.dispatched)).toEqual([
+      'down@40,40',
+      'up@40,40',
+      'move@9,1',
+    ]);
   });
 
   test('concurrent batches for one surface never interleave', async () => {

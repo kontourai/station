@@ -416,7 +416,12 @@ export function useLiveSurface(
       for (const event of normalizeEvents(events)) {
         const id = pressId(event);
         if (id && isRelease(event) && orphanedRef.current.delete(id)) continue;
-        if (id && !isRelease(event)) pressedRef.current.add(id);
+        if (id && !isRelease(event)) {
+          // A fresh press (including a held key's auto-repeat) is new input:
+          // its release is no longer the orphan the server cancelled.
+          orphanedRef.current.delete(id);
+          pressedRef.current.add(id);
+        }
         if (id && isRelease(event)) pressedRef.current.delete(id);
         const queue = queueRef.current;
         const last = queue[queue.length - 1];

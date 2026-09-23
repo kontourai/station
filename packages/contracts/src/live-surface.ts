@@ -98,9 +98,20 @@ export type LiveSurfaceController =
 
 export interface LiveSurfaceControlLease {
   surfaceId: string;
+  /**
+   * Viewer-facing epoch: advances only when control passes to a DIFFERENT
+   * controller. A viewer echoes it with its input; a stale one is refused.
+   */
   epoch: number;
   holder: LiveSurfaceController | null;
   expiresAt: number | null;
+  /**
+   * Fencing token: advances on EVERY holder change (claim, release, expiry,
+   * handoff). An operation fences on this, not on `epoch`, so its stragglers
+   * are refused even after the same controller releases and reclaims.
+   * Always present on server-produced leases.
+   */
+  fence?: number;
 }
 
 export interface LiveSurfaceStreamParams {
@@ -184,6 +195,11 @@ export type LiveSurfaceInputRefusalCode =
   | LiveSurfaceLeaseRefusalCode
   /** The producer does not accept one of the batch's input kinds. */
   | 'unsupported-input'
+  /**
+   * An earlier dispatch timed out and has not settled yet. Input is refused
+   * until it does, so nothing ever runs concurrently with it.
+   */
+  | 'surface-wedged'
   /**
    * The producer failed, or did not answer within the dispatch timeout,
    * while dispatching; `accepted` events did land.
@@ -516,7 +532,8 @@ export function parseLiveSurfaceControlLease(
   const record = plainRecord(value);
   if (
     !record ||
-    !onlyKeys(record, ['surfaceId', 'epoch', 'holder', 'expiresAt']) ||
+    !onlyKeys(record, ['surfaceId', 'epoch', 'holder', 'expiresAt', 'fence']) ||
+    (record.fence !== undefined && !isLiveSurfaceEpoch(record.fence)) ||
     !isLiveSurfaceId(record.surfaceId) ||
     !isLiveSurfaceEpoch(record.epoch)
   )
@@ -536,6 +553,7 @@ export function parseLiveSurfaceControlLease(
     epoch: record.epoch as number,
     holder,
     expiresAt: record.expiresAt as number | null,
+    ...(record.fence === undefined ? {} : { fence: record.fence as number }),
   };
 }
 

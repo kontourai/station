@@ -163,11 +163,14 @@ class HubViewer implements LiveSurfaceViewer {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    // The frame this viewer never took must not keep the producer waiting.
-    if (this.slot) this.hub.ackOnce(this.slot);
+    const frame = this.slot;
     this.slot = null;
     this.notify();
     this.hub.detach(this);
+    // The frame this viewer never took must not keep the producer waiting —
+    // but while another viewer still holds it undelivered, that viewer's
+    // take is the ack (acking now would let the producer race ahead of it).
+    if (frame) this.hub.releaseReference(frame);
   }
 }
 
@@ -301,6 +304,12 @@ export class LiveSurfaceHub {
       effectiveParams: this.effectiveParams(),
       ...(viewer ? { viewer: { ...viewer } } : {}),
     };
+  }
+
+  /** @internal A viewer dropped `frame` untaken: ack if nobody else holds it. */
+  releaseReference(frame: HubFrame): void {
+    for (const viewer of this.viewers) if (viewer.slot === frame) return;
+    this.ackOnce(frame);
   }
 
   /** @internal Ack a frame to the producer, exactly once. */

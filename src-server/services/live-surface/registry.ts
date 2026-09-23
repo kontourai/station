@@ -13,7 +13,7 @@ import {
   LiveSurfaceControlLeaseState,
   type LiveSurfaceLeaseReader,
 } from './control-lease.js';
-import type { LiveSurfaceProducer } from './producer.js';
+import type { LiveSurfaceHeldInput, LiveSurfaceProducer } from './producer.js';
 import { LiveSurfaceHub, type LiveSurfaceHubOptions } from './surface-hub.js';
 
 /**
@@ -35,8 +35,9 @@ export type LiveSurfaceAuthorizer = (
  * inert (a typed `unknown-surface` 404).
  *
  * The lease is exposed READ-ONLY (`snapshot`, `isCurrent`, `onChange`):
- * automation captures the epoch from `claimAgentControl`, then checks
- * `lease.isCurrent(epoch, agent)` before and after every operation, aborting
+ * automation captures the FENCE from `claimAgentControl` (`lease.fence`),
+ * then checks `lease.isCurrent(fence, agent)` before and after every
+ * operation, aborting
  * as "interrupted" when it fails. Every mutation of control goes through the
  * functions below, which authorize first.
  */
@@ -69,10 +70,11 @@ export interface LiveSurfaceRegistration {
 const DEFAULT_DISPATCH_TIMEOUT_MS = 10_000;
 
 /**
- * What a controller currently holds down on the surface, from the input
- * actually dispatched. When control passes to someone else the handoff
- * releases all of it, so a button or modifier held by the previous
- * controller is never left stuck under the new one.
+ * What a controller currently holds down on the surface, recorded from what
+ * was SENT to the producer (before awaiting it), so an event that is still
+ * in flight — or that timed out and lands later — is accounted for. When
+ * control changes hands, or is released, whatever is held is cancelled
+ * (never completed; see `cancelHeld`).
  */
 class PressedInput {
   private readonly buttons = new Set<LiveSurfacePointerButton>();
@@ -93,24 +95,39 @@ class PressedInput {
     }
   }
 
-  /** The events that release everything held, then forget it all. */
-  drain(): LiveSurfaceInput[] {
-    const events: LiveSurfaceInput[] = [];
-    for (const button of this.buttons)
+  /** Everything held, then forget it; null when nothing is held. */
+  take(): LiveSurfaceHeldInput | null {
+    if (this.buttons.size === 0 && this.keys.size === 0) return null;
+    const held: LiveSurfaceHeldInput = {
+      buttons: [...this.buttons],
+      keys: [...this.keys.values()],
+      pointer: { ...this.pointer },
+    };
+    this.buttons.clear();
+    this.keys.clear();
+    return held;
+  }
+}
+
+/** Off every viewport: releasing a button here completes no click. */
+const NEUTRAL_POINT = { x: -1, y: -1 };
+
+function neutralCancelEvents(held: LiveSurfaceHeldInput): LiveSurfaceInput[] {
+  const events: LiveSurfaceInput[] = [];
+  if (held.buttons.length > 0) {
+    events.push({ kind: 'pointer', type: 'move', ...NEUTRAL_POINT });
+    for (const button of held.buttons)
       events.push({
         kind: 'pointer',
         type: 'up',
-        x: this.pointer.x,
-        y: this.pointer.y,
+        ...NEUTRAL_POINT,
         button,
         clickCount: 1,
       });
-    for (const { key, code } of this.keys.values())
-      events.push({ kind: 'key', type: 'up', key, code });
-    this.buttons.clear();
-    this.keys.clear();
-    return events;
   }
+  for (const { key, code } of held.keys)
+    events.push({ kind: 'key', type: 'up', key, code });
+  return events;
 }
 
 interface EntryInternals {
@@ -118,6 +135,12 @@ interface EntryInternals {
   pressed: PressedInput;
   /** Tail of the per-surface input chain: one batch at a time, in order. */
   chain: Promise<unknown>;
+  /**
+   * A dispatch that timed out and has not settled. While set the surface is
+   * WEDGED: new input is refused `surface-wedged` and queued work waits,
+   * so nothing ever runs concurrently with the orphaned dispatch.
+   */
+  orphan: Promise<unknown> | null;
   dispatchTimeoutMs: number;
   onError: (message: string, error: unknown) => void;
 }
@@ -173,24 +196,16 @@ export class LiveSurfaceRegistry {
       lease,
       pressed: new PressedInput(),
       chain: Promise.resolve(),
+      orphan: null,
       dispatchTimeoutMs:
         this.options.dispatchTimeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS,
       onError: this.options.hub?.onError ?? (() => {}),
     };
     internals.set(entry, own);
-    // The handoff releases whatever the previous controller held. It runs
-    // synchronously at the claim, so it is queued AHEAD of the new
-    // controller's first batch and behind the old controller's current one.
-    lease.onHandoff(() => {
-      void enqueue(entry, async () => {
-        for (const event of own.pressed.drain()) {
-          const outcome = await dispatchWithTimeout(entry, event);
-          if (outcome !== 'ok')
-            own.onError('live surface handoff release failed', outcome);
-        }
-        return null;
-      });
-    });
+    // A handoff cancels whatever the previous controller held. It is queued
+    // synchronously at the claim: AHEAD of the new controller's first batch
+    // and behind the old controller's current one.
+    lease.onHandoff(() => cancelHeld(entry));
     this.entries.set(producer.surfaceId, entry);
     return async () => {
       if (this.entries.get(producer.surfaceId) !== entry) return;
@@ -224,25 +239,81 @@ function enqueue<T>(
   return next;
 }
 
+/**
+ * Dispatch one event, bounded by the dispatch timeout. A timeout WEDGES the
+ * surface until the orphaned dispatch settles (it cannot be cancelled, only
+ * waited out), so no later event ever overlaps it.
+ */
 async function dispatchWithTimeout(
   entry: LiveSurfaceEntry,
-  event: LiveSurfaceInput,
+  run: () => Promise<void>,
 ): Promise<'ok' | 'failed' | 'timeout'> {
   const own = internalsOf(entry);
+  const pending = run();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      entry.producer.dispatch(event).then(
-        () => 'ok' as const,
-        () => 'failed' as const,
-      ),
-      new Promise<'timeout'>((resolve) => {
-        timer = setTimeout(() => resolve('timeout'), own.dispatchTimeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
+  const outcome = await Promise.race([
+    pending.then(
+      () => 'ok' as const,
+      () => 'failed' as const,
+    ),
+    new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), own.dispatchTimeoutMs);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+  if (outcome === 'timeout') {
+    const orphan: Promise<unknown> = pending
+      .catch(() => {})
+      .then(() => {
+        if (own.orphan === orphan) own.orphan = null;
+      });
+    own.orphan = orphan;
+    own.onError('live surface producer dispatch timed out; surface wedged', {
+      surfaceId: entry.producer.surfaceId,
+    });
   }
+  return outcome;
+}
+
+function wedged(entry: LiveSurfaceEntry): LiveSurfaceInputResult | null {
+  if (!internalsOf(entry).orphan) return null;
+  return {
+    ok: false,
+    code: 'surface-wedged',
+    accepted: 0,
+    lease: entry.lease.snapshot(),
+  };
+}
+
+/**
+ * Cancel whatever is held, without completing it (see
+ * `LiveSurfaceProducer.cancelHeldInput`). Queued on the input chain; waits
+ * out a wedge first so the cancel cannot overlap an orphaned dispatch, and
+ * reads the held state only when it runs, after everything sent before it.
+ */
+function cancelHeld(entry: LiveSurfaceEntry): void {
+  const own = internalsOf(entry);
+  void enqueue(entry, async () => {
+    while (own.orphan) await own.orphan;
+    const held = own.pressed.take();
+    if (!held) return null;
+    const producer = entry.producer;
+    const outcomes = producer.cancelHeldInput
+      ? [
+          await dispatchWithTimeout(entry, () =>
+            producer.cancelHeldInput!(held),
+          ),
+        ]
+      : [];
+    if (!producer.cancelHeldInput)
+      for (const event of neutralCancelEvents(held))
+        outcomes.push(
+          await dispatchWithTimeout(entry, () => producer.dispatch(event)),
+        );
+    if (outcomes.some((outcome) => outcome !== 'ok'))
+      own.onError('live surface held-input cancel failed', outcomes);
+    return null;
+  });
 }
 
 function refuseUnsupported(
@@ -262,28 +333,29 @@ function refuseUnsupported(
 async function dispatchFenced(
   entry: LiveSurfaceEntry,
   controller: LiveSurfaceController,
-  epoch: number,
+  fence: number,
   events: readonly LiveSurfaceInput[],
 ): Promise<LiveSurfaceInputResult> {
   const own = internalsOf(entry);
   let accepted = 0;
   for (const event of events) {
-    const check = entry.lease.isCurrent(epoch, controller);
+    const refused = wedged(entry);
+    if (refused) return { ...refused, accepted };
+    const check = entry.lease.isCurrent(fence, controller);
     if (!check.ok) return { ...check, accepted };
-    const outcome = await dispatchWithTimeout(entry, event);
-    if (outcome !== 'ok') {
-      if (outcome === 'timeout')
-        own.onError('live surface producer dispatch timed out', {
-          surfaceId: entry.producer.surfaceId,
-        });
+    // Recorded as SENT: an event in flight at a takeover, or one that times
+    // out and lands later, is still accounted for by the cancel.
+    own.pressed.record(event);
+    const outcome = await dispatchWithTimeout(entry, () =>
+      entry.producer.dispatch(event),
+    );
+    if (outcome !== 'ok')
       return {
         ok: false,
         code: 'dispatch-failed',
         accepted,
         lease: entry.lease.snapshot(),
       };
-    }
-    own.pressed.record(event);
     accepted += 1;
   }
   return { ok: true, accepted, lease: entry.lease.snapshot() };
@@ -304,15 +376,16 @@ export function dispatchHumanInput(
   observedEpoch: number,
   events: readonly LiveSurfaceInput[],
 ): Promise<LiveSurfaceInputResult> {
-  const unsupported = refuseUnsupported(entry, events);
+  const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
   if (unsupported) return Promise.resolve(unsupported);
   const claim = internalsOf(entry).lease.claimForHumanInput(
     human,
     observedEpoch,
   );
   if (!claim.ok) return Promise.resolve({ ...claim, accepted: 0 });
+  const fence = claim.lease.fence ?? 0;
   return enqueue(entry, () =>
-    dispatchFenced(entry, { ...human }, claim.lease.epoch, events),
+    dispatchFenced(entry, { ...human }, fence, events),
   );
 }
 
@@ -324,12 +397,15 @@ export function claimHumanControl(
   return internalsOf(entry).lease.claimHuman(human);
 }
 
+/** Release, and cancel anything the human still held (never completing it). */
 export function releaseHumanControl(
   entry: LiveSurfaceEntry,
   human: HumanController,
   epoch: number,
 ): LiveSurfaceLeaseResult {
-  return internalsOf(entry).lease.release(human, epoch);
+  const result = internalsOf(entry).lease.release(human, { epoch });
+  if (result.ok) cancelHeld(entry);
+  return result;
 }
 
 /**
@@ -350,16 +426,20 @@ export async function claimAgentControl(
   );
 }
 
+/** Release at the agent's fence, and cancel anything it still held. */
 export function releaseAgentControl(
   entry: LiveSurfaceEntry,
   agent: AgentController,
-  epoch: number,
+  fence: number,
 ): LiveSurfaceLeaseResult {
-  return internalsOf(entry).lease.release(agent, epoch);
+  const result = internalsOf(entry).lease.release(agent, { fence });
+  if (result.ok) cancelHeld(entry);
+  return result;
 }
 
 /**
- * Dispatch input as an agent that holds the lease at `epoch`. The acting-for
+ * Dispatch input as an agent that holds the lease at `fence` (the `fence`
+ * of the lease `claimAgentControl` returned). The acting-for
  * principal must be granted `input`. Works with zero viewers (D6): dispatch
  * never depends on the frame stream running. Fenced before every event, so
  * a human taking over mid-batch stops it at once.
@@ -368,7 +448,7 @@ export async function dispatchAgentInput(
   entry: LiveSurfaceEntry,
   agent: AgentController,
   actingFor: string,
-  epoch: number,
+  fence: number,
   events: readonly LiveSurfaceInput[],
 ): Promise<LiveSurfaceInputResult> {
   if (!(await entry.authorize(actingFor, 'input')))
@@ -378,7 +458,7 @@ export async function dispatchAgentInput(
       accepted: 0,
       lease: entry.lease.snapshot(),
     };
-  const unsupported = refuseUnsupported(entry, events);
+  const unsupported = refuseUnsupported(entry, events) ?? wedged(entry);
   if (unsupported) return unsupported;
-  return enqueue(entry, () => dispatchFenced(entry, agent, epoch, events));
+  return enqueue(entry, () => dispatchFenced(entry, agent, fence, events));
 }

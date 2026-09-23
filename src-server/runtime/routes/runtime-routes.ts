@@ -34,6 +34,7 @@ export {
 
 import {
   createHash,
+  createHmac,
   randomBytes,
   randomUUID,
   timingSafeEqual,
@@ -2053,6 +2054,7 @@ export function configureRuntimeRoutes(
   // later) and accept its input: personal operator hosts only, like the
   // device routes above. With no producer registered the routes are inert.
   if (!hostedTenantRegistry && !isHostedTenantExecutionRequired()) {
+    const liveSurfaceCallerKey = randomBytes(32);
     liveSurfaceRegistry = new LiveSurfaceRegistry({
       hub: {
         onError: (message, error) =>
@@ -2085,10 +2087,12 @@ export function configureRuntimeRoutes(
           const principal = resolveSubscriberPrincipal(c as never);
           if (principal?.kind !== 'human') return null;
           // The client the human acts from: the paired device, else the one
-          // credential (a digest prefix, never the credential itself).
+          // credential — as an HMAC under a key minted for this boot, so the
+          // id broadcast to other viewers is not a stable digest of a secret
+          // (an unsalted hash is an offline-checkable fingerprint of it).
           const device = runtime.deviceId
             ? `device:${runtime.deviceId}`
-            : `credential:${createHash('sha256').update(runtime.credential).digest('base64url').slice(0, 16)}`;
+            : `credential:${createHmac('sha256', liveSurfaceCallerKey).update(runtime.credential).digest('base64url').slice(0, 22)}`;
           return { principal: principal.id, device };
         },
       }),

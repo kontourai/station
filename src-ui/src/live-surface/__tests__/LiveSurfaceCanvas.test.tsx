@@ -605,6 +605,50 @@ describe('LiveSurfaceCanvas', () => {
     expect(h.inputs.map((batch) => batch.epoch)).toEqual([0, 1]);
   });
 
+  test('an auto-repeated key after a stale-epoch refusal gets its release sent (D4)', async () => {
+    const h = harness({
+      inputReply: (body) =>
+        h.inputs.length === 1
+          ? {
+              success: false,
+              data: {
+                ok: false,
+                code: 'stale-epoch',
+                accepted: 0,
+                lease: lease(body.epoch + 1, {
+                  kind: 'agent',
+                  principal: 'agent:coder',
+                  sessionId: 's',
+                }),
+              },
+            }
+          : {
+              success: true,
+              data: {
+                ok: true,
+                accepted: body.events.length,
+                lease: lease(body.epoch + 1, MY_HOLD),
+              },
+            },
+    });
+    await renderLive(h);
+    const keyboard = screen.getByLabelText(
+      'Keyboard input for Browser: example.com',
+    );
+    fireEvent.keyDown(keyboard, { key: 'Enter', code: 'Enter' });
+    await flush(); // refused: Enter is now an orphan the server cancelled
+    // The key is still held, so the OS auto-repeats it: fresh input.
+    fireEvent.keyDown(keyboard, { key: 'Enter', code: 'Enter', repeat: true });
+    await flush();
+    fireEvent.keyUp(keyboard, { key: 'Enter', code: 'Enter' });
+    await flush();
+    expect(
+      h.inputs.map((batch) =>
+        batch.events.map((event) => (event as { type: string }).type),
+      ),
+    ).toEqual([['down'], ['down'], ['up']]);
+  });
+
   test('a 404 is a terminal "not available" state with no reconnect', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

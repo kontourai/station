@@ -22,6 +22,7 @@ import {
   claimAgentControl,
   type LiveSurfaceAuthorizer,
   LiveSurfaceRegistry,
+  releaseAgentControl,
 } from '../../services/live-surface/registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { createLiveSurfaceRoutes } from '../live-surface.js';
@@ -196,7 +197,13 @@ describe('live surface routes through runtime authentication', () => {
       kind: 'state',
       state: {
         surfaceId: SURFACE,
-        lease: { surfaceId: SURFACE, epoch: 0, holder: null, expiresAt: null },
+        lease: {
+          surfaceId: SURFACE,
+          epoch: 0,
+          holder: null,
+          expiresAt: null,
+          fence: 0,
+        },
         effectiveParams: {
           maxFps: 5,
           quality: 70,
@@ -290,6 +297,7 @@ describe('live surface routes through runtime authentication', () => {
             device: 'credential:operator',
           },
           expiresAt: expect.any(Number),
+          fence: 1,
         },
       },
     });
@@ -305,9 +313,18 @@ describe('live surface routes through runtime authentication', () => {
       principal: 'agent:builtin:coder',
       sessionId: 'session-a',
     };
-    const agentEpoch = (
+    // A lapsed first claim makes the fence and the viewer epoch diverge, so
+    // the test cannot pass by confusing the two.
+    const first = (
       await claimAgentControl(entry, agent, 'human:local:operator')
-    ).lease.epoch;
+    ).lease;
+    releaseAgentControl(entry, agent, first.fence!);
+    const claim = (
+      await claimAgentControl(entry, agent, 'human:local:operator')
+    ).lease;
+    const agentEpoch = claim.epoch;
+    const agentFence = claim.fence!;
+    expect(agentFence).not.toBe(agentEpoch);
 
     // A viewer that has not yet seen the agent's claim acts on epoch 0.
     const stale = await h.request(
@@ -326,7 +343,7 @@ describe('live surface routes through runtime authentication', () => {
       },
     });
     expect(h.producer.dispatched).toEqual([]);
-    expect(lease.isCurrent(agentEpoch, agent).ok).toBe(true);
+    expect(lease.isCurrent(agentFence, agent).ok).toBe(true);
 
     // With the current epoch, the human takes over and the agent is fenced.
     const takeover = await h.request(
@@ -335,7 +352,7 @@ describe('live surface routes through runtime authentication', () => {
       JSON.stringify({ epoch: agentEpoch, events: click(1, 1) }),
     );
     expect(takeover.status).toBe(200);
-    expect(lease.isCurrent(agentEpoch, agent)).toMatchObject({
+    expect(lease.isCurrent(agentFence, agent)).toMatchObject({
       ok: false,
       code: 'stale-epoch',
     });
@@ -414,7 +431,13 @@ describe('live surface routes through runtime authentication', () => {
     const read = await h.request(`${base}/lease`, 'operator');
     expect(await read.json()).toEqual({
       success: true,
-      data: { surfaceId: SURFACE, epoch: 0, holder: null, expiresAt: null },
+      data: {
+        surfaceId: SURFACE,
+        epoch: 0,
+        holder: null,
+        expiresAt: null,
+        fence: 0,
+      },
     });
     const claim = await h.request(
       `${base}/lease`,

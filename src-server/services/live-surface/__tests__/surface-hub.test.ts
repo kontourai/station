@@ -185,21 +185,38 @@ describe('live surface hub', () => {
   });
 
   test('a viewer that disconnects holding the only unacked frame releases the producer (B2)', async () => {
-    const { producer, hub } = build({ backpressure: true });
+    // idleStopMs keeps the stream running with no viewers, so a producer
+    // left waiting on an ack would stay wedged for the next viewer.
+    const { producer, hub } = build({
+      backpressure: true,
+      hub: { idleStopMs: 60_000 },
+    });
     const a = hub.attach(PARAMS);
     await hub.settled();
     await a.next(); // state; a is busy
     nextInterval();
     expect(producer.emit()).toBe(true); // frame 1 sits in a's slot, unacked
-    const b = hub.attach(PARAMS);
-    await b.next(); // b's state
     a.close();
     expect(producer.acks).toEqual([1]);
     nextInterval();
     expect(producer.emit()).toBe(true);
-    // (a leaving re-announces the stream state to b first)
-    expect((await b.next())?.kind).toBe('state');
-    expect(await frameCounter(b)).toBe(2);
+  });
+
+  test('closing one of two viewers holding a frame does not ack it early (N-d)', async () => {
+    const { producer, hub } = build({ backpressure: true });
+    const a = hub.attach(PARAMS);
+    const b = hub.attach(PARAMS);
+    await hub.settled();
+    await a.next();
+    await b.next(); // both busy
+    nextInterval();
+    producer.emit(); // frame 1 in both slots
+    a.close();
+    // b still holds it undelivered: its take is the ack, not a's leaving.
+    expect(producer.acks).toEqual([]);
+    expect((await b.next())?.kind).toBe('state'); // a leaving re-announces
+    expect(await frameCounter(b)).toBe(1);
+    expect(producer.acks).toEqual([1]);
   });
 
   test('a viewer joining a still page is seeded with the last frame (S2)', async () => {

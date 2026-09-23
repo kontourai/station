@@ -11,6 +11,7 @@
  * presents — so "the principal is human" refuses nothing. The composition
  * must refuse agent-originated credentials itself.
  */
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -225,6 +226,27 @@ describe('live surface routes in the runtime composition', () => {
       kind: 'state',
       state: { viewer: { principal: 'human:local:operator' } },
     });
+
+    // N-b: a non-device credential's id is a per-boot HMAC, stable within
+    // this boot, and not a plain digest of the credential anyone could
+    // check a guessed secret against.
+    const operatorDevice =
+      operatorState.kind === 'state' ? operatorState.state.viewer?.device : '';
+    expect(operatorDevice).toMatch(/^credential:[A-Za-z0-9_-]{22}$/);
+    const digest = createHash('sha256')
+      .update(OPERATOR_SECRET)
+      .digest('base64url');
+    expect(operatorDevice).not.toContain(digest.slice(0, 16));
+    const again = await firstRecord(
+      await app.request(
+        frames,
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE,
+      ),
+    );
+    expect(again.kind === 'state' && again.state.viewer?.device).toBe(
+      operatorDevice,
+    );
 
     const phone = await app.request(
       frames,
