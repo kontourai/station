@@ -685,6 +685,8 @@ export class StationRuntime {
   private projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
   /** #90 Browser pane (personal hosts only); its Chromium processes stop with us. */
   private browserService?: BrowserService;
+  /** Epic #2323 S3: draft watchers and built drafts, released on shutdown. */
+  private pluginDraftService?: { dispose(): void };
   private taskRoomAcceptanceControl?: TaskRoomAcceptanceControl;
   private metricsLog: Array<{
     timestamp: number;
@@ -3239,7 +3241,15 @@ export class StationRuntime {
         if (this.selfHostedBrokerConfiguration) {
           const broker = this.selfHostedBrokerConfiguration.create(application);
           this.selfHostedBroker = broker;
-          await broker.start();
+          // The broker is optional connectivity. Keep local Station ready
+          // while its registration retries; shutdown joins this exact owner.
+          void broker.start().catch(() => {
+            if (this.selfHostedBrokerShutdown || application.signal.aborted)
+              return;
+            // The broker status observer owns a fixed-code reason. Raw
+            // transport/provider errors must not enter a shared log.
+            this.logger?.warn?.('Optional broker connector failed');
+          });
         }
       }
     } catch (error) {
@@ -3670,6 +3680,8 @@ export class StationRuntime {
     await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
+    await attempt(() => this.pluginDraftService?.dispose());
+    this.pluginDraftService = undefined;
     await attempt(() => this.taskRoomAcceptanceControl?.close());
     this.taskRoomAcceptanceControl = undefined;
     const scheduler = this.schedulerService;
@@ -3928,6 +3940,7 @@ export class StationRuntime {
       kitLifecycleReady,
       projectTaskRoomRuntime,
       browserService,
+      pluginDraftService,
     } = configureRuntimeRoutes({
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4036,6 +4049,7 @@ export class StationRuntime {
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
     this.browserService = browserService;
+    this.pluginDraftService = pluginDraftService;
   }
 
   /**
@@ -4524,6 +4538,12 @@ export class StationRuntime {
     }
     try {
       await this.discordGatewayService?.stop();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      this.pluginDraftService?.dispose();
+      this.pluginDraftService = undefined;
     } catch (error) {
       failures.push(error);
     }

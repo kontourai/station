@@ -1,3 +1,4 @@
+import { toolRequestGrantLabel } from '@kontourai/station-shared/tool-request-preview';
 import { memo, useMemo, useState } from 'react';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import {
@@ -56,9 +57,25 @@ export interface ToolCallData {
     | 'policy-denied';
 }
 
+/**
+ * #2316: how an approval decision landed. `already-settled` means Station
+ * refused it because the request had ALREADY been answered (e.g. from the
+ * toast) — verified against the request itself, not inferred from an error.
+ */
+export type ToolApprovalOutcome = 'answered' | 'already-settled';
+
+type ToolApprovalHandler = (
+  action: 'once' | 'trust' | 'deny',
+) => void | Promise<ToolApprovalOutcome | void>;
+
 interface ToolCallDisplayProps {
   toolCall: ToolCallData;
-  onApprove?: (action: 'once' | 'trust' | 'deny') => void;
+  /**
+   * #2316: resolves when Station accepted the decision (or found it already
+   * settled), rejects when it did not. The card stays actionable and says so
+   * on rejection.
+   */
+  onApprove?: ToolApprovalHandler;
   showDetails?: boolean;
 }
 
@@ -246,7 +263,10 @@ function ToolCallDisplayComponent({
         )}
         {awaitingApproval && onApprove && (
           <div className="tool-call__actions">
-            <ToolApprovalButtons onApprove={onApprove} />
+            <ToolApprovalButtons
+              onApprove={onApprove}
+              toolName={toolCall.toolName}
+            />
           </div>
         )}
       </div>
@@ -275,34 +295,89 @@ function ToolCallDisplayComponent({
   );
 }
 
+/**
+ * #2316: a decision is not done until Station accepts it. While it is in
+ * flight the buttons are disabled (a second click would answer a request the
+ * first may already have settled); a rejected decision re-enables them and
+ * names the failure, because the request is still open and still waiting on
+ * the user. After success they stay disabled until the durable
+ * `request.resolved` settles the row and unmounts this control.
+ */
 function ToolApprovalButtons({
   onApprove,
+  toolName,
 }: {
-  onApprove: (action: 'once' | 'trust' | 'deny') => void;
+  onApprove: ToolApprovalHandler;
+  toolName?: string;
 }) {
+  const [phase, setPhase] = useState<
+    'idle' | 'sending' | 'sent' | 'already-settled'
+  >('idle');
+  const [failure, setFailure] = useState<string | null>(null);
+  const decide = (action: 'once' | 'trust' | 'deny') => {
+    if (phase !== 'idle') return;
+    setPhase('sending');
+    setFailure(null);
+    // Invoked synchronously, in the click, so the decision is dispatched
+    // before this handler returns; only its outcome is awaited.
+    let sent: ReturnType<ToolApprovalHandler>;
+    try {
+      sent = onApprove(action);
+    } catch (error) {
+      sent = Promise.reject(error);
+    }
+    Promise.resolve(sent).then(
+      (outcome) =>
+        setPhase(outcome === 'already-settled' ? 'already-settled' : 'sent'),
+      (error: unknown) => {
+        setPhase('idle');
+        setFailure(
+          error instanceof Error && error.message
+            ? error.message
+            : 'Station did not accept this decision.',
+        );
+      },
+    );
+  };
+  const busy = phase !== 'idle';
   return (
     <>
       <button
         type="button"
-        onClick={() => onApprove('once')}
+        onClick={() => decide('once')}
+        disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--primary"
       >
         Allow Once
       </button>
       <button
         type="button"
-        onClick={() => onApprove('trust')}
+        onClick={() => decide('trust')}
+        disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--secondary"
       >
-        Always Allow
+        {/* #2316: the same words as the toast for the same grant — every
+            later call to this tool in this session, not "always". */}
+        {toolRequestGrantLabel(toolName)}
       </button>
       <button
         type="button"
-        onClick={() => onApprove('deny')}
+        onClick={() => decide('deny')}
+        disabled={busy}
         className="tool-call__approve-btn tool-call__approve-btn--danger"
       >
         Deny
       </button>
+      {phase === 'already-settled' && (
+        <p className="tool-call__approve-status" role="status">
+          This request was already answered.
+        </p>
+      )}
+      {failure && (
+        <p className="tool-call__approve-error" role="alert">
+          Your decision was not delivered: {failure}
+        </p>
+      )}
     </>
   );
 }

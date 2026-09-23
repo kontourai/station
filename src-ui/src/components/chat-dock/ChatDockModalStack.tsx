@@ -1,12 +1,37 @@
 import type { ConversationListItem } from '@kontourai/station-sdk';
+import type { ComponentProps } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
 import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
 import { LazyBoundary } from '../LazyBoundary';
-import type { NewChatModalMode } from '../modals/NewChatModal';
+import type { NewChatModal, NewChatModalMode } from '../modals/NewChatModal';
+
+/**
+ * A requested composer draft, as the New Chat picker's removable context
+ * item. `verbatim` so the text lands exactly as the requester wrote it.
+ */
+export function composerDraftContext(
+  draft: ProjectChatComposerDraft | undefined,
+): ComponentProps<typeof NewChatModal>['draftContext'] {
+  if (!draft) return undefined;
+  return {
+    title: draft.title,
+    description: draft.description,
+    framing: 'verbatim',
+    items: [
+      {
+        id: 'composer-draft',
+        label: draft.label,
+        detail: draft.detail,
+        messageLine: draft.message,
+      },
+    ],
+  };
+}
 
 export const FORK_REPLAY_ONLY_DISCLOSURE =
   'Station replays the selected transcript only. Engine cursor, tool state, and approval state do not carry.';
@@ -32,7 +57,11 @@ interface ChatDockModalStackProps {
   agents: AgentData[];
   projects: ProjectMetadata[];
   activeProjectSlug?: string | null;
-  newChatProjectOverride?: { slug: string; name: string } | null;
+  newChatProjectOverride?: {
+    slug: string;
+    name: string;
+    composerDraft?: ProjectChatComposerDraft;
+  } | null;
   sessions: ChatSession[];
   showNewChatModal: boolean;
   newChatRequestEpoch?: number;
@@ -135,6 +164,9 @@ export function ChatDockModalStack({
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,
             onClose: onCloseNewChat,
+            draftContext: forkMode
+              ? undefined
+              : composerDraftContext(newChatProjectOverride?.composerDraft),
             mode: forkMode
               ? { ...forkMode, disclosure: FORK_REPLAY_ONLY_DISCLOSURE }
               : undefined,

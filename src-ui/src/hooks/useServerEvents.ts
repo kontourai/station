@@ -156,6 +156,11 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   },
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: (qc) =>
     qc.invalidateQueries({ queryKey: ['system-status'] }),
+  // Epic #2323 S3: a Project's plugin draft built a new revision. Only the
+  // status is refreshed; a Plugin preview pane shows "Revision N ready" and
+  // never runs it without the viewer's click.
+  [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: (qc) =>
+    qc.invalidateQueries({ queryKey: ['plugin-draft'] }),
   [SERVER_EVENTS.PLUGINS_INSTALLED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['plugins'] });

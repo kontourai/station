@@ -1242,6 +1242,19 @@ Fetches all installed plugins. Cache key: `['plugins']`.
 
 Checks for available plugin updates. Cache key: `['plugin-updates']`.
 
+### `usePluginLocalSourcesQuery(config?)`
+
+Imported from `@kontourai/station-sdk/plugin-local-sources-query`, not the
+root barrel. For each Project whose folder is the source of an installed local-folder
+plugin, whether the folder still holds the installed code:
+`PluginLocalSourceStatus` from `@kontourai/station-contracts/plugin`, with
+`status` `unchanged`, `changed` or `unknown` (and a `reason` for `unknown`).
+It names the plugin and the Project, never a host path. Operator-only: any
+other viewer receives an empty list. Reinstalling a `changed` source is the
+ordinary preview, consent and `usePluginInstallMutation` with
+`dataPolicy: 'preserve'`; this query decides nothing. Cache key:
+`['plugin-sources']`.
+
 ### `useRegistryPluginsQuery(config?)`
 
 Fetches plugins available in the registry. Cache key: `['registry-plugins']`.

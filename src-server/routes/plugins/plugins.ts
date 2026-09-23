@@ -1,6 +1,7 @@
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import type { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 /**
  * Plugin Routes — top-level composer for plugin discovery, install, and public bridge routes.
@@ -41,6 +42,7 @@ import { registerPluginInstallRoutes } from './plugin-install-routes.js';
 import { registerPluginLifecycleRoutes } from './plugin-lifecycle-routes.js';
 import { preparePluginProviders } from './plugin-loader.js';
 import { registerPluginPublicRoutes } from './plugin-public-routes.js';
+import { registerPluginValidateRoutes } from './plugin-validate-routes.js';
 import {
   type PluginVisibilityRouteDeps,
   registerPluginVisibilityRoutes,
@@ -84,6 +86,12 @@ export function createPluginRoutes(
     reconcileEventSubscriptions?: () => Promise<{
       kind: 'applied' | 'unavailable';
     }>;
+    /**
+     * #2323 S5: the plugin lifecycle proposal store install, update and
+     * remove complete. Absent, those routes report a named proposal as
+     * still open rather than guessing.
+     */
+    proposals?: PluginLifecycleProposalService;
   },
 ) {
   const app = new Hono();
@@ -290,6 +298,7 @@ export function createPluginRoutes(
     reconcileEngineConnections: runtime?.reconcileEngineConnections,
     removeEngineConnections: runtime?.removeEngineConnections,
     quiesceEventSubscriptions: runtime?.quiesceEventSubscriptions,
+    proposals: runtime?.proposals,
   });
   registerPluginConfigRoutes(app, {
     packageMcpJournal: runtime?.packageMcpJournal,
@@ -315,6 +324,15 @@ export function createPluginRoutes(
       ? (plugin) => runtime.quiesceEventSubscriptions!(plugin)
       : undefined,
     projectVisiblePlugins,
+    proposals: runtime?.proposals,
+  });
+  // #2323 S1: an authoring check. Stages outside `pluginsDir`, builds
+  // nothing, and returns no consent basis — see the route file's header.
+  registerPluginValidateRoutes(app, {
+    agentsDir,
+    logger,
+    pluginsDir,
+    projectHomeDir,
   });
   registerPluginHostApprovalRoutes(app, {
     packageMcpJournal: runtime?.packageMcpJournal,

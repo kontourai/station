@@ -9,9 +9,12 @@ import type {
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import {
+  keepPreviousData,
   type MutateOptions,
+  type Query,
   type UseMutationResult,
   useMutation,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -36,6 +39,7 @@ import {
   listProjectLayouts,
   listProjectViews,
   listProjectWorkspacePanes,
+  type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
   reorderProjects as reorderProjectsRaw,
   updateProject as updateProjectRaw,
@@ -45,6 +49,7 @@ import {
   type QueryConfig,
   useApiMutation,
   useApiQuery,
+  useCancelWhenInactive,
 } from '../query-core';
 import { telemetry } from '../telemetry';
 
@@ -269,21 +274,72 @@ export function useProjectLayoutsQuery(
   );
 }
 
-/** React read seam for the data-only current Workspace Pane catalog. */
+/**
+ * `refetchOnMount` policy for the pane catalog, whose contents change OUTSIDE
+ * this client — a plugin installed from the CLI, another tab or device, an
+ * agent (#2319).
+ *
+ * Station's client default is `refetchOnMount: false`, and TanStack applies it
+ * even to an invalidated query. So `invalidateQueries` reaches only a query
+ * observed at that moment: a plugin lifecycle event, an in-tab install, or the
+ * reconnect sync that lands while the catalog is unmounted marks it
+ * invalidated, and the next mount then serves the old answer anyway, with
+ * nothing left to refetch it.
+ *
+ * Returning `true` for an invalidated query means "refetch if stale", and an
+ * invalidated query is always stale. A remount of an untouched answer does
+ * not refetch; it keeps the cache-first default.
+ *
+ * An invalidated answer that fails to refetch (the route dropped after the
+ * invalidation) keeps its data and reports `isError`. Consumers must render
+ * that data rather than an error screen; only a catalog with no data is an
+ * error state.
+ */
+function refetchOnMountWhenInvalidated(
+  query: Query<
+    ProjectWorkspacePaneCatalog,
+    Error,
+    ProjectWorkspacePaneCatalog,
+    string[]
+  >,
+): boolean {
+  return query.state.isInvalidated;
+}
+
+/**
+ * React read seam for the data-only current Workspace Pane catalog.
+ *
+ * Built on `useQuery` rather than `useApiQuery` because its mount policy is a
+ * function, which `QueryConfig.refetchOnMount` does not carry. Every other
+ * `QueryConfig` field maps exactly as `useApiQuery` maps it.
+ */
 export function useProjectWorkspacePanesQuery(
   projectSlug: string,
-  config?: QueryConfig<
-    import('../client/projects').ProjectWorkspacePaneCatalog
-  >,
+  config?: QueryConfig<ProjectWorkspacePaneCatalog>,
 ) {
-  return useApiQuery(
-    ['projects', projectSlug, 'panes'],
-    async () => {
+  const queryClient = useQueryClient();
+  const queryKey: string[] = ['projects', projectSlug, 'panes'];
+  const enabled = !!projectSlug && (config?.enabled ?? true);
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => {
       const apiBase = await _getApiBase();
       return listProjectWorkspacePanes(apiBase, projectSlug);
     },
-    { ...config, enabled: !!projectSlug && (config?.enabled ?? true) },
-  );
+    staleTime: config?.staleTime ?? 5 * 60 * 1000,
+    gcTime:
+      config?.gcTime ??
+      queryClient.getQueryDefaults(queryKey)?.gcTime ??
+      10 * 60 * 1000,
+    enabled,
+    refetchOnMount: config?.refetchOnMount ?? refetchOnMountWhenInvalidated,
+    refetchInterval: config?.refetchInterval,
+    retry: config?.retry,
+    retryDelay: config?.retryDelay,
+    placeholderData: config?.keepPreviousData ? keepPreviousData : undefined,
+  });
+  useCancelWhenInactive(queryKey, enabled, config?.cancelWhenInactive);
+  return query;
 }
 
 /**
@@ -522,6 +578,8 @@ export function useCreateProjectMutation() {
       description?: string;
       icon?: string;
       workingDirectory?: string;
+      /** Per-Project override of the Station's workspace isolation. */
+      defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {
       const apiBase = await _getApiBase();
       return createProjectRaw(apiBase, data);

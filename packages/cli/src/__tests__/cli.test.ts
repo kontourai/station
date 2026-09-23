@@ -790,6 +790,29 @@ describe('runCli', () => {
     });
   });
 
+  test.each(['pane', 'layout', 'full'])(
+    'accepts --template=%s and hands it to createPlugin unchanged',
+    async (template) => {
+      // #2323 S2: `pane` is new and `layout` stays as its alias; the parser
+      // must admit both rather than refuse them as unknown.
+      const createPlugin = vi.fn();
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.doMock('../commands/init.js', () => ({ createPlugin, init: vi.fn() }));
+
+      const { runCli } = await import('../cli.js');
+      const { INVOKED_CWD } = await import('../commands/helpers.js');
+      await runCli(['plugin', 'create', 'x', `--template=${template}`]);
+
+      expect(error).not.toHaveBeenCalled();
+      expect(createPlugin).toHaveBeenCalledWith('x', {
+        template,
+        cwd: INVOKED_CWD,
+      });
+      expect(process.exitCode ?? 0).toBe(0);
+      error.mockRestore();
+    },
+  );
+
   test('refuses an unknown plugin template before any filesystem write', async () => {
     // Review finding on the first-'=' parser fix: '--template=provider=extra'
     // previously truncated to 'provider' and worked by accident; the full

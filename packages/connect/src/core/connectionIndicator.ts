@@ -32,7 +32,28 @@ export type ConnectionIndicatorState =
    * state rather than the generic `error` a genuinely unreachable host also
    * produces.
    */
-  | 'needs-repair';
+  | 'needs-repair'
+  /**
+   * station#2327 — the Station has this device's requests waiting in line
+   * (`busy`). Still a failed check — the coordinator's status stays `error`
+   * and nothing about the gate changes — but "Can't connect" is the wrong
+   * sentence for a Station that is answering slowly, and it sends the reader
+   * to check a network that is fine. No decision is needed, so it gets no
+   * action word and no alert treatment.
+   */
+  | 'busy';
+
+/**
+ * `busy` is honest for a stall: the Station answered its handshake but not
+ * its identity read in time. Past this many consecutive failed probes (about
+ * a minute on the coordinator's default backoff) a Station that still has not
+ * answered is shown as not connecting instead. The failure REASON stays
+ * `busy`, so surfaces that act on "the address answered" (loopback advice)
+ * stay correct; only the indicator's claim escalates. `failureStreak` counts
+ * busy, timeout and unreachable as one outage, so a stall alternating between
+ * them escalates on the same schedule (station#2327).
+ */
+const BUSY_INDICATOR_MAX_STREAK = 6;
 
 /**
  * The single derivation behind the indicator's state.
@@ -74,6 +95,7 @@ export function connectionIndicatorState(input: {
   status: ConnectionStatus;
   reason: ConnectionFailureReason | null;
   pendingApproval?: boolean;
+  failureStreak?: number;
 }): ConnectionIndicatorState {
   if (
     input.status === 'error' &&
@@ -83,6 +105,13 @@ export function connectionIndicatorState(input: {
   }
   if (input.status === 'error' && input.reason === 'identity-mismatch') {
     return 'needs-repair';
+  }
+  if (
+    input.status === 'error' &&
+    input.reason === 'busy' &&
+    (input.failureStreak ?? 0) <= BUSY_INDICATOR_MAX_STREAK
+  ) {
+    return 'busy';
   }
   return input.status === 'error' && input.reason === 'authentication-failed'
     ? 'needs-credential'
@@ -112,6 +141,8 @@ function connectionIndicatorStateLabel(
       return 'Awaiting approval';
     case 'needs-repair':
       return 'Needs re-pairing';
+    case 'busy':
+      return 'Station is busy';
   }
 }
 
