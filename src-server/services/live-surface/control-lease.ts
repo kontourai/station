@@ -82,7 +82,7 @@ export type LiveSurfaceHandoffListener = (
 export type HumanController = Extract<LiveSurfaceController, { kind: 'human' }>;
 export type AgentController = Extract<LiveSurfaceController, { kind: 'agent' }>;
 
-export function sameController(
+function sameController(
   a: LiveSurfaceController | null,
   b: LiveSurfaceController | null,
 ): boolean {
