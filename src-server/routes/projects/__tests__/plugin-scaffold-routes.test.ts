@@ -241,6 +241,29 @@ describe('writePluginScaffold containment', () => {
     expect(readdirSync(folder)).toEqual([]);
   });
 
+  test('never overwrites a file, even one that appears after the emptiness check', async () => {
+    // The emptiness check runs first, so only a file created during the
+    // write can collide. Listing the same path twice is that race, made
+    // deterministic: the second write must refuse rather than replace.
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-scaffold-writer-'));
+    tempDirs.push(root);
+
+    const result = await writePluginScaffold(root, [
+      { path: 'plugin.json', contents: 'first' },
+      { path: 'plugin.json', contents: 'second' },
+    ]);
+
+    expect(result).toEqual({
+      ok: false,
+      refusal: {
+        code: 'file-exists',
+        path: 'plugin.json',
+        written: ['plugin.json'],
+      },
+    });
+    expect(readFileSync(join(root, 'plugin.json'), 'utf8')).toBe('first');
+  });
+
   test('refuses an absolute file path', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-scaffold-writer-'));
     tempDirs.push(root);
