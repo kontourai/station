@@ -189,6 +189,17 @@ test('a fullscreen pane for the requested Project opens its picker with the draf
 
 test('a fullscreen pane bound to another Project leaves the draft alone', async () => {
   renderPane('other');
+  // Open this pane's own picker first, so the picker is mounted and would
+  // re-render if a later request changed what it offers.
+  act(() => {
+    requestProjectChat({
+      projectSlug: 'other',
+      source: 'new-plugin',
+      composerDraft: { ...draft, detail: 'own project' },
+    });
+  });
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const before = pickerProps.length;
 
   let claimed = true;
   act(() => {
@@ -200,21 +211,12 @@ test('a fullscreen pane bound to another Project leaves the draft alone', async 
   });
 
   expect(claimed).toBe(false);
-
-  // Positive control instead of a timeout: a draft for THIS pane's own
-  // Project opens its picker. When that picker is up, the only request it
-  // ever showed must be its own; the earlier one for `pulse` opened nothing.
-  act(() => {
-    requestProjectChat({
-      projectSlug: 'other',
-      source: 'new-plugin',
-      composerDraft: draft,
-    });
-  });
-  await screen.findByRole('dialog', { name: 'New chat picker' });
-  expect(pickerProps.map((props) => props.activeProjectSlug)).not.toContain(
-    'pulse',
-  );
+  // Whatever re-rendered, the picker still offers this pane's own Project
+  // and draft; the request for `pulse` was left for another pane.
+  for (const props of pickerProps.slice(before)) {
+    expect(props.activeProjectSlug).toBe('other');
+    expect(props.draftContext?.items[0].detail).toBe('own project');
+  }
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('other');
   expect(createChatSession).not.toHaveBeenCalled();
 });
