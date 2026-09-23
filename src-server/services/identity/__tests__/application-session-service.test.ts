@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +10,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
+import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
 import { loadLocalAccounts } from '../local-account-runtime.js';
@@ -121,10 +123,12 @@ async function harness() {
     client,
     key,
     device,
+    home,
     second,
     pairing,
     password,
     accounts: () => accounts,
+    sessions: () => sessions,
     request: (path: string, init: RequestInit) =>
       currentApp.request(origin + path, init),
     async restart() {
@@ -143,6 +147,149 @@ async function harness() {
 }
 
 describe('Device-bound continuation persistence and negative admission', () => {
+  test('startup cleanup can discard one uncommitted continuation authority by reserved key', async () => {
+    const h = await harness();
+    const continuation = await h.client.establish({
+      username: 'alice',
+      password: h.password,
+    });
+    const headers = {
+      ...(await h.client.headers(continuation, {
+        method: 'GET',
+        url: `${origin}/resource`,
+      })),
+      Authorization: `Bearer ${h.device.credential}`,
+    };
+    const before = await h.request('/resource', { method: 'GET', headers });
+    expect(before.status).toBe(200);
+
+    expect(
+      h.sessions().discardUncommittedAuthority(continuation.authorityKey),
+    ).toBe(1);
+    expect(
+      h.sessions().discardUncommittedAuthority(continuation.authorityKey),
+    ).toBe(0);
+    const after = await h.request('/resource', { method: 'GET', headers });
+    expect(after.status).toBe(401);
+    expect(await after.json()).toEqual({ kind: 'invalid' });
+  });
+
+  test('a continuation bound to a relay Device stays blocked until that exact Device activates', async () => {
+    const h = await harness();
+    const continuation = await h.client.establish({
+      username: 'alice',
+      password: h.password,
+    });
+    const login = await h.accounts().service.handle(
+      new Request(`${origin}/api/account-auth/sign-in/username`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: h.password }),
+      }),
+      '/sign-in/username',
+    );
+    expect(login.status).toBe(200);
+    const accountCookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
+    const account = await h.accounts().service.authenticate(
+      new Request(`${origin}/api/account-auth/session`, {
+        headers: { Cookie: accountCookie },
+      }),
+    );
+    expect(account.kind).toBe('authenticated');
+    if (account.kind !== 'authenticated')
+      throw new Error('provider session fixture did not authenticate');
+    const enrollmentId = 'N'.repeat(43);
+    const pending = h.pairing.requestRelayEnrollmentAccess({
+      enrollmentId,
+      endpoint: origin,
+      candidate: {
+        issuer: account.issuer,
+        subject: account.session.subject,
+        displayName: account.session.displayName,
+      },
+      sessionId: account.session.sessionId,
+    });
+    h.pairing.confirmRelayEnrollmentRequest(
+      pending.requestId,
+      { kind: 'presented-credential' },
+      'human:deployment:operator',
+      {
+        enrollmentId,
+        sessionId: account.session.sessionId,
+        issuer: account.issuer,
+        subject: account.session.subject,
+      },
+    );
+    const device = h.pairing.exchangeRelayEnrollment({
+      offerId: pending.offerId,
+      proof: pending.proof,
+      requestId: pending.requestId,
+      enrollmentId,
+      deviceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    });
+
+    // Seed a real continuation record bound to the reserved Device so the
+    // control below proves the pending admission fence itself, not an
+    // unrelated deviceId mismatch.
+    const continuationDb = openPrivateSqlite(
+      join(h.home, 'authentication', 'application-sessions.sqlite'),
+      'Application session test continuation binding',
+    );
+    try {
+      const tokenHash = createHash('sha256')
+        .update(continuation.credential)
+        .digest('base64url');
+      const row = continuationDb
+        .prepare('SELECT record FROM application_sessions WHERE token_hash=?')
+        .get(tokenHash);
+      expect(typeof row?.record).toBe('string');
+      const record = JSON.parse(row!.record as string) as Record<
+        string,
+        unknown
+      >;
+      record.deviceId = device.device.id;
+      continuationDb
+        .prepare('UPDATE application_sessions SET record=? WHERE token_hash=?')
+        .run(JSON.stringify(record), tokenHash);
+    } finally {
+      continuationDb.close();
+    }
+    const pendingClient = new ApplicationSessionClient(
+      origin,
+      stationId,
+      origin,
+      { credential: device.credential, credentialOrigin: origin },
+      h.key,
+    );
+    const signed = await pendingClient.headers(continuation, {
+      method: 'GET',
+      url: `${origin}/resource`,
+    });
+    const response = await h.request('/resource', {
+      method: 'GET',
+      headers: {
+        ...signed,
+        Authorization: `Bearer ${device.credential}`,
+      },
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ kind: 'invalid' });
+    expect(h.pairing.identifyDevice(device.credential)).toBeNull();
+
+    h.pairing.activateRelayEnrollmentDevice(device.device.id, enrollmentId);
+    const admitted = await h.request('/resource', {
+      method: 'GET',
+      headers: {
+        ...signed,
+        Authorization: `Bearer ${device.credential}`,
+      },
+    });
+    expect(admitted.status).toBe(200);
+    expect(await admitted.json()).toMatchObject({
+      principal: continuation.principal,
+    });
+  });
+
   test('an account-bound Device accepts only the matching provider account while cookie-only enrollment stays available', async () => {
     const h = await harness();
     const login = await h.accounts().service.handle(

@@ -37,6 +37,10 @@ import type {
 } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import {
+  isCanonicalWorkspacePluginDraftPaneInstance,
+  WORKSPACE_PLUGIN_DRAFT_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-plugin-draft-pane';
+import {
   isCanonicalWorkspacePullRequestPaneInstance,
   parseWorkspacePullRequestPaneId,
   pullRequestProviderForHost,
@@ -880,6 +884,37 @@ const LazyBasisWorkspacePane = lazy(() =>
   })),
 );
 
+// Epic #2323 S3. Lazy for two reasons: the preview (and the in-process
+// draft loader behind it) is its own chunk that a host which never opens it
+// should not download, and nothing about a draft may load before its pane is
+// actually opened.
+const LazyPluginDraftPreviewPane = lazy(() =>
+  import('./PluginDraftPreviewPane').then(({ PluginDraftPreviewPane }) => ({
+    default: PluginDraftPreviewPane,
+  })),
+);
+
+function PluginDraftWorkspacePaneEntry({
+  instance,
+}: BuiltinWorkspacePaneProps) {
+  const identity = useResolvedPaneIdentity(instance, false);
+  if (identity.state !== 'resolved')
+    return <WorkspacePaneBindingUnavailable identity={identity} />;
+  if (!isCanonicalWorkspacePluginDraftPaneInstance(instance))
+    return (
+      <WorkspacePaneBindingUnavailable
+        identity={{ state: 'pane-instance-invalid' }}
+      />
+    );
+  return (
+    <Suspense
+      fallback={<SkeletonBlock count={3} label="Loading Plugin preview" />}
+    >
+      <LazyPluginDraftPreviewPane projectSlug={identity.project.slug} />
+    </Suspense>
+  );
+}
+
 function BasisWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
   return (
     <Suspense fallback={<SkeletonBlock count={3} label="Loading Basis" />}>
@@ -960,6 +995,7 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_TRUST_PANE_RENDERER_NAME]: WorkspaceTrustPane,
   [WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME]: BrowserPreviewWorkspacePane,
   [WORKSPACE_FILE_PREVIEW_PANE_RENDERER_NAME]: FilePreviewWorkspacePane,
+  [WORKSPACE_PLUGIN_DRAFT_PANE_RENDERER_NAME]: PluginDraftWorkspacePaneEntry,
   [WORKSPACE_PULL_REQUEST_PANE_RENDERER_NAME]: PullRequestWorkspacePane,
   [WORKSPACE_LAYOUT_PANE_RENDERER_NAME]: LayoutWorkspacePaneEntry,
   [WORKSPACE_HOME_PANE_RENDERER_NAME]: HomeWorkspacePaneEntry,

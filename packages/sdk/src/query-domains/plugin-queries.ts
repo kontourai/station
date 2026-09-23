@@ -1,3 +1,4 @@
+import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { _getApiBase } from '../api';
 import {
   type InstalledPluginRecord,
@@ -103,6 +104,39 @@ export async function waitForAgentHealth(
   }
 
   return null;
+}
+
+/**
+ * #2323 S5: one plugin lifecycle proposal, for the Plugins view's deep link
+ * from Needs attention. A proposal is an ask, never a decision; the view
+ * still previews the source and takes the person's consent as it always does.
+ */
+export async function fetchPluginLifecycleProposal(
+  id: string,
+): Promise<PluginLifecycleProposal> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/api/plugin-proposals/${encodeURIComponent(id)}`,
+  );
+  const result = (await response.json()) as {
+    proposal?: PluginLifecycleProposal;
+    error?: string;
+  };
+  if (!response.ok || !result.proposal) {
+    throw new Error(apiErrorMessage(result, 'Plugin proposal not found'));
+  }
+  return result.proposal;
+}
+
+export function usePluginLifecycleProposalQuery(
+  id: string | null | undefined,
+  config?: QueryConfig<PluginLifecycleProposal>,
+) {
+  return useApiQuery(
+    ['plugin-proposals', id ?? null],
+    () => fetchPluginLifecycleProposal(id!),
+    { ...config, enabled: !!id && (config?.enabled ?? true) },
+  );
 }
 
 export function usePluginsQuery(config?: QueryConfig<InstalledPluginRecord[]>) {

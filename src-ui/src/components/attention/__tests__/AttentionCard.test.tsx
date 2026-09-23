@@ -6,6 +6,7 @@ import type {
   ApprovalAttentionItem,
   AttentionItem,
   DevicePairingAttentionItem,
+  PluginLifecycleProposalAttentionItem,
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
@@ -19,6 +20,7 @@ const acknowledge = vi.fn();
 const acknowledgeAsync = vi.fn(() => Promise.resolve());
 let mockAcknowledgeError: Error | null = null;
 const navigate = vi.fn();
+const dismissProposal = vi.fn();
 
 const pairingMocks = vi.hoisted(() => {
   class MockDevicePairingRequestActionError extends Error {
@@ -84,6 +86,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     mutate: dismiss,
   }),
+  useDismissPluginLifecycleProposalMutation: () => ({
+    isPending: false,
+    error: null,
+    mutate: dismissProposal,
+  }),
   useNotificationActionMutation: () => ({
     isPending: false,
     mutate: action,
@@ -102,6 +109,7 @@ beforeEach(() => {
   mockAcknowledgeError = null;
   acknowledgeApiBases.length = 0;
   navigate.mockReset();
+  dismissProposal.mockReset();
   pairingMocks.confirmPairing.mockReset();
   pairingMocks.denyPairing.mockReset();
   pairingMocks.confirmPairingState.isPending = false;
@@ -550,5 +558,99 @@ describe('AttentionCard — setup incomplete (#1536 D8)', () => {
     renderCard(setupIncomplete());
 
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+  });
+});
+
+describe('#2323 S5 plugin lifecycle proposal row', () => {
+  function proposalItem(
+    overrides: Partial<PluginLifecycleProposalAttentionItem> = {},
+  ): PluginLifecycleProposalAttentionItem {
+    const now = new Date().toISOString();
+    return {
+      id: 'plugin-lifecycle-proposal:p1',
+      kind: 'plugin-lifecycle-proposal',
+      title: 'Install plugin from github.com',
+      rationale: 'Adds the pulse pane.',
+      createdAt: now,
+      updatedAt: now,
+      proposalKind: 'install',
+      pluginSource: 'https://github.com/org/pulse',
+      author: {
+        principal: 'agent',
+        agentSlug: 'station',
+        conversationId: 'c1',
+        reportedBy: 'runtime',
+      },
+      openHref: '/plugins?proposal=p1',
+      source: { proposalId: 'p1' },
+      ...overrides,
+    };
+  }
+
+  test('links into Plugins, names who proposed it, and dismisses through the proposal route', async () => {
+    render(<AttentionCard item={proposalItem()} />);
+    // The row's actions load on demand (off the first paint).
+    await screen.findByRole('link', { name: 'Open in Plugins' });
+    expect(screen.getByText('Plugin proposal')).toBeTruthy();
+    expect(
+      screen.getByTestId('attention-plugin-proposal-author').textContent,
+    ).toBe('Proposed by station in conversation c1');
+    expect(
+      screen
+        .getByRole('link', { name: 'Open in Plugins' })
+        .getAttribute('href'),
+    ).toBe('/plugins?proposal=p1');
+    // No approve-shaped control: the row decides nothing.
+    expect(
+      screen.queryByRole('button', { name: /install|approve/i }),
+    ).toBeNull();
+    screen.getByRole('button', { name: 'Dismiss' }).click();
+    expect(dismissProposal).toHaveBeenCalledWith('p1');
+    // It is decision-resolved, so the acknowledge affordance is absent.
+    expect(acknowledge).not.toHaveBeenCalled();
+  });
+
+  test('review M2/L1: the host and path render apart, and the rationale is quoted as the agent’s words with bidi removed', async () => {
+    render(
+      <AttentionCard
+        item={proposalItem({
+          pluginSource: 'https://evil.example/github.com/org/pulse',
+          rationale: 'Trusted\u202e fix',
+        })}
+      />,
+    );
+    // The row's actions load on demand (off the first paint).
+    await screen.findByRole('link', { name: 'Open in Plugins' });
+    expect(
+      screen.getByTestId('attention-plugin-proposal-host').textContent,
+    ).toBe('evil.example');
+    expect(
+      screen.getByTestId('attention-plugin-proposal-path').textContent,
+    ).toBe('github.com/org/pulse');
+    expect(
+      screen.getByTestId('attention-plugin-proposal-rationale').textContent,
+    ).toBe('The agent wrote: \u201cTrusted fix\u201d');
+  });
+
+  test('review M3: a name the caller supplied is labelled self-reported', async () => {
+    render(
+      <AttentionCard
+        item={proposalItem({
+          author: {
+            principal: 'agent',
+            agentSlug: 'station',
+            conversationId: 'c1',
+            reportedBy: 'caller',
+          },
+        })}
+      />,
+    );
+    // The row's actions load on demand (off the first paint).
+    await screen.findByRole('link', { name: 'Open in Plugins' });
+    expect(
+      screen.getByTestId('attention-plugin-proposal-author').textContent,
+    ).toBe(
+      'Proposed by station in conversation c1 (self-reported by the agent)',
+    );
   });
 });

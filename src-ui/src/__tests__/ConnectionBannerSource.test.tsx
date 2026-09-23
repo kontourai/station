@@ -142,6 +142,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     'offline',
     'server-restarted',
     'host-unavailable',
+    'busy',
   ] as const)(
     'never banners a transient %s failure, however long it lasts',
     async (reason) => {
@@ -627,6 +628,22 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(
       /Use the host's IP address instead of localhost/,
     );
+  });
+
+  // station#2327: `busy` means the address ANSWERED, which is exactly what
+  // the localhost advice assumes did not happen.
+  it('does not offer localhost advice for a busy loopback Station', async () => {
+    connectionStatus.reason = 'busy';
+    connectionStatus.failureStreak = 3;
+    activeConnection = {
+      id: 'conn-1',
+      name: 'Tailnet Station',
+      url: 'http://localhost:3242',
+    };
+
+    renderChrome();
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
   it('withholds it until the same sustained streak the old rule required', async () => {

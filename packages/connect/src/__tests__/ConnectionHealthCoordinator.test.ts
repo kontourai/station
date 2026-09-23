@@ -97,6 +97,51 @@ describe('ConnectionHealthCoordinator', () => {
     unsubscribe();
   });
 
+  it('accumulates one streak across alternating busy and timeout probes (station#2327)', async () => {
+    // A stalled Station flaps between a queued identity read (`busy`) and a
+    // handshake that also misses the deadline (`timeout`). That is one
+    // outage; the status stays `error` throughout.
+    vi.useFakeTimers();
+    const endpoint = createAccessEndpoint('https://station.example.test');
+    const check = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, reason: 'busy' })
+      .mockResolvedValueOnce({ ok: false, reason: 'timeout' })
+      .mockResolvedValueOnce({ ok: false, reason: 'busy' });
+    const coordinator = new ConnectionHealthCoordinator({
+      endpoints: () => [endpoint],
+      compatibility: () => ({ clientProtocol: 'https:', online: true }),
+      check,
+      baseRetryMs: 1,
+      jitterRatio: 0,
+    });
+    const unsubscribe = coordinator.subscribe(vi.fn());
+
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot()).toMatchObject({
+        status: 'error',
+        reason: 'busy',
+        failureStreak: 1,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot()).toMatchObject({
+        reason: 'timeout',
+        failureStreak: 2,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(2);
+    await vi.waitFor(() =>
+      expect(coordinator.getSnapshot()).toMatchObject({
+        status: 'error',
+        reason: 'busy',
+        failureStreak: 3,
+      }),
+    );
+    unsubscribe();
+  });
+
   it('closes a failure window on recovery and never rewrites it afterwards (sol finding 3)', async () => {
     vi.useFakeTimers();
     const endpoint = createAccessEndpoint('https://station.example.test');

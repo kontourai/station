@@ -72,6 +72,14 @@ export const SERVER_EVENTS = {
   /** A live session projection changed without creating a runtime event. */
   ORCHESTRATION_SESSION_PROJECTION_UPDATED:
     'orchestration:session-projection-updated',
+  /**
+   * A Project's plugin draft built a new revision (epic #2323 S3). Payload is
+   * `{ projectSlug, draftId, generation }`. Deliberately NOT under the
+   * `plugins:` namespace: that namespace is gated by installed-plugin
+   * visibility, and a draft is not an installed plugin. It is gated by
+   * Project read authority instead.
+   */
+  PLUGIN_DRAFTS_REBUILT: 'plugin-drafts:rebuilt',
   PLUGINS_INSTALLED: 'plugins:installed',
   PLUGINS_REMOVED: 'plugins:removed',
   PLUGINS_UPDATED: 'plugins:updated',
@@ -189,6 +197,9 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // returned in one response. 'scoped' means DENIED unless a named gate in
   // `routes/orchestration/events.ts` recognizes the channel; that gate is the
   // per-principal plugin projection.
+  // Names a Project by slug. Relayed only to subscribers who may read that
+  // Project, through the events route's dedicated plugin-draft gate.
+  [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: 'scoped',
   [SERVER_EVENTS.PLUGINS_INSTALLED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_REMOVED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_UPDATED]: 'scoped',

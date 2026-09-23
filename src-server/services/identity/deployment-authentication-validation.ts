@@ -3,6 +3,7 @@ import {
   type DeploymentAuthenticationDescriptor,
   type DeploymentAuthenticationProvider,
   type DeploymentAuthenticationResult,
+  type PendingEnrollmentSessionResult,
 } from '@kontourai/station-contracts/deployment-authentication';
 import { z } from 'zod/v3';
 
@@ -54,6 +55,34 @@ const resultSchema = z.discriminatedUnion('kind', [
   z
     .object({ kind: z.literal('authenticated'), session: sessionSchema })
     .strict(),
+]);
+const pendingEnrollmentResultSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('pending'),
+      session: z
+        .object({
+          enrollmentId: text(128),
+          sessionId: text(512),
+          subject: text(2048),
+          displayName: text(256),
+          expiresAt: timestamp,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('invalid'),
+      reason: z.enum([
+        'invalid-credential',
+        'expired',
+        'revoked',
+        'conflicting-identity',
+      ]),
+    })
+    .strict(),
+  z.object({ kind: z.literal('unavailable') }).strict(),
 ]);
 const descriptorSchema = z
   .object({
@@ -241,4 +270,22 @@ export function readDeploymentAuthenticationResult(
     return { kind: 'unavailable' };
   }
   return expiresAt <= now ? { kind: 'invalid', reason: 'expired' } : result;
+}
+
+/** Closed validation for candidate-only pending enrollment sessions. */
+export function readPendingEnrollmentSessionResult(
+  value: unknown,
+  expectedEnrollmentId: string,
+  now: number,
+): PendingEnrollmentSessionResult {
+  const parsed = pendingEnrollmentResultSchema.safeParse(value);
+  if (!parsed.success) return { kind: 'unavailable' };
+  const result = parsed.data;
+  if (result.kind !== 'pending') return result;
+  const expiresAt = Date.parse(result.session.expiresAt);
+  if (result.session.enrollmentId !== expectedEnrollmentId)
+    return { kind: 'invalid', reason: 'conflicting-identity' };
+  if (!Number.isFinite(expiresAt) || expiresAt <= now)
+    return { kind: 'invalid', reason: 'expired' };
+  return result;
 }
