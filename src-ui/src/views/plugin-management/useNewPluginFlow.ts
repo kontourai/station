@@ -8,8 +8,7 @@ import {
 } from '../../components/modals/project-form-utils';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { requestProjectChat } from '../../lib/projectChatEvents';
-import { pluginAuthoringComposerDraft } from './plugin-authoring-primer';
+import { startPluginAuthoringChat } from './plugin-authoring-primer';
 import {
   type PluginScaffoldTemplateChoice,
   scaffoldProjectPlugin,
@@ -43,7 +42,7 @@ interface CreatedProject {
  */
 export function useNewPluginFlow(onDone: () => void) {
   const { apiBase } = useApiBase();
-  const { setProject } = useNavigation();
+  const { setProject, setDockState } = useNavigation();
   const createProject = useCreateProjectMutation();
   const scaffold = useMutation({
     mutationFn: (input: {
@@ -83,6 +82,11 @@ export function useNewPluginFlow(onDone: () => void) {
           name: displayName,
           slug: deriveProjectSlug(trimmedName),
           ...(normalized ? { workingDirectory: normalized } : {}),
+          // An authoring chat must see the scaffold it is told about. Under
+          // worktree isolation it would run in a checkout that never holds
+          // these uncommitted files (and a blank or non-git folder would be
+          // refused outright), so this Project works in its folder directly.
+          defaultWorkspaceIsolation: 'shared',
         });
         project = { slug: result.slug, name: result.name ?? displayName };
         setCreated(project);
@@ -94,15 +98,13 @@ export function useNewPluginFlow(onDone: () => void) {
         displayName,
       });
       setProject(project.slug);
-      requestProjectChat({
+      startPluginAuthoringChat({
         projectSlug: project.slug,
         projectName: project.name,
-        source: 'new-plugin',
-        composerDraft: pluginAuthoringComposerDraft({
-          name: trimmedName,
-          displayName,
-          template,
-        }),
+        name: trimmedName,
+        displayName,
+        template,
+        revealDock: () => setDockState(true),
       });
       onDone();
     } catch (caught) {
@@ -110,7 +112,15 @@ export function useNewPluginFlow(onDone: () => void) {
     }
   }
 
+  /** After a refused scaffold, the Project still exists: go to it. */
+  function openCreatedProject() {
+    if (!created) return;
+    setProject(created.slug);
+    onDone();
+  }
+
   return {
+    openCreatedProject,
     name,
     setName,
     title,

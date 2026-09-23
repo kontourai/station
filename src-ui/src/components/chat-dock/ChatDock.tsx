@@ -125,6 +125,7 @@ import {
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
 import { submitCommandLauncherIntent } from './command-launcher-model';
+import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -1770,10 +1771,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       const projectName = detail.projectName || detail.projectSlug;
       // A composer draft is for a NEW chat. Focusing an existing chat, or
       // routing to a scoped layout's own pane, would drop the text the
-      // requester asked to offer, so this opens the picker directly. The
-      // draft reaches the composer only after the person picks an Agent,
-      // and nothing is sent.
+      // requester asked to offer, so the claiming pane opens its picker
+      // directly. Only one pane claims (and a pane bound to another Project
+      // never does), so exactly one picker opens and its chat starts in the
+      // requested Project. The draft reaches the composer only after the
+      // person picks an Agent, and nothing is sent.
       if (detail.composerDraft) {
+        const claimed = claimComposerDraftRequest(event, {
+          hasImmutableProjectScope,
+          projectSlug,
+        });
+        if (!claimed) return;
         setProjectFilter(detail.projectSlug);
         setActiveSessionId(null);
         setActiveChat(null);
@@ -1850,7 +1858,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     applyDockSnap,
     allSessions,
     focusSessionInPane,
+    hasImmutableProjectScope,
     isFullscreenPlacement,
+    projectSlug,
     routeToScopedChatProject,
     setActiveChat,
     setActiveSessionId,

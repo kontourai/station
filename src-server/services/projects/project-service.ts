@@ -291,6 +291,16 @@ export class ProjectService {
     );
   }
 
+  /**
+   * The workspace isolation this Project's chats actually run under: its own
+   * override, else the Station default. Read-only.
+   */
+  async workspaceIsolationFor(slug: string): Promise<WorkspaceIsolationMode> {
+    return this.effectiveWorkspaceIsolation(
+      this.storageAdapter.getProject(slug).defaultWorkspaceIsolation,
+    );
+  }
+
   listProjects(): ProjectMetadata[] {
     return this.storageAdapter.listProjects();
   }

@@ -38,53 +38,64 @@ mkdir src
 `tsx` is required, not optional: both packages ship TypeScript source, and Node
 will not strip types for files under `node_modules`.
 
-Write the manifest Station reads, `plugin.json`:
+Write the manifest Station reads, `plugin.json`. It is an
+[Agent Plugins 1.0](https://agent-plugins.org) manifest; Station's own fields
+live under `extensions["io.kontourai.station"]`, and the UI is one Workspace
+Pane:
 
 ```json
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hello-station",
   "version": "1.0.0",
-  "sdkVersion": "^0.7.0",
-  "displayName": "Hello Station",
-  "description": "A Station layout plugin",
-  "entrypoint": "src/index.tsx",
-  "capabilities": ["navigation"],
-  "permissions": ["navigation.dock"],
-  "layout": { "slug": "hello-station", "source": "./layout.json" }
+  "description": "A Station Workspace Pane",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "Hello Station",
+      "sdkVersion": "^0.7.0",
+      "entrypoint": "./src/index.tsx",
+      "capabilities": ["navigation"],
+      "permissions": ["navigation.dock"],
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Ahello-station:main:workspace",
+          "name": "Hello Station",
+          "rendererId": "renderer:plugin%3Ahello-station:plugin-component:workspace",
+          "renderer": { "kind": "plugin-component", "name": "hello-station-workspace" },
+          "placement": { "supportedRegions": ["primary"], "preferredRegion": "primary" },
+          "modes": [{ "id": "default", "contextRequirement": { "project": true } }],
+          "provenance": { "origin": "plugin", "pluginId": "hello-station" },
+          "lifecycle": { "stage": "stable" }
+        }
+      ]
+    }
+  }
 }
 ```
 
-The layout it points at, `layout.json`:
-
-```json
-{
-  "name": "Hello Station",
-  "slug": "hello-station",
-  "icon": "👋",
-  "tabs": [{ "id": "home", "label": "Home", "component": "hello-station-home" }]
-}
-```
-
-The entrypoint, `src/index.tsx`. Export a `components` map keyed by the tab
-`component` ids in `layout.json`:
+The entrypoint, `src/index.tsx`. Export a `components` map keyed by each
+Pane's `renderer.name`. Every plugin's components share one host registry,
+so prefix the keys with the plugin name:
 
 ```tsx
-import { type LayoutComponentProps, useNavigation } from '@kontourai/station-sdk';
+import { useNavigation } from '@kontourai/station-sdk';
 
-function Home({ onShowChat }: LayoutComponentProps) {
+function Workspace() {
   const { setDockState } = useNavigation();
   return (
     <section style={{ padding: '1.5rem' }}>
       <h1>Hello Station</h1>
-      <button type="button" onClick={() => { setDockState(true); onShowChat?.(); }}>
+      <button type="button" onClick={() => setDockState(true)}>
         Open Chat
       </button>
     </section>
   );
 }
 
-export const components = { 'hello-station-home': Home };
-export default Home;
+export const components = { 'hello-station-workspace': Workspace };
+export default Workspace;
 ```
 
 And the build, `build.ts`. `buildPlugin()` is the same function the Station CLI
@@ -115,7 +126,7 @@ Built /path/to/hello-station/dist/bundle.js
 
 `npm run dev` produces `dist/bundle-dev.js` with inline sourcemaps. Both are
 one-shot builds; the watching preview server is CLI-only (see
-[Start With a Layout Plugin](#start-with-a-layout-plugin)).
+[Start With a Pane Plugin](#start-with-a-pane-plugin)).
 
 ### Load it into Station
 
@@ -141,8 +152,8 @@ curl -X POST http://localhost:3141/api/plugins/install \
 
 The CLI uses the selected saved Station and its OS-keyring credential. Station
 copies the plugin to `<STATION_HOME>/plugins/<name>/`, rebuilds it, and
-registers its layout, which you can then add to a project from the Plugins
-screen. Passive permissions are auto-granted, active ones named in the approval
+registers its Workspace Pane, which you can then add to a Project with
+**Add pane**. Passive permissions are auto-granted, active ones named in the approval
 are recorded against the installed tree, and trusted ones come back as
 `pendingConsent` for a separate host-owned review. See
 [plugins.md](./plugins.md#installation-flow) for the rest of the plugin HTTP

@@ -155,7 +155,7 @@ describe('createPlugin', () => {
       expect(station.workspacePanes).toHaveLength(1);
       expect(station.workspacePanes[0].renderer).toEqual({
         kind: 'plugin-component',
-        name: 'workspace',
+        name: 'layout-only-workspace',
       });
     },
   );

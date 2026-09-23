@@ -106,6 +106,7 @@ src-ui/src/views/learning-review/LearningSourceDialog.tsx|covered|ResponsiveSurf
 src-ui/src/views/monitoring/MonitoringHeader.tsx|exception|Monitoring header actions; reviewed for incremental migration
 src-ui/src/views/plugin-management/InstallPreviewModal.tsx|covered|ResponsiveSurfaceActions long-content confirmation contract
 src-ui/src/views/plugin-management/NewPluginModal.tsx|covered|ResponsiveSurfaceActions form confirmation contract with shared Button actions
+src-ui/src/views/plugin-management/StartPluginModal.tsx|covered|ResponsiveSurfaceActions form confirmation contract with shared Button actions
 src-ui/src/views/plugin-management/PluginModalStack.tsx|covered|ResponsiveSurfaceActions stack-owned confirmation contract
 src-ui/src/views/project-page/ProjectKnowledgeScanModal.tsx|covered|ResponsiveSurfaceActions form confirmation contract
 src-ui/src/views/project-page/ProjectKnowledgeSection.tsx|exception|Knowledge section actions; reviewed for incremental migration

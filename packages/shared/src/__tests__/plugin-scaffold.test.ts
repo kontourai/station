@@ -175,6 +175,9 @@ describe('buildPluginScaffold', () => {
     expect(pane.rendererId).toBe(
       'renderer:plugin%3Aacme.board:plugin-component:workspace',
     );
+    // The component name is prefixed: the host keeps every plugin's
+    // components in one registry, so an unprefixed name would collide.
+    expect(pane.renderer.name).toBe('acme.board-workspace');
     expect(scaffold.displayName).toBe('Acme Board');
     for (const file of scaffold.files) {
       expect(file.path.startsWith('/')).toBe(false);
@@ -190,6 +193,33 @@ describe('buildPluginScaffold', () => {
       );
     },
   );
+
+  test.each([
+    ['a newline', 'Line one\nLine two'],
+    ['a tab', 'Tab\there'],
+    ['a zero-width space', 'a\u200bb'],
+    ['a bidi override', 'a\u202eb'],
+    ['a mid-text byte-order mark', 'Ti\ufefftle'],
+    ['a line separator', 'a\u2028b'],
+    ['an HTML comment opener', 'Pane <!-- note'],
+  ])('refuses a display name with %s', (_label, displayName) => {
+    expect(() =>
+      buildPluginScaffold({ name: 'titled', displayName, dependencies }),
+    ).toThrow(/one line of visible text/);
+  });
+
+  test('accepts ordinary punctuation and non-ASCII letters in a display name', () => {
+    for (const displayName of [
+      'Café Board',
+      'Bob\'s "Pane" <b>',
+      'x'.repeat(128),
+    ]) {
+      expect(
+        buildPluginScaffold({ name: 'titled', displayName, dependencies })
+          .displayName,
+      ).toBe(displayName);
+    }
+  });
 
   test('refuses an unknown template', () => {
     expect(() =>

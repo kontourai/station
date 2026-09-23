@@ -1,58 +1,65 @@
 import { Button } from '../../components/Button';
-import { PathAutocomplete } from '../../components/PathAutocomplete';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
-import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
-import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { PluginTemplateFieldset } from './PluginTemplateFieldset';
-import { useNewPluginFlow } from './useNewPluginFlow';
+import { useStartPluginFlow } from './useStartPluginFlow';
+// Opened from the Project page, where the Plugins view stylesheet that
+// owns these modal classes is not otherwise loaded.
+import '../PluginManagementView.css';
 
 /**
- * Plugins → New plugin. Makes a Project on an empty folder, writes a starter
- * plugin into it, opens the Project, and offers an authoring chat with an
- * opening message ready in the composer. It installs nothing: the finished
- * plugin goes through Install plugin like any other.
+ * Project page → "Start a plugin in this folder". Writes a starter plugin
+ * into this Project's empty folder and offers an authoring chat with an
+ * opening message ready in the composer. It installs nothing.
  */
-export function NewPluginModal({ onClose }: { onClose: () => void }) {
-  const flow = useNewPluginFlow(onClose);
-  const profile = usePlatformProfile();
-  const pickFolder = hasLocalStationForProfile(profile);
-  const nameHintId = 'new-plugin-name-hint';
+export function StartPluginModal({
+  project,
+  onClose,
+}: {
+  project: { slug: string; name: string };
+  onClose: () => void;
+}) {
+  const flow = useStartPluginFlow(project, onClose);
+  const nameHintId = 'start-plugin-name-hint';
 
   return (
     <ResponsiveDialogSurface
       layer="dialog"
       onClose={onClose}
-      ariaLabelledBy="new-plugin-title"
+      ariaLabelledBy="start-plugin-title"
       overlayClassName="plugins__modal-overlay"
       panelClassName="plugins__modal plugins__modal--install"
     >
       <div className="plugins__modal-header">
-        <h3 id="new-plugin-title" className="plugins__modal-title">
-          New Plugin
+        <h3 id="start-plugin-title" className="plugins__modal-title">
+          Start a Plugin
         </h3>
         <ResponsiveDialogCloseButton
           onClick={onClose}
-          label="Close new plugin"
+          label="Close start a plugin"
         />
       </div>
       <form
         className="plugins__modal-body plugins__modal-body--visible plugins__new-plugin"
         onSubmit={(event) => void flow.submit(event)}
       >
+        <p className="plugins__install-hint">
+          The starter files go into {project.name}'s folder. Installing the
+          plugin later is a separate step, through Plugins → Install plugin.
+        </p>
         <fieldset
           className="plugins__new-plugin-fields"
-          disabled={flow.submitting || flow.created !== null}
+          disabled={flow.submitting}
         >
           <div className="editor-field">
-            <label className="editor-label" htmlFor="new-plugin-name">
+            <label className="editor-label" htmlFor="start-plugin-name">
               Plugin name
             </label>
             <input
-              id="new-plugin-name"
+              id="start-plugin-name"
               className="editor-input"
               value={flow.name}
               onChange={(event) => flow.setName(event.target.value)}
@@ -75,49 +82,23 @@ export function NewPluginModal({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <div className="editor-field">
-            <label className="editor-label" htmlFor="new-plugin-title-input">
+            <label className="editor-label" htmlFor="start-plugin-title-input">
               Title <span className="editor-hint"> optional</span>
             </label>
             <input
-              id="new-plugin-title-input"
+              id="start-plugin-title-input"
               className="editor-input"
               value={flow.title}
               onChange={(event) => flow.setTitle(event.target.value)}
               placeholder={flow.displayName || 'My Plugin'}
             />
           </div>
-          {pickFolder && (
-            <div className="editor-field">
-              <label className="editor-label" htmlFor="new-plugin-directory">
-                Folder <span className="editor-hint"> optional</span>
-              </label>
-              <PathAutocomplete
-                id="new-plugin-directory"
-                value={flow.directory}
-                onChange={flow.setDirectory}
-                placeholder="/path/to/empty/folder"
-                className="editor-input path-autocomplete__input"
-                browsable
-                autoFocus={false}
-              />
-              <p className="plugins__install-hint">
-                Choose an empty folder, or leave this blank and Station makes
-                one for the Project.
-              </p>
-            </div>
-          )}
           <PluginTemplateFieldset
-            name="new-plugin-template"
+            name="start-plugin-template"
             value={flow.template}
             onChange={flow.setTemplate}
           />
         </fieldset>
-        {flow.created && (
-          <p className="plugins__install-hint" role="status">
-            Project {flow.created.name} was created. Retry writes the plugin
-            into that same Project, or open the Project to carry on there.
-          </p>
-        )}
         {flow.error && (
           <p className="plugins__new-plugin-error" role="alert">
             {flow.error}
@@ -127,19 +108,14 @@ export function NewPluginModal({ onClose }: { onClose: () => void }) {
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          {flow.created && flow.error && (
-            <Button variant="secondary" onClick={flow.openCreatedProject}>
-              Open Project
-            </Button>
-          )}
           <Button
             type="submit"
             variant="primary"
             pending={flow.submitting}
-            pendingLabel="Creating…"
+            pendingLabel="Starting…"
             disabled={!flow.canSubmit}
           >
-            {flow.created ? 'Retry' : 'Create plugin'}
+            Start plugin
           </Button>
         </ResponsiveSurfaceActions>
       </form>

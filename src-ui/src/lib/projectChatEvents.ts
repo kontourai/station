@@ -55,10 +55,17 @@ export type OpenProjectChatsDetail = {
   composerDraft?: ProjectChatComposerDraft;
 };
 
-export function requestProjectChat(detail: OpenProjectChatsDetail): void {
-  window.dispatchEvent(
+/**
+ * Returns whether a mounted chat pane claimed the request. Only requests
+ * carrying a `composerDraft` are claimed (see `claimComposerDraftRequest`);
+ * a plain project-chat request always reports `false`.
+ */
+export function requestProjectChat(detail: OpenProjectChatsDetail): boolean {
+  // Cancelable so exactly one pane can claim a composer draft.
+  return !window.dispatchEvent(
     new CustomEvent<OpenProjectChatsDetail>(OPEN_PROJECT_CHATS_EVENT, {
       detail,
+      cancelable: true,
     }),
   );
 }

@@ -78,6 +78,15 @@ export class PluginScaffoldInputError extends Error {
 const TSX_VERSION = '^4.23.1';
 const REACT_TYPES_VERSION = '^18.2.0';
 const MAX_DISPLAY_NAME_LENGTH = 128;
+/**
+ * The title lands in plugin.json, the README heading and the entrypoint.
+ * The server's manifest loader refuses invisible Unicode, so a scaffold
+ * carrying it would be written and then be uninstallable; a newline would
+ * also inject Markdown into the README. Refused here: control characters
+ * (newlines included), Unicode format characters (zero-width, bidi
+ * overrides), line and paragraph separators, and HTML comment openers.
+ */
+const UNSAFE_DISPLAY_NAME = /[\p{Cc}\p{Cf}\u2028\u2029]|<!--/u;
 
 export function defaultPluginDisplayName(name: string): string {
   return name
@@ -88,9 +97,20 @@ export function defaultPluginDisplayName(name: string): string {
 }
 
 interface PaneSpec {
-  /** Segment used in the pane id and as the `components` key. */
+  /** Segment used in the pane and renderer ids. */
   key: string;
   title: string;
+}
+
+/**
+ * The renderer name, which is also the `components` key. The host registers
+ * every plugin's components in ONE map keyed by this string, so an
+ * unprefixed name like `workspace` from two plugins would collide and the
+ * first plugin's Pane would go dark. Prefixing with the plugin name keeps
+ * each scaffold's components its own.
+ */
+export function pluginScaffoldComponentName(name: string, key: string): string {
+  return `${name}-${key}`;
 }
 
 function workspacePane(name: string, pane: PaneSpec) {
@@ -100,7 +120,10 @@ function workspacePane(name: string, pane: PaneSpec) {
     id: `pane:plugin%3A${encoded}:main:${pane.key}`,
     name: pane.title,
     rendererId: `renderer:plugin%3A${encoded}:plugin-component:${pane.key}`,
-    renderer: { kind: 'plugin-component', name: pane.key },
+    renderer: {
+      kind: 'plugin-component',
+      name: pluginScaffoldComponentName(name, pane.key),
+    },
     placement: {
       supportedRegions: ['primary'],
       preferredRegion: 'primary',
@@ -276,8 +299,8 @@ function Notes() {
       : "import type { ComponentType } from 'react';";
   const components =
     template === 'full'
-      ? '  workspace: Workspace,\n  notes: Notes,'
-      : '  workspace: Workspace,';
+      ? `  ${JSON.stringify(pluginScaffoldComponentName(name, 'workspace'))}: Workspace,\n  ${JSON.stringify(pluginScaffoldComponentName(name, 'notes'))}: Notes,`
+      : `  ${JSON.stringify(pluginScaffoldComponentName(name, 'workspace'))}: Workspace,`;
 
   return `import { useAgents, useNavigation, useToast } from '@kontourai/station-sdk';
 ${reactImport}
@@ -286,7 +309,8 @@ import './pane.css';
 /**
  * A Workspace Pane. \`plugin.json\` declares it under
  * \`extensions["io.kontourai.station"].workspacePanes\`, and its
- * \`renderer.name\` ("workspace") is the key in \`components\` below.
+ * \`renderer.name\` is the key in \`components\` below. Keep the plugin-name
+ * prefix: every plugin's components share one host registry.
  */
 function Workspace() {
   const agents = useAgents();
@@ -485,6 +509,12 @@ export function buildPluginScaffold(
     throw new PluginScaffoldInputError(
       'invalid-display-name',
       `Plugin title must be at most ${MAX_DISPLAY_NAME_LENGTH} characters`,
+    );
+  }
+  if (UNSAFE_DISPLAY_NAME.test(displayName)) {
+    throw new PluginScaffoldInputError(
+      'invalid-display-name',
+      'Plugin title must be one line of visible text',
     );
   }
 

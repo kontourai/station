@@ -38,6 +38,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -56,7 +57,10 @@ import { ProjectManifestStore } from '../../../services/projects/project-manifes
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
-import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
+import {
+  configureRuntimeRoutes as configureRuntimeRoutesProduction,
+  isProjectMemberPluginScaffold,
+} from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
   const runtimeSupportStub = new Proxy({}, { get: () => () => undefined });
@@ -561,49 +565,151 @@ describe('project guest administration over the production composition', () => {
     expect(transfer.status).toBe(403);
   });
 
-  test('plugin scaffold: the operator writes into the Project folder; shared members and non-members are refused before any write', async () => {
-    // epic #2323 S2. The leaf opens no member write path of its own. A
-    // shared member reaches this Station only through an account-bound
-    // device, whose route allowlist does not include it, and behind that
-    // the Project guard bans member mutation as it does for every sibling.
+  // Epic #2323 S2 (owner decision: any Project member may author a plugin).
+  // Two layers, each proven on its own:
+  // - the ACCOUNT-BOUND device surface (#488) keeps its route allowlist, which
+  //   does not include the scaffold, so a bound kiosk is refused there;
+  // - behind it, the Project guard bans member mutations except this one
+  //   exact leaf, so a member session (a deployment-account session over a
+  //   non-bound credential, the shape `ownerHeaders` uses) may scaffold into
+  //   the Project's empty folder and nothing else.
+  test('plugin scaffold: a member may scaffold an empty Project folder and nothing else; a non-member writes nothing', async () => {
     const h = await setup();
     const { guest } = await h.shareWithGuestAdmin('authoring', 'Authoring');
     const folder = h.projectService.getProject('authoring').workingDirectory!;
     expect(folder).toBeTruthy();
-    const scaffold = (headers: RequestInit) =>
-      h.request('/api/projects/authoring/plugin-scaffold', {
-        ...headers,
-        method: 'POST',
+    const person =
+      (cookie: string) =>
+      (extra?: RequestInit): RequestInit => ({
+        ...extra,
         headers: {
-          ...(headers.headers as Record<string, string>),
-          'Content-Type': 'application/json',
+          ...((extra?.headers as Record<string, string>) ?? {}),
+          Authorization: `Bearer ${h.operatorCredential}`,
+          Cookie: cookie,
+          Origin: ORIGIN,
         },
-        body: JSON.stringify({ name: 'guest-plugin' }),
       });
-    const refusal = { error: { code: 'account_bound_device_route_forbidden' } };
+    const member = person('fixture_account=guest');
+    const outsider = person('fixture_account=peer');
+    const scaffold = (
+      headers: (extra?: RequestInit) => RequestInit,
+      name: string,
+      path = '/api/projects/authoring/plugin-scaffold',
+    ) =>
+      h.request(
+        path,
+        headers({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        }),
+      );
 
-    // An admin member of this Project.
-    const byGuest = await scaffold(guest());
-    expect(byGuest.status).toBe(403);
-    expect(await readJson(byGuest)).toEqual(refusal);
+    // Layer 1: the bound kiosk surface is unchanged.
+    const byKiosk = await scaffold(guest, 'kiosk-plugin');
+    expect(byKiosk.status).toBe(403);
+    expect(await readJson(byKiosk)).toEqual({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+
+    // A signed-in account that is not a member: the Project does not exist
+    // for it, and nothing is written.
+    const byOutsider = await scaffold(outsider, 'outsider-plugin');
+    expect(byOutsider.status).toBe(404);
     expect(existsSync(join(folder, 'plugin.json'))).toBe(false);
 
-    // A signed-in account that is not a member at all.
-    const { credential: peerCredential } = h.pairAccountBound(
-      'peer-kiosk',
-      GUEST_GRANT,
-      PEER_SUBJECT,
+    // Layer 2: the guard lets a member through this exact leaf only.
+    for (const path of [
+      '/api/projects/authoring/plugin-scaffold/',
+      '/api/projects/authoring/plugin-scaffold/extra',
+      '/api/projects/authoring/plugin-scaffold%2Fextra',
+    ]) {
+      const sibling = await scaffold(member, 'sibling-plugin', path);
+      expect(sibling.status, path).toBe(403);
+      expect(await readJson(sibling), path).toEqual({
+        success: false,
+        error: 'Project mutation is forbidden',
+      });
+    }
+    const rename = await h.request(
+      '/api/projects/authoring',
+      member({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Renamed by member' }),
+      }),
     );
-    const byPeer = await scaffold(
-      h.guestHeaders(peerCredential, 'fixture_account=peer')(),
-    );
-    expect(byPeer.status).toBe(403);
-    expect(await readJson(byPeer)).toEqual(refusal);
+    expect(rename.status).toBe(403);
     expect(existsSync(join(folder, 'plugin.json'))).toBe(false);
 
-    const byOperator = await scaffold(h.operatorHeaders());
-    expect(byOperator.status, await byOperator.clone().text()).toBe(201);
+    // A member may read eligibility, then scaffold the empty folder.
+    const eligible = await h.request(
+      '/api/projects/authoring/plugin-scaffold',
+      member(),
+    );
+    expect(eligible.status, await eligible.clone().text()).toBe(200);
+    expect(
+      (await readJson<{ data: { eligible: boolean } }>(eligible)).data,
+    ).toEqual({ eligible: true });
+    const byMember = await scaffold(member, 'member-plugin');
+    expect(byMember.status, await byMember.clone().text()).toBe(201);
     expect(existsSync(join(folder, 'plugin.json'))).toBe(true);
+
+    // The folder is no longer empty: a member cannot scaffold over it.
+    const again = await scaffold(member, 'another-plugin');
+    expect(again.status).toBe(409);
+    expect((await readJson<{ code: string }>(again)).code).toBe(
+      'working-directory-not-empty',
+    );
+    expect(
+      JSON.parse(readFileSync(join(folder, 'plugin.json'), 'utf8')).name,
+    ).toBe('member-plugin');
+  });
+
+  test('the member scaffold exemption matches exactly one leaf', () => {
+    expect(
+      isProjectMemberPluginScaffold('POST', '/api/projects/a/plugin-scaffold'),
+    ).toBe(true);
+    for (const [method, path] of [
+      ['GET', '/api/projects/a/plugin-scaffold'],
+      ['PUT', '/api/projects/a/plugin-scaffold'],
+      ['POST', '/api/projects/a/plugin-scaffold/'],
+      ['POST', '/api/projects/a/plugin-scaffold/x'],
+      ['POST', '/api/projects/a/b/plugin-scaffold'],
+      ['POST', '/api/projects//plugin-scaffold'],
+      ['POST', '/api/projects/a/plugin-scaffolds'],
+      ['POST', '/api/projects/a/Plugin-Scaffold'],
+      ['POST', '/prefix/api/projects/a/plugin-scaffold'],
+      ['POST', '/api/projects/a/plugin-scaffold?x=/'],
+      ['POST', '/api/projects/a'],
+    ] as const) {
+      expect(
+        isProjectMemberPluginScaffold(method, path),
+        `${method} ${path}`,
+      ).toBe(false);
+    }
+  });
+
+  test('plugin scaffold: a member cannot scaffold a Project they do not belong to', async () => {
+    const h = await setup();
+    await h.shareWithGuestAdmin('shared', 'Shared');
+    const other = await h.projectService.createProject({
+      name: 'Private',
+      slug: 'private',
+    });
+    const folder = other.workingDirectory!;
+    const response = await h.request('/api/projects/private/plugin-scaffold', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${h.operatorCredential}`,
+        Cookie: 'fixture_account=guest',
+        Origin: ORIGIN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: 'intruder' }),
+    });
+    expect(response.status).toBe(404);
+    expect(existsSync(join(folder, 'plugin.json'))).toBe(false);
   });
 
   test('read-only rescope over the operator endpoint: GET yes, POST no; read+operate restores POST', async () => {

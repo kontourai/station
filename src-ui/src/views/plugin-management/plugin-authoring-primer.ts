@@ -1,4 +1,7 @@
-import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
+import {
+  type ProjectChatComposerDraft,
+  requestProjectChat,
+} from '../../lib/projectChatEvents';
 import type { PluginScaffoldTemplateChoice } from './plugin-scaffold-client';
 
 /**
@@ -44,4 +47,27 @@ export function pluginAuthoringComposerDraft(input: {
     detail: `Continue building ${input.displayName}`,
     message: buildPluginAuthoringPrimer(input),
   };
+}
+
+/**
+ * Hands off to an authoring chat after a scaffold: reveals the dock (its New
+ * Chat picker renders inside the dock shell, which is only a header strip
+ * while closed) and asks it for a new chat in this Project with the primer
+ * offered for the composer. Returns whether a chat pane took the request.
+ */
+export function startPluginAuthoringChat(input: {
+  projectSlug: string;
+  projectName: string;
+  name: string;
+  displayName: string;
+  template: PluginScaffoldTemplateChoice;
+  revealDock: () => void;
+}): boolean {
+  input.revealDock();
+  return requestProjectChat({
+    projectSlug: input.projectSlug,
+    projectName: input.projectName,
+    source: 'new-plugin',
+    composerDraft: pluginAuthoringComposerDraft(input),
+  });
 }

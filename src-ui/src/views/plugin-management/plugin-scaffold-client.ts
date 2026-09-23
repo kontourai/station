@@ -1,4 +1,4 @@
-import { mutateJson } from '@kontourai/station-sdk';
+import { getJson, mutateJson } from '@kontourai/station-sdk';
 
 export type PluginScaffoldTemplateChoice = 'pane' | 'full' | 'provider';
 
@@ -14,13 +14,17 @@ export interface PluginScaffoldResult {
   displayName: string;
   /** Paths relative to the Project folder. */
   files: string[];
+  /** The folder already held exactly this scaffold; nothing was written. */
+  alreadyPresent?: boolean;
 }
 
 interface ScaffoldEnvelope {
   success?: boolean;
   error?: string;
+  code?: string;
   entries?: string[];
   entryCount?: number;
+  present?: string[];
   data?: PluginScaffoldResult;
 }
 
@@ -31,6 +35,9 @@ interface ScaffoldEnvelope {
 function refusalMessage(envelope: ScaffoldEnvelope, status: number): string {
   const base =
     envelope.error || `Station could not scaffold the plugin (${status})`;
+  if (envelope.present?.length) {
+    return `${base}. Already there: ${envelope.present.join(', ')}.`;
+  }
   if (!envelope.entries?.length) return base;
   const more =
     (envelope.entryCount ?? envelope.entries.length) - envelope.entries.length;
@@ -57,6 +64,35 @@ export async function scaffoldProjectPlugin(
   }
   if (!response.ok || !envelope.success || !envelope.data) {
     throw new Error(refusalMessage(envelope, response.status));
+  }
+  return envelope.data;
+}
+
+export type PluginScaffoldEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: string };
+
+/**
+ * `GET /api/projects/:slug/plugin-scaffold`: whether a plugin could be
+ * scaffolded into this Project's folder now. Read-only.
+ */
+export async function fetchPluginScaffoldEligibility(
+  apiBase: string,
+  projectSlug: string,
+): Promise<PluginScaffoldEligibility> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/plugin-scaffold`,
+  );
+  const envelope = (await response.json()) as {
+    success?: boolean;
+    error?: string;
+    data?: PluginScaffoldEligibility;
+  };
+  if (!response.ok || !envelope.success || !envelope.data) {
+    throw new Error(
+      envelope.error ||
+        `Station could not check this folder (${response.status})`,
+    );
   }
   return envelope.data;
 }

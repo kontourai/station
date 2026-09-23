@@ -522,6 +522,8 @@ export function useCreateProjectMutation() {
       description?: string;
       icon?: string;
       workingDirectory?: string;
+      /** Per-Project override of the Station's workspace isolation. */
+      defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {
       const apiBase = await _getApiBase();
       return createProjectRaw(apiBase, data);

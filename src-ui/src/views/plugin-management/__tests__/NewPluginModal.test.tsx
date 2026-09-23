@@ -13,13 +13,13 @@ import {
   type OpenProjectChatsDetail,
 } from '../../../lib/projectChatEvents';
 
-const { createProjectMock, mutateJsonMock, setProjectMock } = vi.hoisted(
-  () => ({
+const { createProjectMock, mutateJsonMock, setProjectMock, setDockStateMock } =
+  vi.hoisted(() => ({
     createProjectMock: vi.fn(),
     mutateJsonMock: vi.fn(),
     setProjectMock: vi.fn(),
-  }),
-);
+    setDockStateMock: vi.fn(),
+  }));
 
 // The two network seams the flow owns: Project creation through the SDK's
 // mutation, and the scaffold POST through the SDK's request primitive.
@@ -29,12 +29,16 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   mutateJson: mutateJsonMock,
+  getJson: vi.fn(),
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 vi.mock('../../../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setProject: setProjectMock }),
+  useNavigation: () => ({
+    setProject: setProjectMock,
+    setDockState: setDockStateMock,
+  }),
 }));
 // The folder field's own suggestions read the filesystem browse route; a
 // plain input keeps this test on the flow rather than on autocomplete.
@@ -78,6 +82,7 @@ afterEach(() => {
   createProjectMock.mockReset();
   mutateJsonMock.mockReset();
   setProjectMock.mockReset();
+  setDockStateMock.mockReset();
 });
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -141,6 +146,8 @@ test('creates the Project, then scaffolds into it, opens it, and offers a primed
     name: 'Pulse Board',
     slug: 'pulse-board',
     workingDirectory: '/work/pulse',
+    // The authoring chat must see the scaffold: never worktree isolation.
+    defaultWorkspaceIsolation: 'shared',
   });
   expect(mutateJsonMock).toHaveBeenCalledWith(
     'http://station.test/api/projects/pulse-board/plugin-scaffold',
@@ -153,6 +160,8 @@ test('creates the Project, then scaffolds into it, opens it, and offers a primed
     mutateJsonMock.mock.invocationCallOrder[0],
   );
   expect(setProjectMock).toHaveBeenCalledWith('pulse-board');
+  // The picker renders inside the dock shell, so the dock is revealed.
+  expect(setDockStateMock).toHaveBeenCalledWith(true);
 
   expect(chatRequests).toHaveLength(1);
   const [request] = chatRequests;
@@ -194,6 +203,8 @@ test('a refused scaffold names what is in the folder, and Retry reuses the creat
   expect(onClose).not.toHaveBeenCalled();
   expect(setProjectMock).not.toHaveBeenCalled();
   expect(chatRequests).toHaveLength(0);
+  // The Project exists, so the person can go to it instead of retrying.
+  expect(screen.getByRole('button', { name: 'Open Project' })).toBeTruthy();
 
   mutateJsonMock.mockResolvedValueOnce(
     jsonResponse(201, {
@@ -226,4 +237,29 @@ test('an invalid plugin name is explained and cannot be submitted', () => {
   expect(create.disabled).toBe(true);
   fireEvent.click(create);
   expect(createProjectMock).not.toHaveBeenCalled();
+});
+
+test('after a partial scaffold, Open Project goes to the created Project', async () => {
+  createProjectMock.mockResolvedValue({ slug: 'pulse', name: 'Pulse' });
+  mutateJsonMock.mockResolvedValueOnce(
+    jsonResponse(409, {
+      success: false,
+      code: 'partial-scaffold',
+      error: 'Part of this plugin is already in the Project folder',
+      present: ['plugin.json', 'README.md'],
+      missingCount: 6,
+    }),
+  );
+  const onClose = renderModal();
+  fireEvent.change(screen.getByLabelText('Plugin name'), {
+    target: { value: 'pulse' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create plugin' }));
+
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'Already there: plugin.json, README.md',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Open Project' }));
+  expect(setProjectMock).toHaveBeenCalledWith('pulse');
+  expect(onClose).toHaveBeenCalled();
 });

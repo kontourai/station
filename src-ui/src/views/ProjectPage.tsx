@@ -40,6 +40,7 @@ import {
 } from './project-page/ProjectLayoutsSection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
+import { ProjectPluginStartCallout } from './project-page/ProjectPluginStartCallout';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
@@ -280,6 +281,14 @@ export function ProjectPage({ slug }: { slug: string }) {
             that is what the sidebar badge sent you here for. Renders nothing
             when nothing is in flight. */}
         <ProjectLiveWorkSection slug={slug} />
+
+        {/* Epic #2323 S2: renders only when the server says this Project's
+            folder is empty and could take a starter plugin. */}
+        {!navigator.webdriver && (
+          <ProjectPluginStartCallout
+            project={{ slug, name: project.name || slug }}
+          />
+        )}
 
         {conversations.length === 0 && !navigator.webdriver && chatCta && (
           // In a stack even as the only callout: the stack owns the rhythm
