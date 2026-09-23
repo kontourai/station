@@ -459,10 +459,14 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
       input.title,
       ...(input.body ? ['--description', input.body] : []),
       ...(input.base ? ['--target-branch', input.base] : []),
-      // The branch Station resolved with its own hardened git; glab would
-      // otherwise read it from a checkout in its cwd.
+      // The pushed branch Station resolved with its own hardened git (the
+      // upstream's name); glab would otherwise read it from a checkout in
+      // its cwd. A fork's branch lives in another project: `--head`.
       '--source-branch',
-      input.head ?? c.branch,
+      input.head ?? c.head?.branch ?? c.branch,
+      ...(input.head === undefined && c.head?.owner && c.head.repository
+        ? ['--head', `${c.head.owner}/${c.head.repository}`]
+        : []),
       '--yes',
     ]);
   }

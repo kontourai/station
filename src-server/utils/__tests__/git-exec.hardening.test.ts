@@ -727,11 +727,24 @@ describe.skipIf(process.platform === 'win32')(
     });
 
     test.each([
-      ['gh', 'pr create', '--head'],
-      ['glab', 'mr create', '--source-branch'],
-    ])(
-      '%s %s names the branch Station resolved and runs outside the checkout',
-      async (binary, _verb, flag) => {
+      // [binary, head in the context, expected flags]
+      ['gh', undefined, ['--head feature/x']],
+      ['gh', { branch: 'feature-x' }, ['--head feature-x']],
+      [
+        'gh',
+        { branch: 'feature-x', owner: 'someone', repository: 'pulse' },
+        ['--head someone:feature-x'],
+      ],
+      ['glab', undefined, ['--source-branch feature/x']],
+      ['glab', { branch: 'feature-x' }, ['--source-branch feature-x']],
+      [
+        'glab',
+        { branch: 'feature-x', owner: 'someone', repository: 'pulse' },
+        ['--source-branch feature-x', '--head someone/pulse'],
+      ],
+    ] as const)(
+      '%s create with head %j names the pushed branch, and runs outside the checkout',
+      async (binary, head, flags) => {
         const bin = sandbox();
         const log = join(bin, 'calls.log');
         writeFileSync(
@@ -751,6 +764,7 @@ describe.skipIf(process.platform === 'win32')(
           workingDirectory: checkout,
           branch: 'feature/x',
           baseRef: 'main',
+          ...(head ? { head: { ...head } } : {}),
         };
         const provider =
           binary === 'gh'
@@ -761,7 +775,9 @@ describe.skipIf(process.platform === 'win32')(
         const calls = readFileSync(log, 'utf-8').trim().split('\n');
         const create = calls.find((line) => line.includes(' create '));
         expect(create, calls.join('\n')).toBeDefined();
-        expect(create).toContain(`${flag} feature/x`);
+        for (const flag of flags) expect(create).toContain(flag);
+        if (binary === 'glab' && !(head && 'owner' in head))
+          expect(create).not.toContain('--head');
         for (const line of calls) {
           const cwd = line.slice(0, line.indexOf('|'));
           expect(cwd).not.toBe(checkout);

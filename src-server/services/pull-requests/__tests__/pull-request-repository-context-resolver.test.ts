@@ -331,3 +331,87 @@ describe('PullRequestRepositoryContextResolver', () => {
     });
   });
 });
+
+describe('the branch a pull request opens from (#2363 round 4)', () => {
+  /** A git that answers by command; an unknown command fails like an unset key. */
+  const answering = (answers: Record<string, string>) =>
+    vi.fn(async (args: string[]) => {
+      const key = args.join(' ');
+      if (key in answers) return { stdout: `${answers[key]}\n` };
+      throw Object.assign(new Error(`unset: ${key}`), { code: 1 });
+    });
+  const base = {
+    'rev-parse --abbrev-ref HEAD': 'fx',
+    'rev-parse --abbrev-ref @{upstream}': 'origin/feature-x',
+    'rev-list --left-right --count HEAD...@{upstream}': '0\t0',
+    'symbolic-ref --quiet --short refs/remotes/origin/HEAD': 'origin/main',
+  };
+  const resolveWith = (answers: Record<string, string>) =>
+    new PullRequestRepositoryContextResolver({
+      git: answering({ ...base, ...answers }) as any,
+      readRemotes: remote,
+    }).resolve({ projectWorkingDirectory: '/checkout' });
+
+  test('no recorded upstream branch: the local branch applies', async () => {
+    const result = await resolveWith({});
+    expect(result).toMatchObject({
+      available: true,
+      context: { branch: 'fx' },
+    });
+    expect(
+      (result as { context: { head?: unknown } }).context.head,
+    ).toBeUndefined();
+  });
+
+  test('the same name upstream: that branch', async () => {
+    await expect(
+      resolveWith({
+        'rev-parse --abbrev-ref HEAD': 'feature',
+        'config --get branch.feature.remote': 'origin',
+        'config --get branch.feature.merge': 'refs/heads/feature',
+      }),
+    ).resolves.toMatchObject({ context: { head: { branch: 'feature' } } });
+  });
+
+  test('a renamed upstream: the pushed name, not the local one', async () => {
+    const result = await resolveWith({
+      'config --get branch.fx.remote': 'origin',
+      'config --get branch.fx.merge': 'refs/heads/feature-x',
+    });
+    expect(result).toMatchObject({
+      context: { branch: 'fx', head: { branch: 'feature-x' } },
+    });
+    expect((result as { context: { head: object } }).context.head).toEqual({
+      branch: 'feature-x',
+    });
+  });
+
+  test("a fork upstream: the fork's owner and name, from its configured address", async () => {
+    await expect(
+      resolveWith({
+        'config --get branch.fx.remote': 'fork',
+        'config --get branch.fx.merge': 'refs/heads/feature-x',
+        'config --get remote.fork.url': 'git@github.com:someone/station.git',
+      }),
+    ).resolves.toMatchObject({
+      context: {
+        head: { branch: 'feature-x', owner: 'someone', repository: 'station' },
+      },
+    });
+  });
+
+  test('a fork on another host, or with no address, is refused rather than guessed', async () => {
+    for (const url of ['https://gitlab.com/someone/station.git', undefined]) {
+      await expect(
+        resolveWith({
+          'config --get branch.fx.remote': 'fork',
+          'config --get branch.fx.merge': 'refs/heads/feature-x',
+          ...(url ? { 'config --get remote.fork.url': url } : {}),
+        }),
+      ).resolves.toMatchObject({
+        available: false,
+        reason: expect.stringContaining('Cannot tell which repository'),
+      });
+    }
+  });
+});

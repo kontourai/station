@@ -374,10 +374,16 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       input.title,
       ...(input.body ? ['--body', input.body] : []),
       ...(input.base ? ['--base', input.base] : []),
-      // The branch Station resolved in the checkout with its own hardened
-      // git; without it gh would run `git status` in its cwd to find one.
+      // The pushed branch Station resolved with its own hardened git (the
+      // upstream's name, `owner:branch` for a fork); without it gh would
+      // run `git status` in its cwd to find one.
       '--head',
-      input.head ?? c.branch,
+      input.head ??
+        (c.head
+          ? c.head.owner
+            ? `${c.head.owner}:${c.head.branch}`
+            : c.head.branch
+          : c.branch),
     ]);
   }
   createComment(c: PullRequestRepositoryContext, ref: string, input: any) {
