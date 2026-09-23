@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-23T17:38:49Z | nightly-desktop | 0.1.11-nightly.2457.2 | `ac819b5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35890429058) |
 | 2026-09-23T17:38:45Z | nightly-android | 0.1.11-nightly.2457.2 | `ac819b5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35890429058) |
 | 2026-09-22T22:04:19Z | nightly-desktop | 0.1.11-nightly.2456.1 | `0015690` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35784910501) |
 | 2026-09-22T22:04:15Z | nightly-android | 0.1.11-nightly.2456.1 | `0015690` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/35784910501) |
@@ -126,6 +127,80 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-23T17:38:49Z · nightly-desktop · 0.1.11-nightly.2457.2
+
+- Ship SHA: `ac819b5ab35b7bc449a0501c4691a61935cbfc76`
+- Artifact built at: `2026-09-23T16:49:19.602Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 35890429058)
+
+### Changelog
+
+Commits since `0015690` ([full sha](https://github.com/kontourai/station/commit/0015690b78f76eb2b397a08e6ec86ee755678b9b)):
+
+**Features**
+
+- [#2413](https://github.com/kontourai/station/pull/2413) feat(relay): adopt cookie-paired Devices onto encrypted broker routes
+- [#2394](https://github.com/kontourai/station/pull/2394) feat(relay): enroll fresh clients over encrypted application channel
+- [#2358](https://github.com/kontourai/station/pull/2358) feat(station-control): verified caller identity and custody-bound child ownership
+- [#2384](https://github.com/kontourai/station/pull/2384) feat(relay): add private enrollment recovery foundation (#2274)
+- [#2371](https://github.com/kontourai/station/pull/2371) feat(identity): add provider-owned pending enrollment sessions
+- [#2375](https://github.com/kontourai/station/pull/2375) feat(plugins): plugin workbench — authoring, scaffold, draft preview, local redeploy, proposals (#2323 S1–S5, #2316, #2319)
+- [#2360](https://github.com/kontourai/station/pull/2360) feat(relay): report self-hosted broker lifecycle status
+- [#2349](https://github.com/kontourai/station/pull/2349) feat(live-surface): host-neutral live surface primitive for the Browser pane
+- [#2346](https://github.com/kontourai/station/pull/2346) feat(browser): server Chromium host for the Browser pane
+
+**Fixes**
+
+- [#2420](https://github.com/kontourai/station/pull/2420) fix(pairing): admit desktop local grants to host pairing routes
+- [#2311](https://github.com/kontourai/station/pull/2311) fix(orchestration): re-arm the chat event stream after any abort, stall or auth stop (#2301)
+- [#2405](https://github.com/kontourai/station/pull/2405) fix(desktop): release a cancelled native read's slot while its call is blocked
+- [#2397](https://github.com/kontourai/station/pull/2397) fix(cli): report a slow readiness identity check as degraded, not unavailable
+- [#2387](https://github.com/kontourai/station/pull/2387) fix(relay): recover optional broker registration after startup outages
+- [#2390](https://github.com/kontourai/station/pull/2390) fix(ci,ui): restore queue gate inventory and surface contrast
+- [#2367](https://github.com/kontourai/station/pull/2367) fix(transfer-gate): reuse exact baselines and prune stale ones on --prepare-baseline
+- [#2361](https://github.com/kontourai/station/pull/2361) fix(connect): show a queued Station as busy and let the health probe skip the queue
+- [#2366](https://github.com/kontourai/station/pull/2366) fix(pairing): revalidate account session at exchange (#2274)
+- [#2353](https://github.com/kontourai/station/pull/2353) fix(relay): recover transient broker control and offer reads
+- [#2372](https://github.com/kontourai/station/pull/2372) fix: clear three main reds caught by the shadow merge-queue regression gate
+- [#2369](https://github.com/kontourai/station/pull/2369) fix(deps): give install-time probes a cold-start allowance and silent-timeout retry
+- [#2352](https://github.com/kontourai/station/pull/2352) fix(pairing): enforce issued session scope subset
+- [#2340](https://github.com/kontourai/station/pull/2340) fix(windows): cut cold process starts behind the Windows PR floor timeouts
+- [#2338](https://github.com/kontourai/station/pull/2338) fix(inbox): never-prompted sessions are Drafts, not Active now; failed first sends read Failed
+- [#2339](https://github.com/kontourai/station/pull/2339) fix(security): require a Station origin for browser WebSocket upgrades on loopback
+- [#2335](https://github.com/kontourai/station/pull/2335) fix(plugins): authoring papercuts: truthful install preview, broken examples, docs install claims (#2321)
+- [#2320](https://github.com/kontourai/station/pull/2320) fix(ci): give the SDK transport an explicit impact boundary so fast-checks can complete
+- [#2331](https://github.com/kontourai/station/pull/2331) fix(server): keep a live desktop's server running when the supervisor probe fails
+- [#2329](https://github.com/kontourai/station/pull/2329) fix(gallery): isolate persisted query cache per screen and re-baseline from the pinned renderer
+- [#2328](https://github.com/kontourai/station/pull/2328) fix(muse): show running tool calls and stop ending live turns on a Station-chosen schedule
+- [#2325](https://github.com/kontourai/station/pull/2325) fix(ci-extended): stable Linux process birth, lean MCP apps, perf provisioning races
+
+**CI / workflow**
+
+- [#2381](https://github.com/kontourai/station/pull/2381) ci(actions): follow callees and allowlist cache actions in untrusted workflows
+- [#2380](https://github.com/kontourai/station/pull/2380) ci(coverage): shard the coverage lane through the resource-profiled corpus
+- [#2370](https://github.com/kontourai/station/pull/2370) ci: harden the merge-queue gate and add a test quarantine
+- [#2368](https://github.com/kontourai/station/pull/2368) ci(security): guard product code against importing CodeQL-ignored test paths
+- [#2364](https://github.com/kontourai/station/pull/2364) ci(ios): restore-only Rust cache for the iOS verification build
+- [#2322](https://github.com/kontourai/station/pull/2322) ci: add shadow merge-queue regression gate
+- [#2330](https://github.com/kontourai/station/pull/2330) ci: cut duplicate work from the PR and merge-queue critical path
+- [#2314](https://github.com/kontourai/station/pull/2314) ci: remove duplicated and never-green workflow runs
+
+**Docs**
+
+- [#2393](https://github.com/kontourai/station/pull/2393) docs: list Merge-queue regression as a required check
+- [#2359](https://github.com/kontourai/station/pull/2359) docs(adr): host the Browser pane server-side behind a host adapter
+
+**Other**
+
+- [#2417](https://github.com/kontourai/station/pull/2417) test(perf-bridge): settle first run before provisioning browses
+- [#2392](https://github.com/kontourai/station/pull/2392) test(relay): prove optional broker startup at the real entrypoint
+- [#2379](https://github.com/kontourai/station/pull/2379) test(cli): pin reconciler deadline outcomes with a controlled clock
+- [#2362](https://github.com/kontourai/station/pull/2362) test(connections): isolate enrolment integration environment (#2131)
+- [#2354](https://github.com/kontourai/station/pull/2354) test: qualify packaged runtime listener ownership (#2016)
+- [#2336](https://github.com/kontourai/station/pull/2336) perf(typecheck): host-wide tsc slots and incremental compiles
+- [#2317](https://github.com/kontourai/station/pull/2317) test(android): reach mobile Settings through the drawer footer
 
 ## 2026-09-23T17:38:45Z · nightly-android · 0.1.11-nightly.2457.2
 
