@@ -177,7 +177,9 @@ function isOperatorPerson(deps: PluginProposalRouteDeps, c: Context): boolean {
  * authorship is not a check this route can make well for agents: every agent
  * tool call arrives as the one internal caller, and its conversation is a
  * report. An id and a status is all the agent tool reads (whether it was
- * already proposed), and it names nothing the caller did not send.
+ * already proposed). A duplicate still tells the caller one thing it did not
+ * send: that an open ask for that target exists, and its id. It carries none
+ * of that ask's content.
  */
 function proposalAnswer(
   deps: PluginProposalRouteDeps,
