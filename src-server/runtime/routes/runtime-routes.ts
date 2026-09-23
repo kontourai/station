@@ -6399,7 +6399,7 @@ export function configureDevicePairingPublicRoutes(
         failureLimiter.finalize(admission.admission, 'pending');
         return c.json({ error: 'relay_enrollment_finalize_required' }, 409);
       }
-        // Approval binds an account candidate to the Device, but the provider
+      // Approval binds an account candidate to the Device, but the provider
       // session may be revoked before the requester exchanges its credential.
       // Recheck at the minting boundary so a stale approved request cannot
       // create an account-bound Device after logout or provider revocation.
@@ -6438,8 +6438,8 @@ export function configureDevicePairingPublicRoutes(
         }
       }
       // Provider adapters can ignore AbortSignal and finish after the caller
-        // disconnects. Never mint a Device that the requester cannot receive.
-        c.req.raw.signal.throwIfAborted();
+      // disconnects. Never mint a Device that the requester cannot receive.
+      c.req.raw.signal.throwIfAborted();
       const { replacement, ...result } = pairing.exchange({
         offerId: body.offerId,
         proof: body.proof,
