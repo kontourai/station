@@ -292,6 +292,7 @@ export function ConnectionsProvider({
     connectionId: string,
     connection: SavedConnection | undefined,
     selectionEpoch: number,
+    isSelectionCurrent: () => boolean,
   ) => Promise<void>;
   retirePreparedConnection?: (
     connectionId: string,
@@ -499,15 +500,15 @@ export function ConnectionsProvider({
         const target = resolvedStore
           .getAll()
           .find((connection) => connection.id === id);
+        const isSelectionCurrent = () =>
+          epoch === selectionEpoch.current &&
+          (resolvedStore.getActive()?.id ?? null) === before;
         if (target?.brokerRoute && !prepareActiveConnection)
           throw new Error(
             'A broker route cannot be selected until its encrypted transport is prepared.',
           );
-        await prepareActiveConnection?.(id, target, epoch);
-        if (
-          epoch !== selectionEpoch.current ||
-          (resolvedStore.getActive()?.id ?? null) !== before
-        ) {
+        await prepareActiveConnection?.(id, target, epoch, isSelectionCurrent);
+        if (!isSelectionCurrent()) {
           retirePreparedConnection?.(id, epoch);
           return;
         }

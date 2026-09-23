@@ -225,6 +225,7 @@ describe('useConnections', () => {
       idB,
       expect.objectContaining({ id: idB }),
       expect.any(Number),
+      expect.any(Function),
     );
     expect(result.current.activeConnection?.id).not.toBe(idB);
 
@@ -337,6 +338,79 @@ describe('useConnections', () => {
 
     expect(result.current.activeConnection?.id).toBe(secondId);
     expect(retired).toContainEqual({ id: firstId, epoch: firstPending.epoch });
+  });
+
+  it('lets a preparation owner preserve the active route after its subject changes', async () => {
+    const store = makeStore();
+    const pending = new Map<
+      string,
+      { epoch: number; current(): boolean; resolve(): void }
+    >();
+    const retired: Array<{ id: string; epoch?: number }> = [];
+    const prepareActiveConnection = vi.fn(
+      (
+        id: string,
+        _connection: SavedConnection | undefined,
+        epoch: number,
+        isSelectionCurrent: () => boolean,
+      ) =>
+        new Promise<void>((resolve) =>
+          pending.set(id, { epoch, current: isSelectionCurrent, resolve }),
+        ),
+    );
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: ({ children }) => (
+        <ConnectionsProvider
+          store={store}
+          defaultUrl="http://localhost:3141"
+          prepareActiveConnection={prepareActiveConnection}
+          retirePreparedConnection={(id, epoch) => retired.push({ id, epoch })}
+        >
+          {children}
+        </ConnectionsProvider>
+      ),
+    });
+    let directId = '';
+    let routeId = '';
+    act(() => {
+      directId = result.current.addConnection(
+        'Direct A',
+        'https://station-a.example',
+      ).id;
+      routeId = result.current.addBrokerRoute({
+        name: 'Broker B',
+        applicationOrigin: 'https://station-b.example',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.test',
+          scope: {
+            stationId: 'station_00000002',
+            enrollmentId: 'enroll_00000002',
+            routingGeneration: 1,
+            browserOrigin: window.location.origin,
+          },
+        },
+      }).id;
+    });
+    expect(result.current.activeConnection?.id).toBe(directId);
+
+    let selection!: Promise<void>;
+    act(() => {
+      selection = result.current.setActiveConnection(routeId);
+    });
+    const prep = pending.get(routeId)!;
+    expect(prep.current()).toBe(true);
+
+    act(() =>
+      result.current.updateConnection(directId, { name: 'Direct A renamed' }),
+    );
+    expect(prep.current()).toBe(false);
+    await act(async () => {
+      prep.resolve();
+      await selection;
+    });
+
+    expect(result.current.activeConnection?.id).toBe(directId);
+    expect(retired).toContainEqual({ id: routeId, epoch: prep.epoch });
   });
 
   it('setApiBase() upserts by URL', () => {
