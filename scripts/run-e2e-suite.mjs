@@ -24,11 +24,20 @@ import { pathToFileURL } from 'node:url';
 import { installNodeHttpCompatibility } from '../packages/shared/src/node-http-compat.mjs';
 import { lookupProcessBirthFingerprint } from '../packages/shared/src/process-identity.mjs';
 import {
+  e2eManifest,
   getProductE2EExecutionPhases,
   getSpecsForSuite,
   PR_BROWSER_SMOKE_CONTRACT,
   validateE2EManifest,
 } from '../tests/e2e-manifest.mjs';
+import {
+  ACCOUNT_DISABLED_HEADING,
+  ACCOUNT_DISABLED_REASON,
+  appendStepSummary,
+  formatE2EDisabledLine,
+  partitionAccountDependentSpecs,
+  renderAccountDisabledMarkdown,
+} from './lib/account-requirement.mjs';
 import { copyBoundedE2EEvidence } from './lib/e2e-latest-evidence.mjs';
 import {
   resolveE2ERunnerSelection,
@@ -1892,6 +1901,43 @@ export function sweepInterruptedBuildDirs(
   return reclaimed;
 }
 
+/**
+ * Drop specs that declare `requiresAccount` when this host has no account
+ * (CI, until #2318) BEFORE any Station boots, and say so where a reader of
+ * the run will look: the log, a machine line the coverage coordinator folds
+ * into its report, and the job's step summary.
+ */
+export function selectAccountRunnableSpecs(
+  suite,
+  specs,
+  { env = process.env, log = console.log, manifest = e2eManifest } = {},
+) {
+  const { runnable, disabled } = partitionAccountDependentSpecs(
+    specs,
+    manifest,
+    env,
+  );
+  if (disabled.length > 0) {
+    log(
+      `[e2e] ${suite}: ${disabled.length} spec(s) ${ACCOUNT_DISABLED_HEADING.toLowerCase()} — ${ACCOUNT_DISABLED_REASON}:`,
+    );
+    for (const entry of disabled) {
+      log(`[e2e]   DISABLED ${entry.path} (requires ${entry.requires})`);
+      log(formatE2EDisabledLine(suite, entry));
+    }
+    appendStepSummary(
+      renderAccountDisabledMarkdown(
+        disabled.map((entry) => ({
+          name: `${suite}: ${entry.path}`,
+          requires: entry.requires,
+        })),
+      ),
+      env,
+    );
+  }
+  return { runnable, disabled };
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const suite = parseSuite(argv);
@@ -1905,18 +1951,29 @@ async function main() {
     );
   }
   const suiteSpecs = getSpecsForSuite(suite);
-  const { specs, grep, screens } = resolveE2ERunnerSelection(
-    argv,
-    suite,
-    suiteSpecs,
-  );
+  const {
+    specs: selectedSpecs,
+    grep,
+    screens,
+  } = resolveE2ERunnerSelection(argv, suite, suiteSpecs);
   const stationE2EEnv = suiteStationE2EEnv(suite);
-  if (specs.length === 0) {
+  if (selectedSpecs.length === 0) {
     throw new Error(`E2E suite '${suite}' has no specs.`);
   }
   if (shouldListSpecs(argv)) {
     console.log(
-      JSON.stringify({ suite, specs, ...(grep ? { grep } : {}) }, null, 2),
+      JSON.stringify(
+        { suite, specs: selectedSpecs, ...(grep ? { grep } : {}) },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  const { runnable: specs } = selectAccountRunnableSpecs(suite, selectedSpecs);
+  if (specs.length === 0) {
+    console.log(
+      `[e2e] ${suite}: every selected spec requires an account this host does not have; nothing to run.`,
     );
     return;
   }

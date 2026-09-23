@@ -526,3 +526,273 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
     );
   });
 });
+
+// #2303: a Station conversation is ONE chat keyed by its conversation id
+// (`muse:C`) but MANY execution threads — the root plus one
+// `muse:C:session:<uuid>` child per continuation. The snapshot lists execution
+// threads, and each row carries the conversation it belongs to
+// (`conversationId`, stamped from the session's own `session.started`
+// metadata — root and children alike). The fixture is keyed the way a real
+// reopened conversation is (`commitConversationOpen`): store key and
+// `conversationId` are the conversation, `currentSessionId` is the child the
+// open resolved to — here an OLDER child, because a newer turn started a new
+// child after the open. A fixture keyed by the running child's thread id
+// passes whether or not the defect exists and is deliberately not written.
+describe('#2303: a turn running in a lineage child reseeds its conversation chat', () => {
+  const ROOT = 'muse:C';
+  const OLD_CHILD = 'muse:C:session:old';
+  const LIVE_CHILD = 'muse:C:session:live';
+
+  const rootRow = {
+    provider: 'muse' as const,
+    threadId: ROOT,
+    status: 'idle',
+    hasActiveTurn: false,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:00:00.000Z',
+    lastEventAt: '2026-09-22T17:01:00.000Z',
+  };
+  const oldChildRow = {
+    provider: 'muse' as const,
+    threadId: OLD_CHILD,
+    status: 'idle',
+    hasActiveTurn: false,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:10:00.000Z',
+    lastEventAt: '2026-09-22T17:12:00.000Z',
+  };
+  const liveChildRow = {
+    provider: 'muse' as const,
+    threadId: LIVE_CHILD,
+    status: 'running',
+    hasActiveTurn: true,
+    conversationId: ROOT,
+    createdAt: '2026-09-22T17:40:00.000Z',
+    lastEventAt: '2026-09-22T17:52:00.000Z',
+  };
+
+  beforeEach(() => {
+    rehydrateChatSession.mockClear();
+    updateChat.mockClear();
+    chats = {
+      [ROOT]: {
+        provider: 'muse',
+        agentSlug: 'muse-agent',
+        conversationId: ROOT,
+        currentSessionId: OLD_CHILD,
+        orchestrationSessionStarted: true,
+        status: 'idle',
+        // #2304: a start stamped by an earlier turn, before the gap.
+        openTurnStartedAt: Date.parse('2026-09-22T17:10:00.000Z'),
+      },
+    };
+  });
+
+  for (const isReconnectFallback of [false, true]) {
+    test(`${isReconnectFallback ? 'a reconnect-fallback' : 'a first'} snapshot reads the conversation's turn as in flight, not idle`, () => {
+      applyOrchestrationSnapshot(
+        { sessions: [rootRow, oldChildRow, liveChildRow] },
+        { apiBase: 'http://api', isReconnectFallback },
+      );
+
+      const chat = chats[ROOT];
+      expect(chat.orchestrationTurnOpen).toBe(true);
+      expect(chat.status).toBe('sending');
+      expect(chat.orchestrationStatus).toBe('running');
+      // Live events for the running child route through
+      // `getChatForExecutionSession`, which matches `currentSessionId`.
+      expect(chat.currentSessionId).toBe(LIVE_CHILD);
+      // The conversation chat is never marked exited because its own key is
+      // the (idle) root rather than the live child.
+      expect(chat.orchestrationStatus).not.toBe('exited');
+      // No chat was fabricated under an execution-thread key.
+      expect(Object.keys(chats)).toEqual([ROOT]);
+      // The binding changed under the chat, so it is re-proved exactly as
+      // the live `session.started` repair does (`handleOrchestrationEvent`).
+      expect(chat.conversationOpenPending).toBe(true);
+      expect(chat.conversationOpenFailed).toBe(false);
+      if (isReconnectFallback) {
+        // The catch-up hands the OPEN turn to the projection — keyed by the
+        // conversation chat, not by the child row's thread id.
+        expect(chat.openTurnShellSuperseded).toBe(true);
+        // #2303 + #2304 together: the catch-up drops the pre-gap start on
+        // the CONVERSATION chat too, so the working clock re-derives it
+        // rather than counting the previous turn's time.
+        expect(chat.openTurnStartedAt).toBeUndefined();
+      } else {
+        // An ordinary snapshot is not a catch-up; it leaves the start alone.
+        expect(chat.openTurnStartedAt).toBe(
+          Date.parse('2026-09-22T17:10:00.000Z'),
+        );
+      }
+    });
+  }
+
+  test('model fields come from the child running the turn, not the root that launched the first one', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          { ...rootRow, reportedModel: 'model-a' },
+          { ...liveChildRow, reportedModel: 'model-b' },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].model).toBe('model-b');
+    expect(chats[ROOT].orchestrationModel).toBe('model-b');
+  });
+
+  // KNOWN GAP, not a desired property: for an idle conversation the root row
+  // still speaks (pre-#2303 behavior, unchanged here), so the model label is
+  // whatever the FIRST turn launched with (`model-a`) even though the newer
+  // child reported `model-b`. Pinned so a change to it is deliberate.
+  test('an idle conversation keeps the pre-#2303 semantics (known gap: stale root model label), and the binding is untouched', () => {
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          { ...rootRow, reportedModel: 'model-a' },
+          { ...oldChildRow, reportedModel: 'model-b' },
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT]).toMatchObject({
+      orchestrationTurnOpen: false,
+      status: 'idle',
+      model: 'model-a',
+      currentSessionId: OLD_CHILD,
+    });
+    expect(chats[ROOT].conversationOpenPending).toBeUndefined();
+  });
+
+  test('a conversation whose root row is absent is reconciled from its children, not marked exited', () => {
+    applyOrchestrationSnapshot(
+      { sessions: [oldChildRow, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].orchestrationStatus).toBe('running');
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+  });
+
+  test('a row without conversationId still reaches the chat whose currentSessionId names it (legacy server)', () => {
+    chats[ROOT].currentSessionId = LIVE_CHILD;
+    const { conversationId: _root, ...legacyRoot } = rootRow;
+    const { conversationId: _child, ...legacyChild } = liveChildRow;
+    applyOrchestrationSnapshot(
+      { sessions: [legacyRoot, legacyChild] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+    expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
+    // Already bound to the live child: nothing to re-prove.
+    expect(chats[ROOT].conversationOpenPending).toBeUndefined();
+  });
+
+  test('an idle winner that is not the chat key is never adopted as the binding (root absent, rule 3)', () => {
+    const newerIdleChild = {
+      ...oldChildRow,
+      threadId: 'muse:C:session:newer',
+      reportedModel: 'model-new',
+      createdAt: '2026-09-22T17:20:00.000Z',
+      lastEventAt: '2026-09-22T17:25:00.000Z',
+    };
+    applyOrchestrationSnapshot(
+      {
+        sessions: [
+          { ...oldChildRow, reportedModel: 'model-old' },
+          newerIdleChild,
+        ],
+      },
+      { apiBase: 'http://api' },
+    );
+    // Rule 3: the LATEST row speaks (not merely the first listed)...
+    expect(chats[ROOT].model).toBe('model-new');
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(false);
+    // ...but an idle row is no evidence of the current child: no adoption,
+    // no re-proof churn on every snapshot.
+    expect(chats[ROOT].currentSessionId).toBe(OLD_CHILD);
+    expect(chats[ROOT].conversationOpenPending).toBeUndefined();
+  });
+
+  test('recency is lastEventAt, not createdAt, when the two disagree', () => {
+    // `early` was created first but has the most recent activity.
+    const early = {
+      ...oldChildRow,
+      threadId: 'muse:C:session:early',
+      reportedModel: 'model-recent-activity',
+      createdAt: '2026-09-22T17:05:00.000Z',
+      lastEventAt: '2026-09-22T17:50:00.000Z',
+    };
+    const late = {
+      ...oldChildRow,
+      threadId: 'muse:C:session:late',
+      reportedModel: 'model-recent-creation',
+      createdAt: '2026-09-22T17:30:00.000Z',
+      lastEventAt: '2026-09-22T17:31:00.000Z',
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [late, early] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].model).toBe('model-recent-activity');
+  });
+
+  test('two open children (the server should prevent it): the most recently active one wins', () => {
+    const olderOpen = {
+      ...liveChildRow,
+      threadId: 'muse:C:session:older-open',
+      createdAt: '2026-09-22T17:30:00.000Z',
+      lastEventAt: '2026-09-22T17:35:00.000Z',
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [olderOpen, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
+  });
+
+  test('a child-keyed chat that declares the conversation, whose own row is gone, follows the conversation (deliberate)', () => {
+    const K = 'muse:C:session:k';
+    chats = {
+      [K]: {
+        provider: 'muse',
+        conversationId: ROOT,
+        orchestrationSessionStarted: true,
+        status: 'idle',
+      },
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [rootRow, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[K].orchestrationStatus).toBe('running');
+    expect(chats[K].orchestrationTurnOpen).toBe(true);
+    expect(chats[K].currentSessionId).toBe(LIVE_CHILD);
+  });
+
+  test('a chat keyed by the child thread itself still receives that row', () => {
+    chats[LIVE_CHILD] = {
+      provider: 'muse',
+      orchestrationSessionStarted: true,
+      status: 'idle',
+    };
+    applyOrchestrationSnapshot(
+      { sessions: [rootRow, liveChildRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[LIVE_CHILD].orchestrationTurnOpen).toBe(true);
+    expect(chats[LIVE_CHILD].orchestrationStatus).toBe('running');
+    // Its own key is its thread: no binding to adopt.
+    expect(chats[LIVE_CHILD].currentSessionId).toBeUndefined();
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+  });
+
+  test('row order does not matter: an idle root listed AFTER the live child cannot overwrite it', () => {
+    applyOrchestrationSnapshot(
+      { sessions: [liveChildRow, oldChildRow, rootRow] },
+      { apiBase: 'http://api' },
+    );
+    expect(chats[ROOT].orchestrationTurnOpen).toBe(true);
+    expect(chats[ROOT].currentSessionId).toBe(LIVE_CHILD);
+  });
+});

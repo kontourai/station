@@ -12,6 +12,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  ACCOUNT_DISABLED_HEADING,
+  ACCOUNT_DISABLED_REASON,
+} from './account-requirement.mjs';
 
 export const E2E_LATEST_SCHEMA_VERSION = 2;
 export const MAX_E2E_EVIDENCE_FILES = 500;
@@ -397,7 +401,18 @@ function renderStableIndex(manifest = null) {
   const omission = manifest.evidenceOmission
     ? `<p class="fail">Evidence payload omitted: ${htmlEscape(manifest.evidenceOmission.reason)}</p>`
     : '';
-  return `${prefix}<main><h1 class="${manifest.verdict === 'PASS' ? 'pass' : 'fail'}">Latest full E2E evidence: ${htmlEscape(manifest.verdict)}</h1><p>Run ${htmlEscape(manifest.runId)} · ${htmlEscape(manifest.createdAt)}</p>${omission}<ul>${items}</ul></main>`;
+  const disabledItems = (manifest.buckets ?? [])
+    .flatMap((bucket) =>
+      (Array.isArray(bucket?.disabled) ? bucket.disabled : []).map(
+        (entry) =>
+          `<li>${htmlEscape(bucket.name)}: ${htmlEscape(entry.path)} (requires ${htmlEscape(entry.requires)})</li>`,
+      ),
+    )
+    .join('');
+  const disabled = disabledItems
+    ? `<h2>${htmlEscape(ACCOUNT_DISABLED_HEADING)}</h2><p>Not run and not counted as passing: ${htmlEscape(ACCOUNT_DISABLED_REASON)}.</p><ul>${disabledItems}</ul>`
+    : '';
+  return `${prefix}<main><h1 class="${manifest.verdict === 'PASS' ? 'pass' : 'fail'}">Latest full E2E evidence: ${htmlEscape(manifest.verdict)}</h1><p>Run ${htmlEscape(manifest.runId)} · ${htmlEscape(manifest.createdAt)}</p>${omission}${disabled}<ul>${items}</ul></main>`;
 }
 
 function writeStableIndex(latestDir, manifest = null) {
@@ -425,6 +440,14 @@ function resultRecord(result) {
       ? result.specs.slice(0, 40).map(String)
       : [],
     details: bounded(result.details ?? result.output),
+    // Specs skipped for want of an account (CI, until #2318): recorded so the
+    // manifest says what this run did NOT cover, never counted as passing.
+    disabled: Array.isArray(result.disabled)
+      ? result.disabled.slice(0, 40).map((entry) => ({
+          path: bounded(String(entry?.path), 512),
+          requires: bounded(String(entry?.requires), 512),
+        }))
+      : [],
   };
 }
 

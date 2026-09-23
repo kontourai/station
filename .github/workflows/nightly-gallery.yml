@@ -234,8 +234,12 @@ jobs:
         with:
           name: nightly-gallery-${{ github.run_id }}
           path: test-results/gallery
+      # DISABLED without an API call while CI holds no funded reviewer
+      # (#2318): listed in the report and summary, not a failure. Capture and
+      # the pixel diff above do not need an account and still run.
       - name: Review every captured image
         env:
+          STATION_CI_ACCOUNTS: absent
           OPENAI_API_KEY: ${{ secrets.CODEX_REVIEW_API_KEY || secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ vars.CODEX_REVIEW_BASE_URL || 'https://api.openai.com/v1' }}
           UI_REVIEW_MODEL: ${{ vars.UI_REVIEW_MODEL || 'gpt-5.6-sol' }}

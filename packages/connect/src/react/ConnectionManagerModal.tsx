@@ -75,6 +75,8 @@ export interface ConnectionManagerModalProps {
    * shows its state without a Restart control.
    */
   onRestartInjectedConnection?: (connection: SavedConnection) => void;
+  /** Host-owned id of the managed local Station when it stops with the app. */
+  localStationOwnerId?: string;
   /**
    * Re-authorize this app's own access to the active Station (#2228). Passed
    * only by a host whose local service can self-provision (native desktop);
@@ -109,6 +111,7 @@ export function ConnectionManagerModal({
   allowManualCredentials,
   authenticatedRequest,
   onRestartInjectedConnection,
+  localStationOwnerId,
   onReconnectLocalService,
   returnFocusTarget,
   onPairingSucceeded,
@@ -132,6 +135,7 @@ export function ConnectionManagerModal({
         allowManualCredentials={allowManualCredentials}
         authenticatedRequest={authenticatedRequest}
         onRestartInjectedConnection={onRestartInjectedConnection}
+        localStationOwnerId={localStationOwnerId}
         onReconnectLocalService={onReconnectLocalService}
         returnFocusTarget={returnFocusTarget}
         onPairingSucceeded={onPairingSucceeded}

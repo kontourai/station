@@ -574,42 +574,37 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
     return [...block.matchAll(pattern)].map((match) => match[1]);
   }
 
-  it('keeps the chip dot-only in every state on mobile', () => {
-    // #2221 moved archive#3311's connected/idle-only suppression to EVERY
-    // state: the identity, the bundled-server note, and the state text share
-    // one `display: none` in the mobile block, because every state that
-    // needs a decision already banners its remedy and the row runs out of
-    // width first (archive#3766). The words survive in the chip's accessible
-    // name and desktop tooltip. Resurfacing any of them — deleting the rule,
-    // splitting a visible-text rule in beside it, or moving the spans out of
-    // the hidden set — regrows a label this cluster has no room for.
+  it('keeps the compact active Station label visible on mobile', () => {
+    // The short healthy label identifies the active saved profile. The full
+    // state/name spans remain desktop-only; action states keep their remedy
+    // in the accessible name and connection sheet.
     const block = shellMobileBlock(chatCss);
     for (const part of [
       '.app-toolbar__conn-name',
-      '.app-toolbar__conn-note',
       '.app-toolbar__conn-state',
     ]) {
       const bodies = blockRulesFor(block, part);
       expect(
         bodies.length,
-        `${part} must keep a mobile rule (the dot-only suppression)`,
+        `${part} must keep a mobile rule (the full text stays out of the narrow header)`,
       ).toBeGreaterThan(0);
       for (const body of bodies) {
         expect(body).toMatch(/display:\s*none/);
       }
     }
+    expect(blockRulesFor(block, '.app-toolbar__conn-label')).toHaveLength(0);
   });
 
-  it('holds the glyph-only chip to the 44px touch-target floor', () => {
-    // With no label in any state, the chip is a glyph-only control: the
-    // shared `.app-toolbar__icon-btn` floor (station#1401) is what makes its
-    // whole width a tap target. That only holds while the chip carries the
-    // class, so pin both halves.
+  it('holds the labeled chip to its reserved width and the 44px touch-target floor', () => {
+    // The healthy name has its own reserved width while the shared icon
+    // button floor keeps the control touchable in every state.
     const block = shellMobileBlock(chatCss);
     const [floor] = ruleBodies(block, '\n  .app-toolbar__icon-btn');
     expect(floor, 'the mobile icon-btn floor must stay').toBeDefined();
     expect(floor).toMatch(/min-width:\s*44px/);
     expect(floor).toMatch(/min-height:\s*44px/);
+    const [connection] = blockRulesFor(block, '.app-toolbar__conn');
+    expect(connection).toMatch(/width:\s*136px/);
 
     const headerActions = read('components/header/HeaderActions.tsx');
     expect(headerActions).toMatch(
@@ -618,13 +613,12 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
   });
 
   it('keeps the label bounds where the words still show', () => {
-    // The desktop premise the mobile suppression leans on: the identity, the
-    // note, and the reserved state slot are bounded where they render, so
-    // mobile's display:none is a breakpoint decision, not a missing bound.
+    // The desktop premise the mobile suppression leans on: the full identity,
+    // short healthy label, and reserved state slot are bounded where they render.
     const [name] = ruleBodies(chatCss, '\n.app-toolbar__conn-name');
     expect(name).toMatch(/max-width:\s*\d+px/);
-    const [note] = ruleBodies(chatCss, '\n.app-toolbar__conn-note');
-    expect(note).toMatch(/max-width:\s*\d+px/);
+    const [label] = ruleBodies(chatCss, '\n.app-toolbar__conn-label');
+    expect(label).toMatch(/max-width:\s*\d+px/);
     const [state] = ruleBodies(chatCss, '\n.app-toolbar__conn-state');
     expect(state).toMatch(/min-width:\s*\d+px/);
   });

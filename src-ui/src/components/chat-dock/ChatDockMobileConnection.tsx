@@ -102,16 +102,32 @@ export function ChatDockMobileConnection({
     failureStreak,
   });
   const actionLabel = SHORT_ACTION_LABEL[state] ?? null;
+  const stationIdentity = activeConnection?.name
+    ? `Station · ${activeConnection.name}`
+    : activeConnection?.injectedSource === 'managed-loopback'
+      ? 'Local Station'
+      : 'Station';
+  const accessibleName = [
+    state === 'connected'
+      ? 'Manage Stations — Connected'
+      : connectionIndicatorLabel(state),
+    stationIdentity,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const visibleLabel = showLabel
+    ? `${stationIdentity} · ${actionLabel ?? (state === 'connected' ? 'Connected' : 'Manage Stations')}`
+    : (actionLabel ?? (state === 'connected' ? stationIdentity : null));
 
   return (
     <button
       type="button"
       className={`app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-conn${
         needsAttention(state) ? ' chat-dock__mobile-conn--attention' : ''
-      }`}
+      }${showLabel ? ' chat-dock__mobile-conn--details' : ''}`}
       data-testid="chat-dock-mobile-connection"
       data-connection-state={state}
-      aria-label={connectionIndicatorLabel(state)}
+      aria-label={accessibleName}
       data-dock-drag-passthrough=""
       onClick={() => {
         if (isRepairLike(state)) {
@@ -140,12 +156,8 @@ export function ChatDockMobileConnection({
       }}
     >
       <ConnectionStatusDot status={state} size={isRepairLike(state) ? 11 : 8} />
-      {(showLabel || actionLabel) && (
-        <span className="chat-dock__mobile-conn-label">
-          {showLabel
-            ? `${activeConnection?.name ?? 'Station'} · ${actionLabel ?? 'Manage Stations'}`
-            : actionLabel}
-        </span>
+      {visibleLabel && (
+        <span className="chat-dock__mobile-conn-label">{visibleLabel}</span>
       )}
     </button>
   );

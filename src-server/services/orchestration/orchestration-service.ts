@@ -55,6 +55,7 @@ import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
+  MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -492,9 +493,23 @@ export class OrchestrationCommandDispatchError extends Error {
       // "retry" while this line still classified it non-retryable.
       this.retryable =
         code === 'session_start_in_flight' ||
-        code === 'resource_engine_start_capacity';
+        code === 'resource_engine_start_capacity' ||
+        code === MUSE_TURN_SLOT_RELEASING_CODE;
     }
   }
+}
+
+/**
+ * #2300: the Muse adapter's retryable refusal for a send that arrived while
+ * the previous turn's `muse exec` was still exiting. Matched on the
+ * contract code (not the adapter's class) so this service does not import an
+ * adapter module.
+ */
+function isMuseTurnSlotReleasingRefusal(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as { code?: unknown }).code === MUSE_TURN_SLOT_RELEASING_CODE
+  );
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
@@ -6707,6 +6722,9 @@ export class OrchestrationService {
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
           error instanceof SessionStopWhileStartingError ||
+          // #2300: a Muse send refused while the previous turn's process
+          // was still exiting — a refusal to act, retryable.
+          isMuseTurnSlotReleasingRefusal(error) ||
           error instanceof RequestEventGuardError ||
           // #484 continuation: a portable refusal is a refusal to act, not
           // a failed action — and its closed code must survive the wrapper
@@ -6734,12 +6752,17 @@ export class OrchestrationService {
         // #484 continuation: a portable refusal's closed code is already a
         // public contract (fixed copy per code, 403-mapped at every route),
         // so it survives here exactly like the ended-session code.
+        // #2300: the Muse slot-releasing refusal's code is forwarded so the
+        // client's queue keeps the send for a retry instead of dropping it
+        // as a definitive rejection.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal
           ? error.code
-          : undefined,
+          : isMuseTurnSlotReleasingRefusal(error)
+            ? MUSE_TURN_SLOT_RELEASING_CODE
+            : undefined,
       );
     }
   }

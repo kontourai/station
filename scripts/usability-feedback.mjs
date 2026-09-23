@@ -14,6 +14,15 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  ACCOUNT_DISABLED_REASON,
+  ACCOUNT_DISABLED_STATUS,
+  accountsAbsent,
+  renderAccountDisabledMarkdown,
+} from './lib/account-requirement.mjs';
+
+/** What the semantic image review needs that a CI runner does not have. */
+export const IMAGE_REVIEW_ACCOUNT = 'a funded image-review API credential';
 
 export function summarizeJourneys(walkthrough, journeys) {
   const checks = [];
@@ -54,16 +63,28 @@ export function summarizeJourneys(walkthrough, journeys) {
     });
   } else {
     for (const result of journeys.results)
-      checks.push({
-        name: result.id,
-        status:
-          result.status === 'passed'
-            ? 'PASS'
-            : result.status === 'failed'
-              ? 'FAIL'
-              : 'NOT_VERIFIED',
-        detail: (result.notes ?? []).join(' '),
-      });
+      checks.push(
+        // Only the journey runner's own `disabled` record (a declared
+        // account requirement, #2318) maps to DISABLED; every other
+        // non-pass stays NOT_VERIFIED.
+        result.status === 'disabled'
+          ? {
+              name: result.id,
+              status: ACCOUNT_DISABLED_STATUS,
+              requires: String(result.requires ?? 'a signed-in account'),
+              detail: (result.notes ?? []).join(' '),
+            }
+          : {
+              name: result.id,
+              status:
+                result.status === 'passed'
+                  ? 'PASS'
+                  : result.status === 'failed'
+                    ? 'FAIL'
+                    : 'NOT_VERIFIED',
+              detail: (result.notes ?? []).join(' '),
+            },
+      );
   }
   return checks;
 }
@@ -151,7 +172,7 @@ export function validateVisualReview(value, screenIds) {
 
 /**
  * @param {Array<{id: string, bytes: Buffer, controls?: Array<{label: string, disabled: boolean}> | null}>} screens
- * @param {{apiKey?: string, model: string, fetchImpl?: typeof fetch, baseUrl?: string}} options
+ * @param {{apiKey?: string, model: string, fetchImpl?: typeof fetch, baseUrl?: string, accountsAbsent?: boolean}} options
  */
 export async function reviewScreens(
   screens,
@@ -160,8 +181,19 @@ export async function reviewScreens(
     model,
     fetchImpl = fetch,
     baseUrl = 'https://api.openai.com/v1',
+    accountsAbsent: withoutAccounts = false,
   },
 ) {
+  // Decided before any request: a CI runner has no funded reviewer (#2318),
+  // so the review is disabled rather than attempted and reported missing.
+  if (withoutAccounts)
+    return {
+      status: ACCOUNT_DISABLED_STATUS,
+      requires: IMAGE_REVIEW_ACCOUNT,
+      findings: [],
+      reviewed: [],
+      detail: `${ACCOUNT_DISABLED_REASON}; ${screens.length} captured image(s) were not reviewed.`,
+    };
   if (!apiKey)
     return {
       status: 'NOT_VERIFIED',
@@ -342,6 +374,20 @@ export function renderFeedback(report) {
     lines.push(
       `| ${clean(check.name)} | ${check.status} | ${clean(check.detail)} |`,
     );
+  const disabled = [
+    ...report.checks,
+    { name: 'Semantic image review', ...report.visual },
+  ].filter((check) => check.status === ACCOUNT_DISABLED_STATUS);
+  if (disabled.length)
+    lines.push(
+      '',
+      renderAccountDisabledMarkdown(
+        disabled.map((check) => ({
+          name: check.name,
+          requires: check.requires ?? 'a signed-in account',
+        })),
+      ).replace(/^### /, '## '),
+    );
   lines.push('', '## Candidate findings', '');
   for (const f of report.visual.findings)
     lines.push(
@@ -359,6 +405,19 @@ export function renderFeedback(report) {
     '',
   );
   return lines.join('\n');
+}
+
+/**
+ * 0 all reported checks passed; 1 a failure or visible defect candidate;
+ * 2 incomplete coverage (NOT_VERIFIED). DISABLED checks — declared account
+ * requirements skipped in CI until #2318 — are listed in the report but
+ * neither pass nor move the exit code.
+ */
+export function feedbackExitCode(checks, visual) {
+  const all = [...checks, visual];
+  if (all.some((check) => check.status === 'FAIL')) return 1;
+  if (all.some((check) => check.status === 'NOT_VERIFIED')) return 2;
+  return 0;
 }
 
 async function main() {
@@ -442,6 +501,8 @@ async function main() {
         }
       : {}),
     apiKey: localMuse ? 'local-cli' : process.env.OPENAI_API_KEY,
+    // An explicit local Muse backend is a deliberate request to review.
+    accountsAbsent: !localMuse && accountsAbsent(process.env),
     model: process.env.UI_REVIEW_MODEL ?? 'gpt-5.6-sol',
     baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
   });
@@ -463,13 +524,7 @@ async function main() {
   );
   writeFileSync(join(output, 'report.md'), renderFeedback(report));
   console.log(renderFeedback(report));
-  process.exitCode =
-    checks.some((c) => c.status === 'FAIL') || visual.status === 'FAIL'
-      ? 1
-      : checks.some((c) => c.status === 'NOT_VERIFIED') ||
-          visual.status === 'NOT_VERIFIED'
-        ? 2
-        : 0;
+  process.exitCode = feedbackExitCode(checks, visual);
 }
 if (
   process.argv[1] &&

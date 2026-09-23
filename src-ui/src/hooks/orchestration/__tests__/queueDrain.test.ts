@@ -507,6 +507,8 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
   for (const retryableCode of [
     'adoption_continuation_in_progress',
     'resource_engine_start_capacity',
+    // #2300: a Muse send refused while the previous process was exiting.
+    'muse_turn_slot_releasing',
   ]) {
     test(`a 400 carrying server-retryable code '${retryableCode}' is requeued, not dropped`, async () => {
       activeChatsStore.updateChat(threadId, {

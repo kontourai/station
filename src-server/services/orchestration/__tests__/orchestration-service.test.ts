@@ -59,6 +59,7 @@ import {
   ProviderTurnEndedError,
   SendTurnRefusedError,
 } from '../../../providers/adapter-shape.js';
+import { MuseTurnSlotReleasingError } from '../../../providers/adapters/muse-adapter.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
@@ -13075,6 +13076,37 @@ describe('OrchestrationService', () => {
     });
     expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  test("#2300: Muse's slot-releasing refusal keeps its retryable code through the dispatch wrapper", async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-muse-slot',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new MuseTurnSlotReleasingError('thread-muse-slot'),
+    );
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-muse-slot', input: 'queued follow-up' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('muse_turn_slot_releasing');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
   });
 
   // #2310 review F1/F2/F3: the refusal above, seen from the session list. An

@@ -618,7 +618,14 @@ export interface TurnSupervisionFacts {
   startedAt: string;
   /** Absolute wall-clock deadline (ISO timestamp); only with a declared total. */
   deadlineAt?: string;
-  /** Idle window: full silence of verified protocol activity this long ends the turn. */
+  /**
+   * Idle window: full silence of verified protocol activity this long ends
+   * the turn. Declared at turn start; the owning adapter may suspend it for
+   * known in-progress work. Muse suspends it while a tool is in flight and
+   * for the whole time a turn is held open for background work (#2300); a
+   * held turn has no idle or post-terminal bound and runs until muse
+   * finishes it or someone stops it, whatever this value says.
+   */
   idleLimitMs: number;
   /** Declared absolute turn budget in milliseconds; never rescheduled by activity. */
   totalLimitMs?: number;

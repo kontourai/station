@@ -923,17 +923,41 @@ export function projectRuntimeEventsToMessages(
         if (typeof ev.metadata?.reportedModel === 'string') {
           turnReportedModel = ev.metadata.reportedModel;
         }
-        // Fall back to the authoritative outputText only if no text was streamed.
-        const hasText =
-          Boolean(textBuf) || parts.some((p) => p.type === 'text');
-        if (
-          ev.outputText &&
-          (!hasText ||
-            (textBuf &&
-              (ev.outputText.startsWith(textBuf) ||
-                ev.outputText.endsWith(textBuf))))
-        )
-          textBuf = ev.outputText;
+        // #2300: reconcile the authoritative `outputText` against ALL text
+        // this turn already emitted — the text parts flushed around its tool
+        // rows plus the open buffer — the rule the live path applies
+        // (`src-ui/src/hooks/orchestration/assistantTurn.ts`'s
+        // `finalizeAssistantTurn`, whose `receivedText` is every text part
+        // joined):
+        // - equal: everything is already rendered; adopt nothing;
+        // - a strict extension (including "nothing streamed at all"): only
+        //   the missing suffix is new — a reconnect gap, or text an engine
+        //   reported only in its terminal — and it is appended where the
+        //   live path's `upsertTextPart` puts it.
+        // Comparing against `textBuf` alone (the text after the LAST tool
+        // row) duplicated every turn whose `outputText` is its whole text
+        // (Muse) that wrote text before a tool: `outputText` ends with that
+        // tail, so the tail was replaced with the whole turn.
+        const emittedText =
+          parts
+            .filter((p) => p.type === 'text')
+            .map((p) => p.text ?? '')
+            .join('') + textBuf;
+        if (ev.outputText && ev.outputText !== emittedText) {
+          if (ev.outputText.startsWith(emittedText)) {
+            textBuf += ev.outputText.slice(emittedText.length);
+          } else if (
+            // Otherwise the pre-#2300 fallback, unchanged: an engine whose
+            // `outputText` is only its FINAL answer (Claude) replaces a
+            // streamed tail it starts or ends with. The live path keeps what
+            // it streamed in this case; that divergence predates #2300.
+            textBuf &&
+            (ev.outputText.startsWith(textBuf) ||
+              ev.outputText.endsWith(textBuf))
+          ) {
+            textBuf = ev.outputText;
+          }
+        }
         emitAssistantTurn();
         break;
       }

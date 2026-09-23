@@ -1,3 +1,9 @@
+import {
+  AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+  type AuthorityObservation,
+  isAuthorityObservation,
+} from '@kontourai/station-contracts/authority-observation';
+import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import type { Route } from '@playwright/test';
 
 /** Explicit optional shell reads; keep each envelope aligned with its route owner. */
@@ -65,6 +71,51 @@ const READS: Readonly<Record<string, unknown>> = {
 };
 
 /**
+ * The environment id every shared shell fixture's `/.well-known/station/v1`
+ * handshake publishes (`chat-shell-fixture.ts`, `daily-driver-shell.ts`,
+ * `orchestration.ts`). A spec whose handshake publishes a different id passes
+ * it to `fulfillStationShellRead`, so the observation below never names a
+ * Station other than the one the handshake introduced.
+ */
+export const SHELL_FIXTURE_ENVIRONMENT_ID =
+  '11111111-1111-4111-8111-111111111111';
+
+/**
+ * `GET /api/auth/authority` (#2278). `AuthorityQueryProvider` reads this
+ * credential-bound observation on every activation of a saved connection,
+ * before any protected query mounts, so every shell journey issues it.
+ *
+ * The body is the route's own BARE envelope — `src-server/routes/system/auth.ts`
+ * answers `c.json(captured.envelope)` with no `{success,data}` wrapper — and
+ * the SDK parses it closed (`isAuthorityObservation`), so a field the
+ * contract does not declare would be refused.
+ *
+ * The browser in these fixtures is a same-origin page on its own Station,
+ * which authenticates with an HttpOnly device-session cookie, not the
+ * operator bearer (`runtime-request-security.ts`). The server therefore
+ * answers with a DEVICE grant carrying the default pairing grant's tokens
+ * (`DEFAULT_GRANT_PAIRING_SCOPE`, what an unscoped local pairing issues).
+ * A UI-bootstrap device is minted with `locality: 'home-possession'`, which
+ * `principal-resolver.ts` resolves to the shared `human:local:operator`
+ * principal in personal mode.
+ */
+export function shellAuthorityObservation(
+  environmentId: string,
+  deviceId = 'shell-fixture-browser',
+): AuthorityObservation {
+  return {
+    schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+    environmentId,
+    principal: { kind: 'human', id: 'human:local:operator' },
+    grant: {
+      kind: 'device',
+      deviceId,
+      grantedScopes: DEFAULT_GRANT_PAIRING_SCOPE.split(' '),
+    },
+  };
+}
+
+/**
  * `GET /api/conversation-pull-requests/:conversationId` — the "Linked pull
  * requests" section every open session detail renders
  * (`MutableSessionDetail.tsx:196-202`, #1957) and the chat inbox's hover card
@@ -88,9 +139,29 @@ const READS: Readonly<Record<string, unknown>> = {
 const CONVERSATION_PULL_REQUESTS = '/api/conversation-pull-requests/';
 const FIXTURE_OBSERVED_AT = '2026-07-13T00:00:00Z';
 
-export async function fulfillStationShellRead(route: Route): Promise<boolean> {
+export async function fulfillStationShellRead(
+  route: Route,
+  options: { environmentId?: string; deviceId?: string } = {},
+): Promise<boolean> {
   const request = route.request();
   const path = new URL(request.url()).pathname;
+  if (request.method() === 'GET' && path === '/api/auth/authority') {
+    const observation = shellAuthorityObservation(
+      options.environmentId ?? SHELL_FIXTURE_ENVIRONMENT_ID,
+      options.deviceId,
+    );
+    // The client parses this closed; a fixture the contract refuses would
+    // silently route every journey through the unverified branch instead.
+    if (!isAuthorityObservation(observation))
+      throw new Error('shell authority observation violates its contract');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Cache-Control': 'no-store' },
+      body: JSON.stringify(observation),
+    });
+    return true;
+  }
   if (
     request.method() === 'GET' &&
     path === '/api/orchestration/attachment-staging/capability'
