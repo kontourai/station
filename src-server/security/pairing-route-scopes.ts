@@ -138,6 +138,9 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // updates and removes nothing: the change is taken later on the
   // `/api/plugins` routes, which refuse Station's internal agent caller.
   '/api/plugin-proposals',
+  // #2323 S4: local plugin source status. A read the handler answers only
+  // for the operator; it installs nothing.
+  '/api/plugin-sources',
   '/api/fs',
   '/api/registry',
   '/agents',
@@ -3042,6 +3045,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/plugin-proposals' },
     { method: 'GET', path: '/api/plugin-proposals/:id' },
     { method: 'POST', path: '/api/plugin-proposals/:id/dismiss' },
+    // #2323 S4: `GET /api/plugin-sources` (plugin-source-status-routes.ts).
+    // Plain family inheritance on the read tier: it lists which installed
+    // plugin each Project folder is the source of and whether that folder
+    // changed, and the handler answers only the operator (404 otherwise).
+    // It changes nothing; the reinstall it leads to is `/api/plugins/
+    // preview` and `/install`, which keep their own tiers and person gates.
+    { method: 'GET', path: '/api/plugin-sources' },
     // app.all('/:name/*', ...) (plugin-public-routes.ts) forwards ANY
     // method into a plugin's OWN registered server module — genuinely
     // method-agnostic (Station's "GET is safe" assumption does not hold

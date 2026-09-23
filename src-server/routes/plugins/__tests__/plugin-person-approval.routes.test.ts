@@ -30,6 +30,7 @@ import {
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
+import { LOCAL_SOURCE_DIGEST_MAX_ENTRIES as PROPOSAL_DIGEST_MAX_ENTRIES } from '../../../services/plugins/plugin-source-digest.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -38,10 +39,7 @@ import {
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import { registerPluginLifecycleRoutes } from '../plugin-lifecycle-routes.js';
 import { PLUGIN_PERSON_APPROVAL_REQUIRED } from '../plugin-person-approval.js';
-import {
-  createPluginProposalRoutes,
-  PROPOSAL_DIGEST_MAX_ENTRIES,
-} from '../plugin-proposal-routes.js';
+import { createPluginProposalRoutes } from '../plugin-proposal-routes.js';
 
 const observeTree = vi.hoisted(() => vi.fn());
 vi.mock(

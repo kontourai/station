@@ -21,7 +21,7 @@
  * internal caller class and only as display provenance; `reportedBy` says
  * whether Station's own runtime vouched for them (review M3).
  */
-import { lstatSync, readdirSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   PluginLifecycleProposal,
@@ -29,7 +29,6 @@ import type {
   PluginProposalDigestUnavailableReason,
 } from '@kontourai/station-contracts/plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
-import { observePluginTreeAsync } from '@kontourai/station-shared/plugin-tree-digest';
 import { type Context, Hono } from 'hono';
 import type { PrincipalRef } from '../../services/identity/principal-resolver.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
@@ -43,6 +42,7 @@ import {
   resolvePluginProposalSource,
 } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { verifyProposalSourceContext } from '../../services/plugins/plugin-proposal-provenance.js';
+import { observeLocalPluginSourceDigest } from '../../services/plugins/plugin-source-digest.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -88,49 +88,10 @@ type ProposalCreateBody =
       _sourceContext?: ReportedContext;
     };
 
-/** The bounds of the proposal-time digest walk (review M4). */
-export const PROPOSAL_DIGEST_MAX_ENTRIES = 5000;
-const PROPOSAL_DIGEST_MAX_BYTES = 64 * 1024 * 1024;
-
 /**
- * Counts a folder's entries and file bytes WITHOUT reading file contents or
- * following links, stopping at the first bound crossed. Mirrors the digest's
- * own walk (root `.git` excluded), so a tree inside the bounds is one the
- * digest will read in full. Returns `null` when the tree could not be read.
- */
-function withinDigestBounds(root: string): boolean | null {
-  let entries = 0;
-  let bytes = 0;
-  const walk = (dir: string, top: boolean): boolean => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (top && entry.name === '.git') continue;
-      entries += 1;
-      if (entries > PROPOSAL_DIGEST_MAX_ENTRIES) return false;
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (!walk(path, false)) return false;
-      } else if (entry.isFile()) {
-        bytes += lstatSync(path).size;
-        if (bytes > PROPOSAL_DIGEST_MAX_BYTES) return false;
-      }
-    }
-    return true;
-  };
-  try {
-    return walk(root, true);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The tree digest of a local plugin folder, in the encoding the install
- * preview's `contentDigest` uses (`computePluginTreeDigest`, which is what
- * `derivePluginConsentBasis` runs on the preview's verbatim staging copy).
- * Read in place with the yielding observer, never copied, and only inside
- * the bounds above; otherwise the proposal records why there is no digest.
- * The bounds are checked, then the digest reads the tree: a tree that grows
- * in between is read in full (the bound is a cost guard, not a guarantee).
+ * The folder's tree digest for the proposal, or why there is none. The walk
+ * and its bounds live in `plugin-source-digest.ts`, shared with the local
+ * source status (#2323 S4) so the two cannot disagree about a folder.
  */
 async function observeLocalDigest(
   path: string,
@@ -138,14 +99,10 @@ async function observeLocalDigest(
   | { proposedContentDigest: string }
   | { proposedContentDigestUnavailable: PluginProposalDigestUnavailableReason }
 > {
-  const bounded = withinDigestBounds(path);
-  if (bounded === null)
-    return { proposedContentDigestUnavailable: 'unreadable' };
-  if (!bounded) return { proposedContentDigestUnavailable: 'too-large' };
-  const digest = (await observePluginTreeAsync(path))?.digest;
-  return digest
-    ? { proposedContentDigest: digest }
-    : { proposedContentDigestUnavailable: 'unreadable' };
+  const observed = await observeLocalPluginSourceDigest(path);
+  return 'digest' in observed
+    ? { proposedContentDigest: observed.digest }
+    : { proposedContentDigestUnavailable: observed.unavailable };
 }
 
 /**

@@ -338,4 +338,15 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
       }),
     ]);
   });
+  test('#2323 S4: plugin source status is mounted and scoped: a paired person gets 404, the operator reaches the handler', async () => {
+    const { pair, request, operatorCredential } = await setup();
+    const person = pair('Phone', 'device', 'standard');
+    const hidden = await request(person, '/api/plugin-sources');
+    // 404 from the handler, not a pairing-scope refusal: an unmapped family
+    // would answer 403 before the handler ran.
+    expect(hidden.status).toBe(404);
+    const operator = await request(operatorCredential, '/api/plugin-sources');
+    expect(operator.status).not.toBe(404);
+    expect(operator.status).not.toBe(403);
+  });
 });
