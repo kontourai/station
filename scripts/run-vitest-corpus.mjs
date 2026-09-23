@@ -20,7 +20,9 @@ import {
   discoverVitestResourceGroups,
   ORDINARY_MAX_WORKERS,
   ordinaryVitestExcludes,
+  QUARANTINED_VITEST_FILES,
   quarantinedVitestFiles,
+  vitestQuarantineErrors,
 } from './vitest-resource-manifest.mjs';
 
 const OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
@@ -189,11 +191,26 @@ export function groupFiles(groups, name) {
 /**
  * Merge-queue only (`--exclude-quarantined`): the resource groups with every
  * quarantined file removed. The canonical lane never calls this, so Nightly
- * still runs quarantined files. A quarantined path missing from the groups
- * fails closed: an entry that excludes nothing is a stale record.
+ * still runs quarantined files.
+ *
+ * Fails closed instead of excluding anything when the quarantine policy does
+ * not hold at run time, most importantly an EXPIRED entry: the policy gate
+ * checks expiry only when a pull request or queue candidate runs it, and an
+ * entry that expires between those runs must turn the queue phase itself
+ * red rather than keep hiding its file. A quarantined path missing from the
+ * groups also fails: an entry that excludes nothing is a stale record.
  */
-export function withoutQuarantinedFiles(groups, quarantined) {
-  const excluded = new Set(quarantined);
+export function withoutQuarantinedFiles(
+  groups,
+  quarantine,
+  { now = new Date() } = {},
+) {
+  const policyErrors = vitestQuarantineErrors(quarantine, { now });
+  if (policyErrors.length > 0)
+    throw new Error(
+      `test quarantine does not hold; nothing was excluded:\n${policyErrors.join('\n')}`,
+    );
+  const excluded = new Set(quarantinedVitestFiles(quarantine));
   const present = new Set(Object.values(groups).flat());
   for (const file of excluded)
     if (!present.has(file))
@@ -535,7 +552,8 @@ export async function runVitestCorpus({
   shard,
   keepGoing = false,
   excludeQuarantined = false,
-  quarantined = quarantinedVitestFiles(),
+  quarantine = QUARANTINED_VITEST_FILES,
+  now = new Date(),
 } = {}) {
   if (signal?.aborted) {
     const result = terminalFailure(
@@ -552,8 +570,9 @@ export async function runVitestCorpus({
     );
   const discoveredGroups = groups ?? discoverVitestResourceGroups({ root });
   const resolvedGroups = excludeQuarantined
-    ? withoutQuarantinedFiles(discoveredGroups, quarantined)
+    ? withoutQuarantinedFiles(discoveredGroups, quarantine, { now })
     : discoveredGroups;
+  const quarantined = quarantinedVitestFiles(quarantine);
   const quarantineOptions =
     excludeQuarantined && quarantined.length > 0
       ? {

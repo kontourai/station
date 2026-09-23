@@ -813,10 +813,18 @@ describe('merge-queue quarantine exclusion', () => {
     sharedOutput: ['shared.test.ts'],
     dogfoodReconcile: ['scripts/__tests__/station-dogfood-reconcile.test.ts'],
   };
-  const quarantined = [
-    'flaky-ordinary.test.ts',
-    'flaky-heavy.test.ts',
-    'flaky-coordinator.test.ts',
+  const now = new Date('2026-09-22T12:00:00Z');
+  const entry = (file: string, expires = '2026-09-30') => ({
+    file,
+    issue: 'https://github.com/kontourai/station/issues/2400',
+    expires,
+    evidence:
+      'commit 8e40e858a1b2c3d4e5f60718293a4b5c6d7e8f90 passed in run 35756143372 and failed in run 35756143999',
+  });
+  const quarantine = [
+    entry('flaky-ordinary.test.ts'),
+    entry('flaky-heavy.test.ts'),
+    entry('flaky-coordinator.test.ts'),
   ];
 
   type Seen = {
@@ -830,7 +838,8 @@ describe('merge-queue quarantine exclusion', () => {
     const outcome = await runVitestCorpus({
       groups,
       platform: 'linux',
-      quarantined,
+      quarantine,
+      now,
       onResult: (result) => results.push(result),
       runGroup: async (group, files, runOptions) => {
         seen.push({
@@ -943,7 +952,9 @@ describe('merge-queue quarantine exclusion', () => {
 
   it('fails closed on a stale entry, an unsupported platform, and a group-less flag', async () => {
     expect(() =>
-      withoutQuarantinedFiles(groups, ['renamed-away.test.ts']),
+      withoutQuarantinedFiles(groups, [entry('renamed-away.test.ts')], {
+        now,
+      }),
     ).toThrow(/not in the discovered Vitest corpus: renamed-away.test.ts/);
     await expect(
       run({
@@ -973,5 +984,83 @@ describe('merge-queue quarantine exclusion', () => {
         '--exclude-quarantined',
       ]),
     ).toThrow(/may be supplied once/);
+  });
+});
+
+describe('quarantine expiry inside the queue phase', () => {
+  const groups = {
+    ordinary: ['ordinary.test.ts'],
+    processHeavy: ['a.test.ts', 'flaky-heavy.test.ts'],
+    processExclusive: ['exclusive.test.ts'],
+    coordinatorExclusive: ['coordinator.test.ts'],
+    credentialLedgerExclusive: ['ledger.test.ts'],
+    sharedOutput: ['shared.test.ts'],
+    dogfoodReconcile: ['scripts/__tests__/station-dogfood-reconcile.test.ts'],
+  };
+  const expired = [
+    {
+      file: 'flaky-heavy.test.ts',
+      issue: 'https://github.com/kontourai/station/issues/2400',
+      expires: '2026-09-22',
+      evidence:
+        'commit 8e40e858a1b2c3d4e5f60718293a4b5c6d7e8f90 passed in run 35756143372 and failed in run 35756143999',
+    },
+  ];
+  const now = new Date('2026-09-22T08:00:00Z');
+
+  it('fails the queue phase on an expired entry instead of excluding its file', async () => {
+    const ran: string[][] = [];
+    await expect(
+      runVitestCorpus({
+        groups,
+        platform: 'linux',
+        groupName: 'process-heavy',
+        excludeQuarantined: true,
+        quarantine: expired,
+        now,
+        onResult: () => {},
+        runGroup: async (group, files) => {
+          ran.push(files);
+          return { name: group.name, passed: true, status: 0 };
+        },
+      }),
+    ).rejects.toThrow(
+      /test quarantine does not hold; nothing was excluded:\n.*quarantine expired on 2026-09-22/,
+    );
+    expect(ran).toEqual([]);
+    // The day before, the same entry is honoured.
+    const dayBefore = await runVitestCorpus({
+      groups,
+      platform: 'linux',
+      groupName: 'process-heavy',
+      excludeQuarantined: true,
+      quarantine: expired,
+      now: new Date('2026-09-21T23:59:00Z'),
+      onResult: () => {},
+      runGroup: async (group, files) => {
+        ran.push(files);
+        return { name: group.name, passed: true, status: 0 };
+      },
+    });
+    expect(dayBefore.passed).toBe(true);
+    expect(ran).toEqual([['a.test.ts']]);
+  });
+
+  it('leaves the canonical lane untouched by an expired entry: it runs the file', async () => {
+    const ran: string[][] = [];
+    const result = await runVitestCorpus({
+      groups,
+      platform: 'linux',
+      groupName: 'process-heavy',
+      quarantine: expired,
+      now,
+      onResult: () => {},
+      runGroup: async (group, files) => {
+        ran.push(files);
+        return { name: group.name, passed: true, status: 0 };
+      },
+    });
+    expect(result.passed).toBe(true);
+    expect(ran).toEqual([['a.test.ts', 'flaky-heavy.test.ts']]);
   });
 });
