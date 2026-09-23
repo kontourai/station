@@ -1113,6 +1113,7 @@ describe('InstallPreviewModal', () => {
           valid: true,
           manifest: {
             name: 'pulse-plugin',
+            displayName: 'Pulse Plugin',
             version: '1.0.0',
             hasBundle: true,
           },
@@ -1155,7 +1156,12 @@ describe('InstallPreviewModal', () => {
       <InstallPreviewModal
         previewData={{
           valid: true,
-          manifest: { name: 'agent-plugin', version: '1.0.0', hasBundle: true },
+          manifest: {
+            name: 'agent-plugin',
+            displayName: 'Agent Plugin',
+            version: '1.0.0',
+            hasBundle: true,
+          },
           components: [{ type: 'agent', id: 'assistant' }],
           conflicts: [],
         }}
