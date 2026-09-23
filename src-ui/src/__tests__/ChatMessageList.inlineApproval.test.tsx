@@ -245,7 +245,7 @@ describe('#2316 inline approval card', () => {
             .disabled,
         ).toBe(true),
       );
-      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.queryByText(/Your decision was not delivered/)).toBeNull();
     },
   );
 
@@ -277,8 +277,10 @@ describe('#2316 inline approval card', () => {
         await screen.findByRole('button', { name: 'Allow Once' }),
       );
 
-      const alert = await screen.findByRole('alert');
-      expect(alert.textContent).toMatch(/Your decision was not delivered/);
+      // The card's own alert (the transcript may carry unrelated ones, e.g.
+      // a lazy Task action that did not load in this environment).
+      const alert = await screen.findByText(/Your decision was not delivered/);
+      expect(alert.getAttribute('role')).toBe('alert');
       expect(alert.textContent).toMatch(reason);
       // The request is still open: the card must not pretend it is settled.
       for (const name of ['Allow Once', 'Always Allow', 'Deny']) {
@@ -330,9 +332,9 @@ describe('#2316 inline approval card', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
 
-    expect((await screen.findByRole('alert')).textContent).toMatch(
-      /Approval request not found/,
-    );
+    const alert = await screen.findByText(/Your decision was not delivered/);
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(alert.textContent).toMatch(/Approval request not found/);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       url: `${API_BASE}/tool-approval/registry-approval-1`,
