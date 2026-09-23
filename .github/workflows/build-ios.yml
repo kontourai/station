@@ -13,27 +13,19 @@ name: Build iOS verification artifact
 # iOS/native/frontend changes get a fresh unsigned simulator build and
 # packaged-WKWebView runtime assertion, while unrelated PRs consume only a
 # small hosted Linux classification job.
+#
+# No push trigger. The merge queue lands one entry at a time and fast-forwards
+# main to the candidate it tested, so a push run rebuilt the identical commit:
+# run 35781390232 (push, 0015690b7) repeated merge_group run 35778933116 on the
+# same SHA, as push run 35768638682 repeated 35766058181 for e2c2d2a60. That
+# was ~20 macOS minutes per iOS-relevant merge for no new verdict. A commit
+# that reaches main without the queue is the gap this leaves; dispatch this
+# workflow on main to build one.
 on:
   pull_request_target:
   merge_group:
     branches: [main]
     types: [checks_requested]
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/build-ios.yml'
-      - 'src-desktop/**'
-      - 'src-ui/**'
-      - 'packages/connect/**'
-      - 'packages/contracts/**'
-      - 'packages/sdk/**'
-      - 'scripts/ios-simulator-runtime-smoke.mjs'
-      - 'scripts/__tests__/ios-simulator-runtime-smoke.test.ts'
-      - 'tests/ios-runtime-smoke/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
   workflow_dispatch:
 
 permissions:
@@ -59,7 +51,7 @@ jobs:
       - id: relevance
         name: Classify iOS verification inputs
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '' }}
+          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           HEAD_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: |
           fail_closed() {
@@ -114,6 +106,17 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
           xcodebuild -version
           xcrun simctl list runtimes | grep -F 'iOS 26.5'
+      # First boot of a fresh hosted simulator took ~3.5 of the smoke's ~9
+      # minutes (run 35781390232: receipt start 20:47:48, first XCUITest
+      # attempt 20:51:45). `simctl boot` returns before the device is usable,
+      # so starting it here lets that boot overlap the build below; the smoke
+      # later waits on `bootstatus -b` for the same exact device. A pre-boot
+      # that fails is reported (the step goes red-but-continued) and leaves
+      # the device Shutdown, so the smoke's own boot path takes over; the
+      # receipt's initialDeviceState records which path ran.
+      - name: Start booting the smoke simulator while the app builds
+        continue-on-error: true
+        run: node scripts/ios-simulator-runtime-smoke.mjs --preboot
       - run: brew install xcodegen
       - run: npm run dependencies:ci && npm run build:native-client
       # See station#2306: the app ROOT comes from cwd, not from --config.
