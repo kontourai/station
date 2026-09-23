@@ -571,6 +571,9 @@ describe('#2309 clock with a record but no open turn', () => {
       activeChatsStore.updateChat(CONVERSATION, {
         status: 'sending',
         sendAwaitingTurnStart: true,
+        // A start left over from an earlier witnessed turn: with a record,
+        // the record decides, and it shows no open turn.
+        openTurnStartedAt: Date.now() - 60_000,
       }),
     );
     // Live (Stop offered) from the optimistic window...

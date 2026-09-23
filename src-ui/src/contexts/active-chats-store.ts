@@ -211,13 +211,24 @@ export class ActiveChatsStore {
     this.activityByConversation.clear();
     let changed = false;
     for (const [key, chat] of Object.entries(this.chats)) {
-      if (!chat.conversationActivity) continue;
+      if (
+        !chat.conversationActivity &&
+        chat.openTurnStartedAt === undefined &&
+        chat.orchestrationTurnOpen === undefined
+      )
+        continue;
       this.chats[key] = {
         ...chat,
         conversationActivity: undefined,
         sendAwaitingTurnStart: undefined,
         sendAwaitingPriorTurnId: undefined,
         stopSettledTurnId: undefined,
+        // With the record gone, the older-server fallback would read these:
+        // the previous Station's turn fold and its witnessed turn start. They
+        // are just as foreign, so the chat reads unknown (no duration, no
+        // borrowed liveness) until the new Station reports.
+        orchestrationTurnOpen: undefined,
+        openTurnStartedAt: undefined,
       };
       changed = true;
     }

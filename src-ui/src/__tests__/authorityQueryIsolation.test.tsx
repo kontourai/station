@@ -51,6 +51,7 @@ import {
   AuthorityQueryProvider,
   type FetchAuthorityObservation,
 } from '../contexts/AuthorityQueryContext';
+import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
@@ -547,13 +548,25 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       }),
     );
 
+    // Station A's older-server fallback state too: its turn fold and the
+    // start this client witnessed.
+    act(() =>
+      activeChatsStore.updateChat(conversationId, {
+        orchestrationTurnOpen: true,
+        openTurnStartedAt: Date.parse('2026-09-22T18:55:25.000Z'),
+      }),
+    );
+
     await switchTo(idB);
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_B),
     );
-    expect(
-      activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
-    ).toBeUndefined();
+    const afterSwitch = activeChatsStore.getSnapshot()[conversationId];
+    expect(afterSwitch?.conversationActivity).toBeUndefined();
+    // Nothing of A's is left for the fallback clock or liveness to read.
+    expect(afterSwitch?.openTurnStartedAt).toBeUndefined();
+    expect(afterSwitch?.orchestrationTurnOpen).toBeUndefined();
+    expect(isTurnInFlight(afterSwitch)).toBe(false);
     // Station B's lower sequence is accepted, not rejected as older than A's.
     act(() =>
       activeChatsStore.applyConversationActivity({
