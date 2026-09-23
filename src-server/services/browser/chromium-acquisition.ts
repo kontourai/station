@@ -10,12 +10,13 @@
  *    download size and nothing is fetched.
  *
  * A download happens ONLY through {@link ChromiumAcquisition.startDownload}
- * with `consent: true`; status reads never touch the network. The archive is
- * checked against the pinned byte length and the MD5 Google's storage
- * publishes for that object (`x-goog-hash`), both recorded here at pin time.
- * Chrome-for-Testing publishes no stronger digest; MD5 against a pinned value
- * still refuses a truncated, substituted or corrupted archive, and the
- * transport is HTTPS to a fixed Google host.
+ * with `consent: true`; status reads never touch the network. The archive
+ * must match its pinned byte length and SHA-256, the trust root, recorded
+ * here per platform by hashing each archive once at pin time. The MD5 Google
+ * storage publishes (`x-goog-hash`) is also pinned and checked, but only as a
+ * transport-corruption check: MD5 is not a trust root. Entry names are
+ * checked before extraction and the extracted tree (symlinks included) after
+ * it, so nothing lands outside the install directory.
  *
  * No new dependency: extraction uses the platform's own archive tool (`ditto`
  * on macOS, which preserves the app bundle's symlinks; `tar` on Windows 10+;

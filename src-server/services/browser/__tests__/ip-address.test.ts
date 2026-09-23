@@ -74,6 +74,14 @@ describe('range membership after normalization', () => {
     ['224.0.0.1', true],
     ['0.1.2.3', true],
     ['8.8.8.8', false],
+    // Round 2: translation/tunnel prefixes and site-local.
+    ['64:ff9b::7f00:1', true],
+    ['64:ff9b::808:808', true],
+    ['2002:7f00:1::1', true],
+    ['2001:0:4136:e378:8000:63bf:3fff:fdd2', true],
+    ['::ffff:0:7f00:1', true],
+    ['fec0::1', true],
+    ['2001:db8::1', false],
     ['2606:4700:4700::1111', false],
   ])('non-public %s -> %s', (input, nonPublic) => {
     const ip = canonicalIp(input);
@@ -99,7 +107,18 @@ describe('range membership after normalization', () => {
         '224.0.0.0/4',
         '240.0.0.0/4',
       ],
-      v6: ['::/128', '::1/128', 'fc00::/7', 'fe80::/10', 'ff00::/8'],
+      v6: [
+        '::/128',
+        '::1/128',
+        '::ffff:0:0:0/96',
+        '64:ff9b::/96',
+        '2001::/32',
+        '2002::/16',
+        'fc00::/7',
+        'fe80::/10',
+        'fec0::/10',
+        'ff00::/8',
+      ],
     });
   });
 });

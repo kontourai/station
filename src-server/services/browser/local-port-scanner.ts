@@ -15,7 +15,7 @@
  * available reports a typed `unavailable`, never an empty success.
  */
 import { execFile } from 'node:child_process';
-import { readlink, realpath } from 'node:fs/promises';
+import { readFile, readlink, realpath } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { isAbsolute, relative } from 'node:path';
 import type { StationListeners } from './station-listeners.js';
@@ -26,6 +26,8 @@ export interface ListeningPort {
   processName: string | null;
   /** The owning process's working directory, when attribution is available. */
   cwd: string | null;
+  /** The owning process's full command line, when readable. */
+  commandLine: string | null;
   /** Answered the HTTP probe with HTML or a redirect. */
   web: boolean;
 }
@@ -54,6 +56,7 @@ export interface PortScannerDeps {
     timeoutMs: number,
   ): Promise<CommandResult>;
   readCwd(pid: number): Promise<string | null>;
+  readCommandLine(pid: number): Promise<string | null>;
   probe(port: number): Promise<boolean>;
   now(): Date;
 }
@@ -213,6 +216,26 @@ export function defaultPortScannerDeps(): PortScannerDeps {
       }
       return null;
     },
+    readCommandLine: async (pid) => {
+      if (process.platform === 'linux') {
+        const raw = await readFile(`/proc/${pid}/cmdline`, 'utf8').catch(
+          () => null,
+        );
+        return raw === null
+          ? null
+          : raw.split('\u0000').filter(Boolean).join(' ');
+      }
+      if (process.platform === 'darwin') {
+        const out = await runCommand(
+          'ps',
+          ['-o', 'command=', '-p', String(pid)],
+          COMMAND_TIMEOUT_MS,
+        );
+        const line = out.stdout.trim();
+        return out.code === 0 && line !== '' ? line : null;
+      }
+      return null;
+    },
     probe: probeWebPort,
     now: () => new Date(),
   };
@@ -222,7 +245,12 @@ export class LocalPortScanner {
   private cached: { at: number; result: PortScanResult } | undefined;
   private inFlight: Promise<PortScanResult> | undefined;
 
+  /**
+   * `excludePorts` is read at every scan: Station's own listener ports are
+   * dropped BEFORE any probe, so the scanner never sends a request to them.
+   */
   constructor(
+    private readonly excludePorts: () => readonly number[],
     private readonly deps: PortScannerDeps = defaultPortScannerDeps(),
   ) {}
 
@@ -293,15 +321,22 @@ export class LocalPortScanner {
         reason: `port detection is not supported on ${platform}`,
       };
     }
+    const excluded = new Set(this.excludePorts());
     const ports = await Promise.all(
-      listeners.map(async (listener) => ({
-        ...listener,
-        cwd:
-          attribution === 'cwd' && listener.pid !== null
-            ? await this.deps.readCwd(listener.pid).catch(() => null)
-            : null,
-        web: await this.deps.probe(listener.port).catch(() => false),
-      })),
+      listeners
+        .filter((listener) => !excluded.has(listener.port))
+        .map(async (listener) => ({
+          ...listener,
+          cwd:
+            attribution === 'cwd' && listener.pid !== null
+              ? await this.deps.readCwd(listener.pid).catch(() => null)
+              : null,
+          commandLine:
+            listener.pid !== null
+              ? await this.deps.readCommandLine(listener.pid).catch(() => null)
+              : null,
+          web: await this.deps.probe(listener.port).catch(() => false),
+        })),
     );
     return {
       state: 'ok',
@@ -312,15 +347,56 @@ export class LocalPortScanner {
   }
 }
 
+export type SuggestionWarning = 'station-process' | 'may-proxy';
+
+/**
+ * One offer to the operator. It carries what they would share (process,
+ * command line, working directory) and is never pre-selected.
+ */
+export interface LocalTargetSuggestion {
+  host: 'localhost';
+  port: number;
+  label: string;
+  pid: number | null;
+  processName: string | null;
+  commandLine: string | null;
+  cwd: string;
+  selected: false;
+  /**
+   * Transitive reach: a registered target grants whatever IT can reach. A
+   * Station process or a proxying dev server can hand an admin's browser
+   * access far beyond the one port being shared.
+   */
+  warnings: SuggestionWarning[];
+}
+
+/** A path segment or argv word that is exactly Station, or a Station package/checkout. */
+const STATION_PROCESS =
+  /(?:^|[\s/\\])(?:station|station-server)(?:[\s/\\]|$)|kontourai[/\\]station(?:-worktrees)?(?:[\s/\\]|$)|@kontourai\/station\b/i;
+const PROXYING_PROCESS =
+  /\b(?:vite|webpack(?:-dev-server)?|next|nuxt|astro|remix|parcel|http-proxy|proxy|nginx|caddy|traefik)\b/i;
+
+/** Pure: the warnings for one listening process. */
+export function suggestionWarnings(port: {
+  processName: string | null;
+  commandLine: string | null;
+  cwd: string | null;
+}): SuggestionWarning[] {
+  const haystacks = [port.processName, port.commandLine, port.cwd].filter(
+    (value): value is string => typeof value === 'string',
+  );
+  const warnings: SuggestionWarning[] = [];
+  if (haystacks.some((text) => STATION_PROCESS.test(text)))
+    warnings.push('station-process');
+  if (haystacks.some((text) => PROXYING_PROCESS.test(text)))
+    warnings.push('may-proxy');
+  return warnings;
+}
+
 export type LocalTargetSuggestions =
   | {
       state: 'ok';
-      suggestions: Array<{
-        host: 'localhost';
-        port: number;
-        label: string;
-        pid: number | null;
-      }>;
+      suggestions: LocalTargetSuggestion[];
     }
   | { state: 'unavailable'; reason: string };
 
@@ -356,19 +432,24 @@ export async function suggestLocalTargets(
       state: 'unavailable',
       reason: 'the Project has no workspace directory',
     };
-  const suggestions = [];
+  const suggestions: LocalTargetSuggestion[] = [];
   for (const port of scan.ports) {
     if (!port.web || port.cwd === null) continue;
     if (listeners.ports.includes(port.port)) continue;
     if (project.registered.some((t) => t.port === port.port)) continue;
     if (!(await inside(port.cwd, project.workspaceRoot))) continue;
     suggestions.push({
-      host: 'localhost' as const,
+      host: 'localhost',
       port: port.port,
       label: port.processName
         ? `${port.processName} :${port.port}`
         : `:${port.port}`,
       pid: port.pid,
+      processName: port.processName,
+      commandLine: port.commandLine,
+      cwd: port.cwd,
+      selected: false,
+      warnings: suggestionWarnings(port),
     });
   }
   return { state: 'ok', suggestions };

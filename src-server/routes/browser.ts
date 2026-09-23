@@ -362,6 +362,14 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   });
 
   // --- Registered local targets (D7) -------------------------------------
+  //
+  // Registering a target lets every Project admin's browser reach that one
+  // local port. Reach is TRANSITIVE: if the service behind the port proxies
+  // (a dev server's API proxy, a Station dev UI, nginx), the admin reaches
+  // whatever it reaches. Suggestions carry `warnings` (`station-process`,
+  // `may-proxy`), the owning pid, command line and cwd so the operator sees
+  // what they would share; they are never pre-selected and never registered
+  // automatically. Station's own listener ports can never be registered.
   const projectFor = async (
     request: Request,
     slug: string,

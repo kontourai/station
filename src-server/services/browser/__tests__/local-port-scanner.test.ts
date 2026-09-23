@@ -7,6 +7,7 @@ import {
   type PortScannerDeps,
   parseLsofListeners,
   parseWindowsListeners,
+  suggestionWarnings,
   suggestLocalTargets,
 } from '../local-port-scanner.js';
 import { deriveStationListeners } from '../station-listeners.js';
@@ -37,6 +38,7 @@ function deps(overrides: Partial<PortScannerDeps> = {}): PortScannerDeps {
     platform: 'darwin',
     run: vi.fn(async () => ({ code: 0, stdout: LSOF })),
     readCwd: vi.fn(async () => null),
+    readCommandLine: vi.fn(async () => null),
     probe: vi.fn(async () => true),
     now: () => new Date('2026-09-22T00:00:00Z'),
     ...overrides,
@@ -67,6 +69,8 @@ describe('parsers', () => {
 describe('LocalPortScanner', () => {
   test('a missing lsof is a typed unavailable, never an empty success', async () => {
     const scanner = new LocalPortScanner(
+      () => [],
+
       deps({
         run: vi.fn(async () => ({ code: null, stdout: '', missing: true })),
       }),
@@ -80,11 +84,15 @@ describe('LocalPortScanner', () => {
   test('an lsof failure is unavailable; "no matches" (exit 1, no output) is an empty ok', async () => {
     expect(
       await new LocalPortScanner(
+        () => [],
+
         deps({ run: vi.fn(async () => ({ code: 2, stdout: '' })) }),
       ).scan(),
     ).toMatchObject({ state: 'unavailable' });
     expect(
       await new LocalPortScanner(
+        () => [],
+
         deps({ run: vi.fn(async () => ({ code: 1, stdout: '' })) }),
       ).scan(),
     ).toMatchObject({ state: 'ok', ports: [] });
@@ -92,12 +100,17 @@ describe('LocalPortScanner', () => {
 
   test('unsupported platforms and a failing Windows query are unavailable', async () => {
     expect(
-      await new LocalPortScanner(deps({ platform: 'freebsd' })).scan(),
+      await new LocalPortScanner(
+        () => [],
+        deps({ platform: 'freebsd' }),
+      ).scan(),
     ).toMatchObject({
       state: 'unavailable',
     });
     expect(
       await new LocalPortScanner(
+        () => [],
+
         deps({
           platform: 'win32',
           run: vi.fn(async () => ({ code: 1, stdout: '' })),
@@ -108,6 +121,8 @@ describe('LocalPortScanner', () => {
 
   test('Windows lists ports but reports attribution unavailable', async () => {
     const result = await new LocalPortScanner(
+      () => [],
+
       deps({
         platform: 'win32',
         run: vi.fn(async () => ({ code: 0, stdout: '127.0.0.1|5173|55\r\n' })),
@@ -118,7 +133,7 @@ describe('LocalPortScanner', () => {
 
   test('scans are on demand, single-flight and briefly cached', async () => {
     const d = deps();
-    const scanner = new LocalPortScanner(d);
+    const scanner = new LocalPortScanner(() => [], d);
     await Promise.all([scanner.scan(), scanner.scan()]);
     await scanner.scan();
     expect(d.run).toHaveBeenCalledTimes(1);
@@ -138,6 +153,8 @@ describe('suggestLocalTargets', () => {
       300: workspace,
     };
     const scanner = new LocalPortScanner(
+      () => [],
+
       deps({
         readCwd: vi.fn(async (pid: number) => cwd[pid] ?? null),
         probe: vi.fn(async (port: number) => port !== 8000),
@@ -157,7 +174,17 @@ describe('suggestLocalTargets', () => {
     ).toEqual({
       state: 'ok',
       suggestions: [
-        { host: 'localhost', port: 5173, label: 'node :5173', pid: 100 },
+        {
+          host: 'localhost',
+          port: 5173,
+          label: 'node :5173',
+          pid: 100,
+          processName: 'node',
+          commandLine: null,
+          cwd: join(workspace, 'app'),
+          selected: false,
+          warnings: [],
+        },
       ],
     });
     expect(
@@ -191,5 +218,115 @@ describe('suggestLocalTargets', () => {
         listeners,
       ),
     ).toMatchObject({ state: 'unavailable' });
+  });
+});
+
+describe('round 2: suggestion safety', () => {
+  test('Station listener ports are dropped BEFORE any probe or process read', async () => {
+    const d = deps();
+    const scanner = new LocalPortScanner(() => [4100], d);
+    const result = await scanner.scan();
+    expect(result.state === 'ok' && result.ports.map((p) => p.port)).toEqual([
+      5173, 8000,
+    ]);
+    expect(
+      (d.probe as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]),
+    ).toEqual([5173, 8000]);
+    expect(
+      (d.readCwd as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]),
+    ).toEqual([100, 200]);
+  });
+
+  test('each suggestion carries pid, command line and cwd, is unselected, and warns on transitive reach', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'station-browser-ws-'));
+    roots.push(workspace);
+    const scanner = new LocalPortScanner(
+      () => [],
+      deps({
+        readCwd: vi.fn(async () => workspace),
+        readCommandLine: vi.fn(async (pid: number) =>
+          pid === 100
+            ? 'node /repo/node_modules/.bin/vite --port 5173'
+            : 'python3 -m http.server 8000',
+        ),
+      }),
+    );
+    const result = await suggestLocalTargets(
+      await scanner.scan(),
+      { workspaceRoot: workspace, registered: [] },
+      deriveStationListeners({ serverPort: 4100, configuredOrigins: [] }),
+    );
+    expect(result.state).toBe('ok');
+    if (result.state !== 'ok') return;
+    const vite = result.suggestions.find((s) => s.port === 5173);
+    expect(vite).toMatchObject({
+      pid: 100,
+      commandLine: 'node /repo/node_modules/.bin/vite --port 5173',
+      cwd: workspace,
+      selected: false,
+      warnings: ['may-proxy'],
+    });
+    expect(result.suggestions.every((s) => s.selected === false)).toBe(true);
+  });
+
+  test.each([
+    [
+      {
+        processName: 'node',
+        commandLine: 'node /Users/me/dev/kontourai/station/dist/server.js',
+        cwd: null,
+      },
+      ['station-process'],
+    ],
+    [
+      { processName: 'station', commandLine: null, cwd: null },
+      ['station-process'],
+    ],
+    [
+      {
+        processName: 'node',
+        commandLine: 'npx @kontourai/station start',
+        cwd: null,
+      },
+      ['station-process'],
+    ],
+    [
+      {
+        processName: 'node',
+        commandLine: 'node vite',
+        cwd: '/x/kontourai/station/src-ui',
+      },
+      ['station-process', 'may-proxy'],
+    ],
+    [
+      {
+        processName: 'node',
+        commandLine: 'node vite',
+        cwd: '/Users/me/dev/kontourai/station-worktrees/lane/src-ui',
+      },
+      ['station-process', 'may-proxy'],
+    ],
+    [
+      {
+        processName: 'node',
+        commandLine: 'node server.js',
+        cwd: '/tmp/station-browser-ws-1',
+      },
+      [],
+    ],
+    [
+      { processName: 'nginx', commandLine: 'nginx -g daemon off;', cwd: null },
+      ['may-proxy'],
+    ],
+    [
+      {
+        processName: 'python3',
+        commandLine: 'python3 -m http.server',
+        cwd: '/w',
+      },
+      [],
+    ],
+  ])('warnings for %j', (port, expected) => {
+    expect(suggestionWarnings(port)).toEqual(expected);
   });
 });

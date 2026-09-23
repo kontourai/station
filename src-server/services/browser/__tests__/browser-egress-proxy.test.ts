@@ -76,7 +76,11 @@ async function harness(
     lookup:
       options.lookup ??
       (async (hostname) => {
-        if (hostname === 'rebind.test' || hostname === 'dev.test')
+        if (
+          hostname === 'rebind.test' ||
+          hostname === 'dev.test' ||
+          hostname.endsWith('.localhost')
+        )
           return [{ address: '127.0.0.1' }];
         if (hostname === 'split.test')
           return [{ address: '93.184.216.34' }, { address: '127.0.0.1' }];
@@ -224,9 +228,10 @@ describe('BrowserEgressProxy', () => {
         },
       ]),
     );
+    // A *.localhost name (resolved locally, not by a page owner's DNS) is fine.
     const benign = await viaProxy(
       h.proxyPort,
-      `http://dev.test:${h.devPort}/named`,
+      `http://dev.localhost:${h.devPort}/named`,
     );
     expect(benign.status).toBe(200);
     expect(h.stationHits).toEqual([]);
@@ -248,6 +253,7 @@ describe('BrowserEgressProxy', () => {
     ).toEqual({
       ok: true,
       address: '192.0.2.11',
+      requestedHost: '192.0.2.11',
     });
   });
 
@@ -331,7 +337,7 @@ describe('BrowserEgressProxy', () => {
         return [{ address: calls === 1 ? '127.0.0.1' : '192.0.2.1' }];
       },
     });
-    const allowed = await tunnel(h.proxyPort, `flip.test:${h.devPort}`);
+    const allowed = await tunnel(h.proxyPort, `flip.localhost:${h.devPort}`);
     expect(allowed.status).toBe('HTTP/1.1 200 Connection Established');
     const reply = await new Promise<string>((resolve) => {
       allowed.socket.once('data', (chunk) => resolve(chunk.toString()));
@@ -384,12 +390,52 @@ describe('BrowserEgressProxy', () => {
     ).toBe(403);
     expect(h.refused.map((e) => e.refusal)).toEqual([
       'non-public-address',
-      'non-public-address',
+      'hostname-to-non-public',
     ]);
     targets.push({ host: 'localhost', port: h.devPort });
     expect(
       (await viaProxy(h.proxyPort, `http://127.0.0.1:${h.devPort}/ok`)).status,
     ).toBe(200);
+    expect(h.devHits).toEqual(['http /ok']);
+  });
+
+  test('round 2: an ordinary hostname rebound to loopback is refused for the operator too', async () => {
+    const h = await harness(); // operator reach
+    expect(
+      (await viaProxy(h.proxyPort, `http://dev.test:${h.devPort}/rebound`))
+        .status,
+    ).toBe(403);
+    const tunnelled = await tunnel(h.proxyPort, `dev.test:${h.devPort}`);
+    expect(tunnelled.status).toBe('HTTP/1.1 403 Forbidden');
+    tunnelled.socket.destroy();
+    expect(h.devHits).toEqual([]);
+    expect(h.refused.map((e) => [e.host, e.refusal])).toEqual([
+      ['dev.test', 'hostname-to-non-public'],
+      ['dev.test', 'hostname-to-non-public'],
+    ]);
+    // The same service by IP literal or *.localhost stays reachable.
+    expect(
+      (await viaProxy(h.proxyPort, `http://127.0.0.1:${h.devPort}/ip`)).status,
+    ).toBe(200);
+    expect(
+      (await viaProxy(h.proxyPort, `http://app.localhost:${h.devPort}/name`))
+        .status,
+    ).toBe(200);
+  });
+
+  test('round 2: a registered target is not reachable through a rebinding name', async () => {
+    const targets: RegisteredLocalTarget[] = [];
+    const h = await harness({
+      reach: { kind: 'project', localTargets: () => targets },
+    });
+    targets.push({ host: 'localhost', port: h.devPort });
+    expect(
+      (await viaProxy(h.proxyPort, `http://127.0.0.1:${h.devPort}/ok`)).status,
+    ).toBe(200);
+    expect(
+      (await viaProxy(h.proxyPort, `http://dev.test:${h.devPort}/rebound`))
+        .status,
+    ).toBe(403);
     expect(h.devHits).toEqual(['http /ok']);
   });
 });

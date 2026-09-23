@@ -185,9 +185,22 @@ export class BrowserEgressProxy {
       await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
-  /** The policy decision for one address, including this proxy's own port. */
-  decide(address: string, port: number): EgressRefusal | undefined {
-    return decideEgress(address, port, this.options.policy, this.listeningPort);
+  /**
+   * The policy decision for one address, including this proxy's own port.
+   * `requestedHost` is what the browser asked for (see the rebinding rule).
+   */
+  decide(
+    address: string,
+    port: number,
+    requestedHost?: string,
+  ): EgressRefusal | undefined {
+    return decideEgress(
+      address,
+      port,
+      this.options.policy,
+      this.listeningPort,
+      requestedHost,
+    );
   }
 
   /**
@@ -198,7 +211,7 @@ export class BrowserEgressProxy {
     rawHost: string,
     port: number,
   ): Promise<
-    | { ok: true; address: string }
+    | { ok: true; address: string; requestedHost: string }
     | { ok: false; refusal: EgressRefusal; address?: string }
   > {
     const host = rawHost.replace(/^\[|\]$/g, '');
@@ -216,17 +229,21 @@ export class BrowserEgressProxy {
     }
     if (addresses.length === 0) return { ok: false, refusal: 'resolve-failed' };
     for (const address of addresses) {
-      const refusal = this.decide(address, port);
+      const refusal = this.decide(address, port, host);
       if (refusal) return { ok: false, refusal, address };
     }
-    return { ok: true, address: addresses[0] as string };
+    return { ok: true, address: addresses[0] as string, requestedHost: host };
   }
 
   /**
    * Dial the checked address and re-check the socket's actual peer before
    * anything is written. Rejects with {@link ConnectRefused} on refusal.
    */
-  private connectChecked(address: string, port: number): Promise<Socket> {
+  private connectChecked(
+    address: string,
+    port: number,
+    requestedHost: string,
+  ): Promise<Socket> {
     return new Promise((resolve, reject) => {
       const socket = connect({ host: address, port });
       this.track(socket);
@@ -239,7 +256,9 @@ export class BrowserEgressProxy {
         socket.setTimeout(0);
         const peer = socket.remoteAddress;
         const refusal =
-          peer === undefined ? 'invalid-target' : this.decide(peer, port);
+          peer === undefined
+            ? 'invalid-target'
+            : this.decide(peer, port, requestedHost);
         if (refusal) {
           socket.destroy();
           reject(new ConnectRefused(refusal, peer));
@@ -297,7 +316,11 @@ export class BrowserEgressProxy {
     }
     let socket: Socket;
     try {
-      socket = await this.connectChecked(decision.address, port);
+      socket = await this.connectChecked(
+        decision.address,
+        port,
+        decision.requestedHost,
+      );
     } catch (error) {
       if (error instanceof ConnectRefused) {
         this.refused({
@@ -413,7 +436,11 @@ export class BrowserEgressProxy {
     }
     let upstream: Socket;
     try {
-      upstream = await this.connectChecked(decision.address, port);
+      upstream = await this.connectChecked(
+        decision.address,
+        port,
+        decision.requestedHost,
+      );
     } catch (error) {
       if (error instanceof ConnectRefused) {
         this.refused({

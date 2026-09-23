@@ -484,6 +484,7 @@ describe('ChromiumServerHost with a fake browser', () => {
         targetId: 'T1',
         url,
         frame: 'subframe',
+        outcome: 'replaced-after-commit',
       });
     }
   });
@@ -514,6 +515,7 @@ describe('ChromiumServerHost with a fake browser', () => {
       kind: 'committed-url-refused',
       targetId: 'T1',
       frame: 'main',
+      outcome: 'replaced-after-commit',
       url: 'data:text/html,x',
     });
   });
@@ -699,6 +701,78 @@ describe('ChromiumServerHost with a fake browser', () => {
     emit('Page.loadEventFired', {}, 'S-OTHER');
     emit('Page.loadEventFired', {});
     expect(seen).toEqual(['S-T1']);
+  });
+
+  test('round 2: clipboard- and eval-capable parameters are refused on allowed methods', async () => {
+    const { host, profileDir, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const cdp = host.cdp();
+    const before = calls.length;
+    for (const [method, params] of [
+      [
+        'Runtime.evaluate',
+        { expression: 'copy(document.cookie)', includeCommandLineAPI: true },
+      ],
+      [
+        'Runtime.callFunctionOn',
+        { functionDeclaration: 'x', includeCommandLineAPI: true },
+      ],
+      [
+        'Input.dispatchKeyEvent',
+        { type: 'keyDown', key: 'c', commands: ['copy'] },
+      ],
+      [
+        'Input.dispatchKeyEvent',
+        { type: 'keyDown', key: 'v', commands: 'paste' },
+      ],
+      ['Page.reload', { scriptToEvaluateOnLoad: 'alert(1)' }],
+    ] as const) {
+      await expect(cdp.send(method, params, 'S-T1')).rejects.toMatchObject({
+        code: 'param-not-allowed',
+      });
+    }
+    expect(calls.slice(before)).toEqual([]);
+    // The same methods without those parameters still work.
+    await cdp.send(
+      'Runtime.evaluate',
+      { expression: '1', includeCommandLineAPI: false },
+      'S-T1',
+    );
+    await cdp.send(
+      'Input.dispatchKeyEvent',
+      { type: 'keyDown', key: 'a', commands: [] },
+      'S-T1',
+    );
+    await cdp.send('Page.reload', {}, 'S-T1');
+    expect(calls.slice(before).map((c) => c.method)).toEqual([
+      'Runtime.evaluate',
+      'Input.dispatchKeyEvent',
+      'Page.reload',
+    ]);
+  });
+
+  test('round 2: a popup reported with only openerFrameId still folds into its opener', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    emit('Target.targetInfoChanged', {
+      targetInfo: {
+        targetId: 'P9',
+        type: 'page',
+        url: 'https://example.com/np',
+        openerFrameId: 'T1',
+      },
+    });
+    await flush();
+    expect(calls).toContainEqual({
+      method: 'Target.closeTarget',
+      params: { targetId: 'P9' },
+      sessionId: undefined,
+    });
+    expect(calls).toContainEqual({
+      method: 'Page.navigate',
+      params: { url: 'https://example.com/np' },
+      sessionId: 'S-T1',
+    });
   });
 
   test('history navigation is refused when the entry is out of scope', async () => {

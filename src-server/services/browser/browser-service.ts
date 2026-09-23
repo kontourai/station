@@ -132,7 +132,7 @@ export function createBrowserService(
     registry,
     acquisition,
     localTargets,
-    portScanner: new LocalPortScanner(),
+    portScanner: new LocalPortScanner(() => listeners().ports),
     listeners,
     shutdown: () => registry.shutdown(),
   };

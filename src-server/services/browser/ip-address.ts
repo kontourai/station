@@ -108,6 +108,12 @@ export const LOOPBACK_RANGES = {
 /**
  * Non-public destinations a Project admin's browser may not reach unless the
  * operator registered the exact target (D7). Pinned by test.
+ *
+ * Embedded-IPv4 decision: NAT64, Teredo and 6to4 addresses carry an IPv4
+ * address the network translates to. Rather than unwrap them (and trust the
+ * translator's reach), they are refused whole. The cost is that a Project
+ * admin on an IPv6-only network cannot reach IPv4-only sites through NAT64;
+ * the operator's profile is unaffected.
  */
 export const NON_PUBLIC_RANGES = {
   v4: [
@@ -126,8 +132,13 @@ export const NON_PUBLIC_RANGES = {
   v6: [
     '::/128', // unspecified
     '::1/128', // loopback
+    '::ffff:0:0:0/96', // IPv4-translated (SIIT)
+    '64:ff9b::/96', // NAT64: refused whole, not unwrapped (see below)
+    '2001::/32', // Teredo: tunnels to an embedded IPv4
+    '2002::/16', // 6to4: tunnels to an embedded IPv4
     'fc00::/7', // unique local
     'fe80::/10', // link-local
+    'fec0::/10', // site-local (deprecated)
     'ff00::/8', // multicast
   ],
 } as const;

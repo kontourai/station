@@ -131,7 +131,17 @@ function harness(
   const suggestLocalTargets = vi.fn(async () => ({
     state: 'ok' as const,
     suggestions: [
-      { host: 'localhost' as const, port: 5173, label: 'vite :5173', pid: 42 },
+      {
+        host: 'localhost' as const,
+        port: 5173,
+        label: 'vite :5173',
+        pid: 42,
+        processName: 'node',
+        commandLine: 'node vite',
+        cwd: '/work/alpha',
+        selected: false as const,
+        warnings: ['may-proxy' as const],
+      },
     ],
   }));
   const bearer = (request: Request) =>
@@ -633,7 +643,19 @@ describe('browser routes: registered local targets (D7)', () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      data: { state: 'ok', suggestions: [{ port: 5173 }] },
+      data: {
+        state: 'ok',
+        suggestions: [
+          {
+            port: 5173,
+            pid: 42,
+            commandLine: 'node vite',
+            cwd: '/work/alpha',
+            selected: false,
+            warnings: ['may-proxy'],
+          },
+        ],
+      },
     });
     expect(h.suggestLocalTargets).toHaveBeenCalledWith({
       id: 'p-alpha',

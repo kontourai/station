@@ -173,8 +173,19 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
           // Positive controls: other loopback ports stay reachable, by IP and
           // through a name that resolves to loopback.
           fetch('/ok').catch(() => {});
-          fetch('http://devalias.test:' + D + '/alias-ok').catch(() => {});
+          fetch('http://devalias.localhost:' + D + '/alias-ok').catch(() => {});
+          // Round 2: a page-controlled name rebound to loopback never reaches
+          // ANY loopback service, even for the operator's profile.
+          fetch('http://rebind.test:' + D + '/rebind-dev').catch(() => {});
+          try { new WebSocket('ws://rebind.test:' + D + '/rebind-dev-ws'); } catch {}
         </script>probe`);
+        return;
+      }
+      if (req.url === '/noopener') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(
+          `<a id="np" target="_blank" rel="noopener noreferrer" href="/np-dest">open</a>`,
+        );
         return;
       }
       if (req.url === '/frames') {
@@ -330,6 +341,7 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
       kind: 'committed-url-refused',
       targetId,
       frame: 'main',
+      outcome: 'replaced-after-commit',
       url: 'data:text/html,<p>smuggled</p>',
     });
   });
@@ -382,6 +394,28 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     expect(events.some((e) => e.kind === 'popup-folded')).toBe(true);
   });
 
+  test('round 2: a target=_blank rel=noopener link loads in the same tab, not dropped', async (ctx) => {
+    if (!executablePath || !raw) return ctx.skip(SKIP_REASON);
+    await gotoDev('/noopener');
+    await evaluate(`document.getElementById('np').click(); true`);
+    const landed = await poll(
+      href,
+      (value) => value.endsWith('/np-dest'),
+      10_000,
+    );
+    expect(landed).toBe(`http://127.0.0.1:${devPort}/np-dest`);
+    const pages = await poll(
+      async () =>
+        (
+          await raw!.send<{
+            targetInfos: Array<{ targetId: string; type: string }>;
+          }>('Target.getTargets')
+        ).targetInfos.filter((t) => t.type === 'page'),
+      (list) => list.length === 1,
+    );
+    expect(pages.map((t) => t.targetId)).toEqual([targetId]);
+  });
+
   test('permissions are denied by default', async (ctx) => {
     if (!executablePath) return ctx.skip(SKIP_REASON);
     await gotoDev('/perm');
@@ -425,6 +459,17 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     }
     await new Promise((r) => setTimeout(r, 500));
     expect(stationArrivals).toEqual([]);
+    expect(devArrivals).not.toContain('/rebind-dev');
+    expect(devArrivals).not.toContain('/rebind-dev-ws');
+    expect(
+      events.some(
+        (e) =>
+          e.kind === 'egress-refused' &&
+          e.host === 'rebind.test' &&
+          e.port === devPort &&
+          e.refusal === 'hostname-to-non-public',
+      ),
+    ).toBe(true);
     // The refusals were decided on the resolved address, below the page.
     const refused = events.filter(
       (e): e is Extract<ChromiumHostEvent, { kind: 'egress-refused' }> =>

@@ -29,6 +29,14 @@
  * - Popups load in their opener's tab and the popup target is closed (t3code
  *   behaviour, `apps/desktop/src/preview/Manager.ts`, MIT © 2026 T3 Tools Inc.).
  * - Permissions are denied.
+ * - Clipboard: measured 2026-09-22 on macOS with Chrome 153 `--headless=new`,
+ *   the headless browser does NOT share the host's system clipboard —
+ *   `navigator.clipboard.writeText`, `execCommand('copy')` and editor
+ *   `commands` all succeeded inside the browser while `pbpaste` was
+ *   unchanged. Its own clipboard is shared by the targets of one profile's
+ *   process, so `clipboard-read` stays denied, and the guarded channel
+ *   refuses `includeCommandLineAPI` and key-event `commands`. Linux and
+ *   Windows are unmeasured.
  */
 import { mkdirSync } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
@@ -135,6 +143,37 @@ export const PAGE_SESSION_CDP_ALLOWLIST: readonly string[] = Object.freeze([
 ]);
 const PAGE_SESSION_CDP_ALLOWED = new Set(PAGE_SESSION_CDP_ALLOWLIST);
 
+/**
+ * Parameters an allowed method may not carry (review round 2):
+ * - `includeCommandLineAPI` exposes DevTools console helpers such as
+ *   `copy()`, which writes the clipboard;
+ * - `Input.dispatchKeyEvent.commands` runs editor commands (copy, paste,
+ *   selectAll) outside the page's own permission checks;
+ * - `Page.reload.scriptToEvaluateOnLoad` is script evaluation by another
+ *   name; the D4 eval tool will get its own gated path.
+ */
+export function refusedCdpParam(
+  method: string,
+  params: object | undefined,
+): string | undefined {
+  const p = (params ?? {}) as Record<string, unknown>;
+  if (
+    (method === 'Runtime.evaluate' || method === 'Runtime.callFunctionOn') &&
+    p.includeCommandLineAPI !== undefined &&
+    p.includeCommandLineAPI !== false
+  )
+    return 'includeCommandLineAPI';
+  if (
+    method === 'Input.dispatchKeyEvent' &&
+    p.commands !== undefined &&
+    !(Array.isArray(p.commands) && p.commands.length === 0)
+  )
+    return 'commands';
+  if (method === 'Page.reload' && p.scriptToEvaluateOnLoad !== undefined)
+    return 'scriptToEvaluateOnLoad';
+  return undefined;
+}
+
 /** Permission names denied at launch. The first five are mandatory. */
 export const MANDATORY_DENIED_PERMISSIONS = [
   'geolocation',
@@ -173,7 +212,8 @@ export class BrowserHostPolicyError extends Error {
       | 'host-owned-method'
       | 'url-not-allowed'
       | 'profile-mismatch'
-      | 'foreign-session',
+      | 'foreign-session'
+      | 'param-not-allowed',
   ) {
     super(
       code === 'url-not-allowed'
@@ -182,7 +222,9 @@ export class BrowserHostPolicyError extends Error {
           ? 'This browser host already runs a different profile directory.'
           : code === 'foreign-session'
             ? `${method} was refused: only page sessions this host opened are reachable.`
-            : `${method} is reserved to the browser host.`,
+            : code === 'param-not-allowed'
+              ? `${method} was refused: a parameter it carries is reserved to the browser host.`
+              : `${method} is reserved to the browser host.`,
     );
     this.name = 'BrowserHostPolicyError';
   }
@@ -225,6 +267,12 @@ export type ChromiumHostEvent =
       targetId: string;
       url: string;
       frame: 'main' | 'subframe';
+      /**
+       * The document DID commit (and may have run briefly) before it was
+       * replaced with about:blank: this is post-commit replacement, not a
+       * pre-load block.
+       */
+      outcome: 'replaced-after-commit';
     }
   | { kind: 'untracked-target-closed'; targetId: string; url: string }
   | { kind: 'permission-deny-skipped'; permission: string; error: string }
@@ -271,8 +319,10 @@ export function isAllowedCommittedUrl(url: string): boolean {
 
 /**
  * A subframe URL that may stay committed (review S3): the main-frame scope
- * plus `about:srcdoc` (an inline iframe). `data:`, `blob:`, `filesystem:` and
- * every other scheme are replaced with about:blank.
+ * plus `about:srcdoc` (an inline iframe). A subframe on `data:`, `blob:`,
+ * `filesystem:` or any other scheme is replaced with about:blank AFTER it
+ * commits — it is not blocked before load, so its document can run briefly.
+ * Those schemes never reach the network, so no earlier layer can see them.
  */
 export function isAllowedSubframeUrl(url: string): boolean {
   return url === 'about:srcdoc' || isAllowedCommittedUrl(url);
@@ -739,8 +789,16 @@ export class ChromiumServerHost implements BrowserHost {
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {
+      // Chromium reports openerId even for noopener windows (verified on
+      // Chrome 153). Should a build omit it, the opener's main frame id,
+      // which equals its target id, still identifies the opener.
       const opener =
-        typeof info.openerId === 'string' ? info.openerId : undefined;
+        typeof info.openerId === 'string'
+          ? info.openerId
+          : typeof info.openerFrameId === 'string' &&
+              running.targets.has(info.openerFrameId)
+            ? info.openerFrameId
+            : undefined;
       if (!opener || !running.targets.has(opener)) {
         this.checkUntracked(running, targetId, url);
         return;
@@ -858,9 +916,10 @@ export class ChromiumServerHost implements BrowserHost {
         targetId,
         url: frame.url,
         frame: subframe ? 'subframe' : 'main',
+        outcome: 'replaced-after-commit',
       });
       // data:, blob: and filesystem: documents never touch the network, so
-      // the Fetch layer cannot stop them; they are replaced on commit.
+      // the Fetch layer cannot stop them; they are replaced after commit.
       void transport
         .send(
           'Page.navigate',
@@ -921,6 +980,8 @@ export class ChromiumServerHost implements BrowserHost {
       ): Promise<R> {
         if (!PAGE_SESSION_CDP_ALLOWED.has(method))
           return refuse(method, 'host-owned-method');
+        if (refusedCdpParam(method, params) !== undefined)
+          return refuse(method, 'param-not-allowed');
         const running = host.requireRunning();
         if (!host.ownSession(sessionId))
           return refuse(method, 'foreign-session');

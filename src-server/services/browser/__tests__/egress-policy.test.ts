@@ -136,3 +136,64 @@ describe('Project admin reach (D7): public plus registered targets', () => {
     );
   });
 });
+
+describe('round 2: DNS rebinding — hostnames never lead to non-public addresses', () => {
+  test.each([
+    ['operator', '127.0.0.1', 'evil.example'],
+    ['operator', '::ffff:7f00:1', 'evil.example'],
+    ['operator', '192.168.1.1', 'nas.example.com'],
+    ['operator', '169.254.169.254', 'metadata.evil'],
+    ['operator', '100.100.1.1', 'box.tail1234.ts.net'],
+    ['project', '127.0.0.1', 'evil.example'],
+  ] as const)('%s: %s via %s is refused', (reach, address, host) => {
+    expect(decideEgress(address, 5173, policy(reach), undefined, host)).toBe(
+      'hostname-to-non-public',
+    );
+  });
+
+  test('a registered target is not reachable through an ordinary hostname', () => {
+    const p = policy('project', [{ host: 'localhost', port: 5173 }]);
+    expect(decideEgress('127.0.0.1', 5173, p, undefined, 'evil.example')).toBe(
+      'hostname-to-non-public',
+    );
+    expect(
+      decideEgress('127.0.0.1', 5173, p, undefined, 'localhost'),
+    ).toBeUndefined();
+    expect(
+      decideEgress('127.0.0.1', 5173, p, undefined, 'app.localhost'),
+    ).toBeUndefined();
+    expect(
+      decideEgress('127.0.0.1', 5173, p, undefined, '127.0.0.1'),
+    ).toBeUndefined();
+    expect(
+      decideEgress('127.0.0.1', 5173, p, undefined, '[::ffff:7f00:1]'),
+    ).toBeUndefined();
+  });
+
+  test('operators keep loopback and LAN reach by literal or localhost name', () => {
+    for (const host of [
+      '127.0.0.1',
+      'localhost',
+      'dev.localhost',
+      '[::1]',
+      '192.168.1.1',
+    ]) {
+      const address = host === '192.168.1.1' ? '192.168.1.1' : '127.0.0.1';
+      expect(
+        decideEgress(address, 5173, policy('operator'), undefined, host),
+      ).toBeUndefined();
+    }
+  });
+
+  test('a public name resolving to a public address is unaffected', () => {
+    expect(
+      decideEgress(
+        '93.184.216.34',
+        443,
+        policy('project'),
+        undefined,
+        'example.com',
+      ),
+    ).toBeUndefined();
+  });
+});
