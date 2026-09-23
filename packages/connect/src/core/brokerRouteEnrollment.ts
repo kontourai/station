@@ -32,6 +32,12 @@ export interface BrowserRoutingGrantStorage {
   removeIfCredentialId(key: string, credentialId: string): Promise<void>;
 }
 
+export interface BrowserRoutingGrantOperation {
+  readonly epoch: number;
+  readonly key: string;
+  readonly signal: AbortSignal;
+}
+
 function copyTrustRecord(value: DeviceConnectionTrustRecord) {
   const record = exact(
     value,
@@ -270,11 +276,23 @@ export function parseBrokerRouteInvitationUrl(
 }
 
 function routeKey(grant: SelfHostedBrokerClientGrantV1): string {
-  return [
+  return routeStorageKey(
     grant.brokerOrigin,
-    grant.scope.stationId,
-    grant.scope.enrollmentId,
+    grant.scope,
     grant.scope.browserOrigin,
+  );
+}
+
+function routeStorageKey(
+  brokerOrigin: string,
+  scope: SelfHostedBrokerScopeV1,
+  browserOrigin: string,
+): string {
+  return [
+    brokerOrigin,
+    scope.stationId,
+    scope.enrollmentId,
+    browserOrigin,
   ].join('\n');
 }
 
@@ -422,6 +440,15 @@ function readWithSignal<T>(
   });
 }
 
+function readWithOperation<T>(
+  promise: Promise<T>,
+  operation: BrowserRoutingGrantOperation,
+  signal?: AbortSignal,
+): Promise<T> {
+  const owned = readWithSignal(promise, operation.signal);
+  return signal ? readWithSignal(owned, signal) : owned;
+}
+
 /**
  * IndexedDB custody isolated from Station profiles and application credentials.
  * One active grant is stored per broker, Station enrollment, and browser origin.
@@ -540,6 +567,8 @@ export class BrowserRoutingGrantCustody
 {
   private grant: SelfHostedBrokerClientGrantV1 | null = null;
   private epoch = 0;
+  private activeOperation: BrowserRoutingGrantOperation | null = null;
+  private operationController: AbortController | null = null;
   private boundTrust: DeviceConnectionTrustRecord | null = null;
   private boundTrustStore: BrokerRouteTrustStore | null = null;
   private persistence: Promise<void> = Promise.resolve();
@@ -554,6 +583,40 @@ export class BrowserRoutingGrantCustody
   ) {
     this.storage = input.storage ?? new IndexedDbBrowserRoutingGrantStorage();
     this.now = input.now ?? Date.now;
+  }
+
+  /** Starts a user enrollment synchronously so later async results are owned. */
+  beginEnrollment(
+    brokerOriginValue: string,
+    scopeValue: SelfHostedBrokerScopeV1,
+  ): BrowserRoutingGrantOperation {
+    const browserOrigin = actualBrowserOrigin();
+    const brokerOrigin = canonicalOrigin(brokerOriginValue, 'broker_origin');
+    const scope = validScope(scopeValue, browserOrigin);
+    return this.beginOperation(
+      routeStorageKey(brokerOrigin, scope, browserOrigin),
+    );
+  }
+
+  isEnrollmentCurrent(operation: BrowserRoutingGrantOperation): boolean {
+    return (
+      this.activeOperation === operation &&
+      this.epoch === operation.epoch &&
+      !operation.signal.aborted
+    );
+  }
+
+  assertEnrollmentCurrent(
+    operation: BrowserRoutingGrantOperation,
+    signal?: AbortSignal,
+  ): void {
+    signal?.throwIfAborted();
+    if (!this.isEnrollmentCurrent(operation))
+      throw operation.signal.reason ?? new Error('broker_grant_stale');
+  }
+
+  cancelEnrollment(operation: BrowserRoutingGrantOperation): void {
+    if (this.activeOperation === operation) this.invalidate();
   }
 
   async restore(input: {
@@ -617,53 +680,81 @@ export class BrowserRoutingGrantCustody
     grantValue: SelfHostedBrokerClientGrantV1,
     trustRecord: DeviceConnectionTrustRecord,
     trustStore: BrokerRouteTrustStore,
+    options: {
+      operation?: BrowserRoutingGrantOperation;
+      signal?: AbortSignal;
+    } = {},
   ): Promise<void> {
-    // Switching the active grant retires every earlier capture immediately,
-    // including while trust and durable storage checks are still pending.
-    this.invalidate();
-    const operationEpoch = this.epoch;
-    const trustSnapshot = copyTrustRecord(trustRecord);
     const browserOrigin = actualBrowserOrigin();
     const grant = validateGrant(grantValue, browserOrigin, this.now());
+    const key = routeKey(grant);
+    const operation = options.operation ?? this.beginOperation(key);
+    if (operation.key !== key || !this.isEnrollmentCurrent(operation))
+      throw new Error('broker_grant_stale');
+    try {
+      await this.installGrant(
+        grant,
+        trustRecord,
+        trustStore,
+        operation,
+        options.signal,
+      );
+    } catch (error) {
+      this.cancelEnrollment(operation);
+      throw error;
+    }
+  }
+
+  private async installGrant(
+    grant: SelfHostedBrokerClientGrantV1,
+    trustRecord: DeviceConnectionTrustRecord,
+    trustStore: BrokerRouteTrustStore,
+    operation: BrowserRoutingGrantOperation,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const trustSnapshot = copyTrustRecord(trustRecord);
+    const key = routeKey(grant);
     const binding = {
       stationId: grant.scope.stationId,
       enrollmentId: grant.scope.enrollmentId,
       stationSigningKeyId: grant.stationSigningKeyId,
       stationSigningGeneration: grant.stationSigningGeneration,
     };
-    if (!(await approvedTrustIsCurrent(trustSnapshot, trustStore, binding)))
-      throw new Error('broker_route_trust_retired');
-    if (this.epoch !== operationEpoch) throw new Error('broker_grant_stale');
-    const key = routeKey(grant);
-    await this.serialize(() => this.storage.write(key, grant));
-    if (this.epoch !== operationEpoch) {
-      await this.serialize(() =>
-        this.storage.removeIfCredentialId(key, grant.credential.id),
-      );
-      throw new Error('broker_grant_stale');
-    }
-    const stillTrusted = await approvedTrustIsCurrent(
-      trustSnapshot,
-      trustStore,
-      binding,
+    this.assertEnrollmentCurrent(operation, signal);
+    const trustCurrent = await readWithOperation(
+      approvedTrustIsCurrent(trustSnapshot, trustStore, binding),
+      operation,
+      signal,
     );
-    if (this.epoch !== operationEpoch) {
-      await this.serialize(() =>
-        this.storage.removeIfCredentialId(key, grant.credential.id),
+    this.assertEnrollmentCurrent(operation, signal);
+    if (!trustCurrent) throw new Error('broker_route_trust_retired');
+
+    let persisted = false;
+    try {
+      await this.serialize(() => this.storage.write(key, grant));
+      persisted = true;
+      this.assertEnrollmentCurrent(operation, signal);
+      const stillTrusted = await readWithOperation(
+        approvedTrustIsCurrent(trustSnapshot, trustStore, binding),
+        operation,
+        signal,
       );
-      throw new Error('broker_grant_stale');
+      this.assertEnrollmentCurrent(operation, signal);
+      if (!stillTrusted) throw new Error('broker_route_trust_retired');
+
+      this.grant = grant;
+      this.boundTrust = trustSnapshot;
+      this.boundTrustStore = trustStore;
+      this.activeOperation = null;
+      this.operationController = null;
+      this.epoch += 1;
+    } catch (error) {
+      if (persisted)
+        await this.serialize(() =>
+          this.storage.removeIfCredentialId(key, grant.credential.id),
+        );
+      throw error;
     }
-    if (!stillTrusted) {
-      this.invalidate();
-      await this.serialize(() =>
-        this.storage.removeIfCredentialId(key, grant.credential.id),
-      );
-      throw new Error('broker_route_trust_retired');
-    }
-    this.grant = grant;
-    this.boundTrust = trustSnapshot;
-    this.boundTrustStore = trustStore;
-    this.epoch += 1;
   }
 
   /** Local deletion only; the broker grant stays live until broker retirement or expiry. */
@@ -694,7 +785,11 @@ export class BrowserRoutingGrantCustody
       scope.enrollmentId,
       browserOrigin,
     ].join('\n');
-    if (this.grant && routeKey(this.grant) === key) this.invalidate();
+    if (
+      (this.grant && routeKey(this.grant) === key) ||
+      this.activeOperation?.key === key
+    )
+      this.invalidate();
 
     // The read captures the exact credential identity to remove. The CAS
     // after it prevents a later same-route enrollment from being deleted.
@@ -709,6 +804,9 @@ export class BrowserRoutingGrantCustody
 
   /** Profile/client switches retire the in-memory authority immediately. */
   invalidate(): void {
+    this.operationController?.abort(new Error('broker_grant_stale'));
+    this.operationController = null;
+    this.activeOperation = null;
     this.epoch += 1;
     this.grant = null;
     this.boundTrust = null;
@@ -794,6 +892,19 @@ export class BrowserRoutingGrantCustody
     return result;
   }
 
+  private beginOperation(key: string): BrowserRoutingGrantOperation {
+    this.invalidate();
+    const controller = new AbortController();
+    const operation = Object.freeze({
+      epoch: this.epoch,
+      key,
+      signal: controller.signal,
+    });
+    this.operationController = controller;
+    this.activeOperation = operation;
+    return operation;
+  }
+
   capture() {
     const grant = this.grant;
     const epoch = this.epoch;
@@ -870,27 +981,34 @@ export async function redeemBrokerRouteInvitation(input: {
     stationSigningKeyId: invitation.stationSigningKeyId,
     stationSigningGeneration: invitation.stationSigningGeneration,
   };
-  // This must finish before the one-use invitation is sent to the broker.
-  if (!(await approvedTrustIsCurrent(trustRecord, input.trustStore, binding)))
-    throw new Error('broker_route_trust_required');
   input.signal?.throwIfAborted();
-
+  const operation = input.custody.beginEnrollment(brokerOrigin, scope);
   const request = (input.request ?? globalThis.fetch).bind(globalThis);
   const controller = new AbortController();
   const onParentAbort = () =>
     controller.abort(input.signal?.reason ?? new Error('cancelled'));
+  const onOperationAbort = () =>
+    controller.abort(
+      operation.signal.reason ?? new Error('broker_grant_stale'),
+    );
   input.signal?.addEventListener('abort', onParentAbort, { once: true });
+  operation.signal.addEventListener('abort', onOperationAbort, { once: true });
   const timer = setTimeout(
     () => controller.abort(new Error('browser_transport_timeout')),
     REQUEST_TIMEOUT_MS,
   );
-  let response: Response;
-  let payload: unknown;
   try {
     const operationSignal = controller.signal;
-    if (operationSignal.aborted)
-      throw operationSignal.reason ?? new Error('cancelled');
-    response = await readWithSignal(
+    input.custody.assertEnrollmentCurrent(operation, operationSignal);
+    // This must finish before the one-use invitation is sent to the broker.
+    const trustedBeforeRedeem = await readWithSignal(
+      approvedTrustIsCurrent(trustRecord, input.trustStore, binding),
+      operationSignal,
+    );
+    input.custody.assertEnrollmentCurrent(operation, operationSignal);
+    if (!trustedBeforeRedeem) throw new Error('broker_route_trust_required');
+
+    const response = await readWithSignal(
       request(`${brokerOrigin}/broker/v1/grants/redeem`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -903,34 +1021,36 @@ export async function redeemBrokerRouteInvitation(input: {
       }),
       operationSignal,
     );
-    if (operationSignal.aborted)
-      throw operationSignal.reason ?? new Error('cancelled');
-    payload = await boundedJson(response, operationSignal);
-    operationSignal.throwIfAborted();
+    input.custody.assertEnrollmentCurrent(operation, operationSignal);
+    const payload = await boundedJson(response, operationSignal);
+    input.custody.assertEnrollmentCurrent(operation, operationSignal);
+    if (!response.ok)
+      throw new Error(`broker_request_refused_${response.status}`);
+    const grant = validateGrant(payload, browserOrigin, now());
+    if (
+      grant.brokerOrigin !== brokerOrigin ||
+      !sameScope(grant.scope, scope) ||
+      grant.stationSigningKeyId !== binding.stationSigningKeyId ||
+      grant.stationSigningGeneration !== binding.stationSigningGeneration
+    )
+      throw new Error('broker_grant_binding_invalid');
+
+    // A trust rotation/revocation or abort while redemption was outstanding
+    // must be observed before the token can be installed or persisted.
+    const trustedAfterRedeem = await readWithSignal(
+      approvedTrustIsCurrent(trustRecord, input.trustStore, binding),
+      operationSignal,
+    );
+    input.custody.assertEnrollmentCurrent(operation, operationSignal);
+    if (!trustedAfterRedeem) throw new Error('broker_route_trust_retired');
+    await input.custody.replace(grant, trustRecord, input.trustStore, {
+      operation,
+      signal: operationSignal,
+    });
   } finally {
     clearTimeout(timer);
     input.signal?.removeEventListener('abort', onParentAbort);
+    operation.signal.removeEventListener('abort', onOperationAbort);
+    input.custody.cancelEnrollment(operation);
   }
-  if (!response.ok)
-    throw new Error(`broker_request_refused_${response.status}`);
-  const grant = validateGrant(payload, browserOrigin, now());
-  if (
-    grant.brokerOrigin !== brokerOrigin ||
-    !sameScope(grant.scope, scope) ||
-    grant.stationSigningKeyId !== binding.stationSigningKeyId ||
-    grant.stationSigningGeneration !== binding.stationSigningGeneration
-  )
-    throw new Error('broker_grant_binding_invalid');
-
-  // A trust rotation/revocation while the broker request was outstanding
-  // invalidates the result before it can be made usable or persisted.
-  if (
-    !(await approvedTrustIsCurrent(
-      input.trustRecord,
-      input.trustStore,
-      binding,
-    ))
-  )
-    throw new Error('broker_route_trust_retired');
-  await input.custody.replace(grant, trustRecord, input.trustStore);
 }

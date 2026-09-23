@@ -92,16 +92,11 @@ describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
         { mode: 0o600 },
       );
       const output = run('invite', requestPath, invitationPath);
-      const delivery = JSON.parse(readFileSync(invitationPath, 'utf8')) as {
-        version: string;
-        link: string;
-        invitation: {
-          invitationId: string;
-          invitationSecret: string;
-          scope: typeof exactScope;
-        };
+      const invitation = JSON.parse(readFileSync(invitationPath, 'utf8')) as {
+        invitationId: string;
+        invitationSecret: string;
+        scope: typeof exactScope;
       };
-      const invitation = delivery.invitation;
       expect(output).toContain('STATION_BROKER_INVITATION_WRITTEN');
       expect(output).not.toContain(invitation.invitationSecret);
       expect(statSync(invitationPath).mode & 0o077).toBe(0);
@@ -109,20 +104,6 @@ describe.runIf(process.platform !== 'win32')('self-hosted broker CLI', () => {
         ...exactScope,
         browserOrigin: clientOrigin,
       });
-      expect(delivery.version).toBe('station-broker-invitation-delivery/v1');
-      const link = new URL(delivery.link);
-      expect(link.origin).toBe(clientOrigin);
-      expect(link.pathname).toBe('/connections/computers');
-      expect(link.search).toBe('');
-      expect(link.hash).toMatch(/^#relay-invite=/);
-      expect(
-        JSON.parse(
-          Buffer.from(
-            link.hash.slice('#relay-invite='.length),
-            'base64url',
-          ).toString('utf8'),
-        ),
-      ).toEqual(invitation);
       expect(() => run('invite', requestPath, invitationPath)).toThrow();
       const service = new SelfHostedBrokerService(databasePath);
       const grant = service.redeemInvitation(

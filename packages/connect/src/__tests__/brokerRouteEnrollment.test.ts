@@ -109,6 +109,12 @@ function jsonResponse(value: unknown) {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+}
+
 describe('broker route invitation enrollment and custody', () => {
   beforeEach(() => vi.stubGlobal('location', { origin: BROWSER_ORIGIN }));
   afterEach(() => vi.unstubAllGlobals());
@@ -245,6 +251,109 @@ describe('broker route invitation enrollment and custody', () => {
       }),
     ).rejects.toThrow('broker_route_trust_retired');
     expect(storage.entries.size).toBe(0);
+  });
+
+  test('a delayed redemption cannot overwrite a newer same-route enrollment', async () => {
+    const { trust, trustRecord } = await trustFixture();
+    const invitationA = await invitationFor(trust);
+    const invitationB = await invitationFor(trust);
+    const grantA = grantFor(invitationA, 'client-grant-delayed');
+    const grantB = grantFor(invitationB, 'client-grant-current');
+    const storage = new MemoryGrantStorage();
+    const custody = new BrowserRoutingGrantCustody({ storage });
+    const responseA = deferred<Response>();
+    let requestStarted!: () => void;
+    const started = new Promise<void>((resolve) => (requestStarted = resolve));
+    const trustStore = { read: async () => trustRecord };
+
+    const redeemA = redeemBrokerRouteInvitation({
+      invitation: invitationA,
+      trustRecord,
+      trustStore,
+      custody,
+      request: async () => {
+        requestStarted();
+        return responseA.promise;
+      },
+    });
+    await started;
+    const redeemB = redeemBrokerRouteInvitation({
+      invitation: invitationB,
+      trustRecord,
+      trustStore,
+      custody,
+      request: async () => jsonResponse(grantB),
+    });
+    await expect(redeemA).rejects.toThrow('broker_grant_stale');
+    await redeemB;
+    responseA.resolve(jsonResponse(grantA));
+
+    expect(custody.capture().id).toBe(grantB.credential.id);
+    expect([...storage.entries.values()]).toEqual([grantB]);
+  });
+
+  test('forgetLocal cancels a pending redemption before its response arrives', async () => {
+    const { trust, trustRecord } = await trustFixture();
+    const invitation = await invitationFor(trust);
+    const storage = new MemoryGrantStorage();
+    const custody = new BrowserRoutingGrantCustody({ storage });
+    const response = deferred<Response>();
+    let requestStarted!: () => void;
+    const started = new Promise<void>((resolve) => (requestStarted = resolve));
+    const pending = redeemBrokerRouteInvitation({
+      invitation,
+      trustRecord,
+      trustStore: { read: async () => trustRecord },
+      custody,
+      request: async () => {
+        requestStarted();
+        return response.promise;
+      },
+    });
+    await started;
+    await custody.forgetLocal();
+    await expect(pending).rejects.toThrow('broker_grant_stale');
+    response.resolve(jsonResponse(grantFor(invitation)));
+    expect(storage.entries.size).toBe(0);
+    expect(() => custody.capture()).toThrow('broker_credential_unavailable');
+  });
+
+  test('abort during post-response trust read prevents custody installation', async () => {
+    const { trust, trustRecord } = await trustFixture();
+    const invitation = await invitationFor(trust);
+    const storage = new MemoryGrantStorage();
+    const custody = new BrowserRoutingGrantCustody({ storage });
+    const trustRead = deferred<DeviceConnectionTrustRecord | null>();
+    let postResponseReadStarted!: () => void;
+    const started = new Promise<void>(
+      (resolve) => (postResponseReadStarted = resolve),
+    );
+    let readCount = 0;
+    const trustStore = {
+      read: async () => {
+        readCount += 1;
+        if (readCount === 2) {
+          postResponseReadStarted();
+          return trustRead.promise;
+        }
+        return trustRecord;
+      },
+    };
+    const controller = new AbortController();
+    const pending = redeemBrokerRouteInvitation({
+      invitation,
+      trustRecord,
+      trustStore,
+      custody,
+      signal: controller.signal,
+      request: async () => jsonResponse(grantFor(invitation)),
+    });
+    await started;
+    controller.abort(new Error('user-cancelled'));
+    await expect(pending).rejects.toThrow('user-cancelled');
+    trustRead.resolve(trustRecord);
+    expect(storage.entries.size).toBe(0);
+    expect(() => custody.capture()).toThrow('broker_credential_unavailable');
   });
 
   test('rechecks signing generation on restore and at each connection start', async () => {
@@ -432,5 +541,38 @@ describe('broker route invitation enrollment and custody', () => {
 
     expect(custody.capture().id).toBe(replacement.credential.id);
     expect([...storage.entries.values()]).toEqual([replacement]);
+  });
+
+  test('route cleanup invalidates a replacement awaiting its first trust read', async () => {
+    const { trust, trustRecord } = await trustFixture();
+    const invitation = await invitationFor(trust);
+    const storage = new MemoryGrantStorage();
+    const custody = new BrowserRoutingGrantCustody({ storage });
+    const pendingTrust = deferred<DeviceConnectionTrustRecord | null>();
+    let trustReadStarted!: () => void;
+    const started = new Promise<void>(
+      (resolve) => (trustReadStarted = resolve),
+    );
+    const trustStore = {
+      read: async () => {
+        trustReadStarted();
+        return pendingTrust.promise;
+      },
+    };
+
+    const replacing = custody.replace(
+      grantFor(invitation),
+      trustRecord,
+      trustStore,
+    );
+    await started;
+    await custody.forgetRoute({
+      brokerOrigin: BROKER_ORIGIN,
+      scope: invitation.scope,
+    });
+    pendingTrust.resolve(trustRecord);
+    await expect(replacing).rejects.toThrow('broker_grant_stale');
+    expect(storage.entries.size).toBe(0);
+    expect(() => custody.capture()).toThrow('broker_credential_unavailable');
   });
 });

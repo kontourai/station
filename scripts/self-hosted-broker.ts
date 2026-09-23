@@ -286,12 +286,7 @@ if (mode === 'invite' || mode === 'grants' || mode === 'revoke') {
         stationSigningKeyId: details.stationSigningKeyId,
         stationSigningGeneration: details.stationSigningGeneration as number,
       });
-      const delivery = {
-        version: 'station-broker-invitation-delivery/v1',
-        invitation,
-        link: `${invitation.scope.browserOrigin}/connections/computers#relay-invite=${Buffer.from(JSON.stringify(invitation), 'utf8').toString('base64url')}`,
-      };
-      writeFileSync(outputPath, JSON.stringify(delivery), {
+      writeFileSync(outputPath, JSON.stringify(invitation), {
         flag: 'wx',
         mode: 0o600,
       });

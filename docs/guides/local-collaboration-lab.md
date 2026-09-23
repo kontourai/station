@@ -520,9 +520,11 @@ private output path. The request is:
 }
 ```
 
-The CLI writes a mode-0600 output file under a private directory. It contains
-the typed invitation and a `/connections/computers#relay-invite=...` link; the
-one-use secret is in the fragment, never the query or CLI output. Invitations
+The CLI writes a mode-0600 typed invitation file under a private directory;
+the one-use secret never enters a query string or CLI output. The browser
+contract can encode it into a `/connections/computers#relay-invite=...`
+fragment, but the ordinary Connections UI does not consume that link yet. Do
+not distribute it as a working in-app invitation. Invitations
 expire within five minutes. A redeemed grant lasts at most 30 days and permits
 broker signaling only; expiry, a lost successful redemption response, or lost
 local custody requires a newly issued invitation. `grants` lists secret-free
