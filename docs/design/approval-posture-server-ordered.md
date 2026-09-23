@@ -167,174 +167,229 @@ and `/chat/:conversationId/continue`. Those routes already carry
 
 ## 4. Design
 
+The design was revised in a review fix round. The review found two paths
+that did not meet the bar (HIGH-1 and HIGH-2), and the round also added
+compare-and-set (MEDIUM-1). Two owner decisions came with it: escalation
+authority (§4.8) and an Agent-level default (§4.9). This section describes
+the design as built.
+
 ### 4.1 Contract
 
 - **The event.** A new `SessionApprovalModeSetEvent`
   (`method: 'session.approval-mode-set'`, with `sessionId` and
   `approvalMode: ApprovalMode`) is added to the `CanonicalRuntimeEvent` union.
   Station emits it. No engine does.
-- **The command.** A new `{ type: 'setApprovalMode'; threadId; approvalMode }`
-  is added to `OrchestrationCommand` and to the `/commands` body schema. The
-  result is `{ threadId, approvalMode, sequence }`, where `sequence` is the
-  event's global sequence.
-- **Carried decisions.** `setApprovalMode?: ApprovalMode` is added to
-  `OrchestrationSendTurnInput`, to the session-start input, and to the
-  foreground `/chat` and continue bodies.
-  - A decision carried by a send is recorded when the server receives it,
-    before that send's session start or turn is applied.
-  - This is how a pick made before the chat has any session, or a pick made
-    offline, reaches the server ordered at its receipt.
+- **The command.** A new
+  `{ type: 'setApprovalMode'; threadId; approvalMode; basedOnSequence? }` is
+  added to `OrchestrationCommand` and to the `/commands` body schema.
+  - The result is `SetApprovalModeResult`, which is
+    `{ threadId, recorded, approvalMode, sequence }`.
+  - `sequence` is the standing decision's global sequence.
+  - `recorded: false` means compare-and-set lost (§4.6). In that case
+    `approvalMode` and `sequence` name the newer decision that stands.
+- **Carried picks.** `setApprovalMode` and `setApprovalModeBasedOn` are added
+  to the foreground `/chat` body, the continue body and
+  `ForegroundMessageInput`.
+  - The foreground executor records a carried pick **before** the send's
+    session start and turn. The spawn is therefore already in it, and it is
+    ordered by this receipt.
+  - The executor reports the result on the receipt as `approvalMode`.
+  - `OrchestrationSendTurnInput` and the session-start input carry no pick.
+- **The refusal.** `APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE`
+  (`approval-full-access-not-granted`) is returned with status 403 (§4.8).
+- **The Agent default.** `AgentExecutionConfig.approvalMode` is new (§4.9).
 
 ### 4.2 Server application: one resolution at every start and turn
 
-`OrchestrationService.resolveApprovalMode(threadId, carried)` resolves the
-posture as follows:
+`ApprovalPosture.resolve` (`src-server/services/orchestration/approval-posture.ts`)
+decides the `modelOptions` of every start and turn. It applies only to an
+engine with an approval knob, and it resolves in this order:
 
-1. The latest `session.approval-mode-set` across the thread's conversation
-   (every session in its lineage), ordered by global sequence.
-2. Otherwise, the `modelOptions.approvalMode` the start or turn carried. This
-   is the default channel: the Station or connection default the UI sends when
-   a session starts, and the CLI's `--approval-mode`. Its behaviour does not
-   change, and it is never recorded as a decision.
+1. **The latest recorded decision** across the thread's conversation (every
+   session in its lineage), by global sequence. A recorded Default resolves
+   through §4.3.
+2. **Otherwise, a posture the start or turn itself carries** on
+   `modelOptions.approvalMode`. Examples are `station chat --approval-mode`,
+   and an older client or remote Station.
+   - The UI no longer sends one.
+   - Accepted residual (MEDIUM-2): a stale client can still send one while
+     nothing is recorded. That is the same as `main`, where every client sent
+     it.
+3. **Otherwise, at a session start only, the defaults.** These are the
+   Agent's own (§4.9), then this Station's `AppConfig.defaultApprovalMode`.
+   - The server resolves them, so the Station default no longer depends on
+     the client that started the session.
+   - A turn on a live session carries no default. A default is the posture a
+     session starts in, and re-requesting it would let an edit of the setting
+     reconfigure a running chat (#2144 slice 6).
 
-A recorded posture replaces whatever the turn carried. The resolved value is
-written into `modelOptions.approvalMode` only for an adapter whose
-`unsupportedModelOptionKeys` admits it. It is applied at:
+It is applied at:
 
-- `sendTurn` (`:5433`);
-- `startSession`, through both dispatch paths;
-- `materializeRecoveredSession`. This means a dormant thread is restored at its
-  recorded posture, which closes the posture loss found in §3.1.
+- `sendTurn`;
+- `prepareStart`, the common path for every session start;
+- a dormant session's respawn (`materializeRecoveredSession`);
+- a credential-profile recovery restart and its replay (HIGH-2), through
+  `withApprovalPostureForStart` and `replayModelOptionsWithPosture`. Before
+  this round, the replay reused the source turn's posture directly on
+  `adapter.sendTurn`. That undid any tightening recorded since.
 
 The posture is scoped to the conversation rather than to one thread. That is
 forced by the invariant. A continuation child is a new thread, and starting it
-at the defaults would be looser than a recorded Ask whenever the Station
-default is looser.
+at the defaults would be looser than a recorded Ask whenever a default is
+looser.
 
-### 4.3 Station's default, and the Default pick (#2409)
+### 4.3 The Default pick (#2409)
 
-- **Station's default is unchanged.** It is resolved client-side and sent only
-  on a message that starts a session (`approvalModeForDispatch`). It rides the
-  default channel, so it is never recorded and never outranks a recorded
-  decision.
-- **A Default pick** records `connection-default`. At a start or turn, that
-  resolves to a concrete posture in this order:
-  1. `AppConfig.defaultApprovalMode`. The server reads it through the new
-     `resolveStationDefaultApprovalMode` option, wired like
-     `resolveStationDefaultWorkspaceIsolation`
-     (`runtime-initialize.ts:605`) and loaded per call.
-     - The option's signature also accepts the connection id. The engine
-       connection's own `config.approvalMode` is not consulted on the server
-       yet, because the only server reader of it is the full
-       connection-inventory listing, and that is too heavy to run on every
-       turn start.
-     - The chip shows whatever the engine reports as applied once a turn has
-       run, so what it names cannot drift from what the engine did (§8).
-  2. If neither is set and Station has put a concrete posture on this live
-     thread, the result is **`ask`**. This is the engine's own standard mode:
-     Claude's `default` permission mode, and Codex's
-     `untrusted`/`workspace-write`. The engine is then actually moved off
-     bypass. The applied report then names Ask first, and the chip shows
-     "Default" with that applied posture in its accessible name.
-     - Station has put a posture on the thread when the service itself passed
-       a concrete `approvalMode` to that thread's start or turn. This is
-       tracked per thread in the service and cleared on `session.exited`.
-     - The engine's own configured default cannot be observed once Station has
-       overridden it at spawn, so `ask` is the concrete choice. It is at least
-       as strict as every other posture.
-  3. Otherwise nothing is sent, and the engine keeps its own configuration
-     (#1950).
+A Default pick records `connection-default`. At a start or turn it resolves in
+this order:
+
+1. **The Agent's default, then this Station's default.** The Station default
+   is read per call through `resolveStationDefaultApprovalMode`, wired like
+   `resolveStationDefaultWorkspaceIsolation`.
+2. **Else `ask`,** if Station has put a concrete posture on this live thread.
+   - `ask` is the engine's own standard mode: Claude's `default` permission
+     mode, and Codex's `untrusted`/`workspace-write`.
+   - The engine is actually moved off bypass. The applied report then names
+     Ask first.
+   - The engine's configured default cannot be observed once Station has
+     overridden it at spawn. `ask` is at least as strict as every other
+     posture.
+3. **Else nothing,** and the engine keeps its own configuration (#1950).
+
+An engine connection's `config.approvalMode` is **not** a layer.
+`sanitizeRuntimeConfig` persists only named keys, so no writer can ever set
+it. The client's display layer for it is replaced by the Agent default.
 
 ### 4.4 A session already running with a spawn-time posture
 
 A session spawned before this change has nothing recorded.
 
-- Its first recorded decision applies at its next turn, as a `modelOptions`
-  mode does today.
+- Its first recorded decision applies at its next turn.
 - Claude's spawn-only bypass grant still applies. A recorded `never` on a
-  session spawned without bypass is refused by the adapter, with the existing
-  warning.
-- Server application would repeat that refusal on every turn, so the adapter
-  now warns once per session for the same refused target. `turn.started`
-  still reports `approvalEscalationRejected`. The chip reads that report and
-  says that full access needs a restart, not "next turn".
-- A child session started after that point spawns at `never` with bypass
+  session spawned without bypass is refused by the adapter.
+- The adapter warns once per refusal, not on every turn.
+  - `turn.started` still reports `approvalEscalationRejected`.
+  - The chip says the pick needs a restart, not that it takes effect next
+    turn.
+- A child session started after that point spawns at `never`, with bypass
   granted.
 
 ### 4.5 Codex and ACP per-turn posture
 
-- **Codex** already takes the knobs on every `turn/start`. The server now
-  always resolves a concrete pair when anything is recorded, so a Default pick
-  is no longer a no-op (§4.3).
+- **Codex** takes the knobs on every `turn/start`. The server resolves a
+  concrete pair whenever anything is recorded, so a Default pick is no longer
+  a no-op.
 - **ACP, Ollama, Bedrock, Muse and the Station agent** have no knob.
-  - The command is refused for a thread whose engine has no knob, with the
-    error "This engine has no approval control".
-  - A posture recorded while the conversation ran on a knob engine is not
-    sent to a no-knob engine after a handoff. It applies again if the
-    conversation returns to a knob engine.
-  - ACP's session `mode` is a separate control and is unchanged.
+  - The command is refused on them with "This engine has no approval control".
+  - A carried pick is not recorded for them.
+  - After a handoff to such an engine, a recorded posture is not sent to it.
+  - ACP's session `mode` is a separate control.
 
-### 4.6 Offline and early picks
+### 4.6 Offline and early picks, and compare-and-set (MEDIUM-1)
 
-- **Online, with a session that exists server-side.** The pick handler sends
-  `setApprovalMode` at once. Until the result arrives, the pick is held as
-  `queuedApprovalMode`, and the chip shows it as requested.
-- **Offline, a failed command, or a chat with no session yet.** The pick stays
-  in `queuedApprovalMode`, which is persisted. The next composer send, offline
-  replay or drain carries it as `setApprovalMode`, and the server records it
-  when it receives it.
-  - An offline pick is therefore ordered by when the server receives it, not
-    by when the user picked it. That is the honest order: it is when the
-    decision became known to everyone else.
+- **Online, with a session.** The pick handler sends `setApprovalMode` at once.
+  Until the result arrives the pick is held as `queuedApprovalMode`.
+- **Offline, a failed command, or no session yet.** The pick stays queued, and
+  the queue is persisted. The next composer send, offline replay or drain
+  carries it.
+- **Compare-and-set.** Every pick names the latest decision sequence the chat
+  had folded when the user picked. `null` means it had folded none.
+  - The server records the pick only if no newer decision exists for the
+    conversation. Otherwise it drops the pick and returns the standing
+    decision.
+  - The client folds that decision, clears the queue, and adds a one-line
+    note: "Your approval pick was not applied: another device had already set
+    it to …".
+  - An API caller that sends no basis records unconditionally.
+  - The check and the append are one synchronous step.
+- **What this closes.**
+  - **G-off.** An offline full access that never saw the phone's later Ask is
+    dropped.
+  - **The duplicate-carry race.** The command and a send that carries the same
+    queued pick record it once.
+  - **The spawn window.** A carried pick is recorded before its session
+    starts.
 
 ### 4.7 The client fold and the chip
 
-- **Chat state.** `ChatUIState` keeps:
-  - `approvalPosture` and `approvalPostureSequence`, the latest recorded
-    decision and its global sequence;
+- **Chat state.** A chat keeps these fields:
+  - `approvalPosture` and `approvalPostureSequence`;
   - `queuedApprovalMode`;
-  - `lastAppliedApprovalMode`, the engine's report, unchanged;
-  - `approvalEscalationRejected`, from `turn.started` metadata.
-- **Sources of the posture fold.** The fold takes values from
-  `session.approval-mode-set` events, which use the SSE `id` as their
-  sequence, and from the command result.
-  - A send that carried a queued pick has succeeded only once the server has
-    recorded that pick. The client then holds it as the posture, with an
-    unknown sequence, until the event itself arrives.
-  - A value replaces the current one only when its sequence is newer, or when
-    either sequence is unknown. Because an HTTP result and the SSE stream can
-    interleave, the display can briefly show an older value. It converges when
-    the event arrives. The engine is never affected by this.
+  - `lastAppliedApprovalMode`;
+  - `approvalEscalationRejected`.
+- **Sources of the fold.** The posture is folded from three places:
+  `session.approval-mode-set` events, which are ordered by the SSE `id`; the
+  command result; and the result a send reports.
+- **A carried pick is settled only by a reported result, never by the send
+  succeeding.**
+  - A Station that reports nothing leaves the pick queued, and the next send
+    carries it again. That Station is either an older one, or another Station
+    this send was forwarded to that predates the command.
+  - This matches how those Stations always treated the options channel.
 - **Chip states.** The chip shows the queued pick, else a concrete recorded
-  posture.
-  - Its state is `requested` until an applied report matches it, then
-    `confirmed`.
-  - "Takes effect next turn" is now true on every send path, so #2449's
-    `unconfirmed` state and its copy are removed.
-- **Removed.**
-  - The pending and confirmed fields and their stamps.
-  - `settleApprovalPick`, `approvalModeToSend`, `approvalPickUpdate` and
-    `approvalPickOverridingDefaults`.
-  - The stricter-only rule.
-  - The per-send resend.
-  - The client's "latest position seen" tracker, and
-    `chatSessionKnownEnded`. `streamPosition.ts` keeps only each event's own
-    position, which is what the fold orders by.
+  posture, else the defaults.
+  - A recorded pick is `requested`, then `confirmed`. It is `refused` when it
+    is a full access Claude refused.
+  - The Agent's default reads, for example, "Full access (agent default)". It
+    says so only while the engine has reported nothing different.
+- **Refusal.** A 403 `approval-full-access-not-granted` on the command, or on
+  a send that carried the pick, drops the queued pick with a note. It is not
+  retried, because it could only be refused again.
+- **Removed.** The pending and confirmed fields, the stricter-only rule, the
+  per-send resend, the client-side default resolution
+  (`approvalModeForDispatch`, `approvalModeFallback`), and the connection
+  default display layer.
 
-### 4.8 Who may set posture
+### 4.8 Who may set posture (owner decision: escalation authority)
 
-The command inherits the tier of `/commands`, which is `orchestration:operate`.
-This is the same tier that already sends a turn carrying
-`modelOptions.approvalMode`, including `never`.
+- **Tightening is open.** Any `orchestration:operate` caller may tighten to
+  Ask or Auto, or pick Default.
+- **Full access (`never`) is gated.** It needs the operator in person, or a
+  device holding the new operator-promotion scope `approval:full-access`.
+  - The scope is in no preset and never in the default grant, like
+    `engine:login` and #2412's `coding:exec`.
+  - The operator grants it once per device, in the device access editor
+    ("Allow full access").
+- **One derivation.** The check is `mayGrantFullAccess` in
+  `src-server/security/coding-authority.ts`, next to #2412's
+  `mayRunCommandsOnHost`. It shares the same `isOperatorInPerson`.
+- **Where it is enforced.** `routes/orchestration/approval-authority.ts`
+  enforces it on every route that can put a session at full access:
+  - `/commands` `setApprovalMode`;
+  - `/chat`, `/chat/delegated` and `/chat/background` (a carried pick, or
+    `target.model.options.approvalMode`);
+  - `/chat/:id/continue`;
+  - the conversation handoff;
+  - `/delegations`, and a delegation continue;
+  - task dispatch (`runtimeConfig.modelOptions`).
+- **The refusal.** It is 403 with `approval-full-access-not-granted`, decided
+  before the send or the command has any effect.
+- **Who can reach a session at all.** Command authorization
+  (`canReadSessionForCommand`) admits only the session owner's own
+  principals. There is no multi-user shared session to decide for.
 
-Command authorization (`canReadSessionForCommand`,
-`session-authorization.ts:489`) admits only the session owner and that owner's
-own principals: the operator and paired devices. It admits no other human
-member.
+### 4.9 An Agent's default posture (owner request)
 
-So the command grants no authority that does not already exist, and there is
-no multi-user shared session for which "who may set it" is a new question.
-This is reported as a choice, not a fork.
+- **Field.** `AgentSpec.execution.approvalMode`. It sits under `execution`
+  next to `credentialProfileRef`. Like that field, it is a per-Agent engine
+  execution setting, read by the server where the engine session starts, and
+  meaningful only on an engine with an approval knob.
+- **Precedence at a session start:** the recorded decision, then the Agent's
+  default, then the Station's. A Default pick returns to the Agent's default.
+  A member can tighten below it at any time.
+- **Write authority.** Saving `never` needs the same authority as §4.8.
+  - Every Agent write from outside the server goes through `POST /agents` or
+    `PUT /agents/:slug`: the editor, the SDK and CLI, and the Station-control
+    MCP tools, whose schema does not accept `execution` at all.
+  - Only raising a default to `never` is gated. An edit that leaves an
+    existing `never` default as it is (a client resending the whole
+    `execution` block) is not.
+  - Agents have no per-member edit rights. Any operate caller may edit any
+    Agent, global or Project-scoped, so the gate is by device authority, not
+    by Project membership.
+- **Display.** The chip shows the Agent's default. The Agent editor's Engine
+  section has the "Default approval mode" field, and it names what full access
+  means.
 
 ## 5. Migration of persisted chats
 
@@ -346,10 +401,10 @@ This is reported as a choice, not a fork.
   `providerOptions`.
 - It takes the first of: a pending pick, a confirmed pick, or the bag value.
 - If that value is `ask` or `auto`, it becomes `queuedApprovalMode`, so the
-  decision is recorded on the next send. A pending `never` is kept, because it
-  was an explicit request that had not been sent.
-- A confirmed or bag `never` is dropped, as #2449 did, so stale state never
-  re-escalates.
+  decision is recorded on the next send.
+- Full access is dropped in every form, including an unsent #2449 pending
+  `never`. Stale state never re-escalates, and full access now needs an
+  authority the old build never checked.
 - `connection-default` is dropped.
 
 ## 6. Tests
@@ -358,37 +413,48 @@ The acceptance bar is the invariant.
 
 - **The probe table, end to end**
   (`src-server/routes/orchestration/__tests__/approval-posture.lifecycle.test.ts`).
-  This drives the real `/chat`, `/chat/:id/continue` and `/commands` routes,
-  the real foreground executor, the real `OrchestrationService` and the real
-  event store, with a fake engine.
-  - The #2449 probe table is re-derived under server order (§7). Devices are
-    modelled as commands. An offline pick is a pick carried on a later send.
-  - Every turn completes, so each continuation is a new child session, and
-    the posture has to carry across the children.
-  - A malformed mode is refused on `/commands`.
+  - It drives the real `/chat`, `/chat/:id/continue` and `/commands` routes,
+    the real foreground executor, the real `OrchestrationService` and the real
+    event store.
+  - The desktop client is modelled with its folded sequence, which it sends
+    as the compare-and-set basis.
 - **The service**
   (`src-server/services/orchestration/__tests__/approval-posture.test.ts`).
-  This drives the real command path on one live session. It covers:
-  - the recorded event and its sequence;
-  - M1;
-  - a same-posture re-pick from another device;
-  - the ordering of a carried offline pick;
-  - the respawn of a dormant session;
-  - Codex;
-  - refusal on an engine with no approval control;
-  - each #2409 Default case.
-- **Client lifecycle** (`approvalPick.lifecycle.test.tsx`). This goes through
-  the real `useChatInput`, send hook, drain, event fold and `ApprovalModeChip`.
   It covers:
-  - the pick becoming a command, or staying queued offline;
-  - the queued pick riding the next send;
-  - the fold ordering by sequence;
-  - the chip's states;
+  - the recorded event;
+  - M1;
+  - a same-posture re-pick;
+  - compare-and-set: G-off, a basis of `null`, the duplicate-carry race, and
+    the spawn window;
+  - dormant respawn;
+  - the credential-profile recovery replay (HIGH-2);
+  - Codex, and refusal on an engine with no knob;
+  - Agent-default precedence;
+  - each #2409 Default case.
+- **Remote carry** (`src-server/tools/__tests__/station-control-delegation.test.ts`).
+  A `/chat` send and a continue to another Station are parsed with the
+  pre-#2436 schemas, which strip unknown keys. The pick still arrives on
+  `model.options.approvalMode`.
+- **Escalation authority**
+  (`src-server/routes/orchestration/__tests__/approval-full-access-authority.routes.test.ts`).
+  This uses the real pairing, the real auth boundary and the real routes. It
+  covers:
+  - an operate device refused on `never` and allowed on Ask, Auto and Default;
+  - the operator in person;
+  - a granted device;
+  - a revoked grant;
+  - sends refused before running;
+  - Agent writes, from a delegation device and from the operator.
+- **Client lifecycle** (`approvalPick.lifecycle.test.tsx`). It covers:
+  - the pick as a command, and the compare-and-set basis;
+  - a superseded note;
+  - a result-only settle, including a Station that reports nothing;
+  - the refusal;
+  - the fold order;
+  - the chip;
   - the migration.
-- **#2418.** Every path in §3.4 ends at `sendTurn`. The server test sends turns
-  with no posture through the two public entry points those paths use
-  (`/chat` and `/chat/:id/continue`) and asserts the recorded posture on the
-  engine.
+- **Agent editor** (`AgentEditorApprovalDefault.test.tsx`): the field, and
+  that it round-trips through an unrelated save.
 
 ## 7. The probe table under server order
 
@@ -401,7 +467,7 @@ This is the engine posture at the next turn start. "Decision" means a recorded
 | E2 | E, with a desktop reload in between | Ask | Ask |
 | E3 | Never decided, a reload, then the phone decides Ask unseen | Ask | Ask |
 | G | Desktop decides never online, then the phone decides Ask | Ask | Ask |
-| G-off | Desktop picks never offline, the phone decides Ask, then the desktop reconnects and sends | Ask | **never**: received last, so it is the latest decision |
+| G-off | Desktop picks never offline, the phone decides Ask, then the desktop reconnects and sends | Ask | Ask: the offline pick never saw Ask, so compare-and-set drops it |
 | R | Desktop decides Ask, then the phone decides never | Ask | **never**: the latest decision |
 | R-report | Desktop decides Ask, and the phone's turn only *reports* never | Ask | Ask |
 | T1 | Ask picked offline, looser reports replayed | Ask | Ask |
@@ -416,27 +482,28 @@ This is the engine posture at the next turn start. "Decision" means a recorded
 | M1 | Auto decided, the phone decides Ask while the desktop is disconnected, then the desktop sends | Auto (M1) | **Ask** |
 
 Every "never" in the right-hand column is the user's latest decision in
-server order. No row leaves the engine more permissive than that decision.
-The rows where #2449 applied Ask because a later decision was invisible to it
-now follow that later decision. That is the ordering the owner decided on.
+server order, made by a caller allowed to grant full access (§4.8). No row
+leaves the engine more permissive than that decision.
 
 ## 8. Boundaries and non-goals
 
 - **A running turn keeps its posture until the next turn starts,** as on
-  `main` and on #2449. A tightening made mid-turn applies at the next turn
-  start. Applying it mid-turn through Claude's live `setPermissionMode` is a
-  possible follow-up and is not in this change.
-- **Remote Environments.** The foreground executor can send turns to another
-  Station. A carried `setApprovalMode` is forwarded only as far as that
-  Station's own contract accepts it, and an older remote Station ignores it.
-  Posture on a remote conversation is not covered.
-- **A connection's own approval default is not read on the server.** A Default
-  pick resolves to the Station default, or to `ask` (§4.3). If an engine
-  connection sets its own `config.approvalMode`, the chip still displays that
-  value until the first turn reports what the engine applied. This is a
-  display gap, and it errs toward the stricter posture.
+  `main`. A tightening made mid-turn applies at the next turn start.
+- **Remote Environments.** A pick sent to another Station travels both as
+  `setApprovalMode` and on `model.options.approvalMode`, so a Station that
+  predates the command still applies it (HIGH-1).
+  - The pick is settled only when that Station reports a result. Until then
+    it stays queued and is resent, as the options channel always was there.
+  - The pick command itself (`/commands`) addresses this Station, so for a
+    remote conversation the pick always rides the next send.
+- **Stale clients (MEDIUM-2, accepted).** While nothing is recorded, a posture
+  on `modelOptions.approvalMode` from a stale client applies, exactly as on
+  `main`. Once anything is recorded, the recorded decision outranks it. A
+  `never` there is subject to §4.8 like any other.
+- **Not gated:** plugin-contributed Agent definitions, and Agent files edited
+  on disk. Both are same-user, operator-installed channels, and neither goes
+  through the Agent write routes.
 - **The posture is not added to the session-summary snapshot.** A client that
-  reconnects through a snapshot folds the posture from the next event, or from
-  its own command result. The engine is correct either way, because the
-  server applies the posture. What the chip shows between a snapshot and the
-  next posture event is a display lag, not an enforcement gap.
+  reconnects through a snapshot folds the posture from the next event or from
+  its own result. The engine is correct either way, because the server applies
+  the posture.
