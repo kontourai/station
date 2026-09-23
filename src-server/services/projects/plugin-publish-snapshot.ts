@@ -89,7 +89,7 @@ export interface SnapshotLimits {
   maxDepth: number;
 }
 
-export const DEFAULT_SNAPSHOT_LIMITS: SnapshotLimits = {
+const DEFAULT_SNAPSHOT_LIMITS: SnapshotLimits = {
   maxFiles: 1000,
   maxBytes: 50 * 1024 * 1024,
   maxDepth: 32,
@@ -134,7 +134,7 @@ function codePoints(text: string): number[] {
  * in any case, with ignorable characters or trailing dots and spaces
  * (Windows drops those), and its 8.3 short name.
  */
-export function isGitMetadataName(name: string): boolean {
+function isGitMetadataName(name: string): boolean {
   const folded = String.fromCodePoint(
     ...codePoints(name).filter((code) => !isIgnorable(code)),
   )
