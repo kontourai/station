@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { BASIS_MCP_APP_MANIFEST } from './basis-mcp-app-manifest.mjs';
 
@@ -31,8 +31,45 @@ export function biomeFormatterInvocation(
   };
 }
 
+/**
+ * Zod's core re-exports every message locale as one `locales` namespace, and
+ * `import { z } from 'zod'` (how `@kontourai/thread` reaches it) escapes that
+ * namespace, so esbuild cannot tree-shake it: ~250 KB of dead translations in
+ * an app whose ceiling is 480 KiB. The zod 4.4.3 -> 4.5.4 bump (#1886) took
+ * the Task Basis app from 465,833 to 572,702 bytes of script and every MCP
+ * interop E2E over its size bound (CI Extended run 35449087505).
+ *
+ * Nothing in these apps selects a locale. Zod's default English messages are
+ * imported directly by its schemas (`classic/schemas.js` -> `locales/en.js`)
+ * and are unaffected. Only the aggregate is replaced: `z.locales.en` stays,
+ * every other `z.locales.*` is absent in these bundles. A future caller that
+ * needs another locale must import it by path, not through the aggregate.
+ */
+export const ZOD_LOCALE_AGGREGATE_PLUGIN = Object.freeze({
+  name: 'station-zod-locale-aggregate',
+  setup(pluginBuild) {
+    pluginBuild.onResolve({ filter: /[\\/]locales[\\/]index\.js$/ }, (args) =>
+      /[\\/]node_modules[\\/]zod[\\/]/.test(args.importer)
+        ? {
+            path: resolve(args.resolveDir, args.path),
+            namespace: 'station-zod-locales',
+          }
+        : undefined,
+    );
+    pluginBuild.onLoad(
+      { filter: /.*/, namespace: 'station-zod-locales' },
+      (args) => ({
+        contents: "export { default as en } from './en.js';\n",
+        resolveDir: dirname(args.path),
+        loader: 'js',
+      }),
+    );
+  },
+});
+
 async function buildOnce(app) {
   const result = await build({
+    plugins: [ZOD_LOCALE_AGGREGATE_PLUGIN],
     entryPoints: [resolve(root, app.entry)],
     bundle: true,
     format: 'iife',

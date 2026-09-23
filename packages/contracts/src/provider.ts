@@ -646,6 +646,18 @@ export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 export const ENGINE_TURN_FAILED_CODE = 'engine-turn-failed';
 
 /**
+ * #2269: `runtime.error` codes for a Muse turn that a Station-owned deadline
+ * ended — a full idle window with no verified activity and no tool reported running,
+ * or the turn budget a server-owned caller declared. Neither reports an
+ * engine or connection failure. Published by the Muse adapter; the UI reads
+ * them so its copy names the deadline instead of guessing at a cause.
+ * `muse-turn-timeout` predates #2269 and keeps its string for existing
+ * attribution.
+ */
+export const MUSE_TURN_IDLE_TIMEOUT_CODE = 'muse-turn-idle-timeout';
+export const MUSE_TURN_TOTAL_TIMEOUT_CODE = 'muse-turn-timeout';
+
+/**
  * Whether Station owns an orchestration session or only follows it.
  *
  * Older persisted sessions omit this field and are treated as station-owned
