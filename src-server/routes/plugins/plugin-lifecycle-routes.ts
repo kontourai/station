@@ -727,6 +727,10 @@ export function registerPluginLifecycleRoutes(
                     await execGit(['pull', '--ff-only'], {
                       cwd: pluginDir,
                       timeout: 30000,
+                      // Station-owned plugin directory; its origin is the
+                      // source the operator installed from, which may be a
+                      // local git path (#2363).
+                      hardening: { allowFileProtocol: true },
                     });
                   } else {
                     throw new PluginUpdateRejectedError(

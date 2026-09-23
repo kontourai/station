@@ -648,8 +648,12 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     execGitSync(['config', 'user.name', 'Station Test'], { cwd: sourceRepo });
     execGitSync(['add', 'plugin.json'], { cwd: sourceRepo });
     execGitSync(['commit', '-m', 'initial plugin'], { cwd: sourceRepo });
+    // Fixture setup: a local-path clone needs the `file` transport opt-in
+    // (#2363). The provider's own clone of `./registry-demo.git` below opts
+    // in by itself, because the source is a local path.
     execGitSync(['clone', '--bare', sourceRepo, bareRepo], {
       cwd: projectHome,
+      hardening: { allowFileProtocol: true },
     });
     writeFileSync(
       join(installedPluginDir, 'plugin.json'),

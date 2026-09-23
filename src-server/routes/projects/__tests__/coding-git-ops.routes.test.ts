@@ -84,23 +84,28 @@ describe('coding git-ops routes (real git, no mocks)', () => {
     expect(git(repo, 'log', '-1', '--format=%s')).toBe('add file.txt');
   });
 
-  test('push updates the real bare remote', async () => {
-    const localHead = git(repo, 'rev-parse', 'HEAD');
+  test('push to a local-path remote is refused by the transport allowlist (#2363)', async () => {
+    // A push to a local path runs the TARGET repository's hooks, so Station's
+    // git allows only https and ssh. The bare remote here is a local path.
     const res = await post('/git/push', {
       path: repo,
       remote: 'origin',
       branch: 'main',
       setUpstream: true,
     });
-    expect(res.status).toBe(200);
-    expect(res.json.success).toBe(true);
+    expect(res.status).toBe(400);
+    expect(res.json.success).toBe(false);
+    expect(res.json.error).toContain("transport 'file' not allowed");
 
-    const remoteHead = (
-      execGitSync(['--git-dir', bare, 'rev-parse', 'refs/heads/main'], {
-        encoding: 'utf-8',
-      }) as string
-    ).trim();
-    expect(remoteHead).toBe(localHead);
+    expect(() =>
+      execGitSync(
+        ['--git-dir', bare, 'rev-parse', '--verify', 'refs/heads/main'],
+        {
+          encoding: 'utf-8',
+          stdio: 'pipe',
+        },
+      ),
+    ).toThrow();
   });
 
   test('checkout of a non-existent branch fails with 400 (no state change)', async () => {

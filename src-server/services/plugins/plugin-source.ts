@@ -28,7 +28,7 @@ import {
 } from '@kontourai/station-contracts/plugin';
 import { errorMessage } from '../../routes/schemas/schemas.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
-import { execGit } from '../../utils/git-exec.js';
+import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
 import {
@@ -511,8 +511,13 @@ export async function fetchPluginSource(
     const cloneArgs = ['clone', '--depth', '1'];
     if (branch) cloneArgs.push('--branch', branch);
     cloneArgs.push(url, tempDir);
+    // A local path (`/path/to/plugin.git`) is a supported plugin source, and
+    // git clones one over its `file` transport; allowed for exactly that
+    // case. The URL is the operator's (or their registry's), not a Project
+    // member's, and a clone has no repository configuration to redirect it.
+    const hardening = { allowFileProtocol: isLocalGitSource(url) };
     try {
-      await execGit(cloneArgs, { timeout: 30000 });
+      await execGit(cloneArgs, { timeout: 30000, hardening });
     } catch (error) {
       logger.debug('Failed to clone with branch, retrying without', { error });
       rmSync(tempDir, { recursive: true, force: true });
@@ -520,6 +525,7 @@ export async function fetchPluginSource(
       try {
         await execGit(['clone', '--depth', '1', url, tempDir], {
           timeout: 30000,
+          hardening,
         });
       } catch (cloneError: unknown) {
         rmSync(tempDir, { recursive: true, force: true });

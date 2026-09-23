@@ -12,7 +12,7 @@ import { scanInstalledPluginInventory } from '../../services/plugins/installed-p
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { execGitSync } from '../../utils/git-exec.js';
+import { execGitSync, isLocalGitSource } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
@@ -267,7 +267,12 @@ export class JsonManifestRegistryProvider
         if (branch) cloneArgs.push('--branch', branch);
         cloneArgs.push(url, tempDir);
 
-        execGitSync(cloneArgs, { timeout: 30000 });
+        // A registry may name a local git path; git clones one over its
+        // `file` transport, allowed for exactly that case (#2363).
+        execGitSync(cloneArgs, {
+          timeout: 30000,
+          hardening: { allowFileProtocol: isLocalGitSource(url) },
+        });
       } else {
         if (!existsSync(resolvedSource)) {
           throw new Error(`Source not found: ${resolvedSource}`);
