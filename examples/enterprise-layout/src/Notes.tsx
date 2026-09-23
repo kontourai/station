@@ -7,6 +7,8 @@ import { NotesSidebar } from './components/NotesSidebar';
 import { useEnhanceNote, useHasVault, useVaultSave } from './data';
 import {
   type NoteFrontmatter,
+  type NoteSummary,
+  toNoteSummary,
   useDeleteNote,
   useFilteredNotes,
   useNoteContent,
@@ -15,6 +17,7 @@ import {
   useUpdateNote,
 } from './data/notes-hooks';
 import { useProjectSlug } from './hooks/useProjectSlug';
+import type { KnowledgeDocumentMeta } from './types/knowledge';
 
 interface NoteFilter {
   query: string;
@@ -36,7 +39,8 @@ export function Notes() {
   const projectSlug = useProjectSlug();
 
   // Navigation state
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selected, setSelected] = useState<NoteSummary | null>(null);
+  const selectedPath = selected?.path ?? null;
   const [filter, setFilter] = useState<NoteFilter>(EMPTY_FILTER);
 
   // Editor state
@@ -53,7 +57,7 @@ export function Notes() {
     type: filter.type || undefined,
     status: filter.status || undefined,
   });
-  const noteContent = useNoteContent(isNew ? null : selectedPath);
+  const noteContent = useNoteContent(isNew ? null : (selected?.docId ?? null));
   const saveNote = useSaveNote();
   const updateNote = useUpdateNote();
   const deleteNote = useDeleteNote();
@@ -61,17 +65,17 @@ export function Notes() {
   const hasVault = useHasVault(projectSlug ?? undefined);
   const vaultSave = useVaultSave(projectSlug ?? '', 'enterprise-notes');
 
-  // Sync loaded note into editor
-  const loadedContent = noteContent.data?.content ?? '';
-  const loadedFm =
-    (noteContent.data?.frontmatter as NoteFrontmatter) ?? EMPTY_FM;
+  // Sync loaded note into editor. The content route returns the body only;
+  // frontmatter comes from the selected document's metadata.
+  const loadedContent = noteContent.data ?? '';
+  const loadedFm = selected?.frontmatter ?? EMPTY_FM;
 
-  function handleSelectNote(path: string) {
+  function handleSelectNote(note: NoteSummary) {
     if (dirty) {
       // Simple guard — could use useUnsavedGuard but Notes is self-contained
       if (!window.confirm('You have unsaved changes. Discard?')) return;
     }
-    setSelectedPath(path);
+    setSelected(note);
     setIsNew(false);
     setDirty(false);
     // Content will be loaded by useNoteContent
@@ -80,14 +84,19 @@ export function Notes() {
   }
 
   // Once note content loads, populate editor
-  if (!dirty && !isNew && noteContent.data && content !== loadedContent) {
+  if (
+    !dirty &&
+    !isNew &&
+    noteContent.data !== undefined &&
+    content !== loadedContent
+  ) {
     setContent(loadedContent);
     setFrontmatter(loadedFm);
   }
 
   function handleNew() {
     if (dirty && !window.confirm('You have unsaved changes. Discard?')) return;
-    setSelectedPath(null);
+    setSelected(null);
     setIsNew(true);
     setContent('');
     setFrontmatter(EMPTY_FM);
@@ -106,31 +115,30 @@ export function Notes() {
 
   const handleSave = useCallback(async () => {
     const title = frontmatter.title || 'Untitled';
-    const path =
-      selectedPath ??
-      `notes/${Date.now()}-${title.toLowerCase().replace(/\s+/g, '-')}.md`;
     try {
-      if (isNew || !selectedPath) {
-        await saveNote.mutateAsync({ path, content, frontmatter });
-        setSelectedPath(path);
+      if (isNew || !selected) {
+        const filename = `${Date.now()}-${title.toLowerCase().replace(/\s+/g, '-')}.md`;
+        const created: KnowledgeDocumentMeta = await saveNote.mutateAsync({
+          filename,
+          content,
+          metadata: frontmatter,
+        });
+        setSelected(toNoteSummary(created));
         setIsNew(false);
       } else {
-        await updateNote.mutateAsync({ path, content, frontmatter });
+        await updateNote.mutateAsync({
+          docId: selected.docId,
+          content,
+          metadata: frontmatter,
+        });
+        setSelected({ ...selected, frontmatter });
       }
       setDirty(false);
       showToast('Note saved', 'success');
     } catch {
       showToast('Failed to save note', 'error');
     }
-  }, [
-    selectedPath,
-    isNew,
-    content,
-    frontmatter,
-    saveNote,
-    updateNote,
-    showToast,
-  ]);
+  }, [selected, isNew, content, frontmatter, saveNote, updateNote, showToast]);
 
   const handleEnhance = useCallback(async () => {
     try {
@@ -145,23 +153,27 @@ export function Notes() {
   }, [content, enhanceNote, showToast]);
 
   const handleVault = useCallback(async () => {
-    if (!hasVault || !selectedPath) {
+    if (!hasVault || !selected) {
       showToast('No vault configured', 'warning');
       return;
     }
     try {
-      await vaultSave.mutateAsync({ path: selectedPath, content, frontmatter });
+      await vaultSave.mutateAsync({
+        filename: selected.path,
+        content,
+        metadata: frontmatter,
+      });
       showToast('Saved to vault', 'success');
     } catch {
       showToast('Failed to save to vault', 'error');
     }
-  }, [hasVault, selectedPath, content, frontmatter, vaultSave, showToast]);
+  }, [hasVault, selected, content, frontmatter, vaultSave, showToast]);
 
   const handleDelete = useCallback(async () => {
-    if (!selectedPath) return;
+    if (!selected) return;
     try {
-      await deleteNote.mutateAsync(selectedPath);
-      setSelectedPath(null);
+      await deleteNote.mutateAsync(selected.docId);
+      setSelected(null);
       setContent('');
       setFrontmatter(EMPTY_FM);
       setDirty(false);
@@ -170,15 +182,15 @@ export function Notes() {
     } catch {
       showToast('Failed to delete note', 'error');
     }
-  }, [selectedPath, deleteNote, showToast]);
+  }, [selected, deleteNote, showToast]);
 
-  const hasNote = isNew || !!selectedPath;
+  const hasNote = isNew || !!selected;
 
   return (
     <div className="workspace-container workspace-container--notes">
       {/* Column 1: Tree sidebar */}
       <NotesSidebar
-        tree={tree.data ?? []}
+        tree={tree.data}
         selectedPath={selectedPath}
         onSelect={handleSelectNote}
         loading={tree.isLoading}
@@ -201,29 +213,26 @@ export function Notes() {
           {filteredNotes.isLoading && (
             <div className="notes-list-loading">Loading…</div>
           )}
-          {!filteredNotes.isLoading &&
-            (filteredNotes.data ?? []).length === 0 && (
-              <div className="notes-list-empty">No notes match filters</div>
-            )}
-          {(filteredNotes.data ?? []).map((note) => (
+          {!filteredNotes.isLoading && filteredNotes.data.length === 0 && (
+            <div className="notes-list-empty">No notes match filters</div>
+          )}
+          {filteredNotes.data.map((note) => (
             <button
               type="button"
-              key={note.path}
-              className={`notes-list-item ${note.path === selectedPath ? 'notes-list-item--active' : ''}`}
-              onClick={() => handleSelectNote(note.path)}
+              key={note.docId}
+              className={`notes-list-item ${note.docId === selected?.docId ? 'notes-list-item--active' : ''}`}
+              onClick={() => handleSelectNote(note)}
             >
-              <span className="notes-list-item-title">
-                {(note.frontmatter as NoteFrontmatter)?.title ?? note.name}
-              </span>
+              <span className="notes-list-item-title">{note.title}</span>
               <span className="notes-list-item-meta">
-                {(note.frontmatter as NoteFrontmatter)?.territory && (
+                {note.frontmatter.territory && (
                   <span className="notes-list-item-tag">
-                    {(note.frontmatter as NoteFrontmatter).territory}
+                    {note.frontmatter.territory}
                   </span>
                 )}
-                {(note.frontmatter as NoteFrontmatter)?.type && (
+                {note.frontmatter.type && (
                   <span className="notes-list-item-tag">
-                    {(note.frontmatter as NoteFrontmatter).type}
+                    {note.frontmatter.type}
                   </span>
                 )}
               </span>

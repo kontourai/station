@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import { type NoteSummary, toNoteSummary } from '../data/notes-hooks';
 import type { KnowledgeTreeNode } from '../types/knowledge';
 
 interface NotesSidebarProps {
   tree: KnowledgeTreeNode[];
   selectedPath: string | null;
-  onSelect: (path: string) => void;
+  onSelect: (note: NoteSummary) => void;
   loading?: boolean;
 }
 
@@ -12,7 +13,7 @@ interface TreeItemProps {
   node: KnowledgeTreeNode;
   selectedPath: string | null;
   filter: string;
-  onSelect: (path: string) => void;
+  onSelect: (note: NoteSummary) => void;
   depth: number;
 }
 
@@ -68,12 +69,15 @@ function TreeItem({
   }
 
   const isSelected = node.path === selectedPath;
+  // A file the knowledge index has not recorded has no document id to open.
+  const doc = node.doc;
   return (
     <button
       type="button"
       className={`notes-tree-file ${isSelected ? 'notes-tree-file--active' : ''}`}
       style={{ paddingLeft: `${depth * 12 + 4}px` }}
-      onClick={() => onSelect(node.path)}
+      onClick={() => doc && onSelect(toNoteSummary(doc))}
+      disabled={!doc}
       title={node.path}
     >
       <span className="notes-tree-file-icon">📄</span>

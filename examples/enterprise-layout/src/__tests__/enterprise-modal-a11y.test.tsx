@@ -56,14 +56,15 @@ vi.mock('../data/notes-hooks', () => ({
   useFilteredNotes: () => ({
     data: [
       {
+        docId: 'doc-alpha',
         path: 'notes/alpha.md',
-        name: 'alpha.md',
+        title: 'Alpha',
         frontmatter: { title: 'Alpha', territory: 'West', type: 'brief' },
       },
     ],
     isLoading: false,
   }),
-  useNoteContent: () => ({ data: null }),
+  useNoteContent: () => ({ data: undefined }),
   useSaveNote: () => idleMutation,
   useUpdateNote: () => idleMutation,
   useDeleteNote: () => idleMutation,
