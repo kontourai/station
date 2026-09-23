@@ -79,10 +79,7 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
-import {
-  isStationNativeShellOrigin,
-  STATION_NATIVE_SHELL_ORIGINS,
-} from '@kontourai/station-shared/native-shell-origin';
+import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 
 function isAccountDeviceBinding(
   binding: DevicePrincipalBinding,
@@ -283,6 +280,7 @@ import {
   resolveInboundDelegationDeviceForRequest,
   resolveInboundDeviceKindForRequest,
 } from '../../security/runtime-request-security.js';
+import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -6736,19 +6734,8 @@ export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
 function resolveConfiguredRuntimeOrigins(
   context: Pick<ConfigureRuntimeRoutesContext, 'host' | 'port'>,
 ): string[] {
-  const origins = new Set(
-    (process.env.ALLOWED_ORIGINS ?? '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-  );
-  origins.add(`http://localhost:${context.port}`);
-  origins.add(`http://127.0.0.1:${context.port}`);
-  origins.add(`http://[::1]:${context.port}`);
-  for (const origin of STATION_NATIVE_SHELL_ORIGINS) origins.add(origin);
-  if (context.host && context.host !== '0.0.0.0' && context.host !== '::') {
-    origins.add(`http://${context.host}:${context.port}`);
-    origins.add(`https://${context.host}:${context.port}`);
-  }
-  return [...origins];
+  return resolveStationBrowserOrigins({
+    port: context.port,
+    host: context.host,
+  });
 }

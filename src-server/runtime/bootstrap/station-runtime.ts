@@ -103,6 +103,7 @@ import {
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
+import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -3312,7 +3313,12 @@ export class StationRuntime {
     // binding. A hosted tenant-isolated runtime must not bind the separate
     // terminal port until that transport has tenant authorization.
     if (!this.terminalWsStarted && !isHostedTenantExecutionRequired()) {
-      this.terminalWsServer.start(this.port + 1, this.host);
+      this.terminalWsServer.start(this.port + 1, this.host, {
+        allowedBrowserOrigins: resolveStationBrowserOrigins({
+          port: this.port,
+          host: this.host,
+        }),
+      });
       this.terminalWsStarted = true;
     }
     let initialized: Awaited<ReturnType<typeof initializeRuntime>>;

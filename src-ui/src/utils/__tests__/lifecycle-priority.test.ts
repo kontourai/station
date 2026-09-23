@@ -20,6 +20,10 @@ describe('lifecycle-priority (station#1100 AC4)', () => {
       'Current',
       'Ready',
       'Recent',
+      // #2310: below every label that records activity, so a local send or
+      // an offline-queued first message wins a merge against the server's
+      // Draft answer for the same conversation.
+      'Draft',
       // archive#1783: below every live state and above only `Completed` —
       // nothing here can act on it, but it has not finished either.
       'Unanswerable',
@@ -72,6 +76,8 @@ describe('lifecycle-priority (station#1100 AC4)', () => {
         'Running',
         'Stopped',
         'Unanswerable',
+        // #2310: a Draft moved out of Active now says so on the row.
+        'Draft',
       ].sort(),
     );
     // archive#1783: chipped so a demoted row still says WHY it dropped.
