@@ -351,9 +351,10 @@ describe('history: the commit is a child of the remote tip (owner decision)', ()
     const published = await publishPlugin(folder, REQUEST, {
       ...OPTIONS,
       testHooks: {
-        // Someone force-pushes main back to its parent. A plain push would
-        // still fast-forward (the older tip is an ancestor of the new
-        // commit) and bring the dropped commit back.
+        // Someone force-pushes main back to its parent. The older tip is an
+        // ancestor of the new commit, so a push from a repository that also
+        // held it would fast-forward and bring the dropped commit back;
+        // Station's holds only the fetched tip (depth 1), so git refuses.
         beforePush: () => {
           git(bare, ['update-ref', 'refs/heads/main', older]);
         },

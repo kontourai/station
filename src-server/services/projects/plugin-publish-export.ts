@@ -19,12 +19,17 @@
  * config Station wrote.
  *
  * History (owner decision, #2374): the new commit's parent is the remote
- * branch's tip as fetched, and the push names that tip as the only value it
- * may replace (`--force-with-lease=<ref>:<tip>`, or "must not exist" for a
- * new branch). The refspec has no `+`: the commit is a child of the tip, so
- * the update is a fast-forward by construction, and the lease turns "the
- * remote moved during the publish" (forward, backward, or a branch created
- * meanwhile) into a refusal instead of an overwrite.
+ * branch's tip as fetched, and the push is an ordinary non-force push of
+ * `<commit>:refs/heads/<branch>` (no `+`, no lease). "The remote moved
+ * during the publish" is refused by two things git already does:
+ * - the push names the tip git was shown as the value it replaces, and the
+ *   server applies the update only if the branch still has that value;
+ * - Station's repository holds exactly ONE commit of the remote's history,
+ *   the fetched tip (`fetch --depth=1`), so git refuses to push over any
+ *   other tip ("fetch first"), including one the branch was rewound to and
+ *   a branch someone created during a first publish. A deeper fetch would
+ *   let a push fast-forward over a rewind and bring back what was dropped;
+ *   the rewind test pins this.
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -195,8 +200,9 @@ export async function remoteBranchTip(
 }
 
 /**
- * Fetches the branch's tip (depth 1: its parent history is not needed to
- * build a child of it) and returns what arrived.
+ * Fetches the branch's tip and returns what arrived. Depth 1 is
+ * load-bearing, not only economical: see the header on why a push must not
+ * find any other commit of the remote's history here.
  */
 export async function fetchBranchTip(
   workspace: ExportWorkspace,
@@ -325,17 +331,13 @@ export async function buildCommit(
 }
 
 /**
- * Pushes `commit` to `refs/heads/<branch>` at `url`, replacing only
- * `expected` (the fetched tip; `null` = the branch must not exist yet).
+ * Pushes `commit` to `refs/heads/<branch>` at `url`, non-force. Refused
+ * (`remote-moved`) unless the branch is still at the commit's parent, or
+ * still absent for a first publish; see the header.
  */
 export async function pushCommit(
   workspace: ExportWorkspace,
-  input: {
-    url: string;
-    commit: string;
-    branch: string;
-    expected: string | null;
-  },
+  input: { url: string; commit: string; branch: string },
 ): Promise<void> {
   const ref = `refs/heads/${input.branch}`;
   await git(
@@ -344,7 +346,6 @@ export async function pushCommit(
       'push',
       '--porcelain',
       '--no-verify',
-      `--force-with-lease=${ref}:${input.expected ?? ''}`,
       '--',
       input.url,
       `${input.commit}:${ref}`,

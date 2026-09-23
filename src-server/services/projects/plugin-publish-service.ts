@@ -423,7 +423,6 @@ async function publishOnce(
           url,
           commit: built.commit,
           branch,
-          expected: parent,
         });
       }
 
