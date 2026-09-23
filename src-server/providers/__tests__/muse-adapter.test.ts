@@ -11,15 +11,20 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MUSE_LINGERING_CHILD_REAPED_CODE,
   resolveModelLaunchPlan,
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
+  MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT,
+  MUSE_BACKGROUND_TASK_STOPPED_OUTPUT,
+  MUSE_BACKGROUND_TASK_UNRESOLVED_OUTPUT,
   MUSE_CANCELLED_TOOL_OUTPUT,
   MUSE_DEFAULT_IDLE_TIMEOUT_MS,
   MUSE_FAILED_NO_RESULT_OUTPUT,
@@ -44,8 +49,12 @@ import {
 import { UNRESOLVED_TURN_TOOL_OUTPUT } from '../adapters/unresolved-tool-output.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
+  MUSE_13_BACKGROUND_FOLLOW_UP_TEXT,
+  MUSE_13_BACKGROUND_TASK_ID,
+  MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
   MUSE_13_BASH_CALL_ID,
   MUSE_13_BASH_TOOL_TURN_LINES,
+  MUSE_13_WORKFLOW_CALL_ID,
   MUSE_ECHO_OUTPUT_DELTA,
   MUSE_ECHO_RUN_STARTED,
   MUSE_ECHO_RUN_TERMINAL,
@@ -3143,5 +3152,314 @@ describe('Muse turn supervision (#2269)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * #2300 owner decisions (2026-09-22): a completed `run_terminal` while
+ * background work the turn launched is still pending HOLDS the turn; muse's
+ * automatic follow-up run is delivered on the same turn; `turn.completed`
+ * fires once, at the real end; a held turn has no post-terminal budget.
+ *
+ * Driven by the scrubbed live capture (see
+ * `MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES`). 0-based indexes used below:
+ * [28] the launch `tool_result`, [30] run 1's `run_terminal`, [31] the
+ * background task's `completed`, [32] the follow-up's `command_accepted`,
+ * [50]/[51] its deltas, [62] its `run_terminal`.
+ */
+describe('Muse background work holds the turn (#2300)', () => {
+  const LINES = MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES;
+  const ROW_ID = `muse-task:${MUSE_13_BACKGROUND_TASK_ID}`;
+  /** Through run 1's `run_terminal`: the task is launched and pending. */
+  const THROUGH_RUN_1 = LINES.slice(0, 31);
+  const TASK_COMPLETED = LINES[31]!;
+  /** The follow-up run, `command_accepted` through its `run_terminal`. */
+  const FOLLOW_UP = LINES.slice(32);
+  const withTerminal = (line: string, terminal: string) =>
+    line.replace('"terminal":"completed"', `"terminal":"${terminal}"`);
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function startTurn(threadId: string, idleMs?: number) {
+    const harness = createHarness(
+      idleMs === undefined ? {} : { turnIdleTimeoutMs: idleMs },
+    );
+    await harness.adapter.startSession({ provider: 'muse', threadId });
+    const turn = await harness.adapter.sendTurn({ threadId, input: 'go' });
+    const emit = async (...lines: string[]) => {
+      for (const line of lines) harness.processes[0].stdout.write(`${line}\n`);
+      if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+      else await flushIo();
+    };
+    return { harness, turn, emit };
+  }
+
+  test('the fixture is scrubbed of machine paths', () => {
+    const joined = LINES.join('\n');
+    for (const token of ['/Users/', '/private/', 'brian', 'claude-501']) {
+      expect(joined).not.toContain(token);
+    }
+    expect(LINES).toHaveLength(63);
+  });
+
+  test('full replay: one turn, the background row settles late, the follow-up run lands on it, one turn.completed', async () => {
+    const { harness, turn, emit } = await startTurn('bg-replay');
+    await emit(...THROUGH_RUN_1);
+    const run1 = await drain(harness.iterator, 6, 'run 1');
+    expect(run1.map((e) => [e.method, e.toolCallId])).toEqual([
+      ['session.started', undefined],
+      ['session.configured', undefined],
+      ['turn.started', undefined],
+      ['tool.started', MUSE_13_WORKFLOW_CALL_ID],
+      ['tool.completed', MUSE_13_WORKFLOW_CALL_ID],
+      ['tool.started', ROW_ID],
+    ]);
+    expect(run1[5]).toEqual({
+      eventId: expect.any(String),
+      provider: 'muse',
+      threadId: 'bg-replay',
+      createdAt: expect.any(String),
+      method: 'tool.started',
+      turnId: turn.turnId,
+      itemId: `tool:${ROW_ID}`,
+      toolCallId: ROW_ID,
+      toolName: 'workflow',
+    });
+    // Run 1's terminal published nothing: the NEXT event is the task's
+    // late settle, not a turn.completed.
+    await emit(TASK_COMPLETED);
+    expect(await nextEvent(harness.iterator, 'late settle')).toMatchObject({
+      method: 'tool.completed',
+      turnId: turn.turnId,
+      itemId: `tool:${ROW_ID}`,
+      toolCallId: ROW_ID,
+      toolName: 'workflow',
+      status: 'success',
+      output: MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT,
+    });
+    await emit(...FOLLOW_UP);
+    const run2 = await drain(harness.iterator, 3, 'follow-up run');
+    expect(run2.map((e) => e.method)).toEqual([
+      'content.text-delta',
+      'content.text-delta',
+      'turn.completed',
+    ]);
+    expect(run2.every((e) => e.turnId === turn.turnId)).toBe(true);
+    expect(run2[0].itemId).toBe(run2[1].itemId);
+    // Run 1 produced no text, so no paragraph break is inserted.
+    expect(run2[0].delta + run2[1].delta).toBe(
+      MUSE_13_BACKGROUND_FOLLOW_UP_TEXT,
+    );
+    expect(run2[2]).toMatchObject({
+      finishReason: 'stop',
+      outputText: MUSE_13_BACKGROUND_FOLLOW_UP_TEXT,
+    });
+    // muse exits after the follow-up's terminal: nothing further, and
+    // certainly no second turn.started.
+    harness.processes[0].exit(0);
+    await flushIo();
+    expect(harness.released).toBe(1);
+    await expectNoFurtherEvent(harness.iterator, 'full replay');
+  });
+
+  test('the projection renders the held turn as one finished message with the background row settled', async () => {
+    const { harness, emit } = await startTurn('bg-projection');
+    await emit(...LINES);
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 10, 'projection replay');
+    expect(events.at(-1)?.method).toBe('turn.completed');
+    const messages = projectRuntimeEventsToMessages(events);
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+    const assistant = messages[1]!;
+    const tools = assistant.parts.filter((p) => p.type === 'tool-invocation');
+    expect(
+      tools.map((p) => [p.toolCallId, p.toolName, p.state, p.result]),
+    ).toEqual([
+      [MUSE_13_WORKFLOW_CALL_ID, 'workflow', 'result', expect.any(String)],
+      [ROW_ID, 'workflow', 'result', MUSE_BACKGROUND_TASK_COMPLETED_OUTPUT],
+    ]);
+    expect(
+      assistant.parts.filter((p) => p.type === 'text').map((p) => p.text),
+    ).toEqual([MUSE_13_BACKGROUND_FOLLOW_UP_TEXT]);
+  });
+
+  test('a held turn outlives any number of idle windows and is never killed while work is pending', async () => {
+    vi.useFakeTimers();
+    const { harness, emit } = await startTurn('bg-no-budget', 1_000);
+    await emit(...THROUGH_RUN_1);
+    // A day of silence, a thousand-plus idle windows: no budget applies.
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    expect(harness.processes[0].killed).toBe(false);
+    expect(harness.released).toBe(0);
+    await emit(TASK_COMPLETED, ...FOLLOW_UP);
+    const events = await drain(harness.iterator, 10, 'held a day');
+    expect(events.map((e) => e.method)).toEqual([
+      'session.started',
+      'session.configured',
+      'turn.started',
+      'tool.started',
+      'tool.completed',
+      'tool.started',
+      'tool.completed',
+      'content.text-delta',
+      'content.text-delta',
+      'turn.completed',
+    ]);
+    expect(events[9]).toMatchObject({
+      outputText: MUSE_13_BACKGROUND_FOLLOW_UP_TEXT,
+    });
+  });
+
+  test('Stop while held kills the process group, cancels the background row, and aborts the turn', async () => {
+    const { harness, turn, emit } = await startTurn('bg-stop');
+    await emit(...THROUGH_RUN_1);
+    const result = await harness.adapter.interruptTurn('bg-stop', turn.turnId);
+    expect(result).toEqual({ outcome: 'cancelled', turnId: turn.turnId });
+    expect(harness.processes[0].killSignals).toEqual(['SIGTERM']);
+    const events = await drain(harness.iterator, 8, 'stop while held');
+    expect(events.slice(5).map((e) => [e.method, e.status])).toEqual([
+      ['tool.started', undefined],
+      ['tool.completed', 'cancelled'],
+      ['turn.aborted', undefined],
+    ]);
+    expect(events[6]).toMatchObject({
+      toolCallId: ROW_ID,
+      output: MUSE_BACKGROUND_TASK_STOPPED_OUTPUT,
+    });
+    // The slot is free: the next send is accepted.
+    await harness.adapter.sendTurn({ threadId: 'bg-stop', input: 'again' });
+    expect(harness.processes).toHaveLength(2);
+    await harness.adapter.stopAll();
+  });
+
+  test('a child that exits while held closes the row unresolved and the turn as completed, never runtime.error', async () => {
+    const { harness, emit } = await startTurn('bg-exit');
+    await emit(...THROUGH_RUN_1);
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 8, 'exit while held');
+    expect(events.slice(5).map((e) => [e.method, e.status])).toEqual([
+      ['tool.started', undefined],
+      ['tool.completed', 'unresolved'],
+      ['turn.completed', undefined],
+    ]);
+    expect(events[6]).toMatchObject({
+      toolCallId: ROW_ID,
+      output: MUSE_BACKGROUND_TASK_UNRESOLVED_OUTPUT,
+    });
+    expect(events[7]).toMatchObject({ finishReason: 'other' });
+    expect(harness.released).toBe(1);
+    await expectNoFurtherEvent(harness.iterator, 'exit while held');
+  });
+
+  test('a follow-up terminal that did not complete closes the turn honestly with the composed text', async () => {
+    const { harness, emit } = await startTurn('bg-run2-cancelled');
+    const run1Text = withTerminal(LINES[30]!, 'completed').replace(
+      '"text":""',
+      '"text":"Launched it."',
+    );
+    // The task is still pending (its completion never arrives) when the
+    // follow-up run ends `cancelled`.
+    await emit(
+      ...THROUGH_RUN_1.slice(0, 30),
+      run1Text,
+      ...FOLLOW_UP.slice(0, -1),
+      withTerminal(FOLLOW_UP.at(-1)!, 'cancelled'),
+    );
+    const events = await drain(harness.iterator, 10, 'run 2 cancelled');
+    expect(events.slice(5).map((e) => [e.method, e.status])).toEqual([
+      ['tool.started', undefined],
+      ['content.text-delta', undefined],
+      ['content.text-delta', undefined],
+      ['tool.completed', 'unresolved'],
+      ['turn.completed', undefined],
+    ]);
+    // Run 1's text reached nothing but its terminal, so the follow-up's
+    // first delta carries the paragraph break that joins them.
+    expect(events[6].delta).toBe('\n\nWorkflow completed: sleep');
+    expect(events[9]).toMatchObject({
+      finishReason: 'cancelled',
+      outputText: `Launched it.\n\n${MUSE_13_BACKGROUND_FOLLOW_UP_TEXT}`,
+    });
+    expect(events.some((e) => e.method === 'runtime.error')).toBe(false);
+    await expectNoFurtherEvent(harness.iterator, 'run 2 cancelled');
+  });
+
+  test('a launch result that is not a well-formed launch announces nothing; the turn settles at its terminal', async () => {
+    const launch = JSON.parse(LINES[28]!);
+    const variants: Record<string, string> = {
+      malformed: '{"status":"launched","taskId":',
+      notLaunched: JSON.stringify({
+        status: 'queued',
+        taskId: MUSE_13_BACKGROUND_TASK_ID,
+      }),
+      badTaskId: JSON.stringify({ status: 'launched', taskId: 'a b/c' }),
+      oversized: JSON.stringify({
+        status: 'launched',
+        taskId: MUSE_13_BACKGROUND_TASK_ID,
+        padding: 'x'.repeat(70_000),
+      }),
+    };
+    for (const [name, text] of Object.entries(variants)) {
+      const { harness, emit } = await startTurn(`bg-${name}`);
+      launch.payload.text = text;
+      await emit(
+        ...LINES.slice(0, 28),
+        JSON.stringify(launch),
+        ...LINES.slice(29, 31),
+      );
+      const events = await drain(harness.iterator, 6, name);
+      expect(
+        events.slice(3).map((e) => [e.method, e.toolCallId]),
+        name,
+      ).toEqual([
+        ['tool.started', MUSE_13_WORKFLOW_CALL_ID],
+        ['tool.completed', MUSE_13_WORKFLOW_CALL_ID],
+        ['turn.completed', undefined],
+      ]);
+      await harness.adapter.stopAll();
+    }
+  });
+
+  test('a lingering child reaped after a turn that closed background rows is announced, not silent', async () => {
+    vi.useFakeTimers();
+    const { harness, emit } = await startTurn('bg-reap-warning', 1_000);
+    // Run 1 fails AFTER launching the workflow: the turn ends (runtime.error,
+    // as any failed run 1 does) with the task pending, and the child lingers.
+    await emit(
+      ...THROUGH_RUN_1.slice(0, 30),
+      withTerminal(LINES[30]!, 'failed'),
+    );
+    await vi.advanceTimersByTimeAsync(900);
+    expect(harness.processes[0].killed).toBe(false);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(harness.processes[0].killed).toBe(true);
+    const events = await drain(harness.iterator, 9, 'reap warning');
+    expect(events.slice(5).map((e) => [e.method, e.status ?? e.code])).toEqual([
+      ['tool.started', undefined],
+      ['tool.completed', 'unresolved'],
+      ['runtime.error', 'muse-terminal-not-completed'],
+      ['runtime.warning', MUSE_LINGERING_CHILD_REAPED_CODE],
+    ]);
+    expect(events[8]).toMatchObject({ severity: 'warning' });
+  });
+
+  test('turns that launch nothing still settle at their first run_terminal and are reaped silently if they linger', async () => {
+    vi.useFakeTimers();
+    const { harness, emit } = await startTurn('bg-none', 1_000);
+    await emit(...MUSE_13_BASH_TOOL_TURN_LINES);
+    const events = await drain(harness.iterator, 7, 'bash turn');
+    expect(events.at(-1)?.method).toBe('turn.completed');
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(harness.processes[0].killed).toBe(true);
+    // No warning for a child with nothing the turn knew of still running.
+    const next = await Promise.race([
+      harness.iterator.next(),
+      vi.advanceTimersByTimeAsync(50).then(() => 'none' as const),
+    ]);
+    expect(next).toBe('none');
   });
 });

@@ -121,7 +121,11 @@ export interface MuseActiveTurn {
    * see `muse-adapter.ts`'s `outputTextDetail`.
    */
   outputText: string;
-  /** True once a terminal event (`run_terminal` or child exit) closed the turn. */
+  /**
+   * True once a terminal event closed the turn: usually `run_terminal` or
+   * the child exiting. A completed `run_terminal` while background work is
+   * pending does NOT settle (#2300, see `heldRuns`).
+   */
   settled: boolean;
   /** Set by `interruptTurn`/`stopSession` so the exit handler can classify. */
   interrupted: boolean;
@@ -189,6 +193,45 @@ export interface MuseActiveTurn {
    * idle even if the second is still running).
    */
   awaitingResultToolCalls: Map<string, 'completed' | 'failed'>;
+  /**
+   * #2300: background tasks a `workflow` tool result announced as `launched`
+   * and whose `task_lifecycle` has not yet reported a final phase, keyed by
+   * muse's `taskId`. Each has an open tool row `muse-task:<taskId>`.
+   *
+   * Deliberately NOT in `openToolCalls`: those are calls of the current run
+   * that settle's #2308 closure reports as unresolved, and a background task
+   * is not a call — its launching call already completed. While this map is
+   * non-empty the idle deadline is disarmed, and a completed `run_terminal`
+   * holds the turn open instead of settling it.
+   */
+  pendingBackgroundTasks: Map<
+    string,
+    { toolCallId: string; toolName: string; announcedAt: number }
+  >;
+  /**
+   * #2300: how many completed runs this turn has held open for pending
+   * background work. Non-zero means muse's automatic follow-up run is being
+   * delivered on this turn: a child exit now closes the turn with
+   * `turn.completed` (see the adapter's exit handler), not `runtime.error`.
+   */
+  heldRuns: number;
+  /**
+   * #2300: set when a run is held and cleared by the next run's first text:
+   * that run's text is joined to the earlier text with a paragraph break,
+   * so the streamed transcript and `turn.completed.outputText` agree.
+   */
+  runSeparatorPending: boolean;
+  /**
+   * #2300: true once the current run has streamed a non-empty delta, so its
+   * `run_terminal.text` (the run's FULL text) is not appended a second time.
+   */
+  runStreamedText: boolean;
+  /**
+   * #2300: number of background rows settle closed while the child could
+   * still be running them. If the idle deadline later reaps that child, the
+   * reap is announced with a `runtime.warning` rather than done silently.
+   */
+  backgroundRowsClosedAtSettle: number;
 }
 
 /**

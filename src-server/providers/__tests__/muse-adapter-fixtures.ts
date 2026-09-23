@@ -70,3 +70,49 @@ export const MUSE_13_BASH_TOOL_TURN_LINES: readonly string[] = readFileSync(
 
 /** The one tool call in {@link MUSE_13_BASH_TOOL_TURN_LINES}. */
 export const MUSE_13_BASH_CALL_ID = 'call_01a0cab25b8574738854e0ab29288aac';
+
+/**
+ * #2300: a `muse exec --json` stream from muse 1.3.0-R3401.1 (meta provider,
+ * untrusted scratch workspace) for a prompt asking it to launch a background
+ * workflow running `sleep 60 && echo done > …` and end its turn at once.
+ *
+ * SCRUBBED, not byte-identical to the capture: four lines had machine paths
+ * rewritten and nothing else changed — the prompt's scratch path (lines 4-5,
+ * now `/workspace/muse-probe`) and the persisted workflow script path under
+ * the user's muse session store (lines 27 and 29, now under
+ * `/home/user/.local/share/muse/sessions/`), inside JSON strings that stay
+ * validly escaped. `scriptBytes`/`scriptHash` still describe the original
+ * script. Timing is not in the file: the live run took 104 s (first
+ * `run_terminal` at ~15 s, the task's completion at ~83 s, the follow-up
+ * run's terminal at ~104 s); tests inject whatever timing they exercise.
+ *
+ * Shape (1-based lines): the workflow tool's task (22-28) and its
+ * `tool_result` announcing `{"status":"launched","taskId":…}` (29); run 1's
+ * `run_terminal`, `completed` with empty text (31); the background task's
+ * only lifecycle record, `completed` (32); muse's automatic follow-up run,
+ * opened by `command_accepted` from `muse-runtime-background-terminal` (33),
+ * with two text deltas (51-52) and its own completed `run_terminal` (63).
+ */
+export const MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES: readonly string[] =
+  readFileSync(
+    fileURLToPath(
+      new URL(
+        './fixtures/muse-1.3-background-workflow-turn.jsonl',
+        import.meta.url,
+      ),
+    ),
+    'utf8',
+  )
+    .split('\n')
+    .filter((line) => line.length > 0);
+
+/** The `workflow` tool call that launched the background task. */
+export const MUSE_13_WORKFLOW_CALL_ID = 'call_01a0ca900c4775408c646b301a421a63';
+
+/** The background task the launch announced (its `taskId`). */
+export const MUSE_13_BACKGROUND_TASK_ID =
+  'f6557c75-bf74-498f-b63e-e1df8767d768';
+
+/** The follow-up run's full text (its two deltas, and its terminal's text). */
+export const MUSE_13_BACKGROUND_FOLLOW_UP_TEXT =
+  'Workflow completed: sleep 60 && echo done > workflow-finished.txt finished with exit 0.';

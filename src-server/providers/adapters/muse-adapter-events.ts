@@ -147,9 +147,13 @@ export function mapMuseFinishReason(
  * Only two muse payload kinds carry canonical meaning today:
  *
  * - `run_output_delta{text}` -> `content.text-delta`
- * - `run_terminal{terminal,text,reason}` -> `turn.completed` when
- *   `terminal === 'completed'`, or `runtime.error` ONLY (never both;
- *   archive#3450) when it is not.
+ * - `run_terminal{terminal,text,reason}` -> a `terminal` effect. What the
+ *   adapter does with it depends on the turn (#2300): usually `turn.completed`
+ *   when `terminal === 'completed'`, or `runtime.error` ONLY (never both;
+ *   archive#3450) when it is not — but a completed terminal while background
+ *   work the turn launched is still pending HOLDS the turn open, and muse's
+ *   automatic follow-up run (and its own `run_terminal`) is delivered on the
+ *   same turn. See `MuseAdapter`'s docblock.
  *
  * Everything else is dropped ON PURPOSE:
  *
@@ -382,6 +386,61 @@ export function observeMuseToolTask(
     toolName: binding.toolName,
     toolCallId: binding.toolCallId,
   };
+}
+
+/**
+ * #2300: the tool whose result can announce background work. Muse 1.3's
+ * `workflow` tool returns immediately with `{"status":"launched","taskId":…}`
+ * and runs the workflow in the background; the same `muse exec` process then
+ * reports the task's `task_lifecycle` completion (keyed by that `taskId`) and
+ * submits an automatic follow-up run before it exits.
+ */
+export const MUSE_BACKGROUND_LAUNCH_TOOL_NAME = 'workflow';
+
+/**
+ * Bound on the `tool_result.text` this adapter will parse for a launch
+ * announcement. The live launch result is ~2 KB; `text` itself can approach
+ * `MUSE_STDOUT_BUFFER_MAX_CHARS`, and parsing a megabyte per tool result to
+ * look for one field is not worth it. A larger text is read as "not a launch"
+ * — the turn then settles exactly as it did before #2300.
+ */
+export const MUSE_LAUNCH_RESULT_MAX_CHARS = 65_536;
+
+/**
+ * Shape a background `taskId` must have to become part of a persisted row id
+ * (`muse-task:<taskId>`). Muse mints UUIDs; anything else — overlong, empty,
+ * or carrying characters a row id should not — is refused, not truncated.
+ */
+const MUSE_BACKGROUND_TASK_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+
+/**
+ * Returns the background task id a `workflow` tool result announces, or
+ * `null`. Total: a non-`workflow` tool, an oversized or malformed text, a
+ * `status` other than `launched`, or a missing/ill-shaped `taskId` all yield
+ * `null` (the result is still published as an ordinary tool completion).
+ */
+export function parseMuseLaunchedBackgroundTask(
+  toolName: string | null | undefined,
+  text: string | null,
+): string | null {
+  if (toolName !== MUSE_BACKGROUND_LAUNCH_TOOL_NAME) return null;
+  if (text === null || text.length > MUSE_LAUNCH_RESULT_MAX_CHARS) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!isRecord(decoded) || decoded.status !== 'launched') return null;
+  const taskId = extractString(decoded.taskId);
+  return taskId !== null && MUSE_BACKGROUND_TASK_ID.test(taskId)
+    ? taskId
+    : null;
+}
+
+/** The persisted tool-row id of a background task (see the adapter docblock). */
+export function museBackgroundTaskRowId(taskId: string): string {
+  return `muse-task:${taskId}`;
 }
 
 /**

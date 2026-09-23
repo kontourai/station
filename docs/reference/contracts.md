@@ -111,7 +111,7 @@ production Muse turns carry the idle bound only.
 
 | Bound | Owner | Semantics | Muse default |
 |---|---|---|---|
-| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text, a newly started tool, a tool's task finishing or being cancelled, or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). It is not armed while a tool is in flight (a `tool.started` whose Muse task has not yet reached `completed`, `failed`, or `cancelled`); the task finishing, or the tool's result, re-arms it. A call whose task finished stays open for its result; if none arrives by turn end it is closed with Muse's reported phase (`success` or `error`, with a sentence saying no result was sent), and only a call still running is closed as `unresolved`. In-flight tracking is per call id, so two tasks sharing one `call_id` share it: the first finishing re-arms idle even if the second still runs (disclosed, not handled). Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity. | 30 min |
+| Idle (no verified progress) | Owning adapter (Muse first) | A full window with no verified protocol activity — non-empty streamed text, a newly started tool, a tool's task finishing or being cancelled, or a newly identified tool result — ends the turn (`muse-turn-idle-timeout`). It is not armed while a tool is in flight (a `tool.started` whose Muse task has not yet reached `completed`, `failed`, or `cancelled`), nor while background work the turn launched is pending (#2300, below); the task finishing, or the tool's result, re-arms it. A call whose task finished stays open for its result; if none arrives by turn end it is closed with Muse's reported phase (`success` or `error`, with a sentence saying no result was sent), and only a call still running is closed as `unresolved`. In-flight tracking is per call id, so two tasks sharing one `call_id` share it: the first finishing re-arms idle even if the second still runs (disclosed, not handled). Malformed lines, unknown frames, heartbeats, stderr noise, and duplicate completion receipts never reschedule it. Duplicate detection itself is bounded (oldest-first past a per-turn cap): a replay past that retention reads as new activity. | 30 min |
 | Total (declared budget) | A server-owned caller that declares `turnTimeoutMs` (none in production today) | Wall-clock ceiling from turn start, armed only when declared; activity never moves it. Expiry is `muse-turn-timeout` (unchanged string), attributed to that declared budget. | None |
 
 The idle bound fails closed: absent, zero, negative, NaN, infinite, or above
@@ -123,15 +123,26 @@ starts (#2308), so a long tool call is known work rather than silence; a
 deadline's error message never carries Muse's routine stderr, and the UI
 names the deadline instead of suggesting a retry.
 
-Out of scope pending #2300: a Muse child that emits `run_terminal` and then
-keeps running. The adapter stops reading its stdout at that terminal, and
-`settleTurn` does not clear the idle deadline, and its callback has no
-settled-turn guard, so a lingering child is reaped one idle window on (or
-at a declared total), as it was before #2308. A turn that settles with a
-tool in flight had its idle deadline disarmed; settling closes those tools
-and re-arms it one full window from settle, so the lingering child is
-reaped on that same schedule. Changing what happens after the terminal
-belongs to #2300.
+Background work (#2300). Muse's `workflow` tool returns
+`{"status":"launched","taskId":…}` at once and runs the workflow in the
+background; `muse exec` then reaches `run_terminal` but keeps running until
+the task settles, and delivers the result in an automatic follow-up run
+before it exits. A completed `run_terminal` while such a task is pending
+therefore holds the turn open: the task is a tool row
+(`toolCallId: muse-task:<taskId>`, settled by the task's final
+`task_lifecycle` phase), the follow-up run's text and tools are published on
+the same turn, and `turn.completed` fires once, at the last run's terminal,
+with the composed text. No second `turn.started` is minted. The idle bound is
+not armed while a task is pending, so a held turn has no post-terminal budget:
+it ends when Muse finishes it or the user presses Stop (which ends the
+background work and closes its row `cancelled`). A held turn that ends any
+other way closes pending rows `unresolved` and the turn with `turn.completed`
+(`finishReason` from the terminal, or `other` when the child exits), never
+`runtime.error`. A turn that launched nothing still settles at its first
+`run_terminal`, and a child that lingers after it is still reaped one idle
+window on. If the turn ended with background rows closed `unresolved` and
+the child is later reaped, the reap is announced as a `runtime.warning`
+(`muse-lingering-child-reaped`) rather than done silently.
 
 The shared 3-minute stall watchdog (`TurnStallWatchdog` /
 `TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
