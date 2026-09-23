@@ -162,7 +162,7 @@ describe('command chain', () => {
       }),
     );
     // `third` never runs: a broken precondition must report as itself, not as
-    // thirteen lanes of `Cannot find module`.
+    // a dozen lanes of `Cannot find module`.
     expect(calls).toEqual(['first', 'second']);
     expect(status).toBe(2);
   });

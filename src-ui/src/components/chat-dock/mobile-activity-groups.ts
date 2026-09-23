@@ -18,6 +18,7 @@ export { clearSnooze, readSnoozes, type SnoozeMap, writeSnooze };
 export type MobileActivityGroupId =
   | 'external'
   | 'active'
+  | 'drafts'
   | 'settled'
   | 'snoozed'
   | 'earlier';
@@ -87,8 +88,8 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
  * nothing. Same label, two derivations, contradicting counts.
  *
  * The groups are now a straight rename of the shared partition's lanes:
- * active ("Active now"), recentlyFinished ("Just finished"), snoozed,
- * settled ("Earlier") — the same mapping the Sessions lanes already use
+ * active ("Active now"), recentlyFinished ("Just finished"), drafts
+ * ("Drafts", #2310), snoozed, settled ("Earlier") — the same mapping the Sessions lanes already use
  * (`sessions-lane-model.ts`). An unfinished-but-idle item (`Ready`/`Recent`/
  * `Current`/`Unanswerable`) is active here for the same reason it is on
  * desktop: "Just finished"/"Earlier" assert the work FINISHED, and it did
@@ -122,6 +123,12 @@ export function groupMobileActivity(
       label: 'Just finished',
       items: partition.recentlyFinished,
     },
+    // #2310: never-prompted sessions. Their own group rather than a chip in
+    // "Earlier", which asserts the work finished — a draft has not started.
+    // Emitted only when non-empty, like "From other apps".
+    ...(partition.drafts?.length
+      ? [{ id: 'drafts' as const, label: 'Drafts', items: partition.drafts }]
+      : []),
     { id: 'snoozed', label: 'Snoozed', items: partition.snoozed },
     { id: 'earlier', label: 'Earlier', items: partition.settled },
     ...(partition.external?.length

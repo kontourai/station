@@ -63,6 +63,11 @@ export function LifecycleStatusChip({
   // colour, on a row that has NOT finished. The chip is the pointer; every
   // surface that renders it also renders `unanswerableNotice`, because a bare
   // "can't answer" with no basis is a label, not a derivation.
+  // #2310: a session nothing has been sent to. Neutral, like Unanswerable —
+  // it is neither in motion, broken, nor done.
+  if (lifecycle === 'Draft') {
+    return <span className="lifecycle-chip lifecycle-chip--idle">Draft</span>;
+  }
   if (lifecycle === 'Unanswerable') {
     return (
       <span className="lifecycle-chip lifecycle-chip--idle">

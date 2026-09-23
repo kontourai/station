@@ -142,43 +142,82 @@ function installRecoveryListeners(): void {
  * failure. The chip and the reason were reading two different sources.
  *
  * The fix is to keep the one derivation current, not to add a second local
- * fold. Only a session-ending event triggers it, and at most once a second, so
- * a chatty stream cannot turn this into a refetch loop.
+ * fold. Only a turn-boundary event triggers it, at most once a second, so a
+ * chatty stream cannot turn this into a refetch loop.
+ *
+ * #2310: `turn.started` is a boundary too. A session nothing has been sent to
+ * reads as a Draft (the server's lineage fold), outside "Active now", and its
+ * first turn is the moment that changes. A refresh that lands inside the
+ * throttle window is deferred to the window's end rather than dropped.
+ *
+ * NOT LIVE IN PRODUCTION TODAY (#2307). This whole refresh needs a
+ * `QueryClient`, and no production caller supplies one: the only caller,
+ * `ChatDock.tsx`, calls `ensureOrchestrationEventStream(apiBase)` with none,
+ * so `client` below is `undefined` and every branch returns early. The code is
+ * correct for the moment #2307 wires a client; until then a Draft's first turn
+ * reaches OTHER devices only through an unrelated refetch of the session list
+ * (the sending device re-reads on its own send — `useSendMessage`). #2309
+ * Phase B, a server-pushed conversation activity record, supersedes this.
  */
-const TERMINAL_METHODS: ReadonlySet<string> = new Set([
+const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
+  'turn.started',
   'runtime.error',
   'session.exited',
   'turn.completed',
   'turn.aborted',
 ]);
+const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
 let lastSessionReadModelRefreshAt = 0;
+let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
 /**
  * The app's one `QueryClient`, recorded by whichever caller has it.
  *
  * `ensureOrchestrationEventStream` dedups per `apiBase` and only the FIRST
- * call for one takes effect — and `ChatDock.tsx` calls it WITHOUT a client
- * while `useOrchestration` calls it WITH one, so which of the two wins is a
- * mount-order accident. Binding the client here instead of to the stream's
- * closure means the refresh above works whichever call created the stream.
- * Safe because there is exactly one `QueryClient` for the app's lifetime (the
- * same premise the parameter's own docblock already rests on).
+ * call for one takes effect, so the client is bound here rather than to the
+ * stream's closure: a later call that carries a client still arms the refresh
+ * above for a stream an earlier, client-less call created. No production
+ * caller passes one yet (#2307), so in production this stays `undefined`.
  */
 let sharedQueryClient: QueryClient | undefined;
-function refreshSessionReadModelOnTerminal(
+function refreshSessionReadModelOnFact(
   queryClient: QueryClient | undefined,
   event: OrchestrationEvent,
 ): void {
   const client = queryClient ?? sharedQueryClient;
-  if (!client || !TERMINAL_METHODS.has(event.method)) return;
-  const now = Date.now();
-  if (now - lastSessionReadModelRefreshAt < 1000) return;
-  lastSessionReadModelRefreshAt = now;
+  if (!client || !SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
+  const elapsed = Date.now() - lastSessionReadModelRefreshAt;
+  if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
+    // One deferred refresh covers every fact that arrives in the window.
+    if (deferredSessionReadModelRefresh === undefined) {
+      deferredSessionReadModelRefresh = setTimeout(() => {
+        deferredSessionReadModelRefresh = undefined;
+        lastSessionReadModelRefreshAt = Date.now();
+        void client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+      }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
+    }
+    return;
+  }
+  lastSessionReadModelRefreshAt = Date.now();
   void client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
 }
 
 /**
- * archive#1225 `queryClient`, when supplied by the
- * caller (`useOrchestration`'s `useQueryClient`), is threaded down to
+ * Test-only: clears the module-global refresh throttle and client binding,
+ * so each test starts from a quiet window instead of inheriting the last
+ * test's (#2310 review L3).
+ */
+export function resetSessionReadModelRefreshForTests(): void {
+  if (deferredSessionReadModelRefresh !== undefined) {
+    clearTimeout(deferredSessionReadModelRefresh);
+  }
+  deferredSessionReadModelRefresh = undefined;
+  lastSessionReadModelRefreshAt = 0;
+  sharedQueryClient = undefined;
+}
+
+/**
+ * archive#1225 `queryClient`, when supplied by a caller (none in production
+ * yet — #2307), is threaded down to
  * `applyOrchestrationSnapshot`'s reconnect-fallback refetch so it keeps the
  * SAME `toolMappings` cache-lookup fallback the mount-time rehydrate path
  * has — see `rehydrateChatSession.ts`'s file-header note. Only the FIRST
@@ -297,7 +336,7 @@ export function ensureOrchestrationEventStream(
           payload.provenance,
           payload.conversation,
         );
-        refreshSessionReadModelOnTerminal(queryClient, payload.event);
+        refreshSessionReadModelOnFact(queryClient, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
       ) {

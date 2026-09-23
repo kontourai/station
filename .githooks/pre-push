@@ -80,16 +80,16 @@ node scripts/check-prepush-orchestration-transfer.mjs
 # required `fast-checks` lane, composes node-runtime-contract,
 # lockfile-sync:gate, channel-ports:check, gate:workflows and the typecheck
 # aggregate. What it does NOT compose is any of the fourteen ratchets this
-# step runs. The required windows-pr-verification.yml runs typecheck,
-# gate:naming and gate:ui-contracts on every PR and merge-queue candidate,
-# which covers thirteen of the fourteen (agent-plugin-validators-gate is the
-# exception).
+# step runs. The required windows-pr-verification.yml runs gate:naming and
+# gate:ui-contracts (not typecheck: ci:fast's aggregate owns that verdict) on
+# every PR and merge-queue candidate, which covers thirteen of the fourteen
+# (agent-plugin-validators-gate is the exception).
 #
 # So this hook buys earlier feedback, not new coverage: without it these
 # ratchets first report on the PR's Windows check, after a push and a hosted
-# Windows runner's queue. Three
-# regressions reached main in one day when these ratchets ran only after
-# merge (two motion literals, one undeclared Coding dependency).
+# Windows runner's queue. Three regressions reached main in one day when
+# these ratchets ran only after merge (two motion literals, one undeclared
+# Coding dependency).
 echo "[station pre-push] static gates (UI contracts, content)"
 node scripts/check-prepush-static-gates.mjs
 
@@ -118,7 +118,7 @@ echo "[station pre-push] Veritas readiness"
 npm run --silent veritas:readiness
 
 # ~50-90s (51s wall measured here end to end, preconditions included, with
-# the thirteen lanes run concurrently; station#4273 recorded 82s for the
+# the lanes run concurrently; station#4273 recorded 82s for the
 # aggregate alone), and
 # only when this push changes something a tsc project reads — a .ts/.tsx/
 # .mts/.cts source, any tsconfig, a manifest, or a patch. Everything else in

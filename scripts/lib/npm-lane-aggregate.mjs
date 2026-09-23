@@ -121,9 +121,12 @@ export function runLane(
         // EINVAL` for a `.cmd`/`.bat` target on Windows since Node's
         // CVE-2024-27980 hardening (reproduced live on Node 24.5,
         // self-hosted Windows runner) -- every lane failed regardless of
-        // whether the code compiled, on Windows, where
-        // `.github/workflows/windows-pr-verification.yml` runs `npm run
-        // typecheck` as a required step. `shell: true` on win32 is safe
+        // whether the code compiled. That was a real Windows CI host at the
+        // time; CI no longer typechecks on Windows (tsc's verdict is
+        // OS-independent and ci:fast runs the aggregate on Linux), but a
+        // Windows contributor's pre-push typecheck and `npm run typecheck`
+        // still take this path, so the win32 branch stays load-bearing.
+        // `shell: true` on win32 is safe
         // here specifically because `lane.script` is never caller-supplied
         // free text: every value reaching this function comes from the
         // hardcoded `TYPECHECK_LANES`/`DOCS_TRUTH_GATE_LANES` constants in
