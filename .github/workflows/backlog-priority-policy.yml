@@ -1,8 +1,11 @@
 name: Backlog disposition policy
 
+# A daily audit, not a per-event gate. Running on every issue and label event
+# produced ~170 runs a day, most cancelled by the next label click, and failed
+# by construction in the minutes between filing an issue and labelling it.
+# That red belongs to backlog hygiene, not to main, so main-health does not
+# watch this workflow.
 on:
-  issues:
-    types: [opened, reopened, closed, labeled, unlabeled]
   schedule:
     - cron: '23 13 * * *'
   workflow_dispatch:
