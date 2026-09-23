@@ -467,6 +467,31 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
+  // #90 Browser pane (personal hosts only). Reads — Chromium acquisition
+  // status, the session list with its action history, one session — sit at
+  // read. Every mutation either drives a browser that runs ON the Station host
+  // (network reach from this machine, the same standing as a terminal) or
+  // installs a browser build onto it, so all of them require the terminal
+  // authority rather than the ordinary operate tier. The routes additionally
+  // authorize every request per Project (operator or Project admin, D5).
+  ...READ_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/browser:read',
+      method,
+      prefix: '/api/browser',
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: '/api/browser:terminal-operate',
+      method,
+      prefix: '/api/browser',
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.
