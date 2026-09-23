@@ -44,6 +44,7 @@ import './ComputersSection.css';
 import { type ComputerRowModel, isSshBusy } from './computer-rows';
 import { knownEnvironmentRegistry } from './known-environment-registry';
 import { PEER_CREDENTIAL_COMMAND } from './peer-credential-command';
+import { RelayRouteProfiles } from './RelayRouteProfiles';
 import {
   deriveSshForwardProbeState,
   sshForwardLifecycleLabel,
@@ -416,6 +417,7 @@ export function ComputersSection() {
         onCancel={() => setRemoveTarget(null)}
         variant="danger"
       />
+      <RelayRouteProfiles />
     </>
   );
 }

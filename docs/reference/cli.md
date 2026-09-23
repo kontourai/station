@@ -300,6 +300,15 @@ saved Station persistence for bootstrap and diagnostics; it never changes the
 default. A named override or merely viewing a Station also never changes the
 default.
 
+A native Desktop may save an inert broker route in this same store. It has no
+CLI transport or credential reference: `--station` and `STATION_TARGET` refuse
+that route instead of sending a direct request to its recorded Station origin.
+The strict schema means an older CLI or Desktop build that predates the
+`relayRoute` field refuses the shared profile file. Update readers sharing the
+root before saving a broker route; see [#2404](https://github.com/kontourai/station/issues/2404)
+for the mixed-version compatibility work. Current readers fail closed without
+overwriting unknown metadata.
+
 Project selection is an explicit, secret-free pointer to a saved Station:
 `station stations project use <name>` maps the canonical invoked directory in
 the owner-controlled store, `show` reports it, and `clear` removes it.

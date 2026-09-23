@@ -1968,6 +1968,159 @@ describe('NativeStationProfileStorage', () => {
     });
   });
 
+  describe('secret-free relay route profiles (#2388)', () => {
+    const relayInput = {
+      name: 'home relay',
+      endpoint: 'https://home-station.example',
+      relayRoute: {
+        brokerOrigin: 'https://broker.example',
+        stationId: '11111111-1111-4111-8111-111111111111',
+        enrollmentId: '22222222-2222-4222-8222-222222222222',
+      },
+    };
+
+    it('persists and lists routing intent without projecting or selecting direct HTTP', async () => {
+      const { storage } = storageWithKeyring();
+      await storage.hydrate();
+      const changed = vi.fn();
+      storage.subscribeRelayRouteProfiles(changed);
+
+      const connectionId = await storage.saveRelayRouteProfile(relayInput);
+      const profile = storage.getRelayRouteProfiles()[0];
+      expect(connectionId).toBe('station-profile:home relay');
+      expect(profile).toMatchObject({
+        name: 'home relay',
+        endpoint: 'https://home-station.example',
+        configurationState: 'unconfigured',
+        relayRoute: relayInput.relayRoute,
+      });
+      expect(storage.getRelayRouteProfiles()).toHaveLength(1);
+      expect(changed).toHaveBeenCalled();
+      expect(
+        JSON.parse(storage.get('station-connect-connections') ?? '[]').map(
+          (connection: { id: string }) => connection.id,
+        ),
+      ).not.toContain(connectionId);
+      expect(() => savedConnectionFromStationProfile(profile)).toThrow(
+        'cannot use direct HTTP',
+      );
+      expect(storage.get('station-connect-connections-active')).toBe(
+        'station-profile:kontour',
+      );
+      expect(storage.selectProfileForProcess('home relay')).toBeUndefined();
+      expect(await storage.authorizeActiveConnection(connectionId, true)).toBe(
+        false,
+      );
+      await expect(storage.makeDefault(connectionId)).rejects.toThrow(
+        'Only a direct shared saved Station',
+      );
+    });
+
+    it('edits and removes by exact profile revision while rejecting embedded trust keys', async () => {
+      const { currentStore, storage } = storageWithKeyring();
+      await storage.hydrate();
+      const connectionId = await storage.saveRelayRouteProfile(relayInput);
+      const original = storage.getRelayRouteProfiles()[0];
+
+      const updatedId = await storage.saveRelayRouteProfile({
+        ...relayInput,
+        connectionId,
+        expectedUpdatedAt: original.updatedAt,
+        name: 'home relay edited',
+        endpoint: 'https://home-v2.example',
+      });
+      expect(updatedId).toBe('station-profile:home relay edited');
+      expect(currentStore().profiles.at(-1)).toMatchObject({
+        name: 'home relay edited',
+        endpoint: 'https://home-v2.example',
+        relayRoute: relayInput.relayRoute,
+        configurationState: 'unconfigured',
+      });
+      await expect(
+        storage.saveRelayRouteProfile({
+          ...relayInput,
+          connectionId: updatedId,
+          expectedUpdatedAt: storage.getRelayRouteProfiles()[0].updatedAt,
+          relayRoute: {
+            ...relayInput.relayRoute,
+            signingKey: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
+          } as typeof relayInput.relayRoute,
+        }),
+      ).rejects.toThrow('accept only broker origin');
+
+      const edited = storage.getRelayRouteProfiles()[0];
+      await storage.removeRelayRouteProfile(updatedId, edited.updatedAt);
+      expect(storage.getRelayRouteProfiles()).toEqual([]);
+      expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
+        'kontour',
+        'station.kontourai.io',
+      ]);
+      await expect(
+        storage.removeRelayRouteProfile(updatedId, edited.updatedAt),
+      ).rejects.toThrow('changed; reopen it and retry');
+    });
+
+    it('keeps direct pairing from converting an inert relay route into an HTTP profile', async () => {
+      const { currentStore, storage } = storageWithKeyring();
+      await storage.hydrate();
+      const connectionId = await storage.saveRelayRouteProfile(relayInput);
+
+      await storage.commitVerifiedPairing({
+        connectionId,
+        name: relayInput.name,
+        endpoint: relayInput.endpoint,
+        credentialHandle: 'handle-direct-pairing',
+        nextCredentialRef: hostRef('host-ref-direct-pairing'),
+        clientInstanceId: CLIENT_INSTANCE_ID,
+        handshake: {
+          environmentId: '33333333-3333-4333-8333-333333333333',
+          authentication: { scheme: 'bearer', protocolVersion: 1 },
+        },
+      });
+
+      expect(
+        currentStore().profiles.find(
+          (profile) => profile.name === relayInput.name,
+        ),
+      ).toMatchObject({
+        endpoint: relayInput.endpoint,
+        configurationState: 'unconfigured',
+        relayRoute: relayInput.relayRoute,
+      });
+      expect(
+        currentStore().profiles.find(
+          (profile) =>
+            profile.environmentId === '33333333-3333-4333-8333-333333333333',
+        ),
+      ).toMatchObject({
+        setupSource: 'paired',
+        configurationState: 'configured',
+      });
+    });
+
+    it('refuses public insecure broker origins and stale edits', async () => {
+      const { storage } = storageWithKeyring();
+      await storage.hydrate();
+      await expect(
+        storage.saveRelayRouteProfile({
+          ...relayInput,
+          relayRoute: {
+            ...relayInput.relayRoute,
+            brokerOrigin: 'http://broker.example',
+          },
+        }),
+      ).rejects.toThrow('HTTPS or strict loopback HTTP');
+      const connectionId = await storage.saveRelayRouteProfile(relayInput);
+      await expect(
+        storage.saveRelayRouteProfile({
+          ...relayInput,
+          connectionId,
+          expectedUpdatedAt: 0,
+        }),
+      ).rejects.toThrow('changed; reopen it and retry');
+    });
+  });
+
   describe('hasSavedProfiles', () => {
     it('is false before hydration and true once a store with profiles loads', async () => {
       const { storage } = storageWithProfileStore();
