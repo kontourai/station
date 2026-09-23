@@ -333,8 +333,13 @@ function pluginBundleOptions({
           }));
           build.onLoad(
             { filter: /.*/, namespace: 'shared-external' },
+            // The shared value is usually the host's ES module namespace, which
+            // takes no new properties. `tsconfigRaw` applies the plugin's
+            // `strict` to this virtual module as well, where a plain assignment
+            // would throw at bundle load; `Reflect.set` keeps the best-effort
+            // write and never throws on a namespace.
             (args) => ({
-              contents: `var _m = globalThis.require('${args.path}'); module.exports = _m; module.exports.__esModule = true; if (!module.exports.default) module.exports.default = _m;`,
+              contents: `var _m = globalThis.require('${args.path}'); module.exports = _m; if (_m !== null && (typeof _m === 'object' || typeof _m === 'function')) { Reflect.set(_m, '__esModule', true); if (!_m.default) Reflect.set(_m, 'default', _m); }`,
               loader: 'js',
             }),
           );
