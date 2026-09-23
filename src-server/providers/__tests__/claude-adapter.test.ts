@@ -2408,6 +2408,113 @@ describe('ClaudeAdapter', () => {
     ]);
   });
 
+  describe('#2316: an abandoned approval is settled, never answerable later', () => {
+    async function openedBashRequest(threadId: string, signal: AbortSignal) {
+      mockQuery.mockReturnValue(createControlledMockQuery());
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({ provider: 'claude', threadId });
+      await iterator.next(); // session.started
+      await iterator.next(); // session.configured
+      const turn = await adapter.sendTurn({ threadId, input: 'run it' });
+      await iterator.next(); // turn.started
+      const canUseTool = mockQuery.mock.calls[0][0].options.canUseTool;
+      const permission = canUseTool(
+        'Bash',
+        { command: 'rm -rf build' },
+        { signal, toolUseID: 'toolu-abandoned', suggestions: [] },
+      );
+      const opened = (await iterator.next()).value;
+      expect(opened).toMatchObject({ method: 'request.opened' });
+      return { adapter, iterator, turn, canUseTool, permission, opened };
+    }
+
+    async function expectNoGrant(
+      adapter: ClaudeAdapter,
+      iterator: AsyncIterator<any>,
+      threadId: string,
+      canUseTool: any,
+      requestId: string,
+    ) {
+      // The late answer is refused, before anything is granted…
+      await expect(
+        adapter.respondToRequest(threadId, requestId, 'acceptForSession'),
+      ).rejects.toThrow(`Unknown Claude permission request: ${requestId}`);
+      // …so the next Bash call still asks.
+      const next = canUseTool(
+        'Bash',
+        { command: 'ls' },
+        {
+          signal: new AbortController().signal,
+          toolUseID: 'toolu-next',
+          suggestions: [],
+        },
+      );
+      const race = await Promise.race([
+        next.then(() => ({ kind: 'auto-allowed' })),
+        iterator.next().then((event) => ({ kind: 'event', event })),
+      ]);
+      expect(race).toMatchObject({
+        kind: 'event',
+        event: { value: { method: 'request.opened' } },
+      });
+    }
+
+    test('an interrupt settles the open request before turn.aborted', async () => {
+      const threadId = 'thread-interrupted-approval';
+      const { adapter, iterator, turn, canUseTool, permission, opened } =
+        await openedBashRequest(threadId, new AbortController().signal);
+
+      await expect(
+        adapter.interruptTurn(threadId, turn.turnId),
+      ).resolves.toMatchObject({ outcome: 'cancelled' });
+      await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+      const settled = [
+        (await iterator.next()).value,
+        (await iterator.next()).value,
+      ];
+      expect(settled).toMatchObject([
+        {
+          method: 'request.resolved',
+          requestId: opened.requestId,
+          status: 'cancelled',
+        },
+        { method: 'turn.aborted', reason: 'interrupted' },
+      ]);
+      await expectNoGrant(
+        adapter,
+        iterator,
+        threadId,
+        canUseTool,
+        opened.requestId,
+      );
+      await adapter.stopSession(threadId);
+    });
+
+    test('an SDK abort of the gated call settles the open request', async () => {
+      const threadId = 'thread-aborted-approval';
+      const controller = new AbortController();
+      const { adapter, iterator, canUseTool, permission, opened } =
+        await openedBashRequest(threadId, controller.signal);
+
+      controller.abort();
+      await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+      expect((await iterator.next()).value).toMatchObject({
+        method: 'request.resolved',
+        requestId: opened.requestId,
+        status: 'cancelled',
+      });
+      await expectNoGrant(
+        adapter,
+        iterator,
+        threadId,
+        canUseTool,
+        opened.requestId,
+      );
+      await adapter.stopSession(threadId);
+    });
+  });
+
   test('an interrupt rejection leaves the stopped-result drop armed (#921)', async () => {
     const controlled = createControlledMockQuery();
     controlled.interrupt.mockRejectedValueOnce(

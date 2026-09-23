@@ -2288,3 +2288,70 @@ describe('#2316 request.opened binds the approval card to the request it answers
     });
   });
 });
+
+describe('#2316 a bound card is retired when its request can no longer be answered', () => {
+  const bashCard = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+  ) =>
+    messages
+      .flatMap((message) => message.parts)
+      .find(
+        (part) => part.type === 'tool-invocation' && part.toolCallId === 'c1',
+      );
+  const openOnTurnOne = () => [
+    ev({ method: 'turn.started', turnId: 't-1', prompt: 'Run it' }),
+    ev({
+      method: 'tool.started',
+      turnId: 't-1',
+      toolCallId: 'c1',
+      toolName: 'Bash',
+      arguments: { command: 'rm -rf build' },
+    }),
+    ev({
+      method: 'request.opened',
+      requestId: 'req-c1',
+      requestType: 'approval',
+      payload: { toolName: 'Bash', toolCallId: 'c1' },
+    }),
+  ];
+
+  it.each([
+    [
+      'turn.aborted',
+      { method: 'turn.aborted', turnId: 't-1', reason: 'interrupted' },
+    ],
+    ['turn.completed', { method: 'turn.completed', turnId: 't-1' }],
+    ['session.exited', { method: 'session.exited', exitCode: 0 }],
+  ] as const)('after %s, even with a later completed turn', (_name, end) => {
+    const messages = projectRuntimeEventsToMessages([
+      ...openOnTurnOne(),
+      ev(end as never),
+      ev({ method: 'turn.started', turnId: 't-2', prompt: 'Next' }),
+      ev({ method: 'turn.completed', turnId: 't-2', outputText: 'Done' }),
+    ]);
+    expect(bashCard(messages)).toMatchObject({
+      approvalId: 'req-c1',
+      needsApproval: false,
+    });
+  });
+
+  it('stays open across another session’s turn end', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ...openOnTurnOne(),
+      ev({ method: 'turn.completed', threadId: 'other-session', turnId: 'x' }),
+    ]);
+    expect(bashCard(messages)).toMatchObject({ needsApproval: true });
+  });
+
+  it('settles on a request.resolved that arrives after its turn was emitted', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ...openOnTurnOne(),
+      ev({ method: 'turn.started', turnId: 't-2', prompt: 'Queued' }),
+      ev({ method: 'request.resolved', requestId: 'req-c1', status: 'denied' }),
+    ]);
+    expect(bashCard(messages)).toMatchObject({
+      needsApproval: false,
+      approvalStatus: 'user-denied',
+    });
+  });
+});

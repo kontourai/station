@@ -2398,6 +2398,28 @@ export class CodexAdapter implements ProviderAdapterShape {
       { turnId: targetTurnId },
     );
 
+    // #2316: the interrupted turn's open approvals can never run their call.
+    // Answer each one `cancel` on the wire and settle it, so no later answer
+    // lands on a dead request and no session grant is minted for it.
+    for (const [requestId, pending] of record.pendingApprovals) {
+      const outcome = resolveApprovalOutcome(
+        pending.method,
+        pending.payload,
+        'cancel',
+      );
+      this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: mapApprovalResolutionStatus(outcome.decision),
+      });
+    }
+    record.pendingApprovals.clear();
+
     this.transport.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,

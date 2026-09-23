@@ -677,4 +677,64 @@ describe('#2316 inline approval card', () => {
       decision: 'accept',
     });
   });
+
+  test.each([
+    [
+      'aborted',
+      { method: 'turn.aborted', turnId: 'turn-1', reason: 'interrupted' },
+    ],
+    ['completed', { method: 'turn.completed', turnId: 'turn-1' }],
+    ['exited', { method: 'session.exited', exitCode: 0 }],
+  ])(
+    'an old bound card offers no buttons once its turn %s',
+    async (_name, end) => {
+      sequence = 0;
+      windowEvents.current = [
+        ...claudeBashAwaitingApproval(),
+        runtimeEvent(end),
+        runtimeEvent({
+          method: 'turn.started',
+          turnId: 'turn-2',
+          prompt: 'Later work',
+        }),
+        runtimeEvent({
+          method: 'turn.completed',
+          turnId: 'turn-2',
+          outputText: 'Done later',
+        }),
+      ];
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      renderCard();
+
+      await screen.findByText('Later work');
+      expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+      expect(
+        screen.queryByRole('region', { name: 'Approvals waiting on you' }),
+      ).toBeNull();
+    },
+  );
+
+  test('a request on the turn the live streaming shell holds is answerable from the strip', async () => {
+    const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+    // The shell renders the open turn, so its projected row (with the bound
+    // card) is left out of the transcript.
+    renderCard(
+      chatSession({
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-1',
+        status: 'sending',
+      }),
+    );
+
+    const strip = await screen.findByRole('region', {
+      name: 'Approvals waiting on you',
+    });
+    fireEvent.click(within(strip).getByRole('button', { name: 'Allow Once' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.body).toMatchObject({
+      threadId: 'claude-child-b',
+      requestId: 'req-claude-b',
+      expectedRequestEventId: 'evt-3',
+    });
+  });
 });

@@ -488,6 +488,58 @@ describe('AcpAdapter', () => {
     ).toBe(true);
   });
 
+  test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-interrupt-approval',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0];
+    await adapter.sendTurn({
+      threadId: 'thread-interrupt-approval',
+      input: 'Write it',
+    });
+    await nextEvent(iterator, 'turn.started');
+    const requestPromise = requestPermission(proc.client, 'tool-1', 'write');
+    const opened = await nextEvent(iterator, 'request.opened');
+
+    await adapter.interruptTurn('thread-interrupt-approval');
+    await expect(requestPromise).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'cancelled',
+    });
+    expect(await nextEvent(iterator, 'turn.aborted')).toMatchObject({
+      reason: 'interrupted',
+    });
+    await expect(
+      adapter.respondToRequest(
+        'thread-interrupt-approval',
+        String(opened.requestId),
+        'acceptForSession',
+      ),
+    ).rejects.toThrow('Unknown ACP permission request');
+
+    // No grant: the next call to the same tool still asks.
+    await adapter.sendTurn({
+      threadId: 'thread-interrupt-approval',
+      input: 'Again',
+    });
+    await nextEvent(iterator, 'turn.started');
+    void requestPermission(proc.client, 'tool-2', 'write');
+    expect(await nextEvent(iterator, 'request.opened')).toMatchObject({
+      payload: { toolCallId: 'tool-2' },
+    });
+    await adapter.stopAll();
+  });
+
   test('rejects a duplicate session while the first start owns the thread', async () => {
     const { adapter, processes } = createAdapter();
     const input = {

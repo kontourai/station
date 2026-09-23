@@ -1603,6 +1603,49 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return { outcome: 'stopped', taskId };
   }
 
+  /**
+   * Settle one open permission request as cancelled and publish its
+   * `request.resolved`. #2316: a request whose call can no longer run must
+   * leave `pendingRequests`, or a later answer "succeeds" against a dead
+   * promise — and "Allow <tool> for this session" mints a real session-wide
+   * grant for a call that never ran. `respondToRequest` refuses an id that is
+   * not pending before it grants anything.
+   */
+  private cancelPendingRequest(
+    record: ClaudeSessionRecord,
+    threadId: string,
+    requestId: string,
+  ): void {
+    const pending = record.pendingRequests.get(requestId);
+    if (!pending) return;
+    record.pendingRequests.delete(requestId);
+    pending.resolve(
+      mapClaudeDecisionToPermissionResult(
+        'cancel',
+        pending.toolInput,
+        pending.suggestions,
+      ),
+    );
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      requestId,
+      method: 'request.resolved',
+      status: 'cancelled',
+    });
+  }
+
+  private cancelPendingRequests(
+    record: ClaudeSessionRecord,
+    threadId: string,
+  ): void {
+    for (const requestId of [...record.pendingRequests.keys()]) {
+      this.cancelPendingRequest(record, threadId, requestId);
+    }
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.requireSession(threadId);
     if (!record.activeTurnId) return { outcome: 'no-active-turn' } as const;
@@ -1617,6 +1660,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // `is_error` result before `interrupt()` resolves. The mapper consumes
     // this marker only for this exact dispatched turn.
     record.interruptingTurnId = targetTurnId;
+    // #2316: the interrupted turn's open approvals can never run their call.
+    // Settle them (request.resolved, cancelled) BEFORE turn.aborted, so no
+    // later answer lands on them and no grant is minted for them.
+    this.cancelPendingRequests(record, threadId);
     // A rejected control promise does not prove the engine ignored the
     // interrupt. Keep the exact-turn marker armed until the SDK result stream
     // confirms what happened; a second Stop must not clear the first one's
@@ -1713,25 +1760,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     this.sessions.delete(threadId);
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
-    for (const [requestId, pending] of record.pendingRequests) {
-      pending.resolve(
-        mapClaudeDecisionToPermissionResult(
-          'cancel',
-          pending.toolInput,
-          pending.suggestions,
-        ),
-      );
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: new Date().toISOString(),
-        requestId,
-        method: 'request.resolved',
-        status: 'cancelled',
-      });
-    }
-    record.pendingRequests.clear();
+    this.cancelPendingRequests(record, threadId);
     record.promptQueue.close();
     record.query.close();
     // station#1558: the session is ending, so any `tool_use` still open can
@@ -2331,6 +2360,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolInput,
             toolName,
           });
+          // #2316: the SDK aborts this callback when the call it gates is
+          // abandoned; the request is then settled, never left answerable.
+          options.signal?.addEventListener(
+            'abort',
+            () => this.cancelPendingRequest(record, input.threadId, requestId),
+            { once: true },
+          );
+          if (options.signal?.aborted)
+            this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
       ...(preToolPolicy && input.agent

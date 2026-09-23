@@ -94,6 +94,18 @@ export function observedAssistantMessageId(
     : null;
 }
 
+/**
+ * #2316: events after which an approval still open on that thread can no
+ * longer be answered — the call it gated will never run. The projection
+ * retires such a card, and the UI's pending-approvals strip applies the same
+ * rule, so no consumer offers buttons for a dead request.
+ */
+export const APPROVAL_TERMINAL_METHODS: ReadonlySet<string> = new Set([
+  'turn.completed',
+  'turn.aborted',
+  'session.exited',
+]);
+
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
   options: { stableIds?: boolean } = {},
@@ -123,6 +135,12 @@ export function projectRuntimeEventsToMessages(
   let turnIdentity: string | undefined;
   let turnAnchorEventId: string | undefined;
   let approvalTargets = new Map<string, MessagePart>();
+  // #2316: every card still awaiting its answer, across turns, keyed by the
+  // requesting thread AND request id (a lineage window folds several
+  // sessions, whose request ids are only unique per session).
+  const openApprovalParts = new Map<string, MessagePart>();
+  const approvalKey = (threadId: string, requestId: string) =>
+    `${threadId}\u0000${requestId}`;
   /**
    * station#1410: adopt a terminal event's turn id ONLY when it is plausibly
    * about the content we have buffered.
@@ -365,6 +383,16 @@ export function projectRuntimeEventsToMessages(
   };
 
   for (const ev of events) {
+    if (APPROVAL_TERMINAL_METHODS.has(ev.method)) {
+      // A turn that ended (or a session that exited) with a card still
+      // awaiting approval retires it: the request is dead, and answering it
+      // must not be offered.
+      for (const [key, part] of openApprovalParts) {
+        if (part.approvalThreadId !== ev.threadId) continue;
+        part.needsApproval = false;
+        openApprovalParts.delete(key);
+      }
+    }
     switch (ev.method) {
       case 'turn.started': {
         if (ev.inputKind === 'steer') {
@@ -791,11 +819,16 @@ export function projectRuntimeEventsToMessages(
           target.approvalEventId = ev.eventId;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
+          openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), target);
         }
         break;
       }
       case 'request.resolved': {
-        const target = approvalTargets.get(ev.requestId);
+        const key = approvalKey(ev.threadId, ev.requestId);
+        // The request's own card first — its turn may already be emitted.
+        const target =
+          openApprovalParts.get(key) ?? approvalTargets.get(ev.requestId);
+        openApprovalParts.delete(key);
         if (target) {
           target.needsApproval = false;
           target.approvalStatus =
