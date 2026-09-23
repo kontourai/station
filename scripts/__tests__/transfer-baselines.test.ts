@@ -124,6 +124,20 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
       `${TRANSFER_BASELINE_PREFIX}${f.old2.slice(0, 12)}-branch`,
     );
     git(f.primary, ['worktree', 'add', '-b', 'lane', branchLane, f.old2]);
+    // T1: exact canonical name AND a HEAD that matches it, at a stale SHA,
+    // but checked out on a branch: someone's work, not a regenerable baseline.
+    const branchedParent = join(f.root, 'branched');
+    mkdirSync(branchedParent);
+    const branchedCanonical = f.baselinePath(f.old1, branchedParent);
+    git(f.primary, [
+      'worktree',
+      'add',
+      '-b',
+      'kept-branch',
+      branchedCanonical,
+      f.old1,
+    ]);
+    backdate(branchedCanonical);
     // A baseline-named directory git does not know about.
     const unregistered = join(
       f.root,
@@ -164,6 +178,7 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
       reviewPin,
       repointed,
       branchLane,
+      branchedCanonical,
     ])
       expect(after).toContain(survivor);
     expect(after).not.toContain(stale);
