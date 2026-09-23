@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 import packageJson from '../../../package.json' with { type: 'json' };
+import { parsePluginManifestDocumentWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import { STATION_DOCS_TOPICS } from '../station-docs-content.js';
 import {
   createStationDocsMcpServer,
@@ -105,6 +106,103 @@ describe('station-docs content', () => {
     for (const topic of STATION_DOCS_TOPICS) {
       expect(topic.body.toLowerCase()).not.toMatch(
         /your (agents|runs|jobs|sessions) (are|is) currently/,
+      );
+    }
+  });
+});
+
+/**
+ * #2323 S1. The plugin-authoring topic is what an agent on an installed
+ * Station reads instead of a source checkout, so it has to stay true as the
+ * SDK and the manifest loader move. Each test below binds a claim in the
+ * prose to the code that decides it.
+ */
+describe('station-docs plugin-authoring topic', () => {
+  const topic = () => {
+    const found = findStationDocsTopic('plugin-authoring');
+    expect(found, 'plugin-authoring topic is missing').toBeDefined();
+    return found!;
+  };
+
+  /** The paragraph that starts with `heading`, as written in the body. */
+  const paragraph = (heading: string) => {
+    const match = topic()
+      .body.split('\n\n')
+      .find((block) => block.startsWith(heading));
+    expect(match, `no paragraph starting '${heading}'`).toBeDefined();
+    return match!;
+  };
+
+  test('every SDK hook the topic names is a real export of @kontourai/station-sdk', async () => {
+    const named = [
+      ...new Set(topic().body.match(/\buse[A-Z][A-Za-z]+\b/g) ?? []),
+    ];
+    // The curated set the topic exists to teach. If the prose stops naming
+    // one of these, the check below would pass vacuously for it.
+    expect(named).toEqual(
+      expect.arrayContaining([
+        'useAgents',
+        'useIntegrationsQuery',
+        'useOrchestrationSessionsQuery',
+        'useSendToChat',
+        'useLaunchChat',
+        'useNavigation',
+        'useToast',
+      ]),
+    );
+    const sdk = (await import('@kontourai/station-sdk')) as Record<
+      string,
+      unknown
+    >;
+    const missing = named.filter((hook) => typeof sdk[hook] !== 'function');
+    expect(
+      missing,
+      'the plugin-authoring topic names hooks the SDK does not export',
+    ).toEqual([]);
+  }, 60_000);
+
+  test('the example manifest loads through the real loader with its pane intact', () => {
+    const block = paragraph('A complete minimal manifest');
+    const json = block.slice(block.indexOf('\n{') + 1);
+    const { manifest, format, stationExtension } =
+      parsePluginManifestDocumentWithFormat(json, '/docs/plugin.json');
+    expect(format).toBe('agent-plugin-1.0');
+    // `disabled` would mean Station drops every pane the example declares
+    // while still reporting a successful load.
+    expect(stationExtension).toEqual({ status: 'validated' });
+    expect(manifest.entrypoint).toBe('./src/index.tsx');
+    expect(manifest.permissions).toEqual(['navigation.dock']);
+    expect(manifest.workspacePanes).toHaveLength(1);
+    expect(manifest.workspacePanes?.[0]?.renderer).toEqual({
+      kind: 'plugin-component',
+      name: 'my-pulse-workspace',
+    });
+  });
+
+  test('the example entrypoint exports the renderer name the example manifest declares', () => {
+    const code = paragraph('THE ENTRYPOINT AND THE COMPONENTS EXPORT');
+    expect(code).toContain(
+      'export const components = { "my-pulse-workspace": MyPulse };',
+    );
+  });
+
+  test('it says an agent cannot install, and names the tool that validates', () => {
+    const body = topic().body;
+    expect(body).toContain('validate_plugin');
+    expect(body).toMatch(/agent cannot install a plugin/i);
+    expect(body).toContain('Plugins → Install plugin');
+    expect(body).toContain('station plugin install');
+    // The #2321 mistake: the hook returns the function itself.
+    expect(body).toContain('const sendToChat = useSendToChat(');
+    expect(body).not.toMatch(
+      /const \{ sendToChat \} = useSendToChat\((?!\.\.\.)/,
+    );
+  });
+
+  test('no other topic claims station-control installs plugins', () => {
+    for (const entry of STATION_DOCS_TOPICS) {
+      expect(entry.body, entry.id).not.toMatch(
+        /(?<!cannot )(?<!not )install(?:ing)? plugins\b/i,
       );
     }
   });

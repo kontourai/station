@@ -46,6 +46,10 @@ const SC_READ_ONLY_TOOL_NAMES = [
   'get_config',
   'list_plugins',
   'check_plugin_updates',
+  // #2323 S1: stages the source in a temp directory outside the plugins
+  // directory, removes it, and builds nothing; no Station state changes and
+  // nothing it returns can authorize an install.
+  'validate_plugin',
   'get_usage',
   'get_achievements',
   // archive#1880: semantic search over the K3 knowledge index — embeds the

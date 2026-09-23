@@ -117,6 +117,17 @@ export const pluginPreviewSchema = z.object({
 });
 
 /**
+ * `POST /api/plugins/validate` (#2323 S1) names a source only. It has no
+ * registry form and no consent field, because it is an authoring check and
+ * never the first half of an install.
+ */
+export const pluginValidateSchema = z
+  .object({
+    source: z.string().trim().min(1).max(4096),
+  })
+  .strict();
+
+/**
  * `consent` is the operator's pre-install decision (archive#4288): the derived
  * permission set they were shown, the digest of the bytes they were shown, and
  * the dependency ids that decision named. It is `optional()` here only so the

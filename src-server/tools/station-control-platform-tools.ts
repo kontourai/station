@@ -223,6 +223,31 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
   );
 
   server.tool(
+    'validate_plugin',
+    // #2323 S1. The authoring half of the install story: an agent that wrote
+    // a plugin can check it here before asking a person to install it. The
+    // route returns diagnostics and a contribution summary and nothing an
+    // install could consume as a decision (no content digest, no grant
+    // revision), so this does not reopen the door `install_plugin` closes.
+    'Check a plugin folder or git URL for authoring errors without installing it: the manifest, its Workspace Panes, prompt-file safety, and conflicts with what is already installed. Returns diagnostics. It does not install, and it does not build the bundle; a person installs from Plugins → Install plugin after reviewing the preview. Read the station-docs topic `plugin-authoring` for the format.',
+    {
+      source: z
+        .string()
+        .min(1)
+        .describe(
+          'Absolute path to the plugin folder (the one containing plugin.json), or an HTTPS git URL',
+        ),
+    },
+    async ({ source }) =>
+      jsonToolResult(
+        await api('/api/plugins/validate', {
+          method: 'POST',
+          body: JSON.stringify({ source }),
+        }),
+      ),
+  );
+
+  server.tool(
     'check_plugin_updates',
     'Check for available plugin updates',
     {},

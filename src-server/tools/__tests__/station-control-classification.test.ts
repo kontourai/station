@@ -94,6 +94,9 @@ describe('station-control tool classification', () => {
         'list_review_receipts',
         'get_review_receipt',
         'list_projects',
+        // #2323 S1: validation stages outside Station and returns nothing an
+        // install can consume, so it needs no platform-mutation approval.
+        'validate_plugin',
       ]),
     );
   });

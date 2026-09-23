@@ -12,6 +12,7 @@ import {
   pluginOverridesSchema,
   pluginPreviewSchema,
   pluginRecoverySchema,
+  pluginValidateSchema,
   registryInstallSchema,
   skillImportSchema,
   skillOutcomeSchema,
@@ -265,6 +266,15 @@ const FIRST_PASS_PATHS: Record<
       },
     },
   },
+  '/api/plugins/validate': {
+    post: {
+      operationId: 'validatePlugin',
+      requestBodySchema: pluginValidateSchema,
+      summary:
+        'Check a plugin source for authoring errors without installing, staging under Station, or building it',
+      tags: ['plugins'],
+    },
+  },
   '/api/plugins/install': {
     post: {
       operationId: 'installPlugin',
@@ -468,6 +478,7 @@ function collectSchemas() {
     PluginOverrides: pluginOverridesSchema,
     PluginPreview: pluginPreviewSchema,
     PluginRecovery: pluginRecoverySchema,
+    PluginValidate: pluginValidateSchema,
     RegistryInstall: registryInstallSchema,
     SkillCreate: localSkillCreateSchema,
     SkillImport: skillImportSchema,
@@ -500,6 +511,7 @@ function schemaRef(schema: unknown) {
     [pluginOverridesSchema, 'PluginOverrides'],
     [pluginPreviewSchema, 'PluginPreview'],
     [pluginRecoverySchema, 'PluginRecovery'],
+    [pluginValidateSchema, 'PluginValidate'],
     [registryInstallSchema, 'RegistryInstall'],
     [localSkillCreateSchema, 'SkillCreate'],
     [skillImportSchema, 'SkillImport'],
