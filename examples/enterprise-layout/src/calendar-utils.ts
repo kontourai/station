@@ -57,7 +57,9 @@ export function detectMeetingProvider(
   body?: string,
 ): MeetingLink | null {
   const text = `${location ?? ''} ${body ?? ''}`;
-  for (const candidate of text.match(/https?:\/\/[^\s"'<>]+/g) ?? []) {
+  for (const match of text.match(/https?:\/\/[^\s"'<>]+/g) ?? []) {
+    // Meeting bodies are HTML, where a link's `&` is written `&amp;`.
+    const candidate = match.replaceAll('&amp;', '&');
     let host: string;
     try {
       host = new URL(candidate).hostname.toLowerCase();

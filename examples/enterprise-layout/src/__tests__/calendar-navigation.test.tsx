@@ -107,6 +107,18 @@ describe('calendar-utils', () => {
     ).toEqual({ provider: 'Zoom', url: 'https://acme.zoom.us/j/123?pwd=x' });
   });
 
+  test('decodes HTML-escaped ampersands in a join link', () => {
+    expect(
+      detectMeetingProvider(
+        undefined,
+        '<a href="https://acme.zoom.us/j/123?pwd=x&amp;uname=y">Join</a>',
+      ),
+    ).toEqual({
+      provider: 'Zoom',
+      url: 'https://acme.zoom.us/j/123?pwd=x&uname=y',
+    });
+  });
+
   test('matches the link host, not a service name elsewhere in the URL', () => {
     expect(
       detectMeetingProvider('https://evil.example/?next=zoom.us', undefined),
