@@ -740,7 +740,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
         service as never,
       );
       const metadata = (
-        service.sessionCommands.execute.mock.calls[0]?.[0] as {
+        service.sessionCommands.execute.mock.calls[0][0] as {
           input: { metadata: Record<string, unknown> };
         }
       ).input.metadata;
