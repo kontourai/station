@@ -28,9 +28,14 @@ async function resolveApiBase(apiBaseOverride?: string): Promise<string> {
   return apiBaseOverride ?? (await _getApiBase());
 }
 
-export async function fetchAuthStatus(): Promise<AuthStatusData> {
+export async function fetchAuthStatus(
+  signal?: AbortSignal,
+): Promise<AuthStatusData> {
   const apiBase = await resolveApiBase();
-  const response = await authenticatedFetch(`${apiBase}/api/auth/status`);
+  const response = await authenticatedFetch(
+    `${apiBase}/api/auth/status`,
+    signal ? { signal } : undefined,
+  );
   if (!response.ok) {
     throw new Error('Failed to fetch auth status');
   }
@@ -110,9 +115,14 @@ export async function requestSystemStatus(
   }
 }
 
-export async function fetchMonitoringStats(): Promise<MonitoringStatsData | null> {
+export async function fetchMonitoringStats(
+  signal?: AbortSignal,
+): Promise<MonitoringStatsData | null> {
   const apiBase = await resolveApiBase();
-  const response = await authenticatedFetch(`${apiBase}/monitoring/stats`);
+  const response = await authenticatedFetch(
+    `${apiBase}/monitoring/stats`,
+    signal ? { signal } : undefined,
+  );
   if (!response.ok) {
     // A non-2xx status is what `resolveMonitoringStatsRefetchInterval` reads
     // to stop this poll on a credential failure that cannot clear (401/403)
@@ -132,10 +142,12 @@ export async function fetchMonitoringStats(): Promise<MonitoringStatsData | null
 
 export async function fetchMonitoringMetrics(
   range: 'today' | 'week' | 'month' | 'all',
+  signal?: AbortSignal,
 ): Promise<MonitoringMetric[]> {
   const apiBase = await resolveApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/monitoring/metrics?range=${range}`,
+    signal ? { signal } : undefined,
   );
   const result = (await response.json()) as {
     success: boolean;
@@ -156,11 +168,13 @@ export async function fetchMonitoringMetrics(
  */
 export async function fetchFleetRoutingReceiptsForStation(
   limit?: number,
+  signal?: AbortSignal,
 ): Promise<FleetRoutingReceiptPage> {
   const apiBase = await resolveApiBase();
   const query = typeof limit === 'number' ? `?limit=${limit}` : '';
   const response = await authenticatedFetch(
     `${apiBase}/monitoring/fleet-routing-receipts${query}`,
+    signal ? { signal } : undefined,
   );
   // Read the body BEFORE branching on status (fix-round HIGH-1): a rejected
   // response still carries a body the route author wrote on purpose — e.g.
@@ -209,11 +223,13 @@ export async function fetchFleetRoutingReceiptsForStation(
  */
 export async function fetchFleetServeReceiptsForStation(
   limit?: number,
+  signal?: AbortSignal,
 ): Promise<FleetServeReceiptPage> {
   const apiBase = await resolveApiBase();
   const query = typeof limit === 'number' ? `?limit=${limit}` : '';
   const response = await authenticatedFetch(
     `${apiBase}/monitoring/fleet-serve-receipts${query}`,
+    signal ? { signal } : undefined,
   );
   // See the routing-receipt sibling above (fix-round HIGH-1): read the body
   // before branching on status so a route-authored error sentence — e.g.
@@ -374,9 +390,14 @@ export async function fetchMonitoringEventWindow(
   };
 }
 
-export async function fetchBranding(): Promise<BrandingData> {
+export async function fetchBranding(
+  signal?: AbortSignal,
+): Promise<BrandingData> {
   const apiBase = await resolveApiBase();
-  const response = await authenticatedFetch(`${apiBase}/api/branding`);
+  const response = await authenticatedFetch(
+    `${apiBase}/api/branding`,
+    signal ? { signal } : undefined,
+  );
   const result = (await response.json()) as {
     success: boolean;
     data?: {
@@ -481,10 +502,18 @@ export async function applyCoreUpdate(apiBase: string): Promise<{
   return responsePayload;
 }
 
-export async function fetchServerCapabilities(): Promise<ServerCapabilities> {
+/**
+ * `signal` is react-query's per-attempt signal (station#2327): without it a
+ * cancelled query stopped listening while its request kept its place in the
+ * desktop broker's queue, so a stalled Station accumulated orphans.
+ */
+export async function fetchServerCapabilities(
+  signal?: AbortSignal,
+): Promise<ServerCapabilities> {
   const apiBase = await resolveApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/system/capabilities`,
+    signal ? { signal } : undefined,
   );
   if (!response.ok) {
     throw new Error('Failed to fetch server capabilities');
