@@ -301,31 +301,28 @@ function readProcessCommands() {
 const BASELINE_ROOT_ENV = 'STATION_TRANSFER_BASELINE_ROOT';
 
 /**
- * Per-process text that may carry `STATION_TRANSFER_BASELINE_ROOT=<root>`,
- * or null when it cannot be read. This is how a sibling session's pre-push
- * gate names its baseline: through the environment, never argv or cwd.
- * Linux reads `/proc/<pid>/environ` (another user's process is unreadable and
- * cannot be using this user's baseline); elsewhere `ps -E` appends each
- * process's environment to its command line. Values are only scanned here,
- * never logged: environments carry credentials.
+ * Per-process environment text, or null when it cannot be read. This is how
+ * a sibling session's pre-push gate names its baseline: through the
+ * environment, never argv or cwd. Linux yields `/proc/<pid>/environ` one
+ * process at a time (another user's process is unreadable and cannot be using
+ * this user's baseline); elsewhere `ps -E` appends each environment to its
+ * command line, and only lines mentioning the variable are handed on.
  */
-function readProcessEnvironments({ platform = process.platform } = {}) {
+function readProcessEnvironmentTexts({ platform = process.platform } = {}) {
   if (platform === 'linux' && existsSync('/proc')) {
-    const environments = [];
-    for (const pid of readdirSync('/proc').filter((name) =>
-      /^\d+$/.test(name),
-    )) {
-      try {
-        const text = readFileSync(`/proc/${pid}/environ`, 'utf8');
-        environments.push({
-          pid: Number(pid),
-          text: text.split('\0').join(' '),
-        });
-      } catch {
-        // Another user's process or one that just exited.
+    const pids = readdirSync('/proc').filter((name) => /^\d+$/.test(name));
+    return (function* procEnvirons() {
+      for (const pid of pids) {
+        try {
+          yield {
+            pid: Number(pid),
+            text: readFileSync(`/proc/${pid}/environ`, 'utf8'),
+          };
+        } catch {
+          // Another user's process or one that just exited.
+        }
       }
-    }
-    return environments;
+    })();
   }
   const result = spawnSync('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], {
     encoding: 'utf8',
@@ -348,10 +345,31 @@ function namesBaselineRoot(text, form) {
   for (let at = text.indexOf(key); at !== -1; at = text.indexOf(key, at + 1)) {
     const value = text.slice(at + key.length);
     const next = value.charAt(form.length);
-    if (value.startsWith(form) && (next === '' || next === ' ' || next === sep))
+    if (
+      value.startsWith(form) &&
+      (next === '' || next === ' ' || next === '\0' || next === sep)
+    )
       return true;
   }
   return false;
+}
+
+/**
+ * `{ pid, form }` for each process whose STATION_TRANSFER_BASELINE_ROOT names
+ * one of `forms`, or null when environments cannot be read. Environments
+ * carry credentials, so this is the only thing kept: each text is matched in
+ * memory and dropped, and nothing from it is logged or returned beyond the
+ * pid and which of the caller's own paths it named.
+ */
+function readBaselineRootClaims(forms, readTexts) {
+  const texts = readTexts();
+  if (texts === null) return null;
+  const claims = [];
+  for (const { pid, text } of texts) {
+    for (const form of forms)
+      if (namesBaselineRoot(text, form)) claims.push({ pid, form });
+  }
+  return claims;
 }
 
 /**
@@ -367,11 +385,17 @@ export function findPathsInUse(
   {
     cwds = readProcessCwds(),
     commands = readProcessCommands(),
-    environments = readProcessEnvironments(),
+    readEnvironments = readProcessEnvironmentTexts,
     selfPid = process.pid,
   } = {},
 ) {
-  if (cwds === null || commands === null || environments === null) return null;
+  if (cwds === null || commands === null) return null;
+  const allForms = paths.flatMap((path) => [path, realOrSelf(path)]);
+  const claims = readBaselineRootClaims(
+    [...new Set(allForms)],
+    readEnvironments,
+  );
+  if (claims === null) return null;
   const inUse = new Map();
   for (const path of paths) {
     const forms = [...new Set([path, realOrSelf(path)])];
@@ -393,10 +417,8 @@ export function findPathsInUse(
       inUse.set(path, `process ${command.pid} names it`);
       continue;
     }
-    const environment = environments.find(
-      (entry) =>
-        entry.pid !== selfPid &&
-        forms.some((form) => namesBaselineRoot(entry.text, form)),
+    const environment = claims.find(
+      (claim) => claim.pid !== selfPid && forms.includes(claim.form),
     );
     if (environment)
       inUse.set(

@@ -396,13 +396,25 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
       findPathsInUse([stale], {
         cwds: [],
         commands: [],
-        environments: [{ pid: 1, text }],
+        readEnvironments: () => [{ pid: 1, text }],
       })?.has(stale);
     expect(probe(`A=1 STATION_TRANSFER_BASELINE_ROOT=${stale}-other B=2`)).toBe(
       false,
     );
     expect(probe(`STATION_TRANSFER_BASELINE_ROOT=${stale}/sub`)).toBe(true);
     expect(probe(`STATION_TRANSFER_BASELINE_ROOT=${stale} B=2`)).toBe(true);
+    // /proc/<pid>/environ is NUL-separated.
+    expect(probe(`A=1\0STATION_TRANSFER_BASELINE_ROOT=${stale}\0B=2`)).toBe(
+      true,
+    );
+    // An unreadable environment table is unknown liveness.
+    expect(
+      findPathsInUse([stale], {
+        cwds: [],
+        commands: [],
+        readEnvironments: () => null,
+      }),
+    ).toBeNull();
   });
 
   test(`${TRANSFER_BASELINE_PRUNE_ENV}=0 opts out: nothing is removed`, () => {
