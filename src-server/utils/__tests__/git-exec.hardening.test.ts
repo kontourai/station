@@ -71,8 +71,30 @@ function plainGit(cwd: string, args: string[], input?: string): string {
   }
 }
 
+/** The call's outcome (its value or its error), or 'hung' after 10s. */
+function settledWithin(call: Promise<unknown>): Promise<unknown> {
+  return Promise.race([
+    call.then(
+      (value) => value,
+      (error: unknown) => error,
+    ),
+    new Promise((resolve) => setTimeout(() => resolve('hung'), 10_000)),
+  ]);
+}
+
+function readPid(file: string): number {
+  return existsSync(file) ? Number(readFileSync(file, 'utf-8').trim()) : 0;
+}
+
+/** Cleanup even when an assertion failed: the recorded child goes. */
+function killIfAlive(pidFile: string): void {
+  const pid = readPid(pidFile);
+  if (pid > 0 && alive(pid)) process.kill(pid, 'SIGKILL');
+}
+
 /** Whether a process exists (signal 0 checks without signalling). */
 function alive(pid: number): boolean {
+  if (pid <= 0) return false;
   try {
     process.kill(pid, 0);
     return true;
@@ -759,32 +781,32 @@ describe.skipIf(process.platform === 'win32')(
       );
       chmodSync(hook, 0o755);
 
-      const failure = await execGit(
-        [
-          '-c',
-          'user.name=a',
-          '-c',
-          'user.email=a@b',
-          'commit',
-          '-q',
-          '--allow-empty',
-          '-m',
-          'x',
-        ],
-        { cwd: repo, timeout: 1_500, hardening: { operatorHooks: true } },
-      ).then(
-        () => null,
-        (error: { killed?: boolean }) => error,
-      );
-      expect(failure?.killed).toBe(true);
-      const child = Number(readFileSync(pidFile, 'utf-8').trim());
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
       try {
+        const outcome = await settledWithin(
+          execGit(
+            [
+              '-c',
+              'user.name=a',
+              '-c',
+              'user.email=a@b',
+              'commit',
+              '-q',
+              '--allow-empty',
+              '-m',
+              'x',
+            ],
+            { cwd: repo, timeout: 1_500, hardening: { operatorHooks: true } },
+          ),
+        );
+        expect(outcome, 'the deadline answered').not.toBe('hung');
+        expect((outcome as { killed?: boolean }).killed).toBe(true);
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        const child = readPid(pidFile);
         expect(alive(child), `hook child ${child} outlived the deadline`).toBe(
           false,
         );
       } finally {
-        if (alive(child)) process.kill(child, 'SIGKILL');
+        killIfAlive(pidFile);
       }
     });
 
@@ -797,19 +819,19 @@ describe.skipIf(process.platform === 'win32')(
       );
       chmodSync(tool, 0o755);
 
-      await expect(
-        execGitContextCommand(tool, [], { timeout: 1_500 }),
-      ).rejects.toMatchObject({
-        killed: true,
-      });
-      const child = Number(readFileSync(pidFile, 'utf-8').trim());
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
       try {
+        const outcome = await settledWithin(
+          execGitContextCommand(tool, [], { timeout: 1_500 }),
+        );
+        expect(outcome, 'the deadline answered').not.toBe('hung');
+        expect((outcome as { killed?: boolean }).killed).toBe(true);
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        const child = readPid(pidFile);
         expect(alive(child), `tool child ${child} outlived the deadline`).toBe(
           false,
         );
       } finally {
-        if (alive(child)) process.kill(child, 'SIGKILL');
+        killIfAlive(pidFile);
       }
     });
 

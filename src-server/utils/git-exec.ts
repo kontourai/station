@@ -243,6 +243,15 @@ function runInProcessGroup(
       if (timer) clearTimeout(timer);
       reject(error);
     });
+    // A process that left the group (setsid) can hold our pipes open, so
+    // 'close' never comes: once a killed leader has exited, stop waiting.
+    child.on('exit', () => {
+      if (!killed) return;
+      setTimeout(() => {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+      }, GROUP_KILL_GRACE_MS * 2).unref();
+    });
     child.on('close', (code, signal) => {
       if (settled) return;
       settled = true;
