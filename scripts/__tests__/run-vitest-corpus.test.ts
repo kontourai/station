@@ -3,10 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildVitestCommand,
   buildWindowsSerializedCommand,
+  descriptorFiles,
   emitResult,
   ORDINARY_SHARD_COUNT,
   ORDINARY_SHARD_DESCRIPTORS,
   parseVitestCorpusArguments,
+  partitionShardFiles,
   runVitestCorpus,
   runVitestGroup,
   runWindowsSerializedCorpus,
@@ -215,9 +217,21 @@ describe('Vitest corpus runner', () => {
     expect(() => parseVitestCorpusArguments(['--group=ordinary'])).toThrow(
       /requires exactly --shard/,
     );
+    expect(
+      parseVitestCorpusArguments(['--group=process-heavy', '--shard=2/2']),
+    ).toEqual({ groupName: 'process-heavy', shard: '2/2' });
+    for (const shard of ['0/2', '3/2', '1/1', '1/9', '1/', 'x/2', '01/2'])
+      expect(
+        () =>
+          parseVitestCorpusArguments([
+            '--group=process-heavy',
+            `--shard=${shard}`,
+          ]),
+        shard,
+      ).toThrow(/process-heavy Vitest corpus accepts only/);
     expect(() =>
-      parseVitestCorpusArguments(['--group=process-heavy', '--shard=1/8']),
-    ).toThrow(/only with --group=ordinary/);
+      parseVitestCorpusArguments(['--group=shared-output', '--shard=1/2']),
+    ).toThrow(/only with --group=ordinary or --group=process-heavy/);
     expect(() =>
       parseVitestCorpusArguments(['--group=ordinary', '--shard=0/8']),
     ).toThrow(/requires exactly --shard/);
@@ -692,4 +706,98 @@ it('Windows serialized diagnostics receive an execution bound and report timeout
     expect.objectContaining({ timeout: 100 }),
   );
   expect(result).toMatchObject({ passed: false, cancelled: true });
+});
+
+describe('process-heavy sharding across machines', () => {
+  const files = Array.from(
+    { length: 11 },
+    (_, index) =>
+      `scripts/__tests__/heavy-${String(index).padStart(2, '0')}.test.ts`,
+  ).reverse();
+
+  it('partitions the group exhaustively and disjointly for every supported count', () => {
+    for (let count = 2; count <= 8; count += 1) {
+      const slices = Array.from({ length: count }, (_, index) =>
+        partitionShardFiles(files, `${index + 1}/${count}`),
+      );
+      const union = slices.flat();
+      expect(new Set(union).size, `count ${count}: no duplicates`).toBe(
+        union.length,
+      );
+      expect([...union].sort(), `count ${count}: no file lost`).toEqual(
+        [...files].sort(),
+      );
+    }
+    // Deterministic regardless of discovery order.
+    expect(partitionShardFiles([...files].sort(), '1/2')).toEqual(
+      partitionShardFiles(files, '1/2'),
+    );
+  });
+
+  it('refuses an empty slice instead of passing it vacuously', () => {
+    expect(() => partitionShardFiles(['only.test.ts'], '2/2')).toThrow(
+      /selected no files/,
+    );
+  });
+
+  it('runs only its slice, at the group worker bound, under the group budget', async () => {
+    const groups = {
+      ...GROUPS,
+      processHeavy: ['c.test.ts', 'a.test.ts', 'b.test.ts'],
+    };
+    const seen: Array<{ name: string; files: string[]; command: string[] }> =
+      [];
+    const result = await runVitestCorpus({
+      groups,
+      platform: 'linux',
+      groupName: 'process-heavy',
+      shard: '1/2',
+      keepGoing: true,
+      onResult: () => {},
+      runGroup: async (group, selected) => {
+        seen.push({
+          name: group.resultName ?? group.name,
+          files: selected,
+          command: buildVitestCommand(group, selected),
+        });
+        return {
+          name: group.resultName ?? group.name,
+          passed: true,
+          status: 0,
+        };
+      },
+    });
+    expect(result.passed).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].name).toBe('process-heavy-1-of-2');
+    expect(seen[0].files).toEqual(['a.test.ts', 'c.test.ts']);
+    expect(seen[0].command).toContain('--maxWorkers=2');
+    expect(seen[0].command).not.toContain('b.test.ts');
+    expect(seen[0].command.some((arg) => arg.startsWith('--shard='))).toBe(
+      false,
+    );
+    expect(
+      descriptorFiles(groups, { name: 'process-heavy', shard: '2/2' }),
+    ).toEqual(['b.test.ts']);
+    // Unsharded (the canonical full:regression phase) still runs the group.
+    expect(descriptorFiles(groups, { name: 'process-heavy' })).toEqual(
+      groups.processHeavy,
+    );
+  });
+
+  it('applies the slice on the Windows serialized fallback too', () => {
+    const groups = { ...GROUPS, processHeavy: ['b.test.ts', 'a.test.ts'] };
+    const result = runWindowsSerializedCorpus({
+      groupName: 'process-heavy',
+      shard: '2/2',
+      groups,
+      spawnSync: (_executable, args) => {
+        expect(args).toContain('b.test.ts');
+        expect(args).not.toContain('a.test.ts');
+        return { status: 0, stdout: '', stderr: '' } as never;
+      },
+    });
+    expect(result.passed).toBe(true);
+    expect(result.name).toBe('process-heavy-2-of-2');
+  });
 });

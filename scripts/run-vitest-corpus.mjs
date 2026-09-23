@@ -87,6 +87,65 @@ export const ORDINARY_SHARD_DESCRIPTORS = Object.freeze(
   ),
 );
 
+/**
+ * The process-heavy group can be split across machines (the merge-queue
+ * regression workflow runs it on two hosted runners). Each slice keeps the
+ * group's own per-machine worker bound; only the file list is partitioned.
+ * The canonical `full:regression` never passes a shard and still runs the
+ * whole group in one invocation.
+ */
+export const PROCESS_HEAVY_MAX_SHARD_COUNT = 8;
+
+function parseProcessHeavyShard(shard) {
+  const match = /^([1-9][0-9]*)\/([1-9][0-9]*)$/.exec(String(shard ?? ''));
+  const index = match ? Number(match[1]) : Number.NaN;
+  const count = match ? Number(match[2]) : Number.NaN;
+  if (
+    !match ||
+    count < 2 ||
+    count > PROCESS_HEAVY_MAX_SHARD_COUNT ||
+    index > count
+  )
+    throw new Error(
+      `process-heavy Vitest corpus accepts only --shard=<k>/<n> with 2 <= n <= ${PROCESS_HEAVY_MAX_SHARD_COUNT} and 1 <= k <= n`,
+    );
+  return { index, count };
+}
+
+/**
+ * Deterministic, disjoint, exhaustive partition: files are sorted, then dealt
+ * round-robin, so every file lands in exactly one slice and the union of all
+ * slices is the group. An empty slice is an error rather than a vacuous pass.
+ */
+export function partitionShardFiles(files, shard) {
+  const { index, count } = parseProcessHeavyShard(shard);
+  const selected = [...files]
+    .sort()
+    .filter((_, position) => position % count === index - 1);
+  if (selected.length === 0)
+    throw new Error(
+      `process-heavy shard ${shard} selected no files from ${files.length} discovered`,
+    );
+  return selected;
+}
+
+function processHeavyShardDescriptor(shard) {
+  const { index, count } = parseProcessHeavyShard(shard);
+  return Object.freeze({
+    ...VITEST_CORPUS_GROUPS[1],
+    shard: `${index}/${count}`,
+    resultName: `process-heavy-${index}-of-${count}`,
+  });
+}
+
+/** The files one descriptor runs: the whole group, or its partitioned slice. */
+export function descriptorFiles(groups, descriptor) {
+  const files = groupFiles(groups, descriptor.name);
+  return descriptor.name === 'process-heavy' && descriptor.shard
+    ? partitionShardFiles(files, descriptor.shard)
+    : files;
+}
+
 function corpusDescriptors(groupName, shard) {
   if (!groupName)
     return [...ORDINARY_SHARD_DESCRIPTORS, ...VITEST_CORPUS_GROUPS.slice(1)];
@@ -100,7 +159,12 @@ function corpusDescriptors(groupName, shard) {
       );
     return [selected];
   }
-  if (shard) throw new Error('--shard is supported only with --group=ordinary');
+  if (groupName === 'process-heavy' && shard)
+    return [processHeavyShardDescriptor(shard)];
+  if (shard)
+    throw new Error(
+      '--shard is supported only with --group=ordinary or --group=process-heavy',
+    );
   const selected = VITEST_CORPUS_GROUPS.find(
     (descriptor) => descriptor.name === groupName,
   );
@@ -195,9 +259,9 @@ export function runWindowsSerializedCorpus({
   const args = selected
     ? buildVitestCommand(
         { ...selected, maxWorkers: 1, noFileParallelism: true },
-        groupFiles(
+        descriptorFiles(
           groups ?? discoverVitestResourceGroups({ root }),
-          selected.name,
+          selected,
         ),
         { root },
       )
@@ -463,11 +527,20 @@ export async function runVitestCorpus({
       onResult?.(result);
       return { passed: false, results };
     }
-    const files = groupFiles(resolvedGroups, descriptor.name);
-    const phase = FULL_REGRESSION_PHASES.find(
-      (entry) =>
-        entry.id === `test-full-${descriptor.resultName ?? descriptor.name}`,
-    );
+    const files = descriptorFiles(resolvedGroups, descriptor);
+    // A process-heavy slice has no phase of its own, so each slice gets the
+    // whole group's phase budget. The budget applies per slice, not shared
+    // across the slices of one run.
+    const phase =
+      FULL_REGRESSION_PHASES.find(
+        (entry) =>
+          entry.id === `test-full-${descriptor.resultName ?? descriptor.name}`,
+      ) ??
+      (descriptor.name === 'process-heavy'
+        ? FULL_REGRESSION_PHASES.find(
+            (entry) => entry.id === 'test-full-process-heavy',
+          )
+        : undefined);
     if (keepGoing && !phase)
       throw new Error('Audit group has no declared execution budget');
     const groupController = keepGoing ? new AbortController() : null;
@@ -530,14 +603,14 @@ export function parseVitestCorpusArguments(args) {
   if (args.length === 0) return {};
   if (args.length > 2)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
     );
   const values = new Map();
   for (const argument of args) {
     const match = argument.match(/^--(group|shard)=(.+)$/);
     if (!match || values.has(match[1]))
       throw new Error(
-        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
       );
     values.set(match[1], match[2]);
   }
@@ -545,7 +618,7 @@ export function parseVitestCorpusArguments(args) {
   const shard = values.get('shard');
   if (!groupName)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/<count>]]',
     );
   if (!VITEST_CORPUS_GROUP_NAMES.includes(groupName))
     throw new Error(`unknown Vitest corpus group '${groupName}'`);
@@ -556,7 +629,14 @@ export function parseVitestCorpusArguments(args) {
       );
     return { groupName, shard };
   }
-  if (shard) throw new Error('--shard is supported only with --group=ordinary');
+  if (groupName === 'process-heavy' && shard) {
+    parseProcessHeavyShard(shard);
+    return { groupName, shard };
+  }
+  if (shard)
+    throw new Error(
+      '--shard is supported only with --group=ordinary or --group=process-heavy',
+    );
   return { groupName };
 }
 

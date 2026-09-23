@@ -1946,6 +1946,38 @@ describe('DevicePairingService', () => {
       ).toBe(false);
     });
 
+    test('rejects a wider issued session scope and leaves the confirmed offer usable', () => {
+      const { service } = harness();
+      const readOnlyScope = pairingScopePresetString('read-only');
+      const offer = service.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: readOnlyScope,
+      });
+      const request = service.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Read-only phone',
+      });
+      service.confirmRequest(request.requestId, OPERATOR_APPROVAL);
+
+      expect(() =>
+        service.exchange({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: request.requestId,
+          sessionScope: DEFAULT_GRANT_PAIRING_SCOPE,
+        }),
+      ).toThrowError(new DevicePairingError('invalid_request'));
+
+      const result = service.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      });
+      expect(result.device.scope).toBe(readOnlyScope);
+    });
+
     test('the standard preset excludes access:manage even though it grants terminal:operate', () => {
       const { service } = harness();
       const standardScope = pairingScopePresetString('standard');
