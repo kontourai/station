@@ -262,3 +262,34 @@ export function isAgentOriginatedRequest(request: Request): boolean {
       STATION_CONTROL_ORIGIN_AGENT_TOOL
   );
 }
+
+/**
+ * Station #90 lane D, security review B2: the production
+ * `resolveAgentDispatchActor` for the orchestration dispatch routes
+ * (`routes/orchestration/orchestration.ts` `resolveDispatchActor`).
+ *
+ * An agent-originated request whose verified caller acts for an
+ * authenticated session owner (`elevationEligible`) dispatches as that
+ * owner; any other agent-originated request (no caller, a forged or revoked
+ * credential, or an inferred principal) is `unattributed`. A request that
+ * is not agent-originated is left to the ordinary principal resolver.
+ */
+export function createAgentDispatchActorResolver(
+  resolveRecord?: StationControlCallerRecordResolver,
+): (
+  request: Request,
+) =>
+  | { readonly kind: 'verified'; readonly principalId: string }
+  | { readonly kind: 'unattributed' }
+  | undefined {
+  return (request) => {
+    if (!isAgentOriginatedRequest(request)) return undefined;
+    const caller = resolveStationControlCallerForRequest(
+      request,
+      resolveRecord,
+    );
+    return caller?.principal?.elevationEligible
+      ? { kind: 'verified', principalId: caller.principal.id }
+      : { kind: 'unattributed' };
+  };
+}

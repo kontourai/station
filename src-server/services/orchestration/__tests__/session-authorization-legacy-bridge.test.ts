@@ -190,6 +190,25 @@ describe('SessionAuthorization.sessionActingPrincipal (Station #90 lane D)', () 
     });
   });
 
+  test('a session an agent started without a verified principal acts for no one, whatever owner it records (B2)', () => {
+    const authz = (metadata: Record<string, unknown>) =>
+      new SessionAuthorization({
+        eventStore: {
+          findSessionOwnerUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+          firstEventByMethod: (_threadId: string, method: string) =>
+            method === 'session.started'
+              ? { payload: { metadata } }
+              : undefined,
+        } as never,
+        ownerlessSessionAccess: 'single-user-compat',
+      }).sessionActingPrincipal('child');
+    expect(authz({ ownerAttribution: 'unattributed-agent' })).toBeUndefined();
+    expect(authz({})).toEqual({
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'session-owner',
+    });
+  });
+
   test('an ownerless session acts for no one on a deny or hosted host, and a legacy alias never maps in hosted mode', () => {
     expect(actingPrincipal(undefined, { ownerless: 'deny' })).toBeUndefined();
     expect(actingPrincipal(undefined, { hosted: true })).toBeUndefined();

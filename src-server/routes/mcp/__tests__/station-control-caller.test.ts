@@ -24,6 +24,7 @@ import {
 import { z } from 'zod';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import {
+  createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
   isAgentOriginatedRequest,
   resolveStationControlCallerForRequest,
@@ -38,7 +39,7 @@ import {
   revokeStationControlMcpToken,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
-import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SessionAuthorization } from '../../../services/orchestration/session-authorization.js';
 import {
   __resetStationControlStdioCallerCredentialForTests,
@@ -58,6 +59,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
 import type { Logger } from '../../../utils/logger.js';
+import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
 import { createStationControlCallerRoutes } from '../station-control-caller-route.js';
 import {
   createStationControlMcpRoutes,
@@ -65,6 +67,17 @@ import {
 } from '../station-control-mcp-route.js';
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-caller-suite';
+const DELEGATION_BODY = {
+  prompt: 'child work',
+  target: { environment: { kind: 'current' }, agent: 'planner' },
+  userId: 'human:test:mallory',
+};
+const delegateTask = vi.fn(async () => ({
+  taskId: 'task:1',
+  sessionId: 'task:1',
+  status: 'dispatched',
+  resumable: true,
+}));
 const ORIGIN_PROBE_PATH =
   '/api/orchestration/station-control/test-origin-probe';
 
@@ -145,9 +158,18 @@ function createProbeServer(): McpServer {
         userId: z.string().optional(),
         principal: z.string().optional(),
         revokeSessionFirst: z.string().optional(),
+        delegate: z.boolean().optional(),
       }),
     },
     async (args) => {
+      if (args.delegate) {
+        // An agent-started child session, through the REAL dispatch route.
+        const delegated = await api('/api/orchestration/delegations', {
+          method: 'POST',
+          body: JSON.stringify(DELEGATION_BODY),
+        });
+        return jsonToolResult({ delegated });
+      }
       if (args.revokeSessionFirst)
         revokeStationControlMcpToken(args.revokeSessionFirst);
       const inProcess = await getStationControlCaller();
@@ -234,6 +256,28 @@ beforeAll(async () => {
     '/api/orchestration',
     createStationControlCallerRoutes({ resolveRecord }),
   );
+  // The REAL orchestration dispatch routes with the production agent
+  // dispatch resolver; `delegateTask` records what the child would be
+  // stamped with.
+  app.route(
+    '/api/orchestration',
+    createOrchestrationRoutes(
+      {} as never,
+      {
+        eventBus: new EventBus(),
+        logger: {
+          debug: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          info: vi.fn(),
+        },
+        getUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+        delegateTask,
+        resolveAgentDispatchActor:
+          createAgentDispatchActorResolver(resolveRecord),
+      } as never,
+    ),
+  );
   // Test-only probe route: what a route using the helpers sees.
   app.get(ORIGIN_PROBE_PATH, (c) =>
     c.json({
@@ -253,6 +297,7 @@ beforeEach(() => {
   __resetStationControlMcpTokensForTests();
   __resetStationControlStdioCallerCredentialForTests();
   resolveRecord.mockClear();
+  delegateTask.mockClear();
 });
 
 async function readJsonRpc(response: Response): Promise<any> {
@@ -719,5 +764,64 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       expect.arrayContaining(['list_agents', 'delegate_task']),
     );
     await instance.close();
+  });
+});
+
+describe('agent-started child sessions (security review B2)', () => {
+  const delegatedInput = () =>
+    (delegateTask.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+
+  test('a verified caller acting for its session owner dispatches as that owner, not the operator the internal token resolves to; a forged body userId is ignored', async () => {
+    const { token } = mintStationControlMcpToken('session-a', 'url-token');
+    await probe(token, { delegate: true });
+    expect(delegateTask).toHaveBeenCalledTimes(1);
+    expect(delegatedInput()).toMatchObject({ userId: 'human:test:alice' });
+    expect(delegatedInput()).not.toHaveProperty('ownerAttribution');
+    // No operator PrincipalRef rides a turn the operator did not dispatch.
+    expect(delegatedInput().principal).toBeUndefined();
+  });
+
+  test('a caller whose principal is only inferred (ownerless session) marks the child unattributed', async () => {
+    const { token } = mintStationControlMcpToken('session-c', 'url-token');
+    await probe(token, { delegate: true });
+    expect(delegatedInput()).toMatchObject({
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      ownerAttribution: 'unattributed-agent',
+    });
+  });
+
+  test('a pooled child (origin marker, no credential) and a forged credential both mark the child unattributed', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    installStationControlStdioCallerCredential({});
+    await api('/api/orchestration/delegations', {
+      method: 'POST',
+      body: JSON.stringify(DELEGATION_BODY),
+    });
+    await api('/api/orchestration/delegations', {
+      method: 'POST',
+      body: JSON.stringify(DELEGATION_BODY),
+      headers: { [STATION_CONTROL_CALLER_TOKEN_HEADER]: 'forged' },
+    });
+    expect(delegateTask).toHaveBeenCalledTimes(2);
+    for (const [input] of delegateTask.mock.calls as unknown as [
+      Record<string, unknown>,
+    ][])
+      expect(input).toMatchObject({
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        ownerAttribution: 'unattributed-agent',
+      });
+  });
+
+  test("the operator's own client (no marker, no credential) dispatches exactly as before", async () => {
+    const response = await fetch(`${baseUrl}/api/orchestration/delegations`, {
+      method: 'POST',
+      headers: { ...internalHeaders(), 'content-type': 'application/json' },
+      body: JSON.stringify(DELEGATION_BODY),
+    });
+    expect(response.status).toBe(200);
+    expect(delegatedInput()).toMatchObject({
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+    expect(delegatedInput()).not.toHaveProperty('ownerAttribution');
   });
 });

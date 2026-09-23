@@ -719,6 +719,38 @@ describe('Station Control canonical Environment + Agent execution', () => {
     },
   );
 
+  // Station #90 lane D (B2): the delegated start carries the route-set
+  // unattributed-agent marker beside userId, and only when set.
+  test.each([
+    ['marked', 'unattributed-agent' as const],
+    ['plain', undefined],
+  ])(
+    'a %s delegated start stamps the owner-attribution marker exactly when the route set it',
+    async (_name, ownerAttribution) => {
+      installCurrentStationFetch();
+      const service = localService();
+      const { delegateTask } = await import('../station-control-delegation.js');
+      await delegateTask(
+        {
+          prompt: 'Delegated by an agent',
+          target: currentTarget(),
+          userId: 'shared-user',
+          ...(ownerAttribution ? { ownerAttribution } : {}),
+        },
+        service as never,
+      );
+      const metadata = (
+        service.sessionCommands.execute.mock.calls[0]?.[0] as {
+          input: { metadata: Record<string, unknown> };
+        }
+      ).input.metadata;
+      expect(metadata.userId).toBe('shared-user');
+      if (ownerAttribution)
+        expect(metadata.ownerAttribution).toBe(ownerAttribution);
+      else expect(metadata).not.toHaveProperty('ownerAttribution');
+    },
+  );
+
   test.each(['foreground', 'delegation'] as const)(
     '%s uses receiver binding resolution before constructing a start',
     async (kind) => {

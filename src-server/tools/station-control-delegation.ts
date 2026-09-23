@@ -86,6 +86,10 @@ import {
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
 import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import {
+  type SessionOwnerAttribution,
+  sessionOwnerAttributionMetadata,
+} from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
 import {
   type PortableExecutionConsentIdentity,
@@ -215,6 +219,8 @@ export interface DelegateTaskInput {
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   userId?: string;
+  /** Station #90 lane D (B2): route-set only; see session-owner-attribution.ts. */
+  ownerAttribution?: SessionOwnerAttribution;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -4662,6 +4668,7 @@ export async function delegateTask(
                 : {}),
               ...(input.delegation ? { delegation: input.delegation } : {}),
               ...(readAuthority.userId ? { userId: readAuthority.userId } : {}),
+              ...sessionOwnerAttributionMetadata(input.ownerAttribution),
               // #484 phase A: server-minted portable consent marker. The
               // service re-stamps this same identity after the reserved-key
               // strip, so the persisted session binding carries the exact

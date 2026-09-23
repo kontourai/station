@@ -569,6 +569,43 @@ describe('executeForegroundMessage', () => {
     expect(JSON.stringify(result)).not.toContain('apiBase');
   });
 
+  // Station #90 lane D (B2): an agent dispatch the route could not attribute
+  // to a verified principal marks the new session so it acts for no one;
+  // an ordinary dispatch carries no marker.
+  test('stamps the unattributed-agent owner marker on a new session only when the route set it', async () => {
+    const marked = dependencies();
+    await executeForegroundMessage(
+      {
+        target: { environment: { kind: 'current' }, agent: agentId('station') },
+        message: 'agent dispatch',
+        userId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+      },
+      marked,
+    );
+    expect(marked.startSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          userId: 'human:local:operator',
+          ownerAttribution: 'unattributed-agent',
+        }),
+      }),
+    );
+    const plain = dependencies();
+    await executeForegroundMessage(
+      {
+        target: { environment: { kind: 'current' }, agent: agentId('station') },
+        message: 'operator dispatch',
+        userId: 'human:local:operator',
+      },
+      plain,
+    );
+    const startInput = (plain.startSession as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as { metadata: Record<string, unknown> };
+    expect(startInput.metadata).not.toHaveProperty('ownerAttribution');
+  });
+
   // #765 A1: the deliberate opt-OUT half of the persistence contract — a
   // machine-triggered ephemeral turn must still start its session with
   // `persistSession: false`, never inherit the durable-conversation default.

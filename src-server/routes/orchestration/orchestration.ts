@@ -106,6 +106,10 @@ import {
 } from '../../services/orchestration/orchestration-stream-presence.js';
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
+import {
+  type SessionOwnerAttribution,
+  UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+} from '../../services/orchestration/session-owner-attribution.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
@@ -650,6 +654,8 @@ interface DelegateTaskRequest {
   parentTaskId?: string;
   userId: string;
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
+  ownerAttribution?: SessionOwnerAttribution;
   clientOrigin?: ClientOrigin;
   /**
    * #484 controller/receiver split: for a `project-portable` workspace
@@ -708,6 +714,8 @@ interface ForegroundMessageRequest {
    * on the legacy test-only `getUserId` path (see `resolveActorPrincipal`).
    */
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
+  ownerAttribution?: SessionOwnerAttribution;
   clientOrigin?: ClientOrigin;
 }
 
@@ -722,6 +730,8 @@ interface ContinueForegroundMessageRequest {
   userId: string;
   /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
+  ownerAttribution?: SessionOwnerAttribution;
   clientOrigin?: ClientOrigin;
 }
 
@@ -736,6 +746,8 @@ interface ConversationHandoffRequest
   userId: string;
   /** archive#4075 stage 2 review round 1 (F1) — see ForegroundMessageRequest.principal. */
   principal?: PrincipalRef;
+  /** Station #90 lane D (B2): see `resolveDispatchActor`. */
+  ownerAttribution?: SessionOwnerAttribution;
   clientOrigin?: ClientOrigin;
 }
 
@@ -927,6 +939,55 @@ function resolveActorPrincipal(
   );
 }
 
+/**
+ * Station #90 lane D (station #122), security review B2: who a dispatch
+ * acts for when a station-control agent tool makes it.
+ *
+ * Every station-control REST call authenticates as Station's internal
+ * principal (the local operator), so `resolveActorPrincipal` alone stamps
+ * an agent-started session as the operator's. `deps.resolveAgentDispatchActor`
+ * (runtime composition; server facts only) says instead:
+ *
+ * - `verified`: the request carries a verified caller whose acting
+ *   principal is an authenticated session owner. The dispatch acts, and
+ *   the new session is owned, as that principal. `principal` (the ingress
+ *   PrincipalRef) is dropped unless it names the same id, so a turn is not
+ *   attributed to an operator who did not dispatch it.
+ * - `unattributed`: agent-originated with no such principal (a pooled
+ *   child, or a session whose principal is only inferred). Authority stays
+ *   as today; the new session is marked so it acts for no one.
+ * - `undefined`: not an agent tool call. Unchanged.
+ */
+export type AgentDispatchActor =
+  | { readonly kind: 'verified'; readonly principalId: string }
+  | { readonly kind: 'unattributed' };
+
+function resolveDispatchActor(
+  deps: {
+    resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
+    getUserId?: () => string;
+    resolveAgentDispatchActor?: (
+      request: Request,
+    ) => AgentDispatchActor | undefined;
+  },
+  c: PrincipalResolutionContext & { req: { raw: Request } },
+): {
+  principal: PrincipalRef | undefined;
+  userId: string;
+  ownerAttribution?: SessionOwnerAttribution;
+} {
+  const actor = resolveActorPrincipal(deps, c);
+  const agent = deps.resolveAgentDispatchActor?.(c.req.raw);
+  if (!agent) return actor;
+  if (agent.kind === 'verified')
+    return {
+      principal:
+        actor.principal?.id === agent.principalId ? actor.principal : undefined,
+      userId: agent.principalId,
+    };
+  return { ...actor, ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION };
+}
+
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
@@ -959,6 +1020,13 @@ export function createOrchestrationRoutes(
       readProcess(sessionId: string): TerminalProcessDetail | null;
       close(sessionId: string): Promise<void>;
     };
+    /**
+     * Station #90 lane D (B2): runtime-composed from server facts (the
+     * verified station-control caller). See `resolveDispatchActor`.
+     */
+    resolveAgentDispatchActor?: (
+      request: Request,
+    ) => AgentDispatchActor | undefined;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     /**
      * #484 phase A: admits (or refuses) the explicit portable-execution
@@ -1363,7 +1431,10 @@ export function createOrchestrationRoutes(
         delegation?: z.infer<typeof agentDelegationContextSchema>;
         automaticBackground?: true;
       };
-      const { principal, userId } = resolveActorPrincipal(deps, c);
+      const { principal, userId, ownerAttribution } = resolveDispatchActor(
+        deps,
+        c,
+      );
       if (body.expectedInputRequest) {
         const context = orchestrationService.inspectInputReplyContext(
           body.expectedInputRequest,
@@ -1442,6 +1513,7 @@ export function createOrchestrationRoutes(
         // which stamps it into the dispatch context so the resulting
         // `turn.started` carries the dispatching principal at emit time.
         principal,
+        ...(ownerAttribution ? { ownerAttribution } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
       const data = await deps.executeForegroundMessage(foregroundRequest);
@@ -1561,7 +1633,10 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         const data = await deps.handoffConversation({
           ...body,
           target: normalizeExecutionTarget(body.target),
@@ -1576,6 +1651,7 @@ export function createOrchestrationRoutes(
           // `input.principal` seam, so an explicit engine/Agent handoff's
           // turn.started is attributed at emit time too.
           principal,
+          ...(ownerAttribution ? { ownerAttribution } : {}),
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -1741,7 +1817,10 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment
@@ -1766,6 +1845,8 @@ export function createOrchestrationRoutes(
           // forwards it — station-control-delegation.ts's
           // `continueExecutionTargetMessage`).
           principal,
+          // A continuation may start a new child session of the conversation.
+          ...(ownerAttribution ? { ownerAttribution } : {}),
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         if (!isForegroundDispatchHandle(data)) {
@@ -1839,7 +1920,10 @@ export function createOrchestrationRoutes(
     }
     try {
       const body = getBody(c);
-      const { principal, userId } = resolveActorPrincipal(deps, c);
+      const { principal, userId, ownerAttribution } = resolveDispatchActor(
+        deps,
+        c,
+      );
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
       // #484 controller/receiver split: this route NEVER mints the
       // receiver admission itself — minting here, before `delegateTask`
@@ -1886,6 +1970,7 @@ export function createOrchestrationRoutes(
         target: normalizeExecutionTarget(body.target),
         userId,
         principal,
+        ...(ownerAttribution ? { ownerAttribution } : {}),
         clientOrigin,
         ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
         // The tool keys claims by `deviceId`: project the verified grant's
@@ -2201,7 +2286,7 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const { principal, userId } = resolveDispatchActor(deps, c);
         // #484 continuation: the trusted route-bound mint factory for a
         // portable follow-up — captured before any await, bound to the
         // CURRENT request credential. The tool mints through it ONLY when
@@ -2276,7 +2361,7 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const { principal, userId } = resolveDispatchActor(deps, c);
         // Same trusted mint factory as the continue route.
         const authorizeReceiverExecution = deps.authorizeReceiverExecution
           ? (workspace: { portableProjectId: string; resourceId: string }) =>
@@ -2336,7 +2421,7 @@ export function createOrchestrationRoutes(
         );
       }
       try {
-        const { principal, userId } = resolveActorPrincipal(deps, c);
+        const { principal, userId } = resolveDispatchActor(deps, c);
         const data = await deps.interruptDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),

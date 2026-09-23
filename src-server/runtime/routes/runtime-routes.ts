@@ -521,6 +521,7 @@ import {
 } from '../bootstrap/runtime-tenant-context.js';
 import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import {
+  createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
@@ -2761,6 +2762,12 @@ export function configureRuntimeRoutes(
       actionOperations,
       terminalService: context.terminalService,
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      // Station #90 lane D (B2): an agent tool's dispatch acts for its
+      // verified session's owner, or is marked unattributed; never silently
+      // as the operator the internal token resolves to.
+      resolveAgentDispatchActor: createAgentDispatchActorResolver(
+        resolveStationControlCallerRecord,
+      ),
       isRequestPrincipalCurrent,
       answerAssessmentModule,
       answerNarrativeBindingModule,
