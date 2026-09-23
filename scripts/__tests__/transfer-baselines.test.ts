@@ -138,6 +138,23 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
       f.old1,
     ]);
     backdate(branchedCanonical);
+    // T2: a canonical, detached, stale baseline someone deliberately locked.
+    const lockedParent = join(f.root, 'locked');
+    mkdirSync(lockedParent);
+    const lockedCanonical = f.addDetached(
+      f.baselinePath(f.old1, lockedParent),
+      f.old1,
+    );
+    git(f.primary, [
+      'worktree',
+      'lock',
+      '--reason',
+      'kept on purpose',
+      lockedCanonical,
+    ]);
+    // Locking writes into the admin dir; backdate again so the recent-use
+    // window cannot be what keeps it.
+    backdate(lockedCanonical);
     // A baseline-named directory git does not know about.
     const unregistered = join(
       f.root,
@@ -179,6 +196,7 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
       repointed,
       branchLane,
       branchedCanonical,
+      lockedCanonical,
     ])
       expect(after).toContain(survivor);
     expect(after).not.toContain(stale);
