@@ -828,7 +828,8 @@ The public UI proxy owns `GET /api/system/readiness`: it returns structured
 `200 ready` only when the supervisor state and a live API identity probe agree.
 The probe waits 2.5 seconds by default; a caller with a longer deadline states
 it in the `x-station-readiness-budget-ms` request header, a whole number of
-milliseconds clamped to 100 ms–40 s (anything else falls back to the default),
+milliseconds of up to nine digits, clamped to 100 ms–40 s (anything else falls
+back to the default),
 which Station's own status and supervisor probes do. A caller that disconnects
 releases the proxy's backend check immediately. During backend
 loss — a refused or failed connection, a non-200 answer, or an answer carrying
