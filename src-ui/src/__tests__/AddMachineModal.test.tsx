@@ -6,12 +6,14 @@
  * bypassed the chooser whose copy exists to explain the difference).
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   probe: vi.fn(),
   create: vi.fn(),
+  isTauri: false,
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -43,7 +45,10 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isTauri: false, isDesktop: false }),
+  usePlatformProfile: () => ({
+    isTauri: mocks.isTauri,
+    isDesktop: mocks.isTauri,
+  }),
 }));
 
 vi.mock('../platform/native/haptics', () => ({ triggerHaptic: vi.fn() }));
@@ -59,6 +64,7 @@ describe('AddMachineModal', () => {
     localStorage.clear();
     mocks.probe.mockReset();
     mocks.create.mockReset();
+    mocks.isTauri = false;
   });
 
   test('asks the goal first, offering all three mechanisms', () => {
@@ -118,6 +124,28 @@ describe('AddMachineModal', () => {
     expect(stored[0].label).toBe('https://home-lab.tailnet.ts.net');
     expect(stored[0].source).toBe('manual');
     vi.unstubAllGlobals();
+  });
+
+  test('the native chooser opens the separate broker-route profile editor', () => {
+    mocks.isTauri = true;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AddMachineModal isOpen onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText('Save an encrypted broker route'));
+    expect(
+      screen.getByRole('heading', { name: 'Save broker route' }),
+    ).toBeTruthy();
+    expect(screen.getByLabelText(/Station application address/)).toBeTruthy();
+    expect(screen.getByLabelText(/Broker address/)).toBeTruthy();
+    expect(
+      screen.getByText(/The profile stores no broker credential/),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save route' })).toBeTruthy();
   });
 
   test('an invalid Station address is refused with a usable message, and nothing is stored', () => {

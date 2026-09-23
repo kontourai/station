@@ -72,3 +72,47 @@
 .connections-computers__remove:hover {
   color: var(--text-primary);
 }
+
+.relay-route-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.relay-route-profiles__heading {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.relay-route-trust {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.relay-route-trust strong {
+  color: var(--text-primary);
+}
+
+.relay-route-trust--approved {
+  border-color: var(--success-border);
+}
+
+.relay-route-trust--revoked,
+.relay-route-trust--mismatch,
+.relay-route-trust--invalid,
+.relay-route-trust--unavailable {
+  border-color: var(--error-border);
+}
+
+.relay-route-trust--untrusted,
+.relay-route-trust--checking {
+  border-color: var(--warning-border);
+}
