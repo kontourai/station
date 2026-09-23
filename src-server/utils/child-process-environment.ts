@@ -14,11 +14,25 @@ export const BOOT_INTERNAL_SECRET_ENV_KEYS = [
   'STATION_UI_BOOTSTRAP_TOKEN',
 ] as const;
 
+/**
+ * Settings addressed to this process by its own supervisor, never to the
+ * processes it spawns. `STATION_STDOUT_LOGS=0` inherited by a `station start`
+ * or test run inside a desktop terminal would silently empty that process's
+ * stdout log (#2327).
+ */
+const SUPERVISOR_CHANNEL_ENV_KEYS = ['STATION_STDOUT_LOGS'] as const;
+
+/** Removes the boot-internal secrets and, despite the name, the
+ * supervisor-channel settings above: every caller that must not leak one
+ * must not leak the other. */
 export function scrubBootInternalSecrets(
   env: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   const next: NodeJS.ProcessEnv = { ...env };
-  for (const key of BOOT_INTERNAL_SECRET_ENV_KEYS) {
+  for (const key of [
+    ...BOOT_INTERNAL_SECRET_ENV_KEYS,
+    ...SUPERVISOR_CHANNEL_ENV_KEYS,
+  ]) {
     delete next[key];
   }
   return next;

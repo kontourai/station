@@ -99,8 +99,11 @@ test.describe('Notification System', () => {
       fullPage: false,
     });
 
-    // Look for the notification bell button
-    const bellButton = page.locator('button[title="Notifications"]');
+    // The toolbar's bell. The sidebar footer carries a second Notifications
+    // action with the same title (#2080), so scope to the banner.
+    const bellButton = page
+      .getByRole('banner')
+      .locator('button[title="Notifications"]');
     await expect(bellButton).toBeVisible();
     await bellButton.click();
     await expect(page.locator('.notification-history__title')).toHaveText(
