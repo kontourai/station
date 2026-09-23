@@ -298,6 +298,62 @@ function readProcessCommands() {
     .map((match) => ({ pid: Number(match[1]), command: match[2] }));
 }
 
+const BASELINE_ROOT_ENV = 'STATION_TRANSFER_BASELINE_ROOT';
+
+/**
+ * Per-process text that may carry `STATION_TRANSFER_BASELINE_ROOT=<root>`,
+ * or null when it cannot be read. This is how a sibling session's pre-push
+ * gate names its baseline: through the environment, never argv or cwd.
+ * Linux reads `/proc/<pid>/environ` (another user's process is unreadable and
+ * cannot be using this user's baseline); elsewhere `ps -E` appends each
+ * process's environment to its command line. Values are only scanned here,
+ * never logged: environments carry credentials.
+ */
+function readProcessEnvironments({ platform = process.platform } = {}) {
+  if (platform === 'linux' && existsSync('/proc')) {
+    const environments = [];
+    for (const pid of readdirSync('/proc').filter((name) =>
+      /^\d+$/.test(name),
+    )) {
+      try {
+        const text = readFileSync(`/proc/${pid}/environ`, 'utf8');
+        environments.push({
+          pid: Number(pid),
+          text: text.split('\0').join(' '),
+        });
+      } catch {
+        // Another user's process or one that just exited.
+      }
+    }
+    return environments;
+  }
+  const result = spawnSync('ps', ['-A', '-E', '-ww', '-o', 'pid=,command='], {
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0 || result.signal || !result.stdout)
+    return null;
+  return result.stdout
+    .split('\n')
+    .filter((line) => line.includes(`${BASELINE_ROOT_ENV}=`))
+    .map((line) => line.match(/^\s*(\d+)\s+(.*)$/))
+    .filter(Boolean)
+    .map((match) => ({ pid: Number(match[1]), text: match[2] }));
+}
+
+/** Whether `text` assigns the baseline-root variable to `form` or inside it. */
+function namesBaselineRoot(text, form) {
+  const key = `${BASELINE_ROOT_ENV}=`;
+  for (let at = text.indexOf(key); at !== -1; at = text.indexOf(key, at + 1)) {
+    const value = text.slice(at + key.length);
+    const next = value.charAt(form.length);
+    if (value.startsWith(form) && (next === '' || next === ' ' || next === sep))
+      return true;
+  }
+  return false;
+}
+
 /**
  * Which of `paths` a live process is using, as a Map path → reason, or null
  * when the host cannot answer (the caller must then remove nothing).
@@ -311,10 +367,11 @@ export function findPathsInUse(
   {
     cwds = readProcessCwds(),
     commands = readProcessCommands(),
+    environments = readProcessEnvironments(),
     selfPid = process.pid,
   } = {},
 ) {
-  if (cwds === null || commands === null) return null;
+  if (cwds === null || commands === null || environments === null) return null;
   const inUse = new Map();
   for (const path of paths) {
     const forms = [...new Set([path, realOrSelf(path)])];
@@ -332,7 +389,20 @@ export function findPathsInUse(
         entry.pid !== selfPid &&
         forms.some((form) => entry.command.includes(form)),
     );
-    if (command) inUse.set(path, `process ${command.pid} names it`);
+    if (command) {
+      inUse.set(path, `process ${command.pid} names it`);
+      continue;
+    }
+    const environment = environments.find(
+      (entry) =>
+        entry.pid !== selfPid &&
+        forms.some((form) => namesBaselineRoot(entry.text, form)),
+    );
+    if (environment)
+      inUse.set(
+        path,
+        `process ${environment.pid} has ${BASELINE_ROOT_ENV} set to it`,
+      );
   }
   return inUse;
 }

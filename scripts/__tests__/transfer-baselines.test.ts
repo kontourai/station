@@ -334,6 +334,44 @@ describe.skipIf(!posix)('transfer baseline pruning (#2355)', () => {
     expect(outcome.kept[0]?.reason).toMatch(/^used or created/);
   });
 
+  test('a process whose environment points STATION_TRANSFER_BASELINE_ROOT at the baseline keeps it (the pre-push shape)', async () => {
+    const f = fixture();
+    const stale = f.addDetached(f.baselinePath(f.old1), f.old1);
+    // Node, not a platform binary: macOS hides a SIP-protected binary's
+    // environment from ps -E, and the gate runs under node anyway.
+    const child = spawn(
+      process.execPath,
+      ['-e', 'process.stdout.write("up\\n"); setInterval(() => {}, 1000)'],
+      {
+        cwd: f.root,
+        env: { ...process.env, STATION_TRANSFER_BASELINE_ROOT: stale },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      },
+    );
+    children.push(child);
+    await new Promise<void>((resolve, reject) => {
+      child.once('error', reject);
+      child.stdout?.once('data', () => resolve());
+    });
+    const inUse = findPathsInUse([stale]);
+    expect(inUse?.get(stale)).toBe(
+      `process ${child.pid} has STATION_TRANSFER_BASELINE_ROOT set to it`,
+    );
+    // Boundaries: a longer sibling name is not this tree; a subpath is.
+    const probe = (text: string) =>
+      findPathsInUse([stale], {
+        cwds: [],
+        commands: [],
+        environments: [{ pid: 1, text }],
+      })?.has(stale);
+    expect(probe(`A=1 STATION_TRANSFER_BASELINE_ROOT=${stale}-other B=2`)).toBe(
+      false,
+    );
+    expect(probe(`STATION_TRANSFER_BASELINE_ROOT=${stale}/sub`)).toBe(true);
+    expect(probe(`STATION_TRANSFER_BASELINE_ROOT=${stale} B=2`)).toBe(true);
+  });
+
   test(`${TRANSFER_BASELINE_PRUNE_ENV}=0 opts out: nothing is removed`, () => {
     const f = fixture();
     const stale = f.addDetached(f.baselinePath(f.old1), f.old1);
