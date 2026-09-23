@@ -30,6 +30,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-isolation';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
   WorktreeProvisioningService,
@@ -90,6 +91,13 @@ export interface ForegroundMessageInput {
    * `principal`, an additive/optional field everywhere it lands.
    */
   principal?: PrincipalRef;
+  /**
+   * Station #90 lane D (B2/R1): set only by the dispatch routes, for an
+   * internal-principal request with no verified-bound caller. It rides the
+   * start's dispatch context, and `OrchestrationService` stamps it on the
+   * new session so it acts for no one (`session-owner-attribution.ts`).
+   */
+  ownerAttribution?: StartOwnerAttribution;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**

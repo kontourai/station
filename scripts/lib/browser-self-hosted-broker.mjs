@@ -54,12 +54,18 @@ export async function browserBrokerConnect(input) {
       };
     },
   };
+  let peer;
   const owner = api.createBrowserPionConnection({
     broker,
     applicationOrigin: input.applicationOrigin,
     trustRecord: window.stationConnectionTrustRecord,
     trustStore: window.stationConnectionTrustStore,
     ice,
+    createPeer(configuration) {
+      peer = new RTCPeerConnection(configuration);
+      if (window.stationBrokerLab) window.stationBrokerLab.peer = peer;
+      return peer;
+    },
   });
   const signal = AbortSignal.timeout(45000);
   const snapshot = await owner.connect(signal);
@@ -67,6 +73,7 @@ export async function browserBrokerConnect(input) {
     throw new Error('Broker transport application origin mismatch');
   window.stationBrokerLab = {
     owner,
+    peer,
     snapshot,
     broker,
     credentials,
@@ -79,15 +86,58 @@ export async function browserBrokerConnect(input) {
   };
 }
 
+export async function browserBrokerSelectedCandidatePair() {
+  const peer = window.stationBrokerLab?.peer;
+  if (!peer) throw new Error('Missing broker Pion peer');
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const stats = await peer.getStats();
+    let selected;
+    for (const value of stats.values()) {
+      if (
+        value.type === 'candidate-pair' &&
+        value.state === 'succeeded' &&
+        (value.selected === true || value.nominated === true)
+      ) {
+        selected = value;
+        if (value.selected === true) break;
+      }
+    }
+    if (!selected) {
+      const transport = [...stats.values()].find(
+        (value) => value.type === 'transport' && value.selectedCandidatePairId,
+      );
+      selected = transport
+        ? stats.get(transport.selectedCandidatePairId)
+        : undefined;
+    }
+    const local = selected ? stats.get(selected.localCandidateId) : undefined;
+    const remote = selected ? stats.get(selected.remoteCandidateId) : undefined;
+    if (selected && local && remote)
+      return {
+        state: selected.state,
+        localType: local.candidateType,
+        remoteType: remote.candidateType,
+      };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('No selected broker Pion candidate pair');
+}
+
 export async function browserBrokerReconnect() {
   const lab = window.stationBrokerLab;
   if (!lab) throw new Error('Missing broker lab connection');
   const previous = lab.snapshot ? lab.snapshot.connectionId : undefined;
+  const previousPeer = lab.peer;
   try {
     const snapshot = await lab.owner.reconnect(AbortSignal.timeout(45000));
     lab.snapshot = snapshot;
     window.stationBrokerLabTransport = undefined;
-    return { previous, connectionId: snapshot.connectionId };
+    return {
+      previous,
+      connectionId: snapshot.connectionId,
+      peerReplaced: lab.peer !== previousPeer,
+    };
   } catch (error) {
     // A failed reconnect retires the owner: report no current owner rather
     // than a stale snapshot of a closed peer.
@@ -130,6 +180,18 @@ export function browserBrokerAdoptApplicationTransport() {
   return {
     connectionId: window.stationBrokerLab?.snapshot?.connectionId,
   };
+}
+
+export function browserBrokerClose() {
+  const transport = window.stationBrokerLabTransport;
+  const lab = window.stationBrokerLab;
+  transport?.close();
+  lab?.owner.close();
+  if (lab?.credentials) lab.credentials.current = false;
+  if (lab?.ice) lab.ice.current = false;
+  window.stationBrokerLabTransport = undefined;
+  window.stationBrokerLab = undefined;
+  return { closed: true };
 }
 
 // Real CORS + credential checks from the admitted page origin. The browser

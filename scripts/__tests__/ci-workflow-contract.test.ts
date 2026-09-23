@@ -27,7 +27,10 @@ import {
   validateAndroidBuildRun,
 } from '../resolve-android-build-run.mjs';
 import { VITEST_CORPUS_GROUP_NAMES } from '../run-vitest-corpus.mjs';
-import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
+import {
+  COVERAGE_LANE_TIMEOUT_MS,
+  FULL_REGRESSION_PHASES,
+} from '../verification-lanes.mjs';
 import { QUARANTINED_VITEST_FILES } from '../vitest-resource-manifest.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -948,7 +951,7 @@ describe('CI verification workflow contracts', () => {
     );
     expect(playwrightFull).not.toContain('needs: coverage');
     expect(coverage).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
     expect(playwrightFull).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
@@ -959,6 +962,58 @@ describe('CI verification workflow contracts', () => {
       expect(job).toContain('physical-host-capacity@');
       expect(job).toContain('owner-lifetime-seconds: "7800"');
     }
+  });
+
+  it('runs sharded coverage sequentially in one capacity-leased job whose deadline holds the lane', () => {
+    const entry = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/ci-extended.yml',
+    );
+    if (!entry)
+      throw new Error('Expected the checked-in ci-extended workflow.');
+    const job = (
+      entry.document as {
+        jobs: Record<
+          string,
+          {
+            'timeout-minutes'?: number;
+            strategy?: unknown;
+            steps: Array<{
+              name?: string;
+              uses?: string;
+              run?: string;
+              with?: Record<string, unknown>;
+            }>;
+          }
+        >;
+      }
+    ).jobs.coverage;
+    // One job, no matrix: every fleet runner shares the one physical host, so
+    // legs would queue on the lease and repeat all of the setup.
+    expect(job.strategy).toBeUndefined();
+    const capacity = job.steps.find(({ uses }) =>
+      uses?.startsWith('kontourai/.github/actions/physical-host-capacity@'),
+    );
+    expect(String(capacity?.with?.['lease-weight'])).toBe('9');
+    // The coordinated lane must be able to reach its own deadline (and write
+    // its receipt) before the job is killed, leaving room for setup.
+    const jobTimeoutMs = (job['timeout-minutes'] ?? 0) * 60_000;
+    expect(jobTimeoutMs - COVERAGE_LANE_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      20 * 60_000,
+    );
+    const runs = job.steps.map(({ run }) => run ?? '');
+    const lane = runs.findIndex(
+      (run) => run.trim() === 'npm run test:coverage',
+    );
+    const prepare = runs.findIndex((run) =>
+      run.includes('--phase=browser-prerequisite --phase=sdk-builds'),
+    );
+    const prepareStatic = runs.findIndex((run) =>
+      run.includes('npm run prepare:verify-static'),
+    );
+    expect(lane).toBeGreaterThan(0);
+    expect(prepare).toBeGreaterThan(0);
+    expect(prepare).toBeLessThan(lane);
+    expect(prepareStatic).toBe(prepare);
   });
 
   it('runs only the exact screenshot bucket nightly and fails on baseline drift (#518, #875)', () => {
@@ -1340,6 +1395,13 @@ describe('CI verification workflow contracts', () => {
         'playwright-full',
         'node scripts/install-playwright-browsers.mjs chromium',
       ],
+      // The coverage corpus includes real-Chromium geometry tests, and its
+      // lane checks for the pinned browser before any slice runs.
+      [
+        coverage,
+        'coverage',
+        'node scripts/install-playwright-browsers.mjs chromium',
+      ],
     ] as const) {
       const jobRunBody = extractRunBodies(job);
       // Both jobs' install steps are `run: |` block scalars — proven by
@@ -1412,14 +1474,13 @@ describe('CI verification workflow contracts', () => {
     expect(fastChecksRunBody).toContain(envExport);
     expect(fastChecks).toContain(envExport);
     expect(fastChecksRunBody).not.toMatch(inNodeModulesPathZero);
-    // coverage (ci-extended.yml) installs no browsers at all. Its run
-    // bodies are non-empty (`npm run dependencies:ci`, `npm run test:coverage`) so this
-    // absence check has something real to check against, not a body
-    // emptied by comment-stripping.
+    // The browser must be installed before the lane that requires it runs.
     const coverageRunBody = extractRunBodies(coverage);
-    expect(coverageRunBody).toContain('npm run dependencies:ci');
-    expect(coverageRunBody).not.toContain('playwright install');
-    expect(coverageRunBody).not.toMatch(inNodeModulesPathZero);
+    expect(coverageRunBody.indexOf('npm run test:coverage')).toBeGreaterThan(
+      coverageRunBody.indexOf(
+        'node scripts/install-playwright-browsers.mjs chromium',
+      ),
+    );
   });
 
   it('checks out enough history for exact candidate and completion identities', () => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { serveApplicationChannel } from '@kontourai/station-connect/application-channel';
 import { formatReadinessHandshake } from '../../src-server/runtime/bootstrap/readiness-handshake.js';
+import { loadSelfHostedBrokerConnectorConfig } from '../../src-server/runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from '../../src-server/runtime/bootstrap/station-runtime.js';
 import { ApplicationIpc } from './application-ipc.js';
 
@@ -10,31 +11,63 @@ export async function runVirtualLabStation(port: number) {
   const origin = process.env.STATION_AUTHENTICATION_ORIGIN;
   const home = process.env.STATION_HOME;
   assert(origin && home);
+  const connector = loadSelfHostedBrokerConnectorConfig({
+    homeDir: home,
+    env: process.env,
+  });
+  if (process.env.STATION_BROKER_CONFIG_FILE && !connector)
+    throw new Error('Configured Station broker connector did not load');
   let ipc: ApplicationIpc | undefined;
   const runtime = new StationRuntime({
     projectHomeDir: home,
     port,
     host: '127.0.0.1',
     logLevel: 'error',
-    virtualApplication: {
-      origin,
-      ready(application) {
-        ipc = new ApplicationIpc(
-          {
-            send: (packet, done) => process.send!(packet, done),
-            subscribe(listener) {
-              process.on('message', listener);
-              return () => {
-                process.off('message', listener);
-              };
+    ...(connector
+      ? {
+          virtualApplication: {
+            origin: connector.applicationOrigin,
+            ready(application) {
+              connector.virtualApplication.ready?.(application);
+              ipc = new ApplicationIpc(
+                {
+                  send: (packet, done) => process.send!(packet, done),
+                  subscribe(listener) {
+                    process.on('message', listener);
+                    return () => {
+                      process.off('message', listener);
+                    };
+                  },
+                },
+                (channel) => {
+                  serveApplicationChannel(channel, origin, application);
+                },
+              );
             },
           },
-          (channel) => {
-            serveApplicationChannel(channel, origin, application);
+          selfHostedBrokerConnector: connector.selfHostedBrokerConnector,
+        }
+      : {
+          virtualApplication: {
+            origin,
+            ready(application) {
+              ipc = new ApplicationIpc(
+                {
+                  send: (packet, done) => process.send!(packet, done),
+                  subscribe(listener) {
+                    process.on('message', listener);
+                    return () => {
+                      process.off('message', listener);
+                    };
+                  },
+                },
+                (channel) => {
+                  serveApplicationChannel(channel, origin, application);
+                },
+              );
+            },
           },
-        );
-      },
-    },
+        }),
   });
   let stopping: Promise<void> | undefined;
   const stop = () =>

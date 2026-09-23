@@ -61,11 +61,13 @@ export async function runBrowserAccountScenario(
   );
   assert.equal(replacementRequest.status, 202);
   await accountStation.confirmBoundDevice(replacementRequest.body.requestId);
-  await page.evaluate(browserRevokeApplicationContinuation);
   const boundDevice = await accountStation.exchangeBoundDevice(
     replacementOffer,
     replacementRequest.body.requestId,
   );
+  // Exchange must see the still-current account session that the operator
+  // approved; revoke the old continuation only after the Device is issued.
+  await page.evaluate(browserRevokeApplicationContinuation);
   assert.equal(
     (await page.evaluate(browserAdoptBoundApplicationDevice, boundDevice))
       .principalId,

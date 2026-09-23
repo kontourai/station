@@ -1,13 +1,17 @@
-import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
+import {
+  PAIRING_SCOPE_ORCHESTRATION_READ,
+  pairingScopePresetString,
+} from '@kontourai/station-contracts/environment-security';
 import {
   ApplicationSessionClient,
   createApplicationSessionKey,
 } from '@kontourai/station-sdk/application-session';
 import { Hono } from 'hono';
+import { calculateJwkThumbprint } from 'jose';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
 import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
@@ -24,7 +28,7 @@ afterEach(async () => {
   for (const close of cleanup.splice(0)) await close();
 });
 
-async function harness() {
+async function harness(options: { now?: () => number } = {}) {
   const home = await mkdtemp(join(tmpdir(), 'station-application-session-'));
   await mkdir(join(home, 'security'), { mode: 0o700 });
   const pairing = new DevicePairingService({
@@ -59,12 +63,29 @@ async function harness() {
   };
   const host = { homeDirectory: home, stationId };
   const enrollment = { mayRegister: async () => true };
+  let resolvePendingRelayDevice = (_deviceId: string, _enrollmentId: string) =>
+    null as {
+      deviceId: string;
+      enrollmentId: string;
+      issuer: string;
+      subject: string;
+      approvalId: string;
+      approvedBy: string;
+      scope: readonly string[];
+    } | null;
+  const resolvePending = (deviceId: string, enrollmentId: string) =>
+    resolvePendingRelayDevice(deviceId, enrollmentId);
+  const resolveActive = (deviceId: string, enrollmentId: string) =>
+    pairing.resolveActiveRelayEnrollmentDevice(deviceId, enrollmentId);
   let accounts = await loadLocalAccounts(configuration, host, enrollment);
   let sessions = createApplicationSessionRuntime(
     home,
     stationId,
     accounts,
     (value) => pairing.identifyDevice(value),
+    resolvePending,
+    resolveActive,
+    options.now,
   )!;
   const app = () => {
     const result = new Hono();
@@ -140,14 +161,20 @@ async function harness() {
         stationId,
         accounts,
         (value) => pairing.identifyDevice(value),
+        resolvePending,
+        resolveActive,
+        options.now,
       )!;
       currentApp = app();
+    },
+    setPendingRelayDeviceResolver(resolver: typeof resolvePendingRelayDevice) {
+      resolvePendingRelayDevice = resolver;
     },
   };
 }
 
 describe('Device-bound continuation persistence and negative admission', () => {
-  test('startup cleanup can discard one uncommitted continuation authority by reserved key', async () => {
+  test('relay cleanup keys cannot remove an ordinary continuation', async () => {
     const h = await harness();
     const continuation = await h.client.establish({
       username: 'alice',
@@ -160,106 +187,276 @@ describe('Device-bound continuation persistence and negative admission', () => {
       })),
       Authorization: `Bearer ${h.device.credential}`,
     };
-    const before = await h.request('/resource', { method: 'GET', headers });
-    expect(before.status).toBe(200);
-
     expect(
-      h.sessions().discardUncommittedAuthority(continuation.authorityKey),
-    ).toBe(1);
-    expect(
-      h.sessions().discardUncommittedAuthority(continuation.authorityKey),
+      h
+        .sessions()
+        .discardUncommittedAuthority(continuation.authorityKey, 'N'.repeat(43)),
     ).toBe(0);
-    const after = await h.request('/resource', { method: 'GET', headers });
-    expect(after.status).toBe(401);
-    expect(await after.json()).toEqual({ kind: 'invalid' });
+    expect(() =>
+      h
+        .sessions()
+        .discardUncommittedAuthority(
+          continuation.authorityKey,
+          undefined as never,
+        ),
+    ).toThrow();
+    expect(
+      (await h.request('/resource', { method: 'GET', headers })).status,
+    ).toBe(200);
   });
 
-  test('a continuation bound to a relay Device stays blocked until that exact Device activates', async () => {
-    const h = await harness();
-    const continuation = await h.client.establish({
-      username: 'alice',
-      password: h.password,
-    });
-    const login = await h.accounts().service.handle(
+  test('pending relay continuation stays inert until its exact Device activates and provider session is promoted', async () => {
+    let sessionNow = Date.now();
+    const h = await harness({ now: () => sessionNow });
+    const enrollmentId = 'N'.repeat(43);
+    const pending = await h.accounts().service.createPendingEnrollment(
+      enrollmentId,
       new Request(`${origin}/api/account-auth/sign-in/username`, {
         method: 'POST',
         headers: { Origin: origin, 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: 'alice', password: h.password }),
       }),
-      '/sign-in/username',
     );
-    expect(login.status).toBe(200);
-    const accountCookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
-    const account = await h.accounts().service.authenticate(
-      new Request(`${origin}/api/account-auth/session`, {
-        headers: { Cookie: accountCookie },
-      }),
-    );
-    expect(account.kind).toBe('authenticated');
-    if (account.kind !== 'authenticated')
-      throw new Error('provider session fixture did not authenticate');
-    const enrollmentId = 'N'.repeat(43);
-    const pending = h.pairing.requestRelayEnrollmentAccess({
+    expect(pending.kind).toBe('pending');
+    if (pending.kind !== 'pending')
+      throw new Error('provider did not create a pending enrollment session');
+    const issuer = h.accounts().service.describe().issuer;
+    const relayOffer = h.pairing.requestRelayEnrollmentAccess({
       enrollmentId,
       endpoint: origin,
       candidate: {
-        issuer: account.issuer,
-        subject: account.session.subject,
-        displayName: account.session.displayName,
+        issuer,
+        subject: pending.session.subject,
+        displayName: pending.session.displayName,
       },
-      sessionId: account.session.sessionId,
+      sessionId: pending.session.sessionId,
     });
-    h.pairing.confirmRelayEnrollmentRequest(
-      pending.requestId,
+    const relayConfirmation = h.pairing.confirmRelayEnrollmentRequest(
+      relayOffer.requestId,
       { kind: 'presented-credential' },
       'human:deployment:operator',
       {
         enrollmentId,
-        sessionId: account.session.sessionId,
-        issuer: account.issuer,
-        subject: account.session.subject,
+        sessionId: pending.session.sessionId,
+        issuer,
+        subject: pending.session.subject,
       },
     );
+    const relayBinding = relayConfirmation.principalBinding;
+    if (
+      !relayBinding ||
+      !('kind' in relayBinding) ||
+      relayBinding.kind !== 'account'
+    )
+      throw new Error('operator confirmation did not bind an account');
     const device = h.pairing.exchangeRelayEnrollment({
-      offerId: pending.offerId,
-      proof: pending.proof,
-      requestId: pending.requestId,
+      offerId: relayOffer.offerId,
+      proof: relayOffer.proof,
+      requestId: relayOffer.requestId,
       enrollmentId,
       deviceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     });
-
-    // Seed a real continuation record bound to the reserved Device so the
-    // control below proves the pending admission fence itself, not an
-    // unrelated deviceId mismatch.
-    const continuationDb = openPrivateSqlite(
+    const key = await createApplicationSessionKey();
+    const authorityKey = randomUUID();
+    const pendingDeviceAssertion = (
+      candidateId: string,
+      candidateEnrollmentId: string,
+    ) =>
+      candidateId === device.device.id && candidateEnrollmentId === enrollmentId
+        ? {
+            deviceId: device.device.id,
+            enrollmentId,
+            issuer,
+            subject: pending.session.subject,
+            approvalId: relayBinding.approvalId,
+            approvedBy: relayBinding.approvedBy,
+            scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+          }
+        : null;
+    h.setPendingRelayDeviceResolver(pendingDeviceAssertion);
+    const issueInput = {
+      enrollmentId,
+      deviceId: device.device.id,
+      providerSessionId: pending.session.sessionId,
+      issuer,
+      subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
+      authorityKey,
+      stationId,
+      clientOrigin: origin,
+      key: key.publicKey,
+      keyThumbprint: await calculateJwkThumbprint(key.publicKey),
+      nonce: 'Z'.repeat(43),
+      expiresAt: Date.parse(pending.session.expiresAt),
+      signal: new AbortController().signal,
+    };
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        stationId: `${stationId}-wrong`,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        clientOrigin: 'https://untrusted.example.test',
+      }),
+    ).rejects.toThrow();
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        keyThumbprint: 'Y'.repeat(43),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        providerSessionId: randomUUID(),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        enrollmentId: 'O'.repeat(43),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        deviceId: 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff',
+      }),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => null);
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => ({
+      deviceId: device.device.id,
+      enrollmentId,
+      issuer: `${issuer}-foreign`,
+      subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+    }));
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => ({
+      deviceId: device.device.id,
+      enrollmentId,
+      issuer,
+      subject: `${pending.session.subject}-foreign`,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+    }));
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => ({
+      deviceId: device.device.id,
+      enrollmentId,
+      issuer,
+      subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: relayBinding.approvedBy,
+      scope: [],
+    }));
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => ({
+      deviceId: device.device.id,
+      enrollmentId,
+      issuer,
+      subject: pending.session.subject,
+      approvalId: randomUUID(),
+      approvedBy: relayBinding.approvedBy,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+    }));
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(() => ({
+      deviceId: device.device.id,
+      enrollmentId,
+      issuer,
+      subject: pending.session.subject,
+      approvalId: relayBinding.approvalId,
+      approvedBy: `${relayBinding.approvedBy}-changed`,
+      scope: [PAIRING_SCOPE_ORCHESTRATION_READ],
+    }));
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
+    h.setPendingRelayDeviceResolver(pendingDeviceAssertion);
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        authorityKey: randomUUID(),
+        signal: aborted.signal,
+      }),
+    ).rejects.toThrow();
+    const faultInput = issueInput;
+    const faultDb = openPrivateSqlite(
       join(h.home, 'authentication', 'application-sessions.sqlite'),
-      'Application session test continuation binding',
+      'Application session persistence fault fixture',
     );
     try {
-      const tokenHash = createHash('sha256')
-        .update(continuation.credential)
-        .digest('base64url');
-      const row = continuationDb
-        .prepare('SELECT record FROM application_sessions WHERE token_hash=?')
-        .get(tokenHash);
-      expect(typeof row?.record).toBe('string');
-      const record = JSON.parse(row!.record as string) as Record<
-        string,
-        unknown
-      >;
-      record.deviceId = device.device.id;
-      continuationDb
-        .prepare('UPDATE application_sessions SET record=? WHERE token_hash=?')
-        .run(JSON.stringify(record), tokenHash);
+      faultDb.exec(`CREATE TRIGGER fail_relay_continuation_insert
+        BEFORE INSERT ON application_sessions
+        WHEN json_extract(NEW.record, '$.relayEnrollmentId') IS NOT NULL
+        BEGIN SELECT RAISE(ABORT, 'injected relay persistence fault'); END`);
+      await expect(
+        h.sessions().issuePendingRelayContinuation(faultInput),
+      ).rejects.toThrow();
+      faultDb.exec('DROP TRIGGER fail_relay_continuation_insert');
+      expect(
+        faultDb
+          .prepare(
+            "SELECT count(*) AS n FROM application_sessions WHERE json_extract(record, '$.authorityKey')=?",
+          )
+          .get(faultInput.authorityKey)?.n,
+      ).toBe(0);
     } finally {
-      continuationDb.close();
+      faultDb.exec('DROP TRIGGER IF EXISTS fail_relay_continuation_insert');
+      faultDb.close();
     }
+    const continuation = await h
+      .sessions()
+      .issuePendingRelayContinuation(issueInput);
+    expect(h.sessions().verifyPendingRelayContinuation(issueInput)).toBe(true);
+    expect(
+      h.sessions().verifyPendingRelayContinuation({
+        ...issueInput,
+        approvalId: randomUUID(),
+      }),
+    ).toBe(false);
+    expect(
+      h.sessions().verifyPendingRelayContinuation({
+        ...issueInput,
+        approvedBy: `${issueInput.approvedBy}-changed`,
+      }),
+    ).toBe(false);
+    await expect(
+      h.sessions().issuePendingRelayContinuation({
+        ...issueInput,
+        authorityKey: randomUUID(),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      h.sessions().issuePendingRelayContinuation(issueInput),
+    ).rejects.toThrow();
     const pendingClient = new ApplicationSessionClient(
       origin,
       stationId,
       origin,
       { credential: device.credential, credentialOrigin: origin },
-      h.key,
+      key,
     );
     const signed = await pendingClient.headers(continuation, {
       method: 'GET',
@@ -277,6 +474,25 @@ describe('Device-bound continuation persistence and negative admission', () => {
     expect(h.pairing.identifyDevice(device.credential)).toBeNull();
 
     h.pairing.activateRelayEnrollmentDevice(device.device.id, enrollmentId);
+    const pendingProvider = await h.request('/resource', {
+      method: 'GET',
+      headers: {
+        ...(await pendingClient.headers(continuation, {
+          method: 'GET',
+          url: `${origin}/resource`,
+        })),
+        Authorization: `Bearer ${device.credential}`,
+      },
+    });
+    expect(pendingProvider.status).toBe(401);
+
+    await h
+      .accounts()
+      .service.promotePendingEnrollment(
+        enrollmentId,
+        pending.session.sessionId,
+        new AbortController().signal,
+      );
     const admitted = await h.request('/resource', {
       method: 'GET',
       headers: {
@@ -284,10 +500,91 @@ describe('Device-bound continuation persistence and negative admission', () => {
         Authorization: `Bearer ${device.credential}`,
       },
     });
+    expect(await h.sessions().verifyActiveRelayContinuation(issueInput)).toBe(
+      true,
+    );
     expect(admitted.status).toBe(200);
     expect(await admitted.json()).toMatchObject({
       principal: continuation.principal,
     });
+    await h.restart();
+    const afterRestart = await h.request('/resource', {
+      method: 'GET',
+      headers: {
+        ...(await pendingClient.headers(continuation, {
+          method: 'GET',
+          url: `${origin}/resource`,
+        })),
+        Authorization: `Bearer ${device.credential}`,
+      },
+    });
+    expect(afterRestart.status).toBe(200);
+    expect(await afterRestart.json()).toMatchObject({
+      principal: continuation.principal,
+    });
+    let expirationVerificationEntered!: () => void;
+    let releaseExpirationVerification!: () => void;
+    const expirationEntered = new Promise<void>((resolve) => {
+      expirationVerificationEntered = resolve;
+    });
+    const expirationGate = new Promise<void>((resolve) => {
+      releaseExpirationVerification = resolve;
+    });
+    const verifyBeforeExpiry = h
+      .accounts()
+      .service.verifySessionReference.bind(h.accounts().service);
+    const expirationSpy = vi
+      .spyOn(h.accounts().service, 'verifySessionReference')
+      .mockImplementation(async (...args) => {
+        expirationVerificationEntered();
+        await expirationGate;
+        return verifyBeforeExpiry(...args);
+      });
+    try {
+      const checking = h.sessions().verifyActiveRelayContinuation(issueInput);
+      await expirationEntered;
+      sessionNow = Date.parse(continuation.expiresAt) + 1;
+      releaseExpirationVerification();
+      await expect(checking).resolves.toBe(false);
+    } finally {
+      releaseExpirationVerification();
+      expirationSpy.mockRestore();
+      sessionNow = Date.now();
+    }
+    expect(
+      h.sessions().discardUncommittedAuthority(authorityKey, 'O'.repeat(43)),
+    ).toBe(0);
+    let providerVerificationEntered!: () => void;
+    let releaseProviderVerification!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      providerVerificationEntered = resolve;
+    });
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProviderVerification = resolve;
+    });
+    const originalVerify = h
+      .accounts()
+      .service.verifySessionReference.bind(h.accounts().service);
+    const verifySpy = vi
+      .spyOn(h.accounts().service, 'verifySessionReference')
+      .mockImplementation(async (...args) => {
+        providerVerificationEntered();
+        await providerGate;
+        return originalVerify(...args);
+      });
+    try {
+      const checking = h.sessions().verifyActiveRelayContinuation(issueInput);
+      await entered;
+      h.pairing.revokeDevice(device.device.id, 'operator-credential');
+      releaseProviderVerification();
+      await expect(checking).resolves.toBe(false);
+    } finally {
+      releaseProviderVerification();
+      verifySpy.mockRestore();
+    }
+    expect(
+      h.sessions().discardUncommittedAuthority(authorityKey, enrollmentId),
+    ).toBe(1);
   });
 
   test('an account-bound Device accepts only the matching provider account while cookie-only enrollment stays available', async () => {
